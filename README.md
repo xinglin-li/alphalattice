@@ -10,19 +10,15 @@ Tell your Codex or Claude Code agent what you want to investigate. It uses
 AlphaLattice to run quantitative studies, check source evidence and bring the
 results to a research committee. Follow the work and its results in your browser.
 
+Numerical inputs are bounded by the date's cutoff, with a grader checking for
+look-ahead in verification runs. The committee can decline endorsement;
+AlphaLattice runs locally and is open source.
+
 Give your agent this repository's link and one intent:
 
-> Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound book from public data and show its dated research positions; open the Workbench in your browser so I can follow it.
+> Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your browser so I can follow it.
 
-<!-- Hero image reserved: Codex conversation on the left, Workbench on the right. -->
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/research-performance-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/research-performance-light.png">
-  <img src="docs/images/research-performance-light.png" alt="Trend Rebound Book historical research performance from 2023-10-02 to 2026-09-08." width="1280">
-</picture>
-
-*Historical research performance for Trend Rebound Book, 2023-10-02 to 2026-09-08, from a replay of the strategy.*
+<!-- Hero image reserved: committee discussion from the final acceptance run. -->
 
 [Getting started](docs/public-source/getting-started.md) covers installation,
 first use and the decisions that remain yours.
@@ -33,7 +29,7 @@ first use and the decisions that remain yours.
   portfolio construction, Evidence review and committee discussion lead to a
   delivery report in one workspace.
 - **Evidence you can inspect.** Read source passages, information cutoffs and
-  review coverage for the reviewed book.
+  review coverage for the reviewed portfolio.
 - **Disagreement you can read.** Objections, limits and the committee's final
   ruling remain in the record and report.
 - **Factors and models you can extend.** Add factors and Alpha models through
@@ -41,9 +37,8 @@ first use and the decisions that remain yours.
 
 ## A worked example
 
-An earlier completed run began with this request:
-
-> Build me a reviewed Trend Rebound book from public data and give me positions for 2026-09-11.
+A completed run asked for a reviewed Trend Rebound strategy from public data,
+with research positions for 2026-09-11.
 
 1. **Studies.** The agent prepared public-source data and ran the strategy's
    model and Risk studies.
@@ -61,11 +56,20 @@ The report kept the reservations alongside the results: the review covered
 the filings accepted by its source checks and available at its cutoff, and
 members named limits in predictive support, liquidity and capacity evidence.
 
-<!-- Committee discussion image reserved: use the final 0.2.0 acceptance run, not the earlier run's committee or verdict wording. -->
-
-<!-- Example report link reserved: use the same final 0.2.0 acceptance run as the committee discussion image. -->
+<!-- Example report link reserved: use the same final acceptance run as the hero image. -->
 
 ### Historical research views
+
+A **book** is a recorded research portfolio with its holdings and results.
+For an installed strategy, it records the strategy's historical replay.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/research-performance-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/research-performance-light.png">
+  <img src="docs/images/research-performance-light.png" alt="Trend Rebound Book historical research performance from 2023-10-02 to 2026-09-08." width="1280">
+</picture>
+
+*Historical research performance for Trend Rebound Book, 2023-10-02 to 2026-09-08, from a replay of the strategy.*
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/research-positions-dark.png">
@@ -101,16 +105,16 @@ historical source availability alongside the performance.
   **History** for saved studies and reviews, and **Team** for sessions and
   usage. Review pages show which checks passed, what remains missing and how
   the result may be used.
-- **Agent autonomy and your decisions.** On first use, your sentence opens a goal
-  that gives the agent permission for specific steps for 24 hours from opening:
-  preparing data,
-  handling data issues within the declared rules, opening the preparation's
-  network, setting up Evidence within the default budget and activating the
-  book. The agent reports each act. Permission ends when the goal's submission
-  is accepted, when it is abandoned, or when the 24 hours expire; the network
-  access it opened ends with it. You can stop the strategy
-  through your agent or on **Portfolio**. Stopping a goal and cancelling a Task
-  are separate controls. The guide lists
+- **First-use permission.** Your sentence opens a goal and gives the agent
+  permission for specific steps for 24 hours from the goal's opening: prepare
+  data, handle data issues within the declared rules, open the preparation's
+  network, set up Evidence within the default budget and activate the strategy's
+  completed book. It reports each act.
+- **When permission ends.** It ends when the goal's submission is accepted,
+  when the goal is abandoned or when the 24 hours expire. The network access
+  opened under that permission ends with it.
+- **Your controls.** Stop the strategy through your agent or on **Portfolio**.
+  Stopping a goal and cancelling a Task are separate controls. The guide lists
   [what only you decide](AGENTS.md#what-only-a-person-decides).
 - **Host boundaries.** The agent installs AlphaLattice and continues in the
   same session. Specialist tool limits apply through their instructions;
@@ -123,15 +127,25 @@ historical source availability alongside the performance.
 
 ## Before you start
 
-- **Environment:** Windows is verified. Setup uses Python 3.12, uv and locked
-  dependencies, with Codex or Claude Code. macOS and Linux are not yet verified;
-  reports of setup results and problems are welcome.
+- **Environment:** Windows and Linux have completed full agent runs; Linux was
+  verified on Ubuntu 24.04 under WSL2. Setup uses Python 3.12, uv and locked
+  dependencies, with Codex or Claude Code. On macOS, CI checks installation and
+  an offline first use; a full agent run on a Mac is still pending. On macOS,
+  install the OpenMP runtime:
+
+  ```bash
+  brew install libomp
+  ```
+
+  See [Getting started](docs/public-source/getting-started.md) for installation
+  and first-use instructions.
 - **Time:** Data preparation, multi-year model fitting and validation, and
   source review take time. One completed run using prepared public-source data
   and retained filings, replayed offline with four CPU cores on a shared Windows
   machine, took about **37 minutes** from the start of the first data preparation
   Task to writing the delivery report. Installation and live downloads were outside
-  that interval. This is an observation, not a runtime guarantee.
+  that interval. Data and model-pack downloads add time when needed, depending
+  on your connection. This is an observation, not a runtime guarantee.
 - **Agent costs:** Your Codex or Claude Code access and usage costs are separate
   from AlphaLattice; check your provider's terms.
 
@@ -145,7 +159,7 @@ for installation, downloads and the permissions each step needs.
 | --- | --- |
 | [Getting started](docs/public-source/getting-started.md) | Prepare for installation and first use. |
 | [CLI](docs/public-source/cli.md) | Read answers and continue saved requests. |
-| [Research flows](docs/public-source/research-flows.md) | Follow studies, books and review. |
+| [Research flows](docs/public-source/research-flows.md) | Follow studies, portfolios and review. |
 | [Agents](docs/public-source/agents.md) | Follow goals, sessions and specialist work. |
 | [Extending](docs/public-source/extending.md) | Develop and inspect factors and models. |
 | [Data and care](docs/public-source/data-and-care.md) | Update, inspect, back up and restore a workspace. |
@@ -191,8 +205,6 @@ rebuilding once if it is missing or stale; a failed build fails the run.
 AlphaLattice has been developed privately since 2026-08-06. Each public commit
 contains one shipped change exported from that development; releases publish
 the resulting versions.
-
-The public repository starts at 0.1.x; earlier development happened privately.
 
 ## Disclaimer
 
