@@ -109,7 +109,8 @@ const c={URLSearchParams,app:{page:'goal'},render(){},closeDialog(){},openDialog
       verifications.push({hash,resolve:()=>resolve(verified(hash)),
         reject:()=>reject(Error('local_client.connection_lost_task_may_still_run'))});});
     throw Error('unexpected '+url);}}};
-c.goalReferenceIntegrity=library.words(require('path').dirname(require('node:path').join(_appDir,'live-goals.js'))).goalReferenceIntegrity;
+const sharedWords=library.words(require('path').dirname(require('node:path').join(_appDir,'live-goals.js')));
+c.goalReferenceIntegrity=sharedWords.goalReferenceIntegrity;c.MESSAGE_KINDS=sharedWords.MESSAGE_KINDS;
 library.context(c);
 vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(require('node:path').join(_appDir,'live-goals.js')),
   'team-members.js'),'utf8'),c);
@@ -355,6 +356,18 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
       words.t('No Team exchange under this goal yet.')),language+' no false old conversation');
     await folder('goal-results');assert.ok(shows('A synthetic attributed outcome.'));
     await folder('goal');assert.ok(shows(words.t('Goal registered')));
+    // a first use's title is the Host's own word, read in the person's language as Home reads it
+    const firstHash='first-use-'+language,first={...empty,goal_hash:firstHash,head_hash:firstHash,
+      goal:{...empty.goal,goal_hash:firstHash,declaration:{...empty.goal.declaration,kind:'FIRST_USE',title:'First use'}}};
+    c.Data.read=async()=>first;route=new URLSearchParams('page=goal&goal='+firstHash);await c.live.ensure();
+    assert.ok(shows('<h1>'+words.t('First use')+'</h1>'),language+' a first use is titled in its language');
+    // the Host's own review-thread words read in the person's language; an agent's stay its own
+    c.said=words.said;c.LiveTeam.scene=teamScene;const reviewHash='review-thread-'+language,review={...empty,goal_hash:reviewHash,head_hash:reviewHash,
+      goal:{...empty.goal,goal_hash:reviewHash},record:{...record,message_count:1,conversation:[{...record.conversation[0],
+        message_id:'review-1',input_channel:'PRODUCT_REVIEW',message_kind:'acceptance',summary:'Accepted.'}]}};
+    c.Data.read=async()=>review;route=new URLSearchParams('page=goal-conversation&goal='+reviewHash);
+    c.app.page='goal-conversation';await c.live.ensure();
+    assert.ok(shows(words.t('Accepted.')),language+' a review thread reads in its language');
     c.LiveTeam.scene=teamScene;
     const boundHash='bound-answer-'+language,bound={...empty,goal_hash:boundHash,
       head_hash:boundHash,goal:{...empty.goal,goal_hash:boundHash},

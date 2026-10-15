@@ -11,8 +11,7 @@
  * Reading here starts nothing; a scene's readback and recovery view are re-read on the activity
  * cadence while its Task moves, and the page is repainted in place. */
 /* The preparation's five steps as the design lists them; `marks` (stage id -> {lifecycle,
- * evidence}) is Task Control's record of each stage; without it the list is the plain roster.
- * Five drawn steps are never five equal durations. */
+ * evidence}) is Task Control's record of each stage; without it the list is the plain roster. Five drawn steps are never five equal durations. */
 const PREPARATION_STEPS = ['freeze_sources', 'prepare_data', 'prepare_features', 'publish_inputs', 'verify_inputs'].map((id) => [id, STAGES[id].word, STAGES[id].note]);
 const LiveWorkspace = (() => {
   const pages = new Set(['data', 'issues', 'inputs', 'storage']);
@@ -603,8 +602,7 @@ const LiveWorkspace = (() => {
   /* The attention state in plain language, with the consequence and only the owner's currently
    * permitted continuation. The owner's code stays in the details. */
   /* U63 (V375): a deferral's words as its owner wrote them -- the provider's, and for an update that the published
-   * research inputs stand (the owner's second sentence, read on its own) -- and its resume request, the same plan again,
-   * sent whole by the route the session names (U13). */
+   * research inputs stand (the owner's second sentence, read on its own) -- and its resume request, the same plan again, sent whole by the route the session names (U13). */
   const HELD_WORDS=' The published research inputs are unchanged, and every study keeps reading them.';
   const deferWords=(detail)=>{ const s=String(detail || ''); if(!s) return ''; const held=s.endsWith(HELD_WORDS); return html`<span class="owner-text">${t(held ? s.slice(0,-HELD_WORDS.length) : s)}${held ? html` ${t(HELD_WORDS.trim())}` : ''}</span>`; };
   const resumeOf=(b)=>{ const r=b?.next_requests?.resume; return r && Data.offers(r.operation) ? r : null; };
@@ -687,8 +685,7 @@ const LiveWorkspace = (() => {
   };
   const STATE_WORD={PENDING:'waiting for provider data',RAW_READY:'raw bars',QUALITY_ELIGIBLE:'eligible',QUALITY_INELIGIBLE:'ineligible',FEATURE_READY:'admitted',RAW_FAILED:'failed',AUDIT_FAILED:'audit failed'};
   const stepText=(r)=>(STEP_TEXT[r.state] || (()=>r.state))(r);
-  /* One listing, one line (N6): the time, the symbol, what the owner recorded for it in order;
-   * the listing's identity is the symbol's tip. */
+  /* One listing, one line (N6): the time, the symbol, what the owner recorded for it in order; the listing's identity is the symbol's tip. */
   function listingRow(row) {
     return html`<article class="fv-log-row prep-unit${row.attention ? ' attention' : ''}" data-listing-key="${row.listing_id}"><div class="fv-log-time"><time datetime="${row.noted}">${clockOf(row.noted)}</time><span class="fv-log-dot" aria-hidden="true"></span></div><div class="fv-log-entry"><strong data-tip="${row.listing_id}">${row.symbol}</strong><span class="fv-log-object">${row.steps.map((s,i)=>html`${i ? ' → ' : ''}${stepText(s)}`)}</span></div></article>`;
   }
@@ -700,8 +697,7 @@ const LiveWorkspace = (() => {
     return W.factsShell(spec,{label:t('Feature work'),title:t('Feature work'),caption:t('The Feature owner\'s own step and counters, bound to this Task; no per-listing units are reported here'),facts:bound ? kv(items) : html`<p class="caption">${statusText}</p>`,rail});
   }
   /* The stage's own recent activity: listing units for market data; the Feature owner's step
-   * for Features; the stage as one unit elsewhere. Retained rows of another execution or
-   * stage are history, said so, never current work. */
+   * for Features; the stage as one unit elsewhere. Retained rows of another execution or stage are history, said so, never current work. */
   function stageAside(b, v, state, shown, current) {
     const la=b.listing_activity, log=W.A.log, moving=W.moving(v,state,current);
     if(shown==='prepare_data') {
@@ -809,8 +805,7 @@ const LiveWorkspace = (() => {
   const UPDATE_LINES={validate_update_request:'Checking that the workspace still matches the plan this Task was admitted with: the same membership revision, data revision and Panel; a moved workspace stops here by name.',maintain_data_feature:'Fetching the sessions after the current cutoff for every admitted member, one bounded cycle at a time; then quality governance, the Features and the Panel for the new sessions.',publish_update_receipt:'Sealing one receipt: the cutoffs before and after, the maintenance cycle and its effects. Published input versions are not touched.'};
   const PHASE_TEXT={preflight:'preflight: sources and membership',market_data:'market data: fetching and auditing listings',quality:'quality governance',feature:'Features and Panel',completed:'completed'};
   /* The maintenance stage's own count: the maintenance runner's units while the cycle fetches
-   * (from its durable rows), the Feature owner's step while it builds, the cycle's phase
-   * otherwise; every denominator is the owner's. */
+   * (from its durable rows), the Feature owner's step while it builds, the cycle's phase otherwise; every denominator is the owner's. */
   function updateWork(b, v, state, shown=null) {
     const stage=shown || v.status.current_stage, c=b.cycle, m=b.maintenance, w=b.work_progress;
     const wait=null; // N6 (law 58): a wait is said once, by the update's banner
@@ -1132,8 +1127,7 @@ const LiveWorkspace = (() => {
       foot:b.next_cursor ? Lobby.older(b.case_count!=null ? t('{n} of {total} current cases read',{n:count(cases.length),total:count(b.case_count)}) : t('More cases are not read yet'),'workspace-more',b.next_cursor,S.busy,t('Read more')) : ''});
   }
   /* A Task that waits for the reader to continue it (N6): named once, in words -- a decision
-   * recorded is said as recorded, never as still needed -- with its one way on. Offered only when
-   * no case asks first. */
+   * recorded is said as recorded, never as still needed -- with its one way on. Offered only when no case asks first. */
   function continuationCard(c, i, decided) {
     const code=c.failure_code || c.failure_reason?.code || '', update=c.operation==='DATA_UPDATE_RUN';
     const verb=action(update ? 'Continue this update' : 'Continue this Task','continue',String(i),'','button primary'); // the Data page's and the Home's verb for the same Task
@@ -1282,7 +1276,7 @@ const LiveWorkspace = (() => {
     const failed=a?.status==='FAILED' ? banner(t('The last automatic backup failed'),t('The data update it followed stays published; back up now once the failure is resolved.'),'warning') : '';
     const {shown,start,page,pages}=pageOf(gens,S.backupPage);
     const rows=shown.map((g,i)=>tr([count(start+i+1),when(g.created_at),t(BACKUP_REASON[g.reason] || g.reason),count(g.files),count(g.tables),count(g.listed),count((g.absent || []).length),hashCell(g.generation_hash,SHORT.hash)]));
-    const list=gens.length ? html`${table([{label:'#',type:'num',index:true},{label:t('Created'),type:'text'},{label:t('Reason'),type:'text',absorb:true},{label:t('Files'),type:'num'},{label:t('Tables'),type:'num'},{label:t('Listed'),type:'num'},{label:t('Not held'),type:'num'},{label:t('Generation'),type:'text',cls:'col-tight'}],rows,'',{report:true,countLine:false,classes:'compact backup-generations'})}${pager({page,pages,prev:['workspace-backups-page','prev'],next:['workspace-backups-page','next']})}` : refusedGenerations.length ? '' : emptyState(t('No backup is kept yet.'));
+    const list=gens.length ? html`${table([{label:'#',type:'num',index:true},{label:t('Created'),type:'text'},{label:t('Reason'),type:'text',absorb:true},{label:t('Files'),type:'num'},{label:t('Tables'),type:'num'},{label:t('Listed'),type:'num'},{label:t('Not held'),type:'num'},{label:t('Generation'),type:'text',cls:'col-tight'}],rows,'',{report:true,countLine:false,classes:'compact backup-generations'})}${pager({page,pages,prev:['workspace-backups-page','prev'],next:['workspace-backups-page','next']})}` : refusedGenerations.length ? '' : emptyState(t('No backup is kept yet; ask your agent for one.'));
     const absent=gens[0]?.absent || [];
     const notHeld=absent.length ? html`<p class="caption">${t('Not held by this workspace in the newest generation')} · ${absent.map((v,i)=>html`${i ? ' · ' : ''}<span class="mono">${v}</span>`)}</p>` : '';
     const command=`alphalattice backup restore --dir <new directory> --workspace-id ${app.workspace || '<workspace id>'} --root "${bk.backup_root}"${gens[0] ? ` --generation ${gens[0].generation_hash}` : ''}`;

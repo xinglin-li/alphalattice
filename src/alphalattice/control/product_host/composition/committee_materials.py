@@ -9,6 +9,7 @@ this composes the material only, by reading the sealed records and taking differ
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from datetime import UTC, datetime
 from typing import Any, Final
 
 import numpy as np
@@ -91,19 +92,59 @@ QUESTIONS: Final = {
 _ASKED: Final = {q: words for qs in QUESTIONS.values() for q, words in qs.items()}
 
 _ABSENT: Final = (
-    ("PM.envelope", "PENDING: the replay baseline and live against expected need live sessions."),
-    ("ALPHA.clean", "UNAVAILABLE: data decisions on held names need the data platform's join."),
-    ("ALPHA.bet", "UNAVAILABLE: sector and style concentration are in no record yet."),
+    ("PM.envelope", "PENDING", "the replay baseline and live against expected need live sessions."),
+    ("ALPHA.clean", "UNAVAILABLE", "data decisions on held names need the data platform's join."),
+    ("ALPHA.bet", "UNAVAILABLE", "sector and style concentration are in no record yet."),
     (
         "ALPHA.strength",
-        "UNAVAILABLE: score dispersion needs raw pre-rank scores; hit rate PENDING.",
+        "UNAVAILABLE",
+        "score dispersion needs raw pre-rank scores; hit rate pending.",
     ),
-    ("RISK.volatility", "UNAVAILABLE: volatility history needs the date's Risk kept each session."),
-    ("RISK.correlation", "UNAVAILABLE: pairwise correlation and clusters are in no record."),
-    ("RISK.liquidity", "UNAVAILABLE: position against ADV needs a declared capital."),
-    ("CRO.process", "UNAVAILABLE: repairs and data decisions need the data platform's join."),
+    (
+        "RISK.volatility",
+        "UNAVAILABLE",
+        "volatility history needs the date's Risk kept each session.",
+    ),
+    ("RISK.correlation", "UNAVAILABLE", "pairwise correlation and clusters are in no record."),
+    ("RISK.liquidity", "UNAVAILABLE", "position against ADV needs a declared capital."),
+    ("CRO.process", "UNAVAILABLE", "repairs and data decisions need the data platform's join."),
 )
 """What no record holds yet, said as a fact: PENDING for live data, UNAVAILABLE otherwise."""
+
+_WORDS: Final = {
+    "PENDING": "pending",
+    "UNAVAILABLE": "not available",
+    "EVALUATED": "evaluated",
+    "NOT_EVALUATED": "not evaluated",
+    "NOT_EVALUATED_FOR_THIS_PROPOSAL": "not evaluated for this proposal",
+    "REVIEWED": "reviewed",
+    "NOT_REVIEWED": "not reviewed",
+    "NOT_REVIEWED_FOR_THIS_PROPOSAL": "not reviewed for this proposal",
+    "NO_MATERIAL_OBJECTION": "no material objection",
+    "ACCEPT_WITH_LIMITS": "accepted with limits",
+    "REQUEST_EVIDENCE_REFRESH": "evidence refresh requested",
+    "HUMAN_REVIEW_REQUIRED": "human review required",
+    "MATERIAL_OBJECTION": "material objection",
+}
+"""The floor's words for each status its facts and views name. The code stays in the records'
+fields: an absence's `state`, the review standing, the date's Risk."""
+
+
+def status_word(code: Any) -> str:
+    """A status in the floor's words; one no table names reads as its code."""
+    return _WORDS.get(str(code), str(code))
+
+
+def when(value: Any) -> str:
+    """A recorded instant as its date and minute in UTC; a date alone reads as itself."""
+    try:
+        at = datetime.fromisoformat(str(value))
+    except ValueError:
+        return str(value)
+    if at.tzinfo is None:
+        return str(value)
+    return at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+
 
 _FACTS: Final = {
     "turnover": (
@@ -275,17 +316,18 @@ def facts(
     said = [*_read(_pm_values, readback, view), *_read(_alpha_values, held, view)]
     said += _read(_risk_values, readback, held, view)
     said += _read(_cro_values, readback, evidence, held, view)
-    rows = [(*_FACTS[k][:2], _FACTS[k][2].format(**v)) for k, v in said if v is not None]
-    rows += [(q, "absence", text) for q, text in _ABSENT]
+    rows = [(*_FACTS[k][:2], _FACTS[k][2].format(**v), None) for k, v in said if v is not None]
+    rows += [(q, "absence", f"{status_word(c).capitalize()}: {text}", c) for q, c, text in _ABSENT]
+    clean = "no record that reads cleanly answers this"
     rows += [
-        (q, "absence", f"UNAVAILABLE: no record that reads cleanly answers this: {w}")
+        (q, "absence", f"{status_word('UNAVAILABLE').capitalize()}: {clean}: {w}", "UNAVAILABLE")
         for q, w in _ASKED.items()
         if all(r[0] != q for r in rows)
     ]
     rows.sort(key=lambda r: list(_ASKED).index(r[0]))
     return [
-        {"alias": f"S{n}", "question": q, "text": t, "source": s}
-        for n, (q, s, t) in enumerate(rows, 1)
+        {"alias": f"S{n}", "question": q, "text": t, "source": s} | ({"state": c} if c else {})
+        for n, (q, s, t, c) in enumerate(rows, 1)
     ]
 
 
@@ -576,19 +618,21 @@ def review_now(readback: Mapping[str, Any]) -> str:
     route, published = (standing.get("cro") or {}).get("route"), standing.get("published_at")
     if standing.get("status"):
         return (
-            f"Review of this proposal now: {standing['status']}"
-            + (f", published {published}" if published else "")
-            + (f"; CRO route {route}" if route else "")
+            f"Review of this proposal now: {status_word(standing['status'])}"
+            + (f", published {when(published)}" if published else "")
+            + (f"; CRO route {status_word(route)}" if route else "")
             + "."
         )
-    return f"Review of this proposal at publication: {readback['publication'].get('cro_status')}."
+    sealed = status_word(readback["publication"].get("cro_status"))
+    return f"Review of this proposal at publication: {sealed}."
 
 
 def risk_view(risk: Mapping[str, Any] | None, held: Sequence[Mapping[str, Any]]) -> str:
     """The date's predicted risk as the Host renders it, report only; members type no digit."""
     if not risk or risk.get("risk_status") != "EVALUATED":
         reason = (risk or {}).get("reason") or "risk_research.date_risk_unavailable"
-        return f"Dated positions Risk assessment: NOT_EVALUATED; unavailable ({reason}); "
+        said = status_word("NOT_EVALUATED")
+        return f"Dated positions Risk assessment: {said}; unavailable ({reason}); "
     alias = {h["listing_id"]: h["alias"] for h in held}
     top = ", ".join(
         f"{alias.get(c['listing_id'], c['listing_id'])} {c['share']:.0%}"
@@ -596,7 +640,8 @@ def risk_view(risk: Mapping[str, Any] | None, held: Sequence[Mapping[str, Any]])
     )
     later = risk["sessions_before_the_positions"]
     return (
-        f"Dated positions Risk assessment: EVALUATED. Predicted risk at {risk['risk_as_of']}"
+        f"Dated positions Risk assessment: {status_word('EVALUATED')}. "
+        f"Predicted risk at {risk['risk_as_of']}"
         + (f", {later} sessions before them" if later else "")
         + f" (the installed recipe, report only): volatility {risk['volatility_per_session']:.2%} "
         f"a session, {risk['volatility_annualized']:.1%} a year; systematic share "

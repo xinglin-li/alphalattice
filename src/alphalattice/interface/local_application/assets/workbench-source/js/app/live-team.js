@@ -2,10 +2,9 @@
 const LiveTeam = (() => {
   const KINDS = {NATIVE_SUBAGENT_START_HOOK: 'hook', NATIVE_SUBAGENT_STOP_HOOK: 'hook', NATIVE_COORDINATION_MESSAGE: 'message', NATIVE_AGENT_USAGE: 'usage'};
   // U25: the decision notes (决策笔记) a member writes are messages of their own kinds, in the conversation
-  const MESSAGE_KINDS = {issue: ['Bundle issued', 'arrow'], correction: ['Correction', 'warning'], acceptance: ['Acceptance', 'check'], assignment: ['Assignment', 'arrow'], question: ['Question', 'info'], answer: ['Answer', 'file'], objection: ['Objection', 'warning'], pm_response: ['PM response', 'user'], plan: ['Plan', 'flag'], decision: ['Decision', 'check'], dead_end: ['Dead end', 'ban'], surprise: ['Surprise', 'info'], session_bound: ['Session bound', 'check'], stance: ['Stance', 'flag'], challenge: ['Challenge', 'warning'], reply: ['Reply', 'arrow'], ruling: ['Ruling', 'user'], person_answer: ['Person answer', 'user'], verdict: ['Verdict', 'file']};
   const NOTE_KINDS = new Set(['plan', 'decision', 'dead_end', 'surprise']);
   const CHANNELS = {CODEX_HOOK: 'Codex hook input · not host-authenticated', CLAUDE_CODE_HOOK: 'Claude Code hook input · not host-authenticated', ACTOR_DECLARED: 'Actor-declared text · not host-verified', PRODUCT_ACCEPTED_ANSWER: 'Accepted structured answer · product record, not a native spoken turn'};
-  const PM_ROLE = 'research_lead';
+  const PM_ROLE = 'research_lead', REVIEW = 'PRODUCT_REVIEW';
   /* Product identity fields an operation may name; nothing else in a subject is a reference. */
   const PRODUCT_KEYS = ['case_hash', 'task_id', 'experiment_task_id', 'publication_task_id', 'existing_task_id', 'update_task_id', 'left_task_id', 'right_task_id', 'development_task_id', 'experiment_plan_hash', 'plan_hash', 'result_hash', 'cached_result_hash', 'review_publication_hash', 'analysis_publication_hash', 'candidate_hash', 'report_hash', 'export_hash', 'foundation_admission_hash', 'publication_hash', 'answer_reference', 'bundle_reference'];
   const MAX_RESOLVED = 64;
@@ -133,7 +132,7 @@ const LiveTeam = (() => {
         entry.text = p.summary || ''; entry.truncated = p.summary_truncated === true;
         entry.bytes = sub.message_bytes || null; entry.sha = sub.message_sha256 || null; entry.messageId = sub.message_id || null;
         entry.recipient = sub.recipient_id || null; entry.reference = sub.reference || null; entry.replyTo = sub.reply_to || null; // U25: what it answers, named since GR2
-        if (entry.channel === 'PRODUCT_REVIEW' && UUID.test(entry.reference || '')) entry.reference = 'review-thread:' + entry.reference.toLowerCase();
+        if (entry.channel === REVIEW && UUID.test(entry.reference || '')) entry.reference = 'review-thread:' + entry.reference.toLowerCase();
         entry.qualified = qualify(entry.reference);
         if (entry.qualified) { s.references.add(entry.qualified.ref); if (['history','case'].includes(entry.qualified.kind)) s.references.add(entry.qualified.ref.split(':')[1]); } // a qualified id names its own hash or Task
         if (acceptedArtifact(s, entry)) for (const name of ['answer_reference', 'bundle_reference']) s.references.add(sub[name].toLowerCase());
@@ -196,8 +195,7 @@ const LiveTeam = (() => {
   const participantCount = s => TeamMembers.countOf(s, ROLE_SAME);
   /* A Main PM needs both the parent session id and research_lead role. */
   const isLead = (pt, s) => Boolean(s.id) && pt.id === s.id && pt.roles.has(PM_ROLE);
-  /* Sessions and book Facts use the specialist order; equivalent cards share a role.
-   * The Main PM leads every session and is no filter. */
+  /* Sessions and book Facts use the specialist order; equivalent cards share a role. The Main PM leads every session and is no filter. */
   const ROLE_SAME = {alternative_analyst: 'alphalattice_evidence_analyst', independent_cro: 'alphalattice_cro'};
   const ROLE_ORDER = Object.keys(ROLE_NAMES);
   const rolesOf = (s) => [...new Set([...s.participants.values()].filter((pt) => !isLead(pt, s)).flatMap((pt) => [...pt.roles]).map((r) => ROLE_SAME[r] || r))]
@@ -210,8 +208,7 @@ const LiveTeam = (() => {
     return roles.length ? roles.map(roleName).join(', ') : '';
   }
   const actorName = (s, id) => { if (!id) return t('agent id not declared'); const pt = s.participants.get(id); return pt && pt.roles.size ? [...pt.roles].map(roleName).join('/') : TeamMembers.unique(s, id); };
-  /* A path names one recipient through one bound start hook, never its spelling or authorship.
-   * Conflicting paths or participants leave the recipient unknown. */
+  /* A path names one recipient through one bound start hook, never its spelling or authorship. Conflicting paths or participants leave the recipient unknown. */
   function recipientParticipant(s, id) {
     if (!id) return null;
     const direct = s.participants.get(id);
@@ -228,7 +225,7 @@ const LiveTeam = (() => {
   }
   const recipientName = (s, id, entry = null) => {
     const bundle = entry?.subject.bundle_reference;
-    const roles = new Set(bundle && entry.messageKind === 'issue' ? [...s.entries.values()].filter((e) => e.channel === 'PRODUCT_REVIEW' && e.subject.authorship_basis === 'HOST_ACCEPTED' && e.replyTo === entry.messageId && e.subject.bundle_reference === bundle && e.role && ![PM_ROLE, HOST_ROLE].includes(e.role)).map((e) => ROLE_SAME[e.role] || e.role) : []);
+    const roles = new Set(bundle && entry.messageKind === 'issue' ? [...s.entries.values()].filter((e) => e.channel === REVIEW && e.subject.authorship_basis === 'HOST_ACCEPTED' && e.replyTo === entry.messageId && e.subject.bundle_reference === bundle && e.role && ![PM_ROLE, HOST_ROLE].includes(e.role)).map((e) => ROLE_SAME[e.role] || e.role) : []);
     if (roles.size === 1) return roleName([...roles][0]);
     const pt = recipientParticipant(s, id); return pt?.roles.size ? actorName(s, pt.id) : entry?.messageKind === 'issue' && id ? TeamMembers.unique(s, id) : t('Unidentified');
   };
@@ -260,7 +257,7 @@ const LiveTeam = (() => {
     if(q?.kind==='case')return {level:'discovered',owner:'Goal',target:{kind:'case',ref:q.ref.slice(5)},note:t('Exact goal reference; verify its owner before opening.')};
     if (!q) return {level: 'declaration', note: t('Not a qualified product reference; shown as declared, never opened.'), target: null};
     if (q.kind === 'review_thread') {
-      const s = scene().sessions.find(s => [...s.entries.values()].some(e => e.channel === 'PRODUCT_REVIEW' && e.reference === q.ref)), e = s && [...s.entries.values()].find(e => e.reference === q.ref);
+      const s = scene().sessions.find(s => [...s.entries.values()].some(e => e.channel === REVIEW && e.reference === q.ref)), e = s && [...s.entries.values()].find(e => e.reference === q.ref);
       return e ? {level: 'verified', owner: 'Review thread', target: {kind: 'review_thread', ref: q.ref.slice(14)}, route: {team: s.id, actor: '', event: e.id}, note: ''} : {level: 'unresolved', owner: 'Review thread', target: null, note: t('Selected exchange not retained')};
     }
     if (q.kind === 'history') {
@@ -356,7 +353,7 @@ const LiveTeam = (() => {
   const readableAnswer = (s, m) => m?.item ? productAcceptedAnswer(s, m) : m && (acceptedArtifact(s, m) || acceptedRelay(s, m));
   const answerObservation = (m) => m?.item?.observation_id || m?.id;
   const selectedAnswerRecord = (s, id) => s?.entries.get(id) || s?.facts.find((f) => f.item.observation_id === id && productAcceptedAnswer(s, f)) || (s && S.committee?.session === s.id && S.committee.task === committeeTask(s) && S.committee.body ? committeeEntries(S.committee.body).find(e => e.id === id) : null);
-  const reviewed = (e) => e.channel === 'PRODUCT_REVIEW' && e.messageKind === 'acceptance' && e.recipient;
+  const reviewed = (e) => e.channel === REVIEW && e.messageKind === 'acceptance' && e.recipient;
   const acceptedArtifacts = (s) => Data.uniqueRows([...s.entries.values()].filter((e) => !e.replayOf && (acceptedArtifact(s, e) || reviewed(e))), (e) => e.subject.answer_reference).sort((a, b) => b.ordinal - a.ordinal);
   const timeKindWords = (e) => t(e.timeKind === 'TASK_ADMISSION' ? 'Task admission time' : e.timeKind === 'PRODUCT_ACCEPTED_AT' ? 'Answer acceptance time' : e.timeKind === 'BRIDGE_RECEIVED' ? 'bridge receipt time' : 'time kind not declared');
   function identityNote(e) {
@@ -438,8 +435,7 @@ const LiveTeam = (() => {
   /* The evidence list folds (round 95; GitHub's `23 similar events`, Linear's `3 times`): a
    * request and its return are one unit (`requested 17:23 → prerequisites missing 17:23`); units
    * that repeat one after another -- the same operation, the same return, the same caller and
-   * references -- are one row with their count and an opener; a pressed opener shows the units.
-   * Recorded order is kept: the fold sits where its first unit was. */
+   * references -- are one row with their count and an opener; a pressed opener shows the units. Recorded order is kept: the fold sits where its first unit was. */
   const isProduct = (f) => f.item.availability === 'AVAILABLE' && Boolean(f.item.payload) && f.item.schema_kind === 'ProductOperationObserved';
   function factUnits(facts) {
     const units = [], pending = new Map();
@@ -472,7 +468,7 @@ const LiveTeam = (() => {
   function unitRow(u, fold = null) {
     const f = u.response || u.request, {item, group, named} = f, {title, tone, state, p} = factFacts(f);
     const caller = callerOf(f);
-    const links = [...named.map((r) => html`<span class="mono">${short(r, r.includes(':') ? 20 : 8)}</span>`), ...(f.followed || []).map((x) => html`<span class="mono">${short(x.ref)}</span> <span class="muted">(${t('Task named by {operation} {status} for {ref}', {operation: x.operation, status: x.status || '', ref: short(x.via)})})</span>`)];
+    const links = [...named.map((r) => html`<span class="mono">${short(r, r.includes(':') ? 20 : 8)}</span>`), ...(f.followed || []).map((x) => html`<span class="mono">${short(x.ref)}</span> <span class="muted">(${t('Task named by {operation} {status} for {ref}', {operation: codeWords(x.operation), status: codeWords(x.status), ref: short(x.via)})})</span>`)];
     const outcome = html`${p.failure_code ? coded(p.failure_code) : ''}${p.failure_type && p.failure_code === 'activity.failure_detail_withheld' ? html` <span class="mono">${p.failure_type}</span>` : ''}${withheldWhy(p)}`;
     const course = u.request && u.response ? html`${t('requested')} ${clock(u.request.item.occurred_at)} → ${clock(item.occurred_at)} · ` : ''; // the return's kind is the row's title, its meaning the state word
     const why = html`${course}${outcome}${group.task_id ? html` ${t('Task')} ${short(group.task_id)} ·` : ''}${links.length ? html` ${t('names')} ${links}` : ''}`;
@@ -591,7 +587,7 @@ const LiveTeam = (() => {
   function exchange(s, e, selected, replies = [], chosen = null, reply = false) {
     const accepted = acceptedAnswer(e), kind = accepted ? ['Accepted answer', 'file'] : e.kind === 'message' ? MESSAGE_KINDS[e.messageKind] || ['Message kind not declared', 'info'] : ['Host input', 'activity'];
     const pmOf = (r) => { const pt = s.participants.get(r.actor); return ['pm_response', 'ruling'].includes(r.messageKind) && (r.ownerFloor ? r.role === PM_ROLE && r.actor === s.id : Boolean(pt) && isLead(pt, s)); };
-    const person = e.channel === 'PRODUCT_COMMITTEE' && e.messageKind === 'person_answer', author = person ? t('Person') : e.ownerFloor || e.channel === 'PRODUCT_REVIEW' ? roleName(e.role) : actorName(s, e.actor);
+    const person = e.channel === 'PRODUCT_COMMITTEE' && e.messageKind === 'person_answer', author = person ? t('Person') : e.ownerFloor || e.channel === REVIEW ? roleName(e.role) : actorName(s, e.actor);
     const mention = person ? e.subject.relay_word ? html`<span class="team-kind">· ${t(e.subject.relay_word)}</span>` : '' : e.recipient ? html`<span class="team-mention" tabindex="0" data-tip="${e.recipient}">→ @${e.recipientRole ? roleName(e.recipientRole) : recipientName(s, e.recipient, e)}</span>` : '';
     const declaredPm = e.messageKind === 'pm_response' && !pmOf(e) ? html` <span class="muted">(${t('declared pm_response, not the Main PM')})</span>` : '';
     const kindMark = accepted ? html`<span class="team-kind" tabindex="0" data-tip="${t(CHANNELS.PRODUCT_ACCEPTED_ANSWER)}">· ${t(kind[0])}</span>` : html`<span class="team-kind">· ${t(kind[0])}${declaredPm}</span>`;
@@ -613,7 +609,7 @@ const LiveTeam = (() => {
     const heldReply = replies.slice(1, -1).find((r) => r.id === chosen?.id), open = S.replies.has(e.id) || Boolean(heldReply) || replies.some(r => r.dissentStands);
     const thread = replies.length ? html`<ol class="team-replies">${middle && !open ? html`${replyRow(replies[0])}<li class="team-replies-more" data-holds="${replies.slice(1, -1).map((r) => r.id).join(' ')}">${btnAttrs(html`··· ${countText(middle, 'Show {n} more', 'Show {n} more')} ···`, 'team-replies', e.id, 'text-btn', html`aria-expanded="false" data-fold-count="${middle}"`)}</li>${replyRow(replies.at(-1))}` : html`${replies.map(replyRow)}${middle ? html`<li class="team-replies-more">${btnAttrs(t('Show less'), heldReply && !S.replies.has(e.id) ? 'team-event' : 'team-replies', heldReply && !S.replies.has(e.id) ? heldReply.id : e.id, 'text-btn', html`aria-expanded="true" data-fold-count="${middle}"`)}</li>` : ''}`}</ol>` : '';
     // the feed keeps a message's first 500 characters (`summary_truncated`): an opened exchange says where the retained words end
-    const words = e.kind === 'message' ? html`${e.text}${e.truncated ? html`<span class="muted"> … ${t('the feed keeps its first 500 characters')}</span>` : ''}` : t('Hook observed; child completion is not established.');
+    const words = e.kind === 'message' ? html`${e.channel === REVIEW ? said(e.text) : e.text}${e.truncated ? html`<span class="muted"> … ${t('the feed keeps its first 500 characters')}</span>` : ''}` : t('Hook observed; child completion is not established.');
     return html`<li class="team-exchange${reply ? ' team-reply' : ''} ${e.messageKind === 'objection' ? 'is-objection' : ''} ${pmOf(e) ? 'is-pm-response' : ''} ${selected ? 'is-selected' : ''} ${S.flash.has(e.id) ? 'just-arrived' : ''}" id="team-event-${e.id}" data-kind="${e.messageKind || e.kind}" data-role="${roleTone(s, e.actor)}" data-read="${e.id}" tabindex="0" aria-label="${author} · ${t(kind[0])}">
       <span class="team-exchange-icon">${icon(roleIcon(s, e.actor))}</span><div class="team-exchange-body"><div class="team-exchange-line"><strong>${author}</strong>${mention}${kindMark}${submitter}${topic}${status}${e.channel !== 'PRODUCT_COMMITTEE' && S.incoming.has(e.id) ? html`<span class="team-unread">${t('Unread')}</span>` : ''}${e.conflictsWith.length ? badge('blocked', t('Conflicting event')) : ''}</div><span class="team-exchange-end"><time data-tip="${whenText(e.at)}${accepted ? ' · ' + timeKindWords(e) : ''}">${clock(e.at)}</time></span>
       <p class="team-words owner-text" data-clamp="${e.dissentStands || S.words.has(e.id) ? 'open' : ''}">${words}</p>${e.dissentStands ? '' : btnAttrs(t(S.words.has(e.id) ? 'Show less' : 'Show more'), 'team-words', e.id, 'text-btn team-words-more', html`aria-expanded="${S.words.has(e.id)}" data-clamp-way ${S.words.has(e.id) ? '' : 'hidden'}`)}${waiting}${selected ? inlineRecord(s, e) : ''}${ambiguous}${thread}
@@ -644,8 +640,7 @@ const LiveTeam = (() => {
   /* N5, law 125: store-ordered exchanges and hooks; exact replies nest one level under visible targets. Product lines appear only without a member filter; order proves nothing. */
   /* Consecutive hook events are one line with their count (C2, law 140): the observations between two
    * exchanges read as one pause, opened in place; a single hook stays its own line. A run that holds
-   * the exchange being read opens by itself, as the replies do (its reading is in place, C4 item 7);
-   * its toggle then closes the reading with the run. */
+   * the exchange being read opens by itself, as the replies do (its reading is in place, C4 item 7); its toggle then closes the reading with the run. */
   function hookRun(s, run, chosen) {
     const key = 'hooks:' + run[0].id, held = run.find((h) => h.id === chosen?.id), open = S.unfolded.has(key) || Boolean(held), actors = [...new Set(run.map((h) => actorName(s, h.actor)))];
     const [action, value] = held && !S.unfolded.has(key) ? ['team-event', held.id] : ['team-fold', key];
@@ -714,8 +709,7 @@ const LiveTeam = (() => {
   }
   /* The thread's product lines (C4 item 1): what the members' work made the product record -- never a
    * person's Local Web reads of the session's references (the owner records `caller HUMAN`), nor what was
-   * recorded before its first exchange; both are observations of the references, on Observations, and the
-   * thread says them once at its top. */
+   * recorded before its first exchange; both are observations of the references, on Observations, and the thread says them once at its top. */
   // a read, by the operation's recorded name: a preview, a packet, a dossier or a finding read, a readback, an export, a plan
   const READ_OPS = /PREVIEW|PACKET|DOSSIER|FINDING|READBACK|EXPORT|_PLAN$/;
   const byPerson = (f) => f.item.schema_kind === 'ProductOperationObserved' && f.item.payload?.caller === 'HUMAN';
@@ -739,8 +733,7 @@ const LiveTeam = (() => {
   /* The retained entries of one session in receipt order, the replays dropped, linked. */
   function entriesOf(s) { const all = [...s.entries.values()].sort((a, b) => a.ordinal - b.ordinal); linkExchanges(s, all.filter((e) => !e.replayOf)); return all; }
   const latestAt = (s) => { const at = [...s.entries.values()].map((e) => e.at).filter(Boolean).sort().at(-1); return at || ''; };
-  /* The record of one session (round 67): every retained exchange in recorded order, as the
-   * thread renders them — a run log, never a conversation. */
+  /* The record of one session (round 67): every retained exchange in recorded order, as the thread renders them — a run log, never a conversation. */
   function recordOf(sessionId) {
     const s = scene(true).sessions.find((v) => v.id === sessionId);
     if (!s) return html`<p class="caption">${t('Selected session not retained')}</p>`;
@@ -751,8 +744,7 @@ const LiveTeam = (() => {
    * and objections, the objections awaiting the Main PM, or one member -- and the density; never an
    * order: the store's time is the thread's only one. Kept per session and viewer; one member is the
    * route's filter (a link carries it), so that choice is read from the route and written there. A
-   * kind keeps the comments that ask -- in the comment or among its replies -- with every reply;
-   * the hooks and the product's lines are not among them. */
+   * kind keeps the comments that ask -- in the comment or among its replies -- with every reply; the hooks and the product's lines are not among them. */
   const SHOWS = {all: ['Everything', ''], asks: ['Questions and objections', 'questions and objections'], awaiting: ['Awaiting the Main PM', 'objections awaiting the Main PM'], assignments: ['Assignments', 'assignments'], notes: ['Decision notes', 'decision notes']};
   const KEEPS = {asks: (e) => e.messageKind === 'question' || e.messageKind === 'objection', awaiting: (e) => e.messageKind === 'objection' && !e.pmResponses.length, assignments: (e) => e.messageKind === 'assignment', notes: (e) => NOTE_KINDS.has(e.messageKind)};
   function threadDisplay(s, actor) {
@@ -771,8 +763,7 @@ const LiveTeam = (() => {
   }
   /* The conversation (N5, law 125; C4): the session read as an issue -- its question the page's title,
    * its facts the head's line, the thread its comments and events in one column; the members its filter;
-   * an exchange pressed opens whole in the inspector (none is read, none is filled). The thread flows
-   * with the page (law 113): no box scrolls on its own. */
+   * an exchange pressed opens whole in the inspector (none is read, none is filled). The thread flows with the page (law 113): no box scrolls on its own. */
   function sessionView(s, actor) {
     const all = entriesOf(s), stated = all.filter((e) => !e.replayOf && e.channel !== 'PRODUCT_COMMITTEE');
     const entries = stated.filter((e) => !actor || e.actor === actor || recipientParticipant(s, e.recipient)?.id === actor);
@@ -812,8 +803,7 @@ const LiveTeam = (() => {
    * recorded naming a reference this session declared, one column. Its kinds are the list's filter; the
    * list groups by operation, outcome and caller -- the session's own operations apart from the Local Web
    * reads of its references -- one row a group: its count, its span, the outcome's words once, the
-   * references it names and the exchanges that declared them; a group opens in place. The Tasks it names
-   * follow, their current state kept apart from the recorded history. */
+   * references it names and the exchanges that declared them; a group opens in place. The Tasks it names follow, their current state kept apart from the recorded history. */
   const FACT_KINDS = [['refusal', 'Product refusals'], ['correction', 'Returned for correction'], ['preview', 'Product previews'], ['admission', 'Admissions'], ['reuse', 'Exact reuses'], ['requested', 'Requests'], ['returned', 'Product returns'], ['control', 'Task Control facts'], ['artifact', 'Owner-verified artifacts']];
   function factKind(f) {
     const item = f.item, p = item.payload || {};
@@ -970,8 +960,7 @@ const LiveTeam = (() => {
     if (view === 'team-evidence') S.factFlash.clear(); else if (view !== 'team-sessions') S.flash.clear();
     return view_;
   }
-  /* A deliberate choice: another session, or the newest ("Show the newest", an empty id) --
-   * the one action that gives up the retained selection. */
+  /* A deliberate choice: another session, or the newest ("Show the newest", an empty id) -- the one action that gives up the retained selection. */
   function select(sessionId) { S.visible = 50; if (!sessionId) S.retained = null; replaceHash({team: sessionId || '', actor: '', event: '', committee: '', committee_point: ''}); paint(); }
   /* The reader's choice among several PM-declared research cases, per session, in this tab. */
   function chooseQuestion(ref) { const s = selection().session || S.retained?.session || ''; if (!s) return; S.question.set(s, ref || ''); paint(); }
@@ -1043,7 +1032,7 @@ const LiveTeam = (() => {
       // an artifact only once the Task succeeded and its kind publishes one; unavailable says the owner's code
       const artifact = !a ? '' : a.availability === 'AVAILABLE' ? html`${codeWords(a.artifact_kind)}<span class="sub-cell">${hashCell(a.artifact_hash, SHORT.hash)}</span>` : html`${t('Unavailable')}<span class="sub-cell">${coded(a.failure_code)}</span>`;
       const goal = r.submitted_by?.goal_id ? link(html`${t('Goal')} ${mono(r.submitted_by.goal_id, SHORT.id)}`, 'goal', 'text-btn', {goal: r.submitted_by.goal_id}) : '';
-      return tr([html`${btnAttrs(r.goal_summary || codeWords(r.task_kind), 'task', r.task_id, 'text-btn')}<span class="sub-cell">${codeWords(r.task_kind)} · ${mono(r.task_id, SHORT.id)}</span>`, stateLine(r.final_state || r.lifecycle), artifact, ...(goals ? [goal] : []), when(r.last_activity_at)]);
+      return tr([html`${btnAttrs(t(r.goal_summary || '') || codeWords(r.task_kind), 'task', r.task_id, 'text-btn')}<span class="sub-cell">${codeWords(r.task_kind)} · ${mono(r.task_id, SHORT.id)}</span>`, stateLine(r.final_state || r.lifecycle), artifact, ...(goals ? [goal] : []), when(r.last_activity_at)]);
     });
     const {shown, page, pages} = pageOf(rows, o.page);
     return html`${refused}${panel(t('Tasks'), '', html`${table([{label: t('Task'), type: 'text', absorb: true}, {label: t('State'), type: 'status'}, {label: t('Artifact'), type: 'text'}, ...(goals ? [{label: t('Goal'), type: 'id'}] : []), {label: t('Last activity'), type: 'date'}], shown, '', {report: true, countLine: false, classes: 'compact team-outputs'})}${pager({page, pages, prev: ['team-outputs-page', 'tasks:prev'], next: ['team-outputs-page', 'tasks:next']})}${olderOf('tasks', o, 'Older Tasks of this session are not read yet')}`, '', 'data-box="table"')}`;
@@ -1102,8 +1091,7 @@ const LiveTeam = (() => {
    * observation stamps, which follow the workspace's research clock. A new message is unread
    * and flashes once; a Task completion (a SUCCEEDED Task Control transition) is marked new;
    * an owner-verified result (the compatible artifact verification) is marked new and flashes
-   * once -- the one arrival that reads as verified. Neither moves the reader's selection,
-   * scroll or focus. */
+   * once -- the one arrival that reads as verified. Neither moves the reader's selection, scroll or focus. */
   function arrivals(body, continuous) {
     S.flash.clear(); S.factFlash.clear();
     if (!continuous) return;
@@ -1132,8 +1120,7 @@ const LiveTeam = (() => {
   /* The explicit entry from an activity row, wherever that row lives: the Task Center drawer
    * closes without handing focus back to the button it was opened from, the Research Team page
    * routes to the session, and the scene's heading is brought into view and focused once the
-   * page's own place memory has had its frame. Only this click moves the reader; arriving
-   * events repaint in place and never scroll or refocus. */
+   * page's own place memory has had its frame. Only this click moves the reader; arriving events repaint in place and never scroll or refocus. */
   function open(sessionId) {
     const session = sessionId || '';
     const settle = () => {
@@ -1165,8 +1152,7 @@ const LiveTeam = (() => {
       objections: objections.length, unresolved: objections.filter((e) => !e.pmResponses.length).length};
   }
   /* The retained sessions whose declared references name an exact object (a Task id, a result
-   * hash or a History entry naming it): the object's own way to its collaboration. Several
-   * matches are several, none is none; nothing is picked by recency. */
+   * hash or a History entry naming it): the object's own way to its collaboration. Several matches are several, none is none; nothing is picked by recency. */
   function sessionsNaming(...refs) {
     const wanted = new Set(refs.filter(r => typeof r === 'string' && r).map(r => r.toLowerCase())), context = refs.find(r => r?.native_session_id && r.update_task_id && r.review_selector?.update_task_id === r.update_task_id);
     if (!wanted.size) return [];

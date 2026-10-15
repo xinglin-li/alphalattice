@@ -6,6 +6,7 @@ import html
 import json
 import re
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
 
 from .forms import Grade, GradingIssue, Scenario, Trace
@@ -18,6 +19,17 @@ OUTCOMES = {
     "VERDICT": {"PROCEED", "PROCEED_WITH_NOTES", "DECLINE", "FOR_THE_PERSON"},
 }
 MESSAGE_KINDS = {"STANCE", "CHALLENGE", "REPLY", "RULING", "VERDICT", "PERSON_ANSWER"}
+REVIEW_WORDS = {
+    "REVIEWED": "reviewed",
+    "NOT_REVIEWED": "not reviewed",
+    "UNAVAILABLE": "not available",
+    "NO_MATERIAL_OBJECTION": "no material objection",
+    "ACCEPT_WITH_LIMITS": "accepted with limits",
+    "REQUEST_EVIDENCE_REFRESH": "evidence refresh requested",
+    "HUMAN_REVIEW_REQUIRED": "human review required",
+    "MATERIAL_OBJECTION": "material objection",
+}
+"""How the CRO view words a status and route: the grader's own reading, not the product's."""
 POSITIONS = {"SUPPORT", "OBJECT", "RESERVE"}
 MESSAGE_SCHEMA = {
     "type": "object",
@@ -425,6 +437,15 @@ def _floor_fidelity(messages, rows, page, raw) -> list[str]:
     return problems
 
 
+def _published(value: Any) -> str:
+    """A recorded instant as the CRO view dates it: its date and minute in UTC."""
+    try:
+        at = datetime.fromisoformat(str(value))
+    except ValueError:
+        return str(value)
+    return at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC") if at.tzinfo else str(value)
+
+
 def _review_fidelity(standing, cro_view, expected) -> list[str]:
     if standing is None or not standing.get("status"):
         return ["UNPROVED:review_standing"]
@@ -438,11 +459,12 @@ def _review_fidelity(standing, cro_view, expected) -> list[str]:
         (
             line
             for line in view.splitlines()
-            if re.search(r"\bnow:\s*" + re.escape(status) + r"\b", line)
+            if re.search(r"\bnow:\s*" + re.escape(REVIEW_WORDS.get(status, status)) + r"\b", line)
         ),
         "",
     )
-    sources = standing.get("published_at"), (standing.get("cro") or {}).get("route")
+    published, route = standing.get("published_at"), (standing.get("cro") or {}).get("route")
+    sources = published and _published(published), route and REVIEW_WORDS.get(route, route)
     if not line:
         problems.append(f"report.cro_status_mismatch:{status}")
     elif any(str(value) not in line for value in sources if value):

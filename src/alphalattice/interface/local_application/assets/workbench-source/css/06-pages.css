@@ -1792,8 +1792,8 @@ body[data-page] .holding-name strong {
   text-align: right;
   white-space: nowrap;
 }
-/* WD3/ST6: exact-reference and fact controls sit above the row's stretched navigation target. */
-.list-row-props :is(.run-ref, .facts-ref) {
+/* WD3/ST6: exact-reference, fact and link controls sit above the row's stretched navigation target. */
+.list-row-props :is(.run-ref, .facts-ref, a, button) {
   position: relative;
   z-index: var(--layer-raised);
 }

@@ -68,16 +68,14 @@ function tile(ic, tone = 'neutral', label = '') { // `mark()` is the product's o
 }
 const kindTile = (kind, label = '') => { const [ic, tone] = KIND_MARKS[kind] || ['file', 'neutral']; return tile(ic, tone, label); };
 /* A state's dot. A moving state breathes (W, the user's reading 2026-09-23; law 16: motion only
- * while Task Control reports the Task moving -- the lists read its projections, kept current);
- * `o.live: false` keeps a recorded word still. */
+ * while Task Control reports the Task moving -- the lists read its projections, kept current); `o.live: false` keeps a recorded word still. */
 function statusDot(status, label, o = {}) {
   const a = stateOf(status), word = label || t(a.word), live = o.live ?? Boolean(a.moving);
   return html`<span class="row-dot ${a.tone}" data-status="${a.key}"${live ? ' data-live="true"' : ''} role="img" aria-label="${word}" data-tip="${word}"><i></i></span>`;
 }
 /* `x` is a state key or an owner's projection ({lifecycle | state | status, running_since,
  * last_activity_at}); `o` overrides: word, at (an instant), duration (text), next, live (the
- * dot breathes: the owner's heartbeat is observed now), dot (false: the words alone), since (a
- * wait's start), until (the owner's retry instant: `retries at`). */
+ * dot breathes: the owner's heartbeat is observed now), dot (false: the words alone), since (a wait's start), until (the owner's retry instant: `retries at`). */
 function stateLine(x, o = {}) {
   const code = typeof x === 'string' ? x : x?.lifecycle ?? x?.state ?? x?.status ?? '';
   const a = stateOf(code), word = o.word || t(a.word);
@@ -95,8 +93,7 @@ function skeleton(shape = 'rows', n = 3) {
   return html`<div class="skeleton skeleton-${shape}" aria-busy="true" aria-label="${t('Reading')}">${body}</div>`;
 }
 /* A section (N3, law 121): a box named by a label -- 13 / 500 in the muted ink, with its count --
- * never a heading with a sentence under it; what the product would have said there is the label's
- * (i) (`sub`, read on hover and focus). */
+ * never a heading with a sentence under it; what the product would have said there is the label's (i) (`sub`, read on hover and focus). */
 function panel(title, sub, content, action = '', attrs = '') {
   return html`<section class="panel"${attrs ? ' ' + attrs : ''}>${sectionHead(title, sub, action)}<div class="panel-body">${content}</div></section>`;
 }
@@ -105,8 +102,7 @@ function panel(title, sub, content, action = '', attrs = '') {
 function banner(title, text, tone = 'warning', action = '', ic = 'info', decision = tone !== 'neutral') { // law 148: a notice with a tone is a decision; a neutral one is a line unless it blocks (`decision`)
   return html`<div class="banner ${tone}"${decision ? ' data-box="decision"' : ''} role="status">${icon(ic)}<div class="grow"><strong>${title}</strong><p>${text}</p></div>${action}</div>`;
 }
-/* One owner for "the owner did not answer" (round 64): the error as the exact token, the words
- * that say what stays unaffected, an optional way to read again. */
+/* One owner for "the owner did not answer" (round 64): the error as the exact token, the words that say what stays unaffected, an optional way to read again. */
 // Legacy Error.message retains a machine prefix; translate only its owner's sentence.
 function refusalParts(error) {
   const body = error?.body, text = String(error?.message ?? error ?? '');
@@ -120,8 +116,7 @@ function notRead(title, error, words = '', action = '') {
   return banner(title, html`${detail ? html`${detail}<br>` : ''}<span class="mono refusal-code">${failure.code}</span>`, 'warning', action);
 }
 /* The one instrument rail (round 27): facts side by side over a hairline, wrapping 4 → 2 → 1 by
- * the lane; each item is `stat()`'s label / value / note with an optional tile. `cls` names the
- * page's rail for its own rules. */
+ * the lane; each item is `stat()`'s label / value / note with an optional tile. `cls` names the page's rail for its own rules. */
 function rail(items, cls = '', label = '') {
   return html`<div class="stat-strip rail ${cls}"${label ? html` aria-label="${label}"` : ''}>${items}</div>`;
 }
@@ -130,8 +125,7 @@ function separator(label = '') {
   return label ? html`<div class="separator" role="separator"><span>${label}</span></div>` : html`<hr class="separator">`;
 }
 /* A fact on a strip; with `ic` a tinted tile leads it (round 20g). A value has no caption (N3, the
- * user: 数值下不跟说明): the `note` is the label's tip, the label dotted as a hint; `figure` (a
- * meter) is drawn under the value -- a figure, not words. */
+ * user: 数值下不跟说明): the `note` is the label's tip, the label dotted as a hint; `figure` (a meter) is drawn under the value -- a figure, not words. */
 function stat(label, value, note = '', word = false, ic = '', figure = '') {
   // the icon, when given, sits inline before the label (round 30): no tile on a rail
   const noted = note && String(note).trim();
@@ -282,8 +276,7 @@ function tabStrip(label, items, cls = '') {
   const more = html`<span class="tab-more-anchor" hidden>${btnAttrs(html`${t('More')}${icon('chevron')}`, 'tab-more', key, 'tab-more', html`aria-haspopup="menu" aria-expanded="false" data-control="tab"`)}<div class="menu" role="menu" aria-label="${t('More')}" hidden>${rows}</div></span>`;
   return html`<div class="tabs${cls ? ' ' + cls : ''}"><div class="tabs-list" role="tablist" aria-label="${label}">${items.map(one)}</div>${more}</div>`;
 }
-/* The strip that cannot hold its tabs shows More and moves the last tabs into it (the current
- * one stays); a strip that can shows every tab and no More. */
+/* The strip that cannot hold its tabs shows More and moves the last tabs into it (the current one stays); a strip that can shows every tab and no More. */
 function fitTabs(root = document) {
   for (const strip of root.querySelectorAll('.tabs')) {
     const list = strip.querySelector(':scope > .tabs-list'), more = strip.querySelector(':scope > .tab-more-anchor');
@@ -307,8 +300,7 @@ function tabMore(key) {
 /* The page tools (round 19, revised on the user's reading): the title row keeps one secondary and
  * one primary; everything else — Map, Focus and a page's own tools (`extra`) — lives in one ···
  * menu at the row's end (Apple's more button), an anchored popover of one-line rows (round 81).
- * The menu is rendered with the head, hidden, so a repaint compares it like any other markup;
- * `tools-menu` shows it. */
+ * The menu is rendered with the head, hidden, so a repaint compares it like any other markup; `tools-menu` shows it. */
 /* A group's head (round 52, Linear's "In Review · 9"): the label and its count on a band above
  * the rows; `tools` sits at its right (a Clear filters, a +). The foot line under a filtered
  * list says how many rows the filters hide and offers the way out. */
@@ -397,11 +389,9 @@ function leave(el, done) {
   Promise.all(playing.map((a) => a.finished)).then(() => { if (el.dataset.leaving) { delete el.dataset.leaving; done(); } }, () => {}); // a cancelled leave (a show in between) does nothing
 }
 function cancelLeave(el) { if (el) delete el.dataset.leaving; }
-/* Show or hide the head's ··· menu; while it is open, a click elsewhere or Escape closes it and a
- * chosen item closes it before the item's own action runs. */
+/* Show or hide the head's ··· menu; while it is open, a click elsewhere or Escape closes it and a chosen item closes it before the item's own action runs. */
 /* One menu opener (round 55): shows the menu beside its trigger (or at a pointer), closes it on
- * a choice, an outside click or Esc (one layer per Esc), and puts focus on its search field or
- * first row; any other open menu closes first. */
+ * a choice, an outside click or Esc (one layer per Esc), and puts focus on its search field or first row; any other open menu closes first. */
 function toggleMenu(pop, trigger, {root = trigger?.parentElement, at = null, stay = false} = {}) { // `stay`: a choice inside keeps it open
   if (!pop || !trigger) return;
   const close = () => {
@@ -478,8 +468,7 @@ function propertyChip(label, value, {icon: ic = '', key = '', rows = [], context
  * viewer's choices are kept per list in the preference store (`display.<list>`), never in the
  * route — the route keeps the filters, so a shared link shows the same records in the viewer's
  * own display. A property the owner did not supply is not offered. C3 (law 142): a list may also
- * say what it shows (`shows`, and `members` for one member) -- the thread's Display; a choice the
- * route holds is passed as `current` and read from there. */
+ * say what it shows (`shows`, and `members` for one member) -- the thread's Display; a choice the route holds is passed as `current` and read from there. */
 const DISPLAY_SPECS = {};
 function displayState(name, spec = DISPLAY_SPECS[name]) {
   const saved = readPreference('display.' + name) || {};
@@ -729,14 +718,11 @@ const Picker = (() => {
 })();
 /* The rail is navigation only (round 17): a page's sub-tabs where it has them, nothing where it
  * has none — the title line names the page. In the product, an unprepared or preparing workspace
- * names its next step under the rail of every page (the scene itself excepted); a deep link is
- * never redirected. */
+ * names its next step under the rail of every page (the scene itself excepted); a deep link is never redirected. */
 /* A grouped-list row inside a card (Apple's inset lists, Mercury's list cards): the whole row is
- * the link; it reads an icon, the thing to do or look at, why, and a chevron. `to` is a page
- * route ({page, extra}) or an action ({action, value}). */
+ * the link; it reads an icon, the thing to do or look at, why, and a chevron. `to` is a page route ({page, extra}) or an action ({action, value}). */
 /* One empty state (N6, law 130; the user: 这种情况统一用我们的logo): in the list's place the
- * product's own mark, one line of what would be here (what it means is the line's (i)), and the one
- * way to make it -- the same on every page. */
+ * product's own mark, one line of what would be here (what it means is the line's (i)), and the one way to make it -- the same on every page. */
 /* The one empty state (law 130; the user's reading 2026-09-23: 空页面好几种款式, 统一成几种 scenarios):
  * `create` a list the reader fills here (the mark, the line, the primary way); `elsewhere` a list
  * another owner fills (the mark, the line and its (i), at most a quiet way); `nomatch` a search or
@@ -2077,12 +2063,10 @@ const CODE_WORDS = {
   "assignment": "Assignment",
   "question": "Question",
   "pm_response": "PM response",
-  "session_bound": "Session bound",
   "plan": "Plan",
   "decision": "Decision",
   "dead_end": "Dead end",
   "surprise": "Surprise",
-  "answer": "Answer",
   "objection": "Objection",
   "CONFIRMED_PENDING_REVALIDATION": "Confirmed; revalidation pending",
   "alternative_evidence.document_intelligence": "Alternative evidence document intelligence",
@@ -2327,7 +2311,7 @@ const explainCode = (message) => { const s = String(message || ''); const code =
  * Chinese title under Chinese; the id stays where a person copies one (a code cell's tip and copy). */
 const labelOf = (id) => (typeof LABELS !== 'undefined' && id !== null && id !== undefined && Object.prototype.hasOwnProperty.call(LABELS, String(id)) ? LABELS[String(id)] : null);
 const labelWords = (label) => (typeof I18N !== 'undefined' && I18N.locale === 'zh-CN' ? label.title_zh : label.title);
-const declaredCodeWord = (code) => CODE_WORDS[code] || STATES[String(code ?? '').toLowerCase()]?.word || stageWord(code)?.word || '';
+const declaredCodeWord = (code) => CODE_WORDS[code] || STATES[String(code ?? '').toLowerCase()]?.word || (typeof MESSAGE_KINDS === 'object' && MESSAGE_KINDS[code]?.[0]) || stageWord(code)?.word || '';
 const codeWords = (code) => {
   if (code === null || code === undefined || code === '') return '';
   if (labelOf(code)) return labelWords(labelOf(code));

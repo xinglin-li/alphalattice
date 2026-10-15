@@ -387,7 +387,7 @@ const LiveViews = (() => {
     const {selection:s,value:v,error}=reading, selector=v?.review_selector || s?.review_selector;
     if(!s)return [];
     const date=v?.schedule?.entry_session || s.positions_session, extra={review_selector:JSON.stringify(selector)};
-    const rows=[objectRow({lead:'portfolio',name:date ? t('Positions for {date}',{date}) : t('Positions not stated'),why:error ? t('Positions not read') : '',to:{page:'evidence',extra}}, {key:'positions:'+s.task_id+':'+selector.update_publication_hash,columns:['book'],props:[s.book_task_id ? link(t('Portfolio study'),'portfolio','text-btn',{book:s.book_task_id,session:date,performance:'forward'}) : '']})];
+    const rows=[objectRow({lead:'portfolio',name:date ? t('Positions for {date}',{date}) : t('Positions not stated'),why:error ? t('Positions not read') : '',to:{page:'evidence',extra}}, {key:'positions:'+s.task_id+':'+selector.update_publication_hash,columns:['book'],props:[s.book_task_id ? link(t('Portfolio study'),'portfolio','text-btn',{book:s.book_task_id,performance:'forward'}) : '']})];
     if(error)return [...rows,notRead(t('Positions not read'),error)];
     if(!v)return rows;
     const review=v.review_standing, publication=review?.review_publication_hash, committee=v.committee_context;

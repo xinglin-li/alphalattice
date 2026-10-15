@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 
+from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import BOOK_NAMES
 from alphalattice.protocols.actor_execution.bundles import (
     AgentBundle,
     BundleBlock,
@@ -239,7 +240,7 @@ def _index(
     lines = [
         "# Portfolio evidence review: the CRO's bundle",
         "",
-        f"Book: {dossier.book_authority}. Evidence as of "
+        f"Book: {BOOK_NAMES[dossier.book_authority]} (`{dossier.book_authority}`). Evidence as of "
         f"{dossier.evidence_as_of.date().isoformat()}; it expires "
         f"{dossier.evidence_expires_at.date().isoformat()}.",
         f"{len(dossier.issuers)} issuer(s) in scope; {len(dossier.findings)} finding(s) from the "

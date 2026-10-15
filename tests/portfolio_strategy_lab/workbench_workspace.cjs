@@ -722,7 +722,7 @@ c.objectRow=publicBuilders.objectRow;
     assert.ok(page.includes('aaaaaaaaaaaa')&&page.includes('workspace_backup.object_changed_while_copied')&&page.includes('This retained backup generation cannot be read.')&&page.includes('LINK:Storage and backups@storage')&&page.includes('LINK:Workspace@overview'),'a partial backup listing preserves its readable generation beside the refused one and both routes: '+page.slice(page.indexOf('REFUSAL('),page.indexOf('REFUSAL(')+700));
     bodies['/api/workspace/backup']={status:'READ',backup_root:root,last_automatic_attempt:null,generations:[],refusals:[unreadable]};
     await w.refresh();await new Promise(r=>setImmediate(r));page=String(w.page()).replace(/\s+/g,' ');
-    assert.ok(page.includes('workspace_backup.object_changed_while_copied')&&page.includes('This retained backup generation cannot be read.')&&page.includes('LINK:Storage and backups@storage')&&!page.includes('No backup is kept yet.'),'an all-refused backup listing is not presented as empty: '+page.slice(page.indexOf('REFUSAL('),page.indexOf('REFUSAL(')+650));
+    assert.ok(page.includes('workspace_backup.object_changed_while_copied')&&page.includes('This retained backup generation cannot be read.')&&page.includes('LINK:Storage and backups@storage')&&!page.includes('No backup is kept'),'an all-refused backup listing is not presented as empty: '+page.slice(page.indexOf('REFUSAL('),page.indexOf('REFUSAL(')+650));
     c.table=tableStub;c.tr=trStub;c.panel=panelStub;
   }
   // U13: an owner-composed request goes to the route the session names; one the session does not name is refused by

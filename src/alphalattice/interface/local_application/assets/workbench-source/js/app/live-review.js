@@ -149,8 +149,7 @@ const LiveReview = (() => {
   /* ---- drafts, kept under the exact workspace/book/prepared-Task(/unit) context and role ---- */
   const draftContext=(unit=S.packetUnit)=>workspaceId()+'|'+S.key+'|'+S.packetTask+(unit ? '|'+unit : '');
   /* The viewer store: contexts keyed by workspace, book and prepared Task, plus a legacy
-   * single-slot draft ({key, analyst, cro}) that named no workspace and is carried untouched
-   * until the reader recovers, exports or discards it. */
+   * single-slot draft ({key, analyst, cro}) that named no workspace and is carried untouched until the reader recovers, exports or discards it. */
   const isLegacy=(saved)=>Boolean(saved) && typeof saved==='object' && typeof saved.key==='string' && !saved.contexts;
   function draftStore() {
     const saved=readPreference('reviewDrafts');
@@ -210,8 +209,7 @@ const LiveReview = (() => {
     store.legacy=null;writeStore(store);S.legacy=legacyFor(draftStore());render();
   }
   /* The reader's decision on a draft kept for this Task with no unit named: recovered into this
-   * unit's empty fields (typed text is kept), exported, or discarded; it is never assigned to a
-   * unit by the page. */
+   * unit's empty fields (typed text is kept), exported, or discarded; it is never assigned to a unit by the page. */
   function settleUnitless(decision) {
     const store=draftStore(), found=unitlessFor(store); if(!found) return;
     if(decision==='export'){download(JSON.stringify({key:S.key+'|'+S.packetTask,analyst:found.analyst,cro:found.cro},null,2),'AlphaLattice-unsent-draft.json','application/json');return;}
@@ -339,8 +337,7 @@ const LiveReview = (() => {
   }
   /* The five steps. Each status comes from this exact book and evidence version: the owner's
    * projection, the packet or dossier the owner returned for it, the Tasks admitted for it from
-   * this page; unbound Tasks are discovery; a pinned, expired or ambiguous projection borrows
-   * no later work. */
+   * this page; unbound Tasks are discovery; a pinned, expired or ambiguous projection borrows no later work. */
   function stepRows() {
     const v=S.view, refusal=S.lastRefusal, b=boundFor(), published=historical() || v?.state==='REVIEW_PUBLISHED', blocked=blockedState();
     const day=(s)=>dayWord(s) || ''; // the rail says the day (the reader's, law 133); the facts say the time
@@ -468,7 +465,7 @@ const LiveReview = (() => {
     const c=v.scope_coverage,u=v.book?.update_subject,x=v.book?.experiment_subject,lines=[...gapLines(v.gaps || []),...(v.claim_limits || [])]; // the Report's words for the same lines: one way to say a gap
     return [{title:t('The review'),body:kv(rows)},...teamFacts(),
       ...(lines.length ? [{title:t('Limits'),body:html`${textCollection('overview-limits',lines,said)}`}] : []),
-      ...(u || x ? [{title:t('Provenance'),body:html`${u ? kv([[t('Position basis'),u.position_basis],[t('Observed through'),u.observed_through],[t('Entry session'),u.entry_session],[t('Update publication'),html`<span class="mono">${u.update_publication_hash}</span>`]]) : ''}${x ? kv([[t('Previous holdings session'),x.preceding_session || ''],[t('Research cutoff'),x.research_as_of_session || '']]) : ''}`}] : []),
+      ...(u || x ? [{title:t('Provenance'),body:html`${u ? kv([[t('Position basis'),codeWords(u.position_basis)],[t('Observed through'),u.observed_through],[t('Entry session'),u.entry_session],[t('Update publication'),html`<span class="mono">${u.update_publication_hash}</span>`]]) : ''}${x ? kv([[t('Previous holdings session'),x.preceding_session || ''],[t('Research cutoff'),x.research_as_of_session || '']]) : ''}`}] : []),
       ...(c?.unmapped?.length ? [{title:countText(c.unmapped_positions,'{n} position without admitted issuer mapping','{n} positions without admitted issuer mapping'),body:collectionTable('unmapped-positions',c.unmapped,[{label:t('Listing'),type:'text'},{label:t('Weight'),type:'num',cls:'col-tight'},{label:t('State'),type:'text'},{label:t('Reason'),type:'text',absorb:true}],r=>[r.ticker || r.listing_id,pctText(r.ending_weight),codeWords(r.status),r.reason])}] : [])];
   }
   /* Coverage and mapping as one bar each (round 77, the single visuals round 5 left): the words

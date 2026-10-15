@@ -166,7 +166,14 @@ def test_red_is_failure_alone():
     start = status.index("const STATES = {")
     table = status[start : status.index("\n};", start)]
     failures = set(re.findall(r"\n  (\w+): \{[^\n]*?tone: TONE\.failure", table))
-    assert failures == {"failed", "error", "unavailable", "missing_or_tampered"}
+    # automation_check_failed: the scheduled update ran and failed (`last_error_code`)
+    assert failures == {
+        "failed",
+        "error",
+        "unavailable",
+        "missing_or_tampered",
+        "automation_check_failed",
+    }
     for held in ("blocked", "refused"):
         assert re.search(rf"\n  {held}: \{{[^\n]*?tone: TONE\.attention", table), held
     assert not re.search(r"tone: '", table), "a state names its meaning, not a tone"

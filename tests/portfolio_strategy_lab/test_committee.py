@@ -638,6 +638,7 @@ def test_a_review_member_answers_its_own_bundle_on_its_thread(
         ("ANALYST", "ANSWER", "M3"),
         ("HOST", "ACCEPTANCE", "M4"),
     ]
+    assert thread.messages[0]["text"] == "Analyst bundle issued."  # words, no code or Task id
     assert thread_findings(thread.messages, "ANALYST") == []
     forged = [{**m, "role": "PM"} if m["kind"] == "ANSWER" else m for m in thread.messages[:3]]
     assert thread_findings(forged, "ANALYST") == ["thread.author:M2", "thread.open"]
@@ -873,11 +874,16 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     assert floor is not None
     cro = committee.role_lines("CRO", readback, EVIDENCE, floor, NOW) or []
     assert any("No Evidence stands" in line for line in cro)
-    standing = {"status": "REVIEWED", "published_at": "2026-09-11", "cro": {"route": "R"}}
+    absent = [f for f in floor.opened["facts"] if f["source"] == "absence"]  # words; code apart
+    assert absent and all(f["state"] in {"PENDING", "UNAVAILABLE"} for f in absent)
+    assert not any(f["state"] in f["text"] for f in absent)
+    at, route = "2026-09-10T23:56:21.531000+00:00", "ACCEPT_WITH_LIMITS"
+    standing = {"status": "REVIEWED", "published_at": at, "cro": {"route": route}}
     reviewed = committee.role_lines(
         "CRO", {**readback, "review_standing": standing}, {}, floor, NOW
     )
-    assert any("now: REVIEWED" in line for line in reviewed or [])  # never the sealed status
+    said = "now: reviewed, published 2026-09-10 23:56 UTC; CRO route accepted with limits."
+    assert any(said in line for line in reviewed or [])  # never the sealed status
     way = committee.route("CRO", floor, NOW) or ()
     assert f"--role CRO --key {floor.key('CRO')}" in way[1] and "only final action" in way[-1]
     assert committee.route("CRO", None, NOW) is None  # no floor: the answer file stands
@@ -918,8 +924,9 @@ def test_the_risk_member_reads_the_dates_predicted_risk(tmp_path: Path, readback
     }
     view = committee.role_lines("RISK", record, EVIDENCE, None, NOW)
     assert view is not None and all(f in view[1] for f in ("1.10%", "17.5%", "H1 21%"))
-    assert "Dated" in view[1] and "EVALUATED" in view[1].split("Historical")[0]
-    assert "NOT_EVALUATED_FOR_THIS_PROPOSAL" in view[1].split("Historical")[1]
+    assert "Dated" in view[1] and "evaluated." in view[1].split("Historical")[0]
+    linked = committee.status_word("NOT_EVALUATED_FOR_THIS_PROPOSAL")
+    assert linked in view[1].split("Historical")[1] and linked.islower()  # words, not its code
     kinds = [(p["kind"], p["targets"]) for p in committee.tension_points(held, EVIDENCE, risk)]
     assert ("TOP_RISK_CONTRIBUTORS", ["H1"]) in kinds
     manifest = ResearchWorkspaceManifest.create(

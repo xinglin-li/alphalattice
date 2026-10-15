@@ -59,6 +59,16 @@ class BookAuthority(StrEnum):
     OBSERVED_RESEARCH_ENTRY = "OBSERVED_RESEARCH_ENTRY"
 
 
+BOOK_NAMES: dict[BookAuthority, str] = {
+    BookAuthority.DEVELOPMENT_RESULT: "Development result",
+    BookAuthority.FROZEN_CANDIDATE: "Frozen candidate",
+    BookAuthority.VALIDATED_HANDOFF: "Validated handoff",
+    BookAuthority.CONDITIONAL_RESEARCH_PROPOSAL: "Conditional research proposal",
+    BookAuthority.OBSERVED_RESEARCH_ENTRY: "Observed research entry",
+}
+"""Each book kind in words, as a reviewer writes it; its code stays the record's."""
+
+
 class PortfolioUpdateReviewSubject(PortfolioEvidenceContract):
     """Exact CU origin; embedded in review identities, never a report alias."""
 

@@ -398,7 +398,7 @@ def fidelity_floor(role="CRO", point="T1", following=None):
     }
     evidence = {
         "raw_messages": deepcopy(messages),
-        "cro_view": ["Review now: REVIEWED."],
+        "cro_view": ["Review now: reviewed."],
         "review_standing": {"status": "REVIEWED", **selected},
         "home": {
             "goal": {"goal_id": closed["goal_id"], "declaration": {"objective": "Study H1."}},
@@ -601,7 +601,7 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
     elif broken == "standing":
         evidence["review_standing"]["review_publication_hash"] = "b" * 64
     elif broken == "cro":
-        evidence["cro_view"] = ["Review now: NOT_REVIEWED."]
+        evidence["cro_view"] = ["Review now: not reviewed."]
     elif broken == "numbers":
         evidence["raw_messages"][0]["text"] = "Weight 2%."
     elif broken == "raw":
@@ -612,7 +612,7 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
         )
         row["attribution"] = row["attribution_words"]["message"] = "M10"
     elif broken == "stale_status":
-        evidence["cro_view"] = ['{"old": "REVIEWED"}', "Review now: NOT_REVIEWED."]
+        evidence["cro_view"] = ['{"old": "REVIEWED"}', "Review now: not reviewed."]
     elif broken == "closed_hash":
         closed["delivery"] = {}
     elif broken == "home_question":

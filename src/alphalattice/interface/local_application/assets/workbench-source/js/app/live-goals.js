@@ -137,7 +137,7 @@ const LiveGoals = (() => {
     const criteria = kv(d.criteria.map((c) => [html`<span class="mono">${c.criterion_id}</span>`, html`<span class="owner-text">${c.text}</span>`]), 'kv-columns');
     const historical = g.goal_hash !== b.head_hash ? noteLine(t('Historical revision'), t('This exact saved revision is open; revising needs the current one.'), 'warning', btn(t('Open current revision'), 'goal-open', b.head_hash, 'button compact')) : '';
     const missing = gaps.length ? noteLine(t('Missing'), gaps.map((x) => x.stage ? codeWords(x.stage) : x.reference_id).join(' · '), 'warning') : '';
-    return html`${objectHead(d.title, html`<p class="lede owner-text">${d.objective}</p>${criteria}`, primary, checkLine(g), tools, {object: true, id: g.goal_hash, facts, scope: {name: d.title, href: routeUrl('goal', {goal: addressed()}), self: app.page === 'goal'}})}${historical}${missing}`;
+    return html`${objectHead(t(d.title), html`<p class="lede owner-text">${d.objective}</p>${criteria}`, primary, checkLine(g), tools, {object: true, id: g.goal_hash, facts, scope: {name: t(d.title), href: routeUrl('goal', {goal: addressed()}), self: app.page === 'goal'}})}${historical}${missing}`;
   }
   function page() {
     if (!selected() && !listing()) return null;
@@ -170,12 +170,12 @@ const LiveGoals = (() => {
       steps.length ? kv(rows, 'kv-columns') : emptyState(t('No step taken for you yet.')), g.state === 'OPEN' ? btn(t('Stop'), 'goal-first-use-stop', '', 'button compact') : '', 'data-first-use');
   }
   // FLOW-1 request summaries are owner status codes; authored and accepted-answer text stays exact.
-  const messageSummary = (m) => m.input_channel === 'PRODUCT_OPERATION' ? coded(m.summary) : html`<span class="owner-text">${m.summary}</span>`;
+  const messageSummary = (m) => m.input_channel === 'PRODUCT_OPERATION' ? coded(m.summary) : m.input_channel === 'PRODUCT_REVIEW' ? said(m.summary) : html`<span class="owner-text">${m.summary}</span>`;
   /* The timeline: the Host's facts (registration, the revision, the Tasks and sessions it recorded), the agents'
    * messages as they arrived and the decision notes; the notes whole in their thread, the sessions' usage (U32). */
   function timeline(b) {
     const g = b.goal, r = b.record || {}, by = actorWords(g.submitted_by);
-    const said = (m) => [m.agent_id, m.role ? codeWords(m.role) : ''].filter(Boolean).join(' · ') || t('Agent');
+    const said = (m) => [m.agent_id, LiveTeam.roleName(m.role)].filter(Boolean).join(' · ') || t('Agent');
     const lines = [logLine({at: when(g.intent_registered_at || g.recorded_at), by, words: t('Goal registered')}), logLine({at: when(g.recorded_at), by, words: html`${t('Revision {n} recorded', {n: g.revision})}${g.change_reason ? html` · <span class="owner-text">${g.completion ? t(g.change_reason) : g.change_reason}</span>` : ''}`}),
       ...[...(r.conversation || [])].sort((a, c) => String(a.recorded_at).localeCompare(String(c.recorded_at))).map((m) => logLine({at: when(m.recorded_at), by: said(m), words: html`${codeWords(m.message_kind)}${m.summary ? html` · ${messageSummary(m)}` : ''}`, code: m.message_id})),
       ...g.references.map((x) => logLine({by, words: html`${t('Reference attached')} · ${x.label}`, code: x.reference_id})),

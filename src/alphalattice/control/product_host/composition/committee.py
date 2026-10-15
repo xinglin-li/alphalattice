@@ -35,6 +35,7 @@ from alphalattice.control.product_host.composition.committee_materials import (
     issue_lines,
     review_now,
     risk_view,
+    status_word,
     tension_points,
 )
 from alphalattice.control.product_host.composition.plain_refusals import explain
@@ -1065,9 +1066,8 @@ def role_lines(
         ]
     elif role == "RISK":
         risk = floor.opened.get("date_risk") if floor else readback.get("date_risk")
-        linked = (
-            f"Historical linked Risk study for this proposal: {publication.get('risk_status')}. "
-        )
+        linked = status_word(publication.get("risk_status"))
+        linked = f"Historical linked Risk study for this proposal: {linked}. "
         view = [risk_view(risk, held) + linked + concentration(held), *table]
     elif role == "CRO":
         gap = evidence_gap(evidence)
@@ -1217,7 +1217,7 @@ def issued(store: GoalStore, body: dict[str, Any], now: datetime, file: Any) -> 
         opened |= {"role": role, "session": [provenance.vendor, provenance.session]}
         store.attribute(UUID(held["goal_id"]), {"committee_open": opened})
         floor = Floor(UUID(held["goal_id"]), held["seed"], opened, [], frozenset())
-        text = f"{role} bundle issued" + (f" for Task {unit}." if unit else ".")
+        text = f"{'Analyst' if role == 'ANALYST' else role} bundle issued."  # its Task: the thread
         _append(store, floor, now, role="PM", kind="ISSUE", text=text, references=[reference])
     with suppress(ValueError, OSError):
         file(thread, now)  # filed as it is written, never with the first answer

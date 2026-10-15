@@ -334,6 +334,8 @@ def test_the_review_bundle_states_the_holdings_once_and_packs_the_findings() -> 
     assert bundle.text("holdings-01.md").count("| AAPL |") == 1
     assert "### F1 · OPERATIONS_SUPPLY · ADVERSE" in bundle.text("findings-01.md")
     assert '"findings": [' in bundle.text("README.md")
+    book = str(dossier.book_authority)  # the kind in words, its code beside them to copy
+    assert re.search(rf"^Book: [A-Z][a-z][a-z ]+ \(`{book}`\)\.", bundle.text("README.md"), re.M)
     # Written by the program (S6): when each finding's documents were filed,
     # and the issuers in scope no finding names.
     filed = (_NOW - timedelta(days=1)).date().isoformat()
