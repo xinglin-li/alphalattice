@@ -116,6 +116,7 @@ const LiveTeam = (() => {
       if (!kind) { (sid ? session(sid).unknownKinds : unknown).push({item, reason: 'unknown event kind'}); continue; }
       const s = session(sid);
       s.goalScope = scope || '';
+      if (sub.native_host) s.host = sub.native_host;
       s.producers.add(p.producer_id + ':' + short(p.producer_session, SHORT.hash));
       if (sub.goal_id && (!outsideGoal || fullRecord)) s.goals.add(sub.goal_id); // A session-wide reading does not add a Goal contribution.
       if (kind === 'usage') { // U31: the latest cumulative reading per model, never a sum.
@@ -936,9 +937,7 @@ const LiveTeam = (() => {
       : !chosen ? noteLine(t('Selected session not retained'), html`<span class="mono">${sessionLabel(sel.session)}</span> ${t('is not in the retained activity window (reset, gap or retention).')}`, 'neutral', btn(t('Choose a session'), 'team-select', '', 'button compact'))
       : view === 'team-committee' ? committeeView(chosen, sel.actor) : view === 'team-evidence' ? evidenceView(chosen) : view === 'team-participants' ? participantsView(chosen) : view === 'team-outputs' ? outputsView(chosen) : sessionView(chosen, sel.actor);
     const state = LiveActivity.state();
-    const usage = LiveActivity.nativeUsageState?.(), catching = usage?.status === 'OBSERVING' && usage?.reason === 'native_bridge.usage_catching_up';
-    const measured = Number.isSafeInteger(usage?.read_through) && Number.isSafeInteger(usage?.total_bytes);
-    const usageFailure = catching ? noteLine(t('Reading usage'), html`<span data-usage-notice="CATCHING_UP">${measured ? t('Usage read through {read} of {total} bytes; the next read continues.', {read: usage.read_through, total: usage.total_bytes}) : ''}</span>${usage.detail && measured ? infoMark(t(usage.detail, {read: usage.read_through, total: usage.total_bytes})) : ''}`, 'neutral') : usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : usage?.rescan ? noteLine(t('Usage rescanned'), t('The session file changed; its usage was read again.'), 'neutral') : '';
+    const usageFailure = LiveActivity.usageNote(chosen?.id, chosen?.host);
     // The feed's own condition, said once at the top: current, not current, or unreachable.
     const feed = state.error ? ['unreachable', t('Feed unreachable')] : state.stale || ['RESET', 'UNAVAILABLE'].includes(state.disposition) ? ['stale', t('Feed not current')] : ['live', t('Live feed')];
     // All session tabs share its state and facts; the floor's standing is a fact.
@@ -988,6 +987,8 @@ const LiveTeam = (() => {
         return tr([i ? '' : member, i ? '' : exchanges, html`${pins ? hint(model, pins) : model}${u.efforts.length ? html`<span class="sub-cell">${u.efforts.join(', ')}</span>` : ''}${differs}<span class="sub-cell">${usageMetadata(u)}</span>`, usageCount(u.input), usageCount(u.output), usageCount(u.cacheRead), usageCount(u.cacheWrite)]);
       });
     });
+    // A child whose own record names another parent: its own row, never the Session's usage.
+    rows.push(...TeamMembers.unverifiedRows(s, sessionLabel));
     const {shown, page, pages} = pageOf(rows, S.participantsPage);
     return html`${TeamMembers.othersLine(s)}${table([{label: t('Agent'), type: 'text'}, {label: t('Activities'), type: 'text', absorb: true}, {label: t('Model'), type: 'text'}, {label: hint(t('Input'), t('All usage values are tokens. Input excludes cache reads and cache writes.')), type: 'num'}, {label: t('Output'), type: 'num'}, {label: t('Cache read'), type: 'num'}, {label: t('Cache written'), type: 'num'}], shown, '', {report: true, countLine: false, classes: 'compact team-participants'})}${pager({page, pages, prev: ['team-participants-page', 'prev'], next: ['team-participants-page', 'next']})}`;
   }
@@ -1105,12 +1106,14 @@ const LiveTeam = (() => {
     if (!onTeam()) { S.answerDetail = null; S.usageAsked = false; if (app.page !== 'overview') return; }
     if (onTeam() && !S.usageAsked) { S.usageAsked = true; LiveActivity.readSessionUsage?.(); }
     if (onTeam() && app.page !== 'team-sessions') { const s = scene().sessions.find(s => s.id === selection().session); if (s && committeeTask(s)) { const o = S.committee, deadline = o?.body?.stage === 'STANCES' ? o.body.stances_close_at : o?.body?.stage === 'DEBATE' ? o.body.closes_at : ''; const crossed = deadline && Date.now() >= Date.parse(deadline) && o.deadlineRead !== deadline; if (crossed) o.deadlineRead = deadline; void readCommittee(s, crossed); } }
-    for (const s of scene().sessions) {
+    const sessions = scene().sessions;
+    for (const s of sessions) {
       const q = questionOf(s, entriesOf(s)), refs = q.ref ? q.declared : UUID.test(q.scope || '') ? ['goal:' + q.scope] : q.declared;
       for (const ref of refs) if (!S.resolved.has(ref) && !S.busy.has(ref)) void resolve(ref).then(() => verify(ref));
     }
-    const a = LiveActivity.state(), usage = LiveActivity.nativeUsageState?.();
-    const key = [a.epoch, a.cursor, a.watermark, a.error, a.stale, a.disposition, usage?.status, usage?.reason, usage?.read_through, usage?.total_bytes, usage?.rescan].join('|');
+    const selected = sessions.find(s => s.id === selection().session);
+    const a = LiveActivity.state(), usage = LiveActivity.nativeUsageState?.(selected?.id, selected?.host);
+    const key = [a.epoch, a.cursor, a.watermark, a.error, a.stale, a.disposition, JSON.stringify(usage)].join('|');
     if (key !== S.paintKey) { S.paintKey = key; paint(); }
   }
   /* The explicit entry from an activity row, wherever that row lives: the Task Center drawer

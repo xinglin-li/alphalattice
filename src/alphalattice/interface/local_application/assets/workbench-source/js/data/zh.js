@@ -2,6 +2,8 @@
  * English phrase is worded differently in another part of the product. Generated data; edit
  * translations here, never in the templates. */
 window.ALPHA_ZH = {
+  "Unverified participants": "未验证的参与者",
+  "{shown} of {total} shown": "显示 {total} 个中的 {shown} 个",
   "The preparation preview no longer fits the current session or the open first use's formation cutoff. Send the offered preparation plan again before confirming.": "准备预览已不符合当前交易日或开放首次使用目标的形成日信息截止时间。确认前请重新发送所提供的准备计划请求。",
   "The Local Web's built files differ from this checkout's sources. Run `python scripts/build_local_web_ui.py --product`, then serve again.": "本地网页的构建文件与当前检出的源代码不一致。请运行 `python scripts/build_local_web_ui.py --product`，然后重新启动服务。",
   "Required of a RULING (ADOPT, REJECT, FOR_THE_PERSON) and the VERDICT (PROCEED, PROCEED_WITH_NOTES, DECLINE, FOR_THE_PERSON); other kinds take none. A wrong shape is refused with its corrected message.": "裁决消息必须给出采纳、否决或交给本人；结论消息必须给出继续、附注继续、不予认可或交给本人；其他消息种类不使用该字段。格式错误时会拒绝，并提供修正后的消息。",
@@ -7178,6 +7180,7 @@ window.ALPHA_ZH = {
   "Stored native attribution": "已保存的原生归属",
   "Native author not observed": "未观察到原生作者",
   "Usage observation unavailable": "用量观察不可用",
+  "Participant not verified": "参与者未经验证",
   "Reading usage": "正在读取用量",
   "Session-wide usage only": "仅有会话整体用量",
   "Specialist identity verified": "专家身份已验证",

@@ -708,10 +708,8 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
 
     def meta(thread, parent=lead, role="alphalattice_risk"):
         spawn = {"parent_thread_id": parent, "agent_role": role}
-        return {
-            "type": "session_meta",
-            "payload": {"id": thread, "source": {"subagent": {"thread_spawn": spawn}}},
-        }
+        source = {"subagent": {"thread_spawn": spawn}}
+        return {"type": "session_meta", "payload": {"id": thread, "source": source}}
 
     def usage(ident):
         counts = {
@@ -730,18 +728,34 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
         usage("r1"),
         activity(child, "started"),
         activity(child, "completed"),
-        activity(unknown, "started"),
+        activity(unknown, "future-kind"),
         activity(stray, "started"),
+        activity(unnamed, "interacted"),
         activity("not-a-thread", "started"),
         {"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "Other"}}},
     )
-    rollout(child, meta(child), turn, usage("c1"))
+    rollout(child, meta(child), turn, usage("c1"), activity(lead, "interacted"))
     rollout(unknown, meta(unknown, role=None), turn, usage("u1"))
     rollout(stray, meta(stray, str(uuid4())))
     rollout(unnamed, meta(unnamed), turn, usage("not-recorded"))
 
     reading = read_session(codex_session_file(lead), host=HOST_CODEX)
     assert reading.children == (child, unknown, stray)
+    checkpoint = {}
+    path = codex_session_file(child)
+    assert read_session(path, host=HOST_CODEX, checkpoint=checkpoint).children == ()
+    for children, expected_bytes in (([lead], path.stat().st_size), ([], 0)):
+        checkpoint.pop("child_discovery")
+        checkpoint["children"] = children
+        body = {k: v for k, v in checkpoint.items() if k != "digest"}
+        encoded = json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+        checkpoint["digest"] = sha256(encoded).hexdigest()
+        rebuilt = read_session(path, host=HOST_CODEX, checkpoint=checkpoint)
+        assert (
+            not rebuilt.rescan and rebuilt.children == () and rebuilt.bytes_read == expected_bytes
+        )
+        warm = read_session(path, host=HOST_CODEX, checkpoint=checkpoint)
+        assert not warm.rescan and warm.bytes_read == 0
     assert reading.incomplete == 0 and [r.response_id for r in reading.responses] == [
         sha256(b"r1").hexdigest()
     ]
@@ -778,12 +792,7 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
     assert filed[2]["subject"]["specialist_verified"] == "false"
     for number in range(65):
         extra = str(uuid4())
-        rollout(
-            extra,
-            meta(extra),
-            turn,
-            usage(f"many-{number}"),
-        )
+        rollout(extra, meta(extra), turn, usage(f"many-{number}"))
         with codex_session_file(lead).open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(activity(extra, "started")) + "\n")
     many = []

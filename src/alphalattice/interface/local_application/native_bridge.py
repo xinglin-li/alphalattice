@@ -49,6 +49,8 @@ from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictErr
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AnswerVerdict
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
+CHILD_USAGE_BINDING_UNVERIFIED = "native_bridge.child_usage_binding_unverified"
+
 
 def command_readiness(command: list[str], *, timeout: int = 30) -> dict[str, Any]:
     """Probe a dependency's public command without installing or changing anything."""
@@ -1226,7 +1228,7 @@ def read_session_usage(
                     {
                         "agent_id": child,
                         "status": "UNAVAILABLE",
-                        "reason": "native_bridge.child_usage_binding_unverified",
+                        "reason": CHILD_USAGE_BINDING_UNVERIFIED,
                     }
                 )
                 continue

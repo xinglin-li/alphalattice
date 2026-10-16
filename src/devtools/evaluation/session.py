@@ -133,10 +133,22 @@ def _admitted_members(feed, shown, times):
             yield sub.get("agent_session")
 
 
+def _usage_snapshots(shown, latest, members):
+    """The retained window keeps each shown member's latest model snapshot."""
+    if "retained_usage_ids" not in shown:
+        return True
+    snapshots = {
+        record["_observation_id"]
+        for (actor, _), record in latest.items()
+        if actor in members and record.get("_observation_id")
+    }
+    return snapshots <= set(shown["retained_usage_ids"])
+
+
 def _usage(feed, shown, times):
     latest = {}
     records = [
-        item["payload"].get("subject", {})
+        dict(item["payload"].get("subject", {}), _observation_id=item["observation_id"])
         for item in feed["items"]
         if (item.get("payload") or {}).get("event_kind") == "NATIVE_AGENT_USAGE"
     ] + feed.get("native_usage", [])
@@ -144,6 +156,8 @@ def _usage(feed, shown, times):
         if record.get("native_session_id") == shown["id"] and record.get("model"):
             latest[record.get("native_agent_id"), record["model"]] = record
     members = {member["id"]: member for member in shown["members"]}
+    if not _usage_snapshots(shown, latest, members):
+        return {"session.usage"}
     admitted = set(_admitted_members(feed, shown, times))
     if {actor for actor, _model in latest if actor in admitted} - members.keys():
         return {"session.members_missing"}
@@ -253,6 +267,11 @@ def session_findings(feed, projection):
             and (feed.get("usage_readings", {}).get(sid) or {}).get("status") == "DELIVERED"
         ):
             rules.add("session.usage_catching_up")
+        if (
+            shown.get("usage_notice") == "UNAVAILABLE"
+            and (feed.get("usage_readings", {}).get(sid) or {}).get("status") == "DELIVERED"
+        ):
+            rules.add("session.usage_standing")
         rules |= _recipient(subjects[sid], shown) | _goal(
             subjects[sid], shown, feed.get("goals", {})
         )

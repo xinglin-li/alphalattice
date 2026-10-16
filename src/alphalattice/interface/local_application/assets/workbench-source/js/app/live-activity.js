@@ -539,6 +539,17 @@ const LiveActivity = (() => {
     usageAskedAt = Date.now();
     Promise.resolve().then(() => Data.post(Data.route('SESSION_USAGE_READ'), {})).catch(() => {});
   }
+  /* Usage for a page: its Session's own standing where the Host names it (`sessions`), so a
+   * note speaks only for the Session it is shown on; the workspace's where none is shown. */
+  function usageOf(session, host) {
+    const all = S.observer?.native_usage || null;
+    return session && all?.sessions ? all.sessions[host + ':' + session] || all.sessions[session] || null : all;
+  }
+  function usageNote(session, host) {
+    const usage = usageOf(session, host), catching = usage?.status === 'OBSERVING' && usage?.reason === 'native_bridge.usage_catching_up';
+    const measured = Number.isSafeInteger(usage?.read_through) && Number.isSafeInteger(usage?.total_bytes);
+    return catching ? noteLine(t('Reading usage'), html`<span data-usage-notice="CATCHING_UP">${measured ? t('Usage read through {read} of {total} bytes; the next read continues.', {read: usage.read_through, total: usage.total_bytes}) : ''}</span>${usage.detail && measured ? infoMark(t(usage.detail, {read: usage.read_through, total: usage.total_bytes})) : ''}`, 'neutral') : usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : usage?.rescan ? noteLine(t('Usage rescanned'), t('The session file changed; its usage was read again.'), 'neutral') : '';
+  }
   function resume() { if (!S.stopped) return; S.stopped = false; void refresh(); }
   function bind() {
     document.addEventListener('visibilitychange', () => { if (!document.hidden && !S.stopped) refresh(); });
@@ -547,7 +558,7 @@ const LiveActivity = (() => {
   }
   return {currentGoal: () => G.body ? {...G.body.goal, question: G.body.record?.question} : null, section, logLines, starterOf, recordOf, refresh, markSeen, bind, facts, nextRead, absorbPage, open, openSavedResult, cadence, stop, resume, follow, pin, setFollowing, pauseFollowing, followAgain, followWord, followPaused: () => S.paused, taskSettled, setNotices, noticesState, readSessionUsage,
     retained: () => [...S.groups.values()],
-    nativeUsageState: () => S.observer?.native_usage || null,
+    nativeUsageState: usageOf, usageNote,
     state: () => ({cursor: S.cursor, epoch: S.epoch, groups: S.groups.size, unseen: S.unseen, error: S.error, notice: S.notice, tasks: Object.keys(S.tasks).length, watermark: S.watermark, disposition: S.disposition, stale: S.stale, stopped: S.stopped, fetching: Boolean(S.fetching), timer: S.timer !== null, following: S.following, pendingOpen: S.pendingOpen, opening: Boolean(S.opening), generation: S.followGeneration}),
     groups: ordered, unseen: () => S.unseen};
 })();

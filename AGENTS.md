@@ -65,6 +65,7 @@ its first research request opens a goal when it holds none. A committee member's
 bundle, message or review answer counts toward its floor's or thread's open goal
 instead, and a committee message never opens one; once that goal has closed, a
 member's request opens the Session's own goal, as a first research request does.
+Usage notices belong to the selected host Session; an unverified-participant count may exceed the displayed identifiers.
 Commands then omit `--workspace`. Where an agent sandbox protects the project's `.codex`
 (Codex's default workspace-write), the Host binds the Session in the workspace's own
 folder instead and every answer's `session_binding` says so: keep naming `--workspace`

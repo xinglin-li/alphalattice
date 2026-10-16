@@ -12,3 +12,5 @@ Team and the Goal's Conversation show what the product recorded of a bound Sessi
 ## Usage
 
 With reading on, the Host reads the bound Session's own session file and the specialists that file records, when a goal is taken or submitted, an answer is submitted, a Team or Goal page opens, or `alphalattice session usage` asks; never on a timer and never another Session's file. It keeps models, efforts, token counts and times and discards conversation and tools. A format it does not know reads as unavailable, never as zero, and research continues. `alphalattice session bind --usage off` keeps one Session unread; the person's switch turns reading off for every Session of the workspace; only the person decides it, and you relay their yes.
+
+Usage notices apply to the selected host Session. Unverified participants are shown as a bounded sample with the total count; an omitted identifier is neither a verified participant nor zero usage. Turning that Session's reading off clears its notice.

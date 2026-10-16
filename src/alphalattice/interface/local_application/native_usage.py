@@ -3,6 +3,7 @@
 Only response-id hashes, model/effort, token counts, timestamps and exact-parent child
 locators survive. Conversation bytes are discarded. Complete records advance the cursor;
 source replacement, shrink, same-size modification or a bad checksum rebuild the checkpoint.
+Only older checkpoints with child locators need discovery migration; it is not a source change.
 A cumulative mismatch remains named without rescanning an unchanged file. Claude repeats
 response counts by block; Codex includes cached reads/writes in its input counts.
 """
@@ -22,6 +23,7 @@ from uuid import UUID
 
 HOST_CLAUDE_CODE = "claude-code"
 HOST_CODEX = "codex"
+_CHILD_DISCOVERY_VERSION = 2
 _MARKERS = {
     HOST_CLAUDE_CODE: (b'"usage":',),
     HOST_CODEX: (b"token_usage_record", b"turn_context", b"SubAgentActivity"),
@@ -353,6 +355,7 @@ def read_session(
         stat = os.fstat(stream.fileno())
         rescan = _resume(stream, state, stat)
         state.update(
+            child_discovery=_CHILD_DISCOVERY_VERSION,
             offset=state.get("offset", 0),
             size=stat.st_size,
             identity=[stat.st_dev, stat.st_ino],
@@ -398,7 +401,12 @@ def _checksum(state: dict[str, Any]) -> str:
 
 def checkpoint_children(state: dict[str, Any]) -> tuple[str, ...]:
     """Checked child locators; each still needs its own exact-parent check."""
-    return tuple(state.get("children", ())) if state.get("digest") == _checksum(state) else ()
+    return (
+        tuple(state.get("children", ()))
+        if state.get("child_discovery") == _CHILD_DISCOVERY_VERSION
+        and state.get("digest") == _checksum(state)
+        else ()
+    )
 
 
 def _boundary(stream: BinaryIO, offset: int) -> list[str]:
@@ -433,7 +441,10 @@ def _resume(stream: BinaryIO, state: dict[str, Any], stat: os.stat_result) -> bo
         and state["boundary"][-1] == "True"
     )
     rescan = bool(state) and not valid
-    if not valid:
+    migrate = (
+        bool(state.get("children")) and state.get("child_discovery") != _CHILD_DISCOVERY_VERSION
+    )
+    if not valid or migrate:
         state.clear()
     stream.seek(state.get("offset", 0))
     return rescan
@@ -539,6 +550,7 @@ def _codex_child(record: Mapping[str, object]) -> str | None:
         or payload.get("type") != "item_completed"
         or not isinstance(item, dict)
         or item.get("type") != "SubAgentActivity"
+        or item.get("kind") == "interacted"
     ):
         return None
     thread = item.get("agent_thread_id")

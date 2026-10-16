@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from threading import Lock
 from time import monotonic
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
@@ -14,6 +14,9 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     safe_failure_code,
+)
+from alphalattice.interface.local_application.native_bridge import (
+    CHILD_USAGE_BINDING_UNVERIFIED as UNVERIFIED,
 )
 from alphalattice.interface.local_application.native_bridge import (
     HOSTS,
@@ -34,6 +37,42 @@ if TYPE_CHECKING:
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         PortfolioResearchOperations,
     )
+
+
+UNVERIFIED_LIMIT: Final = 8
+CATCHING_UP: Final = "native_bridge.usage_catching_up"
+PROGRESS: Final = ("read_through", "total_bytes", "bytes_read", "rescan")
+
+
+def own_standing(receipt: dict[str, Any]) -> dict[str, object]:
+    """One Session's standing from its own reading, its unverified children named apart.
+
+    A child whose own record does not name this Session as its parent contributes to
+    `unverified_count`; only a bounded sample is listed under `unverified`.
+    The parent check stays as
+    `read_session_usage` makes it. Any other participant's failure is the Session's reason.
+    """
+    if receipt.get("status") == "SKIPPED":
+        return {"status": "OFF", "reason": None}
+    members = [m for m in receipt.get("participants") or () if isinstance(m, dict)]
+    unverified = [str(m.get("agent_id")) for m in members if m.get("reason") == UNVERIFIED]
+    failed = [
+        m for m in members if m.get("status") != "DELIVERED" and m.get("reason") != UNVERIFIED
+    ]
+    reason = safe_failure_code(
+        (failed[0] if failed else {}).get("reason") if members else receipt.get("reason")
+    )
+    status = "UNAVAILABLE" if reason not in {None, CATCHING_UP} else "OBSERVING"
+    return {
+        "status": status,
+        "reason": reason,
+        **{key: receipt[key] for key in PROGRESS if key in receipt},
+        **(
+            {"unverified": unverified[:UNVERIFIED_LIMIT], "unverified_count": len(unverified)}
+            if unverified
+            else {}
+        ),
+    }
 
 
 class NativeUsageReader:
@@ -58,6 +97,7 @@ class NativeUsageReader:
         self.workspace = operations.workspace_session.workspace.resolve()
         self._reading = Lock()
         self._read_at: dict[tuple[str, str], tuple[float, dict[str, object]]] = {}
+        self._sessions: dict[tuple[str, str], dict[str, object]] = {}
         self._status = "NOT_BOUND"
         self._reason: str | None = None
         self._progress: dict[str, object] = {}
@@ -66,14 +106,17 @@ class NativeUsageReader:
         """The last reading's standing, never native lifecycle or completeness proof.
 
         Returns:
-            Bounded status and failure code without participant ids or file paths.
+            Bounded status and failure code without file paths, and under `sessions` each
+            read Session's own (`own_standing`), keyed as `<host>:<session_id>`.
+            Equal identifiers on different hosts never share an observation.
         """
         return {
             "status": "UNAVAILABLE"
-            if self._reason is not None and self._reason != "native_bridge.usage_catching_up"
+            if self._reason is not None and self._reason != CATCHING_UP
             else self._status,
             "reason": self._reason,
             **self._progress,
+            "sessions": {f"{host}:{sid}": own for (host, sid), own in self._sessions.items()},
         }
 
     def _bindings(self) -> tuple[tuple[Path, NativeResearchBinding], ...]:
@@ -167,14 +210,17 @@ class NativeUsageReader:
 
         receipt = read_session_usage(project, binding, publish=publish, goal_id=goal_id)
         self._read_at[(binding.host, binding.session_id)] = (monotonic(), receipt)
-        self._progress = {
-            key: receipt[key]
-            for key in ("read_through", "total_bytes", "bytes_read", "rescan")
-            if key in receipt
-        }
-        self._status = "OFF" if receipt.get("status") == "SKIPPED" else "OBSERVING"
-        self._reason = None if self._status == "OFF" else safe_failure_code(receipt.get("reason"))
+        own = self._sessions[binding.host, binding.session_id] = own_standing(receipt)
+        self._progress = {key: own[key] for key in PROGRESS if key in own}
+        self._status = "OFF" if own["status"] == "OFF" else "OBSERVING"
+        self._reason = None if self._status == "OFF" else safe_failure_code(own["reason"])
         return receipt
+
+    def _retain(self, active: tuple[tuple[Path, NativeResearchBinding], ...]) -> None:
+        """Discard switched-off or removed bindings from both observation caches."""
+        keys = {(binding.host, binding.session_id) for _, binding in active}
+        self._sessions = {key: own for key, own in self._sessions.items() if key in keys}
+        self._read_at = {key: read for key, read in self._read_at.items() if key in keys}
 
     def read(self) -> dict[str, object]:
         """Read every Session bound to this workspace whose reading is on, once.
@@ -192,10 +238,12 @@ class NativeUsageReader:
                 # The person's switch: no binding is even looked for.
                 clear_usage_checkpoints(self.workspace)
                 self._status = "OFF"
-                self._progress = {}
+                self._progress, self._sessions = {}, {}
+                self._read_at.clear()
                 return {"status": "OFF", "sessions": []}
             found = self._bindings()
             active = tuple(item for item in found if item[1].usage != "OFF")
+            self._retain(active)
             if not active:
                 self._status = "NOT_BOUND" if not found else "OFF"
                 self._progress = {}
@@ -221,16 +269,18 @@ class NativeUsageReader:
                             or "native_bridge.lead_usage_read_failed",
                         }
                         self._read_at[key] = (monotonic(), receipt)
+                        self._sessions[binding.host, binding.session_id] = own_standing(receipt)
                     sessions.append({"host": binding.host, **receipt})
-                if pending_reason in {None, "native_bridge.usage_catching_up"} and receipt.get(
-                    "status"
-                ) not in {"DELIVERED", "SKIPPED"}:
-                    pending_reason = safe_failure_code(receipt.get("reason"))
-                    pending_progress = {
-                        k: receipt[k]
-                        for k in ("read_through", "total_bytes", "bytes_read", "rescan")
-                        if k in receipt
-                    }
+                # A Session's own failure is the workspace's; its unverified child is not.
+                own = self._sessions.get(key) or own_standing(receipt)
+                if pending_reason in {None, CATCHING_UP} and own["reason"] is not None:
+                    pending_reason = safe_failure_code(own["reason"])
+                    pending_progress = {k: own[k] for k in PROGRESS if k in own}
+            self._status = (
+                "OFF"
+                if all(own["status"] == "OFF" for own in self._sessions.values())
+                else "OBSERVING"
+            )
             if pending_reason is not None:
                 self._reason, self._progress = pending_reason, pending_progress
             return {"status": "READ", "sessions": sessions}
