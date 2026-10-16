@@ -553,6 +553,12 @@ def _is_file_lock_refusal(error: duckdb.IOException) -> bool:
     return "process cannot access the file" in text or "Could not set lock" in text
 
 
+def _letting_go(error: duckdb.BinderException) -> bool:
+    """The engine's other form of an instance of this process still letting go: a new instance
+    meets the file the dying one still holds by name ("Unique file handle conflict")."""
+    return "Unique file handle conflict" in str(error)
+
+
 def _lock_refusal(error: duckdb.IOException, path: Path) -> str | None:
     """How a file-lock refusal is answered, the same on the fresh and the attached path:
     None to wait (bounded, on the caller's one deadline), or the refusal to raise by name.
@@ -647,27 +653,9 @@ def _acquire(path: Path, *, read_only: bool, wait_seconds: float) -> WorkspaceCo
                     if read_only and _WRITERS_WAITING.get(path, 0):
                         wait(_HELD)
                         continue
-                    try:
-                        raw = _fresh_connection(path, read_only=read_only)
-                    except duckdb.ConnectionException:
-                        # DuckDB still holds an instance in the other mode
-                        # that this owner does not track (a connection opened
-                        # elsewhere, or one not yet collected); it goes away
-                        # when that connection closes.
-                        wait(_UNTRACKED)
+                    raw = _open(path, read_only=read_only, wait=wait, fresh=True)
+                    if raw is None:
                         continue
-                    except duckdb.IOException as error:
-                        # A file lock: this process's own instance still going
-                        # away, an instance this owner does not track, or another
-                        # process -- decided by `_lock_refusal`, waited for on the
-                        # one deadline or refused by name; nothing changed.
-                        if not _is_file_lock_refusal(error):
-                            raise
-                        refusal = _lock_refusal(error, path)
-                        if refusal is None:
-                            wait(_UNTRACKED)
-                            continue
-                        raise RuntimeError(refusal) from error
                     instance = _Instance(read_only=read_only)
                     _INSTANCES[path] = instance
                     return _register(instance, raw, path, guarded=False)
@@ -675,12 +663,12 @@ def _acquire(path: Path, *, read_only: bool, wait_seconds: float) -> WorkspaceCo
                     if read_only and _WRITERS_WAITING.get(path, 0) and not instance.held_by(me):
                         wait(_HELD)
                         continue
-                    raw = _attach(path, read_only=read_only, wait=wait)
+                    raw = _open(path, read_only=read_only, wait=wait)
                     if raw is None:
                         continue
                     return _register(instance, raw, path, guarded=False)
                 if not instance.read_only:
-                    raw = _attach(path, read_only=False, wait=wait)
+                    raw = _open(path, read_only=False, wait=wait)
                     if raw is None:
                         continue
                     return _register(instance, raw, path, guarded=True)
@@ -698,19 +686,30 @@ def _acquire(path: Path, *, read_only: bool, wait_seconds: float) -> WorkspaceCo
                 _STATE.notify_all()
 
 
-def _attach(
-    path: Path, *, read_only: bool, wait: Callable[[str], None]
+def _open(
+    path: Path, *, read_only: bool, wait: Callable[[str], None], fresh: bool = False
 ) -> duckdb.DuckDBPyConnection | None:
-    """One more connection to the instance this owner tracks, or None after waiting when
-    the engine refuses it for an instance of this process: the tracked instance's engine
-    object going away (its last handle closed an instant ago and the file lock is not
-    released yet) or one this owner does not track. The caller re-reads its bookkeeping
-    and tries again within the bound. A tracked instance is not proof that every lock on
-    the file is this process's: a lock the engine names with another pid is refused by
-    name here exactly as on the fresh path."""
+    """A connection to the file, or None after waiting when the engine refuses it for an
+    instance of this process; the caller re-reads its bookkeeping and tries again within the
+    bound. A fresh open starts the process's instance; otherwise it is one more connection to
+    the instance this owner tracks.
+
+    The engine refuses an instance of this process going away (its last handle closed an
+    instant ago) in three forms, each waited for: another access mode still held
+    (ConnectionException), its file lock (IOException), or its unique file handle
+    (BinderException, `_letting_go`). A lock the engine names with another pid is refused by
+    name (`_lock_refusal`); a tracked instance is not proof that every lock is this process's.
+    """
     try:
+        if fresh:
+            return _fresh_connection(path, read_only=read_only)
         return _attached_connection(path, read_only=read_only)
     except duckdb.ConnectionException:
+        wait(_UNTRACKED)
+        return None
+    except duckdb.BinderException as error:
+        if not _letting_go(error):
+            raise
         wait(_UNTRACKED)
         return None
     except duckdb.IOException as error:

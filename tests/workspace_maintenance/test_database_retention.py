@@ -566,10 +566,12 @@ def test_child_handles_end_with_their_parent_and_the_instance_is_released(
     assert _rows(database) == [(1, "seed")]
 
 
+@pytest.mark.parametrize("engine_form", ["file_lock", "file_handle"])
 def test_an_instance_of_this_process_still_letting_go_is_waited_for(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, engine_form: str
 ) -> None:
-    """An instance of this process still letting go is waited for."""
+    """An instance of this process still letting go is waited for, in either form the engine
+    refuses it: its file lock or its unique file handle (AX of 2026-10-15)."""
 
     from alphalattice.control.workspace_runtime import database as broker
 
@@ -582,13 +584,21 @@ def test_an_instance_of_this_process_still_letting_go_is_waited_for(
             f"python.exe (PID {pid})"
         )
 
+    def letting_go() -> duckdb.Error:
+        if engine_form == "file_lock":
+            return duckdb.IOException(lock_message(os.getpid()))
+        return duckdb.BinderException(
+            'Binder Error: Unique file handle conflict: Cannot attach "store" - the database '
+            f'file "{database.path}" is already attached by database "store"'
+        )
+
     attempts: list[str] = []
     real_connect = broker._connect
 
     def refuse_first(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
         attempts.append("ro" if read_only else "rw")
         if len(attempts) == 1:
-            raise duckdb.IOException(lock_message(os.getpid()))
+            raise letting_go()
         return real_connect(path, read_only=read_only)
 
     # The fresh path: nothing tracked, the engine refuses once with this process's own
@@ -606,7 +616,7 @@ def test_an_instance_of_this_process_still_letting_go_is_waited_for(
     def attach_refusing_first(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
         attached_attempts.append(1)
         if len(attached_attempts) == 1:
-            raise duckdb.IOException(lock_message(os.getpid()))
+            raise letting_go()
         return real_attached(path, read_only=read_only)
 
     monkeypatch.setattr(broker, "_attached_connection", attach_refusing_first)
