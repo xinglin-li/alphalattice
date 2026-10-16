@@ -133,11 +133,10 @@ historical source availability alongside the performance.
 
 ## Before you start
 
-- **Environment:** Windows and Linux have completed full agent runs; Linux was
-  verified on Ubuntu 24.04 under WSL2. Setup uses Python 3.12, uv and locked
-  dependencies, with Codex or Claude Code. On macOS, CI checks installation and
-  an offline first use; a full agent run on a Mac is still pending. On macOS,
-  install the OpenMP runtime:
+- **Environment:** Windows is the supported platform. Setup uses Python 3.12, uv
+  and locked dependencies, with Codex or Claude Code. On Linux and macOS, CI checks
+  installation and an offline first use; other use there is not guaranteed. On
+  macOS, install the OpenMP runtime:
 
   ```bash
   brew install libomp

@@ -298,3 +298,59 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 ### Previews
 
 - **Committee agenda (preview).** The committee argues a bounded agenda of its most material points, twelve by default, ranked by affected holding weight. The remaining points are listed below the agenda line, and the portfolio manager may raise one through a reply.
+
+## 0.2.0
+
+0.2.0 is the public launch. One sentence to Codex or Claude Code leads to a dated set of research positions, argued by an investment committee and written up as a report, and to the same positions kept current day by day. Its acceptance ran on the release tree with no code change during the runs: an offline first use, and a first use followed by two daily updates with a Claude Code lead on Windows. A daily update took 18 minutes with the review and the committee, and 14 minutes for the review alone. Its own update stage took 3 to 4 minutes, down from more than 10.
+
+### Added
+
+- Public CI installs AlphaLattice and runs an offline first use on Windows, macOS and Linux.
+- `doctor` names the system libraries a platform needs, with the command that installs them: the OpenMP runtime (`libomp`) on macOS, and `libatomic1` and `libgomp1` on Linux.
+- `research-update plan --date <date>` plans a named date's positions on the daily road. Every plan answer states which date's positions it holds, when they are decided and when they are entered.
+- A first use asks once whether the workspace may keep its network on for daily updates, within the default SEC budget, until the person says stop. Each use of the network is recorded on the answer and in the activity, including scheduled updates, and one sentence turns it off.
+- A review without Evidence offers its install ready to run: the eight largest issuers by weight, and the next eight after a quiet stop. The preflight offers the same install, and the daily yes admits only that offer.
+- Once a date's review is published, `research-update show` offers that date's committee. So does a lead's continue on an earlier bundle refused as stale or ambiguous after a second preparation.
+- The committee gives each member one discussion turn after the stances are revealed. A member may speak or pass, and the floor settles as soon as every member has used or passed its turn and no challenge stands unruled. The report records a passed turn in words.
+
+### Changed
+
+- Windows is the supported platform. On Linux and macOS, CI checks installation and an offline first use; other use there is not guaranteed.
+- The README, the guide and the Workbench use plain words, for example "strategy" where the text said "book". Commands, fields and message kinds keep their names.
+- The Workbench names every status it shows in words, in English and Chinese, including the committee's and the review's. Codes stay in the records. A committee member's session reads as its part in that date's committee.
+- A date the person names means the same session on every road: the session the positions are entered on, decided with information through the previous close.
+- The workspace data rule also decides a daily update's data issues and approves the full-history audit a dividend back-adjustment needs, within its declared bounds, and discloses each decision with the rule that made it. Data cases and full-history audits each have their own bound. A case already decided by the rule keeps its decision while the same evidence would be decided the same way, and a person's later decision always ends it.
+- On a later day, Evidence reads only filings that are new since it last read, and reuses sealed selections across a restart.
+- On macOS and Linux, capacity reads total and available memory from the operating system, and macOS may use all its processors. Windows is unchanged.
+- The automatic storage cap admits a write the disk can hold with its recovery headroom, and grows with free disk. A cap the operator set is unchanged. A short disk is refused by name with a way on, and a research stage stopped by it can be retried.
+- A daily update recomputes only what changed. A listing whose history the provider restated rebuilds its own columns alone, and a quiet day reads only the current year. The first daily update after upgrading recomputes once in full.
+- Under an agent sandbox that protects the project's `.codex` folder (Codex's default), the Host keeps the Session's binding in the workspace's own folder, and every answer says so.
+- Each Session keeps its own usage reading. Participants that cannot be verified are shown as a bounded sample with their total count.
+- Operational commands such as `host stop` and `cpu-budget set` are recorded but never open or join a research goal. A committee member's request counts toward its committee's goal instead of opening its own.
+
+### Deprecated
+
+- None.
+
+### Removed
+
+- None.
+
+### Fixed
+
+- A daily update asked for a named date reviewed and convened on the next session's positions. It now reviews that date's positions.
+- A dividend that a provider added or corrected late, inside the daily window, no longer stops the daily update. A refusal of that check names its listing.
+- A past Session's usage no longer disappears from its page after a later Session binds the workspace.
+- The workspace database waits for a file still held by an instance that is closing, instead of failing.
+- A daily update raised the same data issues every day and sent them to the person, and could wait on a provider that was not down. The rule now decides them in line.
+- The network control reads the Host's clock. A delegation opened while the workspace runs on a historical date stays open until its end.
+- A held data update no longer wakes the Host repeatedly. Taking the hold disarms its wake, a refused package waits for its next attempt, failed wakes back off, and a lost read is answered as a read.
+- A stop resolved through its successor chain reads as resolved and leads to its successor.
+- A stop explains itself with the same words whatever kind of Task stopped on it.
+- An Evidence setup refusal names its reason.
+- A review with nothing new filed names its way on instead of stopping without one.
+- A link among a row's facts can be pressed where the row itself also opens a page.
+
+### Previews
+
+- None.
