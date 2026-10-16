@@ -6,6 +6,7 @@ or model-derived data-truth authority is granted by a confirmation.
 
 from __future__ import annotations
 
+import functools
 import json
 from collections.abc import Callable, Collection, Iterable, Sequence
 from datetime import UTC, datetime
@@ -163,6 +164,13 @@ def _choice_request(
     }
 
 
+RULE_WORDS: Final = (
+    "Data issues decided by {subject}: {subject} decided within {subject} cases and {subject} of "
+    "names, {subject} held from an earlier decision; full-history audits: {subject} within "
+    "{subject} of names. {subject} of {subject} names remain in the research population."
+)
+"""The rule's disclosure in one sentence, each slot filled in turn, so a reader's Chinese table
+words it as the page does; held cases count toward no bound and are named apart."""
 _RULE_CAVEATS: Final = {
     RETAIN: "An unexplained one-day move is kept as reported; it may be a data error.",
     QUARANTINE: "Set aside until its next recheck; the original inputs are kept.",
@@ -477,9 +485,11 @@ class WorkspaceDataIssueApplication:
         source, left = len(names | aside), len(names - aside)
         whose, origins = self._rule_origins(rules, configured)
         bounds = self._rule_bounds(decided, configured, held)
+        parts = (whose, *bounds["parts"], left, source)
         return {
-            "words": f"{len(decided)} data issue{'s' * (len(decided) > 1)} decided by {whose}"
-            f"{bounds['words']}; {left} of {source} names remain in the research population.",
+            "words": functools.reduce(
+                lambda text, part: text.replace("{subject}", str(part), 1), parts, RULE_WORDS
+            ),
             "bounds": bounds["kinds"],
             "decided": sorted(decided, key=lambda d: (d["listing_id"], d["option_id"])),
             "source_population": source,
@@ -522,22 +532,23 @@ class WorkspaceDataIssueApplication:
         folded into it held the rule's decision, as its Goal recorded), and full-history audits."""
         rule = (configured.data_decision_rule if configured else None) or DataDecisionRule()
         folded: set[str] = set()
+        listings = 0  # a listing counts while one of its cases is decided, not held
         for row in decided:
             if "_cases" in row:
                 tokens = row.pop("_cases")
                 folded |= tokens
                 row["held"] = bool(tokens & set(held_cases))
+                listings += bool(tokens - set(held_cases))
         audits = sum(row["option_id"] == AUDIT for row in decided)
         held = len(folded & set(held_cases))
-        cases, share = len(folded), f"{rule.max_population_share:.0%}"
+        cases, share = len(folded) - held, f"{rule.max_population_share:.0%}"
         return {
-            "words": f" ({cases} case{'s' * (cases != 1)} within {rule.max_cases} cases and "
-            f"{share} of names, {held} held from an earlier decision; {audits} full-history "
-            f"audit{'s' * (audits != 1)} within {share} of names)",
+            # A held case is the same decision again and counts toward no bound (OP19).
+            "parts": (cases, rule.max_cases, share, held, audits, share),
             "kinds": {
                 "cases": {
                     "count": cases,
-                    "listings": len(decided) - audits,
+                    "listings": listings,
                     "held": held,
                     "max_cases": rule.max_cases,
                     "max_population_share": rule.max_population_share,
@@ -567,7 +578,11 @@ class WorkspaceDataIssueApplication:
             "WORKSPACE": "this workspace's rule",
             "SHIPPED_DEFAULT": "the shipped default rule",
         }
-        whose = words.get(next(iter(sources)), "rule") if len(sources) == 1 else "rule"
+        whose = (
+            words.get(next(iter(sources)), "an earlier rule")
+            if len(sources) == 1
+            else "several rules"
+        )
         rows = [
             {"rule_hash": rule, "source": origin.get(rule, "EARLIER")} for rule in sorted(rules)
         ]

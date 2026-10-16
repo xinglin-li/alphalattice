@@ -350,9 +350,6 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.investment.alpha_research.scores.model_renewal import (
     verified_lifecycle_admissions,
 )
-from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
-    ADVANCEMENT_TASK_KIND,
-)
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioResearchResult,
     PortfolioResearchSpec,
@@ -2308,8 +2305,8 @@ class PortfolioResearchOperations:
                     view_topic=request.view_topic,
                     view_last_days=request.view_last_days,
                 )
-                if not _pages_citations(request):
-                    return section
+                if not _pages_citations(request):  # an agent's dated review offers its committee
+                    return committee.offer(self, section, selector, caller)
                 progress = cast("dict[str, object] | None", section.get("coverage_progress"))
                 return {
                     "status": "EVIDENCE_CRO_CITATIONS_PAGE",
@@ -2806,11 +2803,7 @@ class PortfolioResearchOperations:
 
     def _dated(self, task: str) -> tuple[dict[str, Any], dict[str, Any]] | None:
         """A research update's publication and the Evidence on it; None for another Task."""
-        try:
-            kind = self.workspace_session.task_control_registry.task(UUID(task)).task_kind
-        except LookupError:  # an unknown Task is the specialist bundle's own refusal
-            return None
-        if kind != ADVANCEMENT_TASK_KIND:
+        if not committee.research_update(self.workspace_session.task_control_registry, task):
             return None
         readback = self.execute(
             PortfolioResearchOperationRequest(
@@ -5628,16 +5621,8 @@ class PortfolioResearchOperations:
                 raise ValueError("product_host.evidence_review_publication_origin_unavailable")
             # A displayed parent keeps its original review identity and exact reuse.
             return self._read_review_update(found[0], publication_hash)
-        body.pop("committee_context", None)
-        floor = committee.floor_of(self.goals.store, str(task_id))
-        if floor is not None and all(
-            floor.opened["selector"].get(k) == v
-            for k, v in (
-                ("update_task_id", str(task_id)),
-                ("update_publication_hash", publication_hash),
-            )
-        ):
-            body["committee_context"] = committee.context(floor, self.dispatcher.clock())
+        floor = committee.published_floor(self.goals.store, str(task_id), publication_hash)
+        committee.contextualize(body, floor, self.dispatcher.clock())
         return body
 
     def evidence_refresh(

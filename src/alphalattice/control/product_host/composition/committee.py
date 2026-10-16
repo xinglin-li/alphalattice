@@ -51,6 +51,9 @@ from alphalattice.interface.local_application.portfolio_research import (
     CommitteeMessage,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
+    ADVANCEMENT_TASK_KIND,
+)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.actor_execution.bundles import bundle_slot
@@ -171,6 +174,13 @@ class Floor:
         return "DEBATE" if stances >= set(ROLES) or late else "STANCES"
 
 
+OPENER_WORDS: Final = (
+    "The PM's key and route belong to the session that opened this floor; its wait goes on "
+    "there. Read the floor here, or continue in that session."
+)
+"""Why another session's open names no key, and its way on."""
+
+
 def settled(floor: Floor, now: datetime) -> bool:
     """Whether the debate has settled, so the PM gives the verdict on an event.
 
@@ -192,6 +202,72 @@ def floor_of(store: GoalStore, task: str) -> Floor | None:
     """The update's floor, from the goal whose ledger opened it; None when none was opened."""
     floor = thread_of(store, task)
     return floor if floor is not None and "selector" in floor.opened else None
+
+
+def published_floor(store: GoalStore, task: str, publication_hash: str) -> Floor | None:
+    """The update's floor when it was opened on exactly this publication of it."""
+    floor = floor_of(store, task)
+    opened = floor.opened["selector"] if floor is not None else {}
+    exact = (opened.get("update_task_id"), opened.get("update_publication_hash"))
+    return floor if exact == (task, publication_hash) else None
+
+
+def delivery(floor: Floor) -> dict[str, Any]:
+    """The floor's report: the date's delivery export under its review."""
+    return {
+        "operation": "EXPERIMENT_DELIVERY_EXPORT",
+        **floor.opened["selector"],
+        **floor.opened.get("review", {}),
+    }
+
+
+def research_update(registry: Any, task: str | None) -> bool:
+    """Whether the Task is a research update, the one a committee opens on."""
+    try:
+        return bool(registry.task(UUID(task)).task_kind == ADVANCEMENT_TASK_KIND)
+    except (LookupError, TypeError):  # an unknown Task is the specialist bundle's own refusal
+        return False
+
+
+def contextualize(body: dict[str, Any], floor: Floor | None, now: datetime) -> None:
+    """Put a dated read's floor standing on it, in place of any it carried."""
+    body.pop("committee_context", None)
+    if floor is not None:
+        body["committee_context"] = context(floor, now)
+
+
+def offer(host: Any, review: dict[str, Any], book: Any, caller: str) -> dict[str, Any]:
+    """Offer an agent's read of a research update's published review its committee.
+
+    ``host`` is the Host's operations: its goals' store and clock and its Task registry. The
+    floor is the one opened on the publication this review read, as it stands: opened (again,
+    which gives its opener the PM's key and route) until it closes, then its report; the answer
+    names that next action. The page's and the Host's own reads take none. A goal record the
+    floor cannot be read from is named, and nothing is offered.
+    """
+    read = book.request_fields() if book is not None else {}
+    task = read.get("update_task_id")
+    registry = host.workspace_session.task_control_registry
+    if caller == "HUMAN" or review.get("state") != "REVIEW_PUBLISHED":
+        return review
+    if not research_update(registry, task):
+        return review
+    now = host.goals.clock()
+    try:
+        floor = published_floor(host.goals.store, str(task), read["update_publication_hash"])
+    except (ValueError, OSError) as error:
+        review["committee_unreadable"] = public_failure(error, "committee.refused")
+        return review
+    if floor is not None and floor.stage(now) == "CLOSED":
+        review["next_action"] = "REPORT_THE_COMMITTEE"
+        review["next_requests"]["committee_report"] = delivery(floor)
+    else:
+        review["next_action"] = "CONVENE_THE_COMMITTEE"
+        review["next_requests"]["committee"] = {
+            "operation": "COMMITTEE_OPEN",
+            "update_task_id": task,
+        }
+    return review
 
 
 def _member_thread(request: Any) -> tuple[str, tuple[str, ...]]:
@@ -361,25 +437,7 @@ def operate(
                 now=now,
                 agenda_limit=agenda_limit,
             )
-            # Each specialist reads its bundle by `alphalattice bundle prepare`, its key in it.
-            return {
-                "status": "COMMITTEE_OPEN",
-                "stage": floor.stage(now),
-                **(
-                    {"pm_key": floor.key("PM"), "pm_route": pm_route(floor)}
-                    if floor.opened["session"] == list(session)
-                    else {}
-                ),
-                "next_requests": {
-                    f"bundle:{member}": {
-                        "operation": "AGENT_BUNDLE_PREPARE",
-                        "agent_role": member,
-                        "task_id": task,
-                        "bundle_directory": None,
-                    }
-                    for member in ("ALPHA", "RISK", "CRO")
-                },
-            }
+            return _opened(floor, session, task, now)
         found = floor_of(store, task)
         if found is None:
             raise ValueError("committee.not_open")
@@ -403,6 +461,32 @@ def operate(
             "committee_message": {"kind": "PASS", "text": "Nothing to add."},
         }
     return {"status": "COMMITTEE_FLOOR", **read, "next_requests": offered}
+
+
+def _opened(floor: Floor, session: tuple[str, str], task: str, now: datetime) -> dict[str, Any]:
+    """The open's answer, with the PM's key and route for the session that opened the floor.
+
+    Another session is told whose they are and offered the floor's read.
+    """
+    mine = floor.opened["session"] == list(session)
+    # Each specialist reads its bundle by `alphalattice bundle prepare`, its key in it.
+    bundles = {
+        f"bundle:{member}": {
+            "operation": "AGENT_BUNDLE_PREPARE",
+            "agent_role": member,
+            "task_id": task,
+            "bundle_directory": None,
+        }
+        for member in ("ALPHA", "RISK", "CRO")
+    }
+    read = {"read": {"operation": "COMMITTEE_READ", "update_task_id": task}}
+    return {
+        "status": "COMMITTEE_OPEN",
+        "stage": floor.stage(now),
+        **({"pm_key": floor.key("PM"), "pm_route": pm_route(floor)} if mine else {}),
+        **({} if mine else {"detail": OPENER_WORDS}),
+        "next_requests": {**({} if mine else read), **bundles},
+    }
 
 
 def _turn_open(floor: Floor, role: str | None) -> bool:
@@ -537,7 +621,7 @@ def _owed(
     figure is a name the floor holds under an alias, the same message with those aliases."""
     message = request.committee_message
     if rule == "CLOSED" and floor is not None:
-        return {"report": state(floor, None, 0, now)["delivery"]}
+        return {"report": delivery(floor)}
     if rule == "AGENDA":
         assert floor is not None
         assert message is not None
@@ -799,11 +883,7 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
         ],
         # Only others' messages advance it: a member's own may outnumber a stance still withheld.
         "seen": max([seen, *(int(m["id"][1:]) for m in visible if m["role"] != role)]),
-        "delivery": {
-            "operation": "EXPERIMENT_DELIVERY_EXPORT",
-            **floor.opened["selector"],
-            **floor.opened.get("review", {}),
-        },
+        "delivery": delivery(floor),
     }
 
 

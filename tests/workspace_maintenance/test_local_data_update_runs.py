@@ -882,6 +882,8 @@ def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
     from alphalattice.foundation.market_data_ops.storage.duckdb import (
         ActionAuditScopeInsufficient,
     )
+    from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
+    from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
 
     audit, paying = MarketDataRepository.complete_action_audit, TEN_SECTOR_SYMBOLS[1 : 1 + payers]
 
@@ -953,6 +955,25 @@ def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
             ], disclosed
             assert disclosed["bounds"]["audits"]["count"] == (at > NOW), disclosed
             assert disclosed["bounds"]["cases"]["held"] == (at > NOW), disclosed
+            # A held case counts toward no bound: day 1's decision counts, day 2's re-raise holds.
+            held, left = int(at > NOW), disclosed["effective_population"]
+            names = f"{left} of {disclosed['source_population']}"
+            en = (
+                "Data issues decided by the shipped default rule: 1 decided within 10 cases and 2% "
+                f"of names, {held} held from an earlier decision; full-history audits: {held} "
+                f"within 2% of names. {names} names remain in the research population."
+            )
+            zh = (
+                "由内置默认规则决定的数据问题：1 个在 10 个案例与 2% 名称的上限内决定，"  # noqa: RUF001
+                f"{held} 个沿用先前的决定；全历史审计：{held} 个，在 2% 名称的上限内。"  # noqa: RUF001
+                f"研究样本保留 {left}/{disclosed['source_population']} 个名称。"
+            )
+            page = read_in_chinese([disclosed["words"]], missing="Node is required", required=True)
+            language = ANSWER_LANGUAGE.set("zh")  # the CLI reads the same table
+            said = worded(en)
+            ANSWER_LANGUAGE.reset(language)
+            assert [disclosed["words"], page["read"][0], said] == [en, zh, zh], page
+            assert disclosed["bounds"]["cases"]["listings"] == 1, disclosed
             ruled_cases, goals = (
                 ruled_entries(live, "DATA_ISSUE_CONFIRM"),
                 live.operations.goals.store,

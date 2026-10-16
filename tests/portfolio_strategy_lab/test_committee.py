@@ -46,6 +46,9 @@ from alphalattice.interface.local_application.portfolio_research import Committe
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
+from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
+    ADVANCEMENT_TASK_KIND,
+)
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     PortfolioUpdatePublication,
     advance_decision_state,
@@ -552,7 +555,9 @@ def test_the_floor_answers_a_member_only_with_its_own_key(
     route = " ".join(opened["pm_route"])
     assert f"--role PM --key {floor.key('PM')}" in route and "VERDICT" in route
     assert "schema show COMMITTEE_SUBMIT" in route and "together" in route
-    assert not {"pm_key", "pm_route"} & set(ask("COMMITTEE_OPEN", session="s-2"))
+    other = ask("COMMITTEE_OPEN", session="s-2")  # whose route it is, and the floor's read
+    assert not {"pm_key", "pm_route"} & set(other) and other["detail"] == committee.OPENER_WORDS
+    assert other["next_requests"]["read"] == {"operation": "COMMITTEE_READ", "update_task_id": TASK}
     plain, typed = (CommitteeMessage(kind="STANCE", text=t) for t in ("Hold H1.", "Hold 5%."))
     sent = [(floor.key("CRO"), plain), (floor.key("PM"), typed)]  # a submit needs its key field
     codes = [
@@ -789,7 +794,7 @@ def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
 
 
 def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
-    tmp_path: Path, readback: dict[str, Any]
+    tmp_path: Path, readback: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Time boxes reveal stances, then leave unruled points for the person."""
     store, now = _floor(tmp_path, readback)
@@ -797,6 +802,25 @@ def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
     now[0] += timedelta(minutes=11)
     state = _read(store, now, None, 0)
     assert state["stage"] == "DEBATE" and state["members"]["ALPHA"] == "NOT_ADDRESSED"
+    # A research update's published review offers the floor opened on its publication, as it
+    # stands: open, then its report; another kind of update has none to open.
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    selector = dict(floor.opened["selector"])
+
+    def offered(read: dict[str, Any], kind: str = ADVANCEMENT_TASK_KIND) -> dict[str, Any]:
+        review: dict[str, Any] = {"state": "REVIEW_PUBLISHED", "next_requests": {}}
+        tasks = SimpleNamespace(task=lambda _: SimpleNamespace(task_kind=kind))
+        host = SimpleNamespace(
+            goals=SimpleNamespace(store=store, clock=lambda: now[0]),
+            workspace_session=SimpleNamespace(task_control_registry=tasks),
+        )
+        book = SimpleNamespace(request_fields=lambda: read)
+        return committee.offer(host, review, book, "EXTERNAL_AUTOMATION")
+
+    opened = offered(selector)
+    assert opened["next_requests"]["committee"]["operation"] == "COMMITTEE_OPEN"
+    assert offered(selector, kind="portfolio_update")["next_requests"] == {}
     with pytest.raises(ValueError, match=r"message_refused:TURN"):  # no stance to pass from
         _say(store, now, "ALPHA", "PASS", text="Nothing to add.")
     assert {p["state"] for p in state["tension_points"]} == {"OPEN"}
@@ -804,6 +828,21 @@ def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
     closed = _read(store, now, None, 0)
     assert closed["stage"] == "CLOSED" and closed["verdict"]["outcome"] == "FOR_THE_PERSON"
     assert (closed["members"]["PM"], closed["members"]["ALPHA"]) == ("IN", "NOT_ADDRESSED")
+    ended, earlier = offered(selector), offered({**selector, "update_publication_hash": "e" * 64})
+    assert ended["next_requests"] == {"committee_report": closed["delivery"]}
+    assert [opened["next_action"], ended["next_action"], earlier["next_action"]] == [
+        "CONVENE_THE_COMMITTEE",
+        "REPORT_THE_COMMITTEE",
+        "CONVENE_THE_COMMITTEE",  # a floor on another publication is not this review's
+    ]
+
+    def unreadable(*_: Any) -> None:
+        raise ValueError("goal.attribution_invalid")
+
+    with monkeypatch.context() as patched:  # a corrupt goal record
+        patched.setattr(committee, "thread_of", unreadable)
+        named = offered(selector)
+    assert named["next_requests"] == {} and named["committee_unreadable"]
     assert {p["state"] for p in closed["tension_points"]} == {"NOT_ADDRESSED"}
     with pytest.raises(ValueError, match=r"message_refused:CLOSED"):
         _say(store, now, "ALPHA", "STANCE")

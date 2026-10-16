@@ -210,7 +210,9 @@ the offer's `review_holdings`: the book's last sealed holdings, not next positio
 Before activating, read `strategy_dates.information_cutoff` and the conditional
 `strategy_dates.first_actionable_session`. Activation admits the first update in
 the same act, for the first use's date while its goal is open: follow it at once,
-then review its published positions on their own publication. For a date the
+then review its published positions on their own publication. A reviewed date runs,
+as the first use does, through Evidence, the CRO, the committee and its report: the
+published review offers that date's committee. For a date the
 person names, plan `research-update plan --package <package> --date <date>`: as
 in the first use, the date is the trade date its positions are entered on, decided
 at the close before it, and the plan's `positions_for` names that date. With no

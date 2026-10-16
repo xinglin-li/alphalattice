@@ -1081,8 +1081,10 @@ class _ReviewHost:
 
     BOOK: ClassVar[dict[str, str]] = {"result_hash": "b" * 64}
 
-    def __init__(self, workspace: Path, *, correct: str | None = None, places: int = 8) -> None:
-        self.workspace = workspace
+    def __init__(
+        self, workspace: Path, *, correct: str | None = None, places: int = 8, dated: bool = False
+    ) -> None:
+        self.workspace, self.dated, self.published = workspace, dated, False
         self.goal = None
         self.sent: list[dict[str, Any]] = []
         self.correct = correct
@@ -1105,6 +1107,7 @@ class _ReviewHost:
                     }
                 task = f"t-{folder.name}"
                 self.queued.add(task)
+                self.published = role == "CRO"
                 return {
                     "status": "ACCEPTED",
                     "agent_role": role,
@@ -1119,6 +1122,11 @@ class _ReviewHost:
             case "STATUS":
                 self.queued.discard(document["task_id"])
                 return {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", **document}
+            case "EVIDENCE_CRO" if self.dated and self.published:  # the owner's dated offer
+                floor = {"operation": "COMMITTEE_OPEN", "update_task_id": "u"}
+                offers = {"export": {"operation": "EVIDENCE_CRO_EXPORT"}, "committee": floor}
+                state = {"state": "REVIEW_PUBLISHED", "next_action": "CONVENE_THE_COMMITTEE"}
+                return {**state, "next_requests": offers}
             case "EVIDENCE_CRO":
                 return {
                     "state": "ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW",
@@ -1224,6 +1232,22 @@ def test_review_continue_names_each_correction_and_goes_no_further(tmp_path: Pat
     last = offered["next_requests"]["last_review"]
     assert scoped == refusal and last["strategy_package_id"] == "pkg"
     assert last["history_kind"] == "CRO_REVIEW" and last["history_limit"] == 1
+
+
+def test_a_dated_review_goes_on_to_the_committee_its_evidence_offers(tmp_path: Path) -> None:
+    """requirement: a dated update's published review answers with the committee its Evidence
+    offers, ahead of an inactive strategy's activation."""
+    host = _ReviewHost(tmp_path / "workspace", dated=True)
+    args = _continue_args(_answers(tmp_path, "cro") / "cro", package="pkg")
+    answer = client_module._continue_steps(host, args)  # type: ignore[arg-type]
+
+    assert answer["status"] == "REVIEW_PUBLISHED", answer
+    assert answer["next_action"] == "CONVENE_THE_COMMITTEE"
+    assert answer["next_requests"]["committee"] == {
+        "operation": "COMMITTEE_OPEN",
+        "update_task_id": "u",
+    }
+    assert answer["next_requests"]["activate"] == {"operation": "STRATEGY_ACTIVATE"}
 
 
 def test_review_continue_publishes_the_cros_review_and_reads_the_activation_offer(

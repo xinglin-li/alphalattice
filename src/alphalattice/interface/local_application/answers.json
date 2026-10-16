@@ -7118,7 +7118,19 @@
     "name": "next_requests",
     "kind": "object",
     "required": false,
-    "meaning": "The requests out of this state, each ready to send, as the state offers them: `refresh`, `review`, `dossier`, `export`, `preview`, `status` and `packet_<unit>`."
+    "meaning": "The requests out of this state, each ready to send, as the state offers them: `refresh`, `review`, `dossier`, `export`, `preview`, `status`, `packet_<unit>`, and on an agent's read of a research update's published review `committee` or, once its floor has closed, `committee_report`."
+   },
+   {
+    "name": "next_action",
+    "kind": "string",
+    "required": false,
+    "meaning": "On an agent's read of a research update's published review: `CONVENE_THE_COMMITTEE` with its `committee` request, or `REPORT_THE_COMMITTEE` with its `committee_report` once the floor opened on that publication has closed."
+   },
+   {
+    "name": "committee_unreadable",
+    "kind": "string",
+    "required": false,
+    "meaning": "The failure code when the goal record the date's floor is read from cannot be read; no committee request is offered until it is repaired."
    },
    {
     "name": "status",
@@ -10446,7 +10458,13 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "Each specialist's bundle (`bundle:ALPHA`, `bundle:RISK`, `bundle:CRO`): its view of the date's positions and how it speaks on the floor."
+    "meaning": "Each specialist's bundle (`bundle:ALPHA`, `bundle:RISK`, `bundle:CRO`): its view of the date's positions and how it speaks on the floor; for a session that did not open the floor, also `read`, the floor's read."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": false,
+    "meaning": "For a session that did not open the floor: the PM's key and route are that session's, its wait goes on there, and this session reads the floor."
    }
   ]
  },

@@ -388,8 +388,9 @@ SKILL_COMMANDS: tuple[RoleCommand, ...] = (
     ),
     RoleCommand(
         'review continue --dir "<out>/analysts" --cro-dir "<out>/cro"',
-        "Submits the answers in the folder, follows them, then writes the CRO's bundle or, "
-        "with --package, reads the review and the activation offer.",
+        "Submits the answers in the folder, follows them, then writes the CRO's bundle or, after "
+        "the CRO, offers a dated review's committee (its report once closed) and, with --package, "
+        "the activation offer.",
         ("--cro-dir",),
     ),
     RoleCommand(

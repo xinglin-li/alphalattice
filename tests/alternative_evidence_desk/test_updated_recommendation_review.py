@@ -329,6 +329,17 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     published = service.get(evidence_url)
     assert published["state"] == "REVIEW_PUBLISHED", published
     assert published["review_publication_hash"]
+    # No committee opens on this kind of update, so neither the page's read nor an agent's
+    # offers one: COMMITTEE_OPEN would refuse it.
+    read = Request.model_validate({"operation": "EVIDENCE_CRO", **c.selector})
+    agent = service.session.operations.execute(
+        read.to_operation_request(), caller="EXTERNAL_AUTOMATION"
+    )
+    assert agent["state"] == "REVIEW_PUBLISHED", agent
+    assert not {"committee", "committee_report"} & {
+        *published["next_requests"],
+        *agent["next_requests"],
+    }
     export_selector = {
         **c.selector,
         "review_publication_hash": published["review_publication_hash"],

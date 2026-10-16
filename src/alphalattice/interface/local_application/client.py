@@ -1641,13 +1641,12 @@ def compact_display(
 ) -> dict[str, Any]:
     """Bound display work and size without inventing values or replacing a raw export.
 
-    The display, its list of omissions included, prints within ``budget`` bytes (V402). Every
-    omitted subtree is marked and named in ``omitted_sections`` as ``--section`` reads it from
-    the answer's top (``section`` is the part this display shows): a key's value, or a list's
-    rest as a page (``items.3:``). ``whole`` shows the answer whole when it fits: a refusal,
-    whose fields say what to do next. A section's list shows as many leading items whole as
-    fit, the rest its next page. Counts describe representation size, not research coverage;
-    this view cannot be hashed as the original artifact.
+    The display, omissions included, prints within ``budget`` bytes (V402). Each omitted subtree
+    is named in ``omitted_sections`` as ``--section`` reads it from the answer's top (``section``
+    is this display's part): a key's value, or a list's rest as a page (``items.3:``).
+    ``whole`` shows a refusal whole when it fits. A section's list shows as many leading items
+    as fit, the rest its next page. Counts describe size, not research coverage; this view is
+    not hashed as the original artifact.
     """
     trimmed: list[str] = []
     if isinstance(body, dict) and "timing" in body and not section:
@@ -2177,15 +2176,13 @@ def _follow(
 ) -> dict[str, Any]:
     """Follow admitted work until it ends or needs a decision; never on a timer (WK).
 
-    A Task is followed through STATUS long polls, a feature trial through its readback. A
-    Host that stops or restarts is waited for: the connection is re-read and the follow goes
-    on, since the Task runs on under Task Control. Only ``max_wait``, the caller's own cap,
-    ends it early, answered as pending. ``each_stage`` also ends it when the Task verifies a
-    stage beyond those it held at the start (a coverage run's unit is one, V421). A state the
-    Task never leaves by itself ends it too (`WAIT_EXITS`): a decision, a recovery, or a deferral,
-    whose read names its retry time and the request that resumes it (V507). State changes go to
-    stderr; the final answer keeps the admission that started the work and names what happened
-    in ``wait_event``.
+    A Task is followed through STATUS long polls, a feature trial through its readback; a Host
+    that stops or restarts is waited for, since the Task runs on under Task Control. Only
+    ``max_wait``, the caller's cap, ends it early, as pending. ``each_stage`` also ends it once
+    the Task verifies a further stage (a coverage run's unit, V421). A state the Task never
+    leaves by itself ends it too (`WAIT_EXITS`): a decision, a recovery, or a deferral naming its
+    retry time and the request that resumes it (V507). State changes go to stderr; the answer
+    keeps the admission that started the work and names what happened in ``wait_event``.
     """
     if max_wait is not None and not max_wait > 0:
         raise LocalResearchClientError("local_client.max_wait_invalid")
@@ -2699,16 +2696,54 @@ def _answer_folders(root: Path, package: str | None) -> list[Path]:
     )
 
 
+def _review_published(
+    chain: _Chain,
+    args: argparse.Namespace,
+    evidence: dict[str, Any],
+    receipts: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """A published review: Evidence's state, its committee as the floor stands (to convene,
+    or its report) and, given ``--package``, the activation offer."""
+    result: dict[str, Any] = {
+        "status": "REVIEW_PUBLISHED",
+        "receipts": receipts,
+        "evidence": {
+            key: evidence.get(key)
+            for key in ("state", "detail", "review", "coverage", "local_web_url")
+            if key in evidence
+        },
+        "steps": chain.steps,
+        "next_action": "REPORT_THE_REVIEW",
+    }
+    package = getattr(args, "strategy_package_id", None)
+    if package:
+        controls = chain.send(
+            "activation", {"operation": "CONTROLS", "strategy_package_id": str(package)}
+        )
+        activation = controls.get("activation")
+        result["activation"] = activation
+        offered = (activation or {}).get("next_requests") or {}
+        result["next_requests"] = {
+            name: value for name, value in offered.items() if isinstance(value, dict)
+        }
+        result["next_action"] = (
+            "OFFER_ACTIVATION" if "activate" in offered else result["next_action"]
+        )
+    if "next_action" in evidence:  # a dated review's committee as its floor stands
+        result["next_requests"] = {**evidence["next_requests"], **result.get("next_requests", {})}
+        result["next_action"] = evidence["next_action"]
+    return result
+
+
 def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
     """`review continue`: a book's review carried on from its specialists' written answers, in
     one call (AGENT-TIME verb 3).
 
     Every answer under ``--dir`` is submitted; one the Host asks to correct is named with its
-    problems and the call ends there, the accepted ones kept (the same answer sent again is the
-    one filed). Each accepted answer's publication is followed to its end. After the Analysts,
-    the book's Evidence offers its dossier and the dossier the CRO's bundle, written into
-    ``--cro-dir``. After the CRO, the answer is Evidence's state and, given ``--package``, that
-    strategy's activation offer with its last sealed book holdings.
+    problems and the call ends there, the accepted kept (an answer resent is the one
+    filed). Each publication is followed to its end. After the Analysts, Evidence offers its
+    dossier and the dossier the CRO's bundle, written into ``--cro-dir``; the CRO's answer is
+    `_review_published`.
     """
     folders = _answer_folders(Path(args.bundle_root).resolve(), args.strategy_package_id)
     chain = _chain(client, args, "review_continue")
@@ -2769,32 +2804,7 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
         return chain.stop("submit", published[-1])
     evidence = chain.send("evidence", book)
     if roles == {"CRO"}:
-        result: dict[str, Any] = {
-            "status": "REVIEW_PUBLISHED",
-            "receipts": receipts,
-            "evidence": {
-                key: evidence.get(key)
-                for key in ("state", "detail", "review", "coverage", "local_web_url")
-                if key in evidence
-            },
-            "steps": chain.steps,
-            "next_action": "REPORT_THE_REVIEW",
-        }
-        package = getattr(args, "strategy_package_id", None)
-        if package:
-            controls = chain.send(
-                "activation", {"operation": "CONTROLS", "strategy_package_id": str(package)}
-            )
-            activation = controls.get("activation")
-            result["activation"] = activation
-            offered = (activation or {}).get("next_requests") or {}
-            result["next_requests"] = {
-                name: value for name, value in offered.items() if isinstance(value, dict)
-            }
-            result["next_action"] = (
-                "OFFER_ACTIVATION" if "activate" in offered else result["next_action"]
-            )
-        return result
+        return _review_published(chain, args, evidence, receipts)
     dossier_request = chain.offered(evidence, "dossier")
     if dossier_request is None:
         return chain.stop("evidence", evidence)
@@ -3013,15 +3023,12 @@ def _build_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[
     """`strategy build`: the research strategy's required studies run on their defaults, and the
     strategy prepared and installed from them, in one call.
 
-    Each round reads the strategy controls and takes every step they offer in turn, each
-    started and followed to its end: training and the strategy's preparation are admitted
-    only beside no unfinished Task, and the Host runs one Task at a time. The rounds are the
-    missing components' training inputs, then each component's Alpha study, then, once a
-    calibrated study names its window, the Risk study, each planned from its own template. Then
-    the strategy's plan from the declaration the controls fill, its preparation and its
-    installation. Finished steps are reused. The first answer that stops it is the answer, the
-    studies started so far beside it; an agent that would choose a model, a window or a parent
-    sends the steps itself.
+    Each round reads the strategy controls and takes every step they offer, each followed to
+    its end, one Task at a time: the missing training inputs, each component's Alpha study, then
+    the Risk study once a calibrated study names its window, each from its own template; then
+    the strategy's plan, preparation and installation. Finished steps are reused. The first
+    answer that stops it is the answer, the studies started so far beside it; an agent that
+    would choose a model, a window or a parent sends the steps itself.
     """
     chain = _chain(client, args, "strategy_build")
     studies: list[dict[str, Any]] = []

@@ -147,7 +147,8 @@ const I18N = (() => {
     }
     for (const [re, zh] of subjectTemplates()) {
       const m = s.match(re);
-      if (m) { let i = 0; return zh.replace(/\{subject\}/g, () => m[++i] ?? ''); }
+      // Each slot reads through the table in its turn, as the CLI fills it.
+      if (m) { let i = 0; return zh.replace(/\{subject\}/g, () => (m[++i] ?? '').split('; ').map(lookup).join('；')); }
     }
     return s;
   }
