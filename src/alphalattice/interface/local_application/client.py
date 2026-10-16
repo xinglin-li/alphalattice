@@ -50,7 +50,11 @@ from alphalattice.interface.local_application.cli_contract import (
     task_state,
     worded,
 )
-from alphalattice.interface.local_application.goals import FIRST_USE_ASK_NOW, target_sessions
+from alphalattice.interface.local_application.goals import (
+    DAILY_NETWORK_RELAY,
+    FIRST_USE_ASK_NOW,
+    target_sessions,
+)
 
 CONNECTION_NAME = "local-research-connection.json"
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
@@ -2146,8 +2150,8 @@ def _kept_options(client: LocalResearchClient, view: str = "compact") -> tuple[s
 
 
 def _entry_of(client: LocalResearchClient) -> tuple[str, ...]:
-    """The entry a command this client prints starts with: the checkout's own, its workspace,
-    and the context this call kept (`_kept_options`)."""
+    """A printed command's entry: the checkout's own, its workspace and this call's kept
+    context (`_kept_options`)."""
     return entry(client.workspace, _kept_options(client))
 
 
@@ -2823,7 +2827,7 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
 
 
 _FIRST_USE: Final = {"title": "First use", "kind": "FIRST_USE"}
-"""The first use's declaration beside the person's sentence and named date."""
+"""The first use's declaration, beside the sentence and named date."""
 
 _FIRST_USE_ROAD: Final = (
     (
@@ -2881,17 +2885,17 @@ _FIRST_USE_ROAD: Final = (
         "positions, their review and the committee's record.",
     ),
 )
-"""The whole first use in order: each step's command and what it leaves to the agent."""
+"""The first use in order: each step's command and what it leaves the agent."""
 
 _NOT_RECORDED: Final = (
     "This workspace was prepared before, so its first use came then: this sentence is not "
     "recorded as a goal, and no step is delegated under it."
 )
-"""What a first use asked of an already prepared workspace says of its sentence."""
+"""What a first use of a prepared workspace says of its sentence."""
 
 
 def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """Prepare the person's first use under its Goal, keeping stops and the full road visible."""
+    """Prepare the person's first use under its Goal, with its stops and whole road."""
     chain = _chain(client, args, "first_use")
     try:
         named = target_sessions(date.fromisoformat(str(args.target_date)))
@@ -2920,7 +2924,10 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
         "date": named,
         "setup": _setup(),
         "road": road,
-        "ask_now": list(FIRST_USE_ASK_NOW),
+        "ask_now": [
+            *FIRST_USE_ASK_NOW,
+            *(join([*prefix, *w], shell()) for w in DAILY_NETWORK_RELAY),
+        ],
         **({"sentence": note} if note else {}),
     }
     if answer.get("status") == "ALREADY_PREPARED":
@@ -2938,9 +2945,8 @@ def _setup() -> dict[str, Any]:
 def _prepared(
     chain: _Chain, sentence: str, named: dict[str, object]
 ) -> tuple[dict[str, Any], str | None]:
-    """The first use's goal and its prepared data: the plan that says ALREADY_PREPARED, or the
-    first answer that stops on the way; beside it, what became of the sentence if it was not
-    recorded."""
+    """The first use's goal and data: the ALREADY_PREPARED plan or the first stop, beside the
+    sentence's note when it was not recorded."""
     criterion = (
         f"The positions for {named['entry_session']}, with their review, stand for the person."
     )

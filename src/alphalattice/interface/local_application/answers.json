@@ -3438,6 +3438,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
+   },
+   {
+    "name": "ask_now",
+    "kind": "array",
+    "required": false,
+    "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
    }
   ]
  },
@@ -6071,6 +6077,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
+   },
+   {
+    "name": "ask_now",
+    "kind": "array",
+    "required": false,
+    "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
    }
   ]
  },
@@ -6199,6 +6211,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Who set the control for the person: their first-use goal's delegation with when its setting ends, after which it reads closed, or the agent session that relayed their yes (`relayed_by`)."
+   },
+   {
+    "name": "daily_question",
+    "kind": "string",
+    "required": false,
+    "meaning": "While the first use's delegation holds the network open: that this never answers the daily question, which stays open until the person's words come, and how their yes is relayed."
    }
   ]
  },
@@ -6251,6 +6269,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Who set the control for the person: their first-use goal's delegation with when its setting ends, after which it reads closed, or the agent session that relayed their yes (`relayed_by`)."
+   },
+   {
+    "name": "daily_question",
+    "kind": "string",
+    "required": false,
+    "meaning": "While the first use's delegation holds the network open: that this never answers the daily question, which stays open until the person's words come, and how their yes is relayed."
    }
   ]
  },
@@ -6335,6 +6359,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
+   },
+   {
+    "name": "ask_now",
+    "kind": "array",
+    "required": false,
+    "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
    }
   ]
  },
@@ -7337,6 +7367,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
+   },
+   {
+    "name": "ask_now",
+    "kind": "array",
+    "required": false,
+    "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
    }
   ]
  },
@@ -7401,6 +7437,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
+   },
+   {
+    "name": "ask_now",
+    "kind": "array",
+    "required": false,
+    "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
    }
   ]
  },
@@ -8643,6 +8685,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
+   },
+   {
+    "name": "ask_now",
+    "kind": "array",
+    "required": false,
+    "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
    }
   ]
  },
@@ -9561,6 +9609,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
+   },
+   {
+    "name": "ask_now",
+    "kind": "array",
+    "required": false,
+    "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
    }
   ]
  },
@@ -9819,6 +9873,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
+   },
+   {
+    "name": "ask_now",
+    "kind": "array",
+    "required": false,
+    "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
    }
   ]
  },
@@ -11043,6 +11103,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
+   },
+   {
+    "name": "ask_now",
+    "kind": "array",
+    "required": false,
+    "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
    }
   ]
  },

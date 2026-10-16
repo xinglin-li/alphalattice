@@ -90,7 +90,10 @@ wakes when it ends. They correct the date with one note. `first_use.road` is the
 command per step, each answer names its next action, and `first_use.setup` names
 anything this session's setup still lacks, with its way on. Follow `ask_now`'s
 returned words: disclose its delegated steps in one line, then ask the person its one
-question in its words; ask nothing else.
+question in its words; ask nothing else. On their yes, run each command it offers once,
+their words verbatim in place of `<their words>`: a `network set` under the delegation
+never answers that question. On every step whose answer carries `network_use`, read its
+`words` aloud to the person in one line, as returned.
 
 The road: data, the strategy's models and Risk, its whole-support book (the
 numerical check), activation with the date's update in the same act, then Evidence
@@ -113,8 +116,7 @@ the person each act in one line; they stop the book by telling you, or on
 closes the network it opened. The `FIRST_USE` declaration is never revised. So
 ask once at the start, in `ask_now`'s words, whether daily updates may keep the
 network on; their yes is theirs until they say stop (relay `network set --enabled
-false`, which also stops SEC acquisition). An answer that admits network work names
-whose setting allowed it in `network_use`: say its `words` to the person in one line.
+false`, which also stops SEC acquisition).
 
 `strategy build` runs the research strategy's required whole-support Alpha and
 Risk studies and installs it, reusing completed studies, and offers each installed

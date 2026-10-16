@@ -37,6 +37,12 @@ _USE: Final = {
     "FIRST_USE_DELEGATION": "AlphaLattice may use the network for this step, under the first "
     "use's delegation, which ends with its goal.",
 }
+_DELEGATED_OPEN: Final = (
+    "The first use's delegation opened the network for its own steps; it closes when the goal "
+    "ends. That does not answer the daily question, which stays open until the person answers "
+    "it: ask it in the first use's `ask_now` words and, on their yes, run its offered commands "
+    "with their words (`--person-said`, `--asked`)."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +62,8 @@ class NetworkAccess:
     """The delegation that set the control and its end, when a person's goal set it."""
     persons: bool = False
     """Whether the person's own setting is the control: theirs, or their yes an agent relayed."""
+    delegation_holds: bool = False
+    """Whether a first use's delegation holds the control open; the daily question outlives it."""
 
     def use(self) -> dict[str, str]:
         """Whose setting lets a step use the network, and the one line said each time it does."""
@@ -140,6 +148,7 @@ class NetworkAccess:
             else {},
             **({"set_by": self.set_by} if self.set_by else {}),
             **({"delegation": delegation} if delegated else {}),
+            **({"daily_question": _DELEGATED_OPEN} if self.delegation_holds else {}),
         }
 
 
@@ -208,12 +217,13 @@ def network_access(
         raise TypeError("network_access reads a workspace control on the caller's clock: pass now")
     else:
         control, set_by, persons = _control(workspace, now)
+    held = (set_by, persons, bool(control and set_by and "delegation" in set_by))
     if running_held_offline():
-        return NetworkAccess(False, "RUN_HELD_OFFLINE", set_by, persons)
+        return NetworkAccess(False, "RUN_HELD_OFFLINE", *held)
     if offline(environment):
-        return NetworkAccess(False, "OPERATOR_OFFLINE_SWITCH", set_by, persons)
+        return NetworkAccess(False, "OPERATOR_OFFLINE_SWITCH", *held)
     if control is not None:
-        return NetworkAccess(control, "WORKSPACE_CONTROL", set_by, persons)
+        return NetworkAccess(control, "WORKSPACE_CONTROL", *held)
     return NetworkAccess(False, "DEFAULT")
 
 

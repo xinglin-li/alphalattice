@@ -457,15 +457,19 @@ def disclosed(
     """An owner's answer, with its `network_use` when it admitted network work.
 
     While the network is on, `network_use` names whose setting allowed it and the one line said
-    for it. The activity row records the same use, so a Host-run update is disclosed too.
-    `network` reads the control (workspace and clock) only for an admitted network work.
+    for it, which `ask_now` carries as the guide's one-line words. The activity row records the
+    same use, so a Host-run update is disclosed too. `network` reads the control (workspace and
+    clock) only for an admitted network work.
     """
     from alphalattice.control.workspace_runtime.network_access import network_access
 
     if operation not in NETWORK_WORK or "task_id" not in body or refused(body):
         return body
     access = network_access(**network())
-    return {**body, "network_use": access.use()} if access.allowed else body
+    if not access.allowed:
+        return body
+    use = access.use()
+    return {**body, "network_use": use, "ask_now": [use["words"]]}
 
 
 def worded_refusal(

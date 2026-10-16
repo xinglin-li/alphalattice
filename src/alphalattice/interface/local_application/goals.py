@@ -42,31 +42,40 @@ DAILY_NETWORK_ASK: Final = (
     "market data and SEC filings within the default budget (3 per issuer, 600 documents and "
     "3 GB overall), until you tell me to stop? I'll say in one line each time it's used."
 )
-"""The one line a first use asks at its start, word for word: the person's yes, relayed to
-`network set --enabled true` and `evidence-consent set --per-issuer 3`, is theirs until they say
-stop, which is relayed to `network set --enabled false`; the delegation ends with its goal."""
+"""The one line a first use asks at its start, word for word: the person's yes, relayed by
+`DAILY_NETWORK_RELAY`, is theirs until they say stop, which is relayed to `network set --enabled
+false`; the delegation ends with its goal and never answers it."""
 
 FIRST_USE_ASK_NOW: Final = (
     "Unless this workspace's Evidence is set up already, the review of the date's positions "
     "acquires recent SEC filings within the default budget under the first use's delegation, and "
     "downloads the retrieval model at the size its setup states: say so in one line now. Then "
-    "ask the person once, in these words, and carry on; relay their yes to `network set "
-    "--enabled true` and `evidence-consent set --per-issuer 3`, each once:",
+    "ask the person once, in these words, and carry on. On their yes, run each command after the "
+    "question once, their words verbatim in place of `<their words>`; the delegation never "
+    "answers it:",
     DAILY_NETWORK_ASK,
 )
 """What a first use answers at its start: its delegated steps, said in one line, and the one
-question only the person answers."""
+question only the person answers; the client adds the relay's commands."""
 
-DAILY_NETWORK_DECISIONS: Final = frozenset(
-    map(
-        decision_hash,
-        (
-            {"operation": "NETWORK_ACCESS_SET", "network_enabled": True},
-            {"operation": "EVIDENCE_CONSENT_SET", "evidence_documents_per_issuer": 3},
-        ),
-    )
+_DAILY_REQUESTS: Final = (
+    (
+        ("network", "set", "--enabled", "true"),
+        {"operation": "NETWORK_ACCESS_SET", "network_enabled": True},
+    ),
+    (
+        ("evidence-consent", "set", "--per-issuer", "3"),
+        {"operation": "EVIDENCE_CONSENT_SET", "evidence_documents_per_issuer": 3},
+    ),
 )
+DAILY_NETWORK_DECISIONS: Final = frozenset(decision_hash(r) for _words, r in _DAILY_REQUESTS)
 """The two requests a yes to `DAILY_NETWORK_ASK` answers, each once; the Host takes no other."""
+
+DAILY_NETWORK_RELAY: Final = tuple(
+    (*words, "--person-said", "<their words>", "--asked", DAILY_NETWORK_ASK)
+    for words, _request in _DAILY_REQUESTS
+)
+"""The same two requests as the commands that relay the person's yes, verbatim but its words."""
 
 
 def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirmation) -> str:

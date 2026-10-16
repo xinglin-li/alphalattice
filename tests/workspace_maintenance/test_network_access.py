@@ -212,7 +212,8 @@ def test_admitted_network_work_names_whose_setting_allowed_it(
         (tmp_path / CONTROL_PATH).unlink(missing_ok=True)
         set_network_access(tmp_path, enabled=True, now=now, **setting)
         answer = disclosed(admitted, "RESEARCH_UPDATE_RUN", control)
-        assert answer["network_use"]["under"] == under and answer["network_use"]["words"]
+        assert answer["network_use"]["under"] == under
+        assert answer["ask_now"] == [answer["network_use"]["words"]]  # said, as the guide says
         assert returned_subject(answer)["network_used_under"] == under
     assert disclosed(admitted, "RECOVER", control)["network_use"]
     assert "network_use" not in disclosed(admitted, "STATUS", lambda: 1 / 0)  # type: ignore

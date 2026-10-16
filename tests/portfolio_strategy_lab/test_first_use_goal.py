@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -323,6 +324,26 @@ def test_the_daily_network_yes_answers_only_its_two_requests(live: Any) -> None:
     assert _cli(live, "network", "set", "--enabled", "true", *yes)[0] == 0 and _network(live)
     code, given = _cli(live, "evidence-consent", "set", "--per-issuer", "3", *yes)
     assert code == 0 and given["consent"]["actor"] == "HUMAN", given
+
+
+def test_the_daily_yes_relayed_as_offered_outlives_the_first_use(
+    live: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """regression (a two-day run, 2026-10-15): the lead sent the daily question's requests
+    under the delegation, its goal's end closed the network, and day 2 asked again."""
+    monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
+    first = _cli(live, "first-use", "prepare", "--sentence", "A book.", "--date", "2026-10-09")[1]
+    _said, _asked, network_on, consent = first["first_use"]["ask_now"]
+    code, delegated = _cli(live, *shlex.split(network_on)[1:-4])
+    assert code == 0 and "daily_question" in delegated, delegated
+    for offered in (network_on, consent):
+        line = shlex.split(offered.replace("<their words>", "Yes, keep it on."))[1:]
+        assert _cli(live, *line)[0] == 0, line
+    goal = live.operations.goals.first_use()
+    assert _cli(live, "goal", "abandon", str(goal.goal_id), "--reason", "Done")[0] == 0
+    day_two = network_access(live.workspace, environment={}, now=live.clock() + timedelta(days=1))
+    assert day_two.allowed and day_two.persons
+    assert _cli(live, "evidence-consent", "show")[1]["consent"]["actor"] == "HUMAN"
 
 
 def test_a_persons_yes_relayed_whole_completes_their_decision_once(
