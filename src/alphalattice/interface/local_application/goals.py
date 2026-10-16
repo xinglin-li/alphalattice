@@ -40,7 +40,8 @@ FIRST_USE_HOURS: Final = 24
 DAILY_NETWORK_ASK: Final = (
     "May AlphaLattice keep this workspace's network on for your daily updates, to fetch new "
     "market data and SEC filings within the default budget (3 per issuer, 600 documents and "
-    "3 GB overall), until you tell me to stop? I'll say in one line each time it's used."
+    "3 GB overall), until you tell me to stop? Each use is recorded in the activity log and shown "
+    "in the Workbench."
 )
 """The one line a first use asks at its start, word for word: the person's yes, relayed by
 `DAILY_NETWORK_RELAY`, is theirs until they say stop, which is relayed to `network set --enabled

@@ -148,9 +148,10 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
 
 
-def test_sec_source_consent_is_the_persons_outside_a_first_use(live: Any) -> None:
-    """requirement: outside a first use only the person, or their relayed yes, gives SEC source
-    consent or installs, within the source policy's bounds; a malformed setup is refused."""
+def test_sec_source_consent_is_the_persons_outside_a_first_use(
+    live: Any,
+) -> None:
+    """SEC consent is the person's; malformed setup and unoffered installs refuse."""
     code, refused = _cli(live, "evidence-consent", "set", "--per-issuer", "3")
     assert code == 2 and refused["failure_code"] == "evidence_review.consent_human_only"
     code, refused = _cli(live, "evidence", "install", INSTALL)
@@ -177,6 +178,15 @@ def test_sec_source_consent_is_the_persons_outside_a_first_use(live: Any) -> Non
         Request(operation="EVIDENCE_CONSENT_SET", evidence_documents_per_issuer=5), caller="HUMAN"
     )
     assert given["consent"]["actor"] == "HUMAN" and given["consent"]["documents_per_issuer"] == 5
+    # Under the daily yes an agent sends only the Host's offered install, as it stands (the
+    # review of ce85582b9); its own issuers are the person's, and a wrong budget is a refusal.
+    code, own = _cli(live, "evidence", "install", INSTALL)
+    assert code == 2 and _code(own) == "evidence_review.consent_human_only", own
+    wide = INSTALL.replace(" --network", " --maximum-documents-per-issuer 50 --network")[8:]
+    answer = live.operations.execute(
+        Request(operation="EVIDENCE_INSTALL", evidence_setup=wide), caller="HUMAN"
+    )
+    assert answer["status"] in {"ADMITTED", "REFUSED"}, answer
 
 
 def test_a_first_use_gives_the_default_sec_budget_until_its_end(live: Any, tmp_path: Path) -> None:

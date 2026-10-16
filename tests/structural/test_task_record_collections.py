@@ -22,7 +22,7 @@ STRICT_READERS = {
     ),
     COMPOSITION + "evidence_review_application.py": (
         "EvidenceReviewApplication",
-        "_run_tasks _active_refresh_task _completed_task "
+        "_run_tasks _active_refresh_task offered_installs _completed_task "
         "_accepted_answer_delivery recovery_commands",
     ),
     COMPOSITION + "feature_trials.py": ("FeatureTrials", "way_on"),

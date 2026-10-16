@@ -1,25 +1,9 @@
 """The production route: one sealed book, refreshed evidence, one review.
 
-This is the owner a non-test caller reaches. The operation owner asks it three
-questions -- what is the state, refresh the evidence, review with CRO -- for one
-selected book, and every answer is either a typed state or a real Task admitted
-through the one dispatcher.
-
-The order is the design:
-
-1. open the selected sealed book (a development result, a frozen candidate or
-   a validated handoff) and its report's own window-end book;
-2. project the book over the admitted listing/ticker authority, keeping every
-   row, and map it onto admitted issuers;
-3. derive the evidence-only obligation from the resulting scope;
-4. admit or reuse the separate Alternative Evidence Task;
-5. reopen an exact **non-expired** publication with the current reader;
-6. compile the dossier;
-7. resolve exact CRO reuse from the review key **before** any actor exists;
-8. otherwise admit the three-stage CRO Task;
-9. reopen the published recommendation for the interface.
-
-Nothing here adds a runner, a store, a report, a pointer or an Agent board.
+Open the selected sealed book with its admitted listing and issuer authority,
+derive and refresh Evidence, reopen a current publication, then compile the
+dossier. Resolve exact CRO reuse before creating actors; otherwise admit its
+three-stage Task. All Tasks use the existing dispatcher and retained authority.
 """
 
 from __future__ import annotations
@@ -41,14 +25,23 @@ from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
+    EVIDENCE_INSTALL_TASK_KIND,
     on_official_source,
 )
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     PACKAGE_RULE,
-    _authored,
+    QUIET_INSTALL,
+    SOURCE_MISSING,
+    adapter_absent,
+    documents_absent,
     evidence_setup,
+    prerequisites_missing,
+    quiet_install,
     short_source_action,
     source_ways,
+)
+from alphalattice.control.product_host.composition.evidence_source_ways import (
+    offered_installs as source_offered_installs,
 )
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import (
@@ -171,7 +164,6 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     HybridIndexSpec,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.kernel.shared_kernel.sealing import validate_hash_compatible
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
@@ -2025,6 +2017,30 @@ class EvidenceReviewApplication:
             return "EXPLICIT_OLDER_CURRENT_SELECTION"
         return "EXPLICIT_CURRENT_SELECTION"
 
+    def offered_installs(self) -> list[list[str]]:
+        """Every exact install this book offers under the person's daily consent."""
+        book = self.default_selector(None)
+        quiet = [
+            task.input.payload["arguments"]
+            for task in self.session.task_control_registry.tasks()
+            if task.task_kind == EVIDENCE_INSTALL_TASK_KIND
+            and str(task.failure_code or "").startswith(QUIET_INSTALL)
+        ]
+        return source_offered_installs(self.workspace, self.opened(book), book, quiet)
+
+    def next_install(self, way: dict[str, Any], task_id: UUID, code: str) -> dict[str, Any]:
+        """A stopped install's way on, the next issuers where it found none filed."""
+        if not code.startswith(QUIET_INSTALL):
+            return way
+        book, task = self.default_selector(None), self.session.task_control_registry.task(task_id)
+        return quiet_install(way, self.workspace, self.opened(book), book, task.input)
+
+    def opened(self, book: BookSelector | None) -> SealedBook | None:
+        """The book as sealed, or None where none is named or it cannot be opened yet."""
+        with suppress(PortfolioEvidenceReviewError, TaskNotFoundError):
+            return None if book is None else self._open_book(self.inputs(), book)
+        return None
+
     def preview_evidence(
         self, selector: BookSelector | None = None, *, caller: str = "HUMAN"
     ) -> dict[str, object]:
@@ -2032,51 +2048,21 @@ class EvidenceReviewApplication:
         self.refresh_source()
         chosen = self._review_selector(selector)
         if isinstance(chosen, ReviewOutcome):
-            missing = chosen.disposition == "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY"
             book = self.default_selector(selector)
-            scope: dict[str, object] = {}
-            if missing and book is not None:
-                try:
-                    listings = book_listing_count(self._open_book(self.inputs(), book))
-                except (PortfolioEvidenceReviewError, TaskNotFoundError):
-                    pass
-                else:
-                    scope = {"acquisition_scope": self._acquisition_scope(listings)}
-            return {
-                "status": "EVIDENCE_PREREQUISITES_MISSING",
-                "failure_code": chosen.disposition,
-                "explanation": chosen.detail,
-                "next_action": "SELECT_A_BOOK_AND_ADMIT_ITS_LOCAL_EVIDENCE_PACKAGE",
-                "next_requests": {
-                    **(chosen.next_requests or {}),
-                    "workspace": {"operation": "WORKSPACE_SHOW"},
-                },
-                # The commands that complete the setup; the script's help where none applies
-                # (the page reads `setup` since U68, its fallback `setup_help`).
-                **(
-                    {"setup": evidence_setup(self.workspace, authored=_authored(book))}
-                    if missing
-                    else {
-                        "setup_help": (
-                            "scripts/materialize_evidence_cro_authority.py --help"
-                            if (resolve_playpen_root(Path(__file__)) / "pyproject.toml").is_file()
-                            else "python -m alphalattice.control.product_host.composition."
-                            "evidence_authority_setup --help"
-                        )
-                    }
-                ),
-                **scope,
-                "claim": "No Task, acquisition or model work performed.",
-            }
+            opened = self.opened(book) if chosen.disposition == SOURCE_MISSING else None
+            return prerequisites_missing(
+                self.workspace,
+                chosen.disposition,
+                chosen.detail,
+                next_requests=chosen.next_requests,
+                book=book,
+                opened=opened,
+                listings=None if opened is None else book_listing_count(opened),
+                scope=self._acquisition_scope,
+            )
         adapter = self.evidence_task_adapter
         if adapter is None or self.evidence_publications is None:
-            return {
-                "status": "EVIDENCE_PREREQUISITES_MISSING",
-                "failure_code": "product_host.evidence_task_adapter_absent",
-                "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME",
-                "setup": evidence_setup(self.workspace, authored=_authored(chosen)),
-                "claim": "Source and retrieval authority are the workspace's admitted packages.",
-            }
+            return adapter_absent(self.workspace, chosen, self.opened(chosen))
         if matter_selection_retired(self.evidence_policy.matter_selection):
             return {
                 "status": "EVIDENCE_PREREQUISITES_MISSING",
@@ -2098,10 +2084,7 @@ class EvidenceReviewApplication:
             for value in resources.recorded_documents
             if value.entity_id in scope.ordered_entity_ids
         )
-        # What this preview describes, captured so that submitting it later -- after the clock has
-        # moved -- is the same preparation and not a new one as of the moment of submission. The
-        # packing is not part of it: the preparation reads each holding's filing index and packs
-        # from that.
+        # Fix this cutoff so later submission is the same preparation; packing reads filing indices.
         request = self.evidence_policy.run_request(run)
         selector_fields = chosen.request_fields()
         next_requests: dict[str, dict[str, str]] = {}
@@ -4689,11 +4672,7 @@ class EvidenceReviewApplication:
         """
         adapter = self.evidence_task_adapter
         if adapter is None:
-            return {
-                "status": "EVIDENCE_PREREQUISITES_MISSING",
-                "failure_code": "product_host.evidence_task_adapter_absent",
-                "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME",
-            }
+            return documents_absent(self.default_selector(None))
         sources = adapter.runtime.local_sources
         rows = [
             {

@@ -28,7 +28,7 @@
   "next_action": "PREPARE_AND_ANALYSE_THE_EVIDENCE"
  },
  "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY": {
-  "detail": "No issuer registry and listing authority are admitted for this workspace, so a book's holdings cannot be named as issuers and no evidence is prepared; use the offered `alphalattice evidence install` setup in the running Host to install and admit them.",
+  "detail": "No issuer registry and listing authority are admitted for this workspace, so a book's holdings cannot be named as issuers and no evidence is prepared; send the offered `install` as it stands, once: the Host names its issuers by rule, the book's largest holdings by weight in this workspace's universe, at most eight issuers at three filings each (24 documents), within the default budget (3 per issuer, 600 documents and 3 GB overall), and the review then acquires the rest.",
   "next_action": "ADMIT_ISSUER_REGISTRY_AND_LISTING_AUTHORITY"
  },
  "REFUSED_NO_ADMITTED_EVIDENCE_RUNTIME": {
@@ -116,7 +116,7 @@
   "next_action": "TELL_YOUR_LEAD"
  },
  "local_client.request_invalid": {
-  "detail": "The request breaks the named field rules in `reasons`. Restore the missing field from the original offer, or read the offered valid values, change the named field and send it again. `schema_command` reads the field's valid form. Never select the latest plan in place of the original.",
+  "detail": "The request breaks the named field rules in `reasons`. Restore the missing field from the original offer, or read the offered valid values, change the named field and send it again. `schema_command` reads the field's valid form. Never select the latest plan in place of the original. A schema read grants no permission.",
   "next_action": "CORRECT_THE_REQUEST"
  },
  "native_bridge.accepted_answer_not_recorded": {
@@ -308,7 +308,7 @@
   "next_action": "CORRECT_THE_CONSENT_AND_SEND_AGAIN"
  },
  "evidence_review.consent_human_only": {
-  "detail": "Official SEC acquisition and the consent to it are the person's; a first use's agent takes them only within the default budget, under its goal. Otherwise ask the person in one line and, on a clear yes, send this again with `--person-said` and `--asked`.",
+  "detail": "Official SEC acquisition and the consent to it are the person's; a first use's agent takes them only within the default budget, under its goal, and under the person's daily yes (their own standing consent to SEC filings within the default budget) an agent sends only the install the Host offers, as it stands. With no such consent, or for any other install, ask the person in one line and, on a clear yes, send this again with `--person-said` and `--asked`.",
   "next_action": "ASK_THE_PERSON_FOR_SEC_SOURCE_CONSENT"
  },
  "evidence_review.source_admission_waits_for_evidence_task": {
@@ -332,7 +332,7 @@
   "next_action": "PREFLIGHT_AND_GIVE_EXPLICIT_SEC_CONSENT"
  },
  "evidence_review.materialization_has_no_admitted_documents": {
-  "detail": "None of the package's issuers holds a document at its cutoff, so there is nothing to install: {subject}. An issuer whose filing index at the cutoff shows nothing filed in the window has none to hold, and a package needs at least one document. `next_commands` holds the way on: after an official acquisition in which one failed, the same acquisition at that cutoff, which may obtain it, and its check; otherwise the setup's own check.",
+  "detail": "None of the package's issuers holds a document at its cutoff, so there is nothing to install: {subject}. An issuer whose filing index at the cutoff shows nothing filed in the window has none to hold, and a package needs at least one document. A stopped install offers the next eight holdings by weight ready as `install`; `next_commands` holds the way on otherwise: after an official acquisition in which one failed, the same acquisition at that cutoff, which may obtain it, and its check; otherwise the setup's own check.",
   "next_action": "ACQUIRE_AGAIN_AT_THE_CUTOFF_OR_NAME_ISSUERS_THAT_FILED"
  },
  "evidence_review.materialization_issuer_coverage_incomplete": {
@@ -644,7 +644,7 @@
   "next_action": "NAME_THE_UPDATES_OWN_TASK"
  },
  "product_host.evidence_task_adapter_absent": {
-  "detail": "This Host has no admitted evidence source package and retrieval runtime, so no evidence is prepared or read here; under the source consent already given, use the offered `alphalattice evidence install` setup to install them in the running Host.",
+  "detail": "This Host has no admitted evidence source package and retrieval runtime, so no evidence is prepared or read here; under the source consent already given, send the offered `install` as it stands, or read the offered `preview`, whose answer offers it, its issuers named by the Host's rule.",
   "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME"
  },
  "research_authoring.document_unparsable": {

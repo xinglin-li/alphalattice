@@ -324,6 +324,10 @@ def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> 
     """Read valid values without choosing work or assuming a refused member's credentials."""
     if "operation" in reasons:
         return {}
+    if "evidence_setup" in reasons:
+        from alphalattice.interface.local_application.cli_contract import schema_request
+
+        return {**schema_request(str(request["operation"]))}
     # A completed Task can offer an unbound replan with no recovery context.
     if "strategy_package_id" in reasons:
         return {"operation": "WORKSPACE_SHOW"}

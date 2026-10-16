@@ -590,6 +590,16 @@ def book_listing_count(book: SealedBook) -> int:
     return len(book.report.window_end_book.positions)
 
 
+def holding_weights(book: SealedBook) -> dict[str, float]:
+    """Each listing the book holds at its end, by its ending weight; no authority is needed."""
+    if book.experiment_positions is not None:
+        return {p.listing_id: p.ending_weight for p in book.experiment_positions}
+    if book.update_positions is not None:
+        return dict(zip(book.update_listing_ids, book.update_positions.weights, strict=True))
+    assert book.report is not None
+    return {p.listing_id: p.weight for p in book.report.window_end_book.positions}
+
+
 def project_portfolio_exposure(
     inputs: PortfolioEvidenceReviewInputs, book: SealedBook
 ) -> PortfolioExposureProjection:
@@ -1759,6 +1769,7 @@ __all__ = [
     "compile_portfolio_review_dossier",
     "compile_portfolio_scope",
     "finding_dispositions",
+    "holding_weights",
     "open_sealed_book",
     "portfolio_review_key_payload",
     "project_coverage_run",

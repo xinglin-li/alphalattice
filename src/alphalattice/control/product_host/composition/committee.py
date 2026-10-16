@@ -38,6 +38,9 @@ from alphalattice.control.product_host.composition.committee_materials import (
     status_word,
     tension_points,
 )
+from alphalattice.control.product_host.composition.committee_materials import (
+    holdings as holdings,
+)
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.interface.local_application.cli_contract import (
@@ -1270,47 +1273,6 @@ def _views(floor: Floor, targets: Callable[..., str]) -> list[tuple[Any, ...]]:
                 )
             )
     return items
-
-
-def holdings(readback: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """The date's held and exited names by weight (H1 the largest).
-
-    Each carries its component scores at formation from the publication's sealed input.
-    """
-    from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
-        PortfolioUpdatePublication as Publication,
-    )
-    from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
-        portfolio_update_positions,
-    )
-
-    value = Publication.model_validate(readback["publication"])
-    history = tuple(Publication.model_validate(v) for v in readback.get("history", []))
-    positions = portfolio_update_positions(value, history)
-    previous = positions.preceding or positions.weights
-    book = None if value.pending_proposal is None else value.pending_proposal.input
-    components = getattr(book, "components", None) or (() if book is None else (book,))
-    names = [f"C{n}" for n in range(1, len(components) + 1)]  # a component's floor alias
-    scores: dict[str, dict[str, float]] = {}
-    for name, component in zip(names, components, strict=False):
-        for listing, score in zip(component.ordered_listing_ids, component.scores, strict=False):
-            if score >= 0:  # a name the component did not score reads -1
-                scores.setdefault(listing, {})[str(name)] = score
-    rows = [
-        {
-            "listing_id": listing,
-            "name": label,
-            "weight": weight,
-            "change": weight - previous[i],
-            "scores": scores.get(listing, {}),
-        }
-        for i, ((listing, label), weight) in enumerate(
-            zip(readback["listing_labels"].items(), positions.weights, strict=True)
-        )
-        if weight > 0 or previous[i] > 0
-    ]
-    rows.sort(key=lambda r: (-r["weight"], -abs(r["change"]), r["name"]))
-    return [{"alias": f"H{n}", **row} for n, row in enumerate(rows, 1)]
 
 
 def role_lines(

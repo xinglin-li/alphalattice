@@ -481,6 +481,17 @@ class Explorer:
         baseline: dict[str, Any] | None = None,
     ) -> bool:
         """A recovery read exposes the same owner's original selector context."""
+        if request["operation"] == "OPERATION_LIST":
+            schema = _data(sent).get("operation_schema") or {}
+            return all(
+                (
+                    baseline is None,
+                    request.get("schema_operation") == original["operation"],
+                    schema.get("properties", {}).get("operation", {}).get("const")
+                    == original["operation"],
+                    set(original) <= set(schema.get("properties", {})),
+                )
+            )
         if not baseline and self._discovered_binding(original, request, sent):
             return True
         if self._recovery_source(original, request, sent):

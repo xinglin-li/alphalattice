@@ -7,7 +7,7 @@ The workspace Host reads usage facts from this machine's Claude Code or Codex fi
 
 At first use, your agent asks once, in the product's exact words:
 
-> May AlphaLattice keep this workspace's network on for your daily updates, to fetch new market data and SEC filings within the default budget (3 per issuer, 600 documents and 3 GB overall), until you tell me to stop? I'll say in one line each time it's used.
+> May AlphaLattice keep this workspace's network on for your daily updates, to fetch new market data and SEC filings within the default budget (3 per issuer, 600 documents and 3 GB overall), until you tell me to stop? Each use is recorded in the activity log and shown in the Workbench.
 
 Your relayed yes sets the workspace network and the default SEC acquisition consent. It is your own continuing permission, separate from the first-use goal's 24-hour delegation. The delegation never overwrites your network setting, including a setting that keeps it off. A research run's offline hold and the operator's offline switch still take precedence.
 

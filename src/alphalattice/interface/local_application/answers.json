@@ -6346,7 +6346,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": false,
-    "meaning": "`status`: the request that reads the install Task; once it succeeds the running Host serves the package."
+    "meaning": "`status`: the request that reads the install Task; once it succeeds the running Host serves the package. A preflight's answer offers `install`, the same line installing, ready to send."
    },
    {
     "name": "attributed_goal_id",
@@ -7614,7 +7614,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The requests this preview offers, each ready to send: `prepare`, and for each prepared unit `packet_<unit>` and `analyst_bundle_<unit>`."
+    "meaning": "The requests this preview offers, each ready to send: `prepare`, and for each prepared unit `packet_<unit>` and `analyst_bundle_<unit>`; with no Evidence installed, `install`, its issuers named by the Host's rule."
    },
    {
     "name": "claim",
@@ -7848,7 +7848,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The request for the next page, as `next`; empty on the last page."
+    "meaning": "The request for the next page, as `next`; empty on the last page. With no Evidence installed, `preview`, whose answer offers the install."
    },
    {
     "name": "claim",

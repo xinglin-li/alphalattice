@@ -1,15 +1,18 @@
 """The lawful ways on when a book's sources fall short, and the short-source action.
 
 Official SEC acquisition, the person's decision or, at the default budget, a first use's delegated
-agent's own step; and a recorded package only where one covers every unit's issuers. The review
+agent's own step; under the person's daily yes, the install the Host offers; and a recorded package
+only where one covers every unit's issuers. The review
 application answers them; the projection shows them beside a unit that failed for its sources.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import shlex
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, cast
 
@@ -23,7 +26,11 @@ from alphalattice.kernel.shared_kernel.project_layout import command_prefix, res
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
+    from alphalattice.control.task_control.contracts import TaskInputEnvelope
+    from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
+        BookSelector,
+        SealedBook,
+    )
 
 SHORT_SOURCE_ACTION: Final = {
     False: "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE",
@@ -202,6 +209,224 @@ def evidence_setup(
             "before": "The running Host installs it as a Task; nothing is stopped. The "
             "acquisition names itself to the SEC by the product's own contact.",
         },
+    }
+
+
+INSTALL_SCOPE: Final = 8
+"""An offered install's issuers: the install's own scope, at three filings each 24 documents."""
+
+
+def _ranked(workspace: Path, book: SealedBook | None, *, authored: bool) -> list[str] | str:
+    """The book's holdings by weight, largest first, as tickers the source can serve.
+
+    Or the key of why the Host names none (`NO_OFFER`).
+
+    A holding counts when the workspace's universe carries it and, where an acquisition already
+    holds the SEC issuer registry, the registry names it (BRK.B is not BRK-B).
+    """
+    from alphalattice.control.product_host.composition.portfolio_result_context import (
+        universe_listing_ids,
+    )
+    from alphalattice.oversight.chief_risk_officer.decision.book_evidence import holding_weights
+
+    if authored or book is None:
+        return "authored" if authored else "no_book"
+    try:
+        symbols = {listing: symbol for symbol, listing in universe_listing_ids(workspace).items()}
+    except (ValueError, OSError):
+        return "no_universe"
+    registered = _registered(workspace)
+    weights = holding_weights(book).items()
+    served = {
+        listing: weight
+        for listing, weight in weights
+        if weight > 0
+        and listing in symbols
+        and (registered is None or symbols[listing] in registered)
+    }
+    ranked = [symbols[listing] for listing in sorted(served, key=lambda key: (-served[key], key))]
+    return ranked or "no_holding"
+
+
+def _registered(workspace: Path) -> frozenset[str] | None:
+    """The SEC issuer registry's tickers, where an acquisition here already holds it."""
+    root = workspace / "runtime" / "artifacts" / "alternative-evidence" / "registries"
+    held = sorted(root.glob("*.json"), key=lambda path: path.stat().st_mtime)
+    if not held:
+        return None
+    entries = json.loads(held[-1].read_text(encoding="utf-8")).get("entries") or ()
+    return frozenset(str(entry.get("ticker")) for entry in entries)
+
+
+def _install(ranked: list[str], after: Sequence[str]) -> dict[str, object]:
+    """The offered install: the next `INSTALL_SCOPE` past the issuers `after` named, quoted."""
+    tried = set(after[after.index("--entities") + 1 :]) if "--entities" in after else set()
+    start = 1 + max((at for at, symbol in enumerate(ranked) if symbol in tried), default=-1)
+    named = " ".join(shlex.quote(symbol) for symbol in ranked[start : start + INSTALL_SCOPE])
+    setup = f"--acquire-sec --entities {named} --network-consent --install"
+    return {"install": {"operation": "EVIDENCE_INSTALL", "evidence_setup": setup}} if named else {}
+
+
+NO_OFFER: Final = {
+    "authored": "No install is offered: a study authored this book, so its install also names "
+    "that study's research input, the agent's to name; fill the setup's `install` from its "
+    "`choose`.",
+    "no_book": "No install is offered: no sealed book is open to name issuers from; select the "
+    "book, then ask again.",
+    "no_universe": "No install is offered: the Host cannot read this workspace's universe; "
+    "`workspace show` reads its data state.",
+    "no_holding": "No install is offered: no holding of this book is a ticker the source serves; "
+    "name issuers in the setup's `install` from its `choose`.",
+    "tried": "No next install is offered: every holding the source serves was named in an install "
+    "whose issuers filed nothing in the window; acquire again at a later cutoff.",
+}
+"""Why no install is offered, and the way on: said in place of the offer."""
+
+
+def install_offer(
+    workspace: Path, book: SealedBook | None, *, authored: bool, after: Sequence[str] = ()
+) -> dict[str, object]:
+    """The install a book without its Evidence offers ready, its issuers named by the Host's rule.
+
+    The rule: the book's largest holdings by weight in the workspace's universe, at most
+    `INSTALL_SCOPE` at three filings each (24 documents), within the default budget; one install
+    suffices, the review acquiring the rest. `after` is the argv of an install whose issuers all
+    filed nothing: the next eight past its last are offered. None is offered for the reasons
+    `NO_OFFER` words.
+    """
+    ranked = _ranked(workspace, book, authored=authored)
+    return {} if isinstance(ranked, str) else _install(ranked, after)
+
+
+def _offer_or_why(
+    workspace: Path, opened: SealedBook | None, book: BookSelector | None, after: Sequence[str] = ()
+) -> tuple[dict[str, object], dict[str, str]]:
+    """The install offered, as `next_requests` holds it, or the words saying why none is."""
+    ranked = _ranked(workspace, opened, authored=_authored(book))
+    offer = {} if isinstance(ranked, str) else _install(ranked, after)
+    why = ranked if isinstance(ranked, str) else None if offer else "tried"
+    return offer, {} if why is None else {"detail": NO_OFFER[why]}
+
+
+def offered_installs(
+    workspace: Path,
+    opened: SealedBook | None,
+    book: BookSelector | None,
+    quiet: Sequence[Sequence[str]],
+) -> list[list[str]]:
+    """Every install the Host offers now, as argv, for the selected book.
+
+    The first, and the next past each install whose issuers all filed nothing (`QUIET_INSTALL`):
+    the only installs an agent sends under the person's daily yes (`install_refusal`).
+    """
+    ranked = _ranked(workspace, opened, authored=_authored(book))
+    if isinstance(ranked, str):
+        return []
+    offers = (_install(ranked, after) for after in [[], *quiet])
+    lines = (cast(dict[str, str], offer["install"])["evidence_setup"] for offer in offers if offer)
+    return [shlex.split(line) for line in lines]
+
+
+QUIET_INSTALL: Final = "evidence_review.materialization_has_no_admitted_documents"
+"""An install stopped because each issuer it named filed nothing in the window."""
+
+
+SOURCE_MISSING: Final = "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY"
+"""A review refused for want of its issuer registry and listing authority, which an install
+admits."""
+
+
+def quiet_install(
+    way: dict[str, Any],
+    workspace: Path,
+    opened: SealedBook | None,
+    book: BookSelector | None,
+    stopped: TaskInputEnvelope,
+) -> dict[str, Any]:
+    """The way on of an install whose issuers each filed nothing in the window (`QUIET_INSTALL`).
+
+    The next eight by weight past them, ready (`install_offer`).
+    """
+    offer, why = _offer_or_why(workspace, opened, book, stopped.payload["arguments"])
+    return {**way, **why, "next_requests": {**way.get("next_requests", {}), **offer}}
+
+
+def adapter_absent(
+    workspace: Path, book: BookSelector, opened: SealedBook | None
+) -> dict[str, object]:
+    """A preview with no source package or retrieval runtime: its setup and the install ready.
+
+    Where none is offered, the words say why (`NO_OFFER`).
+    """
+    offer, why = _offer_or_why(workspace, opened, book)
+    return {
+        "status": "EVIDENCE_PREREQUISITES_MISSING",
+        "failure_code": "product_host.evidence_task_adapter_absent",
+        **why,
+        "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME",
+        "next_requests": offer,
+        "setup": evidence_setup(workspace, authored=_authored(book)),
+        "claim": "Source and retrieval authority are the workspace's admitted packages.",
+    }
+
+
+def documents_absent(book: BookSelector | None) -> dict[str, object]:
+    """The documents read with no Evidence installed: the dated book's preview, offered.
+
+    The preview offers the install, so its issuers are that book's.
+    """
+    selected = {} if book is None else book.request_fields()
+    return {
+        "status": "EVIDENCE_PREREQUISITES_MISSING",
+        "failure_code": "product_host.evidence_task_adapter_absent",
+        "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME",
+        "next_requests": {"preview": {"operation": "EVIDENCE_PREVIEW", **selected}},
+    }
+
+
+def prerequisites_missing(
+    workspace: Path,
+    disposition: str,
+    detail: str,
+    *,
+    next_requests: Mapping[str, dict[str, str]] | None,
+    book: BookSelector | None,
+    opened: SealedBook | None,
+    listings: int | None,
+    scope: Callable[[int], object],
+) -> dict[str, object]:
+    """A preview refused before any source is admitted, with its way on.
+
+    For want of the authority, the setup's commands and the install ready by the Host's rule
+    (`install_offer`), with the book's acquisition `scope` over its `listings`; otherwise the
+    setup script's help; the page reads `setup`, its fallback `setup_help`.
+    """
+    missing = disposition == SOURCE_MISSING
+    offer, why = _offer_or_why(workspace, opened, book) if missing else ({}, {})
+    help_line = (
+        "scripts/materialize_evidence_cro_authority.py --help"
+        if (resolve_playpen_root(Path(__file__)) / "pyproject.toml").is_file()
+        else "python -m alphalattice.control.product_host.composition."
+        "evidence_authority_setup --help"
+    )
+    return {
+        "status": "EVIDENCE_PREREQUISITES_MISSING",
+        "failure_code": disposition,
+        "explanation": detail,
+        **why,
+        "next_action": "SELECT_A_BOOK_AND_ADMIT_ITS_LOCAL_EVIDENCE_PACKAGE",
+        "next_requests": {
+            **(next_requests or {}),
+            **offer,
+            "workspace": {"operation": "WORKSPACE_SHOW"},
+        },
+        **(
+            {"setup": evidence_setup(workspace, authored=_authored(book))}
+            if missing
+            else {"setup_help": help_line}
+        ),
+        **({} if listings is None else {"acquisition_scope": scope(listings)}),
+        "claim": "No Task, acquisition or model work performed.",
     }
 
 

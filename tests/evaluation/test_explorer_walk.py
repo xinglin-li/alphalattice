@@ -102,6 +102,11 @@ def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: 
         "packages-good",
         "packages-id",
         "packages-empty",
+        "schema-good",
+        "schema-operation",
+        "schema-fields",
+        "schema-empty",
+        "schema-duplicate",
     ],
 )
 def test_an_injected_refusal_recovers_only_the_original_bound_step(
@@ -116,9 +121,28 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
     required = "plan_hash" if recovery == "changed-hash" else "update_task_id"
     if recovery == "changed-hash":
         request = {"operation": "MODEL_RUN", "plan_hash": "a" * 64}
-    discovery = recovery.startswith(("activity-", "tasks-", "packages-"))
+    discovery = recovery.startswith(("activity-", "tasks-", "packages-", "schema-"))
     read_data = {}
-    if recovery.startswith("packages-"):
+    if recovery.startswith("schema-"):
+        required = "evidence_setup"
+        request = {"operation": "EVIDENCE_INSTALL", required: "task-1"}
+        read_data = (
+            {
+                "operation_schema": {
+                    "properties": {
+                        "operation": {
+                            "const": "TASKS"
+                            if recovery == "schema-operation"
+                            else request["operation"]
+                        },
+                        **({} if recovery == "schema-fields" else {required: {"type": "string"}}),
+                    }
+                }
+            }
+            if recovery != "schema-empty"
+            else {}
+        )
+    elif recovery.startswith("packages-"):
         required = "strategy_package_id"
         request = {"operation": "RESEARCH_UPDATE_PLAN", required: "installed"}
         read_data = {
@@ -169,10 +193,14 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         repaired = {
             "operation": "WORKSPACE_SHOW"
             if recovery.startswith("packages-")
+            else "OPERATION_LIST"
+            if recovery.startswith("schema-")
             else "ACTIVITY_LIST"
             if recovery.startswith("activity-")
             else "TASKS"
         }
+        if recovery.startswith("schema-"):
+            repaired["schema_operation"] = request["operation"]
     elif recovery in {"wrong-binding", "wrong-write"}:
         repaired["update_task_id"] = "task-2"
     elif recovery == "changed-hash":
@@ -185,7 +213,7 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         sent.append(document)
         if discovery and document == repaired:
             return {"operation": document["operation"], "outcome": "OK", "data": read_data}
-        if document.get(required) and argv[1] == "--file":
+        if document.get(required) and argv[1] == "--file" and recovery != "schema-duplicate":
             return {
                 "operation": document["operation"],
                 "outcome": "UNAVAILABLE" if recovery == "unavailable" else "OK",
@@ -229,7 +257,13 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         tmp_path,
         request_fields={request["operation"]: {"required": [required], "allowed": list(request)}},
         mutation_owners={request["operation"]: "committee.py", "COMMITTEE_READ": "committee.py"},
-        read_operations={"COMMITTEE_READ", "ACTIVITY_LIST", "TASKS", "WORKSPACE_SHOW"},
+        read_operations={
+            "COMMITTEE_READ",
+            "ACTIVITY_LIST",
+            "TASKS",
+            "WORKSPACE_SHOW",
+            "OPERATION_LIST",
+        },
         mutation_budget=120,
         mutation_kinds={"drop-field"} if recovery == "walk" else None,
     )
@@ -241,8 +275,17 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
             == 1
         )
     else:
-        explorer.inject(request, "committee", kinds={"drop-field"})
+        explorer.inject(
+            request,
+            "committee",
+            **(
+                {"baseline": {"outcome": "OK", "data": {"task_id": "held"}}}
+                if recovery == "schema-duplicate"
+                else {"kinds": {"drop-field"}}
+            ),
+        )
     clean = recovery in {
+        "schema-good",
         "filled",
         "located",
         "located-read",
@@ -259,10 +302,11 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         recovery not in {"generic", "generic-offer"}
     )
     assert explorer.mutation_checks[0]["words_state_rule"] == (
-        recovery in {"located", "located-read", "owned-read", "empty-read", "usage"} or discovery
+        (recovery in {"located", "located-read", "owned-read", "empty-read", "usage"} or discovery)
+        and recovery != "schema-duplicate"
     )
     assert explorer.mutation_checks[0]["owner"] == "committee.py"
-    assert required not in sent[0] and request[required] == (
+    assert (required in sent[0]) == (recovery == "schema-duplicate") and request[required] == (
         "installed"
         if recovery.startswith("packages-")
         else "a" * 64

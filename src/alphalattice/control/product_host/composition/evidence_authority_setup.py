@@ -26,8 +26,12 @@ from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any, NoReturn, cast
 from uuid import UUID
 
+from alphalattice.control.product_host.composition import portfolio_result_context
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
+)
+from alphalattice.control.product_host.composition.evidence_review_workspace import (
+    EVIDENCE_INSTALL_TASK_KIND as EVIDENCE_INSTALL_TASK_KIND,
 )
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     EvidenceReviewArtifactBinding,
@@ -39,9 +43,6 @@ from alphalattice.control.product_host.composition.evidence_review_workspace imp
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     PACKAGE_RULE,
     SETUP_OPTIONS,
-)
-from alphalattice.control.product_host.composition.portfolio_result_context import (
-    installed_authority,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceEvidenceReview,
@@ -105,6 +106,7 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
     EvidenceSourceConsent,
     OfficialSourceAdmission,
     admit_official_source,
+    evidence_source_consent,
     seal_live_setup_admission,
     sec_user_agent,
 )
@@ -118,10 +120,6 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
 from alphalattice.evidence.alternative_evidence.sources.recorded import (
     RecordedEvidenceDocument,
 )
-from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
-    PanelClosureArtifactStore,
-)
-from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
@@ -132,11 +130,6 @@ from alphalattice.interface.local_application.retrieval_environment import (
     fill_command,
     load,
 )
-from alphalattice.investment.portfolio_strategy_lab.application.resolution import (
-    _risk_surface,
-    _sector_map,
-)
-from alphalattice.investment.risk_research.surfaces.returns import RiskReturnArtifactStore
 from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid import (
     probe_hybrid_retrieval_capabilities,
@@ -159,6 +152,9 @@ from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts impo
 )
 
 if TYPE_CHECKING:
+    from alphalattice.control.product_host.composition.evidence_review_application import (
+        EvidenceReviewApplication,
+    )
     from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 
 PLAYPEN_ROOT = resolve_playpen_root(Path(__file__))
@@ -424,7 +420,6 @@ def setup_arguments(argv: Sequence[str], workspace: Path) -> argparse.Namespace:
 _CARRIED_REFUSAL = frozenset({"failure_code", "location", "next_commands"})
 """What a blocked install keeps of its refusal beside the Task's code: its subject, its option and
 its way on."""
-EVIDENCE_INSTALL_TASK_KIND = "evidence_install"
 INSTALL_STAGES = ("environment", "model", "acquisition", "index", "publish")
 INSTALL_OUTPUTS = Path("runtime") / "evidence-install"
 """Each install Task's stage outputs, by Task id: what a later stage, or a recovery, reads."""
@@ -678,7 +673,7 @@ class _Setup:
                 raise OptionRefused(
                     "evidence_review.research_input_selection_required", "research_input_id"
                 )
-            universe = _universe_listing_ids(workspace)
+            universe = portfolio_result_context.universe_listing_ids(workspace)
         recipe = arguments.recipe or RECIPE_MINILM_CPU
         if recipe not in SUPPORTED_RECIPES:
             raise ValueError("evidence_review.retrieval_recipe_unsupported")
@@ -1084,6 +1079,45 @@ _DELEGATED = frozenset(
     }
 )
 """The options a first use's agent may install with: its acquisition's own choices."""
+
+
+def install_refusal(
+    arguments: argparse.Namespace,
+    argv: Sequence[str],
+    caller: str,
+    delegated: bool,
+    workspace: Path,
+    review: EvidenceReviewApplication | None,
+) -> str | None:
+    """Why an install is not admitted, or None.
+
+    The person's own and their relayed yes are admitted; a first use's agent within its
+    delegation; and outside it, under the person's daily yes (their own standing consent to SEC
+    filings within the default budget), an agent only for an install the Host offers for the
+    review's book, sent as it stands (`offered_installs`). Anything else from an agent is the
+    person's, asked in one line.
+    """
+    current = evidence_source_consent(workspace)
+    if caller != "HUMAN":
+        daily = False
+        if current.actor == "HUMAN" and review is not None:
+            daily = list(argv) in review.offered_installs()
+        return None if daily else "evidence_review.consent_human_only"
+    try:
+        beyond = delegated and not within_delegation(arguments, current)
+    except ValueError:  # an option out of the budget's own range
+        beyond = True
+    return "evidence_review.consent_beyond_delegation" if beyond else None
+
+
+def offered_install(answer: dict[str, object], argv: list[str]) -> dict[str, object]:
+    """A preflight's answer, with the install of the same line offered ready as it stands."""
+    if answer.get("status") != "EVIDENCE_SOURCE_PREFLIGHT":
+        return answer
+    line = [value for value in argv if value not in {"--preflight", "--network-consent"}]
+    setup = shlex.join([*line, "--network-consent", "--install"])
+    install = {"operation": "EVIDENCE_INSTALL", "evidence_setup": setup}
+    return {**answer, "next_requests": {"install": install}}
 
 
 def within_delegation(arguments: argparse.Namespace, current: EvidenceSourceConsent) -> bool:
@@ -1510,42 +1544,6 @@ def _research_universe_listing_ids(workspace: Path, binding_hash: str) -> dict[s
     revision = str(panel["safe_summary"]["lineage"]["manifest_revision"])
     universe = MarketDataRepository(source).load_universe_manifest_revision(revision)
     return {entry.symbol: entry.listing_id for entry in universe.listings}
-
-
-def _universe_listing_ids(workspace: Path) -> dict[str, str]:
-    """Ticker to listing id, read from the universe the product itself resolves.
-
-    The review joins the window-end book on `listing_id`, and that id is the
-    universe's, not a ticker. Sealing the authority with the ticker in both
-    fields therefore mapped nothing: every position landed in the mapping gaps
-    and the scope came out empty before a single document was read.
-
-    The mapping is taken from the same risk surface and sector map the
-    portfolio composition resolves, rather than restated here, because an
-    authority bound to a different universe revision than the book would fail
-    the same way and be much harder to see.
-    """
-    installed = installed_authority(workspace, read_research_workspace_manifest(workspace))
-    if installed is None:
-        artifact_root = workspace / "runtime" / "artifacts"
-        surface = _risk_surface(artifact_root)
-        classification = _sector_map(
-            artifact_root, manifest_revision=surface.epoch.universe_manifest_revision
-        )
-    else:
-        artifact_root, authority = installed
-        surface = RiskReturnArtifactStore(artifact_root).load_manifest(
-            authority.risk_return_surface_hash
-        )
-        classification = PanelClosureArtifactStore(ArtifactResolver(artifact_root)).load_model(
-            category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
-        )
-        if (
-            surface.surface_hash != authority.risk_return_surface_hash
-            or classification.manifest_revision != surface.epoch.universe_manifest_revision
-        ):
-            raise ValueError("portfolio_application.saved_source_binding_mismatch")
-    return {entry.provider_symbol: entry.listing_id for entry in classification.entries}
 
 
 DEFAULT_AUTHORITY_ID = "local-web-evidence-authority"

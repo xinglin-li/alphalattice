@@ -43,10 +43,10 @@ def installer_universe(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     This module's one patch of the installer's universe: its real sources, a workspace's
     risk surface or a selected research input, are not built here (TE5).
     """
-    from scripts import materialize_evidence_cro_authority as setup
+    from alphalattice.control.product_host.composition import portfolio_result_context
 
     chosen: dict[str, str] = {}
-    monkeypatch.setattr(setup, "_universe_listing_ids", lambda _workspace: chosen)
+    monkeypatch.setattr(portfolio_result_context, "universe_listing_ids", lambda _workspace: chosen)
     return chosen
 
 
@@ -316,15 +316,21 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
     def load_sector(store, **options):
         assert store.root == root / "feature-panel/closure"
         assert options == dict(
-            category="sector-maps", content_hash=sector_hash, model=setup.SectorRevisionMap
+            category="sector-maps",
+            content_hash=sector_hash,
+            model=portfolio_result_context.SectorRevisionMap,
         )
         return classification
 
     monkeypatch.setattr(
         portfolio_result_context.PortfolioResearchArtifactStore, "load", load_authority
     )
-    monkeypatch.setattr(setup.RiskReturnArtifactStore, "load_manifest", load_risk)
-    monkeypatch.setattr(setup.PanelClosureArtifactStore, "load_model", load_sector)
+    monkeypatch.setattr(
+        portfolio_result_context.RiskReturnArtifactStore, "load_manifest", load_risk
+    )
+    monkeypatch.setattr(
+        portfolio_result_context.PanelClosureArtifactStore, "load_model", load_sector
+    )
     old_binding, _ = _package(tmp_path)
     original = ResearchWorkspaceManifest.create(
         workspace_id="source-setup",
@@ -1250,3 +1256,30 @@ def test_research_workspace_identity_binds_the_optional_evidence_authority(
     )
     assert without.manifest_hash != with_authority.manifest_hash
     assert with_authority.evidence_review == binding
+
+
+def test_a_quiet_install_offers_the_next_eight_holdings_by_weight(tmp_path, installer_universe):
+    """requirement (a first-use run, 2026-10-15): the install is offered ready, the book's eight
+    largest holdings first; one whose issuers all filed nothing offers the next eight."""
+    from alphalattice.control.product_host.composition.evidence_source_ways import (
+        install_offer,
+        quiet_install,
+    )
+
+    held = [SimpleNamespace(listing_id=f"L{n:02}", ending_weight=1 - n / 50) for n in range(20)]
+    installer_universe.update({f"T{n:02}": f"L{n:02}" for n in range(20)})
+    book = SimpleNamespace(experiment_positions=held)
+    first = install_offer(tmp_path, book, authored=False)["install"]
+    issuers = first["evidence_setup"].split(" --")[1].split()[1:]
+    assert issuers == [f"T{n:02}" for n in range(8)], first
+    stopped = SimpleNamespace(payload={"arguments": first["evidence_setup"].split()})
+    way = {"next_requests": {"recovery": {"operation": "TASK_RECOVERY"}}}
+    after = quiet_install(way, tmp_path, book, None, stopped)
+    nxt = after["next_requests"]["install"]["evidence_setup"].split(" --")[1].split()[1:]
+    assert nxt == [f"T{n:02}" for n in range(8, 16)] and "recovery" in after["next_requests"]
+    # Where an acquisition holds the SEC registry, a ticker it does not name is not offered.
+    registries = tmp_path / "runtime/artifacts/alternative-evidence/registries"
+    registries.mkdir(parents=True)
+    known = [{"ticker": f"T{n:02}"} for n in range(20) if n != 1]
+    (registries / "r.json").write_text(json.dumps({"entries": known}), encoding="utf-8")
+    assert "T01" not in install_offer(tmp_path, book, authored=False)["install"]["evidence_setup"]

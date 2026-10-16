@@ -15,7 +15,7 @@ from numpy.typing import NDArray
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
     TRADING_SESSIONS_PER_YEAR,
 )
-from alphalattice.control.product_host.composition.committee import holdings
+from alphalattice.control.product_host.composition.committee_materials import holdings
 from alphalattice.control.product_host.composition.decision_advancement import (
     DecisionAdvancementPlan,
 )
@@ -24,6 +24,7 @@ from alphalattice.control.product_host.composition.portfolio_updates import (
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
+    read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import confined
 from alphalattice.control.product_host.research_authoring.timing import binding_temporal_scope
@@ -57,6 +58,10 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
 )
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     PortfolioUpdatePositions,
+)
+from alphalattice.investment.portfolio_strategy_lab.application.resolution import (
+    _risk_surface,
+    _sector_map,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
     FrozenStrategyPackage,
@@ -142,6 +147,42 @@ def installed_authority(
         model=LifecyclePortfolioAuthority,
         identity_field="authority_hash",
     )
+
+
+def universe_listing_ids(workspace: Path) -> dict[str, str]:
+    """Ticker to listing id, read from the universe the product itself resolves.
+
+    The review joins the window-end book on `listing_id`, and that id is the
+    universe's, not a ticker. Sealing the authority with the ticker in both
+    fields therefore mapped nothing: every position landed in the mapping gaps
+    and the scope came out empty before a single document was read.
+
+    The mapping comes from the same risk surface and Sector map the portfolio
+    composition resolves, rather than a restated universe. An authority bound
+    to a different universe revision than the book would fail the same way
+    and be much harder to diagnose.
+    """
+    installed = installed_authority(workspace, read_research_workspace_manifest(workspace))
+    if installed is None:
+        artifact_root = workspace / "runtime" / "artifacts"
+        surface = _risk_surface(artifact_root)
+        classification = _sector_map(
+            artifact_root, manifest_revision=surface.epoch.universe_manifest_revision
+        )
+    else:
+        artifact_root, authority = installed
+        surface = RiskReturnArtifactStore(artifact_root).load_manifest(
+            authority.risk_return_surface_hash
+        )
+        classification = PanelClosureArtifactStore(ArtifactResolver(artifact_root)).load_model(
+            category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
+        )
+        if (
+            surface.surface_hash != authority.risk_return_surface_hash
+            or classification.manifest_revision != surface.epoch.universe_manifest_revision
+        ):
+            raise ValueError("portfolio_application.saved_source_binding_mismatch")
+    return {entry.provider_symbol: entry.listing_id for entry in classification.entries}
 
 
 def installed_temporal_statements(

@@ -60,6 +60,7 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
     OfficialSourceAdmission,
 )
 
+EVIDENCE_INSTALL_TASK_KIND = "evidence_install"
 EVIDENCE_REVIEW_MANIFEST_SCHEMA = "evidence-review-workspace-authority"
 _HASH = r"^[0-9a-f]{64}$"
 
@@ -582,6 +583,7 @@ def _verified_semantic_capability_hash(
 
 
 __all__ = [
+    "EVIDENCE_INSTALL_TASK_KIND",
     "AdmittedEvidenceReviewWorkspace",
     "EvidenceReviewArtifactBinding",
     "EvidenceReviewModelProfile",

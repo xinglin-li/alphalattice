@@ -38,10 +38,11 @@ from alphalattice.control.product_host.composition.decision_advancement import (
 from alphalattice.control.product_host.composition.evidence_authority_setup import (
     EvidenceInstall,
     EvidenceInstallCommand,
+    install_refusal,
+    offered_install,
     read_setup,
     run_setup,
     setup_refusal,
-    within_delegation,
 )
 from alphalattice.control.product_host.composition.evidence_review_application import (
     EvidenceReviewApplication,
@@ -2660,8 +2661,7 @@ class PortfolioResearchOperations:
         return answer
 
     def _install_evidence(self, setup: str, caller: str) -> dict[str, object]:
-        """A preflight, read-only, answers anyone at once; an install is a Task, the person's, a
-        relayed yes's, or a first use's agent's within its delegation (`within_delegation`)."""
+        """A preflight answers at once, offering its install; `install_refusal` admits a Task."""
         workspace = self.workspace_session.workspace
         read = read_setup(setup, workspace)
         if isinstance(read, dict):
@@ -2669,19 +2669,20 @@ class PortfolioResearchOperations:
         argv, arguments = read
         if arguments.preflight:
             try:
-                return run_setup(
-                    arguments,
-                    self.workspace_session,
-                    official_source=self.official_source,
-                    clock=self.dispatcher.clock,
+                return offered_install(
+                    run_setup(
+                        arguments,
+                        self.workspace_session,
+                        official_source=self.official_source,
+                        clock=self.dispatcher.clock,
+                    ),
+                    argv,
                 )
             except (ValueError, RuntimeError, OSError) as error:
                 return setup_refusal(arguments, error, now=self.dispatcher.clock())
-        if caller != "HUMAN":
-            return refused("evidence_review.consent_human_only")
         delegated = self._delegating_goal() is not None
-        if delegated and not within_delegation(arguments, evidence_source_consent(workspace)):
-            return refused("evidence_review.consent_beyond_delegation")
+        if code := install_refusal(arguments, argv, caller, delegated, workspace, self.review):
+            return refused(code)
         sent = self.dispatcher.submit(EvidenceInstallCommand(self.evidence_install, argv))
         if sent.task_id is None:
             full = sent.disposition == "REFUSED_QUEUE_FULL"
@@ -4881,6 +4882,7 @@ class PortfolioResearchOperations:
         # A code the door's table words reads in those words when its owner adds none, as a
         # refusal does at the door (OP4): a walk refused before it opens says why (V519).
         way = way or dict(refusal_words(code) or {})
+        way = self.review.next_install(way, task_id, code) if self.review else way
         request = self._task_replan(self.workspace_session.task_control_registry.task(task_id))
         if request:
             offered = cast(dict[str, Any], way.get("next_requests") or {})

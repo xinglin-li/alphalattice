@@ -151,9 +151,12 @@ alphalattice review continue --dir "<out>/cro"
 
 The first reads that update's published positions, bound by their publication,
 prepares their Evidence and writes every Analyst bundle; start one Evidence Analyst
-per bundle. Without `--update` it reviews the strategy's whole-support book
-instead, when someone asks for that. Each Analyst, and then the CRO, submits its
-own answer with its bundle's key and takes the Host's corrections itself; once
+per bundle. Where no Evidence is installed it stops with the install offered ready (`install`),
+its issuers named by the Host's rule: send it as it stands, once, then run the same command
+again; the review acquires the rest. An install whose issuers all filed nothing offers the next
+eight as `install`. Where none is offered, the answer says why and the way on.
+Without `--update` it reviews the strategy's whole-support book instead, when someone asks for that.
+Each Analyst, and then the CRO, submits its own answer with its bundle's key and takes the Host's corrections itself; once
 they return their receipts, the second reads their accepted answers and writes the
 CRO's bundle, and the third publishes the review. Each stops at the first answer
 that needs another step; follow its `next_action`. Wait for each as the first use
@@ -246,12 +249,16 @@ Everything else is a default you take and disclose in one line. These are the
 person's. Name the decision and ask once, in one line; on a clear yes, send it
 with their words, `--person-said "<their words>" --asked "<your question>"`.
 Never paraphrase or invent the words, and never send the person to a page to
-click. Each yes answers one request, once; only the daily network question's yes
-answers its two requests (network on, SEC filings at the default budget), and the
-Host takes nothing else for it.
+click. Each yes answers one request, once. The daily network question's yes is the one
+standing exception: it answers its two requests (network on, SEC filings at the
+default budget), and under it you may send the Evidence install the Host offers,
+as it stands; the Host takes nothing else for it.
 
 - Network access, except preparation and default SEC acquisition under the first
   use's delegation.
+  If an Evidence install loses `evidence_setup`, read its offered form and restore
+  the exact setup from the original offer; that read grants no permission to
+  change issuers or scope.
 - Strategy activation, except under the first use's delegation; deactivation
   always. Model and Factor activation.
 - Daily research automation and the usage-reading switch.

@@ -48,6 +48,18 @@ def test_a_committee_document_refusal_keeps_its_members_own_read() -> None:
     assert answer["next_requests"]["valid_values"] == {"operation": "COMMITTEE_READ", **member}
 
 
+def test_an_install_missing_its_setup_offers_its_own_form() -> None:
+    """A missing setup names the field and offers the selected install contract."""
+    request = {"operation": "EVIDENCE_INSTALL"}
+    with pytest.raises(ValidationError) as caught:
+        PortfolioResearchRequestDocument.model_validate(request)
+    answer = located_failure(caught.value, "local_client.request_invalid", request=request)
+    assert answer["fields"] == [["evidence_setup"]]
+    read = answer["next_requests"]["valid_values"]
+    assert read == {"operation": "OPERATION_LIST", "schema_operation": "EVIDENCE_INSTALL"}
+    PortfolioResearchRequestDocument.model_validate(read)
+
+
 def test_a_contract_failure_answers_one_located_shape() -> None:
     """Failures preserve owner codes and located rules without exposing private diagnostics."""
 

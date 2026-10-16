@@ -63,6 +63,9 @@ Each command's exact form; the [Command contract](references/operating.md) cover
 
 - The guide lists what only a person decides; everything else is a default you take and state in one line ([goals](references/goals.md)).
 - Product answers and sealed artifacts are the evidence: never invent an id, hash, model, field or number.
+- If an Evidence install loses `evidence_setup`, read its offered form and restore
+  the exact setup from the original offer; that read grants no permission to
+  change issuers or scope.
 - A development result is not an installed strategy, prospective validation, recommendation or trading instruction. A comparison names no winner; unavailable return is not zero; keep adverse observations.
 - Give specialists only the Host-packed projection; keep original sources, credentials, prompts and hidden reasoning out of bundles, Git and shared memory.
 - This Skill and browser control grant no download, activation, configuration or destructive permission; your operations carry your provenance, never a person's.
