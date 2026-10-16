@@ -1329,7 +1329,8 @@ def review_route(store: GoalStore, role: str, directory: str | None) -> tuple[st
         "The key is yours alone and admits only this bundle's answer; run no other command.",
         "Its answer is the Host's verdict. CORRECT names the items to fix: fix or remove only "
         "those in the same answer file and run the same command again. ACCEPTED or DONE ends "
-        "your work: return its receipt to your lead in one line.",
+        "your work whatever the command's exit code, which follows the review's Task: return its "
+        "receipt to your lead in one line.",
     )
 
 

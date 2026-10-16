@@ -138,7 +138,7 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
     evidence_source_consent,
     official_source_state,
 )
-from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.interface.local_application.cli_contract import refusal_words, task_exit_words
 from alphalattice.interface.local_application.dispatcher import (
     CommandAdmission,
     CommandSubmission,
@@ -678,9 +678,7 @@ def agent_answer_result(
             f"{len(dropped)}, listed under 'dropped'; no more answers are read for this bundle. "
         )
         task_clause = (
-            f"Task {task} is {lifecycle}. The outcome follows the Task state. "
-            if task and isinstance(lifecycle, str)
-            else ""
+            task_exit_words(task, lifecycle) if task and isinstance(lifecycle, str) else ""
         )
         message = lead + task_clause + "Stop here and return the receipt to your lead."
         return {

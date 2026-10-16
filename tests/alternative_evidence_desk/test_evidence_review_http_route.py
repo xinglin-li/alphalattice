@@ -1887,7 +1887,7 @@ def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> N
 
     answer = {"verdict": "ACCEPTED", "accepted_items": [1], "dropped": []}
     for role in ("ANALYST", "CRO"):
-        for lifecycle, expected in (("QUEUED", "PENDING"), ("BLOCKED", "REFUSED")):
+        for lifecycle, expected, code in (("QUEUED", "PENDING", 3), ("BLOCKED", "REFUSED", 2)):
             admitted = agent_answer_result(
                 role,
                 {
@@ -1899,7 +1899,8 @@ def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> N
             )
             assert admitted["status"] == admitted["answer_status"] == "ACCEPTED"
             assert (admitted["task_lifecycle"], outcome_of(admitted)) == (lifecycle, expected)
-            assert all(word in admitted["message"] for word in ("accepted", "t-1", lifecycle))
+            words = ("accepted", "t-1", lifecycle, f"(exit {code})")  # an accepted answer
+            assert all(word in admitted["message"] for word in words)  # never reads as pending
             assert admitted["next_requests"]["task"] == {"operation": "STATUS", "task_id": "t-1"}
         reused = agent_answer_result(
             role,

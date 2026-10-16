@@ -1485,6 +1485,33 @@ _OTHER = ClientRefusal(
 )
 
 
+def task_exit_words(task: object, lifecycle: str) -> str:
+    """Why an accepted answer's command exits as the Task it started does (`outcome_of`).
+
+    The answer waits on nothing, so a pending exit must never read as a pending answer.
+
+    Args:
+        task: The Task the answer started.
+        lifecycle: That Task's state.
+
+    Returns:
+        One sentence naming the Task, its state and the exit it gives.
+    """
+    outcome = outcome_of({"lifecycle": lifecycle})
+    code = EXIT_CODES[outcome]
+    if outcome == "PENDING":
+        return (
+            f"The review goes on in Task {task}, now {lifecycle}, so this command reads pending "
+            f"(exit {code}) until that Task ends; your answer waits on nothing. "
+        )
+    if outcome == "REFUSED":
+        return (
+            f"The review's Task {task} is {lifecycle}, so this command reads refused (exit "
+            f"{code}); your answer stands, and the way on is your lead's. "
+        )
+    return f"The review's Task {task} is {lifecycle}. "
+
+
 def client_refusal(code: str) -> ClientRefusal:
     """The outcome, next action and words of a refusal the client raised itself."""
     if code in {"local_client.workspace_context_mismatch", "local_client.bundle_workspace_invalid"}:
@@ -2277,6 +2304,7 @@ __all__ = [
     "refused",
     "request_problem",
     "shell",
+    "task_exit_words",
     "worded",
     "worded_refusal",
 ]
