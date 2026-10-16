@@ -864,6 +864,120 @@ def test_raw_move_review_reopens_and_resumes_the_same_data_task(qualified, tmp_p
         assert effect["receipt_hash"] == decision["receipt_hash"]
 
 
+@pytest.mark.parametrize("payers", [1, 2])
+def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
+    ten_sector, tmp_path, monkeypatch, capsys, payers
+):
+    """requirement (DATA-RULE-UPDATE): under the shipped rule a session's ordinary day needs no
+    person: its re-raised move holds the rule's decision and a payer's audit is approved; past
+    the audits' own bound (two payers of sixty names) the day stops for the person."""
+    from alphalattice.interface.local_application.cli import main as client_main
+
+    # One jump that persists (D2's APA): re-acquired a day later it is the same move.
+    workspace, boot = _quarantine_review_workspace(
+        ten_sector, tmp_path, monkeypatch, through=NOW + timedelta(days=1), anomaly="level_shift"
+    )
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "daily-lead")
+    from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
+    from alphalattice.foundation.market_data_ops.storage.duckdb import (
+        ActionAuditScopeInsufficient,
+    )
+
+    audit, paying = MarketDataRepository.complete_action_audit, TEN_SECTOR_SYMBOLS[1 : 1 + payers]
+
+    def dividend(self, manifest, *, listing_id, history_start, requested_as_of, **rest):  # type: ignore[no-untyped-def]
+        # Day 2 is the payers' ex-date: each provider back-adjusts the whole history, which a
+        # rolling audit cannot explain; a full-history audit does.
+        named = {item.listing_id: item.symbol for item in manifest.listings}.get(listing_id)
+        rolling = (requested_as_of - history_start).days < 400
+        if named in paying and requested_as_of > NOW.date() and rolling:
+            raise ActionAuditScopeInsufficient("dividend back-adjustment")
+        return audit(
+            self,
+            manifest,
+            listing_id=listing_id,
+            history_start=history_start,
+            requested_as_of=requested_as_of,
+            **rest,
+        )
+
+    monkeypatch.setattr(MarketDataRepository, "complete_action_audit", dividend)
+
+    def cli(*arguments: str) -> dict:
+        line = ["--workspace", str(workspace), "--view", "full", *arguments]
+        code = client_main(line, serve=lambda _: pytest.fail("the Host is serving"))
+        answer = json.loads(capsys.readouterr().out)
+        assert code in {0, 3}, answer
+        return answer["data"]
+
+    def ruled_entries(live, operation):
+        goals = live.operations.goals.store
+        return [
+            e
+            for goal in goals.goal_ids()
+            for e in goals.attributed(goal)
+            if e.get("operation") == operation and e.get("decided_by") == "RULE"
+        ]
+
+    for at in (NOW, NOW + timedelta(days=1)):
+        with boot(at) as live:
+            admitted = cli("data-update", "run", "--plan", cli("data-update", "plan")["plan_hash"])
+            live.dispatcher.drain_for_tests(timeout=180)
+            status = _json(live, "/api/status?task_id=" + admitted["task_id"])
+            if at > NOW and payers > 1:
+                # Two audits of sixty names pass the audits' 2%: the refusal is recorded, and
+                # the stop is the person's confirm.
+                assert status["latest_failure_code"] == "data.full_history_audit_approval_required"
+                refused = ruled_entries(live, "FULL_HISTORY_AUDIT")
+                assert [(e["status"], len(e["listing_ids"])) for e in refused] == [
+                    ("ESCALATED", 2)
+                ], refused
+                return
+            assert status["lifecycle"] == "SUCCEEDED", status["latest_failure_code"]
+            assert (
+                len(live.session.task_control_registry.tasks()) == (at.date() - NOW.date()).days + 1
+            )
+            ruled = _json(live, "/api/workspace/data-issues")
+            assert ruled["issues"] == [], ruled["issues"]
+            disclosed = ruled["decided_by_rule"]
+            assert disclosed["rules"] == [
+                {"rule_hash": DataDecisionRule().rule_hash, "source": "SHIPPED_DEFAULT"}
+            ], disclosed
+            # The move folds into one row, held on day 2; the approved audit is beside it.
+            assert sorted(
+                (row["symbol"], row["option_id"], row.get("held", False))
+                for row in disclosed["decided"]
+            ) == [
+                (TEN_SECTOR_SYMBOLS[0], "retain_isolated_raw_move_with_caveat", at > NOW),
+                *[(paying[0], "full_history_audit", False)] * (at > NOW),
+            ], disclosed
+            assert disclosed["bounds"]["audits"]["count"] == (at > NOW), disclosed
+            assert disclosed["bounds"]["cases"]["held"] == (at > NOW), disclosed
+            ruled_cases, goals = (
+                ruled_entries(live, "DATA_ISSUE_CONFIRM"),
+                live.operations.goals.store,
+            )
+    # Day 2 re-raised the same move over a longer window, a new case that held the rule's
+    # decision on its anomaly and counted toward no bound.
+    assert [e["status"] for e in ruled_cases] == ["DECIDED_BY_RULE", "HELD_BY_RULE"], ruled_cases
+    assert ruled_cases[1]["case_count"] == 0, ruled_cases
+    # The rule approved the payer's full-history audit in line: its whole history was fetched.
+    payer_calls = [(a, b) for symbols, a, b in boot.provider.calls if paying[0] in symbols]
+    assert any((b - a).days > 400 for a, b in payer_calls[1:]), payer_calls
+    # A damaged Goal record is named beside the rule's decisions, never a crash of the read.
+    for goal in goals.goal_ids():
+        folder = workspace / "artifacts" / "product-host" / "goals" / "attribution" / str(goal)
+        (folder / "99999999.json").write_text("{", encoding="utf-8")
+    with boot(at) as live:
+        damaged = _json(live, "/api/workspace/data-issues")["decided_by_rule"]
+    assert {row["failure_code"] for row in damaged["unreadable_goals"]} == {
+        "goal.attribution_invalid"
+    }, damaged
+    assert [row["option_id"] for row in damaged["decided"]] == [
+        "retain_isolated_raw_move_with_caveat"
+    ], damaged
+
+
 def _quarantine_review_workspace(
     ten_sector, tmp_path, monkeypatch, *, through=NOW, anomaly="single_session"
 ):

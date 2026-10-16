@@ -546,8 +546,13 @@ def test_the_floor_answers_a_member_only_with_its_own_key(
             file_floor=lambda: None,
         )
 
-    assert ask("COMMITTEE_OPEN")["pm_key"] == floor.key("PM")  # again, after a lost context
-    assert "pm_key" not in ask("COMMITTEE_OPEN", session="s-2")
+    opened = ask("COMMITTEE_OPEN")
+    assert opened["pm_key"] == floor.key("PM")  # again, after a lost context
+    # The PM's own route rides with its key: its submit, the members started together.
+    route = " ".join(opened["pm_route"])
+    assert f"--role PM --key {floor.key('PM')}" in route and "VERDICT" in route
+    assert "schema show COMMITTEE_SUBMIT" in route and "together" in route
+    assert not {"pm_key", "pm_route"} & set(ask("COMMITTEE_OPEN", session="s-2"))
     plain, typed = (CommitteeMessage(kind="STANCE", text=t) for t in ("Hold H1.", "Hold 5%."))
     sent = [(floor.key("CRO"), plain), (floor.key("PM"), typed)]  # a submit needs its key field
     codes = [
@@ -688,6 +693,40 @@ def test_a_specialist_speaks_three_times_after_its_stance_and_only_the_pm_rules(
         _say(store, now, "PM", "RULING", reply_to=challenge, outcome="DECLINE")
 
 
+def test_the_floor_settles_once_every_member_has_spoken_or_passed_its_turn(
+    tmp_path: Path, readback: dict[str, Any]
+) -> None:
+    """requirement (PASS): after the reveal each specialist takes its turn or passes it; the floor
+    settles once all have and no challenge stands unruled, and the report reads a pass in words."""
+    store, now = _floor(tmp_path, readback)
+    _say(store, now, "PM", "STANCE")
+    with pytest.raises(ValueError, match=r"message_refused:STANCES"):
+        _say(store, now, "ALPHA", "PASS", text="Nothing to add.")
+    _stances(store, now)
+    with pytest.raises(ValueError, match=r"message_refused:TURN"):  # a pass names nothing
+        _say(store, now, "CRO", "PASS", text="Nothing to add.", targets=("T1",))
+    passed = [_say(store, now, role, "PASS", text="Nothing to add.") for role in ("ALPHA", "CRO")]
+    assert _say(store, now, "ALPHA", "PASS", text="Nothing to add.") == passed[0]  # a replay
+    for kind, fields in (("PASS", {}), ("CHALLENGE", {"targets": ("T1",)})):
+        with pytest.raises(ValueError, match=r"message_refused:TURN"):  # its turn has ended
+            _say(store, now, "ALPHA", kind, text="Still nothing.", **fields)
+    assert not _read(store, now, "PM", 4)["settled"]  # RISK has not taken its turn
+    late = _say(store, now, "RISK", "CHALLENGE", targets=("T1",))
+    with pytest.raises(ValueError, match=r"message_refused:TURN"):  # it spoke its turn
+        _say(store, now, "RISK", "PASS", text="Nothing to add.")
+    assert not _read(store, now, "PM", 4)["settled"]  # its challenge stands unruled
+    with pytest.raises(ValueError, match=r"message_refused:ROLE"):
+        _say(store, now, "PM", "PASS", text="Nothing to add.")
+    _say(store, now, "PM", "RULING", reply_to=late, outcome="REJECT")
+    assert _read(store, now, "PM", 4)["settled"]
+    _say(store, now, "PM", "VERDICT", outcome="PROCEED")
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    rows = committee.commentary(floor, now[0]) or []
+    passed = [r for r in rows if r["attribution_word"] == "{member} passed its discussion turn"]
+    assert {r["attribution_words"]["member"] for r in passed} == {"ALPHA", "CRO"}
+
+
 @pytest.mark.parametrize("outcome", ["PROCEED_WITH_NOTES", "DECLINE"])
 def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
     tmp_path: Path, readback: dict[str, Any], outcome: str
@@ -758,6 +797,8 @@ def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
     now[0] += timedelta(minutes=11)
     state = _read(store, now, None, 0)
     assert state["stage"] == "DEBATE" and state["members"]["ALPHA"] == "NOT_ADDRESSED"
+    with pytest.raises(ValueError, match=r"message_refused:TURN"):  # no stance to pass from
+        _say(store, now, "ALPHA", "PASS", text="Nothing to add.")
     assert {p["state"] for p in state["tension_points"]} == {"OPEN"}
     now[0] += timedelta(minutes=30)
     closed = _read(store, now, None, 0)

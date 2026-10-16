@@ -7,8 +7,10 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from secrets import token_hex
 from threading import RLock
+from typing import cast
 from uuid import UUID
 
+from alphalattice.control.data_platform.data_decision_rule import approved_audits
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
@@ -447,16 +449,48 @@ class GoalStore:
         )
 
     @staticmethod
+    def _ruled(task: str | None, entry: Mapping[str, object]) -> bool:
+        """A rule's entry for this dated Task (any, for None), plus its Goal's first-use scope."""
+        return entry.get("decided_by") == "RULE" and (
+            task in (None, entry.get("task_id"))
+            or str(entry.get("delegation", "")).startswith("first-use-goal:")
+        )
+
+    @staticmethod
     def rule_cases(task: str, entries: Sequence[Mapping[str, object]]) -> frozenset[str]:
-        """Only this dated Task's choices, plus its Goal's legacy first-use scope."""
-        cases = set()
-        for entry in entries:
-            if entry.get("decided_by") == "RULE" and (
-                entry.get("task_id") == task
-                or str(entry.get("delegation", "")).startswith("first-use-goal:")
-            ):
-                cases.add(str(entry["case_token"]))
-        return frozenset(cases)
+        """The cases the rule chose for this dated Task; its audits are read apart."""
+        return frozenset(
+            str(entry["case_token"])
+            for entry in entries
+            if GoalStore._ruled(task, entry) and entry.get("operation") == "DATA_ISSUE_CONFIRM"
+        )
+
+    @staticmethod
+    def rule_held(task: str | None, entries: Iterable[Mapping[str, object]]) -> frozenset[str]:
+        """The cases that held the rule's earlier decision on their anomaly, as the Goal says."""
+        return frozenset(
+            str(entry["case_token"])
+            for entry in entries
+            if GoalStore._ruled(task, entry)
+            and entry.get("operation") == "DATA_ISSUE_CONFIRM"
+            and entry.get("status") == "HELD_BY_RULE"
+        )
+
+    @staticmethod
+    def rule_audits(
+        task: str | None, entries: Iterable[Mapping[str, object]]
+    ) -> tuple[tuple[str, str], ...]:
+        """Each listing whose full-history audit the rule approved and its cycle admitted."""
+        ruled = (entry for entry in entries if GoalStore._ruled(task, entry))
+        return tuple(
+            sorted(
+                {
+                    (str(listing), str(entry["rule_hash"]))
+                    for entry in approved_audits(ruled)
+                    for listing in cast(Sequence[str], entry["listing_ids"])
+                }
+            )
+        )
 
     def listing(
         self,

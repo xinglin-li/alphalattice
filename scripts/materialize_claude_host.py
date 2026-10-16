@@ -404,7 +404,8 @@ SKILL_COMMANDS: tuple[RoleCommand, ...] = (
     ),
     RoleCommand(
         "committee wait --update <task> --role PM --key <key>",
-        "Waits, as one member, for what the floor addresses to it, or its close.",
+        "Waits, as one member, for what the floor addresses to it, the settled debate, or its "
+        "close.",
         ("--role",),
     ),
     RoleCommand(

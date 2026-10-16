@@ -12349,6 +12349,13 @@
    "successor": "58cddf2af45c9e46d1b319b9e74df7a0b113dae02a108b09411ed153ddd894be",
    "change": "network control on the Host's clock",
    "reason": "Lead signature 2026-10-14 17:09: source closure of the network_access signature change (readiness and preparation pass the Host clock to the network control); no value change. Red/green and readouts: ui-network-clock/161224-fix-cb0cc314."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "58cddf2af45c9e46d1b319b9e74df7a0b113dae02a108b09411ed153ddd894be",
+   "successor": "527d1664c55bbb708ebacc201bddcb83b949b988432ab266aa90e51ac3d235bb",
+   "change": "workspace data rule: run scope, audit by rule",
+   "reason": "Lead signature 2026-10-15 01:47; review delta 03:25: data_decision_rule.py gains RULED_RUNS and audit() (the rule reaches a session's data update and approves a full-history audit within its bounds, counted with every approval for the Task and recorded ahead of its admission and marked when not admitted, a refusal recorded so its Task stays escalated; data cases and audits keep their own bounds, and a re-raised case with the same anomaly holds the rule's decision only while the rule would decide the same now, the newest decision on it winning); no value change. Equal-values control, both sides from a fresh golden: the two-day daily scenario on develop and the tip gives equal position and weight fields (about 55,000 per day, the audited day included), panel, feature-catalog, universe and returns hashes, and equal research-input files but the market store, whose rows are equal and whose bytes differ by its random seal epoch and an activation time. Branch-only successors 5857bd6a, fc13bd92, 5678913e and 2fb55a63 replaced. Readouts and comparison: flow-data-rule-update/001031-fix-5e6be89d and 032428-review-fix-5c23c014 and 045950-review2-fix-dee0813b 055349-held-bounds-f1c32cf3 and 064220-hold-review-d87dcc1d (paired by scenario variant)."
   }
  ]
 }

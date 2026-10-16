@@ -66,11 +66,16 @@ REVIEW_CHANNEL: Final = "PRODUCT_REVIEW"
 """The Host's own channel for a review thread's rows, which Conversation shows."""
 CHANNELS: Final = frozenset({CHANNEL, REVIEW_CHANNEL})
 RELAY_WORD: Final = "Relayed by the agent"
+PASSED: Final = "{member} passed its discussion turn"
+"""A yielded turn, as the report reads it."""
 STANCE_MINUTES, FLOOR_MINUTES, MESSAGE_CAP = 10, 40, 3
+TURN: Final = frozenset({"CHALLENGE", "REPLY", "PASS"})
+"""A specialist's discussion turn: spoken, or passed."""
 RULES: Final[dict[str, tuple[tuple[str, ...], frozenset[str], str | None]]] = {
     "STANCE": (ROLES, frozenset({"STANCES"}), None),
     "CHALLENGE": (ROLES[1:], frozenset({"DEBATE"}), None),
     "REPLY": (ROLES, frozenset({"DEBATE"}), "ANY"),
+    "PASS": (ROLES[1:], frozenset({"DEBATE"}), None),
     "RULING": (ROLES[:1], frozenset({"DEBATE"}), "CHALLENGE"),
     "VERDICT": (ROLES[:1], frozenset({"DEBATE"}), None),
     "PERSON_ANSWER": (ROLES[:1], frozenset({"DEBATE", "CLOSED"}), "FOR_THE_PERSON"),
@@ -85,17 +90,21 @@ OUTCOMES: Final = {
 COMMAND: Final = " ".join(command_prefix())
 RULE_WORDS: Final = {
     "ROLE": "Only its senders send this kind, each with the key in its own bundle: a STANCE or "
-    "REPLY any member, a CHALLENGE a specialist, a RULING, VERDICT or PERSON_ANSWER the PM.",
+    "REPLY any member, a CHALLENGE or PASS a specialist, a RULING, VERDICT or PERSON_ANSWER the "
+    "PM.",
     "STANCES": "The floor is in its blind first round, which takes only one STANCE from each "
     f"member; follow `{COMMAND} committee wait` until the stances are revealed.",
-    "DEBATE": "The floor is past its stances; it takes challenges, replies, rulings and the "
-    "verdict, not a STANCE.",
+    "DEBATE": "The floor is past its stances; it takes challenges, replies, passes, rulings and "
+    "the verdict, not a STANCE.",
     "CLOSED": "The floor is closed; it takes only the PM's answer relayed from the person to "
     "an item handed to them. Export the report from it.",
     "STANCE_IN": "This member's stance is on the floor already, one each; speak again by a "
     "CHALLENGE or REPLY once the stances are revealed.",
     "CAP": "This member has sent its three challenges or replies after its stance; the floor "
     "takes no more from it.",
+    "TURN": "A PASS yields this member's one discussion turn: it comes from a member whose stance "
+    "is on the floor, before it challenged or replied, and names no target or position; after it "
+    "the member sends nothing more.",
     "TARGET": "A target, position or alias names nothing on the floor; name only the tension "
     f"points, holdings and messages `{COMMAND} committee show` lists.",
     "REPLY_TO": "The message named in reply_to cannot be answered by this kind: a REPLY answers "
@@ -141,6 +150,8 @@ class Floor:
     filed: frozenset[str]
     author_session: str | None = field(default=None, compare=False)
     rule_cases: frozenset[str] = field(default=frozenset(), compare=False)
+    rule_audits: tuple[tuple[str, str], ...] = field(default=(), compare=False)
+    rule_held: frozenset[str] = field(default=frozenset(), compare=False)
 
     def key(self, role: str) -> str:
         """Derive the member's key on this floor from the seed the Host keeps outside records."""
@@ -158,6 +169,18 @@ class Floor:
         stances = {m["role"] for m in self.messages if m["kind"] == "STANCE"}
         late = now >= datetime.fromisoformat(self.opened["stances_close_at"])
         return "DEBATE" if stances >= set(ROLES) or late else "STANCES"
+
+
+def settled(floor: Floor, now: datetime) -> bool:
+    """Whether the debate has settled, so the PM gives the verdict on an event.
+
+    It has once every specialist used its turn (a CHALLENGE or REPLY) or passed it, and no
+    challenge stands unruled.
+    """
+    spoke = {m["role"] for m in floor.messages if m["kind"] in TURN}
+    ruled = {m["reply_to"] for m in floor.messages if m["kind"] == "RULING"}
+    open_ = [m for m in floor.messages if m["kind"] == "CHALLENGE" and m["id"] not in ruled]
+    return floor.stage(now) == "DEBATE" and spoke >= set(ROLES[1:]) and not open_
 
 
 def member_key(seed: str, thread: str, role: str) -> str:
@@ -239,6 +262,8 @@ def thread_of(store: GoalStore, thread: str) -> Floor | None:
         found[1:],
         frozenset(rows),
         rule_cases=store.rule_cases(thread, entries),
+        rule_audits=store.rule_audits(thread, entries),
+        rule_held=store.rule_held(thread, entries),
     )
 
 
@@ -340,7 +365,11 @@ def operate(
             return {
                 "status": "COMMITTEE_OPEN",
                 "stage": floor.stage(now),
-                **({"pm_key": floor.key("PM")} if floor.opened["session"] == list(session) else {}),
+                **(
+                    {"pm_key": floor.key("PM"), "pm_route": pm_route(floor)}
+                    if floor.opened["session"] == list(session)
+                    else {}
+                ),
                 "next_requests": {
                     f"bundle:{member}": {
                         "operation": "AGENT_BUNDLE_PREPARE",
@@ -366,7 +395,20 @@ def operate(
         file_floor()
     read = state(found, role, request.committee_seen or 0, now)
     offered = {"report": read["delivery"]} if read["stage"] == "CLOSED" else {}
+    if read["stage"] == "DEBATE" and _turn_open(found, role):
+        offered["pass"] = {
+            "operation": "COMMITTEE_SUBMIT",
+            **{k: getattr(request, k) for k in ("committee_role", "committee_key")},
+            "update_task_id": task,
+            "committee_message": {"kind": "PASS", "text": "Nothing to add."},
+        }
     return {"status": "COMMITTEE_FLOOR", **read, "next_requests": offered}
+
+
+def _turn_open(floor: Floor, role: str | None) -> bool:
+    """Whether this specialist may still pass: its stance is in, its turn not yet taken."""
+    kinds = {m["kind"] for m in floor.messages if m["role"] == role}
+    return role in ROLES[1:] and "STANCE" in kinds and not kinds & TURN
 
 
 def submit(
@@ -394,7 +436,7 @@ def submit(
         target = next((m for m in floor.messages if m["id"] == message.reply_to), None)
         fits = target is not None and answers in {"ANY", target["kind"], target.get("outcome")}
         ruled = _ruled(floor, message)
-        spoken = sum(m["kind"] != "STANCE" for m in mine)
+        spoken = sum(m["kind"] not in {"STANCE", "PASS"} for m in mine)
         named = (*message.targets, *message.positions, *ALIAS.findall(message.text))
         agenda_points = _agenda_points(floor, role, message)
         typed = any(c.isnumeric() for c in ALIAS.sub("", message.text))
@@ -402,7 +444,11 @@ def submit(
             ("ROLE", role not in senders),
             (stage, stage not in stages),
             ("STANCE_IN", message.kind == "STANCE" and any(m["kind"] == "STANCE" for m in mine)),
-            ("CAP", message.kind != "STANCE" and role != "PM" and spoken >= MESSAGE_CAP),
+            ("TURN", _turn_refused(mine, message)),
+            (
+                "CAP",
+                message.kind not in {"STANCE", "PASS"} and role != "PM" and spoken >= MESSAGE_CAP,
+            ),
             ("TARGET", any(t not in known for t in named)),
             ("SHAPE", misshapen(message)),
             ("REPLY_TO", answers is not None and (not fits or ruled is not None)),
@@ -426,6 +472,20 @@ def submit(
             floor.goal_id, {"committee_message": {**entry, **message.model_dump(mode="json")}}
         )
         return number
+
+
+def _turn_refused(mine: Sequence[dict[str, Any]], message: CommitteeMessage) -> bool:
+    """A member that passed sends nothing more; a PASS needs its stance, no spoken turn and no
+    target or position."""
+    kinds = {m["kind"] for m in mine}
+    return "PASS" in kinds or (
+        message.kind == "PASS"
+        and (
+            "STANCE" not in kinds
+            or bool(kinds & TURN)
+            or bool(message.targets or message.positions)
+        )
+    )
 
 
 def _outside_agenda(
@@ -700,6 +760,7 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
         "labels": floor.opened.get("labels") or {},
         "holdings_count": sum(1 for h in held if h["weight"] > 0),
         "stances_in": sum(1 for m in floor.messages if m["kind"] == "STANCE"),
+        "settled": settled(floor, now),
         "member_count": len(ROLES),
         "members": {r: _member(floor, r, stage) for r in ROLES},
         "member_cards": dict(CARDS),
@@ -999,6 +1060,15 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
     ]
 
 
+def _passed(floor: Floor, role: str) -> list[tuple[Any, ...]]:
+    """A member's yielded turns, each read in its words."""
+    return [
+        (PASSED, {"member": role, "message": m["id"]}, m["text"], {})
+        for m in floor.messages
+        if m["role"] == role and m["kind"] == "PASS"
+    ]
+
+
 def _views(floor: Floor, targets: Callable[..., str]) -> list[tuple[Any, ...]]:
     """Each member's final view first, then each earlier message of it that still holds a
     position or a challenge (`standing_messages`), each verbatim with its id, the points it
@@ -1010,6 +1080,7 @@ def _views(floor: Floor, targets: Callable[..., str]) -> list[tuple[Any, ...]]:
     held, shown = standing_messages(floor), {m["id"] for m in standing_dissents(floor)}
     items: list[tuple[Any, ...]] = []
     for r in ROLES:
+        items += _passed(floor, r)
         final = last.get(r)
         if final is None:
             silent = {"text_word": "Not addressed."}
@@ -1193,8 +1264,13 @@ def route(
         f"its position on each {point} point (T1, never a question) is about the date's "
         "positions: SUPPORT, they may stand; OBJECT, they should not stand as they are; RESERVE, "
         "this bundle cannot tell, citing by S alias the facts it rests on.",
-        f"Then up to {MESSAGE_CAP} CHALLENGE or REPLY, each naming its targets by alias (T1, H3, "
-        "M4, a fact by its S alias); type no other digit, since the Host renders every number. "
+        "Once the stances are revealed, take your one discussion turn: a CHALLENGE or REPLY, or, "
+        "before any challenge or reply, a PASS (kind PASS, a line saying you have nothing to add, "
+        "no targets or positions) that yields it and ends your turn; the floor settles when every "
+        "member has spoken or passed. "
+        f"You may send up to {MESSAGE_CAP} CHALLENGE or REPLY in all, each naming its targets by "
+        "alias (T1, H3, M4, a fact by its S alias); type no other digit, since the Host renders "
+        "every number. "
         "The PM may approve (PROCEED), approve with conditions (PROCEED_WITH_NOTES), decline "
         "endorsement (DECLINE), or hand the decision to the person (FOR_THE_PERSON). "
         "Write each message as a YAML file in this bundle directory "
@@ -1209,6 +1285,26 @@ def route(
         "This route is the bundle's only final action: there is no answer file and nothing for "
         "the lead to submit. It runs these two commands, so the lead starts you as a general "
         "subagent.",
+    )
+
+
+def pm_route(floor: Floor) -> tuple[str, ...]:
+    """The PM's own keyed route, returned with its key: nothing is read from source."""
+    task, key = floor.opened["update_task_id"], floor.key("PM")
+    send = f"`{COMMAND} committee submit --update {task} --role PM --key {key} --file "
+    send += "<message.yaml>`"
+    return (
+        "Prepare the three members' bundles, then start the three together, each in its own "
+        "session from its bundle, so their stances arrive at once.",
+        "As PM send your own STANCE (the round is blind), then a RULING on each CHALLENGE "
+        "addressed to you (ADOPT, REJECT or FOR_THE_PERSON). Your wait returns `settled` once "
+        "every member has spoken or passed its turn and no challenge stands unruled: give the "
+        "VERDICT then: PROCEED, PROCEED_WITH_NOTES, DECLINE or FOR_THE_PERSON.",
+        f"Write each message as a YAML file (kind, text, positions, targets, reply_to; "
+        f"`{COMMAND} schema show COMMITTEE_SUBMIT` shows every field) and send it with {send}. "
+        f"Follow what is addressed to you with `{COMMAND} committee wait --update {task} "
+        f"--role PM --key {key} --seen <seen>`; read the whole floor with "
+        f"`{COMMAND} committee show --update {task}`.",
     )
 
 

@@ -303,13 +303,13 @@ def export_update_delivery(
             owner = goal_store.listing(
                 limit=1, cursor=None, task_id=request.update_task_id, records=records
             ).get("current_goal")
-            cases = goal_store.rule_cases(
-                str(request.update_task_id),
-                records.get(str(cast(dict[str, object], owner or {}).get("goal_id")), ()),
-            )
+            held = records.get(str(cast(dict[str, object], owner or {}).get("goal_id")), ())
+            task = str(request.update_task_id)
+            cases, audits = goal_store.rule_cases(task, held), goal_store.rule_audits(task, held)
+            kept = goal_store.rule_held(task, held)
         else:
-            cases = floor.rule_cases
-        data_decisions = read_data_decisions(case_tokens=cases)
+            cases, audits, kept = floor.rule_cases, floor.rule_audits, floor.rule_held
+        data_decisions = read_data_decisions(case_tokens=cases, audits=audits, held=kept)
     publication = readback.get("publication")
     subject = {
         "update_task_id": str(request.update_task_id),

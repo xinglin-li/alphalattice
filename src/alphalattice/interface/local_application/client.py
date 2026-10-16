@@ -3207,10 +3207,8 @@ def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, An
 
 
 def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """Wait for what the committee's floor addresses to this member (`for_you`): the revealed
-    stances, a challenge for the PM, a reply or ruling on its own message, or the close.
-
-    Each member moves itself; the lead relays nothing between them.
+    """Wait for what the floor addresses to this member (`for_you`): revealed stances, a
+    challenge for the PM, a reply or ruling on its message, the settled debate or the close.
     """
     document = {
         "operation": "COMMITTEE_READ",
@@ -3225,7 +3223,10 @@ def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> di
         client, read = _read_through_restarts(client, document, deadline)
         body = body if read is None else read
         if read is not None and (
-            outcome_of(body) != "OK" or body.get("for_you") or body.get("stage") == "CLOSED"
+            outcome_of(body) != "OK"
+            or body.get("for_you")
+            or body.get("settled")
+            or body.get("stage") == "CLOSED"
         ):
             return body
         if read is None or not _sleep_before_read(delay, deadline):

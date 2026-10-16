@@ -876,16 +876,24 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
 
 
 def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tmp_path):
-    """A workspace rule authorizes its dated Task, never a closed or unrelated Goal."""
-    from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
+    """A workspace rule authorizes its dated Task, never a closed or unrelated Goal; its audits
+    count against one bound with every approval for the Task and are recorded once admitted."""
+    from alphalattice.control.data_platform.data_decision_rule import (
+        FULL_HISTORY,
+        DataDecisionRule,
+    )
 
     now, task, goal_id = datetime(2026, 10, 2, tzinfo=UTC), UUID(int=8), UUID(int=7)
+    update, first_use = UUID(int=10), UUID(int=11)
     app = GoalApplication(
         GoalStore(tmp_path, "workspace"),
         lambda: now,
         lambda *_: {},
         lambda _: now,
-        {task: ("portfolio_public_watermark_advancement", "RUNNING", None)}.get,
+        {
+            task: ("portfolio_public_watermark_advancement", "RUNNING", None),
+            update: ("workspace_data_update", "RUNNING", None),
+        }.get,
         workspace=tmp_path,
     )
     app.operate(
@@ -902,8 +910,71 @@ def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tm
     app.store.attribute(goal_id, {"task_id": str(task), "operation": "STATUS"})
     assert app.data_rule(task) is None
     app.store.attribute(goal_id, {"task_id": str(task), "operation": "RESEARCH_UPDATE_RUN"})
-    assert app.data_rule(task) is not None
+    decide = app.data_rule(task)
+    assert decide is not None
     assert app.data_rule(UUID(int=9)) is None
+    admitted: list[str] = []
+
+    def admit(rule_hash: str) -> str:
+        admitted.append(rule_hash)
+        return rule_hash
+
+    def refuse(_rule_hash: str) -> str:
+        raise ValueError("data.audit_requirement_unverified")
+
+    def audits(goal: UUID = goal_id) -> list[tuple[str, list[str]]]:
+        rows = app.store.attributed(goal)
+        return [(e["status"], e["listing_ids"]) for e in rows if e.get("operation") == FULL_HISTORY]
+
+    assert decide.audit({"L1": "AAA", "L2": "BBB"}, 100, admit)  # two of a hundred, within 2%
+    with pytest.raises(ValueError, match="audit_requirement_unverified"):
+        decide.audit({"L4": "DDD"}, 1000, refuse)  # written ahead, then marked not admitted
+    assert decide.audit({"L4": "DDD"}, 1000, admit)  # retried, it is approved and counts
+    assert decide.audit({"L1": "AAA"}, 100, admit) is None  # approved already: no second record
+    assert decide.audit({"L3": "CCC"}, 100, admit) is None  # past the bound: refused
+    assert decide.audit({"L9": "ZZZ"}, 10**6, admit) is None  # and the Task stays escalated
+    assert audits() == [
+        ("DECIDED_BY_RULE", ["L1", "L2"]),
+        ("DECIDED_BY_RULE", ["L4"]),
+        ("NOT_ADMITTED", ["L4"]),
+        ("DECIDED_BY_RULE", ["L4"]),
+        ("ESCALATED", ["L3"]),
+    ]
+    assert len(admitted) == 2
+    assert [
+        pair[0] for pair in app.store.rule_audits(str(task), app.store.attributed(goal_id))
+    ] == [
+        "L1",
+        "L2",
+        "L4",
+    ]
+    # Inside an open first use its delegation comes first, even for a data update's run, and its
+    # step names the audit's listings; a record that fails admits nothing.
+    app.operate(
+        Request(operation="GOAL_OPEN", goal_id=first_use, goal_declaration=FIRST_USE),
+        "EXTERNAL_AUTOMATION",
+    )
+    app.store.attribute(first_use, {"task_id": str(update), "operation": "DATA_UPDATE_RUN"})
+    first = app.data_rule(update)
+    attribute = app.store.attribute
+    app.store.attribute = lambda *_: (_ for _ in ()).throw(OSError("locked"))  # type: ignore[method-assign]
+    with pytest.raises(OSError):
+        first.audit({"L6": "FFF"}, 100, admit)
+    app.store.attribute = attribute  # type: ignore[method-assign]
+    assert len(admitted) == 2 and first.audit({"L5": "EEE"}, 470, admit)
+    # An ordinary ex-dividend day on 470 names: six more payers stay within the audits' own
+    # 2% bound; three after them make ten, past it, and are left to the person.
+    assert first.audit({f"P{n}": f"P{n}" for n in range(6)}, 470, admit)
+    assert first.audit({f"Q{n}": f"Q{n}" for n in range(3)}, 470, admit) is None
+    head = app.store.head(first_use)
+    steps = app.record(head)["delegated_steps"]
+    assert [(s["status"], s["symbols"]) for s in steps if s["operation"] == FULL_HISTORY] == [
+        ("DECIDED_BY_RULE", ["EEE"]),
+        ("DECIDED_BY_RULE", [f"P{n}" for n in range(6)]),
+        ("ESCALATED", ["Q0", "Q1", "Q2"]),
+    ]
+    owned = [e for e in app.store.attributed(first_use) if e.get("operation") == FULL_HISTORY]
+    assert {e["authority"] for e in owned} == {"first-use-goal"}
     publish_research_workspace_manifest(
         tmp_path,
         ResearchWorkspaceManifest.create(
@@ -922,3 +993,4 @@ def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tm
         "EXTERNAL_AUTOMATION",
     )
     assert app.data_rule(task) is None
+    assert decide.audit(("L6",), 1000, admit) is None  # its Goal's authority has ended

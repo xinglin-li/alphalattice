@@ -18,7 +18,7 @@ OUTCOMES = {
     "RULING": {"ADOPT", "REJECT", "FOR_THE_PERSON"},
     "VERDICT": {"PROCEED", "PROCEED_WITH_NOTES", "DECLINE", "FOR_THE_PERSON"},
 }
-MESSAGE_KINDS = {"STANCE", "CHALLENGE", "REPLY", "RULING", "VERDICT", "PERSON_ANSWER"}
+MESSAGE_KINDS = {"STANCE", "CHALLENGE", "REPLY", "PASS", "RULING", "VERDICT", "PERSON_ANSWER"}
 REVIEW_WORDS = {
     "REVIEWED": "reviewed",
     "NOT_REVIEWED": "not reviewed",
@@ -416,6 +416,21 @@ def _final_view_fidelity(messages, rows) -> list[str]:
     return problems
 
 
+def _pass_fidelity(messages, rows) -> list[str]:
+    """Each yielded turn reads in the report by its words, with its own text."""
+    return [
+        f"report.pass_missing:{m['role']}:{m['id']}"
+        for m in messages
+        if m["kind"] == "PASS"
+        and not any(
+            r.get("attribution_word") == "{member} passed its discussion turn"
+            and (r.get("attribution_words") or {}).get("message") == m["id"]
+            and r.get("text") == m["text"]
+            for r in rows
+        )
+    ]
+
+
 def _floor_fidelity(messages, rows, page, raw) -> list[str]:
     problems = []
     verdict = next((i for i, m in enumerate(messages) if m["kind"] == "VERDICT"), len(messages))
@@ -568,6 +583,7 @@ def report_fidelity(
         _standing_fidelity(messages, rows, page)
         + _final_view_fidelity(messages, rows)
         + _floor_fidelity(messages, rows, page, raw)
+        + _pass_fidelity(messages, rows)
         + _home_fidelity(closed, home)
         + agenda_findings(
             closed,

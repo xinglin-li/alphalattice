@@ -17,6 +17,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, fields, replace
 from dataclasses import field as dataclass_field
 from datetime import date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from secrets import token_hex
 from typing import Any, Self
@@ -28,7 +29,13 @@ from alphalattice.control.data_platform.contracts import (
     DataRemediationActorSubmission,
     DataRemediationExecutionReceipt,
 )
-from alphalattice.control.data_platform.data_decision_rule import ESCALATE, DataDecisionRule
+from alphalattice.control.data_platform.data_decision_rule import (
+    ESCALATE,
+    RULED_RUNS,
+    DataDecisionRule,
+    held_decisions,
+)
+from alphalattice.control.data_platform.data_decision_rule import audit as audit_rule
 from alphalattice.control.product_host.composition.goal_check import missing_items
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.composition.research_workspace import (
@@ -237,9 +244,8 @@ def open_assignments(entries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
 def conversation_entries(entries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """The goal's conversation: what the product recorded of its Sessions' work, in time order.
 
-    Each request a bound agent Session sent under the goal (bundle preparations and answer
-    submissions among them) is a product fact; so is an accepted answer filed beside it.
-    Messages filed before FLOW-1 stay as they were recorded.
+    Each request a bound Session sent under the goal is a product fact, and so is an accepted
+    answer filed beside it; messages filed before FLOW-1 stay as recorded.
     """
     rows: list[dict[str, Any]] = []
     for number, entry in enumerate(entries):
@@ -269,10 +275,9 @@ def conversation_entries(entries: Sequence[Mapping[str, Any]]) -> list[dict[str,
 def session_usage(entries: Sequence[Mapping[str, object]]) -> list[dict[str, Any]]:
     """Each session's agents with their latest reading by model, without an unproved sum (AU).
 
-    A reading is the cumulative count from one participant's admitted session file; the
-    latest reading replaces the previous one for that participant and model. Parent and
-    child readings have no established disjointness, so they are never added. Where a reading
-    differs from the agent's role card, the bridge that read both says so (``pin_differs``).
+    A reading is one participant's cumulative count from its admitted session file, the latest
+    replacing the previous; parent and child readings are never added. One that differs from
+    its role card says so (``pin_differs``).
     """
     readings: dict[tuple[str, str, str, str], Mapping[str, object]] = {}
     for entry in entries:
@@ -323,16 +328,9 @@ def session_usage(entries: Sequence[Mapping[str, object]]) -> list[dict[str, Any
 class GoalReferenceReadScope:
     """One goal request's verified owner reads, never a cross-request cache.
 
-    A goal can retain two historical references that intentionally name the
-    same owner operation.  Reusing that one response within this request still
-    checks each reference's own sealed identity, so a stale reference remains
-    visible rather than being masked by a cache.
-
-    Entered as a context manager, the scope also bounds the Alpha owner's
-    verified chunk tables to this request: an Alpha task cited directly and
-    again through a saved comparison has its evidence graph read and hashed
-    once per request, while every reference still verifies its own identity
-    and the next request reads afresh.
+    References naming one owner operation reuse its response here, each checking its own
+    sealed identity. As a context manager it bounds the Alpha owner's verified chunk tables to
+    this request: a task cited twice is read once, the next request afresh.
     """
 
     _responses: dict[str, dict[str, Any]] = dataclass_field(default_factory=dict)
@@ -401,11 +399,9 @@ write without its hash applies to the goal's current revision."""
 def completion_template(goal: Goal) -> str:
     """The open goal's completion to fill: the Host's slots prefilled, the judgment left (V419).
 
-    A whole GOAL_SUBMIT request bound to the goal and its revision, so it completes this goal
-    whatever goal the session holds, and a later revision refuses it (V426). Each criterion and
-    deliverable slot by its id, with its words as a comment; the goal's references listed as the
-    evidence to cite. The judgment (the outcome, each criterion's answer, the summary) is a
-    placeholder the contract refuses until it is written, so it is never sent as it stands.
+    A GOAL_SUBMIT bound to the goal's revision (V426): each criterion and deliverable slot by
+    id, its words as a comment, the references to cite; the judgment is a placeholder the
+    contract refuses until written.
 
     Args:
         goal: The goal's head revision.
@@ -649,8 +645,8 @@ class GoalApplication:
     def delegation(self, goal: Goal, operation: str, caller: str) -> str | None:
         """The person's delegation one of the goal's requests acts under, if any (V452, OP19).
 
-        A first-use goal, open and within its hours, delegates its steps (`FIRST_USE_STEPS`) to
-        the agent that runs it; every other step stays the person's, as does every step after.
+        An open first-use goal within its hours delegates its steps (`FIRST_USE_STEPS`) to its
+        agent; every other step, and every step after, stays the person's.
 
         Args:
             goal: The goal the request works for.
@@ -705,12 +701,10 @@ class GoalApplication:
                 continue
             entries = self.store.attributed(goal.goal_id)
             own = [e for e in entries if e.get("task_id") == str(task_id)]
-            if kind == "portfolio_public_watermark_advancement" and any(
-                e.get("operation") == "RESEARCH_UPDATE_RUN" for e in own
-            ):
-                found.append((goal, entries, "workspace-rule-goal"))
-            elif own and self.first_use_open(goal):
+            if own and self.first_use_open(goal):
                 found.append((goal, entries, "first-use-goal"))
+            elif kind in RULED_RUNS and any(e.get("operation") == RULED_RUNS[kind] for e in own):
+                found.append((goal, entries, "workspace-rule-goal"))
         return found[0] if len(found) == 1 else None
 
     def data_rule(self, task_id: UUID) -> Callable[..., Any] | None:
@@ -729,15 +723,18 @@ class GoalApplication:
         recorded = set(index)
         scope_evidence: Any = None
         scope: dict[str, Any] = {}
+        held: dict[Any, str] = {}
+
+        def live() -> Any:
+            head = self.store.head(goal.goal_id)
+            held = head is not None and (
+                self.first_use_open(head) if authority == "first-use-goal" else head.state == "OPEN"
+            )
+            return head if held else None
 
         def decide(case: Any, evidence: Any, _impact: Any, _budget: Any) -> Any:
-            nonlocal scope_evidence, scope
-            current = self.store.head(goal.goal_id)
-            if current is None or not (
-                self.first_use_open(current)
-                if authority == "first-use-goal"
-                else current.state == "OPEN"
-            ):
+            nonlocal scope_evidence, scope, held
+            if (current := live()) is None:
                 return rule.submission(case, ESCALATE, str(goal.goal_id), authority=authority)
             if evidence is not scope_evidence:
                 cases = tuple(
@@ -747,13 +744,24 @@ class GoalApplication:
                     )
                 )
                 scope_evidence = evidence
+                active = panel.active_listing_quarantines(
+                    case.manifest_revision, include_profile_history=True
+                )
+                held = held_decisions(
+                    panel.feature_input_decisions(), rule.rule_hash, {q.listing_id for q in active}
+                )
                 scope = rule.scope(
                     cases,
                     len({item.listing_id for item in evidence}),
-                    (e for e in entries if e.get("task_id") == str(task_id)),
+                    (
+                        e
+                        for e in self.store.attributed(goal.goal_id)
+                        if e.get("task_id") == str(task_id)
+                    ),
+                    held,
                 )
             available = case.case_token in scope["case_tokens"]
-            option = rule.decide(case, evidence, scope)
+            option, status = rule.ruling(case, evidence, scope, held)
             choice = (case.case_token, option, rule.rule_hash)
             if choice not in recorded:
                 self.store.attribute(
@@ -762,7 +770,7 @@ class GoalApplication:
                         "recorded_at": self.clock().isoformat(),
                         "operation": "DATA_ISSUE_CONFIRM",
                         "decided_by": "RULE",
-                        "status": "DECIDED_BY_RULE" if option != ESCALATE else "ESCALATED",
+                        "status": status,
                         "task_id": str(task_id),
                         "delegation": delegation,
                         "goal_hash": current.goal_hash,
@@ -775,7 +783,9 @@ class GoalApplication:
                             k: scope[k]
                             for k in ("case_count", "affected_listing_count", "population_count")
                         },
-                        "escalation_reason": "CASE_CATALOG_UNAVAILABLE"
+                        "escalation_reason": None
+                        if status != "ESCALATED"
+                        else "CASE_CATALOG_UNAVAILABLE"
                         if not available
                         else "RULE_BOUND_EXCEEDED"
                         if scope["capped"]
@@ -785,6 +795,17 @@ class GoalApplication:
                 recorded.add(choice)
             return rule.submission(case, option, str(goal.goal_id), authority=authority)
 
+        own = {"task_id": str(task_id), "delegation": delegation, "authority": authority}
+        decide.audit = partial(  # type: ignore[attr-defined]
+            audit_rule,
+            rule,
+            live,
+            partial(self.store.attributed, goal.goal_id),
+            lambda entry: self.store.attribute(
+                goal.goal_id, {"recorded_at": self.clock().isoformat(), **own, **entry}
+            ),
+            str(task_id),
+        )
         return decide
 
     def resume_decided(
@@ -973,11 +994,10 @@ class GoalApplication:
     ) -> dict[str, object] | None:
         """The person's yes an agent's request relays, held for it before it runs.
 
-        It answers only the decision it was bound to, from the agent session whose goal the
-        request works for, and once: the same words to the same question for the same decision
-        are refused while held or used, naming the nonce with which the person's next yes to it
-        is sent. The Host's clock dates it; `release_relay` gives back one whose decision was
-        refused.
+        It answers only its bound decision, from the session whose goal the request works for,
+        once: the same words to the same question are refused while held or used, naming the
+        nonce for the person's next yes. The Host's clock dates it; `release_relay` gives back
+        one whose decision was refused.
         """
         confirmation = request.person_confirmation
         if confirmation is None or caller == "HUMAN":
@@ -1146,9 +1166,8 @@ class GoalApplication:
     ) -> tuple[ExternalActivityEventDocument, Goal | None, GoalSession | None]:
         """The event with the goal its session holds, looked up once at its first receipt.
 
-        The session is the one the event declares (a native Team's, where the lead and its
-        children speak), else the request's own; a goal the request names must be open, as
-        for any request. The goal is the Host's word: one the producer wrote is replaced.
+        The session is the one the event declares (a native Team's), else the request's own; a
+        goal the request names must be open. The Host's goal replaces any the producer wrote.
         """
         subject = dict(document.subject)
         subject.pop("goal_id", None)
@@ -1266,6 +1285,7 @@ class GoalApplication:
                     "network_enabled",
                     "case_token",
                     "option_id",
+                    "symbols",
                     "delegation",
                     "agent_session",
                 )
@@ -2120,12 +2140,9 @@ class GoalApplication:
     def narrative(self, goal: Goal) -> dict[str, Any]:
         """The saved revision as recorded, without re-verifying its evidence.
 
-        The revision's own content hash was checked when the store loaded it, so the
-        objective, statements and the references' recorded identities are
-        exact. Whether each referenced owner still returns that identity is a separate,
-        slower question: ``GOAL_SHOW`` checks every reference; ``GOAL_REFERENCE`` checks one.
-        Its conversation is complete, so
-        a waiter cannot lose a message when more than the shown window arrives between reads.
+        Its content hash was checked on load, so its recorded identities are exact;
+        ``GOAL_SHOW`` re-checks every reference and ``GOAL_REFERENCE`` one. Its conversation is
+        whole, so a waiter loses no message between reads.
         """
         return {
             "status": "GOAL_NARRATIVE",

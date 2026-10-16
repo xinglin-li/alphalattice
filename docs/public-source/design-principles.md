@@ -50,7 +50,7 @@ In the investment committee, members refer to figures by the aliases the floor s
 
 **Judgment is argued, not averaged.** The committee is built so that disagreement surfaces instead of blending away:
 - the first round is blind: each member's stance stays hidden until all four are in or the time box ends, so no one anchors on another;
-- after its stance, each specialist has three challenges or replies, so they go to what matters most;
+- after its stance, each specialist takes one turn, speaking or passing, with three challenges or replies in all, so they go to what matters most and the floor settles once every member has spoken or passed;
 - the portfolio manager rules on every challenge, adopting it, rejecting it or handing it to the person, whose own words are relayed;
 - the floor closes at its time box, whoever is silent;
 - the chief risk officer's standing dissent goes into the delivery report in its own words, beside the verdict.

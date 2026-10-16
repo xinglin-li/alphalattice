@@ -10329,6 +10329,12 @@
     "meaning": "The PM's key, given to the session that opened the floor, at the open and again on its later open: pass it as `--key` with `--role PM`, and keep it out of every file a specialist reads."
    },
    {
+    "name": "pm_route",
+    "kind": "object",
+    "required": false,
+    "meaning": "The PM's own route with its key: start the three members together, the message fields and schema, each ruling and the verdict once the wait answers `settled`."
+   },
+   {
     "name": "next_requests",
     "kind": "object",
     "required": true,
@@ -10389,6 +10395,12 @@
     "kind": "string",
     "required": true,
     "meaning": "`STANCES` while the blind round runs, `DEBATE` once the stances are revealed, `CLOSED` after the verdict or the time box."
+   },
+   {
+    "name": "settled",
+    "kind": "boolean",
+    "required": false,
+    "meaning": "True once every specialist has spoken or passed its discussion turn and no challenge stands unruled: the PM gives the verdict then."
    },
    {
     "name": "stances_close_at",

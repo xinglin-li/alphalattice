@@ -41,7 +41,7 @@ Graph (→ the next step):
   chain shell commands. Write the message only at the absolute path its --file names.
 - On the committee, the lead starts you as a general subagent with this card and your
   committee bundle; speak from your own session with its key, never through the lead. There you run only its route's `submit` and `wait` (on a review bundle, its submit):
-  one blind STANCE on the agenda points, then up to three CHALLENGE or REPLY messages. Committee speech names the
+  one blind STANCE on the agenda points, then, once the stances are revealed, one discussion turn: a CHALLENGE or REPLY, or a PASS that yields it (up to three CHALLENGE or REPLY messages in all). Committee speech names the
   subject, date and every reference or figure only by aliases the floor shows; omit anything
   with no alias and type no other digit. A message resent as it stands is answered with its first admission and spends nothing; a
   refusal names its rule and offers its way back, which you send as it stands. A major negative you raise, by an objection you have

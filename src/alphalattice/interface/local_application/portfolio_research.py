@@ -124,16 +124,16 @@ class CommitteeMessage(BaseModel):  # type: ignore[misc]
     """One message a committee member sends to its floor (`committee submit`)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    kind: Literal["STANCE", "CHALLENGE", "REPLY", "RULING", "VERDICT", "PERSON_ANSWER"]
-    """STANCE (the blind first round), CHALLENGE, REPLY; the PM's RULING, VERDICT and the
-    person's answer to an item the PM handed them (PERSON_ANSWER)."""
+    kind: Literal["STANCE", "CHALLENGE", "REPLY", "PASS", "RULING", "VERDICT", "PERSON_ANSWER"]
+    """STANCE (blind first round), CHALLENGE, REPLY, PASS (a yielded turn); the PM's RULING,
+    VERDICT, the person's answer to what the PM handed them (PERSON_ANSWER)."""
     text: str = Field(min_length=1, max_length=4000)
-    """Its words; a holding or tension point is named by its alias (H3, T2), never a number."""
+    """Its words; a holding or point goes by its alias (H3, T2), never a number."""
     targets: tuple[str, ...] = Field(default=(), max_length=16)
     """The tension points (T1), holdings (H3) or messages (M4) it is about."""
     reply_to: str | None = Field(default=None, pattern=r"^M[0-9]{1,4}$")
     """The message it answers, which a REPLY (any message), a RULING (a challenge not yet
-    ruled) and a PERSON_ANSWER (an item the PM handed the person) name, and no other kind."""
+    ruled) and a PERSON_ANSWER (an item the PM handed the person) name; no other kind."""
     positions: dict[str, Literal["SUPPORT", "OBJECT", "RESERVE"]] = Field(
         default_factory=dict, max_length=32
     )
@@ -144,7 +144,7 @@ class CommitteeMessage(BaseModel):  # type: ignore[misc]
     ) = None
     """Required of a RULING (ADOPT, REJECT, FOR_THE_PERSON) and the VERDICT (PROCEED,
     PROCEED_WITH_NOTES, DECLINE, FOR_THE_PERSON); other kinds take none. A wrong shape is
-    refused with its corrected message."""
+    refused with its correction."""
 
 
 type PortfolioResearchOperation = Literal[

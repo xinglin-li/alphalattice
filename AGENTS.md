@@ -172,12 +172,14 @@ and what the committee hands on; its dates are in the CRO's process fact. The op
 key is in its own bundle. Each specialist
 moves itself: it submits, then waits for what is addressed to it. Keep `alphalattice committee
 wait --update <task> --role PM --key <key>` running in the background and rule
-each challenge as it arrives (ADOPT, REJECT or FOR_THE_PERSON), then give the
-verdict; the floor refuses a verdict while a challenge stands unruled and offers its
+each challenge as it arrives (ADOPT, REJECT or FOR_THE_PERSON); the wait answers
+`settled` once every specialist has spoken or passed its turn and no challenge stands
+unruled, and then you give the verdict; the floor refuses a verdict while a challenge stands unruled and offers its
 ruling to fill. VERDICT may PROCEED, PROCEED_WITH_NOTES, DECLINE endorsement of action on
 the positions, or FOR_THE_PERSON; DECLINE closes the discussion and preserves the research
-record and positions. The stances are blind until all four are in, each specialist has three
-challenges or replies after its stance, and the floor closes at its time box
+record and positions. The stances are blind until all four are in; after the reveal each
+specialist takes one discussion turn, a CHALLENGE or REPLY or a PASS that yields it, with three
+challenges or replies in all, and the floor closes at its time box
 whoever is silent. Messages name holdings, points, components and messages by alias
 and type no other digit. A refused message names the rule it broke and, where only its
 shape or a typed holding name is wrong, offers the same message corrected: send that as

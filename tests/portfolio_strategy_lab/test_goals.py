@@ -2162,9 +2162,15 @@ def test_dated_goal_lookup_shares_records_and_bounds_rule_disclosure(goal_app):
                 "delegation": delegation,
             },
         )
+    # An audit the rule approved carries no case: case readers skip it, audit readers take it.
+    audit = {"operation": "FULL_HISTORY_AUDIT", "decided_by": "RULE", "status": "DECIDED_BY_RULE"}
+    app.store.attribute(
+        goal, {**audit, "task_id": task, "listing_ids": ["L1"], "rule_hash": "r", "audit_id": "x"}
+    )
     records = {}
     answer = app.store.listing(limit=1, cursor=None, task_id=task, records=records)
     assert answer["current_goal"]["goal_id"] == str(goal)
     assert app.store.rule_cases(task, records[str(goal)]) == frozenset(("a" * 64, "c" * 64))
+    assert app.store.rule_audits(task, records[str(goal)]) == (("L1", "r"),)
     absent = app.store.listing(limit=1, cursor=None, task_id=UUID(int=34), records={})
     assert absent["current_goal"] is None
