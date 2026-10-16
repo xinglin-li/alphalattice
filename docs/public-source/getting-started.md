@@ -5,7 +5,7 @@ Give your agent the repository link and one research intent. It installs
 AlphaLattice and continues in the same session. The
 [setup procedure](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch)
 covers locked Python 3.12 and uv dependencies, the editable checkout or installed
-wheel, and Local Web. Windows is verified; macOS and Linux are unverified.
+wheel, and Local Web. The [README](../../README.md) states the scope of platform checks.
 
 ## Prerequisites by system
 
@@ -23,8 +23,12 @@ names any missing under `system_libraries`, and your agent asks you once before 
 
 Your sentence becomes the first-use goal's unchanged objective. Its delegation
 lasts 24 hours from opening: the agent handles the admitted preparation and
-activates the book, telling you each act. Submission, abandonment
-or expiry ends it. The [agent guide](../../AGENTS.md) owns the flow and sole
+activates the book, telling you each act. Accepted submission, abandonment
+or expiry ends that delegation. At the start, the agent asks once whether the
+network may stay on for daily market updates and SEC filings within the default
+budget, in the [exact consent words](privacy.md#workspace-network-and-consent).
+Your relayed yes is your continuing setting until you say stop; it survives the
+24-hour delegation and is disclosed on admitted network steps and in activity. The [agent guide](../../AGENTS.md) owns the flow and sole
 list of [person decisions](../../AGENTS.md#what-only-a-person-decides).
 
 Follow Tasks, results and review in the Workbench. Deactivate the book on
@@ -41,8 +45,11 @@ Workspace network access starts closed, and `ALPHALATTICE_NETWORK_DISABLED=1`
 keeps the process offline even when its workspace setting allows access.
 Research calculations are held offline. An admitted preparation answer's offered
 confirmation is sent; network access becomes a step only when a refusal names it.
-The agent takes that step under the first-use delegation; outside it, you decide
-in **Settings**.
+A first-use delegation can authorize that step only while its terms hold and
+never replaces your own network setting. Your separate daily-network yes stays
+in force until revoked. Say "Turn AlphaLattice's network off" to your agent, or
+turn it off in **Settings**; this also stops new SEC acquisition. A data update
+already fetching finishes its current stage unless its Task is cancelled.
 
 ## Measured preparation and CPU budget
 

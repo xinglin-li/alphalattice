@@ -24,6 +24,7 @@ The envelope carries `operation`, `outcome`, `status`, `data`, `failure_code`,
 `detail`, `next_requests`, `next_commands`, `next_templates`, timing and context.
 When observed, `session_launches` counts this session's CLI launches, including
 help and schema reads. `data` contains the owner answer or its display projection.
+An admitted network step also carries `network_use`: `under` names whose setting allowed it and `words` is its disclosure. The same permission source is kept in activity, including automated updates.
 A refusal names the code, explanation and permitted continuation. Keep its
 references and follow that continuation.
 
@@ -81,6 +82,18 @@ Authored identifiers, paths and commands stay whole. `--view full`, `--output`
 and `--from` retain whole references. Run returned PowerShell commands as printed,
 including quoting and the call operator; requests with double quotes use JSON
 through stdin to `request --file -`.
+
+## Dates and network permission
+
+```powershell
+alphalattice research-update plan --package <package> --date <date> --output update-plan.json
+```
+
+`--date` names the entry session for the positions, not the formation session or the last downloaded date. A non-refused plan answer carries `positions_for.trade_date`, `positions_for.as_of_session`, `positions_for.as_of_close_at` and its `reading`: positions entered at that session's open are decided at the preceding session's close. Without `--date`, the plan uses the next session after the latest completed formation close. Invalid or unavailable dates return their own refusal and offered way on; `--date` and `--through` cannot be combined.
+
+`alphalattice network show` reads the effective control. `alphalattice network set --enabled true` and `alphalattice network set --enabled false` change it under the person's decision or a valid first-use delegation. A person's setting wins over a delegation; the operator's offline switch and a research run's offline hold win over either.
+
+For the one daily-network question, the agent relays the person's yes through `network set --enabled true` and `evidence-consent set --per-issuer 3`, using `--person-said` and `--asked` for their words and the question. This authorizes the stated daily updates and default SEC budget until the person says stop. `alphalattice evidence-consent show` reads the source budget; `alphalattice evidence-consent set --per-issuer 10` changes it with the required authority. Omitted `--documents` and `--bytes` retain the current total bounds; a wider budget needs the person's decision. See [network consent and revocation](privacy.md#workspace-network-and-consent).
 
 ## Waits, document limits and units
 

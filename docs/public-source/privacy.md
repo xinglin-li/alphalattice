@@ -3,6 +3,18 @@ Date: 2026-10-08
 
 The workspace Host reads usage facts from this machine's Claude Code or Codex files for Sessions bound to the workspace. It keeps response IDs, models, recorded effort, token counts and timestamps, including first and last times. Conversation text, prompts, tool bodies, private reasoning and file paths are discarded.
 
+## Workspace network and consent
+
+At first use, your agent asks once, in the product's exact words:
+
+> May AlphaLattice keep this workspace's network on for your daily updates, to fetch new market data and SEC filings within the default budget (3 per issuer, 600 documents and 3 GB overall), until you tell me to stop? I'll say in one line each time it's used.
+
+Your relayed yes sets the workspace network and the default SEC acquisition consent. It is your own continuing permission, separate from the first-use goal's 24-hour delegation. The delegation never overwrites your network setting, including a setting that keeps it off. A research run's offline hold and the operator's offline switch still take precedence.
+
+An admitted network step reports `network_use`, with `under` naming whose setting allowed it and `words` giving the one-line disclosure. Activity records the same permission source, including for automated updates.
+
+Say "Turn AlphaLattice's network off" to your agent, or turn it off in **Settings**. Your stop also blocks SEC acquisition before its next request; a data update already fetching finishes its current stage unless its Task is cancelled. A delegation cannot reopen your setting after that stop. A later change needs your decision again. Earlier inputs, Evidence and activity records remain available. Source and model terms are in [Downloads and data terms](third-party-and-data.md).
+
 ## Files and readings
 
 | Host | Admitted session root |
@@ -10,11 +22,11 @@ The workspace Host reads usage facts from this machine's Claude Code or Codex fi
 | Claude Code | `~/.claude/projects/` or `CLAUDE_CONFIG_DIR/projects/` |
 | Codex | `~/.codex/sessions/` or `CODEX_HOME/sessions/` |
 
-Research requires no product hook. The reader opens the bound Session's file and its admitted product specialists: Codex records child threads in the lead's rollout; Claude uses `subagents/agent-<id>.jsonl` beneath the lead's session directory. A child's metadata must name that lead and an admitted specialist role. General helpers, including specialists started from card text in the installing session, are not read. Other Sessions, symlinks, non-files, ambiguous parents, wrong Session names and paths outside the resolved root are refused.
+Research requires no product hook. The reader opens the bound Session's file and its directly linked children: Codex records child threads in the lead's rollout; Claude uses `subagents/agent-<id>.jsonl` beneath the lead's session directory. A child's metadata must name that direct parent; specialist-role verification remains separate from reading its usage. Other Sessions, symlinks, non-files, ambiguous parents, wrong Session names and paths outside the resolved root are refused.
 
 Reads occur when a goal is taken or submitted, an answer is submitted, a Team or Goal page opens, or `alphalattice session usage` asks. There is no timer; a Session is read at most once in ten seconds. Reading failures are named and do not stop research.
 
-Supported formats were checked against Codex CLI 0.162.0-alpha.2 and Claude Code 2.1.293 on 2026-10-07. Unknown or changed records remain unavailable. Facts include uncached input, cache reads and writes, output, model, source and source time. Repeated Claude response blocks count once using later counts; Codex input subtracts cached tokens. Each participant retains its latest cumulative snapshot per model. Missing or impossible counts stay unknown; parent and child totals are combined only with proof they do not overlap. Observed settings may be compared with role-card settings. Accepted answers record the submitting lead; the author remains unobserved. Usage establishes neither billing, trust nor research success.
+Supported formats were checked against Codex CLI 0.162.0-alpha.2 and Claude Code 2.1.293 on 2026-10-07. Unknown or changed records remain unavailable. Facts include uncached input, cache reads and writes, output, model, source and source time. Repeated Claude response blocks count once using later counts; Codex input subtracts cached tokens. Each participant retains its latest cumulative snapshot per model. Missing or impossible counts stay unknown; parent and child totals are combined only with proof they do not overlap. Observed settings may be compared with role-card settings. Keyed Analyst and CRO answers record the submitting member Session; that record and usage do not independently authenticate its author. Usage establishes neither billing, trust nor research success.
 
 ## Privacy controls
 

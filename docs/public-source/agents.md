@@ -27,6 +27,8 @@ standing fields: `comparison`, `execution`, `contract`, `evidence` and
 establishes no scientific correctness or activation. [Research flows](research-flows.md)
 covers prerequisites and claims. [Extending](extending.md) covers trials and activation.
 
+In the committee, initial stances stay blind until they are revealed. Each specialist then uses its discussion turn with a `CHALLENGE` or `REPLY`, or yields it with `PASS`. A pass names no target or position and ends that specialist's participation. The existing cap is three challenges or replies per specialist in all; a pass does not count toward it. The portfolio manager rules on every challenge. The floor is settled once every specialist has spoken or passed and no challenge remains unruled; the portfolio manager can then give the verdict. A time-box close can still leave a member unaddressed. Committee judgment changes no position number.
+
 ## Goals and Team
 
 **Goals** records the objective, criteria, deliverables, bounds and unresolved

@@ -111,8 +111,9 @@ historical source availability alongside the performance.
   network, set up Evidence within the default budget and activate the strategy's
   completed book. It reports each act.
 - **When permission ends.** It ends when the goal's submission is accepted,
-  when the goal is abandoned or when the 24 hours expire. The network access
-  opened under that permission ends with it. Your agent asks once, at the
+  when the goal is abandoned or when the 24 hours expire. Network access opened
+  only under that delegation ends with it; your separate daily-network yes is
+  your own setting, which the delegation cannot overwrite. Your agent asks once, at the
   start, whether daily updates may keep the network on for new market data and
   SEC filings within the default budget. Your yes stays until you tell it to
   stop, which also stops SEC acquisition. Each step that uses the network says
