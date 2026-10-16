@@ -140,6 +140,7 @@ def target_sessions(
     here: tzinfo | None = None,
     *,
     for_preparation: bool = False,
+    held: bool = True,
 ) -> dict[str, object]:
     """The sessions a named date's positions stand on, and when their information is available.
 
@@ -152,6 +153,8 @@ def target_sessions(
         now: The clock the reading is told against; the current time when omitted.
         here: The reader's zone; the machine's when omitted.
         for_preparation: Check entry admission, using the Host's clock only when supplied.
+        held: Whether the Host holds the update until then (a first use) or nothing runs until
+            the plan is sent again (a daily plan).
 
     Returns:
         The named date, whether it is a session, the entry session (the first common XNYS/XNAS
@@ -200,9 +203,14 @@ def target_sessions(
             else {
                 "reading": f"The {point.entry_session} positions are decided at the "
                 f"{point.formation_session} close; its data is ready after about "
-                f"{exchange:%H:%M} ET{yours}. Preparing now: the Host finishes the update itself "
-                "then, and your goal wait wakes when it ends. If the Host is not running then, "
-                "serving it again runs the update at its start."
+                f"{exchange:%H:%M} ET{yours}. "
+                + (
+                    "Preparing now: the Host finishes the update itself then, and your goal wait "
+                    "wakes when it ends. If the Host is not running then, serving it again runs "
+                    "the update at its start."
+                    if held
+                    else "Nothing runs before then: send the offered plan again after that time."
+                )
             }
         ),
     }

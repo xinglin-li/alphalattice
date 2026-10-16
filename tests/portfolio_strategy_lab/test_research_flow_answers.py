@@ -645,11 +645,9 @@ def test_a_provider_that_limits_or_changes_its_interface_is_worded_with_the_way_
     assert timeout["status"] == "REFUSED" and timeout["failure_code"] == "data.provider_timeout"
     assert timeout["detail"] and "retry_after_at" not in timeout["detail"], timeout
     assert "retry_after_at" not in timeout and "next_requests" not in timeout, timeout
-    for code in (
-        "data.provider_fetch_failed",
-        "data.listing_updates_incomplete",
-    ):
-        assert "interface" in explain(code)["detail"], code
+    assert "interface" in explain("data.provider_fetch_failed")["detail"]
+    # Any failed listing refresh records it, so the guardian words it, not as an interface.
+    assert "detail" not in explain("data.listing_updates_incomplete")
     resume = {"operation": "WORKSPACE_PREPARE_CONFIRM", "preparation_plan_hash": "a" * 64}
     first = deferral(
         {"status": "DEFERRED", "next_requests": {}},
@@ -792,6 +790,64 @@ def test_automation_uses_durable_settings_and_sequential_wakes(tmp_path):
         assert not reached.wait(0.3) and calls == ["RESEARCH_UPDATE_PLAN"] * 4
     finally:
         assert second.close(timeout=None)
+
+
+def test_a_named_date_is_never_answered_with_another_dates_plan():
+    """requirement (one meaning for a date): a named trade date plans through the close before it
+    and names it; an update on its way for another date refuses it with its Task's way on."""
+    from alphalattice.control.product_host.composition.research_update_automation import (
+        dated_plan,
+    )
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest as Request,
+    )
+
+    in_flight: list[tuple[str, str]] = []
+    now = [datetime(2026, 9, 11, 1, tzinfo=UTC)]
+
+    def plan(package, through):
+        if now[0].day == 10:  # the 09-10 close has not settled
+            raise ValueError("research_update.target_not_completed")
+        if in_flight:
+            owner = {"task_id": "t", "lifecycle": in_flight[0][1]}
+            return {"status": "PLANNED", "target_session": in_flight[0][0], "in_flight": owner}
+        target = (through or date(2026, 9, 10)).isoformat()
+        return {"status": "PLANNED", "target_session": target, "update_plan_hash": "a" * 64}
+
+    def ask(**fields):
+        request = Request(operation="RESEARCH_UPDATE_PLAN", strategy_package_id="p", **fields)
+        return dated_plan(plan, request, now[0])
+
+    named = ask(positions_date="2026-09-10")["positions_for"]
+    assert (named["trade_date"], named["as_of_session"]) == ("2026-09-10", "2026-09-09")
+    assert ask()["positions_for"]["trade_date"] == "2026-09-11"  # undated: the next session
+    in_flight.append(("2026-09-08", "DEFERRED"))  # an earlier close's update, on its way
+    behind = ask(positions_date="2026-09-10")
+    assert behind["failure_code"] == "research_update.date_behind_update:2026-09-08"
+    assert behind["next_requests"]["task"] == {"operation": "STATUS", "task_id": "t"}
+    assert behind["next_requests"]["plan"]["positions_date"] == "2026-09-10"
+    in_flight[0] = ("2026-09-10", "RECOVERY_REQUIRED")  # a later close's update owns the date
+    before = ask(positions_date="2026-09-10")
+    assert before["failure_code"] == "research_update.date_before_update:2026-09-10"
+    assert before["next_requests"]["task"]["operation"] == "TASK_RECOVERY"
+    assert "plan" not in before["next_requests"]
+    in_flight.clear()
+    now[0] = datetime(2026, 9, 10, 20, tzinfo=UTC)  # 16:00 ET, before the 09-10 close settles
+    early = ask(positions_date="2026-09-11")
+    assert "Host finishes" not in early["reading"] and early["next_requests"]["plan"]
+    now[0] = datetime(2026, 9, 11, 1, tzinfo=UTC)
+    for date_asked, code in (
+        ("2026-09-25", "research_update.date_after_clock:2026-09-11"),
+        ("2026-09-05", "research_update.date_not_session:2026-09-08"),
+        ("2026-02-30", "research_update.date_invalid"),
+    ):
+        assert ask(positions_date=date_asked)["failure_code"] == code
+    both = ask(positions_date="2026-09-10", observed_through="2026-09-09")
+    assert both["next_requests"]["plan"] == {
+        "operation": "RESEARCH_UPDATE_PLAN",
+        "strategy_package_id": "p",
+        "positions_date": "2026-09-10",
+    }
 
 
 def test_a_held_dated_update_runs_once_at_its_time_without_the_daily_setting(tmp_path):

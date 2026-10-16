@@ -35,7 +35,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
-from alphalattice.control.guanyin.data.workspace_maintenance import maintenance_failure_detail
+from alphalattice.control.guanyin.data.workspace_maintenance import (
+    maintenance_failure_detail,
+    maintenance_words,
+)
 from alphalattice.control.guanyin.tasks.supervision import IncidentRecord
 from alphalattice.control.observation_runtime.guardian import (
     GuardianHealth,
@@ -331,14 +334,30 @@ def _with_hash(model, values: dict[str, object], field: str):  # type: ignore[no
     return model(**values, **{field: canonical_hash(identity)})
 
 
+def _owner_words(code: str) -> str | None:
+    """A stop code's words from its owners, the most actionable first, whatever the Task kind.
+
+    The door's words for a data or Feature code, then the Host's (`explain`), which name the way
+    on, then the maintenance guardian's, which name the stop: a stop reads its owner's words
+    wherever it stopped, never words for one kind and the governed fallback for another (V504:
+    RR5's book read the bare code).
+    """
+    worded = (
+        (refusal_words(code).get("detail") if code.startswith(("data.", "feature.")) else None)
+        or explain(code).get("detail")
+        or maintenance_words(code)
+    )
+    return worded if isinstance(worded, str) and worded else None
+
+
 def stop_detail(task_kind: str, code: str, source: str) -> str:
     """A bounded, user-safe explanation of one recorded stop code.
 
-    Task Control's own codes and this Host's worker codes are explained here; the
-    data Tasks' codes by the workspace-maintenance guardian that already owns
-    them. Anything else is stated as what it is: the owner's typed code, with no
-    retry implied. A code without installed words stays in the code field; it is never
-    substituted for the person's explanation.
+    Task Control's own codes and this Host's worker codes are explained here; every other
+    code by its owners' words whatever the Task kind (`_owner_words`). Anything else is
+    stated as what it is: the owner's typed code, with no retry implied. A code without
+    installed words stays in the code field; it is never substituted for the person's
+    explanation.
     """
     if code == "task_control.child_start_failed":
         return refusal_words(code)["detail"]
@@ -416,16 +435,10 @@ def stop_detail(task_kind: str, code: str, source: str) -> str:
             "This Host's command stopped outside Task Control with the recorded failure "
             "class; the Task's own lifecycle is the authority on what it may do next."
         )
-    if task_kind in _DATA_KINDS:
-        return (
-            (refusal_words(code).get("detail") if code.startswith(("data.", "feature.")) else None)
-            or maintenance_failure_detail(code)
-        )[:STOP_WORDS_BOUND]
-    # An owner that words its code says what holds and the way on, which a Task stopped on it
-    # reads here too, not only a refused request (V504: RR5's book read the bare code).
-    worded = explain(code).get("detail")
-    if isinstance(worded, str) and worded:
+    if (worded := _owner_words(code)) is not None:
         return worded[:STOP_WORDS_BOUND]
+    if task_kind in _DATA_KINDS:
+        return maintenance_failure_detail(code)[:STOP_WORDS_BOUND]
     return (
         "The Task stopped at a governed boundary whose reason has no installed explanation. "
         "Nothing was retried, and its verified stages are kept as recorded. Read its recovery "

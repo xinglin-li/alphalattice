@@ -414,8 +414,11 @@ SKILL_COMMANDS: tuple[RoleCommand, ...] = (
         ("--update",),
     ),
     RoleCommand(
-        'research-update plan --package <package> --output "<out>/research-update-plan.json"',
-        "Plans the strategy's next sessions and offers `run`.",
+        "research-update plan --package <package> --date <date> --output "
+        '"<out>/research-update-plan.json"',
+        "Plans the update for a date's positions, entered on that trade date and decided at the "
+        "close before it; without `--date`, the next session's. Offers `run`.",
+        ("--date",),
     ),
     RoleCommand(
         'research-update run --from "<out>/research-update-plan.json" --wait',

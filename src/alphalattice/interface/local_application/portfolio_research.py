@@ -20,7 +20,6 @@ them.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from datetime import date, datetime
@@ -38,6 +37,7 @@ from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceAnalystAnswer,
     EvidenceTopic,
 )
+from alphalattice.interface.local_application.portfolio_export import PortfolioExportManifest
 from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
     WatermarkAdvancementProgram,
     WatermarkAdvancementReceipt,
@@ -569,6 +569,8 @@ class PortfolioResearchOperationRequest:
     calibration_plan_hash: str | None = None
     prepared_input_hash: str | None = None
     observed_through: str | None = None
+    positions_date: str | None = None
+    """The trade date whose positions an update is planned for; its as-of is the close before."""
     formation_session: str | None = None
     automation_enabled: bool | None = None
     network_enabled: bool | None = None
@@ -1154,7 +1156,7 @@ class PortfolioResearchOperationRequest:
             ),
             "RESEARCH_UPDATE_PLAN": (
                 frozenset({"strategy_package_id"}),
-                frozenset({"strategy_package_id", "observed_through"}),
+                frozenset({"strategy_package_id", "observed_through", "positions_date"}),
             ),
             "RESEARCH_UPDATE_RUN": (
                 frozenset({"update_plan_hash"}),
@@ -1764,6 +1766,9 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """The prepared input a Portfolio update reads, by its hash."""
     observed_through: str | None = None
     """The last session the update observes, as YYYY-MM-DD."""
+    positions_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    """The trade date whose positions the update is for, as YYYY-MM-DD; decided at the close
+    before it."""
     formation_session: str | None = None
     """The session the scores are formed on, as YYYY-MM-DD."""
     automation_enabled: bool | None = Field(default=None, strict=True)
@@ -2125,58 +2130,6 @@ class FinalizationStatusProjection:
     released_result_hash: str | None = None
     released_report_hash: str | None = None
     closure: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class PortfolioExportManifest:
-    """One compact record of what was asked, what answered, and how to ask again.
-
-    The command needs the workspace's folder and the spec, saved from ``spec_document``, and
-    nothing else. The predecessor's root/hash argument list is deliberately not restored: a
-    hash on a command line is an identity being replayed as an authority, and the compiler
-    never saw it.
-    """
-
-    workspace_id: str
-    spec_hash: str
-    holdings_spec_hash: str
-    program_hash: str
-    numerical_input_assembly_hash: str | None
-    result_hash: str
-    execution_ledger_hash: str
-    economic_ledger_hash: str
-    report_hash: str
-    authorities_hash: str | None
-    originating_task_id: str | None
-    execution_mode: str
-    controls: tuple[tuple[str, str], ...]
-    command: str
-    spec_document: dict[str, object]
-
-    def as_json(self) -> str:
-        """Serialize the manifest with stable keys and readable indentation."""
-        return json.dumps(
-            {
-                "kind": "PortfolioExportManifest",
-                "workspace_id": self.workspace_id,
-                "spec_hash": self.spec_hash,
-                "holdings_spec_hash": self.holdings_spec_hash,
-                "program_hash": self.program_hash,
-                "numerical_input_assembly_hash": self.numerical_input_assembly_hash,
-                "result_hash": self.result_hash,
-                "execution_ledger_hash": self.execution_ledger_hash,
-                "economic_ledger_hash": self.economic_ledger_hash,
-                "report_hash": self.report_hash,
-                "authorities_hash": self.authorities_hash,
-                "originating_task_id": self.originating_task_id,
-                "execution_mode": self.execution_mode,
-                "controls": [list(pair) for pair in self.controls],
-                "command": self.command,
-                "spec": self.spec_document,
-            },
-            indent=2,
-            sort_keys=True,
-        )
 
 
 class PortfolioFreezePort(Protocol):

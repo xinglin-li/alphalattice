@@ -811,7 +811,8 @@ GRAMMAR: Final[dict[str, Command]] = {
         "research-update",
         "plan",
         "Plans a research update bringing data, scores, calibration and the book to the latest "
-        "completed session.",
+        "completed session, or to the close before --date, the trade date whose positions it "
+        "yields.",
     ),
     "RESEARCH_UPDATE_READBACK": Command(
         "research-update",
@@ -1081,6 +1082,7 @@ FLAGS: Final[dict[str, str]] = {
     "evidence_total_bytes": "bytes",
     "evidence_setup": "setup",
     "observed_through": "through",
+    "positions_date": "date",
     "origin_task_id": "origin",
     "person_confirmation": "person-said",
     "portfolio_session": "session",

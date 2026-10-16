@@ -45,7 +45,7 @@ Each command's exact form; the [Command contract](references/operating.md) cover
 - `alphalattice bundle prepare --role ALPHA --task <task> --dir "<out>/committee/alpha"`: A specialist's bundle; on a date's update, its view of the positions and the floor.
 - `alphalattice committee wait --update <task> --role PM --key <key>`: Waits, as one member, for what the floor addresses to it, or its close.
 - `alphalattice committee show --update <task> --output "<out>/committee/floor.json"`: The floor: its stage, members, agenda points, below-line points, messages and, once closed, the report.
-- `alphalattice research-update plan --package <package> --output "<out>/research-update-plan.json"`: Plans the strategy's next sessions and offers `run`.
+- `alphalattice research-update plan --package <package> --date <date> --output "<out>/research-update-plan.json"`: Plans the update for a date's positions, entered on that trade date and decided at the close before it; without `--date`, the next session's. Offers `run`.
 - `alphalattice research-update run --from "<out>/research-update-plan.json" --wait`: Runs the saved plan, or resumes or reuses the same update.
 - `alphalattice research-update show --task <task>`: The update's published positions, their dates and claim.
 - `alphalattice study controls --input <input> --save-declaration "<out>/study.yaml"`: A new study's declaration to edit: Factor, or the kind --kind names.

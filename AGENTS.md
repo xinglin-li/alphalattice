@@ -202,7 +202,13 @@ the offer's `review_holdings`: the book's last sealed holdings, not next positio
 Before activating, read `strategy_dates.information_cutoff` and the conditional
 `strategy_dates.first_actionable_session`. Activation admits the first update in
 the same act, for the first use's date while its goal is open: follow it at once,
-then review its published positions on their own publication. Hold positions only
+then review its published positions on their own publication. For a date the
+person names, plan `research-update plan --package <package> --date <date>`: as
+in the first use, the date is the trade date its positions are entered on, decided
+at the close before it, and the plan's `positions_for` names that date. With no
+date it plans the latest settled close (about two hours after the close), whose
+positions are the next session's, so tomorrow's positions after today's settled
+close need no other request. Hold positions only
 from the first actionable session; sessions before it are a causal replay, inside
 the research window where marked. Report each position with its basis, dates and
 the publication's `claim`

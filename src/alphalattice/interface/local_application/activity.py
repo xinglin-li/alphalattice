@@ -236,6 +236,7 @@ SUBJECT_FIELDS: tuple[str, ...] = (
     "origin_task_id",
     "portfolio_session",
     "position_basis",
+    "positions_date",
     "prepared_input_hash",
     "preparation_plan_hash",
     "research_input_id",

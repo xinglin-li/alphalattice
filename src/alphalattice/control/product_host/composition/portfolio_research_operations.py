@@ -112,6 +112,7 @@ from alphalattice.control.product_host.composition.research_experiments import (
 from alphalattice.control.product_host.composition.research_history import ResearchHistory
 from alphalattice.control.product_host.composition.research_update_automation import (
     ResearchUpdateAutomation,
+    dated_plan,
     first_update,
     resume_held,
 )
@@ -1653,13 +1654,8 @@ class PortfolioResearchOperations:
                     if self.research_updates is None:
                         raise ValueError("research_update.not_installed")
                     if request.operation == "RESEARCH_UPDATE_PLAN":
-                        assert request.strategy_package_id is not None
-                        return self.research_updates.plan(
-                            request.strategy_package_id,
-                            None
-                            if request.observed_through is None
-                            else date.fromisoformat(request.observed_through),
-                        )
+                        plan, now = self.research_updates.plan, self.dispatcher.clock()
+                        return dated_plan(plan, request, now)
                     if request.operation == "RESEARCH_UPDATE_READBACK":
                         chosen = self._strategy_task(request)
                         if isinstance(chosen, dict):

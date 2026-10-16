@@ -7,7 +7,7 @@ available, held until then and run once.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import replace
 from datetime import date, datetime, timedelta
@@ -22,7 +22,7 @@ from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
 from alphalattice.control.product_host.composition.goals import GoalApplication
-from alphalattice.control.product_host.composition.plain_refusals import explain
+from alphalattice.control.product_host.composition.plain_refusals import explain, refused
 from alphalattice.control.product_host.maintenance.signals import (
     MaintenanceBackgroundHost,
     MaintenanceWakeController,
@@ -32,6 +32,7 @@ from alphalattice.control.workspace_runtime.content_store import CommittedIndex,
 from alphalattice.foundation.causal_outcomes.execution.readers import planned_local_qa_schedule
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
+    STOPPED_STATES,
     RequestProvenance,
     command,
     entry,
@@ -502,6 +503,130 @@ class _Host(Protocol):
     def execute(self, request: PortfolioResearchOperationRequest) -> dict[str, object]: ...
 
 
+def dated_plan(
+    plan: Callable[[str, date | None], dict[str, object]],
+    request: PortfolioResearchOperationRequest,
+    now: datetime,
+) -> dict[str, object]:
+    """Plan an update and name the positions it yields by their trade date and as-of close.
+
+    The market's form: positions are named by the session they are entered on, the trade date,
+    and decided at the close before it, their as-of. A named date (`positions_date`) is planned
+    through its as-of session, as the first use plans its date (`target_sessions`); with none the
+    latest completed close is the as-of, and the next session is the date. A named date is never
+    answered with another date's plan: an update still on its way for the book refuses it.
+    """
+    package = str(request.strategy_package_id)
+    offer: dict[str, object] = {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": package}
+    latest = {"update": {"operation": "RESEARCH_UPDATE_READBACK", "strategy_package_id": package}}
+    named = _named_date(request, now, offer)
+    if named is not None and "status" in named:
+        return named
+    through = request.observed_through if named is None else str(named["formation_session"])
+    try:
+        answer = plan(package, None if through is None else date.fromisoformat(through))
+    except ValueError as error:
+        code = str(error)
+        if code == "research_update.target_before_publication":
+            return {**refused(code), "next_requests": latest}
+        if named is None or code != "research_update.target_not_completed":
+            raise
+        timing = {k: named[k] for k in ("information_available_at", "reading") if k in named}
+        dated = {**offer, "positions_date": request.positions_date}
+        return {**refused(code), **timing, "next_requests": {"plan": dated}}
+    target = answer.get("target_session")
+    if named is not None and target is not None and target != through:
+        return _behind(answer, str(target), str(through), offer, request, latest)
+    found = named or _as_of(target)
+    if found is None or answer.get("status") == "REFUSED":
+        return answer
+    entry, as_of = found["entry_session"], found["formation_session"]
+    return {
+        **answer,
+        "positions_for": {
+            "trade_date": entry,
+            "as_of_session": as_of,
+            "as_of_close_at": found["information_cutoff_at"],
+            "reading": f"These are the {entry} positions: decided at the {as_of} close, entered "
+            f"at the {entry} open.",
+        },
+    }
+
+
+def _behind(
+    answer: dict[str, object],
+    target: str,
+    through: str,
+    offer: dict[str, object],
+    request: PortfolioResearchOperationRequest,
+    latest: Mapping[str, object],
+) -> dict[str, object]:
+    """Refuse a named date another update owns, with that update's Task's own way on.
+
+    A date after the owner's close is planned once the owner ends; a date before it needs no
+    new plan, since its positions stand in what the book publishes.
+    """
+    owner = cast("dict[str, str]", answer.get("in_flight") or {})
+    task_id = owner.get("task_id")
+    moving = owner.get("lifecycle") not in STOPPED_STATES
+    way = (
+        {}
+        if task_id is None
+        else {"task": {"operation": "STATUS" if moving else "TASK_RECOVERY", "task_id": task_id}}
+    )
+    if through < target:
+        return {
+            **refused(f"research_update.date_before_update:{target}"),
+            "next_requests": {**latest, **way},
+        }
+    dated = {**offer, "positions_date": request.positions_date}
+    return {
+        **refused(f"research_update.date_behind_update:{target}"),
+        "next_requests": {**way, "plan": dated},
+    }
+
+
+def _named_date(
+    request: PortfolioResearchOperationRequest, now: datetime, offer: dict[str, object]
+) -> dict[str, object] | None:
+    """The sessions of the date a plan names, or its refusal with the plan for a lawful date."""
+    if request.positions_date is None:
+        return None
+    if request.observed_through is not None:
+        dated = {**offer, "positions_date": request.positions_date}
+        return {**refused("research_update.date_and_through"), "next_requests": {"plan": dated}}
+    try:
+        named = date.fromisoformat(request.positions_date)
+    except ValueError:
+        return refused("research_update.date_invalid")
+    reading = target_sessions(named, now, for_preparation=True, held=False)
+    code = str(reading.get("failure_code") or "")
+    if not code:
+        return reading
+    nearest = str(reading["nearest_date"])
+    kind = "date_after_clock" if code == "first_use.date_after_clock" else "date_not_session"
+    return {
+        **refused(f"research_update.{kind}:{nearest}"),
+        "next_requests": {"plan": {**offer, "positions_date": nearest}},
+    }
+
+
+def _as_of(target: object) -> dict[str, object] | None:
+    """The trade date an undated plan's as-of close yields, as `target_sessions` reads one."""
+    if not isinstance(target, str):
+        return None
+    with suppress(ValueError, KeyError, LookupError, StopIteration):
+        as_of = date.fromisoformat(target)
+        schedule = planned_local_qa_schedule(as_of, as_of + timedelta(days=14))
+        point = next(p for p in schedule if p.formation_session == as_of)
+        return {
+            "entry_session": point.entry_session.isoformat(),
+            "formation_session": as_of.isoformat(),
+            "information_cutoff_at": point.formation_close_at.isoformat(),
+        }
+    return None
+
+
 def first_update(
     host: _Host,
     activated: dict[str, object],
@@ -570,7 +695,7 @@ def first_update(
     offered = dict(cast(dict[str, object], activated.get("next_requests") or {}))
     offered |= update_offers(offered.pop("update", None), named, task)
     kept: tuple[str, ...] = ("status", "target_session", "update_plan_hash", "failure_code")
-    kept += ("detail", "next_action", "next_requests", "held_until", "reading")
+    kept += ("detail", "next_action", "next_requests", "held_until", "reading", "positions_for")
     return {
         "update": {
             "plan": {key: plan[key] for key in kept if key in plan},

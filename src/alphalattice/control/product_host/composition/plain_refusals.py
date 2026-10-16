@@ -92,11 +92,11 @@ _PROVIDER_UNREADABLE = frozenset(
     {
         "data.provider_fetch_failed",
         "data.current_universe_no_feature_ready_listings",
-        "data.listing_updates_incomplete",
     }
 )
 """Listings whose provider answer could not be read: a changed interface or a symbol it no
-longer serves (V375)."""
+longer serves (V375). `data.listing_updates_incomplete` is not one: the coordinator records it
+for any listing whose refresh failed, and the maintenance guardian words it."""
 
 
 _UNREAD_KEYS = {

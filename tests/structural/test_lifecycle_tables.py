@@ -80,7 +80,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): RESUMABLE,
     (
         "control/product_host/composition/decision_advancement.py",
-        "DecisionAdvancementApplication._plan",
+        "DecisionAdvancementApplication._in_flight",
         "DEFERRED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "a pending advancement of the strategy answers its own plan whatever target is asked, a "
     "deferred one too, whose run resumes it once due (V601, V604); a cancelling one is not pending",

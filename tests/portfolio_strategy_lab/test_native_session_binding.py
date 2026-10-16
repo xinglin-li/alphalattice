@@ -658,6 +658,7 @@ def test_one_research_command_binds_the_session_and_opens_its_goal(
     held = client.request({"operation": "GOAL_SHOW", "goal_id": goals[0]["goal_id"]})
     assert bound[0]["payload"]["subject"]["reference"] == f"case:{held['goal']['goal_hash']}"
     record_bytes = binding.record_path(root).read_bytes()
+    live.dispatcher.drain_for_tests()  # type: ignore[union-attr]  # the admitted Task has ended
     assert cli.main(line, serve=lambda _: 99) == 0  # the same plan answers its admitted Task
     capsys.readouterr()
     assert len(client.request({"operation": "GOAL_LIST"})["goals"]) == 1

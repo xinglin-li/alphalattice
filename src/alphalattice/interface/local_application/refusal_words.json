@@ -1524,7 +1524,7 @@
   "next_action": "ASK_THE_PERSON_AGAIN"
  },
  "research_update.refused": {
-  "detail": "The update could not be planned or admitted, and the strategy's activation stands. Plan it again from the offered `update` request, or with `alphalattice research-update plan --package <package>`, adding `--through <session>` for a named date's update.",
+  "detail": "The update could not be planned or admitted, and the strategy's activation stands. Plan it again from the offered `update` request, or with `alphalattice research-update plan --package <package>`, adding `--date <date>` for a named date's positions.",
   "next_action": "PLAN_THE_UPDATE_AGAIN"
  },
  "first_use.date_outside_calendar": {
@@ -1587,8 +1587,36 @@
   "detail": "The Task is {subject}, so it moves only on a request and a wake would never come. Read its way on with `alphalattice task show <task>` and follow the recovery it offers.",
   "next_action": "READ_THE_TASKS_WAY_ON"
  },
+ "research_update.date_not_session": {
+  "detail": "The named date is not a common XNYS/XNAS trading session, so no positions are entered on it. The nearest trade date on or after it is {subject}; confirm that date with the person, then send the offered plan.",
+  "next_action": "PLAN_THE_NEAREST_SESSION"
+ },
+ "research_update.date_and_through": {
+  "detail": "A plan names either the positions' trade date (`--date`) or the close it runs through (`--through`), not both: the trade date's positions are decided at the close before it. Send one of them.",
+  "next_action": "CORRECT_THE_REQUEST"
+ },
+ "research_update.date_after_clock": {
+  "detail": "The named date's positions are decided at a close after the Host's current exchange date, so they cannot be planned yet. The nearest trade date the Host's clock admits is {subject}; its close may still need to settle. Confirm that date with the person, then send the offered plan.",
+  "next_action": "PLAN_THE_NEAREST_SESSION"
+ },
+ "research_update.date_invalid": {
+  "detail": "The named date is not a calendar date, so no positions can be planned for it. Send the plan again with a real date in the form YYYY-MM-DD.",
+  "next_action": "CORRECT_THE_REQUEST"
+ },
+ "research_update.date_behind_update": {
+  "detail": "Another update for this book is still on its way, through the {subject} close, so it owns the plan and its positions are not the named date's. Follow its Task with the offered `task` request; once it ends, send the offered plan for the named date.",
+  "next_action": "FOLLOW_THE_UPDATE_THEN_PLAN_THE_DATE"
+ },
+ "research_update.date_before_update": {
+  "detail": "An update through the later {subject} close is already on its way for this book, so the named date needs no new plan: its positions stand in what the book publishes. Follow that update's Task with the offered `task` request, then read the book's latest update with the offered `update` request.",
+  "next_action": "FOLLOW_THE_UPDATE_THEN_READ"
+ },
+ "research_update.target_before_publication": {
+  "detail": "This book has already published a later update, so an earlier date's update cannot be planned after it; that date's positions are kept in the book's history. Read the latest update with the offered request.",
+  "next_action": "READ_THE_LATEST_UPDATE"
+ },
  "research_update.target_not_completed": {
-  "detail": "The update's session has not completed with its data yet: a date's positions wait for its formation close and the data settling after it. Under a first use the Host holds the update and runs it once at the time `held_until` names, so keep your goal wait running; otherwise plan it again after that time.",
+  "detail": "The update's session has not completed with its data yet: a date's positions wait for its formation close and the data settling after it. Under a first use the Host holds the update and runs it once at the time `held_until` names, so keep your goal wait running. Otherwise nothing runs until you plan again: send the offered plan after the time `information_available_at` names.",
   "next_action": "WAIT_FOR_THE_DATED_UPDATE"
  },
  "model_training.complete_model_history_unavailable": {

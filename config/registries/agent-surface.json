@@ -19011,6 +19011,7 @@
     "operation:RESEARCH_UPDATE_PLAN": {
       "allowed": [
         "observed_through",
+        "positions_date",
         "recovery_task_hash",
         "recovery_task_id",
         "strategy_package_id"
@@ -35168,6 +35169,12 @@
       "required": false,
       "type": "Path"
     },
+    "option:research-update plan/--date": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:research-update plan/--format": {
       "choices": [
         "json",
@@ -47707,6 +47714,12 @@
     "refusal:research_update.calibration_required": {},
     "refusal:research_update.calibration_seed_history_unavailable": {},
     "refusal:research_update.component_binding_axis_invalid": {},
+    "refusal:research_update.date_after_clock": {},
+    "refusal:research_update.date_and_through": {},
+    "refusal:research_update.date_before_update": {},
+    "refusal:research_update.date_behind_update": {},
+    "refusal:research_update.date_invalid": {},
+    "refusal:research_update.date_not_session": {},
     "refusal:research_update.ew_evidence_invalid": {},
     "refusal:research_update.features_binding_invalid": {},
     "refusal:research_update.human_confirmation_required": {},
@@ -49901,6 +49914,21 @@
       "schema": {
         "anyOf": [
           {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.positions_date": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "type": "string"
           },
           {
