@@ -154,7 +154,9 @@ own answer with its bundle's key and takes the Host's corrections itself; once
 they return their receipts, the second reads their accepted answers and writes the
 CRO's bundle, and the third publishes the review. Each stops at the first answer
 that needs another step; follow its `next_action`. Wait for each as the first use
-says.
+says. Once the date's review is published, `research-update show` offers its
+committee. So does your continue on an earlier bundle when it is refused as stale or
+ambiguous because you prepared again; a passing refusal keeps its own way.
 
 ## Convene the committee
 

@@ -54,7 +54,7 @@ Quote the publication's `claim` with its `risk_status` and `cro_status`. They ar
 | Activated, its update held | The activation answer's `update.plan.held_until` and `reading` | Tell the person the time in one line; keep `alphalattice activity wait --goal <goal-id>` running, which wakes when the held update ends |
 | Positions published | `alphalattice research-update show --task <task>`: formation, entry, basis, `claim` | Read them out with their dates; they are research positions |
 | Their review prepared | `alphalattice strategy-book review --update <task> --package <package> --dir "<out>/review"` | Start one Evidence Analyst per bundle |
-| CRO review published | `alphalattice review continue --dir "<out>/review"` after the CRO | Cite the review beside the publication's own status, then follow its offered `committee` (`CONVENE_THE_COMMITTEE`), or its `committee_report` once the floor has closed |
+| CRO review published | `alphalattice review continue --dir "<out>/review"` after the CRO | Cite the review beside the publication's own status, then follow its offered `committee` (`CONVENE_THE_COMMITTEE`), or its `committee_report` once the floor has closed; the update's read, or your earlier bundle refused as stale or ambiguous after a second preparation, offers the same |
 | Delivered | The goal's record | State coverage, expiry and Risk limits, then complete the goal |
 
 Read the agenda points before speaking: below the agenda line, no stance is required; the PM may raise one listed point through the positions of a REPLY to a revealed message.

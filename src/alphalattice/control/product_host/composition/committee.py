@@ -270,6 +270,93 @@ def offer(host: Any, review: dict[str, Any], book: Any, caller: str) -> dict[str
     return review
 
 
+LEAD_PUBLISHED: Final = (
+    "Nothing was submitted for this bundle; the date's review is already published, so its "
+    "committee is offered."
+)
+"""A refusal to the lead where the review stands published: the committee, not a new bundle."""
+
+SUPERSEDED: Final = frozenset(
+    {"agent_bundle.preparation_stale", "REFUSED_EVIDENCE_SELECTION_AMBIGUOUS"}
+)
+"""Refusals meaning the lead prepared again after this bundle; a transient one keeps its words."""
+
+
+def published(host: Any, standing: Any, book: Any, caller: str) -> dict[str, Any]:
+    """The date's committee on its publication's review standing, as `offer` gives it.
+
+    Only a standing that is REVIEWED is a published review; any other offers nothing.
+    """
+    if (standing or {}).get("status") != "REVIEWED":
+        return {"next_requests": {}}
+    return offer(host, {"state": "REVIEW_PUBLISHED", "next_requests": {}}, book, caller)
+
+
+def _update_book(fields: Mapping[str, Any]) -> Any:
+    """A research update's book by its selector's fields; another book's raise KeyError."""
+    from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
+
+    return BookSelector(
+        update_task_id=UUID(str(fields["update_task_id"])),
+        update_publication_hash=str(fields["update_publication_hash"]),
+        position_basis=str(fields["position_basis"]),
+    )
+
+
+def lead_way(
+    host: Any, book: Mapping[str, Any], lead: bool, caller: str, answered: dict[str, Any]
+) -> dict[str, Any]:
+    """A bundle's answer, and for the lead a superseded refusal's way on to the committee.
+
+    The lead resends an earlier bundle after preparing again; refused as SUPERSEDED on a book
+    whose date's review stands published, from that Task's own publication, it is offered that
+    review's committee (`published`) in place of a member's words, its failure code kept. A
+    member's answer, a transient refusal and an unreadable store's are returned as they are.
+    """
+    from alphalattice.control.product_host.composition.evidence_review_delivery import (
+        EvidenceReviewDelivery,
+    )
+
+    if not lead or answered.get("failure_code") not in SUPERSEDED:
+        return answered
+    try:
+        selector = _update_book(book)
+        published_by = host.research_updates.publication_task(selector.update_publication_hash)
+        if published_by != selector.update_task_id:
+            return answered
+        standing = EvidenceReviewDelivery(host.review).review_standing(selector)
+    except Exception:  # another book or an unreadable store: the typed refusal stands
+        return answered
+    review = published(host, standing, selector, caller)
+    if not review["next_requests"]:
+        return answered
+    words = {key: LEAD_PUBLISHED for key in ("message", "detail") if key in answered}
+    return {
+        **answered,
+        **words,
+        "next_action": review["next_action"],
+        "next_requests": review["next_requests"],
+    }
+
+
+def update_offer(host: Any, body: dict[str, Any], caller: str) -> dict[str, Any]:
+    """A research update's read, offering the date's committee once its review is published.
+
+    A read of a previous publication, or one with its own way on (a stop), offers none.
+    """
+    selected = body.get("review_selector") or {}
+    if not selected or body.get("publication_is_previous") or body.get("next_action"):
+        return body
+    book = _update_book(selected)
+    review = published(host, body.get("review_standing"), book, caller)
+    if review["next_requests"]:
+        body["next_requests"] = {**(body.get("next_requests") or {}), **review["next_requests"]}
+    return {
+        **body,
+        **{key: review[key] for key in ("next_action", "committee_unreadable") if key in review},
+    }
+
+
 def _member_thread(request: Any) -> tuple[str, tuple[str, ...]]:
     """The thread a member's own request speaks on and the roles its key may hold.
 

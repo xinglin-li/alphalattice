@@ -855,6 +855,60 @@ def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
     ]
 
 
+def test_only_the_leads_superseded_refusal_is_offered_its_published_committee(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lead's stale or ambiguous refusal on its Task's reviewed publication offers the
+    committee, its code kept; a member's, a transient, another publication's do not."""
+    from alphalattice.control.product_host.composition.evidence_review_delivery import (
+        EvidenceReviewDelivery,
+    )
+
+    book = {"update_task_id": TASK, "update_publication_hash": "p" * 64}
+    book["position_basis"] = "CONDITIONAL_ESTIMATE"
+    standing: list[Any] = [{"status": "REVIEWED"}]
+
+    def read(_delivery: Any, _selector: Any) -> Any:
+        if isinstance(standing[0], Exception):
+            raise standing[0]
+        return standing[0]
+
+    monkeypatch.setattr(EvidenceReviewDelivery, "review_standing", read)
+    tasks = SimpleNamespace(task=lambda _: SimpleNamespace(task_kind=ADVANCEMENT_TASK_KIND))
+    host = SimpleNamespace(
+        review=None,
+        research_updates=SimpleNamespace(publication_task={"p" * 64: UUID(TASK)}.get),
+        goals=SimpleNamespace(store=GoalStore(tmp_path, "workspace"), clock=lambda: NOW),
+        workspace_session=SimpleNamespace(task_control_registry=tasks),
+    )
+
+    def way(code: str, lead: bool = True, **fields: Any) -> dict[str, Any]:
+        refused = {"status": "REFUSED", "failure_code": code, "message": "Tell your lead."}
+        refused["next_action"] = "TELL_YOUR_LEAD"
+        return committee.lead_way(host, {**book, **fields}, lead, "EXTERNAL_AUTOMATION", refused)
+
+    offered = way("agent_bundle.preparation_stale")
+    assert (offered["failure_code"], offered["message"], offered["next_action"]) == (
+        "agent_bundle.preparation_stale",
+        committee.LEAD_PUBLISHED,
+        "CONVENE_THE_COMMITTEE",
+    )
+    assert offered["next_requests"]["committee"]["update_task_id"] == TASK
+    kept = [
+        way("EVIDENCE_REFRESH_IN_PROGRESS"),  # transient: its own words and way
+        way("REFUSED_EVIDENCE_SELECTION_AMBIGUOUS", lead=False),  # a member, or no thread
+        way("agent_bundle.preparation_stale", update_publication_hash="q" * 64),
+    ]
+    standing[0] = {"status": "NOT_REVIEWED"}
+    kept.append(way("REFUSED_EVIDENCE_SELECTION_AMBIGUOUS"))
+    standing[0] = OSError("store unreadable")
+    kept.append(way("agent_bundle.preparation_stale"))
+    assert [k["next_action"] for k in kept] == ["TELL_YOUR_LEAD"] * 5
+    previous = {"review_selector": book, "review_standing": {"status": "REVIEWED"}}
+    previous |= {"publication_is_previous": True, "next_requests": {}}
+    assert committee.update_offer(host, dict(previous), "EXTERNAL_AUTOMATION") == previous
+
+
 def test_a_members_request_counts_toward_its_floors_open_goal_and_never_overrides_a_named_one(
     tmp_path: Path, readback: dict[str, Any]
 ) -> None:

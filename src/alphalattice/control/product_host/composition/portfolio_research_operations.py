@@ -46,14 +46,15 @@ from alphalattice.control.product_host.composition.evidence_authority_setup impo
 from alphalattice.control.product_host.composition.evidence_review_application import (
     EvidenceReviewApplication,
     ReviewOutcome,
-    agent_answer_result,
 )
 from alphalattice.control.product_host.composition.evidence_review_bundles import (
     ANSWER_FIELDS,
     PACKET_SELECTOR_CODES,
-    STALE_BUNDLE_CODES,
     EvidenceReviewBundles,
     agent_bundle_refusal,
+    bundle_answered,
+    bundle_book,
+    bundle_refused,
     sealed_bounds_exceeded,
 )
 from alphalattice.control.product_host.composition.evidence_review_delivery import (
@@ -1653,7 +1654,7 @@ class PortfolioResearchOperations:
                         chosen = self._strategy_task(request)
                         if isinstance(chosen, dict):
                             return chosen
-                        return self._positions(self._research_update_readback(chosen))
+                        return self._positions(self._research_update_readback(chosen), caller)
                     assert request.update_plan_hash is not None
                     plan = self.research_updates.prepare(request.update_plan_hash)
                     reused_task = self.research_updates.reusable(plan)
@@ -2268,11 +2269,7 @@ class PortfolioResearchOperations:
                             "agent_bundle.seal_bound_exceeded", role=bundle.role, bounds=over
                         )
                     except PortfolioEvidenceReviewError as error:
-                        if str(error) == "agent_bundle.answer_settled":  # V417
-                            return agent_bundle_refusal(str(error), role=bundle.role)
-                        if str(error) not in STALE_BUNDLE_CODES:
-                            raise
-                        return agent_bundle_refusal("agent_bundle.preparation_stale")
+                        return bundle_refused(self, error, bundle, thread, request, caller)
                     except ValueError as error:
                         # A packet whose authority an install replaced is refused by what moved.
                         if not str(error).startswith(STALE_PACKET):
@@ -2280,12 +2277,11 @@ class PortfolioResearchOperations:
                         return stale_packet_refusal(
                             str(error),
                             role=bundle.role,
-                            book=_bundle_book(bundle.submission),
+                            book=bundle_book(bundle.submission),
                             unit_id=bundle.submission.get("evidence_unit_id"),
                         )
                 assert body is not None
-                book = _bundle_book(bundle.submission)  # none for a stage role's bundle
-                answered = agent_answer_result(bundle.role, body, book)
+                answered = bundle_answered(self, bundle, body, thread, request, caller)
                 committee.answered(
                     store, thread, who, answered, self.dispatcher.clock(), self._file_floor
                 )
@@ -4118,9 +4114,13 @@ class PortfolioResearchOperations:
         return self._research_update_way(task_id, self.research_updates.readback(task_id))
 
     def _positions(
-        self, body: dict[str, Any], *, committee_context: dict[str, Any] | None = None
+        self,
+        body: dict[str, Any],
+        caller: str | None = None,
+        *,
+        committee_context: dict[str, Any] | None = None,
     ) -> dict[str, object]:
-        """Owner position rows and verified Committee context at the Host clock."""
+        """Owner position rows and Committee context at the Host clock, and a caller's offer."""
         body = _position_rows(
             body, review=self.review, risk=self._date_risk, now=self.dispatcher.clock()
         )
@@ -4135,7 +4135,7 @@ class PortfolioResearchOperations:
         )
         if floor is not None and floor.opened["selector"] == body.get("review_selector"):
             body["committee_context"] = committee.context(floor, self.dispatcher.clock())
-        return body
+        return body if caller is None else committee.update_offer(self, body, caller)
 
     def _research_update_way(self, task_id: UUID, read: dict[str, Any]) -> dict[str, Any]:
         """Read the owner's stop or timed deferral; cancellation retains its stop and Task."""
@@ -6592,15 +6592,6 @@ def _carried(
             add.update(book)
         changed[name] = {**offer, **add}
     return {**body, "next_requests": {**offered, **changed}}
-
-
-def _bundle_book(submission: Mapping[str, Any]) -> dict[str, Any]:
-    """The book a bundle's submission names, by its selector's fields."""
-    return {
-        name: value
-        for name, value in submission.items()
-        if name in {item.name for item in fields(BookSelector)} and value is not None
-    }
 
 
 def _selector(request: PortfolioResearchOperationRequest) -> BookSelector | None:

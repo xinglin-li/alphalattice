@@ -12,7 +12,7 @@ import json
 import re
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, get_args
 from uuid import UUID
@@ -55,7 +55,7 @@ from alphalattice.protocols.actor_execution.bundles import (
     pack_sections,
 )
 
-from .evidence_review_application import BUNDLE_CATEGORY, ReviewOutcome
+from .evidence_review_application import BUNDLE_CATEGORY, ReviewOutcome, agent_answer_result
 
 if TYPE_CHECKING:
     from .evidence_review_application import EvidenceReviewApplication
@@ -124,6 +124,50 @@ _BUNDLE_REFUSALS = {
 }
 
 _BOUND_ERRORS = frozenset({"too_long", "string_too_long"})
+
+
+def bundle_book(submission: Mapping[str, Any]) -> dict[str, Any]:
+    """The book a bundle's submission names, by its selector's fields."""
+    names = {item.name for item in fields(BookSelector)}
+    return {
+        name: value for name, value in submission.items() if name in names and value is not None
+    }
+
+
+def bundle_refused(
+    host: Any, error: Exception, bundle: Any, thread: Any, request: Any, caller: str
+) -> dict[str, object]:
+    """A bound answer its owner refused: settled, or stale with its way on.
+
+    A stale bundle is refused in its member's words, or for the lead with the date's committee
+    where its review stands published (`committee.lead_way`). Any other error is raised.
+    """
+    from alphalattice.control.product_host.composition.committee import lead_way
+
+    code = str(error)
+    if code == "agent_bundle.answer_settled":
+        return agent_bundle_refusal(code, role=bundle.role)
+    if code not in STALE_BUNDLE_CODES:
+        raise error
+    refused = agent_bundle_refusal("agent_bundle.preparation_stale")
+    book = bundle_book(bundle.submission)
+    return lead_way(host, book, _lead(thread, request), caller, refused)
+
+
+def bundle_answered(
+    host: Any, bundle: Any, body: Mapping[str, object], thread: Any, request: Any, caller: str
+) -> dict[str, object]:
+    """The Host's verdict on a bundle's answer, a refusal to the lead with its way on."""
+    from alphalattice.control.product_host.composition.committee import lead_way
+
+    book = bundle_book(bundle.submission)  # none for a stage role's bundle
+    answered = agent_answer_result(bundle.role, body, book)
+    return lead_way(host, book, _lead(thread, request), caller, answered)
+
+
+def _lead(thread: Any, request: Any) -> bool:
+    """Whether a request is the lead's: keyless on a member's thread, its receipt read."""
+    return thread is not None and request.committee_key is None
 
 
 def agent_bundle_refusal(
