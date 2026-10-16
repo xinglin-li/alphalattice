@@ -2596,6 +2596,10 @@
 "class": "EXECUTION",
 "count": 1
 },
+"src/alphalattice/foundation/feature_engine/inputs/closure_source.py::_MARK_ROWS::65536": {
+"class": "EXECUTION",
+"count": 1
+},
 "src/alphalattice/foundation/feature_engine/inputs/closure_source.py::_framed_rows::3": {
 "class": "METHOD",
 "count": 1

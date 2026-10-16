@@ -27,6 +27,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
 )
 from alphalattice.foundation.market_data_ops.returns.semantic_revisions import (
     AdjustedReturnSemanticRevision,
+    set_change_explained,
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import (
     build_current_index_acquisition_manifest,
@@ -496,13 +497,13 @@ class PreResearchDeltaService:
             )
             sessions = prior_sessions | set(delta.changed_return_sessions)
             if delta.session_set_changed:
+                target = head.target_market_session
                 kind = (
                     ListingDataDeltaKind.TAIL_APPEND_REQUIRED
                     if delta.changed_return_sessions
-                    and all(
-                        session > head.target_market_session
-                        for session in delta.changed_return_sessions
-                    )
+                    and all(session > target for session in delta.changed_return_sessions)
+                    else ListingDataDeltaKind.ADJUSTED_RETURN_CORRECTION
+                    if set_change_explained(delta.changed_return_sessions, target)
                     else ListingDataDeltaKind.BLOCKED_SOURCE_AMBIGUITY
                 )
             elif delta.uniform_rescale:

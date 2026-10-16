@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import pyarrow as pa
 import pytest
 
+from alphalattice.control.guanyin.data.workspace_maintenance import maintenance_words
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_workspace import (
     publish_research_workspace_manifest,
@@ -29,7 +30,10 @@ from alphalattice.foundation.feature_engine.contracts import (
     FeatureBuildStatus,
 )
 from alphalattice.foundation.feature_engine.runtime.service import FeatureFoundationService
-from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.foundation.market_data_ops.storage.duckdb import (
+    MarketDataRepository,
+    ProviderAdjustedSeriesRevision,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
@@ -1850,10 +1854,15 @@ def test_a_deferred_feature_build_is_built_again_once_its_retry_is_due(
         service.stop()
 
 
+RECONCILIATION = "workspace_maintenance.feature_source_reconciliation_failed"
+
+
+@pytest.mark.parametrize("stop", ["build", "reconciliation"])
 def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
-    qualified, tmp_path, monkeypatch
+    qualified, tmp_path, monkeypatch, stop
 ):
-    """A feature build that failed names its cause beside its code."""
+    """A feature build that failed names its cause beside its code, as does a source change it
+    cannot reconcile, with the listing and its words."""
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
@@ -1875,7 +1884,32 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
             failure_code="feature.materialization_failed",
         )
 
-    monkeypatch.setattr(FeatureFoundationService, "build", exhausted)
+    def unexplained(self, *_args, **_kwargs):  # a set change no session it lacked explains
+        return (
+            ProviderAdjustedSeriesRevision(
+                receipt_hash="1" * 64,
+                next_series_hash="1" * 64,
+                source_receipt_hash="1" * 64,
+                listing_id="listing-a",
+                provider="fixture",
+                prior_series_hash=None,
+                scope_start=date(2026, 7, 1),
+                scope_end=NOW.date(),
+                full_history=False,
+                changed_value_count=1,
+                changed_return_sessions=(date(2026, 7, 1),),
+                session_set_changed=True,
+                uniform_rescale=False,
+                observed_at=NOW,
+            ),
+        )
+
+    if stop == "build":
+        monkeypatch.setattr(FeatureFoundationService, "build", exhausted)
+    else:
+        monkeypatch.setattr(
+            MarketDataRepository, "provider_adjusted_semantic_deltas_since", unexplained
+        )
     service = LocalPortfolioWebSession(
         workspace=workspace,
         workspace_manifest=manifest,
@@ -1892,7 +1926,6 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
         service.dispatcher.drain_for_tests()
         status = _json(service, f"/api/status?task_id={sent['task_id']}")
         assert status["lifecycle"] == "BLOCKED", status
-        assert status["failure_code"] == "feature.materialization_failed"
         cause = {
             "exception_type": "MemoryError",
             "detail": "",
@@ -1901,6 +1934,19 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
             "first_session": "2026-09-01",
             "last_session": NOW.date().isoformat(),
         }
+        if stop == "reconciliation":
+            assert status["failure_code"] == RECONCILIATION
+            assert maintenance_words(RECONCILIATION) in json.dumps(status), status
+            cause = {
+                "exception_type": "ValueError",
+                "detail": "provider session-set change unexplained",
+                "step": "source_reconciliation",
+                "unit": "listing-a",
+                "first_session": None,
+                "last_session": None,
+            }
+        else:
+            assert status["failure_code"] == "feature.materialization_failed"
         assert status["failure_cause"] == cause
         assert _json(service, "/api/data-update")["failure_cause"] == cause
     finally:

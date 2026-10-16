@@ -87,6 +87,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
     FeatureStateRepository,
     PanelStateRepository,
 )
+from alphalattice.foundation.market_data_ops.returns.semantic_revisions import set_change_explained
 from alphalattice.foundation.market_data_ops.runtime.remediation import (
     PolicyDecision,
     RemediationAction,
@@ -193,6 +194,16 @@ def _raw_close_points(series: pa.Table) -> dict[str, RawCloseSeries]:
     return {
         str(listings[int(indices[start])]): RawCloseSeries(sessions[start:stop], closes[start:stop])
         for start, stop in pairwise(boundaries)
+    }
+
+
+def _reconciliation_cause(error: ValueError) -> dict[str, object]:
+    """A source change the Feature rows cannot reconcile, naming its listing."""
+    return {
+        "exception_type": "ValueError",
+        "detail": str(error.args[0]),
+        "step": "source_reconciliation",
+        "unit": (*error.args, None)[1],
     }
 
 
@@ -931,17 +942,17 @@ class WorkspaceMaintenanceCoordinator:
                 maintenance_change_set = self._merge_change_sets(
                     maintenance_change_set,
                     self._unconsumed_feature_source_change_set(
-                        active_panel,
-                        through=request.target_market_session,
+                        active_panel, through=request.target_market_session
                     ),
                 )
-            except ValueError:
+            except ValueError as error:
                 return self._finish(
                     cycle.cycle_id,
                     phase=MaintenancePhase.MARKET_DATA,
                     status=MaintenanceStatus.BLOCKED,
                     observed_at=now,
                     failure_code=("workspace_maintenance.feature_source_reconciliation_failed"),
+                    failure_cause=_reconciliation_cause(error),
                     change_set=maintenance_change_set,
                 )
 
@@ -2251,6 +2262,29 @@ class WorkspaceMaintenanceCoordinator:
             receipt_hashes=tuple(receipts),
         )
 
+    def _set_change_admitted(
+        self,
+        listing_id: str,
+        changed: frozenset[date],
+        through: date,
+        *,
+        verified: bool,
+        appended: bool,
+        prior: set[str],
+    ) -> bool:
+        """An append, or `set_change_explained` with member days held."""
+        if not verified or appended:
+            return verified
+        past = tuple(sorted(day for day in changed if day <= through))
+        if not past or len(past) < len(changed):
+            return bool(set_change_explained(changed, through))
+        held = self.market_data.membership_schedule(
+            self.manifest.profile.market_profile_id,
+            sessions=past,
+            fallback_listing_ids=tuple(sorted(prior)),
+        ).members
+        return bool(set_change_explained(changed, through, lambda day: listing_id in held(day)))
+
     @staticmethod
     def _merge_change_sets(
         prior: MarketDataChangeSet,
@@ -2428,38 +2462,15 @@ class WorkspaceMaintenanceCoordinator:
                 if changed_sessions:
                     raise ValueError("uniform provider rescale contains changed-return sessions")
                 continue
-            if revision.session_set_changed:
-                # Base preparation may already have consumed a tail while the
-                # Panel waits for membership admission. No remaining base append
-                # is then expected; the immutable Panel prefix is still owed it.
-                published_through = date.fromisoformat(str(active_panel["as_of_session"]))
-                prepared_unconsumed = (
-                    bool(changed_sessions) and min(changed_sessions) > published_through
-                )
-                if (
-                    revision.listing_id in verified_session_sets
-                    and changed_sessions
-                    and not append_sessions.get(revision.listing_id)
-                    and not prepared_unconsumed
-                ):
-                    # Re-entry can prepare its absent interval before the global
-                    # Panel cutoff. Those source rows were never Panel members;
-                    # this is lookback coverage, not a rewrite of consumed history.
-                    past = tuple(
-                        sorted(day for day in changed_sessions if day <= published_through)
-                    )
-                    membership = self.market_data.membership_schedule(
-                        self.manifest.profile.market_profile_id,
-                        sessions=past,
-                        fallback_listing_ids=tuple(sorted(prior_listing_ids)),
-                    )
-                    prepared_unconsumed = all(
-                        revision.listing_id not in membership.members(day) for day in past
-                    )
-                if revision.listing_id not in verified_session_sets or (
-                    not append_sessions.get(revision.listing_id) and not prepared_unconsumed
-                ):
-                    raise ValueError("provider session-set change is not a verified append")
+            if revision.session_set_changed and not self._set_change_admitted(
+                revision.listing_id,
+                changed_sessions,
+                date.fromisoformat(str(active_panel["as_of_session"])),
+                verified=revision.listing_id in verified_session_sets,
+                appended=bool(append_sessions.get(revision.listing_id)),
+                prior=prior_listing_ids,
+            ):
+                raise ValueError("provider session-set change unexplained", revision.listing_id)
             if not changed_sessions:
                 continue
             ensure(revision.listing_id)

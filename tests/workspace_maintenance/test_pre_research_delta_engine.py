@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # The ignored case adds playpen/src explicitly.
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -320,6 +320,31 @@ def test_adjusted_revision_chain_drives_semantic_delta_without_manual_classifica
     assert PreResearchDeltaService._adjusted_revision_impacts(head=head, current=revision) == {
         "a": (ListingDataDeltaKind.ADJUSTED_RETURN_CORRECTION, (date(2026, 7, 30),)),
         "b": (ListingDataDeltaKind.TAIL_APPEND_REQUIRED, (date(2026, 8, 3),)),
+    }
+    # A late dividend back-adjusts a held session while the window appends the tail: a
+    # correction. A held session alone has nothing outside the listing's history to explain
+    # the set change (the coordinator's rule, `set_change_explained`).
+    late = tuple(
+        AdjustedReturnSemanticDelta(**identity, semantic_hash=canonical_hash(identity))
+        for identity in (
+            {
+                "listing_id": listing,
+                "changed_return_sessions": sessions,
+                "session_set_changed": True,
+                "uniform_rescale": False,
+            }
+            for listing, sessions in (
+                ("c", (date(2026, 7, 30), date(2026, 8, 3))),
+                ("d", (date(2026, 7, 30),)),
+            )
+        )
+    )
+    chained = AdjustedReturnSemanticRevision(
+        cursor=len(late), chain_hash=canonical_hash([v.semantic_hash for v in late]), deltas=late
+    )
+    assert PreResearchDeltaService._adjusted_revision_delta_kinds(head=head, current=chained) == {
+        "c": ListingDataDeltaKind.ADJUSTED_RETURN_CORRECTION,
+        "d": ListingDataDeltaKind.BLOCKED_SOURCE_AMBIGUITY,
     }
     candidate = build_candidate_snapshot(
         **{
@@ -942,3 +967,81 @@ def test_one_days_deltas_chain_alike_in_any_ledger_order() -> None:
         published.chain_hash
     )
     assert [value.listing_id for value in observed.deltas[2:]] == ["b", "q"]
+
+
+@pytest.mark.parametrize(
+    "verified,member,tail,lookback",
+    [(0, 0, 0, 0), (1, 1, 0, 0), (1, 0, 0, 0), (1, 1, 1, 0), (0, 1, 1, 0), (1, 1, 0, 1)],
+)
+def test_unconsumed_feature_source_change_set_rejects_unknown_session_change(
+    verified: int, member: int, tail: int, lookback: int
+) -> None:
+    """A set change is admitted only where a session outside the listing's history explains it."""
+    from functools import partial
+
+    from alphalattice.control.data_platform.maintenance.coordinator import (
+        WorkspaceMaintenanceCoordinator,
+    )
+    from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
+    from alphalattice.foundation.market_data_ops.storage.duckdb import (
+        ProviderAdjustedSeriesRevision,
+    )
+    from tests.workspace_maintenance.acquisition_manifest import NOW as AT
+    from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
+
+    manifest, end, held = acquisition_manifest(), date(2026, 8, 3), date(2026, 7, 15)
+    # A late dividend revises a held session; a tail or a never-member lookback day explains it.
+    sessions = (*(date(2026, 7, 10),) * lookback, held, *(end,) * tail)
+    revision = ProviderAdjustedSeriesRevision(
+        receipt_hash="1" * 64,
+        listing_id="listing-aapl",
+        provider="fixture",
+        prior_series_hash="a" * 64,
+        next_series_hash="b" * 64,
+        scope_start=date(2026, 7, 1),
+        scope_end=end,
+        full_history=False,
+        changed_value_count=1,
+        changed_return_sessions=sessions,
+        session_set_changed=True,
+        uniform_rescale=False,
+        source_receipt_hash="2" * 64,
+        observed_at=AT,
+    )
+    store = SimpleNamespace(
+        load_universe_manifest_revision=lambda _revision: manifest,
+        feature_source_appends=lambda *_, **__: (),
+        raw_bar_semantic_deltas_since=lambda *_, **__: (),
+        provider_adjusted_semantic_deltas_since=lambda *_, **__: (revision,),
+        verified_feature_source_session_sets=lambda *_, **__: (
+            frozenset({"listing-aapl"}) if verified else frozenset()
+        ),
+        # A member on the held day only: membership read day by day.
+        membership_schedule=lambda *_, **__: SimpleNamespace(
+            members=lambda day: ("listing-aapl" if member and day == held else "listing-msft",)
+        ),
+        current_sector_state=lambda _manifest: None,
+    )
+    coordinator = object.__new__(WorkspaceMaintenanceCoordinator)
+    coordinator.market_data = coordinator.feature_state = store
+    coordinator.manifest = manifest
+    coordinator.feature_foundation = SimpleNamespace(
+        catalog=FeatureCatalog.load(), panel=SimpleNamespace(policy_hash="legacy")
+    )
+    reconcile = partial(
+        coordinator._unconsumed_feature_source_change_set,
+        {
+            "manifest_revision": manifest.revision_sha256,
+            "sector_revision": "old-sector",
+            "as_of_session": date(2026, 7, 31),
+            "activated_at": AT - timedelta(hours=1),
+        },
+        through=end,
+    )
+    if verified and (tail or lookback or not member):
+        changes = reconcile()
+        assert changes.listing_changes[0].adjusted_return_change_sessions == sessions
+    else:
+        with pytest.raises(ValueError, match="session-set change unexplained") as refused:
+            reconcile()
+        assert refused.value.args[1] == "listing-aapl"  # the cause names the listing

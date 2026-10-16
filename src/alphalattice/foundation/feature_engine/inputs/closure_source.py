@@ -21,6 +21,8 @@ _CLOSURE_KEY_RELATION = "feature_closure_keys"
 _DIGEST_PREFIX = b"FeatureBaseClosureRowHashDigest\0"
 _DIGEST_BATCH_ROWS = 131_072
 """Rows framed per step of the streaming digest: about 16 MB of framed bytes at a time."""
+_MARK_ROWS = 65_536
+"""Rows between the digest's session marks: a re-seal frames about this many rows before its own."""
 
 
 def _row_hash_digest(rows: Sequence[tuple[date, str, str]]) -> str:
@@ -58,6 +60,9 @@ class FeatureRowHashDigestState:
     boundary: date | None
     prefix: hashlib._Hash
     prefix_rows: int
+    marks: tuple[tuple[date, hashlib._Hash, int], ...] = ()
+    """The running hash before a session's first row, at a session start every ``_MARK_ROWS``
+    rows, with the rows framed before it: a re-seal starts at the last one before its writes."""
 
 
 def _sealed(frames: hashlib._Hash, rows: int) -> str:
@@ -70,6 +75,32 @@ def _split_at_boundary(batch: pa.RecordBatch, boundary: date) -> int:
     """Find the first batch row at or after the boundary session."""
     sessions = batch.column(0).to_numpy(zero_copy_only=False)
     return int(np.searchsorted(sessions, np.datetime64(boundary, "D"), side="left"))
+
+
+def _frame_marked(
+    frames: hashlib._Hash,
+    batch: pa.RecordBatch,
+    rows: int,
+    marks: list[tuple[date, hashlib._Hash, int]],
+    previous: object,
+) -> tuple[int, object]:
+    """Frame one ordered batch as framing it whole would, marking session starts.
+
+    A mark is the running hash before a session's first row, taken every ``_MARK_ROWS`` rows.
+    """
+    sessions = batch.column(0).to_numpy(zero_copy_only=False)
+    starts: np.ndarray = np.empty(len(sessions), dtype=bool)
+    starts[0] = sessions[0] != previous
+    starts[1:] = sessions[1:] != sessions[:-1]
+    done, last = 0, marks[-1][2] if marks else 0
+    for index in np.flatnonzero(starts).tolist():
+        if rows + index - last >= _MARK_ROWS:
+            if index > done:
+                frames.update(_framed_rows(batch.slice(done, index - done)))
+            done, last = index, rows + index
+            marks.append((sessions[index].astype(date), frames.copy(), last))
+    frames.update(_framed_rows(batch.slice(done)))
+    return rows + batch.num_rows, sessions[-1]
 
 
 def _framed_rows(batch: pa.RecordBatch) -> memoryview:
@@ -175,6 +206,8 @@ class FeatureClosureSourceRepository:
         prefix = frames.copy()
         prefix_rows = 0
         before_boundary = boundary is not None
+        marks: list[tuple[date, hashlib._Hash, int]] = []
+        previous: object = None
         with self._connection(connection) as active:
             reader = active.execute(
                 """
@@ -194,14 +227,12 @@ class FeatureClosureSourceRepository:
                     if split < batch.num_rows:
                         if split:
                             head = batch.slice(0, split)
-                            frames.update(_framed_rows(head))
-                            rows += head.num_rows
+                            rows, previous = _frame_marked(frames, head, rows, marks, previous)
                             batch = batch.slice(split)
                         prefix = frames.copy()
                         prefix_rows = rows
                         before_boundary = False
-                rows += batch.num_rows
-                frames.update(_framed_rows(batch))
+                rows, previous = _frame_marked(frames, batch, rows, marks, previous)
         if before_boundary:
             # Every row precedes the boundary: the tail is empty.
             prefix = frames.copy()
@@ -214,6 +245,7 @@ class FeatureClosureSourceRepository:
             boundary=boundary,
             prefix=prefix,
             prefix_rows=prefix_rows,
+            marks=tuple(marks),
         )
 
     def reseal_feature_row_hash_digest(
@@ -221,6 +253,7 @@ class FeatureClosureSourceRepository:
         state: FeatureRowHashDigestState,
         *,
         catalog_hash: str,
+        since: date | None = None,
         connection: duckdb.DuckDBPyConnection | None = None,
     ) -> FeatureRowHashDigestState | None:
         """Re-seal a digest state by framing its open tail again from the store.
@@ -232,21 +265,28 @@ class FeatureClosureSourceRepository:
         order. The caller proves every write since the state was taken lies
         on or after the boundary; the store re-proves that the prefix still
         holds ``prefix_rows`` rows. Anything else answers None and the caller
-        streams the whole closure.
+        streams the whole closure. Given ``since``, the earliest session written
+        since, it starts at the last mark on or before it instead, which holds as
+        the boundary does.
         """
         if state.boundary is None:
             return None
-        frames = state.prefix.copy()
-        rows = state.prefix_rows
+        start = (state.boundary, state.prefix, state.prefix_rows)
+        for mark in state.marks:
+            if since is not None and start[0] < mark[0] <= since:
+                start = mark
+        frames, rows = start[1].copy(), start[2]
+        marks = [mark for mark in state.marks if mark[0] <= start[0]]
+        previous: object = None
         with self._connection(connection) as active:
             before = active.execute(
                 """
                 SELECT count(*) FROM feature_daily_runtime
                 WHERE catalog_hash = ? AND session_date < ?
                 """,
-                [catalog_hash, state.boundary],
+                [catalog_hash, start[0]],
             ).fetchone()
-            if before is None or int(before[0]) != state.prefix_rows:
+            if before is None or int(before[0]) != start[2]:
                 return None
             reader = active.execute(
                 """
@@ -255,13 +295,12 @@ class FeatureClosureSourceRepository:
                 WHERE catalog_hash = ? AND session_date >= ?
                 ORDER BY session_date, listing_id
                 """,
-                [catalog_hash, state.boundary],
+                [catalog_hash, start[0]],
             ).to_arrow_reader(_DIGEST_BATCH_ROWS)
             for batch in reader:
                 if batch.num_rows == 0:
                     continue
-                rows += batch.num_rows
-                frames.update(_framed_rows(batch))
+                rows, previous = _frame_marked(frames, batch, rows, marks, previous)
         if not rows:
             return None
         return FeatureRowHashDigestState(
@@ -270,6 +309,7 @@ class FeatureClosureSourceRepository:
             boundary=state.boundary,
             prefix=state.prefix,
             prefix_rows=state.prefix_rows,
+            marks=tuple(marks),
         )
 
     def feature_row_count(

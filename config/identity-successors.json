@@ -12391,6 +12391,13 @@
    "successor": "91edeaa1d515c5d7065930681f6c89a7859da2e3b6cc88d873571e2b6b90872b",
    "change": "renewal-day capture keeps the training columns",
    "reason": "A renewing component's score-input capture now keeps its training factor columns every day, so a model-renewal day extends the kept history prefix instead of rebuilding ten years cold; the capture's column set chooses what is held, never a value. Equal-values control on the first-use journey (offline replay, 466 names, 4 cores), both sides from the same book checkpoint at develop fc5f84a87: activation, the renewal forward update, daily and daily2 publish equal values in every public folder (results, reports, ledgers, decision updates, plans, observations, rolling heads), and the forward's new history tail part is byte-identical. Renewal update Task 361 s to 266 s, seal_inputs 192 s to 82 s, peak memory 15.0 to 6.4 GiB. Readouts and comparison: perf-warm-compute/121143-map-and-baseline-91d82dc6 (identity-before.json, identity-after.json, equal-journey-after.json)."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "527d1664c55bbb708ebacc201bddcb83b949b988432ab266aa90e51ac3d235bb",
+   "successor": "0498e015bc8132e7d5becfc66dfb508fafde0ebacc7c56477dbcdeb654db2d85",
+   "change": "feature closure digest keeps session marks; a late in-window dividend no longer refuses the daily, by one rule in both classifiers",
+   "reason": "Lead signature 2026-10-15 (UPDATE-INPUTS-REAL-DAY part 1): the feature closure digest keeps the running hash at session marks, so a transition after a restated listing re-frames only its own tail (byte-equal digest on FINAL-022 Run B's real closure); the maintenance reconciliation and the pre-research delta service classify a session-set change by one rule (semantic_revisions.set_change_explained): a held session is a value revision, a session after the target or one the listing lacked explains the change. Only changes the predecessor refused move; no other value changes. Branch-only successor 6dbe2e53 replaced after the Lead's review. Receipt: PERF's variant restating plant, develop a33dab0a5 against the tip, ALL EQUAL on every public folder over the restated day and the day after (perf-real-day-seal/192244-l2-journey-0ffd7b36, equal-flow-variant.json). Control: the full plant, which develop refuses, completes daily and daily2 on the tip (flow-update-inputs-real-day/191502-measure-b9b5775c, copies/qa/replay-full-plant)."
   }
  ]
 }

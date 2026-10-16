@@ -481,7 +481,10 @@ class FeatureBaseClosureCoordinator:
             and earliest >= remembered[1].boundary
         ):
             resealed = self._source.reseal_feature_row_hash_digest(
-                remembered[1], catalog_hash=transition.catalog_hash, connection=connection
+                remembered[1],
+                catalog_hash=transition.catalog_hash,
+                since=earliest,
+                connection=connection,
             )
             if resealed is not None:
                 return resealed

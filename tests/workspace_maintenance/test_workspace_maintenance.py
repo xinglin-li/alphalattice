@@ -1013,69 +1013,6 @@ def test_unconsumed_feature_source_change_set_survives_cycle_and_manifest_change
     assert "5" * 64 not in change.source_receipt_hashes
 
 
-@pytest.mark.parametrize(
-    ("source_verified", "historical_member"), [(False, False), (True, True), (True, False)]
-)
-def test_unconsumed_feature_source_change_set_rejects_unknown_session_change(
-    source_verified: bool, historical_member: bool
-) -> None:
-    manifest = acquisition_manifest()
-    revision = ProviderAdjustedSeriesRevision(
-        receipt_hash="1" * 64,
-        listing_id="listing-aapl",
-        provider="fixture",
-        prior_series_hash="a" * 64,
-        next_series_hash="b" * 64,
-        scope_start=date(2026, 7, 1),
-        scope_end=date(2026, 8, 3),
-        full_history=False,
-        changed_value_count=1,
-        changed_return_sessions=(date(2026, 7, 15),),
-        session_set_changed=True,
-        uniform_rescale=False,
-        source_receipt_hash="2" * 64,
-        observed_at=NOW,
-    )
-    store = SimpleNamespace(
-        load_universe_manifest_revision=lambda _revision: manifest,
-        feature_source_appends=lambda *_args, **_kwargs: (),
-        raw_bar_semantic_deltas_since=lambda *_args, **_kwargs: (),
-        provider_adjusted_semantic_deltas_since=(lambda *_args, **_kwargs: (revision,)),
-        verified_feature_source_session_sets=lambda *_args, **_kwargs: (
-            frozenset({"listing-aapl"}) if source_verified else frozenset()
-        ),
-        membership_schedule=lambda *_args, **_kwargs: SimpleNamespace(
-            members=lambda _day: ("listing-aapl",) if historical_member else ("listing-msft",)
-        ),
-        current_sector_state=lambda _manifest: None,
-    )
-    coordinator = object.__new__(WorkspaceMaintenanceCoordinator)
-    coordinator.market_data = store
-    coordinator.feature_state = store
-    coordinator.manifest = manifest
-    coordinator.feature_foundation = SimpleNamespace(
-        catalog=FeatureCatalog.load(), panel=SimpleNamespace(policy_hash="legacy")
-    )
-
-    def reconcile():
-        return coordinator._unconsumed_feature_source_change_set(
-            {
-                "manifest_revision": manifest.revision_sha256,
-                "sector_revision": "old-sector",
-                "as_of_session": date(2026, 7, 31),
-                "activated_at": NOW - timedelta(hours=1),
-            },
-            through=date(2026, 8, 3),
-        )
-
-    if source_verified and not historical_member:
-        changes = reconcile()
-        assert changes.listing_changes[0].adjusted_return_change_sessions == (date(2026, 7, 15),)
-    else:
-        with pytest.raises(ValueError, match="session-set change"):
-            reconcile()
-
-
 def test_feature_source_appends_require_raw_and_adjusted_authority(tmp_path: Path) -> None:
     manifest = build_quality_filtered_research_manifest(
         acquisition_manifest(),

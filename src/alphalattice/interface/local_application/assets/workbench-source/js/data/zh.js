@@ -6804,6 +6804,7 @@ window.ALPHA_ZH = {
   "Decided by rule": "按规则决定",
   "Data issues decided by {subject}: {subject} decided within {subject} cases and {subject} of names, {subject} held from an earlier decision; full-history audits: {subject} within {subject} of names. {subject} of {subject} names remain in the research population.": "由{subject}决定的数据问题：{subject} 个在 {subject} 个案例与 {subject} 名称的上限内决定，{subject} 个沿用先前的决定；全历史审计：{subject} 个，在 {subject} 名称的上限内。研究样本保留 {subject}/{subject} 个名称。",
   "the shipped default rule": "内置默认规则",
+  "A source change since the published Panel does not reconcile with the Feature rows already built from it, so the update stopped before using it. Its cause names the listing; run the update again once that listing's source is settled.": "自已发布面板以来的一项数据源变更，与据其构建的特征行无法对齐，因此更新在使用它之前停止。停止原因会注明该证券；待其数据源稳定后再次运行更新。",
   "The PM's key and route belong to the session that opened this floor; its wait goes on there. Read the floor here, or continue in that session.": "PM 的密钥和流程属于开启本次会议的会话，其等待在那里继续。请在此读取会议记录，或回到那个会话继续。",
   "this workspace's rule": "本工作区的规则",
   "an earlier rule": "先前的规则",

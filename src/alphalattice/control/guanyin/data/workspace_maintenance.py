@@ -26,6 +26,11 @@ _DETAILS: dict[str, str] = {
         "Sector evidence for the current membership is missing, so an exclusion "
         "cannot be projected. The next Feature build establishes it."
     ),
+    "workspace_maintenance.feature_source_reconciliation_failed": (
+        "A source change since the published Panel does not reconcile with the Feature rows "
+        "already built from it, so the update stopped before using it. Its cause names the "
+        "listing; run the update again once that listing's source is settled."
+    ),
     "workspace_maintenance.derived_manifest_evidence_incomplete": (
         "The membership the data decision derived could not inherit its parent's "
         "audit evidence: a listing's evidence is missing, expired or changed since "
