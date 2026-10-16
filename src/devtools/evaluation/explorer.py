@@ -746,19 +746,30 @@ class Explorer:
     def _horizon(self, path: tuple[str, ...], code: str, answer: dict[str, Any]) -> bool:
         """A step limit, the walk's budget, or a way on that waits for its time."""
         timed = "not_due" in code and "retry_after_at" in json.dumps(answer)
-        walked = sum("alphalattice.mutation" not in e.attributes for e in self.events)
         self.terminal_reached |= self.terminal(answer)
-        return self.terminal_reached or len(path) >= DEPTH or walked >= self.steps or timed
+        return self.terminal_reached or len(path) >= DEPTH or self._spent() or timed
+
+    def _spent(self) -> bool:
+        """Whether the walk's step budget is spent: every step but a mutation counts."""
+        return sum("alphalattice.mutation" not in e.attributes for e in self.events) >= self.steps
 
     def _settled(self, answer: dict[str, Any], where: str) -> dict[str, Any] | None:
-        """The answer once its admitted Task has ended or stopped; None past the time box."""
+        """The answer once its admitted Task has ended or stopped; None past the time box.
+
+        A wait that reaches its time box while the Task goes on is waited again, as an agent
+        does, until the walk's step budget is spent.
+        """
         task = _data(answer).get("task_id")
         if answer.get("outcome") != "PENDING" or not task or _state(answer) in STOPPED:
             return answer
         waited = ["activity", "wait", "--task", str(task), "--max-wait", str(self.time_box)]
-        ended = self._send(waited, where + " > wait")
-        pending = ended.get("outcome") == "PENDING" and not ended.get("failure_code")
-        return None if pending else ended
+        while True:
+            ended = self._send(waited, where + " > wait")
+            if ended.get("outcome") != "PENDING" or ended.get("failure_code"):
+                return ended
+            event = (_data(ended).get("wait_event") or {}).get("event")
+            if event != "MAX_WAIT_REACHED" or self._spent():
+                return None
 
     def _grade(self, answer: dict[str, Any], where: str, code: str) -> bool:
         """Grade one answer as an agent reads it; whether it is a stop."""

@@ -59,6 +59,16 @@ def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(tmp_path:
     assert not grade["passed"] and trace.events[0].attributes["alphalattice.offers"] == ["replan"]
 
 
+def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: Path) -> None:
+    """regression (a merge set under load, 2026-10-15): one wait's time box ended the path."""
+    wait = {"task_id": "t", "lifecycle": "RUNNING", "wait_event": {"event": "MAX_WAIT_REACHED"}}
+    answers = [{"outcome": "OK", "data": {"lifecycle": "SUCCEEDED"}}]
+    answers += [{"outcome": "PENDING", "data": data} for data in (wait, {"task_id": "t"})]
+    route = Scenario("w", "w", "2026-10-15T16:00:00+00:00", (), (("SUCCEEDED",),), "agent", ())
+    grade, trace = Explorer(lambda _: answers.pop(), lambda _: {}, route, tmp_path, 1).explore([[]])
+    assert grade["passed"] and len(trace.events) == 3, grade
+
+
 @pytest.mark.parametrize(
     "recovery",
     [
