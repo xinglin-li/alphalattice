@@ -195,6 +195,22 @@ REQUEST_PROVENANCE: ContextVar[RequestProvenance | None] = ContextVar(
 """The provenance of the request the Host's boundary is running: set by `web.py` around one
 external request's handler, read where the Host records what that request did."""
 
+BINDING_NOTICE: ContextVar[dict[str, Any] | None] = ContextVar(
+    "alphalattice_binding_notice", default=None
+)
+"""How the Host bound this request's Session when not in its project: set by the binding owner
+(`native_setup`), reset with the provenance around one request by `web.py`, and carried on its
+answer as `session_binding`, never a silent failure (AUTOBIND)."""
+
+
+def with_binding_notice(answer: object) -> object:
+    """An answer with the binding notice its request left, if it left one."""
+    notice = BINDING_NOTICE.get()
+    if notice is None or not isinstance(answer, dict):
+        return answer
+    return {**answer, "session_binding": notice}
+
+
 ANSWER_LANGUAGE: ContextVar[Literal["en", "zh"]] = ContextVar(
     "alphalattice_answer_language", default="en"
 )
@@ -1249,7 +1265,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "agent session one, so nothing was sent. Name it, as in alphalattice --workspace "
             "<dir> <object> <action> ...; or, inside an agent session, bind it once with "
             "`alphalattice --workspace <dir> session bind`, and its commands and its own "
-            "specialists' may leave it out.",
+            "specialists' may leave it out. A Session bound in the workspace's own folder (an "
+            "agent sandbox protects the project's `.codex`) names it on every line.",
         ),
     ),
     (
@@ -1286,7 +1303,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "already has another workspace or usage scope: run `alphalattice session unbind` "
             "inside this Session, then bind again. A new Session binds independently; "
             "`native_bridge.workspace_missing`, the workspace named is not a folder; "
-            "`native_bridge.files_unavailable`, the project's `.codex` folder cannot be written.",
+            "`native_bridge.files_unavailable`, a path other than the project's binding cannot be "
+            "written (a project binding the sandbox denies is kept in the workspace instead).",
         ),
     ),
     (

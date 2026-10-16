@@ -19,15 +19,13 @@ from alphalattice.interface.local_application.native_bridge import (
     HOSTS,
     NativeBridgeError,
     NativeResearchBinding,
+    autobind_root,
     clear_usage_checkpoints,
     read_session_usage,
     session_project,
     usage_reading,
 )
-from alphalattice.interface.local_application.native_setup import (
-    admitted_session_project,
-    autobind_root,
-)
+from alphalattice.interface.local_application.native_setup import admitted_session_project
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )

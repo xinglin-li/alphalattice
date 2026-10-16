@@ -269,24 +269,52 @@ def test_host_bind_refuses_unadmitted_paths_and_session_fields(live, monkeypatch
     assert not (project / ".codex" / BINDING_NAME).exists()
 
 
-def test_native_binding_write_failure_names_only_its_safe_path(live, monkeypatch):
+@pytest.mark.parametrize("held", [False, True])
+def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
+    live, monkeypatch, capsys, tmp_path, held
+):
+    """regression (Codex workspace-write, AX of 2026-10-15): its sandbox denies the project's
+    `.codex`, its first file or a slot beside another Session's, and the Session ran unbound and
+    unsaid; it binds in the workspace, and every answer says so."""
+    from alphalattice.interface.local_application.native_setup import autobind_root
+
     project = _project(live, "codex")
-    _session(monkeypatch, "codex")
+    if held:  # another Session already holds the project's first binding file
+        bind_session(project, host="codex", session_id="holder", workspace=live.workspace)
+    _session(monkeypatch, "codex", "sandboxed")
     binding_path = project / ".codex" / BINDING_NAME
-    opening = Path.open
+    opening, denied = Path.open, [project / ".codex"]
 
     def unavailable(path, mode="r", *args, **kwargs):
-        if path == binding_path and "x" in mode:
+        if any(path.is_relative_to(place) for place in denied) and "x" in mode:
             raise PermissionError(13, "secret fixture exception text", str(path))
         return opening(path, mode, *args, **kwargs)
 
     monkeypatch.setattr(Path, "open", unavailable)
+    for _ in range(2):  # the first answer binds, and a later one still says how
+        cli.main(_research(live, tmp_path), serve=lambda _: 99)
+        notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
+        assert notice["status"] == "BOUND_IN_WORKSPACE", notice
+        assert notice["next_action"] == "NAME_THE_WORKSPACE_ON_EACH_COMMAND"
+    root = autobind_root(live.workspace)
+    assert NativeResearchBinding.read(root, session=("codex", "sandboxed")) is not None
+    assert (
+        cli.main(["--workspace", str(live.workspace), "session", "unbind"], serve=lambda _: 99) == 0
+    )
+    assert json.loads(capsys.readouterr().out)["status"] == "DETACHED"
+    _session(monkeypatch, "codex", "explicit")  # an explicit bind takes the same way
     answer = LocalResearchClient(live.workspace).bind_native_session(project)
-    assert answer["failure_code"] == "native_bridge.files_unavailable:PermissionError"
-    assert answer["path_category"] == "PROJECT_BINDING"
-    assert answer["path"] == str(binding_path)
+    assert answer["next_action"] == answer["session_binding"]["next_action"], answer
     assert "secret fixture exception text" not in json.dumps(answer)
-    assert answer["next_action"] == "USE_THE_WORKSPACE_HOST_OR_CHECK_THE_NAMED_LOCAL_PATH"
+    assert binding_path.exists() == held
+    _session(monkeypatch, "codex", "nowhere")  # neither folder writable: said, never silent
+    denied.append(root / ".codex")
+    cli.main(_research(live, tmp_path), serve=lambda _: 99)  # its exit follows the first Task
+    notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
+    assert (notice["status"], notice["next_action"]) == (
+        "NOT_BOUND",
+        "ASK_THE_PERSON_TO_SERVE_FROM_A_WRITABLE_SHELL",
+    )
     outside = PermissionError(13, "secret", str(project.parent / "outside-private-file"))
     assert "path" not in files_unavailable(outside, project=project)
 

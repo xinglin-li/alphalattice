@@ -11,6 +11,7 @@ import re
 import shutil
 import sys
 import tomllib
+from contextlib import suppress
 from ctypes.util import find_library
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from alphalattice.interface.local_application.cli_contract import BINDING_NOTICE
 from alphalattice.interface.local_application.failure_codes import safe_failure_code, setup_failure
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_DIRECTORY,
@@ -32,10 +34,13 @@ from alphalattice.interface.local_application.native_bridge import (
     NativeBridgeError,
     NativeResearchBinding,
     attachment_preflight,
+    autobind_root,
+    binding_notice,
     clear_usage_checkpoints,
     codex_queue_readiness,
     command_readiness,
     declares_product,
+    session_binding,
     session_project,
 )
 from alphalattice.interface.local_application.native_usage import codex_thread_spawn
@@ -401,10 +406,10 @@ def problem_report(
     session = agent_session(os.environ)
     binding = None
     try:
-        found = NativeResearchBinding.find(project, session=session)
+        found = session_binding(project, workspace, session)
         if found is not None and Path(found[1].workspace).resolve() == workspace.resolve():
             project, binding = found
-    except NativeBridgeError:
+    except (NativeBridgeError, OSError):
         pass  # A broken binding must not prevent reporting it; doctor states its readiness.
     host = session[0] if session else getattr(binding, "host", None)
     doctor = _report_readiness(project, host or "codex", binding)
@@ -927,15 +932,6 @@ def bind_session(
     }
 
 
-AUTOBIND_ROOT = Path("runtime") / "native-sessions"
-"""Where the Host keeps the bindings it makes itself, inside the workspace (AUTOBIND)."""
-
-
-def autobind_root(workspace: Path) -> Path:
-    """The workspace's own binding folder, read like a project's."""
-    return workspace / AUTOBIND_ROOT
-
-
 def autobind_session(
     workspace: Path, host: str, session_id: str, *, project: Path | None = None
 ) -> tuple[Path, str]:
@@ -965,11 +961,125 @@ def autobind_session(
                 break
             lead = spawn.parent_thread_id
     if project is not None:
-        bind_session(project, host=host, session_id=lead, workspace=workspace)
-        return project, lead
+        try:
+            bind_session(project, host=host, session_id=lead, workspace=workspace)
+            return project, lead
+        except OSError as error:
+            if not _sandboxed_binding(error, project):
+                raise
     root = autobind_root(workspace)
     bind_session(root, host=host, session_id=lead, workspace=workspace, roles=tuple(_roles(host)))
+    if project is not None:  # kept here because the agent's sandbox refused the project
+        _IN_WORKSPACE.add((host, session_id, workspace.resolve()))
+        BINDING_NOTICE.set(binding_notice("BOUND_IN_WORKSPACE"))
     return root, lead
+
+
+_IN_WORKSPACE: set[tuple[str, str, Path]] = set()
+"""Sessions this process found bound in the workspace's own folder beside a configured project;
+each of their answers repeats the notice, so a later answer never drops it."""
+_REMINDED: set[tuple[str, str, Path]] = set()
+
+
+def _sandboxed_binding(error: OSError, project: Path) -> bool:
+    """Whether a permission refusal names the project's own binding.
+
+    That is its first file, the Sessions' slot folder or a slot file.
+    An agent sandbox (Codex's workspace-write protects a project's top-level `.codex`) refuses
+    them while the workspace's own folder stays writable.
+    """
+    if not isinstance(error, PermissionError) or not isinstance(error.filename, str):
+        return False
+    path = Path(error.filename).absolute()
+    folder = project / ".codex"
+    return path == folder / BINDING_NAME or path.is_relative_to(folder / BINDING_DIRECTORY)
+
+
+def unbound(error: Exception) -> None:
+    """Disclose, on this request's answer, a Session the Host could not bind.
+
+    A binding made whose recording failed after it keeps its notice and adds the cause.
+    """
+    cause = (
+        str(error)
+        if isinstance(error, NativeBridgeError)
+        else f"native_bridge.files_unavailable:{type(error).__name__}"
+        if isinstance(error, OSError)
+        else type(error).__name__
+    )
+    cause = safe_failure_code(cause) or cause
+    held = BINDING_NOTICE.get()
+    status = (
+        "BOUND_IN_WORKSPACE" if held and held["status"] == "BOUND_IN_WORKSPACE" else "NOT_BOUND"
+    )
+    named = Path(error.filename) if isinstance(error, OSError) and error.filename else None
+    BINDING_NOTICE.set({**binding_notice(status, cause), **({"path": str(named)} if named else {})})
+
+
+def remind_binding(host: str, session_id: str, workspace: Path) -> None:
+    """Repeat, on this answer, the notice of a Session bound in the workspace's own folder.
+
+    Only beside a configured project; checked once per Session in this process.
+    """
+    key = (host, session_id, workspace.resolve())
+    if key not in _REMINDED:
+        _REMINDED.add(key)
+        with suppress(NativeBridgeError, OSError):
+            project = session_project(key[2], host)
+            if session_binding(project, None, (host, session_id)) is None and session_binding(
+                None, key[2], (host, session_id)
+            ):
+                _IN_WORKSPACE.add(key)
+    if key in _IN_WORKSPACE and BINDING_NOTICE.get() is None:
+        BINDING_NOTICE.set(binding_notice("BOUND_IN_WORKSPACE"))
+
+
+def bound_in_workspace(
+    error: OSError, project: Path | None, workspace: Path, request: NativeSessionBindRequest
+) -> dict[str, Any]:
+    """Keep an explicit bind the agent's sandbox denies in the project in the workspace instead.
+
+    Every Host reader reads the workspace's own folder, and the answer says so in its own
+    words; any other path, or a refusal of the workspace write, stays refused.
+
+    Args:
+        error: The refused write.
+        project: The admitted project, if one was admitted before the refusal.
+        workspace: The served workspace.
+        request: The bind request, whose provenance names its host and Session.
+
+    Returns:
+        The workspace binding with its `session_binding` notice, or the refusal.
+    """
+    from alphalattice.interface.local_application.cli_contract import (
+        REQUEST_PROVENANCE,
+        refusal_words,
+    )
+
+    project = project or workspace
+    if not _sandboxed_binding(error, project):
+        return files_unavailable(error, project=project, workspace=workspace)
+    session = REQUEST_PROVENANCE.get()
+    assert session is not None and session.vendor is not None and session.session is not None
+    host, roles, root = session.vendor, tuple(_roles(session.vendor)), autobind_root(workspace)
+    try:
+        bound = bind_session(
+            root,
+            host=host,
+            session_id=session.session,
+            workspace=workspace,
+            usage=request.usage,
+            roles=roles,
+        )
+    except NativeBridgeError as refused:
+        code = str(refused)
+        return {"status": "REFUSED", "failure_code": code, **refusal_words(code)}
+    except OSError as refused:
+        return files_unavailable(refused, project=project, workspace=workspace)
+    _IN_WORKSPACE.add((host, session.session, workspace.resolve()))
+    notice = binding_notice("BOUND_IN_WORKSPACE")
+    words = {k: notice[k] for k in ("detail", "next_action")}
+    return {**bound, **words, "session_binding": notice}
 
 
 def _configuration(host: str = "codex") -> None:

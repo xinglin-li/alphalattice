@@ -6648,6 +6648,12 @@
 "native_bridge.files_unavailable": {
 "owner": "native_bridge"
 },
+"native_bridge.bound_in_workspace": {
+"owner": "native_bridge"
+},
+"native_bridge.session_not_bound": {
+"owner": "native_bridge"
+},
 "native_bridge.history_unavailable": {
 "owner": "native_bridge"
 },

@@ -1352,3 +1352,74 @@ def attachment_preflight(
             else {}
         ),
     }
+
+
+AUTOBIND_ROOT = Path("runtime") / "native-sessions"
+"""Where the Host keeps the bindings it makes itself, inside the workspace (AUTOBIND)."""
+
+
+def autobind_root(workspace: Path) -> Path:
+    """The workspace's own binding folder, read like a project's."""
+    return workspace / AUTOBIND_ROOT
+
+
+_NOTICE_CODES = {
+    "BOUND_IN_WORKSPACE": "native_bridge.bound_in_workspace",
+    "NOT_BOUND": "native_bridge.session_not_bound",
+}
+
+
+def binding_notice(status: str, cause: str | None = None) -> dict[str, Any]:
+    """The disclosed binding: its status, its words and way on, and the cause's code."""
+    code = _NOTICE_CODES[status]
+    return {"status": status, **({"cause": cause} if cause else {}), **refusal_words(code)}
+
+
+def session_binding(
+    project: Path | None, workspace: Path | None, session: tuple[str, str] | None
+) -> tuple[Path, NativeResearchBinding] | None:
+    """This Session's binding, the one reader every client-side caller shares.
+
+    The nearest up from the project, else the one the Host kept in the workspace's own folder
+    (AUTOBIND).
+
+    Args:
+        project: Where to look up from, if anywhere.
+        workspace: The workspace whose own folder may hold it.
+        session: The host and Session, if the command runs in one.
+
+    Returns:
+        The folder and binding, or None.
+    """
+    if session is None:
+        return None
+    if project is not None:
+        try:
+            found = NativeResearchBinding.find(project, session=session)
+        except NativeBridgeError as error:
+            if str(error) != "native_bridge.project_mismatch":
+                raise
+            found = None
+        if found is not None:
+            return found
+    if workspace is None:
+        return None
+    root = autobind_root(workspace)
+    held = next((b for b in NativeResearchBinding.bindings(root) if b.serves(session)), None)
+    return None if held is None else (root, held)
+
+
+def setup_reading(
+    project: Path, workspace: Path, session: tuple[str, str] | None
+) -> dict[str, Any]:
+    """An agent Session's setup (`session_setup`).
+
+    A Session the Host bound in the workspace's own folder reads that binding's notice, not a
+    missing project binding.
+    """
+    answer = session_setup(project, session)
+    if answer.get("failure_code") and session and session_binding(None, workspace, session):
+        notice = binding_notice("BOUND_IN_WORKSPACE")
+        kept = {k: v for k, v in answer.items() if k == "retrieval_runtime"}
+        answer = {"status": notice["status"], **notice, **kept, "session_binding": notice}
+    return answer

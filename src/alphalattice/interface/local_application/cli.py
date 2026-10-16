@@ -1699,17 +1699,26 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
     person's from their own shell; never another project's."""
     from alphalattice.interface.local_application.native_bridge import (
         NativeBridgeError,
+        autobind_root,
         session_project,
     )
     from alphalattice.interface.local_application.native_setup import unbind_session
 
     session = agent_session(os.environ)
+    host, session_id = (None, None) if session is None else session
+    named = getattr(args, "workspace", None)
     try:
-        answer = unbind_session(
-            session_project(Path.cwd(), None if session is None else session[0]),
-            session_id=None if session is None else session[1],
-            host=None if session is None else session[0],
-        )
+        try:
+            answer = unbind_session(
+                session_project(Path.cwd(), host), session_id=session_id, host=host
+            )
+        except NativeBridgeError:
+            if named is None or session is None:
+                raise
+            answer = {"status": "NOT_BOUND"}
+        if answer.get("status") == "NOT_BOUND" and named is not None and session is not None:
+            # A sandboxed agent's binding the Host kept in the workspace's own folder.
+            answer = unbind_session(autobind_root(Path(named)), session_id=session_id, host=host)
     except NativeBridgeError as error:
         return _refused(f"local_client.session_unbind_refused:{error}", started)
     except OSError as error:

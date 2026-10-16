@@ -590,6 +590,13 @@
         "type": "integer"
       }
     },
+    "answer:COMMITTEE_OPEN.detail": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
     "answer:COMMITTEE_OPEN.next_requests": {
       "required": true,
       "schema": {
@@ -602,6 +609,14 @@
       "schema": {
         "default": null,
         "type": "string"
+      }
+    },
+    "answer:COMMITTEE_OPEN.pm_route": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:COMMITTEE_OPEN.stage": {
@@ -712,6 +727,13 @@
       "required": true,
       "schema": {
         "type": "integer"
+      }
+    },
+    "answer:COMMITTEE_READ.settled": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "boolean"
       }
     },
     "answer:COMMITTEE_READ.stage": {
@@ -2256,6 +2278,14 @@
         "default": null
       }
     },
+    "answer:DATA_UPDATE_RUN.ask_now": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
     "answer:DATA_UPDATE_RUN.attributed_goal_id": {
       "required": false,
       "schema": {
@@ -2289,6 +2319,14 @@
           }
         ],
         "default": null
+      }
+    },
+    "answer:DATA_UPDATE_RUN.network_use": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:DATA_UPDATE_RUN.next_requests": {
@@ -2628,6 +2666,13 @@
         "type": "array"
       }
     },
+    "answer:EVIDENCE_CRO.committee_unreadable": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
     "answer:EVIDENCE_CRO.coverage": {
       "required": false,
       "schema": {
@@ -2781,6 +2826,13 @@
         "default": null,
         "items": {},
         "type": "array"
+      }
+    },
+    "answer:EVIDENCE_CRO.next_action": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
       }
     },
     "answer:EVIDENCE_CRO.next_requests": {
@@ -3307,6 +3359,14 @@
         "type": "integer"
       }
     },
+    "answer:EVIDENCE_INSTALL.ask_now": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
     "answer:EVIDENCE_INSTALL.attributed_goal_id": {
       "required": false,
       "schema": {
@@ -3319,6 +3379,14 @@
       "schema": {
         "default": null,
         "type": "string"
+      }
+    },
+    "answer:EVIDENCE_INSTALL.network_use": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:EVIDENCE_INSTALL.next_requests": {
@@ -3575,6 +3643,14 @@
         "type": "object"
       }
     },
+    "answer:EVIDENCE_PREPARE.ask_now": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
     "answer:EVIDENCE_PREPARE.attributed_goal_id": {
       "required": false,
       "schema": {
@@ -3605,6 +3681,14 @@
       "schema": {
         "default": null,
         "type": "string"
+      }
+    },
+    "answer:EVIDENCE_PREPARE.network_use": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:EVIDENCE_PREPARE.next_requests": {
@@ -3850,6 +3934,14 @@
         "type": "string"
       }
     },
+    "answer:EVIDENCE_REFRESH.ask_now": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
     "answer:EVIDENCE_REFRESH.attributed_goal_id": {
       "required": false,
       "schema": {
@@ -3880,6 +3972,14 @@
       "schema": {
         "default": null,
         "type": "string"
+      }
+    },
+    "answer:EVIDENCE_REFRESH.network_use": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:EVIDENCE_REFRESH.review_key": {
@@ -10134,6 +10234,13 @@
         "type": "string"
       }
     },
+    "answer:NETWORK_ACCESS.daily_question": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
     "answer:NETWORK_ACCESS.decided_by": {
       "required": true,
       "schema": {
@@ -10195,6 +10302,13 @@
       }
     },
     "answer:NETWORK_ACCESS_SET.attributed_goal_id": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
+    "answer:NETWORK_ACCESS_SET.daily_question": {
       "required": false,
       "schema": {
         "default": null,
@@ -10969,6 +11083,14 @@
         ]
       }
     },
+    "answer:PORTFOLIO_UPDATE_RUN.ask_now": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
     "answer:PORTFOLIO_UPDATE_RUN.attributed_goal_id": {
       "required": false,
       "schema": {
@@ -11002,6 +11124,14 @@
           }
         ],
         "default": null
+      }
+    },
+    "answer:PORTFOLIO_UPDATE_RUN.network_use": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:PORTFOLIO_UPDATE_RUN.next_requests": {
@@ -11043,6 +11173,14 @@
             "type": "null"
           }
         ]
+      }
+    },
+    "answer:RECOVER.ask_now": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
       }
     },
     "answer:RECOVER.attributed_goal_id": {
@@ -11149,6 +11287,14 @@
       "required": true,
       "schema": {
         "type": "string"
+      }
+    },
+    "answer:RECOVER.network_use": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:RECOVER.next_requests": {
@@ -12980,6 +13126,14 @@
         "type": "object"
       }
     },
+    "answer:RESEARCH_UPDATE_RUN.ask_now": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
     "answer:RESEARCH_UPDATE_RUN.attributed_goal_id": {
       "required": false,
       "schema": {
@@ -13013,6 +13167,14 @@
           }
         ],
         "default": null
+      }
+    },
+    "answer:RESEARCH_UPDATE_RUN.network_use": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:RESEARCH_UPDATE_RUN.publication_task_id": {
@@ -13825,6 +13987,14 @@
         "type": "string"
       }
     },
+    "answer:STRATEGY_ACTIVATE.ask_now": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
     "answer:STRATEGY_ACTIVATE.attributed_goal_id": {
       "required": false,
       "schema": {
@@ -13880,6 +14050,14 @@
       "schema": {
         "items": {},
         "type": "array"
+      }
+    },
+    "answer:STRATEGY_ACTIVATE.network_use": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:STRATEGY_ACTIVATE.next_decision_session": {
@@ -15798,6 +15976,14 @@
         "type": "string"
       }
     },
+    "answer:WORKSPACE_PREPARE_CONFIRM.ask_now": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
     "answer:WORKSPACE_PREPARE_CONFIRM.attributed_goal_id": {
       "required": false,
       "schema": {
@@ -15831,6 +16017,14 @@
           }
         ],
         "default": null
+      }
+    },
+    "answer:WORKSPACE_PREPARE_CONFIRM.network_use": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:WORKSPACE_PREPARE_CONFIRM.publication_task_id": {
@@ -17471,6 +17665,7 @@
     "exchange:ANSWER": {},
     "exchange:CORRECTION": {},
     "exchange:ISSUE": {},
+    "exchange:PASS": {},
     "exchange:RULING": {},
     "exchange:answer": {},
     "exchange:session_bound": {},
@@ -17684,6 +17879,7 @@
       ]
     },
     "message:RULES/CHALLENGE": "(ROLES[1:], frozenset({'DEBATE'}), None)",
+    "message:RULES/PASS": "(ROLES[1:], frozenset({'DEBATE'}), None)",
     "message:RULES/PERSON_ANSWER": "(ROLES[:1], frozenset({'DEBATE', 'CLOSED'}), 'FOR_THE_PERSON')",
     "message:RULES/REPLY": "(ROLES, frozenset({'DEBATE'}), 'ANY')",
     "message:RULES/RULING": "(ROLES[:1], frozenset({'DEBATE'}), 'CHALLENGE')",
@@ -46247,6 +46443,7 @@
     "refusal:native_bridge.binding_mismatch": {},
     "refusal:native_bridge.binding_path_invalid": {},
     "refusal:native_bridge.binding_unreadable": {},
+    "refusal:native_bridge.bound_in_workspace": {},
     "refusal:native_bridge.child_usage_binding_unverified": {},
     "refusal:native_bridge.child_usage_file_missing": {},
     "refusal:native_bridge.child_usage_incomplete": {},
@@ -46274,6 +46471,7 @@
     "refusal:native_bridge.roles_missing": {},
     "refusal:native_bridge.sequence_capacity_reached": {},
     "refusal:native_bridge.session_mismatch": {},
+    "refusal:native_bridge.session_not_bound": {},
     "refusal:native_bridge.start_not_observed": {},
     "refusal:native_bridge.usage_catching_up": {},
     "refusal:native_bridge.usage_cumulative_mismatch": {},
@@ -46297,6 +46495,7 @@
     "refusal:observation.tampered": {},
     "refusal:operations.schema_reference_not_local": {},
     "refusal:person_confirmation.already_used": {},
+    "refusal:person_confirmation.beyond_its_question": {},
     "refusal:person_confirmation.decision_mismatch": {},
     "refusal:person_confirmation.refused": {},
     "refusal:person_confirmation.repeat_unknown": {},
@@ -50811,6 +51010,7 @@
           "STANCE",
           "CHALLENGE",
           "REPLY",
+          "PASS",
           "RULING",
           "VERDICT",
           "PERSON_ANSWER"

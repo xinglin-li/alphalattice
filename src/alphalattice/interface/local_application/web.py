@@ -54,6 +54,7 @@ from typing import Any, Final, Protocol, cast
 from urllib.parse import parse_qs, urlsplit
 
 from alphalattice.interface.local_application.cli_contract import (
+    BINDING_NOTICE,
     CLIENT_HEADER,
     INSTANCE_HEADER,
     MAXIMUM_REQUEST_BODY_BYTES,
@@ -62,6 +63,7 @@ from alphalattice.interface.local_application.cli_contract import (
     RequestProvenance,
     refusal_words,
     request_provenance,
+    with_binding_notice,
 )
 from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
@@ -477,8 +479,9 @@ class LocalWebApplication:
                 return self._refuse(HTTPStatus.BAD_REQUEST, "local_web.body_not_an_object")
             payload = decoded
         scope = REQUEST_PROVENANCE.set(admitted.provenance)
+        notice = BINDING_NOTICE.set(None)
         try:
-            answer = route.handler(admitted.query, payload)
+            answer = with_binding_notice(route.handler(admitted.query, payload))
         except LocalWebError as error:
             return self._refuse(
                 HTTPStatus.BAD_REQUEST,
@@ -505,6 +508,7 @@ class LocalWebApplication:
             )
         finally:
             REQUEST_PROVENANCE.reset(scope)
+            BINDING_NOTICE.reset(notice)
         self.served += 1
         if isinstance(answer, LocalWebResponse):
             return answer

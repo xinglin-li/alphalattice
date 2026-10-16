@@ -191,6 +191,10 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         "native_bridge.workspace_mismatch": (
             "another workspace cannot borrow this Session's binding; rebinding names its new scope"
         ),
+        "native_bridge.bound_in_workspace": (
+            "a binding kept in the workspace's own folder is found from no project"
+        ),
+        "native_bridge.session_not_bound": "an unbound Session has no implicit workspace",
     }
     assert naming == set(full_form_refusals)
 

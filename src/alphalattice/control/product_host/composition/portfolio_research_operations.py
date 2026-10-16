@@ -325,6 +325,7 @@ from alphalattice.interface.local_application.native_bridge import (
     HOSTS,
     NativeBridgeError,
     NativeResearchBinding,
+    autobind_root,
     deliver_accepted_answer,
     file_bound_fact,
     session_project,
@@ -333,8 +334,9 @@ from alphalattice.interface.local_application.native_bridge import (
 )
 from alphalattice.interface.local_application.native_setup import (
     admitted_session_project,
-    autobind_root,
     autobind_session,
+    remind_binding,
+    unbound,
 )
 from alphalattice.interface.local_application.operations import OPERATIONS, PERSON_ONLY
 from alphalattice.interface.local_application.portfolio_research import (
@@ -944,19 +946,17 @@ class PortfolioResearchOperations:
     def _autobind(self, provenance: RequestProvenance | None, goal: Goal | None = None) -> None:
         """Bind the Session a request names, once, when nothing binds it to this workspace.
 
-        A Session is bound by working: no `session bind`, no configure. The binding lives in
-        the workspace, the bound fact names the Session in Team and its Goal from the first
-        call, and its usage is read in the background. A Codex child binds its lead. A goal
-        the Session already holds is named by the same fact (STOPS-1). Any failure leaves the
-        request as it is (AUTOBIND).
+        A Session is bound by working: its bound fact names it in Team and its Goal from the
+        first call; a Codex child binds its lead. Its answers say how (AUTOBIND).
         """
         if provenance is None or provenance.vendor not in HOSTS or not provenance.session:
             return
         key = (provenance.vendor, provenance.session)
+        workspace = Path(self.workspace_session.workspace)
+        remind_binding(*key, workspace)
         if key in self.autobound:
             return
         self.autobound.add(key)
-        workspace = Path(self.workspace_session.workspace)
         try:
             if self._served(key, workspace):
                 return
@@ -979,7 +979,8 @@ class PortfolioResearchOperations:
                 )
                 if goal is not None:
                     self.goals_named.add((*key, str(goal.goal_id)))
-        except Exception:
+        except Exception as error:
+            unbound(error)
             return
         if self.read_native_usage is not None:
             threading.Thread(target=self.read_native_usage, daemon=True).start()

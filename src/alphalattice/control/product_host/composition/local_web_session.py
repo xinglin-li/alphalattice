@@ -1970,7 +1970,7 @@ def build_local_web_application(
 def _native_session_routes(
     web: LocalWebApplication, operations: PortfolioResearchOperations
 ) -> None:
-    """Write native attachment metadata only in this served workspace's exact project."""
+    """Write native attachment metadata only in the served workspace's exact project."""
     from alphalattice.interface.local_application import native_setup
     from alphalattice.interface.local_application.cli_contract import (
         REQUEST_PROVENANCE,
@@ -1981,12 +1981,6 @@ def _native_session_routes(
         NativeBridgeError,
         NativeResearchBinding,
     )
-    from alphalattice.interface.local_application.native_setup import (
-        NativeEventDeliveryRequest,
-        NativeSessionBindRequest,
-        bind_session,
-        files_unavailable,
-    )
 
     workspace = operations.workspace_session.workspace.resolve()
 
@@ -1996,7 +1990,7 @@ def _native_session_routes(
     @web.route("POST", "/api/client/session/bind", mutates=True, external_client=True)
     def bind(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
         try:
-            request = NativeSessionBindRequest.model_validate(payload)
+            request = native_setup.NativeSessionBindRequest.model_validate(payload)
         except ValidationError:
             return refusal("native_bridge.request_invalid")
         provenance = REQUEST_PROVENANCE.get()
@@ -2008,7 +2002,7 @@ def _native_session_routes(
                 workspace, request.project, provenance.vendor
             )
             operations.native_projects.add(project)
-            return bind_session(
+            return native_setup.bind_session(
                 project,
                 host=provenance.vendor,
                 session_id=provenance.session,
@@ -2020,12 +2014,12 @@ def _native_session_routes(
         except OSError as error:
             if owner_failure_code(error) is not None:
                 raise
-            return files_unavailable(error, project=project or workspace, workspace=workspace)
+            return native_setup.bound_in_workspace(error, project, workspace, request)
 
     @web.route("POST", "/api/client/session/event", mutates=True, external_client=True)
     def event(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
         try:
-            request = NativeEventDeliveryRequest.model_validate(payload)
+            request = native_setup.NativeEventDeliveryRequest.model_validate(payload)
         except ValidationError:
             return refusal("native_bridge.request_invalid")
         provenance = REQUEST_PROVENANCE.get()
@@ -2098,7 +2092,7 @@ def _native_session_routes(
                     finally:
                         REQUEST_PROVENANCE.reset(token)
 
-            # A milestone's reading of the caller's own Session; no other event enters here.
+            # Only a milestone's read of the caller's own Session enters here.
             if request.event != {"source": "native_usage_read"} or (
                 provenance.vendor,
                 provenance.session,
@@ -2114,7 +2108,9 @@ def _native_session_routes(
         except OSError as error:
             if owner_failure_code(error) is not None:
                 raise
-            return files_unavailable(error, project=project or workspace, workspace=workspace)
+            return native_setup.files_unavailable(
+                error, project=project or workspace, workspace=workspace
+            )
 
 
 def _activity_routes(web: LocalWebApplication, activity: WorkspaceActivity) -> None:

@@ -65,7 +65,10 @@ its first research request opens a goal when it holds none. A committee member's
 bundle, message or review answer counts toward its floor's or thread's open goal
 instead, and a committee message never opens one; once that goal has closed, a
 member's request opens the Session's own goal, as a first research request does.
-Commands then omit `--workspace`. Use the **alphalattice-research** Skill for research
+Commands then omit `--workspace`. Where an agent sandbox protects the project's `.codex`
+(Codex's default workspace-write), the Host binds the Session in the workspace's own
+folder instead and every answer's `session_binding` says so: keep naming `--workspace`
+on each command, with nothing to approve. Use the **alphalattice-research** Skill for research
 ([command contract](.agents/skills/alphalattice-research/references/operating.md)).
 
 ## Run the first use from the person's sentence

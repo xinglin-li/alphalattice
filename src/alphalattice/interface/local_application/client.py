@@ -647,22 +647,13 @@ def lead_readings(
     Returns:
         The Host's aggregate receipt; none when reading is off or this is not its lead.
     """
-    from alphalattice.interface.local_application.native_bridge import (
-        NativeBridgeError,
-        NativeResearchBinding,
-    )
+    from alphalattice.interface.local_application.native_bridge import session_binding
 
     session = agent_session(environ)
     if session is None:
         return []
-    try:
-        found = NativeResearchBinding.find(project, session=session)
-    except NativeBridgeError as error:
-        # This host has no lead in the nearest configured project. Optional readings
-        # skip it; public binding requests retain the strict project refusal.
-        if str(error) == "native_bridge.project_mismatch":
-            return []
-        raise
+    # The project's binding, else the one the Host kept in the workspace (sandboxed).
+    found = session_binding(project, workspace, session)
     if found is None:
         return []
     project, binding = found
@@ -1672,13 +1663,10 @@ def compact_display(
     return shown
 
 
-def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict[str, Any]:
-    """One drawing of ``compact_display`` within ``budget`` bytes by its own tally."""
-    remaining = 300
-    spent = len(_REPRESENTATION) + len(_FULL_RESPONSE) + 120 + _size(omissions)
-    pending: deque[tuple[Any, str, int, Any, str | int]] = deque()
-    important = {
+_IMPORTANT: Final = frozenset(
+    {
         "status",
+        "session_binding",
         "answer_status",
         "task_lifecycle",
         "lifecycle",
@@ -1720,6 +1708,16 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
         "source_inventory",
         "scope",
     }
+)
+"""The fields a compact view always keeps whole: an answer's state, its way on and its limits."""
+
+
+def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict[str, Any]:
+    """One drawing of ``compact_display`` within ``budget`` bytes by its own tally."""
+    remaining = 300
+    spent = len(_REPRESENTATION) + len(_FULL_RESPONSE) + 120 + _size(omissions)
+    pending: deque[tuple[Any, str, int, Any, str | int]] = deque()
+    important = _IMPORTANT
 
     def room() -> int:
         return budget - spent - len(pending) * _MARK_BYTES
@@ -2932,7 +2930,7 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
     answer[chain.name] = {
         **answer.get(chain.name, {"steps": chain.steps}),
         "date": named,
-        "setup": _setup(),
+        "setup": _setup(client.workspace),
         "road": road,
         "ask_now": [
             *FIRST_USE_ASK_NOW,
@@ -2945,11 +2943,11 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
     return answer
 
 
-def _setup() -> dict[str, Any]:
+def _setup(workspace: Path) -> dict[str, Any]:
     """Read this agent Session's setup (`session_setup`)."""
-    from alphalattice.interface.local_application.native_bridge import session_setup
+    from alphalattice.interface.local_application.native_bridge import setup_reading
 
-    return session_setup(Path.cwd(), agent_session(os.environ))
+    return setup_reading(Path.cwd(), workspace, agent_session(os.environ))
 
 
 def _prepared(

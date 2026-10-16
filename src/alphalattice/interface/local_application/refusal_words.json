@@ -1200,8 +1200,16 @@
   "next_action": "READ_USAGE_WITH_SESSION_USAGE"
  },
  "native_bridge.files_unavailable": {
-  "detail": "The bridge cannot read or write the named local path category. For a binding, start the workspace Host in the configured project and use session bind. For configure or doctor, the person checks the named declarations from a shell that can access that project. Do not widen the agent sandbox.",
+  "detail": "The bridge cannot read or write the named local path category. A project binding that an agent sandbox denies is kept in the workspace's own folder instead and needs nothing more, so this is another path: for configure or doctor, the person checks the named declarations from a shell that can access that project. Do not widen the agent sandbox.",
   "next_action": "USE_THE_WORKSPACE_HOST_OR_CHECK_THE_NAMED_LOCAL_PATH"
+ },
+ "native_bridge.bound_in_workspace": {
+  "detail": "This Session is bound in the workspace's own folder, because the Host could not write the project's `.codex` folder (an agent sandbox protects it). Its Sessions row, usage and deliveries are recorded as usual; name `--workspace` on each command, since the project holds no binding to find it from.",
+  "next_action": "NAME_THE_WORKSPACE_ON_EACH_COMMAND"
+ },
+ "native_bridge.session_not_bound": {
+  "detail": "The Host could not bind this Session for the reason `cause` names, so its research is recorded but not its Sessions row, usage reading or deliveries. Ask the person to start the Host from a shell that can write the `path` this notice names (the project's binding or the workspace's own folder), then send the request again with `--workspace`.",
+  "next_action": "ASK_THE_PERSON_TO_SERVE_FROM_A_WRITABLE_SHELL"
  },
  "native_bridge.project_mismatch": {
   "detail": "The requested project differs from the configured project found above this served workspace. Start the Host for the workspace inside that project, then run session bind from that same project.",
