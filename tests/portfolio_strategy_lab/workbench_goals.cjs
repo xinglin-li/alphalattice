@@ -362,6 +362,14 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
     c.Data.read=async()=>first;route=new URLSearchParams('page=goal&goal='+firstHash);await c.live.ensure();
     assert.ok(shows('<h1>'+words.t('First use')+'</h1>'),language+' a first use is titled in its language');
     // the Host's own review-thread words read in the person's language; an agent's stay its own
+    // a member's own session reads as its part in that day's committee, in the reader's language
+    const session=(op,...roles)=>({id:'m',facts:[{item:{payload:{operation:op}}}],participants:new Map([['m',{roles:new Set(roles)}],['child',{roles:new Set(['alphalattice_risk'])}]])});
+    const titled=(s)=>vm.runInContext('TeamMembers',c).memberTitle(s,[{at:'2026-09-10T12:00:00'}],{independent_cro:'alphalattice_cro'});
+    assert.equal(titled(session('COMMITTEE_SUBMIT','alphalattice_alpha')),words.t('{role}, committee of {date}',{role:words.t('Alpha Modeling'),date:'2026-09-10'}),language+' a member session names its part');
+    // its own role, de-aliased, never a child's; a lead's stage answer is no review part
+    assert.equal(titled(session('AGENT_ANSWER_SUBMIT','independent_cro','alphalattice_cro')),words.t('{role}, review of {date}',{role:'CRO',date:'2026-09-10'}));
+    assert.equal(titled(session('AGENT_ANSWER_SUBMIT','alphalattice_data')),'');
+    assert.equal(titled(session('COMMITTEE_SUBMIT','research_lead','alphalattice_alpha')),'');
     c.said=words.said;c.LiveTeam.scene=teamScene;const reviewHash='review-thread-'+language,review={...empty,goal_hash:reviewHash,head_hash:reviewHash,
       goal:{...empty.goal,goal_hash:reviewHash},record:{...record,message_count:1,conversation:[{...record.conversation[0],
         message_id:'review-1',input_channel:'PRODUCT_REVIEW',message_kind:'acceptance',summary:'Accepted.'}]}};

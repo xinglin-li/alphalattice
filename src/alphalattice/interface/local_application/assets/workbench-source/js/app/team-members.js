@@ -21,6 +21,16 @@ const TeamMembers = (() => {
     for (const e of mine) by.set(e.messageKind || '', (by.get(e.messageKind || '') || 0) + 1);
     return {mine, latest: mine.at(-1), made: [...by].map(([k, n]) => kinds[k] ? `${t(kinds[k][0])} × ${count(n)}` : countText(n, '{n} message', '{n} messages')).join(' · ')};
   };
+  /* A member's own Session -- its own participant, never a child, holds a committee or review role
+   * and sent that thread's message or answer -- reads as its part in that day's committee or
+   * review, in declared words, never a goal's stored text. A lead (research_lead) never does. */
+  const PARTS = [['COMMITTEE_SUBMIT', '{role}, committee of {date}', ['alphalattice_alpha', 'alphalattice_risk', 'alphalattice_cro']], ['AGENT_ANSWER_SUBMIT', '{role}, review of {date}', ['alphalattice_evidence_analyst', 'alphalattice_cro']]];
+  const memberTitle = (s, all, aliases) => {
+    const own = [...new Set([...s.participants.get(s.id)?.roles || []].map((r) => aliases[r] || r))], ops = new Set(s.facts.map((f) => f.item.payload?.operation));
+    const d = new Date(all.map((e) => e.at).filter(Boolean).sort()[0] || ''), date = [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+    const [, part, roles] = own.includes('research_lead') || isNaN(d) ? [] : PARTS.find(([op, , held]) => ops.has(op) && own.some((r) => held.includes(r))) || [];
+    return part ? t(part, {role: own.filter((r) => roles.includes(r)).map(LiveTeam.roleName).join('/'), date}) : '';
+  };
   function externalItems(X) {
     const merged = new Map(X.items);
     for (const g of LiveActivity.retained()) for (const item of g.items) if (item.schema_kind === 'ExternalActivityObserved') merged.set(item.observation_id, item);
@@ -53,5 +63,5 @@ const TeamMembers = (() => {
     const words = [t('{n} in', {n: count(o.input)}), t('{n} out', {n: count(o.output)})].join(' · ');
     return noteLine(countText(o.count, '{n} other thread of this native session', '{n} other threads of this native session'), words, 'neutral');
   };
-  return {unique, rows, countOf, activities, externalItems, prune, othersLine};
+  return {unique, rows, countOf, activities, memberTitle, externalItems, prune, othersLine};
 })();

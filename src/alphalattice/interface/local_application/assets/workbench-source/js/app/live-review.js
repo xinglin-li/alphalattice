@@ -2562,8 +2562,7 @@ const LiveReview = (() => {
   /* Books (N2, law 123; F1, law 136): the Evidence Home as a lobby -- every saved book one row,
    * grouped by its state (the books at work open, the published folded) or by its time; one line:
    * its reference (what tells two alike apart), its name (law 134), its facts, its day; the row
-   * opens its overview (the next step is the book's page's). A book whose state is not read yet groups apart; grouped by state a row keeps its
-   * mark and the head says the word (not twice). */
+   * opens its overview (the next step is the book's page's). A book whose state is not read yet groups apart; grouped by state a row keeps its mark and the head says the word (not twice). */
   function booksPage() {
     const known=new Map(Data.history().filter(r=>r.raw?.book).map(r=>[key(r.raw.book),r]));
     const items=books().map(v=>{const r=known.get(key(v.selector)),summary=r?.raw?.book_summary;return {v,r,state:summary?.state==='NOT_READ' ? 'metadata' : null,word:t('Not read yet'),kind:v.selector.experiment_task_id ? 'authored' : 'installed'};});
@@ -2593,7 +2592,7 @@ const LiveReview = (() => {
     // B1 (the book plan's items 5 and 7): the book's identity and its evidence's days on every tab -- as-of, expiry and, once a review is published, its completeness and day; the publication is the chooser at the line's end
     const reviewed=withBook && Boolean(v) && (reviewPublished() || historical());
     const update=b?.update_subject;
-    const headFacts=withBook ? [[t(update ? 'Formation session' : 'trading|Session'),session()],[t('Book'),b?.authority ? codeWords(b.authority) : ''],...(update ? [[t('Observed through'),update.observed_through],[t('Entry session'),update.entry_session]] : []),...study,[t('Holdings'),b?.held_count==null? '' :count(b.held_count)],[t('As-of'),v?.evidence_as_of ? dayWord(v.evidence_as_of) : ''],[t('Expires'),v?.evidence_expires_at ? dayWord(v.evidence_expires_at) : ''],...(reviewed ? [[t('Completeness'),v.review_state ? codeWords(v.review_state) : ''],[t('Published'),publishedAt() || '']] : [])] : [];
+    const headFacts=withBook ? [[t(update ? 'Formation session' : 'trading|Session'),session()],[t('Book'),b?.authority ? codeWords(b.authority) : ''],...(update ? [[t('Observed through'),update.observed_through],[t('Entry session'),update.entry_session]] : []),...study,[t('Book holdings'),b?.held_count==null? '' :count(b.held_count)],[t('As-of'),v?.evidence_as_of ? dayWord(v.evidence_as_of) : ''],[t('Expires'),v?.evidence_expires_at ? dayWord(v.evidence_expires_at) : ''],...(reviewed ? [[t('Completeness'),v.review_state ? codeWords(v.review_state) : ''],[t('Published'),publishedAt() || '']] : [])] : [];
     const tools=app.page==='handoff' ? handoffTools() : app.page==='report' ? [...(S.exportDoc ? [{ic:'file',action:'review-export',value:'json',word:t('Export review JSON'),why:t('The owner\'s exact export')},{ic:'file',action:'review-export',value:'html',word:t('Export review HTML'),why:t('The owner\'s exact export')}] : []),...(deliveryOf() ? [{ic:'file',action:'review-delivery-export',value:'html',word:t('Export delivery HTML'),why:t('The composed delivery')},{ic:'file',action:'review-delivery-export',value:'json',word:t('Export delivery JSON'),why:t('The composed delivery')}] : [])] : [];
     // the lane in transition (the same book's next reading, or its report, is on its way and what is painted is the previous one): dimmed after 300 ms and not interactive, never collapsed
     const transition=(S.status==='refreshing' && !viewShown()) || (app.page==='report' && Boolean(S.exportDoc) && S.exportDoc.hash!==(S.pin || workingPublication()));

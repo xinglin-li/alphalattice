@@ -171,6 +171,47 @@ def floor_of(store: GoalStore, task: str) -> Floor | None:
     return floor if floor is not None and "selector" in floor.opened else None
 
 
+def _member_thread(request: Any) -> tuple[str, tuple[str, ...]]:
+    """The thread a member's own request speaks on and the roles its key may hold.
+
+    A bundle prepare carries no key (it hands one over); any other request has no thread ("").
+    """
+    if request.operation == "AGENT_BUNDLE_PREPARE" and request.agent_role in ROLES[1:]:
+        return str(request.task_id or ""), ()
+    if request.operation == "COMMITTEE_SUBMIT" and request.committee_role in ROLES[1:]:
+        return str(request.update_task_id or ""), (request.committee_role,)
+    if request.operation == "AGENT_ANSWER_SUBMIT" and request.bundle_directory:
+        return thread_id(bundle_slot(request.bundle_directory)), tuple(REVIEWERS)
+    return "", ()
+
+
+def member_goal(
+    store: GoalStore, request: Any, held: Any, provenance: Any, now: datetime
+) -> tuple[bool, Any]:
+    """Whether a request is a member's own on an open thread, and the goal it counts toward.
+
+    A member's message or review answer whose key its thread admits, and its keyless bundle
+    prepare on a floor not yet closed while its Session holds no goal, carry the thread's context
+    as a span carries its parent's trace (OpenTelemetry context propagation): they count toward
+    the thread's goal. A request is a member's only while that goal is open and the caller named
+    none; otherwise it keeps `held`, the goal it named or its Session holds. A key is checked
+    against the thread's seed alone, so no ledger is read twice for it.
+    """
+    thread, roles = _member_thread(request)
+    kept = store.committee(thread) if thread else None
+    goal = None if kept is None else store.head(UUID(kept["goal_id"]))
+    if kept is None or goal is None or goal.state != "OPEN" or getattr(provenance, "goal_id", None):
+        return False, held
+    if not roles:  # the bundle prepare that hands a member its key
+        floor = floor_of(store, thread) if held is None else None
+        opened = floor is not None and floor.stage(now) != "CLOSED"
+        return opened, goal if opened else held
+    keys = [member_key(kept["seed"], thread, role).encode() for role in roles]
+    key = request.committee_key
+    admitted = key is not None and any(hmac.compare_digest(key.encode(), k) for k in keys)
+    return True, goal if admitted else held
+
+
 def thread_of(store: GoalStore, thread: str) -> Floor | None:
     """One thread as its goal's ledger holds it: a committee's floor or a review bundle's."""
     held = store.committee(thread)

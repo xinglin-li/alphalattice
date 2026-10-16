@@ -286,6 +286,7 @@ from alphalattice.interface.local_application.activity import (
     ActivityReadQuery,
     ExternalActivityEventDocument,
     OperationObserver,
+    opens_goal,
     refusal_code,
     research_operation,
 )
@@ -830,7 +831,10 @@ class PortfolioResearchOperations:
                 or not research_operation(request.operation)
                 else self.goals.attributed_goal(provenance)
             )
-            if goal is None and _opens_goal(request.operation, provenance):
+            member, goal = committee.member_goal(
+                self.goals.store, request, goal, provenance, self.goals.clock()
+            )
+            if goal is None and opens_goal(request.operation, provenance, member=member):
                 goal = self._open_session_goal(request.operation, provenance)
             if not request.operation.startswith("GOAL_"):
                 # Before the work, which may deliver to the Session's binding (AUTOBIND).
@@ -4617,6 +4621,7 @@ class PortfolioResearchOperations:
             return self._stale_recovery_context(
                 source_id, code="portfolio_research.recovery_context_pair_required"
             )
+        not_offered = "portfolio_research.recovery_request_not_offered"
         registry = self.workspace_session.task_control_registry
         try:
             source = registry.task(source_id)
@@ -4625,35 +4630,25 @@ class PortfolioResearchOperations:
         if source.record_hash != source_hash:
             return self._stale_recovery_context(source_id)
         if source.lifecycle not in _RECOVERY_SOURCES:
-            return self._stale_recovery_context(
-                source_id, code="portfolio_research.recovery_request_not_offered"
-            )
+            return self._stale_recovery_context(source_id, code=not_offered)
         owned = self._task_replan_owner(source)
         if owned is None:
-            return self._stale_recovery_context(
-                source_id, code="portfolio_research.recovery_request_not_offered"
-            )
+            return self._stale_recovery_context(source_id, code=not_offered)
         declaration, _owner = owned
         if declaration.preview is None or request.operation not in {
             declaration.preview,
             declaration.admitting,
         }:
-            return self._stale_recovery_context(
-                source_id, code="portfolio_research.recovery_request_not_offered"
-            )
+            return self._stale_recovery_context(source_id, code=not_offered)
         try:
             normalized = self._normalized_operation_request(request)
             if request.operation == declaration.preview:
                 expected_offer = self._task_replan(source)
                 if expected_offer is None:
-                    return self._stale_recovery_context(
-                        source_id, code="portfolio_research.recovery_request_not_offered"
-                    )
+                    return self._stale_recovery_context(source_id, code=not_offered)
                 expected = self._normalized_replan_request(expected_offer)
                 if normalized != expected:
-                    return self._stale_recovery_context(
-                        source_id, code="portfolio_research.recovery_request_not_offered"
-                    )
+                    return self._stale_recovery_context(source_id, code=not_offered)
                 if declaration.preview == declaration.admitting:
                     try:
                         registry.record_recovery_link(
@@ -4667,9 +4662,7 @@ class PortfolioResearchOperations:
                     return source, declaration, False, normalized
                 return source, declaration, True, normalized
         except (KeyError, TypeError, ValueError, ValidationError):
-            return self._stale_recovery_context(
-                source_id, code="portfolio_research.recovery_request_not_offered"
-            )
+            return self._stale_recovery_context(source_id, code=not_offered)
         # The registry read is outside the malformed-request handler: database authority
         # failures must retain the Task Control refusal instead of being called a bad request.
         previews = registry.recovery_links(source_id)
@@ -4679,9 +4672,7 @@ class PortfolioResearchOperations:
             and link.admission_request == normalized
             for link in previews
         ):
-            return self._stale_recovery_context(
-                source_id, code="portfolio_research.recovery_request_not_offered"
-            )
+            return self._stale_recovery_context(source_id, code=not_offered)
         return source, declaration, False, normalized
 
     def _stale_recovery_context(
@@ -6532,19 +6523,6 @@ def _request_fields(request: PortfolioResearchOperationRequest, *left: str) -> d
         and isinstance(value := getattr(request, item.name), str | int | float | UUID)
         and not isinstance(value, bool)
     }
-
-
-def _opens_goal(operation: str, provenance: RequestProvenance | None) -> bool:
-    """Whether this request is an identified Session's research request that opens a goal."""
-    return (
-        provenance is not None
-        and provenance.vendor in HOSTS
-        and bool(provenance.session)
-        and provenance.goal_id is None
-        and not operation.startswith("GOAL_")
-        and research_operation(operation)
-        and operation not in {"EVENT_DECLARE", "SESSION_USAGE_READ", "USAGE_READING_SET"}
-    )
 
 
 def _portfolio_source(request: PortfolioResearchOperationRequest) -> dict[str, str | None]:

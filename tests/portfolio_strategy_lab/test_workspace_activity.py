@@ -46,6 +46,7 @@ from alphalattice.interface.local_application.activity import (
     READ_OPERATIONS,
     RECORDS_ITSELF,
     ActivityReadQuery,
+    opens_goal,
 )
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
@@ -1322,6 +1323,12 @@ def test_a_sessions_task_listing_reads_each_artifact_from_its_owner_a_page_at_a_
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
     assert goal["goal"]["declaration"]["title"] == "Session work: strategy-book run", goal
     assert "CPU_BUDGET_SET" not in {row["message_kind"] for row in goal["record"]["conversation"]}
+    # One decision opens a goal: never a committee message, nor a member's request on a thread.
+    session = RequestProvenance(vendor="claude-code", session="s")
+    assert opens_goal("RESEARCH_UPDATE_PLAN", session) and not opens_goal(
+        "COMMITTEE_SUBMIT", session
+    )
+    assert not opens_goal("AGENT_ANSWER_SUBMIT", session, member=True)
     for row in page["tasks"]:
         assert row["submitted_by"]["goal_id"] is not None
         assert (row["submitted_by"]["vendor"], row["submitted_by"]["session"]) == (

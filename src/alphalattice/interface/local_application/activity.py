@@ -26,10 +26,14 @@ from alphalattice.control.observation_runtime.contracts import (
     ObservationReadCursor,
     ObservationReadItem,
 )
-from alphalattice.interface.local_application.cli_contract import READ_OPERATIONS
+from alphalattice.interface.local_application.cli_contract import (
+    READ_OPERATIONS,
+    RequestProvenance,
+)
 from alphalattice.interface.local_application.failure_codes import (
     FAILURE_DETAIL_WITHHELD,
 )
+from alphalattice.interface.local_application.native_bridge import HOSTS
 from alphalattice.interface.local_application.portfolio_research import (
     OperationCaller,
     PortfolioResearchOperationRequest,
@@ -138,6 +142,41 @@ RECORDS_ITSELF: frozenset[str] = frozenset({"EVENT_DECLARE", "SESSION_USAGE_READ
 """Operations whose own record is what they write: a declared event is its row in the feed,
 and a usage reading files its readings, so the observer records no operation beside them
 (V266)."""
+
+
+OPENS_NO_GOAL: frozenset[str] = RECORDS_ITSELF | {"USAGE_READING_SET", "COMMITTEE_SUBMIT"}
+"""Research that never opens a goal of its own: a record of itself, the usage switch, and a
+committee message, which counts toward its floor's goal or is refused."""
+
+
+def opens_goal(
+    operation: str, provenance: RequestProvenance | None, *, member: bool = False
+) -> bool:
+    """Check whether the Host opens a goal for a request, the one place it is decided (AUTOBIND).
+
+    An identified Session's research request that names no goal, while its Session holds none,
+    opens one, unless it is a goal's own operation, in OPENS_NO_GOAL, or a member's own on an
+    open committee floor or review thread (`committee.member_goal`), which counts toward that
+    thread's goal instead.
+
+    Args:
+        operation: The owner's operation name.
+        provenance: Who sent it, and the goal it names, if any.
+        member: Whether it is a member's own request on an open thread.
+
+    Returns:
+        Whether a goal is opened for it before it runs.
+    """
+    return (
+        provenance is not None
+        and provenance.vendor in HOSTS
+        and bool(provenance.session)
+        and provenance.goal_id is None
+        and research_operation(operation)
+        and not operation.startswith("GOAL_")
+        and operation not in OPENS_NO_GOAL
+        and not member
+    )
 
 
 def observed_operation(operation: str) -> bool:

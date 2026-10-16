@@ -775,6 +775,41 @@ def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
     ]
 
 
+def test_a_members_request_counts_toward_its_floors_open_goal_and_never_overrides_a_named_one(
+    tmp_path: Path, readback: dict[str, Any]
+) -> None:
+    """requirement (the second member review, 2026-10-15): only while the floor's goal is open."""
+    store, now = _floor(tmp_path, readback)
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    fields = ("committee_key", "committee_role", "agent_role", "task_id", "update_task_id")
+    risk = {"operation": "COMMITTEE_SUBMIT", "update_task_id": TASK, "committee_role": "RISK"}
+    prepare = {"operation": "AGENT_BUNDLE_PREPARE", "agent_role": "RISK", "task_id": TASK}
+
+    def join(request: dict[str, Any], held: Any = None, named: str | None = None) -> tuple:
+        asked = SimpleNamespace(**{**dict.fromkeys(fields), "bundle_directory": None, **request})
+        member, goal = committee.member_goal(
+            store, asked, held, SimpleNamespace(goal_id=named), now[0]
+        )
+        return member, getattr(goal, "goal_id", goal)
+
+    seven = UUID(int=7)
+    assert join(risk | {"committee_key": floor.key("RISK")}, "mine") == (True, seven)
+    assert join(risk | {"committee_key": floor.key("PM")}, "mine") == (True, "mine")
+    assert join(risk | {"committee_role": "PM", "committee_key": floor.key("PM")}, "mine") == (
+        False,
+        "mine",
+    )
+    assert join(risk | {"committee_key": floor.key("RISK")}, "named", "x") == (False, "named")
+    assert join(prepare) == (True, seven) and join(prepare, "mine") == (False, "mine")
+    now[0] += timedelta(days=30)  # the floor's time box has closed it
+    assert join(prepare) == (False, None)
+    head = store.head(seven)
+    assert head is not None
+    store.head = lambda _goal: head.model_copy(update={"state": "COMPLETE"})  # type: ignore[method-assign]
+    assert join(risk | {"committee_key": floor.key("RISK")}, "mine") == (False, "mine")
+
+
 def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
     tmp_path: Path, readback: dict[str, Any]
 ) -> None:

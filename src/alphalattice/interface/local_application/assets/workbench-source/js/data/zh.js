@@ -7319,4 +7319,7 @@ window.ALPHA_ZH = {
   "Accepted.": "已受理。",
   "Rounds spent; the valid part stands.": "轮次已用完；有效部分保留。",
   "Correct the {n} named items; {left} rounds left.": "请更正列出的 {n} 项；还剩 {left} 轮。",
+  "{role}, committee of {date}": "{role}，{date} 的投资委员会",
+  "{role}, review of {date}": "{role}，{date} 的证据复核",
+  "Book holdings": "账本持仓",
 };

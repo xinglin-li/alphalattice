@@ -22,6 +22,7 @@ from alphalattice.control.observation_runtime.policy import (
     PRODUCT_OPERATION_SCHEMA,
     default_observation_policies,
 )
+from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.evidence_review_application import (
     ANSWER_CATEGORY,
 )
@@ -263,6 +264,8 @@ def answer_scene(live, tmp_path, monkeypatch):
         disposition="ADMITTED",
         newly_filed=True,
         goal_id=None,
+        session=parent,
+        key=None,
     ):
         live.review.artifacts.publish(ANSWER_CATEGORY, filed.record_hash, filed)
         delivery = live.review.accepted_answer_delivery(
@@ -287,7 +290,7 @@ def answer_scene(live, tmp_path, monkeypatch):
         monkeypatch.setattr(EvidenceReviewBundles, "agent_bundle", lambda self, directory: bundle)
         monkeypatch.setattr(live.review, "submit_analysis", lambda **kwargs: body)
         token = REQUEST_PROVENANCE.set(
-            RequestProvenance(vendor=host, session=parent, goal_id=goal_id)
+            RequestProvenance(vendor=host, session=session, goal_id=goal_id)
         )
         try:
             return live.operations.execute(
@@ -295,6 +298,7 @@ def answer_scene(live, tmp_path, monkeypatch):
                     operation="AGENT_ANSWER_SUBMIT",
                     bundle_directory=directory,
                     agent_answer=accepted.model_dump(mode="json"),
+                    committee_key=key,
                 ).to_operation_request(),
                 caller="EXTERNAL_AUTOMATION",
             )
@@ -1450,6 +1454,32 @@ def test_an_answer_of_any_recorded_basis_is_the_leads_fact_without_child_credit(
     (row,) = answers()
     assert row["payload"]["subject"]["authorship_basis"] == "NOT_OBSERVED"
     assert row["payload"]["subject"]["native_agent_id"] == "fixture-parent"
+
+
+def test_a_review_answer_after_its_threads_goal_closed_binds_the_sessions_own_goal(answer_scene):
+    """regression (the member review, 2026-10-15): a keyed answer on a review thread whose goal had
+    closed opened no goal, so its write-once receipt bound a null original goal."""
+    live, bundle, _accepted, record, _events, _publish, submit, _answers = answer_scene
+    store, thread = live.operations.goals.store, committee.thread_id(bundle.record_hash)
+    closed = open_goal(live, "Review thread")
+    seed = store.committee(thread, UUID(closed))["seed"]
+    token = REQUEST_PROVENANCE.set(RequestProvenance(vendor="codex", session="fixture-parent"))
+    try:
+        opened = {"agent_role": "ANALYST", "bundle_reference": bundle.record_hash}
+        committee.issued(store, opened, datetime(2026, 10, 4, tzinfo=UTC), lambda *_: None)
+    finally:
+        REQUEST_PROVENANCE.reset(token)
+    abandon = {"operation": "GOAL_ABANDON", "goal_id": closed, "change_reason": "Closed"}
+    request = PortfolioResearchRequestDocument(**abandon).to_operation_request()
+    assert live.operations.goals.operate(request, "HUMAN")["state"] == "ABANDONED"
+    key = committee.member_key(seed, thread, "ANALYST")
+    child = record.agent_run.model_copy(update={"session_id": "fixture-child"})
+    filed = record.model_copy(update={"agent_run": child})
+    assert submit(filed=filed, session="fixture-child", key=key)["status"] == "ACCEPTED"
+    receipts = [json.loads(p.read_bytes()) for p in (store.content.root / "events").glob("*")]
+    (original,) = [r["goal_id"] for r in receipts]  # the write-once receipt's Goal
+    assert original not in {None, closed}, receipts  # the Session's own, never null
+    assert store.head(UUID(original)).declaration.title.startswith("Session work"), original
 
 
 def test_unfiled_and_correction_records_supply_no_accepted_delivery(answer_scene):

@@ -61,8 +61,11 @@ and a background shell that gives it none leaves it serving until then. If
 your host has a browser tool, open the printed launch link once so the person can
 watch; otherwise print the link and go on. Never navigate or click the Workbench
 to show work. Your Session binds itself when it first works on the workspace, and
-its first research request opens a goal when it holds none; commands then omit
-`--workspace`. Use the **alphalattice-research** Skill for research
+its first research request opens a goal when it holds none. A committee member's
+bundle, message or review answer counts toward its floor's or thread's open goal
+instead, and a committee message never opens one; once that goal has closed, a
+member's request opens the Session's own goal, as a first research request does.
+Commands then omit `--workspace`. Use the **alphalattice-research** Skill for research
 ([command contract](.agents/skills/alphalattice-research/references/operating.md)).
 
 ## Run the first use from the person's sentence
