@@ -39,6 +39,11 @@ class WorkspaceObservationHistoryPart(_Contract):
         return self
 
 
+HistoryProofParts = tuple[str, tuple[str, ...], tuple[str, ...]]
+"""A kept history's prefix proof parts: its axes, each listing's digest and closed years."""
+_PROOF_FIELDS = ("axes_proof", "listing_digests", "listing_closed")
+
+
 class WorkspaceObservationHistoryHead(_Contract):
     """Select verified immutable prefix segments and one replaceable unmatured tail.
 
@@ -58,7 +63,31 @@ class WorkspaceObservationHistoryHead(_Contract):
     stable_session_count: int = Field(ge=0)
     predecessor_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     parts: tuple[WorkspaceObservationHistoryPart, ...] = Field(min_length=1)
+    # The prefix proof's parts, so one restated listing rebuilds alone: the axes every listing
+    # shares, one digest a listing and one of its closed years (ordered as its ids), so a day
+    # whose prefix holds reads only the open year. A head without them reuses whole.
+    axes_proof: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    listing_digests: tuple[str, ...] = ()
+    listing_closed: tuple[str, ...] = ()
     head_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @classmethod
+    def sealed(
+        cls, values: dict[str, object], proofs: HistoryProofParts | None = None
+    ) -> WorkspaceObservationHistoryHead:
+        """The head of these values and its prefix proof's parts, sealed by `identity`."""
+        if proofs is not None:
+            values = {**values, **dict(zip(_PROOF_FIELDS, proofs, strict=True))}
+        draft = cls.model_construct(**values, head_hash="")
+        return cls(**values, head_hash=draft.identity())
+
+    def identity(self) -> str:
+        """The seal: its canonical JSON, the proof parts left out when it holds none.
+
+        A head written before them keeps its seal.
+        """
+        apart = {"head_hash"} | (set(_PROOF_FIELDS) if self.axes_proof is None else set())
+        return str(canonical_hash(self.model_dump(mode="json", exclude=apart)))
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> WorkspaceObservationHistoryHead:
@@ -78,7 +107,10 @@ class WorkspaceObservationHistoryHead(_Contract):
             or stop != len(self.formation_sessions)
             or sum(part.start >= self.stable_session_count for part in self.parts) > 1
             or self.predecessor_head_hash == self.head_hash
-            or self.head_hash != canonical_hash(self.model_dump(mode="json", exclude={"head_hash"}))
+            or (self.axes_proof is None) != (not self.listing_digests)
+            or len(self.listing_digests) not in {0, len(self.ordered_listing_ids)}
+            or len(self.listing_closed) not in {0, len(self.listing_digests)}
+            or self.head_hash != self.identity()
         ):
             raise ValueError("alpha_research.workspace_observation_history_invalid")
         return self

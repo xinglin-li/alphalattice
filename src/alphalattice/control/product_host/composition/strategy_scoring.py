@@ -849,6 +849,9 @@ class StrategyScoringApplication:
                     self.session.workspace, additional_bytes=size
                 ),
                 loaded=candidate,
+                proofs=None
+                if prepared.axes_proof is None
+                else (prepared.axes_proof, prepared.listing_digests, prepared.listing_closed),
             )
         return prepared
 

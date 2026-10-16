@@ -12393,11 +12393,179 @@
    "reason": "A renewing component's score-input capture now keeps its training factor columns every day, so a model-renewal day extends the kept history prefix instead of rebuilding ten years cold; the capture's column set chooses what is held, never a value. Equal-values control on the first-use journey (offline replay, 466 names, 4 cores), both sides from the same book checkpoint at develop fc5f84a87: activation, the renewal forward update, daily and daily2 publish equal values in every public folder (results, reports, ledgers, decision updates, plans, observations, rolling heads), and the forward's new history tail part is byte-identical. Renewal update Task 361 s to 266 s, seal_inputs 192 s to 82 s, peak memory 15.0 to 6.4 GiB. Readouts and comparison: perf-warm-compute/121143-map-and-baseline-91d82dc6 (identity-before.json, identity-after.json, equal-journey-after.json)."
   },
   {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "e74aba71bbc1c567e309025bfc3fe2fefd3d9a2c97b33a7f3ae54f5f8cf1fc32",
+   "successor": "705e57069027284047c0c051e9aac878761fd6652517fe13b304914eb21a7d7f",
+   "change": "kept history proof drops the reference closes",
+   "reason": "The kept score-input history's prefix proof no longer binds the market reference's provider-adjusted closes, which no captured value reads (the capture returns before the reference is read; training reads it live; reference eligibility is built from membership, exclusions and raw closes). Only the reuse key changed. A restated reference now keeps the history warm, and the reused capture is byte-equal to a cold one (test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm, red at develop). Signed by the Tech Lead, 2026-10-15. Readouts: perf-real-day-seal/190950-l1 (identity-before.json, identity-after.json)."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "c5c4de7c1eb74aef4d83749cb0d2d4d67102dcebd7eb466d6783ee12d0972766",
+   "successor": "60cc9fc6f208348952ae340d9f29d720e0d6d1613845265518ea5e61181035e8",
+   "change": "kept history proof drops the reference closes",
+   "reason": "The kept score-input history's prefix proof no longer binds the market reference's provider-adjusted closes, which no captured value reads (the capture returns before the reference is read; training reads it live; reference eligibility is built from membership, exclusions and raw closes). Only the reuse key changed. A restated reference now keeps the history warm, and the reused capture is byte-equal to a cold one (test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm, red at develop). Signed by the Tech Lead, 2026-10-15. Readouts: perf-real-day-seal/190950-l1 (identity-before.json, identity-after.json)."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "7dc615bf058fcb3a4a7db2b2dd4fcc82ab9c31a95a3f051b2dc22b56068d117b",
+   "successor": "5e0157b18281a65cd3f3036b8663c32f0b4697340e9e3eb1670ba59e9d75e7a8",
+   "change": "kept history proof drops the reference closes",
+   "reason": "The kept score-input history's prefix proof no longer binds the market reference's provider-adjusted closes, which no captured value reads (the capture returns before the reference is read; training reads it live; reference eligibility is built from membership, exclusions and raw closes). Only the reuse key changed. A restated reference now keeps the history warm, and the reused capture is byte-equal to a cold one (test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm, red at develop). Signed by the Tech Lead, 2026-10-15. Readouts: perf-real-day-seal/190950-l1 (identity-before.json, identity-after.json)."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "978eed000d8a33f94780f505dbadcf4fa4cb582b28d5296642dd4c28f872e504",
+   "successor": "45b8aecbab448e0723a50839dd3300b79a3a181095857a42dcff8ad47fdb4a45",
+   "change": "kept history proof drops the reference closes",
+   "reason": "The kept score-input history's prefix proof no longer binds the market reference's provider-adjusted closes, which no captured value reads (the capture returns before the reference is read; training reads it live; reference eligibility is built from membership, exclusions and raw closes). Only the reuse key changed. A restated reference now keeps the history warm, and the reused capture is byte-equal to a cold one (test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm, red at develop). Signed by the Tech Lead, 2026-10-15. Readouts: perf-real-day-seal/190950-l1 (identity-before.json, identity-after.json)."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "91edeaa1d515c5d7065930681f6c89a7859da2e3b6cc88d873571e2b6b90872b",
+   "successor": "e34b0a14862cb49d11fae9b4a8e15a5f19db1b8a48be821c0578c6c39a242a69",
+   "change": "kept history proof drops the reference closes",
+   "reason": "The kept score-input history's prefix proof no longer binds the market reference's provider-adjusted closes, which no captured value reads (the capture returns before the reference is read; training reads it live; reference eligibility is built from membership, exclusions and raw closes). Only the reuse key changed. A restated reference now keeps the history warm, and the reused capture is byte-equal to a cold one (test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm, red at develop). Signed by the Tech Lead, 2026-10-15. Readouts: perf-real-day-seal/190950-l1 (identity-before.json, identity-after.json)."
+  },
+  {
    "role": "product_host.workspace_preparation",
    "predecessor": "527d1664c55bbb708ebacc201bddcb83b949b988432ab266aa90e51ac3d235bb",
    "successor": "0498e015bc8132e7d5becfc66dfb508fafde0ebacc7c56477dbcdeb654db2d85",
    "change": "feature closure digest keeps session marks; a late in-window dividend no longer refuses the daily, by one rule in both classifiers",
    "reason": "Lead signature 2026-10-15 (UPDATE-INPUTS-REAL-DAY part 1): the feature closure digest keeps the running hash at session marks, so a transition after a restated listing re-frames only its own tail (byte-equal digest on FINAL-022 Run B's real closure); the maintenance reconciliation and the pre-research delta service classify a session-set change by one rule (semantic_revisions.set_change_explained): a held session is a value revision, a session after the target or one the listing lacked explains the change. Only changes the predecessor refused move; no other value changes. Branch-only successor 6dbe2e53 replaced after the Lead's review. Receipt: PERF's variant restating plant, develop a33dab0a5 against the tip, ALL EQUAL on every public folder over the restated day and the day after (perf-real-day-seal/192244-l2-journey-0ffd7b36, equal-flow-variant.json). Control: the full plant, which develop refuses, completes daily and daily2 on the tip (flow-update-inputs-real-day/191502-measure-b9b5775c, copies/qa/replay-full-plant)."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "884b1fe2d899d59750196239809d3651cc8699461eaeb22c6a903f2caa470697",
+   "successor": "e401ccb02400fdacdc8df940fd84fc95de425ad04d3012c908e530e12cba9764",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "a1be1e46062e899422e7d7d42339a5c707947be29e142fc55c1ee0f3794c26e1",
+   "successor": "04b59920ad7d006e4286db69da38e80474f3e9b82e0aa3ded0614cf625b2335e",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "705e57069027284047c0c051e9aac878761fd6652517fe13b304914eb21a7d7f",
+   "successor": "d8df2e44266c3dba60144b2df4da0bcd15a62c1e764e0c5df8f1a37cc60d140c",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "60cc9fc6f208348952ae340d9f29d720e0d6d1613845265518ea5e61181035e8",
+   "successor": "69603864fbc730a7cd28294305b984c8b41f44872ee8bcf244225d6d3d1cc2ca",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "5e0157b18281a65cd3f3036b8663c32f0b4697340e9e3eb1670ba59e9d75e7a8",
+   "successor": "61b64e88ec6fb5440fffee9b62ec92bb40c20ca7f5f11376a4b9120f4ffb4866",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "7fa71f995994ee254e05ccfb47946260c4b13e10fb94c11f8c2a48f22f3f9f36",
+   "successor": "17edfd79e0e373f65aa364a1cd0986f5baada074d55c8dfc0a45a7bdc74b3eb2",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "d72a611e4e3690d3aab43b4a884a832a8cf5eb9d1be99d7cd56ccb5fa196926b",
+   "successor": "6e5f843e5b6d708e1805d1fc55255b26d8173d65e53ed9d1b0a7d85fb25a2e71",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "714917dba8eb64efcf50c786d966e5443a4ab42952db0eaf0073e709b4df6891",
+   "successor": "2ab86eef6fc4e1372642054e5de4f98045b68ae1c4d90b3cd169dfe83b9be6d8",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "45b8aecbab448e0723a50839dd3300b79a3a181095857a42dcff8ad47fdb4a45",
+   "successor": "8fbf772a9b6e030819ccf6eae1efc8d0394e54126430bb35b86321cffe1b4aa0",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "e34b0a14862cb49d11fae9b4a8e15a5f19db1b8a48be821c0578c6c39a242a69",
+   "successor": "f37c0cee005d532de07fe0493550351d1162f594eeb4bfe45caff1199011c74f",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "3f963f183e69a8aedb0d6951e5383127495d170d17b1f8de023fa1152ab74076",
+   "successor": "cd0813bd9f4acfb9b414fe6fabfdae48cb834a5ff850a88838ef434aeb660151",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "3f963f183e69a8aedb0d6951e5383127495d170d17b1f8de023fa1152ab74076",
+   "successor": "cd0813bd9f4acfb9b414fe6fabfdae48cb834a5ff850a88838ef434aeb660151",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "23ebb11113e0cd0d0b74a8b3ab898c1f4a1e6ed987eae242fbeb0288c8d620dc",
+   "successor": "21ccda31b505edffe8bc5ca2f00b96ce3e5dbe19c7f5219fe4f1d522d035493e",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "d8df2e44266c3dba60144b2df4da0bcd15a62c1e764e0c5df8f1a37cc60d140c",
+   "successor": "aa7ac1a9760a99a7d36e0d66355266375c8062925397a3c004285af4212aae7a",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "69603864fbc730a7cd28294305b984c8b41f44872ee8bcf244225d6d3d1cc2ca",
+   "successor": "e248f58e3e49239a2250c8e3261190a56787fa0e621554437cb331f606b623c9",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "61b64e88ec6fb5440fffee9b62ec92bb40c20ca7f5f11376a4b9120f4ffb4866",
+   "successor": "7bdc3861f92cf4ad2361c34d5c200ee3ae72ed8e3f9f24b31e02b273830e139c",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "6e5f843e5b6d708e1805d1fc55255b26d8173d65e53ed9d1b0a7d85fb25a2e71",
+   "successor": "a34e6bde65ae5ca75beb952d8f89a77b6ab2fdfc6aa01f9a1fcc212d8bb917c1",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "8fbf772a9b6e030819ccf6eae1efc8d0394e54126430bb35b86321cffe1b4aa0",
+   "successor": "25a77a787272e562037d1c628fb09fa49cb763a545e2221b78985ebdd3f22f31",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "f37c0cee005d532de07fe0493550351d1162f594eeb4bfe45caff1199011c74f",
+   "successor": "21570889465cc56ffe18cbb5d578cf54a1b685e136396722c90442d61c323733",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
   }
  ]
 }
