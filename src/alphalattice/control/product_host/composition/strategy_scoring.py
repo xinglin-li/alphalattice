@@ -791,10 +791,12 @@ class StrategyScoringApplication:
             if captured_authority_hash is None
             else self._captured_authority(binding, captured_authority_hash)
         )
+        # A renewing component's history keeps its training columns every day, so the renewal
+        # day extends the kept prefix instead of reading the whole history again; a capture's
+        # columns choose what it holds, never a value.
         training_factor_ids = (
             authority.authority.training_factor_ids
             if isinstance(authority, AdmittedRenewingInference)
-            and not authority.authority.supports(through)
             else ()
         )
         scope_hash = workspace_observation_history_scope(binding)

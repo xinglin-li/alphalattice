@@ -307,3 +307,39 @@ def test_a_kept_history_is_refused_for_more_columns_or_another_implementation(da
     same = workspace_observation_history_selection(binding, implementation="a" * 64)
     assert same == workspace_observation_history_selection(binding, implementation="a" * 64)
     assert same != workspace_observation_history_selection(binding, implementation="b" * 64)
+
+
+def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_renew(monkeypatch):
+    """regression (the person's D2, 2026-10-15): a kept history held only that day's columns, so
+    the renewal day rebuilt ten years cold; every capture now keeps the training columns."""
+    from contextlib import nullcontext
+
+    from alphalattice.control.product_host.composition import strategy_scoring as scoring
+    from alphalattice.investment.alpha_research.scores.model_renewal import (
+        AdmittedRenewingInference as Renewing,
+    )
+
+    inference, captured = object.__new__(Renewing), {}
+    inference.authority = SimpleNamespace(
+        training_factor_ids=("amihud_21",), supports=lambda _: True, model_set=SimpleNamespace()
+    )
+    inference.authority.model_set.ordered_feature_ids = ()
+
+    def capture(_workspace, **kwargs):
+        captured.update(kwargs)
+        raise ValueError("causal execution split is invalid")  # the owner's own early return
+
+    monkeypatch.setattr(scoring, "prepare_workspace_component_inputs", capture)
+    owner = SimpleNamespace(
+        _authority=lambda _: inference,
+        store=SimpleNamespace(load_workspace_observation_history=lambda _: None),
+        session=SimpleNamespace(reads=nullcontext, workspace=None),
+        clock=lambda: OBSERVED_AT,
+    )
+    binding = SimpleNamespace(
+        strategy_package_id="p", component_id="c", source_kind="WORKSPACE_DATA_FEATURE"
+    )
+    binding.strategy_package_hash = "3" * 64
+    prepare = scoring.StrategyScoringApplication.prepare_inputs
+    assert prepare(owner, binding, through=LAST, expected_source_hash="4" * 64) is None
+    assert captured["training_factor_ids"] == ("amihud_21",)
