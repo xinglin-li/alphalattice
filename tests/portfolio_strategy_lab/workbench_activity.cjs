@@ -47,7 +47,7 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
   const planned=A.groups()[0];assert.equal(A.facts(planned).state,'PLANNED');assert.ok(A.section().includes('spec abcdef01'));
   // 2. An admitted RUN is announced once, its Task joins the list, and the next read watches it.
   const asked=item(3,'ProductOperationObserved',{operation:'RUN',caller:'EXTERNAL_AUTOMATION',phase:'REQUESTED',operation_ref:'op2',subject:{}});
-  const run=item(4,'ProductOperationObserved',{operation:'RUN',caller:'EXTERNAL_AUTOMATION',phase:'RETURNED',operation_ref:'op2',status:'ADMITTED',task_id:'task-1',task_lifecycle:'QUEUED',next_read:{operation:'STATUS',task_id:'task-1'},subject:{}},{task_id:'task-1',run_id:'local-web:task-1'});
+  const run=item(4,'ProductOperationObserved',{operation:'RUN',caller:'EXTERNAL_AUTOMATION',phase:'RETURNED',operation_ref:'op2',status:'ADMITTED',task_id:'task-1',task_lifecycle:'QUEUED',next_read:{operation:'STATUS',task_id:'task-1'},subject:{network_used_under:'RELAYED_YES'}},{task_id:'task-1',run_id:'local-web:task-1'});
   pages=[page('CONTINUED','e1',[asked,run],{'task-1':projection('task-1','QUEUED')})];
   await A.refresh();
   assert.equal(reads[1],'/api/activity?limit=200&after=e1%3A2','continues from the last cursor');
@@ -55,6 +55,7 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
   assert.deepEqual(toasts,[],'an admitted Task counts, it does not toast (round 75)');assert.equal(A.unseen(),1);
   assert.deepEqual(merged.map(v=>v.task_id),['task-1']);
   assert.equal(A.facts(A.groups()[0]).state,'QUEUED'); // the dock line retired with the dock (round 62): the unseen count is the side's badge
+  assert.ok(A.section().includes('daily yes'),'the row says whose setting let the Task reach the network');
   // 3. A re-delivered row is not a second event and not a second toast (ordinal watermark).
   pages=[page('CONTINUED','e1',[run],{'task-1':projection('task-1','QUEUED')})];
   await A.refresh();

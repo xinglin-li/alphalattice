@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date, datetime
 from typing import Literal, Self
 
@@ -14,9 +15,11 @@ from ..contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
     AlternativeEvidenceCitation,
     AlternativeEvidenceClass,
+    AlternativeEvidenceReadFiling,
     AlternativeEvidenceRequest,
     seal_contract,
 )
+from ..runtime.coverage import LogicalSourceCounts
 from .contracts import AcquiredEvidenceDocument, PublishedPrecision
 
 _BASELINE_TYPES = ("10-K", "10-K/A", "10-Q", "10-Q/A")
@@ -102,6 +105,7 @@ class RecordedEvidenceSource:
         evidence_as_of: datetime,
         evidence_classes: frozenset[AlternativeEvidenceClass],
         policy_budget: int,
+        read: frozenset[str] = frozenset(),
     ) -> tuple[
         tuple[tuple[int, RecordedEvidenceDocument], ...],
         tuple[tuple[int, RecordedEvidenceDocument], ...],
@@ -112,7 +116,9 @@ class RecordedEvidenceSource:
         `(selected, deferred beyond the policy budget)`, each with the
         library sequence numbers, the newest of each baseline type first and
         the rest newest first. Independent of any other issuer: what the
-        packer counts and what the acquisition takes are the same list.
+        packer counts and what the acquisition takes are the same list. A
+        document an earlier analysis read (`read`, by revision) is passed
+        over, as live acquisition passes over a filing read earlier (W3).
         """
         capacity = min(policy_budget, ADMITTED_DOCUMENT_CAPACITY)
         items = [
@@ -121,6 +127,7 @@ class RecordedEvidenceSource:
             if document.entity_id == entity_id
             and document.evidence_class in evidence_classes
             and document.available_at <= evidence_as_of
+            and document.revision not in read
         ]
         if len(items) <= capacity:
             return tuple(items), ()
@@ -139,6 +146,63 @@ class RecordedEvidenceSource:
                 chosen.append(item)
         deferred = tuple(item for item in newest if item not in chosen)
         return tuple(sorted(chosen, key=lambda item: item[0])), deferred
+
+    @classmethod
+    def logical_counts(
+        cls,
+        *,
+        entities: tuple[str, ...],
+        documents: tuple[RecordedEvidenceDocument, ...],
+        evidence_as_of: datetime,
+        evidence_classes: frozenset[AlternativeEvidenceClass],
+        policy_budget: int,
+        read_by: Callable[[str], dict[str, str]],
+        carry: bool = True,
+    ) -> LogicalSourceCounts:
+        """Each issuer's documents left to read at a cutoff.
+
+        The library's cutoff-valid documents a current analysis did not read (`read_by`, revision
+        to publication). An issuer whose every document one read is carried, its readings named,
+        as live acquisition carries an issuer with no new filing (W3); a library says nothing of
+        what was filed, so no issuer is named as filing nothing. Without `carry` -- the view of a
+        scope no run sealed -- nothing is passed over, so an analysis still finds its unit, as
+        live mode packs such a view from its plans.
+        """
+        counts: dict[str, int] = {}
+        basis: dict[str, str] = {}
+        carried: set[str] = set()
+        read_filings: list[AlternativeEvidenceReadFiling] = []
+        for entity in entities:
+            readings = read_by(entity) if carry else {}
+            selected, deferred = cls.logical_selection(
+                entity_id=entity,
+                documents=documents,
+                evidence_as_of=evidence_as_of,
+                evidence_classes=evidence_classes,
+                policy_budget=policy_budget,
+                read=frozenset(readings),
+            )
+            earlier = sorted({d.revision for d in documents if d.entity_id == entity} & {*readings})
+            read_filings += [
+                AlternativeEvidenceReadFiling(
+                    entity_id=entity, accession=revision, publication_hash=readings[revision]
+                )
+                for revision in earlier
+            ]
+            counts[entity] = len(selected)
+            if earlier and not selected:
+                carried.add(entity)
+            basis[entity] = (
+                f"recorded library: {len(selected)} cutoff-valid document(s) selected"
+                + (f", {len(earlier)} read earlier" if earlier else "")
+                + (f", {len(deferred)} beyond the policy budget" if deferred else "")
+            )
+        return LogicalSourceCounts(
+            counts=counts,
+            basis=basis,
+            carried=frozenset(carried),
+            read_filings=tuple(read_filings),
+        )
 
     def select_documents(
         self,
@@ -175,6 +239,7 @@ class RecordedEvidenceSource:
                 evidence_as_of=request.evidence_as_of,
                 evidence_classes=evidence_classes,
                 policy_budget=budget,
+                read=request.read_accessions(entity_id),
             )
             chosen[entity_id] = list(selected)
             if deferred:

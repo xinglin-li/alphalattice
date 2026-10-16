@@ -17,7 +17,11 @@ from importlib import resources
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
-from alphalattice.control.workspace_runtime.network_access import NetworkAccess, network_access
+from alphalattice.control.workspace_runtime.network_access import (
+    NetworkAccess,
+    network_access,
+    set_network_access,
+)
 from alphalattice.evidence.alternative_evidence.contracts import (
     DEFAULT_SOURCE_DOCUMENT_BYTES,
     AlternativeEvidenceAdmission,
@@ -232,6 +236,25 @@ class DeniedSecOfficialTransport:
         return None
 
 
+class HeldOfficialTransport(HttpxSecOfficialTransport):
+    """The official client as a running Task holds it, at the product's request rate.
+
+    Each request first reads the workspace's network control, so the person's stop reaches the
+    Task before its next request, not only the next admission.
+    """
+
+    def __init__(self, admitted: Callable[[], bool], **client: Any) -> None:
+        """Hold the client, at the product's rate (`sec_request_rate`), and the control's reader."""
+        super().__init__(**{"requests_per_second": sec_request_rate(), **client})
+        self._admitted = admitted
+
+    def get(self, url: str, *, maximum_bytes: int) -> SecOfficialResponse:
+        """Refuse by name once the control is closed (`alternative_evidence.network_disabled`)."""
+        if not self._admitted():
+            raise ValueError("alternative_evidence.network_disabled")
+        return super().get(url, maximum_bytes=maximum_bytes)
+
+
 @dataclass(frozen=True, slots=True)
 class OfficialSourceAdmission:
     """An official SEC source admitted for this process's live acquisitions.
@@ -422,9 +445,9 @@ def admit_official_source(
         declared["campaign_ledger"] = ledger
     return OfficialSourceAdmission(
         source=SecEdgarSource(
-            HttpxSecOfficialTransport(
+            HeldOfficialTransport(
+                lambda: network_access(workspace_root, values, now=now).allowed,
                 user_agent=user_agent,
-                requests_per_second=sec_request_rate(),
                 maximum_total_attempts=maximum_total_attempts,
                 maximum_total_response_bytes=maximum_total_response_bytes,
                 ledger=ledger,
@@ -440,8 +463,44 @@ def admit_official_source(
     )
 
 
-NOT_GRANTED = frozenset({"DEFAULT", "UNREADABLE"})
-"""The consent actors that grant no acquisition: none recorded, or a record that does not read."""
+REVOKED = "REVOKED"
+"""The person's stop: it grants nothing, and no first use's delegation grants again over it."""
+
+NOT_GRANTED = frozenset({"DEFAULT", "UNREADABLE", REVOKED})
+"""The consent actors that grant no acquisition: none recorded, a record that does not read, or
+the person's stop."""
+
+
+def delegated_consent(
+    current: EvidenceSourceConsent, wanted: EvidenceSourceConsent
+) -> EvidenceSourceConsent | None:
+    """What a first use's delegation records: the default budget, never over the person's own.
+
+    The person's record always wins: one that covers `wanted` answers as it stands, unwritten;
+    one it would raise, or their stop, is beyond the delegation (None).
+    """
+    if current.actor == REVOKED or not wanted.within(DEFAULT_SOURCE_CONSENT):
+        return None
+    if current.actor in NOT_GRANTED or current.actor == wanted.actor:
+        return wanted
+    return current if wanted.within(current) else None
+
+
+def set_workspace_network(
+    workspace: Path, *, enabled: bool, now: datetime, **setting: Any
+) -> NetworkAccess:
+    """Set the workspace's network control (`set_network_access`).
+
+    The person's stop revokes SEC consent with it, so the network's next opening acquires nothing
+    until they grant it again.
+    """
+    # The network closes first: a consent write that fails never leaves it open.
+    access = set_network_access(workspace, enabled=enabled, now=now, **setting)
+    if not enabled and setting.get("delegation") is None:
+        stop = replace(DEFAULT_SOURCE_CONSENT, actor=REVOKED, granted_at=now.isoformat())
+        record_evidence_source_consent(workspace, stop)
+    return access
+
 
 CONSENT_ATTEMPTS_PER_DOCUMENT = 4
 """Requests a consented document may take: its filing index, its body and their retries."""

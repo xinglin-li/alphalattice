@@ -344,6 +344,10 @@ def returned_subject(body: Mapping[str, Any]) -> dict[str, Any]:
         value = body.get(name)
         if isinstance(value, (str, int, bool)):
             subject[name] = value
+    use = body.get("network_use")
+    if isinstance(use, Mapping) and isinstance(use.get("under"), str):
+        # Whose setting let the admitted work reach the network (`disclosed`).
+        subject["network_used_under"] = use["under"]
     intent = body.get("execution_intent")
     if isinstance(intent, Mapping) and isinstance(intent.get("task_id"), str):
         subject["existing_task_id"] = intent["task_id"]

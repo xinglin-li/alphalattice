@@ -88,6 +88,40 @@ def data_decision_findings(
     ]
 
 
+def evidence_reuse_findings(store: Path, before: frozenset[str]) -> list[dict[str, str]]:
+    """A later day reads no filing an earlier analysis read, nor scores a selection over one.
+
+    The filing is the unit of reuse (W3). `store` is the Evidence artifact root and `before`
+    the records it held before the day; the day's own records are the rest.
+    """
+
+    def load(record: str) -> dict[str, Any]:
+        return dict(json.loads((store / record).read_text(encoding="utf-8")))
+
+    def filings(document_set: str) -> set[tuple[str, str]]:
+        held = load(f"document-sets/{document_set}.json")["documents"]
+        return {(d["entity_id"], d["revision_label"]) for d in held}
+
+    def read(records: Any) -> set[tuple[str, str]]:
+        sets = [load(r)["document_set_hash"] for r in records if r.startswith("analysis-pub")]
+        return set().union(*map(filings, sets))
+
+    today = {p.relative_to(store).as_posix() for p in store.rglob("*.json")} - before
+    earlier = read(before)
+    receipts = [load(r) for r in today if r.startswith("retrieval-access-receipts/")]
+    failures = {
+        "daily.evidence_reread": bool(read(today) & earlier),
+        "daily.evidence_rescored": any(
+            r.get("reused_from_receipt_hash") is None and filings(r["document_set_hash"]) <= earlier
+            for r in receipts
+        ),
+    }
+    owner = "evidence/alternative_evidence/runtime/task_adapter.py"
+    return [
+        {"rule": rule, "loop_part": "reuse", "owner": owner} for rule, f in failures.items() if f
+    ]
+
+
 def daily_findings(feed: dict[str, Any], projection: dict[str, Any]) -> list[dict[str, str]]:
     """Today's rendered outcome, members and decisions preserve the previous sealed day."""
     from .session import session_findings

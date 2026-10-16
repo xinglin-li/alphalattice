@@ -112,7 +112,12 @@ historical source availability alongside the performance.
   completed book. It reports each act.
 - **When permission ends.** It ends when the goal's submission is accepted,
   when the goal is abandoned or when the 24 hours expire. The network access
-  opened under that permission ends with it.
+  opened under that permission ends with it. Your agent asks once, at the
+  start, whether daily updates may keep the network on for new market data and
+  SEC filings within the default budget. Your yes stays until you tell it to
+  stop, which also stops SEC acquisition. Each step that uses the network says
+  so in one line, and the Workbench's activity shows it, updates the Host runs
+  on its own included.
 - **Your controls.** Stop the strategy through your agent or on **Portfolio**.
   Stopping a goal and cancelling a Task are separate controls. The guide lists
   [what only you decide](AGENTS.md#what-only-a-person-decides).

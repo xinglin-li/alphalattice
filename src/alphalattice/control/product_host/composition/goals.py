@@ -69,13 +69,13 @@ from alphalattice.interface.local_application.goals import (
     GoalStatement,
     GoalSubmission,
     GoalTaskFact,
+    relayed_decision,
     target_sessions,
 )
 from alphalattice.interface.local_application.operations import FIRST_USE_STEPS
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
-    decision_hash,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution import ActorKind
@@ -1006,11 +1006,9 @@ class GoalApplication:
         held = None if session is None else self.store.bound(session)
         if goal is None or held is None or held.goal_id != goal.goal_id:
             raise ValueError("person_confirmation.session_required")
-        decision = decision_hash(
-            {field.name: getattr(request, field.name) for field in fields(request)}
+        decision = relayed_decision(
+            {field.name: getattr(request, field.name) for field in fields(request)}, confirmation
         )
-        if confirmation.decision_hash != decision:
-            raise ValueError("person_confirmation.decision_mismatch")
         if confirmation.nonce is not None:
             earlier = self.store.relay_nonce(confirmation.nonce)
             if earlier is None or earlier.get("decision_hash") != decision:

@@ -678,7 +678,27 @@ def test_a_real_source_reads_the_closed_control_before_any_new_acquisition(
 
     def controlled(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(503)
+        return httpx.Response(503 if "tickers" not in request.url.path else 200, content=b"{}")
+
+    # A source a running Task holds asks the control before each request (the review of
+    # a36e210c4: a stop reached only the next admission).
+    client, mock = httpx.Client, httpx.MockTransport(controlled)
+    with monkeypatch.context() as patched:
+        patched.setattr(httpx, "Client", lambda **options: client(**options | {"transport": mock}))
+        held = admit_official_source(
+            network_consent=True,
+            workspace_root=workspace,
+            environment={"SEC_USER_AGENT": "QA qa@example.com"},
+            now=_NOW,
+        )
+    assert held.source is not None
+    set_network_access(workspace, enabled=False, now=_NOW)
+    with pytest.raises(ValueError, match=r"alternative_evidence\.network_disabled"):
+        held.source._transport.get(  # type: ignore[attr-defined]
+            "https://www.sec.gov/files/company_tickers.json", maximum_bytes=2
+        )
+    held.source.close()
+    set_network_access(workspace, enabled=True, now=_NOW)
 
     with HttpxSecOfficialTransport(
         user_agent="QA qa@example.com", transport=httpx.MockTransport(controlled)

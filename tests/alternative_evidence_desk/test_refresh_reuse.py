@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import builtins
 import shutil
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -570,3 +571,23 @@ def test_a_fresh_index_holds_the_origin_whatever_the_scan_order(
         assert fresh.scanned == 2
     finally:
         runtime.close()
+
+
+def test_a_reading_is_carried_only_from_a_source_declared_immutable() -> None:
+    """regression (the review of a36e210c4): a reading was keyed on the revision label alone, so
+    a document replaced under the same revision carried its old reading; a source that does not
+    declare itself immutable is read again."""
+    index: dict[str, list[Any]] = {}
+    when = datetime(2026, 10, 14, tzinfo=UTC)
+    documents = tuple(
+        SimpleNamespace(entity_id="AAPL", revision_label=label, immutable_source=immutable)
+        for label, immutable in (("filed", True), ("replaceable", False))
+    )
+    reuse.SealedReadings._add(
+        index,
+        SimpleNamespace(published_at=when, publication_hash="p" * 64),  # type: ignore[arg-type]
+        SimpleNamespace(evidence_as_of=when),  # type: ignore[arg-type]
+        SimpleNamespace(documents=documents),  # type: ignore[arg-type]
+        SimpleNamespace(completion=None),  # type: ignore[arg-type]
+    )
+    assert [reading.accession for reading in index["AAPL"]] == ["filed"]

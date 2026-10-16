@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 from uuid import UUID
 
 from alphalattice.control.product_host.composition.application_session import (
@@ -101,6 +101,7 @@ from alphalattice.evidence.alternative_evidence.sources.acquisition import (
 from alphalattice.evidence.alternative_evidence.sources.admission import (
     DEFAULT_SOURCE_CONSENT,
     NOT_GRANTED,
+    REVOKED,
     EvidenceSourceConsent,
     OfficialSourceAdmission,
     admit_official_source,
@@ -405,9 +406,17 @@ def _check(arguments: argparse.Namespace) -> None:
         raise ValueError("evidence_review.preflight_requires_a_source")
 
 
+class _HostParser(argparse.ArgumentParser):
+    """The Host's reading of a setup line: what the parser would print and exit on is raised."""
+
+    def error(self, message: str) -> NoReturn:
+        """Raise the parser's own words; the Host's stderr reaches no agent."""
+        raise ValueError(message)
+
+
 def setup_arguments(argv: Sequence[str], workspace: Path) -> argparse.Namespace:
     """The setup's command line as the running Host takes it, on the Host's own workspace."""
-    arguments = _parser().parse_args([*argv, "--workspace", str(workspace)])
+    arguments = _parser(_HostParser).parse_args([*argv, "--workspace", str(workspace)])
     _check(arguments)
     return arguments
 
@@ -1080,7 +1089,8 @@ _DELEGATED = frozenset(
 def within_delegation(arguments: argparse.Namespace, current: EvidenceSourceConsent) -> bool:
     """Whether a first use's agent may install with these options.
 
-    Only the acquisition's own choices, within the default budget and the person's own consent.
+    Only the acquisition's own choices, within the default budget and the person's own consent,
+    and never after the person's stop.
     """
     defaults = vars(_parser().parse_args(["--workspace", str(arguments.workspace)]))
     if any(vars(arguments)[name] != defaults[name] for name in defaults.keys() - _DELEGATED):
@@ -1092,10 +1102,14 @@ def within_delegation(arguments: argparse.Namespace, current: EvidenceSourceCons
         total_documents=documents,
         total_bytes=documents * (arguments.maximum_document_bytes or DEFAULT_SOURCE_DOCUMENT_BYTES),
     )
-    return wanted.within(DEFAULT_SOURCE_CONSENT) and (
-        current.actor in NOT_GRANTED
-        or current.actor.startswith("first-use-goal:")
-        or wanted.within(current)
+    return (
+        current.actor != REVOKED
+        and wanted.within(DEFAULT_SOURCE_CONSENT)
+        and (
+            current.actor in NOT_GRANTED
+            or current.actor.startswith("first-use-goal:")
+            or wanted.within(current)
+        )
     )
 
 
@@ -1537,8 +1551,38 @@ def _universe_listing_ids(workspace: Path) -> dict[str, str]:
 DEFAULT_AUTHORITY_ID = "local-web-evidence-authority"
 
 
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def read_setup(
+    setup: str, workspace: Path
+) -> tuple[list[str], argparse.Namespace] | dict[str, Any]:
+    """An install request's setup line as the Host reads it, or its refusal in words.
+
+    An option's own refusal names the option (`setup_failure`), and a check of the line's sources
+    answers in its own words. A line the parser cannot read, or one naming neither --preflight
+    nor --install, is refused with the reason under `reasons`: an unquoted path with a space was
+    once refused with none, and the first use went on without Evidence.
+    """
+    from alphalattice.control.product_host.composition.plain_refusals import refused
+
+    try:
+        argv = shlex.split(setup, posix=True)
+        arguments = setup_arguments(argv, workspace)
+    except OptionRefused as error:
+        return setup_failure(error)
+    except (SystemExit, ValueError) as error:
+        why = str(error)
+    else:
+        if arguments.preflight or arguments.install:
+            return argv, arguments
+        why = "the setup names neither --preflight nor --install"
+    if why.startswith("evidence_review."):
+        return refused(why)  # A check of the line's sources, in its own words.
+    return {**refused("local_client.request_invalid"), "reasons": {"evidence_setup": why}}
+
+
+def _parser(
+    kind: type[argparse.ArgumentParser] = argparse.ArgumentParser,
+) -> argparse.ArgumentParser:
+    parser = kind(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument(
         "--rebind-installed",

@@ -45,9 +45,9 @@ from alphalattice.control.product_host.composition.evidence_review_workspace imp
 )
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     PACKAGE_RULE,
-    SHORT_SOURCE_ACTION,
     _authored,
     evidence_setup,
+    short_source_action,
     source_ways,
 )
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
@@ -1474,6 +1474,7 @@ class EvidenceReviewApplication:
                     ordered_entity_ids=entities, evidence_as_of=evidence_as_of
                 ),
             )
+        self._unit_obligation_cache.clear()  # a fresh run outdates any view's units
         counted = self._source_counts(resolved.scope, evidence_as_of=evidence_as_of)
         run = project_coverage_run(
             scope=resolved.scope,
@@ -1531,13 +1532,11 @@ class EvidenceReviewApplication:
         )
 
     def _source_counts(
-        self, scope: PortfolioIssuerScope, *, evidence_as_of: datetime
+        self, scope: PortfolioIssuerScope, *, evidence_as_of: datetime, carry: bool = True
     ) -> LogicalSourceCounts:
-        """Each issuer's logical source count at the cutoff, with its basis, the
-        issuers that filed nothing in the window and those whose every filing in
-        it was read earlier, from the adapter's source owners; the packing reads
-        the counts, the preview shows the bases. No inventory request, no
-        acquisition."""
+        """Each issuer's logical source count at the cutoff, with its basis, the issuers that
+        filed nothing and, with `carry`, those whose every filing was read earlier. No
+        inventory request, no acquisition."""
 
         adapter = self.evidence_task_adapter
         if adapter is None:
@@ -1550,6 +1549,7 @@ class EvidenceReviewApplication:
             evidence_classes=policy.evidence_classes,
             policy_budget=policy.source_policy.maximum_documents_per_issuer,
             window_days=policy.source_policy.sec_recent_8k_days,
+            carry=carry,
         )
 
     def _units(
@@ -1581,7 +1581,7 @@ class EvidenceReviewApplication:
             return tuple(unit.ordered_entity_ids for unit in sealed.units)
         if evidence_as_of is None:
             evidence_as_of = self.clock()
-        counted = self._source_counts(scope, evidence_as_of=evidence_as_of)
+        counted = self._source_counts(scope, evidence_as_of=evidence_as_of, carry=False)
         return coverage_units(
             scope.ordered_entity_ids,
             priority_rank=scope.priority_rank,
@@ -2155,10 +2155,10 @@ class EvidenceReviewApplication:
         )
         floor = resources.minimum_entity_coverage
         short = units_short_of_sources(inventory, self.evidence_policy.mode, floor=floor)
-        # A run no unit of which can prepare is not offered: each would fail as named, its ways
-        # on the person's (V541). Under official acquisition it reads the index.
+        # Offered if a unit can prepare or all holdings carry (W3), else its ways are the
+        # person's (V541); live reads the index.
         source_ready = (
-            len(short) < len(run.units)
+            len(short) < len(run.units) + len(run.carried) * (not run.units)
             if self.evidence_policy.mode is AlternativeEvidenceMode.RECORDED
             else resources.live_source is not None
         )
@@ -2197,7 +2197,7 @@ class EvidenceReviewApplication:
                 # The book cannot be reviewed under these sources: said, with its ways on.
                 ways |= {
                     "failure_code": "alternative_evidence.book_sources_short",
-                    "next_action": SHORT_SOURCE_ACTION[bool(self.network_delegation(caller))],
+                    "next_action": short_source_action(ways),
                 }
         network_refusal = self._source_acquisition_refusal(
             evidence_as_of=run.evidence_as_of, caller=caller

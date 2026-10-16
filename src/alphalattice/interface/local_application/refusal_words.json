@@ -339,6 +339,14 @@
   "detail": "Too few of the package's issuers hold a document at its cutoff for its coverage floor: {subject}. An issuer whose filing index at the cutoff shows nothing filed in the window holds nothing to count and is left out of the share; one whose acquisition failed or left its filings unread counts against it. `next_commands` holds the way on: after an official acquisition, the same acquisition at that one cutoff, which fetches again what failed and leaves the quiet ones uncounted, and its check; after a recorded import, the import's own check. The floor stays the package's.",
   "next_action": "RUN_THE_OFFERED_WAY_AT_ONE_CUTOFF"
  },
+ "evidence_review.rebind_takes_no_source": {
+  "detail": "A rebind re-seals the installed package over this workspace's universe and reads no source, so it takes neither --acquire-sec, --source-artifact-root nor --source-set-hash. Run the rebind without them, or an install that names one source.",
+  "next_action": "RUN_THE_REBIND_WITHOUT_A_SOURCE"
+ },
+ "evidence_review.choose_sec_acquisition_or_source_artifacts": {
+  "detail": "A setup reads exactly one source: --acquire-sec for an official SEC acquisition, or --source-artifact-root with --source-set-hash for a recorded import. Name one of them.",
+  "next_action": "NAME_ONE_SOURCE"
+ },
  "evidence_review.preflight_requires_a_source": {
   "detail": "A preflight checks a source before it is installed -- an official acquisition's setup, or a recorded import's records -- and a rebind reads no source, so it has none. Run the rebind without --preflight: it seals a package beside the installed one and binds it only with --install.",
   "next_action": "RUN_THE_REBIND_WITHOUT_PREFLIGHT"
@@ -1505,6 +1513,10 @@
  },
  "person_confirmation.decision_mismatch": {
   "detail": "The person's yes answers another request than this one, so nothing was done. Ask them about this decision in one line, and relay that yes with this request.",
+  "next_action": "ASK_THE_PERSON_ABOUT_THIS_DECISION"
+ },
+ "person_confirmation.beyond_its_question": {
+  "detail": "The daily network question's yes answers only turning the network on and SEC filings at the default budget, so nothing was done. Ask the person about this decision in its own line, and relay that yes with this request.",
   "next_action": "ASK_THE_PERSON_ABOUT_THIS_DECISION"
  },
  "person_confirmation.already_used": {

@@ -89,8 +89,8 @@ it once at that time (`held_until` on the activation's answer), and your goal wa
 wakes when it ends. They correct the date with one note. `first_use.road` is the whole first use, one
 command per step, each answer names its next action, and `first_use.setup` names
 anything this session's setup still lacks, with its way on. Follow `ask_now`'s
-returned words: disclose delegated steps in one line, and ask only for a decision
-it leaves to the person.
+returned words: disclose its delegated steps in one line, then ask the person its one
+question in its words; ask nothing else.
 
 The road: data, the strategy's models and Risk, its whole-support book (the
 numerical check), activation with the date's update in the same act, then Evidence
@@ -110,7 +110,11 @@ setting up Evidence with recent SEC filings within the default budget and the
 retrieval model download at the size its setup states. Tell
 the person each act in one line; they stop the book by telling you, or on
 **Portfolio**. Accepted submission, abandonment or expiry ends the delegation and
-closes the network it opened. The `FIRST_USE` declaration is never revised.
+closes the network it opened. The `FIRST_USE` declaration is never revised. So
+ask once at the start, in `ask_now`'s words, whether daily updates may keep the
+network on; their yes is theirs until they say stop (relay `network set --enabled
+false`, which also stops SEC acquisition). An answer that admits network work names
+whose setting allowed it in `network_use`: say its `words` to the person in one line.
 
 `strategy build` runs the research strategy's required whole-support Alpha and
 Risk studies and installs it, reusing completed studies, and offers each installed
@@ -233,7 +237,9 @@ Everything else is a default you take and disclose in one line. These are the
 person's. Name the decision and ask once, in one line; on a clear yes, send it
 with their words, `--person-said "<their words>" --asked "<your question>"`.
 Never paraphrase or invent the words, and never send the person to a page to
-click. Each yes answers one request, once.
+click. Each yes answers one request, once; only the daily network question's yes
+answers its two requests (network on, SEC filings at the default budget), and the
+Host takes nothing else for it.
 
 - Network access, except preparation and default SEC acquisition under the first
   use's delegation.

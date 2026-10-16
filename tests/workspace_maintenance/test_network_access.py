@@ -188,3 +188,54 @@ def test_every_network_way_on_reads_the_effective_decision(
             if base.startswith("research_update."):
                 assert "2026-09-11" in fresh["detail"]
                 assert "2026-09-11,DATA" not in fresh["detail"]
+
+
+def test_admitted_network_work_names_whose_setting_allowed_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """requirement (the review of a36e210c4): an answer that admits network work names whose
+    setting allowed it and the line said for it; its activity row keeps it, so a Host-run
+    update is disclosed too."""
+    from alphalattice.interface.local_application.activity import returned_subject
+    from alphalattice.interface.local_application.cli_contract import disclosed
+
+    monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
+    now = datetime.now(UTC)
+    admitted = {"status": "ADMITTED", "task_id": "t1"}
+    control = lambda: {"workspace": tmp_path, "now": now}  # noqa: E731
+    delegated = {"delegation": "first-use-goal:g", "until": now + timedelta(hours=1)}
+    for setting, under in (
+        ({"relayed_by": "claude-code:s"}, "RELAYED_YES"),
+        (delegated, "FIRST_USE_DELEGATION"),
+        ({}, "PERSON"),
+    ):
+        (tmp_path / CONTROL_PATH).unlink(missing_ok=True)
+        set_network_access(tmp_path, enabled=True, now=now, **setting)
+        answer = disclosed(admitted, "RESEARCH_UPDATE_RUN", control)
+        assert answer["network_use"]["under"] == under and answer["network_use"]["words"]
+        assert returned_subject(answer)["network_used_under"] == under
+    assert disclosed(admitted, "RECOVER", control)["network_use"]
+    assert "network_use" not in disclosed(admitted, "STATUS", lambda: 1 / 0)  # type: ignore
+    set_network_access(tmp_path, enabled=False, now=now)
+    closed = disclosed(admitted, "RESEARCH_UPDATE_RUN", control)
+    assert "network_use" not in closed
+
+
+def test_the_persons_stop_closes_the_network_before_it_revokes_sec_consent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """regression (the review of a28b30c73): the stop wrote the consent first, so a failed
+    consent write left the network on."""
+    from alphalattice.evidence.alternative_evidence.sources import admission
+
+    monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
+    now = datetime.now(UTC)
+    set_network_access(tmp_path, enabled=True, now=now)
+
+    def unwritable(*_: object) -> None:
+        raise OSError("consent unwritable")
+
+    monkeypatch.setattr(admission, "record_evidence_source_consent", unwritable)
+    with pytest.raises(OSError):
+        admission.set_workspace_network(tmp_path, enabled=False, now=now)
+    assert not network_access(tmp_path, now=now).allowed

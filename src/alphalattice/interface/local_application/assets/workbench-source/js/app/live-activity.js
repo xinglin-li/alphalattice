@@ -24,6 +24,8 @@ const LiveActivity = (() => {
   // `S.epoch` is the store whose ordinals the retained groups, watermark and cursor belong to.
   /* The declared Team event kinds the feed can name in words; any other kind is shown as declared.
    * The raw kind and payload stay in the row's exact observations. */
+  // Whose setting let admitted work reach the network: the Host names it on the answer and the row.
+  const NETWORK_USE = {PERSON: 'Network on by your setting', RELAYED_YES: 'Network on by your daily yes', FIRST_USE_DELEGATION: "Network on by the first use's delegation"};
   const DECLARED_KINDS = {NATIVE_COORDINATION_MESSAGE: 'Team message', NATIVE_SUBAGENT_START_HOOK: 'Team hook · start', NATIVE_SUBAGENT_STOP_HOOK: 'Team hook · stop'};
   const declaredWords = (p) => { const kind = p?.event_kind; if (!DECLARED_KINDS[kind]) return {operation: kind || 'DECLARED', state: kind || 'DECLARED'}; const s = p.subject || {}; return {operation: t(DECLARED_KINDS[kind]), state: kind === 'NATIVE_COORDINATION_MESSAGE' ? (s.message_kind || t('message kind not declared')) : (s.native_hook_event || t('hook event not declared'))}; };
   const mayChange = (life) => stateMoving(life) || stateHeld(life);
@@ -92,6 +94,7 @@ const LiveActivity = (() => {
     for (const [k, label] of [['spec_hash', 'spec'], ['plan_hash', 'plan'], ['experiment_plan_hash', 'plan'], ['result_hash', 'result'], ['cached_result_hash', 'cached result'], ['publication_task_id', 'published task'], ['research_input_id', 'input'], ['strategy_package_id', 'strategy'], ['candidate_hash', 'candidate'], ['review_publication_hash', 'review']]) {
       if (s[k] !== undefined && s[k] !== null && s[k] !== '') parts.push(named(t(label), s[k]));
     }
+    if (NETWORK_USE[s.network_used_under]) parts.push(t(NETWORK_USE[s.network_used_under]));
     if (f.verified) parts.push(locators ? html`${codeWords(f.artifactKind)} ${hashCell(f.artifactHash, SHORT.id)}` : codeWords(f.artifactKind) + ' ' + shortRef(f.artifactHash));
     if (f.declared.length && !parts.length) parts.push(f.declared.at(-1).payload?.summary || '');
     return locators ? joinMarkup(parts) : parts.join(' · ');

@@ -2088,7 +2088,7 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
         reached: list[str] = []
 
         class Owners(PortfolioResearchOperations):
-            """The operations entry over a real plan answer and an admission that records."""
+            """The operations entry over a real plan answer and a recording admission."""
 
             def _execute(self, request, *, caller, agent_execution):
                 reached.append(request.operation)
@@ -2097,7 +2097,7 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
                 return {"status": "ADMITTED", "task_id": str(uuid4())}
 
         operations = Owners.__new__(Owners)
-        operations.workspace_session = session  # type: ignore[assignment]
+        operations.workspace_session, operations.dispatcher = session, app  # app's clock
         plan = operations._execute_within_memory(
             PortfolioResearchOperationRequest(operation="WORKSPACE_PREPARE_PLAN"),
             caller="EXTERNAL_AUTOMATION",

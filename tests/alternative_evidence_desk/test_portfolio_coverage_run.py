@@ -719,8 +719,11 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         )
         section = _run_one(service, {"operation": "EVIDENCE_CRO"})
         progress = section["coverage_progress"]
-        assert progress["units_failed"] == 0 and progress["units_prepared"] == UNIT_COUNT
-        row = next(unit for unit in progress["units"] if unit["unit_id"] == failed[0]["unit_id"])
+        # The units analysed before the failure are carried (W3): only the failed one is read.
+        recovered = list(failed[0]["ordered_entity_ids"])
+        assert progress["units_failed"] == 0 and progress["units_prepared"] == 1, progress
+        assert progress["issuers_carried"] == len(COVERAGE_ENTITIES) - len(recovered), progress
+        row = next(unit for unit in progress["units"] if unit["entity_ids"] == recovered)
         assert row["state"] == "PREPARED" and row["packet_task_id"] == restored["task_id"]
         request = section["next_requests"][f"packet_{row['unit_id']}"]
         assert request["task_id"] == restored["task_id"]

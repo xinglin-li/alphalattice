@@ -27,7 +27,11 @@ from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.interface.local_application import client as client_module
 from alphalattice.interface.local_application import retrieval_environment
 from alphalattice.interface.local_application.cli import main
-from alphalattice.interface.local_application.cli_contract import AGENT_HOST_WAITS, outcome_of
+from alphalattice.interface.local_application.cli_contract import (
+    AGENT_HOST_WAITS,
+    client_failure,
+    outcome_of,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     LocalApplicationError,
     PortfolioResearchOperationRequest,
@@ -1208,6 +1212,18 @@ def test_review_continue_names_each_correction_and_goes_no_further(tmp_path: Pat
     assert answer["corrections"][0]["problems"][0]["item"] == 1
     assert [r["task_id"] for r in answer["receipts"]] == ["t-analyst-u1"]
     assert not any(d["operation"] in {"STATUS", "EVIDENCE_CRO"} for d in host.sent)
+    # A folder with no answer, as a day with nothing new leaves it, offers the named strategy's
+    # last review (the review of a28b30c73: unscoped, it named another strategy's).
+    with pytest.raises(client_module.LocalResearchClientError) as missing:
+        client_module._continue_steps(host, _continue_args(tmp_path / "none"))  # type: ignore[arg-type]
+    refusal, unscoped = client_failure(str(missing.value), {}, None, 1.0, False)
+    assert "NOTHING_NEW" in refusal.detail and "--package" in refusal.detail and not unscoped
+    with pytest.raises(client_module.LocalResearchClientError) as named:
+        client_module._continue_steps(host, _continue_args(tmp_path / "none", package="pkg"))  # type: ignore[arg-type]
+    scoped, offered = client_failure(str(named.value), {}, None, 1.0, False)
+    last = offered["next_requests"]["last_review"]
+    assert scoped == refusal and last["strategy_package_id"] == "pkg"
+    assert last["history_kind"] == "CRO_REVIEW" and last["history_limit"] == 1
 
 
 def test_review_continue_publishes_the_cros_review_and_reads_the_activation_offer(

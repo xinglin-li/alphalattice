@@ -7,6 +7,7 @@ against that record, sealing it or naming each missing item.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
@@ -20,6 +21,10 @@ from pydantic import (
     model_validator,
 )
 
+from alphalattice.interface.local_application.portfolio_research import (
+    PersonConfirmation,
+    decision_hash,
+)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type ResearchStage = Literal[
@@ -31,6 +36,53 @@ _HASH = r"^[0-9a-f]{64}$"
 
 FIRST_USE_HOURS: Final = 24
 """How long a first-use goal's delegation lasts from its opening (V452)."""
+
+DAILY_NETWORK_ASK: Final = (
+    "May AlphaLattice keep this workspace's network on for your daily updates, to fetch new "
+    "market data and SEC filings within the default budget (3 per issuer, 600 documents and "
+    "3 GB overall), until you tell me to stop? I'll say in one line each time it's used."
+)
+"""The one line a first use asks at its start, word for word: the person's yes, relayed to
+`network set --enabled true` and `evidence-consent set --per-issuer 3`, is theirs until they say
+stop, which is relayed to `network set --enabled false`; the delegation ends with its goal."""
+
+FIRST_USE_ASK_NOW: Final = (
+    "Unless this workspace's Evidence is set up already, the review of the date's positions "
+    "acquires recent SEC filings within the default budget under the first use's delegation, and "
+    "downloads the retrieval model at the size its setup states: say so in one line now. Then "
+    "ask the person once, in these words, and carry on; relay their yes to `network set "
+    "--enabled true` and `evidence-consent set --per-issuer 3`, each once:",
+    DAILY_NETWORK_ASK,
+)
+"""What a first use answers at its start: its delegated steps, said in one line, and the one
+question only the person answers."""
+
+DAILY_NETWORK_DECISIONS: Final = frozenset(
+    map(
+        decision_hash,
+        (
+            {"operation": "NETWORK_ACCESS_SET", "network_enabled": True},
+            {"operation": "EVIDENCE_CONSENT_SET", "evidence_documents_per_issuer": 3},
+        ),
+    )
+)
+"""The two requests a yes to `DAILY_NETWORK_ASK` answers, each once; the Host takes no other."""
+
+
+def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirmation) -> str:
+    """The decision a relayed yes answers: the one it was bound to.
+
+    For the daily question it is only one of its two (`DAILY_NETWORK_DECISIONS`).
+
+    Raises:
+        ValueError: `person_confirmation.decision_mismatch` or `.beyond_its_question`.
+    """
+    decision = decision_hash(request)
+    if confirmation.decision_hash != decision:
+        raise ValueError("person_confirmation.decision_mismatch")
+    if confirmation.question == DAILY_NETWORK_ASK and decision not in DAILY_NETWORK_DECISIONS:
+        raise ValueError("person_confirmation.beyond_its_question")
+    return decision
 
 
 class GoalContract(BaseModel):  # type: ignore[misc]

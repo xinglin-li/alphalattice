@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import re
-import shlex
 import threading
 from collections.abc import Callable, Mapping
 from contextlib import nullcontext, suppress
@@ -39,9 +38,8 @@ from alphalattice.control.product_host.composition.decision_advancement import (
 from alphalattice.control.product_host.composition.evidence_authority_setup import (
     EvidenceInstall,
     EvidenceInstallCommand,
-    OptionRefused,
+    read_setup,
     run_setup,
-    setup_arguments,
     setup_refusal,
     within_delegation,
 )
@@ -274,11 +272,12 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
 from alphalattice.evidence.alternative_evidence.runtime.progress import publish_evidence_work
 from alphalattice.evidence.alternative_evidence.sources.admission import (
     DEFAULT_SOURCE_CONSENT,
-    NOT_GRANTED,
     EvidenceSourceConsent,
     OfficialSourceAdmission,
+    delegated_consent,
     evidence_source_consent,
     record_evidence_source_consent,
+    set_workspace_network,
 )
 from alphalattice.evidence.alternative_evidence.storage.inventory import EvidenceStorageBinding
 from alphalattice.foundation.feature_engine.catalog.service import FeatureCatalogCrudError
@@ -294,6 +293,7 @@ from alphalattice.interface.local_application.activity import (
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
+    disclosed,
     operation_schema,
     refusal_words,
     worded_refusal,
@@ -313,7 +313,6 @@ from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
     safe_failure_code,
-    setup_failure,
     typed_failures,
 )
 from alphalattice.interface.local_application.goals import (
@@ -878,7 +877,7 @@ class PortfolioResearchOperations:
                 self._autobind(provenance, held)
                 self._name_goal(provenance, held)
             return answered
-        delegation = self.goals.delegation(goal, request.operation, caller)
+        delegation = None if relayed else self.goals.delegation(goal, request.operation, caller)
         scope = REQUEST_PROVENANCE.set(
             replace(
                 provenance or RequestProvenance(),
@@ -1284,7 +1283,7 @@ class PortfolioResearchOperations:
         task_id = body.get("task_id")
         if isinstance(task_id, str):
             gate.task_admitted(request.operation, plan_hash, task_id)
-        return body
+        return disclosed(body, request.operation, self._network)
 
     def _delivery_export(
         self, request: PortfolioResearchOperationRequest, caller: OperationCaller
@@ -1413,7 +1412,7 @@ class PortfolioResearchOperations:
             assert request.network_enabled is not None
             # A first-use goal's step holds only until its delegation ends (OP19, V452).
             delegated = self._delegating_goal()
-            return set_network_access(
+            return set_workspace_network(
                 **self._network(),
                 enabled=request.network_enabled,
                 delegation=None if delegated is None else f"first-use-goal:{delegated.goal_id}",
@@ -1430,7 +1429,7 @@ class PortfolioResearchOperations:
             # the goal's delegation, and asks the person for more.
             if caller != "HUMAN":
                 return refused("evidence_review.consent_human_only")
-            delegated = None if self._relayed_by() else self._delegating_goal()
+            delegated = self._delegating_goal()
             workspace = self.workspace_session.workspace
             current = evidence_source_consent(workspace)
             assert request.evidence_documents_per_issuer is not None
@@ -1448,14 +1447,11 @@ class PortfolioResearchOperations:
                 )
             except ValueError:
                 return refused("evidence_review.consent_budget_invalid")
-            # The delegation gives the default budget, and never raises what the person gave.
-            if delegated is not None and not (
-                consent.within(DEFAULT_SOURCE_CONSENT)
-                and (current.actor in {*NOT_GRANTED, consent.actor} or consent.within(current))
-            ):
+            given = consent if delegated is None else delegated_consent(current, consent)
+            if given is None:
                 return refused("evidence_review.consent_beyond_delegation")
             return self._evidence_consent(
-                record_evidence_source_consent(self.workspace_session.workspace, consent)
+                given if given is current else record_evidence_source_consent(workspace, given)
             )
         if request.operation in {"UPGRADE_OVERVIEW", "UPGRADE_ACKNOWLEDGE"}:
             return self.upgrade(request)
@@ -2673,13 +2669,10 @@ class PortfolioResearchOperations:
         """A preflight, read-only, answers anyone at once; an install is a Task, the person's, a
         relayed yes's, or a first use's agent's within its delegation (`within_delegation`)."""
         workspace = self.workspace_session.workspace
-        try:
-            argv = shlex.split(setup, posix=True)
-            arguments = setup_arguments(argv, workspace)
-        except OptionRefused as error:
-            return setup_failure(error)
-        except (SystemExit, ValueError):
-            return refused("local_client.request_invalid")
+        read = read_setup(setup, workspace)
+        if isinstance(read, dict):
+            return read
+        argv, arguments = read
         if arguments.preflight:
             try:
                 return run_setup(
@@ -2690,11 +2683,9 @@ class PortfolioResearchOperations:
                 )
             except (ValueError, RuntimeError, OSError) as error:
                 return setup_refusal(arguments, error, now=self.dispatcher.clock())
-        if not arguments.install:
-            return refused("local_client.request_invalid")
         if caller != "HUMAN":
             return refused("evidence_review.consent_human_only")
-        delegated = self._delegating_goal() is not None and not self._relayed_by()
+        delegated = self._delegating_goal() is not None
         if delegated and not within_delegation(arguments, evidence_source_consent(workspace)):
             return refused("evidence_review.consent_beyond_delegation")
         sent = self.dispatcher.submit(EvidenceInstallCommand(self.evidence_install, argv))

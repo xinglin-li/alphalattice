@@ -556,9 +556,10 @@ def test_a_run_is_held_offline_and_a_plan_over_budget_is_refused_at_plan(
         monkeypatch.setattr(counted.executor, "execute", probe)
         with pytest.raises(AuthoringError, match=r"probe\.stopped_before_any_estimate"):
             counted.workflow.run_sealed(document, **actor)
-        assert seen == [(NetworkAccess(False, "RUN_HELD_OFFLINE"), True)]
+        # The control is the person's own setting, whatever holds it offline.
+        assert seen == [(NetworkAccess(False, "RUN_HELD_OFFLINE", persons=True), True)]
         access = network_access(workspace, now=datetime.now(UTC))
-        assert access == NetworkAccess(True, "WORKSPACE_CONTROL")
+        assert access == NetworkAccess(True, "WORKSPACE_CONTROL", persons=True)
     finally:
         (workspace / CONTROL_PATH).unlink()
 

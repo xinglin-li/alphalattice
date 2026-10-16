@@ -18,7 +18,7 @@ import os
 import re
 import shlex
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -434,6 +434,40 @@ def refusal_code(body: Mapping[str, Any]) -> str | None:
     return None
 
 
+NETWORK_WORK: Final = frozenset(
+    {
+        "DATA_UPDATE_RUN",
+        "EVIDENCE_INSTALL",
+        "EVIDENCE_PREPARE",
+        "EVIDENCE_REFRESH",
+        "PORTFOLIO_UPDATE_RUN",
+        "RECOVER",
+        "RESEARCH_UPDATE_RUN",
+        "STRATEGY_ACTIVATE",
+        "WORKSPACE_PREPARE_CONFIRM",
+    }
+)
+"""The operations whose admitted Task may reach the network: market data, a preparation's
+downloads, SEC filings, and a recovery that resumes any of them."""
+
+
+def disclosed(
+    body: dict[str, object], operation: str, network: Callable[[], dict[str, Any]]
+) -> dict[str, object]:
+    """An owner's answer, with its `network_use` when it admitted network work.
+
+    While the network is on, `network_use` names whose setting allowed it and the one line said
+    for it. The activity row records the same use, so a Host-run update is disclosed too.
+    `network` reads the control (workspace and clock) only for an admitted network work.
+    """
+    from alphalattice.control.workspace_runtime.network_access import network_access
+
+    if operation not in NETWORK_WORK or "task_id" not in body or refused(body):
+        return body
+    access = network_access(**network())
+    return {**body, "network_use": access.use()} if access.allowed else body
+
+
 def worded_refusal(
     body: dict[str, Any], *, workspace: Path | None = None, now: datetime | None = None
 ) -> dict[str, Any]:
@@ -636,6 +670,21 @@ _DAMAGED = ClientRefusal(
     "A stored object of this generation no longer matches its digest, so nothing of it "
     "is trusted; restore an earlier generation with --generation.",
 )
+_ANSWERS_MISSING: Final = ClientRefusal(
+    "INVALID_INPUT",
+    "GIVE_A_FOLDER_WITH_WRITTEN_ANSWERS",
+    "No answer.json was found in the folder or in the folders inside it; this command "
+    "sends the answers the specialists wrote into their bundles. If the review's "
+    "preparation wrote no Analyst bundle because no holding filed anything new "
+    "(NOTHING_NEW), there is nothing to send. Named with `--package`, this answer "
+    "offers that strategy's last published CRO review as `last_review`, with its own "
+    "date and its `review` read. If the CRO's basis changed, no new review could be "
+    "written today: convene the committee on the date's positions without one, say so, "
+    "and name that review with its own date, never as today's.",
+)
+"""`review continue` with no answer to send, the strategy it names after the colon."""
+
+
 _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
     *(
         (code, ClientRefusal("INVALID_INPUT", **refusal_words(code)))
@@ -1285,15 +1334,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "unused path.",
         ),
     ),
-    (
-        "local_client.review_answers_missing",
-        ClientRefusal(
-            "INVALID_INPUT",
-            "GIVE_A_FOLDER_WITH_WRITTEN_ANSWERS",
-            "No answer.json was found in the folder or in the folders inside it; this command "
-            "sends the answers the specialists wrote into their bundles.",
-        ),
-    ),
+    ("local_client.review_answers_missing", _ANSWERS_MISSING),
+    ("local_client.review_answers_missing:", _ANSWERS_MISSING),
     (
         "local_client.cro_directory_required",
         ClientRefusal(
@@ -1563,6 +1605,17 @@ def client_failure(
     A read not yet answered changes nothing, so its exact request is offered again; any other
     request, or a step after an answer, is inspected as its Task before work is sent again.
     """
+    if code == "local_client.document_unreadable":
+        return client_refusal(code), {
+            "next_requests": {"schema": schema_request(document.get("operation"))}
+        }
+    if code.startswith("local_client.review_answers_missing:"):
+        # The named strategy's last published review, read with its own date.
+        package = code.partition(":")[2]
+        last = {"history_kind": "CRO_REVIEW", "history_limit": 1, "strategy_package_id": package}
+        return client_refusal(code), {
+            "next_requests": {"last_review": {"operation": "RESEARCH_HISTORY", **last}}
+        }
     if code != "local_client.connection_lost_task_may_still_run":
         return client_refusal(code), {}
     read = not answered and document.get("operation") in READ_OPERATIONS

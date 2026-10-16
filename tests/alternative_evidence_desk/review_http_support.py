@@ -169,8 +169,13 @@ def build_authority(
     listing_symbols: dict[str, str] | None = None,
     extra_documents: Callable[[tuple[str, ...]], tuple[RecordedEvidenceDocument, ...]]
     | None = None,
+    replaceable: bool = False,
 ) -> EvidenceReviewAuthority:
-    """Reusable pre-service review resources and submitted actors, with optional extra filings."""
+    """Reusable pre-service review resources and submitted actors, with optional extra filings.
+
+    `replaceable` declares the library one its owner may replace, so a later cutoff reads it
+    again instead of carrying what an earlier analysis read (immutable_source).
+    """
 
     listings = tuple(value.listing_id for value in report.window_end_book.positions)
     runtime = _runtime(tmp_path / "evidence")
@@ -186,9 +191,12 @@ def build_authority(
     entities = tuple(sorted(mapping.cik_by_entity))
     resources = AlternativeEvidenceDocumentTaskResources(
         recorded_registry=registry_snapshot,
-        recorded_documents=(
-            *_documents(entities, suffix=document_suffix, now=now),
-            *(() if extra_documents is None else extra_documents(entities)),
+        recorded_documents=tuple(
+            d.model_copy(update={"immutable_source": False}) if replaceable else d
+            for d in (
+                *_documents(entities, suffix=document_suffix, now=now),
+                *(() if extra_documents is None else extra_documents(entities)),
+            )
         ),
         analysis_actor=(
             _CitingActor(topics=ISSUER_TOPICS)

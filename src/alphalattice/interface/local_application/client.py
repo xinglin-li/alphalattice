@@ -46,12 +46,11 @@ from alphalattice.interface.local_application.cli_contract import (
     named_read,
     offered_requests,
     outcome_of,
-    schema_request,
     shell,
     task_state,
     worded,
 )
-from alphalattice.interface.local_application.goals import target_sessions
+from alphalattice.interface.local_application.goals import FIRST_USE_ASK_NOW, target_sessions
 
 CONNECTION_NAME = "local-research-connection.json"
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
@@ -2682,14 +2681,18 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
     }
 
 
-def _answer_folders(root: Path) -> list[Path]:
-    """The bundles whose answers a `review continue` sends: the folder itself when it holds
-    one, else each folder inside it that does, in name order."""
+def _answer_folders(root: Path, package: str | None) -> list[Path]:
+    """The bundles whose answers `review continue` sends, in name order: the folder itself or
+    those inside it; none is refused, naming the strategy (`--package`) its offer reads."""
     if (root / "answer.json").is_file():
         return [root]
-    if not root.is_dir():
-        return []
-    return sorted(path for path in root.iterdir() if (path / "answer.json").is_file())
+    if folders := sorted(path for path in root.glob("*") if (path / "answer.json").is_file()):
+        return folders
+    raise LocalResearchClientError(
+        f"local_client.review_answers_missing:{package}"
+        if package
+        else "local_client.review_answers_missing"
+    )
 
 
 def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
@@ -2703,9 +2706,7 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
     ``--cro-dir``. After the CRO, the answer is Evidence's state and, given ``--package``, that
     strategy's activation offer with its last sealed book holdings.
     """
-    folders = _answer_folders(Path(args.bundle_root).resolve())
-    if not folders:
-        raise LocalResearchClientError("local_client.review_answers_missing")
+    folders = _answer_folders(Path(args.bundle_root).resolve(), args.strategy_package_id)
     chain = _chain(client, args, "review_continue")
     receipts: list[dict[str, Any]] = []
     corrections: list[dict[str, Any]] = []
@@ -2882,14 +2883,6 @@ _FIRST_USE_ROAD: Final = (
 )
 """The whole first use in order: each step's command and what it leaves to the agent."""
 
-_FIRST_USE_ASK_NOW: Final = (
-    "Unless this workspace's Evidence is set up already, the review of the date's positions "
-    "acquires recent SEC filings within the default budget under the first use's delegation, "
-    "and downloads the retrieval model at the size its setup states. Say so in one line now, "
-    "and ask only if the person wants a wider budget, so the review never waits.",
-)
-"""What only the person decides that the first use will need, asked at its start."""
-
 _NOT_RECORDED: Final = (
     "This workspace was prepared before, so its first use came then: this sentence is not "
     "recorded as a goal, and no step is delegated under it."
@@ -2927,7 +2920,7 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
         "date": named,
         "setup": _setup(),
         "road": road,
-        "ask_now": list(_FIRST_USE_ASK_NOW),
+        "ask_now": list(FIRST_USE_ASK_NOW),
         **({"sentence": note} if note else {}),
     }
     if answer.get("status") == "ALREADY_PREPARED":
@@ -3522,9 +3515,7 @@ def run(
                     failure_code=code,
                     detail=refusal.detail,
                     next_action=refusal.next_action,
-                    next_requests={"schema": schema_request(document.get("operation"))}
-                    if code == "local_client.document_unreadable"
-                    else transport.pop("next_requests", None),
+                    next_requests=transport.pop("next_requests", None),
                     context=_context(args.workspace, getattr(args, "goal", None)),
                     **{
                         field: getattr(error, field)

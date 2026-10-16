@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, cast
 
-from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.control.workspace_runtime.network_access import network_access, persons_stop
 from alphalattice.evidence.alternative_evidence.sources.admission import DEFAULT_SOURCE_CONSENT
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.kernel.knowledge import model_store
@@ -30,6 +31,12 @@ SHORT_SOURCE_ACTION: Final = {
 }
 """A book short of sources: the person's decision, or the default budget a first use's agent
 gives under its delegation (by whether one is active)."""
+
+
+def short_source_action(ways: Mapping[str, object]) -> str:
+    """A short book's way on: the delegated default budget when its source ways offer it."""
+    source = ways.get("source_ways")
+    return SHORT_SOURCE_ACTION[isinstance(source, Mapping) and "next_requests" in source]
 
 
 def _authored(book: BookSelector | None) -> bool:
@@ -238,6 +245,8 @@ def source_ways(
         The ``official`` consent command with what it needs first, the package rule, and the
         ``package`` steps with the issuers filled where one package covers the book.
     """
+    # After the person's own stop the way on is their yes, never a delegated set.
+    delegation = None if persons_stop(workspace, now) else delegation
     # The person's own consent, in their shell: it names the workspace on either leg.
     ways: dict[str, object] = {
         "official": {

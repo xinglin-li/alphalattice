@@ -12351,6 +12351,20 @@
    "reason": "Lead signature 2026-10-14 17:09: source closure of the network_access signature change (readiness and preparation pass the Host clock to the network control); no value change. Red/green and readouts: ui-network-clock/161224-fix-cb0cc314."
   },
   {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "aaa7167ebad7263378671ab1b682821ae28c1b51cf303afe58da22661c38acd7",
+   "successor": "7124cb9abf2eaa6e368d59e92411b6530bbfed59de32515074a5323f859cd917",
+   "change": "Recorded Evidence passes over documents a current analysis read (2026-10-15)",
+   "reason": "Recorded acquisition now honours the request's read filings, as live acquisition already did (W3). Only the recorded counts set them, from sealed readings, so every request sealed before this change carries none and selects exactly the same documents; live acquisition is unchanged. Analyses sealed under the predecessor stay current."
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "7124cb9abf2eaa6e368d59e92411b6530bbfed59de32515074a5323f859cd917",
+   "successor": "5bdc9f009204c57ef569d82c32df1df951ac63ca7eeeca2128c08e6c99b4f96d",
+   "change": "Recorded counts carry nothing in a scope's own view, and return their typed counts (2026-10-15)",
+   "reason": "The recorded library's counting now returns LogicalSourceCounts itself and takes carry, which every sealed path leaves on: a preparation's counts and selection are exactly those of the predecessor, so every request it seals selects the same documents. Only a scope's own view, which seals nothing, counts without passing over earlier readings, as live mode packs such a view from its plans. Analyses sealed under the predecessor stay current."
+  },
+  {
    "role": "product_host.workspace_preparation",
    "predecessor": "58cddf2af45c9e46d1b319b9e74df7a0b113dae02a108b09411ed153ddd894be",
    "successor": "527d1664c55bbb708ebacc201bddcb83b949b988432ab266aa90e51ac3d235bb",

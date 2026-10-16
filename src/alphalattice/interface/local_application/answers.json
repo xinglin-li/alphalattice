@@ -3432,6 +3432,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "network_use",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
    }
   ]
  },
@@ -6059,6 +6065,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "network_use",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
    }
   ]
  },
@@ -6317,6 +6329,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "network_use",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
    }
   ]
  },
@@ -7313,6 +7331,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "network_use",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
    }
   ]
  },
@@ -7371,6 +7395,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "network_use",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
    }
   ]
  },
@@ -8607,6 +8637,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "network_use",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
    }
   ]
  },
@@ -9519,6 +9555,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "network_use",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
    }
   ]
  },
@@ -9771,6 +9813,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "network_use",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
    }
   ]
  },
@@ -10989,6 +11037,12 @@
     "kind": "object|null",
     "required": true,
     "meaning": "The exact book's latest published Evidence/CRO review: date, analysis-linked prepared/analyzed coverage, sealed reviewed coverage and CRO route/state/reasons; NOT_REVIEWED with words when none exists."
+   },
+   {
+    "name": "network_use",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when the admitted work may reach the network while it is on: `under`, whose setting allows it (`PERSON`, `RELAYED_YES` or `FIRST_USE_DELEGATION`), and `words`, the one line to say to the person."
    }
   ]
  },
