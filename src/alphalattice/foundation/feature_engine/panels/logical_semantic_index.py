@@ -13,6 +13,8 @@ from alphalattice.foundation.feature_engine.panels.logical_contracts import (
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 LOGICAL_SLICE_ALGORITHM_IDENTITY = "ordered-logical-row-digest"
+"""The logical digests' algorithm. A change to them bumps it: a publication takes an unchanged
+chunk's year as the current one published it only under the same algorithm."""
 
 
 class FeaturePanelLogicalSessionSemantic(BaseModel):  # type: ignore[misc]

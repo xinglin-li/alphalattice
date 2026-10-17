@@ -8,8 +8,8 @@ quality gates: it advances a frozen quality-filtered manifest with a bounded
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import Callable, Generator, Iterator, Mapping
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -52,7 +52,9 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import (
     SanitizedBatch,
     sanitize_payload,
 )
+from alphalattice.foundation.market_data_ops.storage.action_audit import ActionAuditObservation
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
+    ActionAuditReceipt,
     ActionAuditScopeInsufficient,
     CurrentUniverseMaintenanceListing,
     MarketDataRepository,
@@ -126,6 +128,11 @@ def current_universe_maintenance_id(
 
 _Chunk = list[CurrentUniverseMaintenanceListing]
 _Job = tuple[CurrentUniverseMaintenanceListing, ManifestListing, tuple[object, ...], date]
+_Ready = tuple[
+    CurrentUniverseMaintenanceListing, ManifestListing, tuple[object, ...], date, HydrationEvidence
+]
+_Steps = Generator[ActionAuditObservation, tuple[ActionAuditReceipt, dict[str, int]], str]
+"""A listing's hydration: it yields its audit's observation and receives receipt and counts."""
 
 
 @dataclass
@@ -322,36 +329,28 @@ class CurrentUniverseMaintenance:
                 pending = set(futures)
                 with ExitStack() as retained:
                     held = False
-                    for future in as_completed(futures):
-                        pending.discard(future)
+                    while pending:
+                        # Every fetch completed by now applies as one batch: a replay's whole
+                        # chunk, a network run's arrivals, so writes still overlap the fetches.
+                        done, pending = wait(pending, return_when=FIRST_COMPLETED)
                         if not held:
                             retained.enter_context(self._retained())
                             held = True
-                        item, listing, existing, audit_start = futures[future]
-                        try:
-                            hydration = future.result()
-                        except ProviderFetchError as exc:
-                            if exc.code in {
-                                "data.rate_limited",
-                                "data.provider_session_unstable",
-                            }:
-                                systemic_failure = systemic_failure or exc.code
-                                self._record_deferred_failure(item, code=exc.code, observed_at=now)
-                            else:
-                                self._record_failure(
-                                    item, code=exc.code, observed_at=now, exception=exc
+                        ready: list[_Ready] = []
+                        for future in sorted(done, key=lambda each: futures[each][0].listing_id):
+                            item, listing, existing, audit_start = futures[future]
+                            try:
+                                ready.append(
+                                    (item, listing, existing, audit_start, future.result())
                                 )
-                            self._publish_running(current_item=listing.symbol)
-                        else:
-                            with span("write", "listing_maintenance"):
-                                result = self._apply_listing(
-                                    item,
-                                    listing=listing,
-                                    existing=existing,
-                                    audit_start=audit_start,
-                                    hydration=hydration,
-                                    observed_at=now,
+                            except ProviderFetchError as exc:
+                                systemic_failure = self._fetch_failed(
+                                    item, exc, observed_at=now, systemic=systemic_failure
                                 )
+                                self._publish_running(current_item=listing.symbol)
+                        with span("write", "listing_maintenance"):
+                            results = self._apply_listings(ready, observed_at=now)
+                        for (_item, listing, *_rest), result in zip(ready, results, strict=True):
                             if result.startswith("DEFERRED:"):
                                 systemic_failure = systemic_failure or result.partition(":")[2]
                             self._publish_running(current_item=listing.symbol)
@@ -518,14 +517,8 @@ class CurrentUniverseMaintenance:
                 self._record_failure(item, code=exc.code, observed_at=observed_at, exception=exc)
                 return "FAILED"
         with self._retained():
-            return self._apply_hydration(
-                item,
-                listing=listing,
-                existing=existing,
-                audit_start=audit_start,
-                hydration=hydration,
-                observed_at=observed_at,
-            )
+            job = (item, listing, existing, audit_start, hydration)
+            return self._drive(self._apply_hydration(job, observed_at=observed_at), None)
 
     def _prepare_listing(
         self,
@@ -635,16 +628,7 @@ class CurrentUniverseMaintenance:
                 raise
         raise AssertionError("bounded maintenance fetch did not return")
 
-    def _apply_listing(
-        self,
-        item: CurrentUniverseMaintenanceListing,
-        *,
-        listing: ManifestListing,
-        existing: tuple[object, ...],
-        audit_start: date,
-        hydration: HydrationEvidence,
-        observed_at: datetime,
-    ) -> str:
+    def _apply_listing(self, job: _Ready, *, observed_at: datetime) -> str:
         """Apply one fetched listing in one transaction, then report what it became.
 
         The batch, its audit, the reads after them and the listing's state commit together. An
@@ -653,32 +637,97 @@ class CurrentUniverseMaintenance:
         fetch and is not counted again. A full-history audit's fetch never runs inside the
         transaction.
         """
-        apply = partial(
-            self._apply_hydration,
-            item,
-            listing=listing,
-            existing=existing,
-            audit_start=audit_start,
-            hydration=hydration,
-            observed_at=observed_at,
-        )
+        apply = partial(self._apply_hydration, job, observed_at=observed_at)
         try:
             with self.store.database.transaction() as connection:
-                return apply(connection=connection)
+                return self._drive(apply(connection=connection), connection)
         except Exception:
-            return apply()
+            return self._drive(apply(), None)
+
+    def _drive(self, steps: _Steps, connection: DuckDBPyConnection | None) -> str:
+        """Run one listing's hydration, its audit a one-observation call; an error goes back in."""
+        try:
+            observation = next(steps)
+            while True:
+                try:
+                    with span("verify", "listing_action_audit"):
+                        audited = self._mutate(
+                            self.store.complete_action_audits,
+                            self.manifest,
+                            observation,
+                            _connection=connection,
+                        )
+                except Exception as exc:
+                    observation = steps.throw(exc)
+                else:
+                    observation = steps.send(audited[0])
+        except StopIteration as stop:
+            return str(stop.value)
+
+    def _fetch_failed(
+        self,
+        item: CurrentUniverseMaintenanceListing,
+        exc: ProviderFetchError,
+        *,
+        observed_at: datetime,
+        systemic: str | None,
+    ) -> str | None:
+        """Record a listing's failed fetch; answer the run's systemic failure, now or before."""
+        if exc.code in {"data.rate_limited", "data.provider_session_unstable"}:
+            self._record_deferred_failure(item, code=exc.code, observed_at=observed_at)
+            return systemic or exc.code
+        self._record_failure(item, code=exc.code, observed_at=observed_at, exception=exc)
+        return systemic
+
+    def _apply_listings(self, ready: list[_Ready], *, observed_at: datetime) -> list[str]:
+        """Apply fetched listings in one transaction, their audits as one call.
+
+        Each listing gets what it gets alone (`_apply_listing`): an exception anywhere rolls
+        the whole batch back, and every listing is then applied on its own.
+        """
+        if len(ready) > 1:
+            apply = partial(self._apply_hydration, observed_at=observed_at)
+            try:
+                with self.store.database.transaction() as connection:
+                    steps = [apply(job, connection=connection) for job in ready]
+                    return self._audited(steps, connection)
+            except Exception:
+                pass  # rolled back whole: each listing applies alone below
+        return [self._apply_listing(job, observed_at=observed_at) for job in ready]
+
+    def _audited(self, steps: list[_Steps], connection: DuckDBPyConnection) -> list[str]:
+        """Run the listings' hydrations to their audits, audit them together, and finish them."""
+        results: dict[int, str] = {}
+        observations: dict[int, ActionAuditObservation] = {}
+        for index, step in enumerate(steps):
+            try:
+                observations[index] = next(step)
+            except StopIteration as stop:
+                results[index] = str(stop.value)
+        with span("verify", "listing_action_audit"):
+            audited = self._mutate(
+                self.store.complete_action_audits,
+                self.manifest,
+                *observations.values(),
+                _connection=connection,
+            )
+        for index, receipt in zip(observations, audited, strict=True):
+            try:
+                steps[index].send(receipt)
+            except StopIteration as stop:
+                results[index] = str(stop.value)
+            else:
+                raise RuntimeError("a listing in a batch audits once")
+        return [results[index] for index in range(len(steps))]
 
     def _apply_hydration(
         self,
-        item: CurrentUniverseMaintenanceListing,
+        job: _Ready,
         *,
-        listing: ManifestListing,
-        existing: tuple[object, ...],
-        audit_start: date,
-        hydration: HydrationEvidence,
         observed_at: datetime,
         connection: DuckDBPyConnection | None = None,
-    ) -> str:
+    ) -> _Steps:
+        item, listing, existing, audit_start, hydration = job
         try:
             batch = sanitize_payload(
                 self.manifest,
@@ -781,8 +830,8 @@ class CurrentUniverseMaintenance:
             observed_at=observed_at,
             _connection=connection,
         )
-        with span("verify", "listing_action_audit"):
-            return self._audit_and_finish(
+        return (
+            yield from self._audit_and_finish(
                 item,
                 listing=listing,
                 raw_through=raw_through,
@@ -798,6 +847,7 @@ class CurrentUniverseMaintenance:
                 restatement_observation=restatement_observation,
                 connection=connection,
             )
+        )
 
     def _price_action_sentinel(self, batch: SanitizedBatch) -> PriceActionIntegritySentinelReport:
         """Run the sentinels against the authority the Host qualified.
@@ -833,7 +883,7 @@ class CurrentUniverseMaintenance:
         sentinel_report: PriceActionIntegritySentinelReport,
         restatement_observation: RestatementObservationReceipt,
         connection: DuckDBPyConnection | None = None,
-    ) -> str:
+    ) -> _Steps:
         # The batch wrote only its own sessions: the bars before them are as they were read.
         after = {session: bar for session, bar in before_bars.items() if session < written_from} | {
             bar.session_date: bar
@@ -848,18 +898,14 @@ class CurrentUniverseMaintenance:
         force_full_audit = False
         adjusted_return_change_sessions: set[date] = set()
         try:
-            receipt, audit_counts = self._mutate(
-                self.store.complete_action_audit,
-                self.manifest,
+            receipt, audit_counts = yield ActionAuditObservation(
                 listing_id=item.listing_id,
                 provider=self.provider.name,
-                observed_actions=hydration.actions,
-                observed_adjusted_closes=hydration.adjusted_closes,
+                actions=hydration.actions,
+                adjusted_closes=hydration.adjusted_closes,
                 history_start=audit_start,
                 history_end=self.as_of_session,
-                requested_as_of=self.as_of_session,
                 observed_at=observed_at,
-                _connection=connection,
             )
             adjusted_revision = self.store.provider_adjusted_revision(
                 receipt.receipt_hash, _connection=connection
@@ -962,17 +1008,18 @@ class CurrentUniverseMaintenance:
                     for key in set(write_counts) | set(full_counts)
                 }
                 receipt, audit_counts = self._mutate(
-                    self.store.complete_action_audit,
+                    self.store.complete_action_audits,
                     self.manifest,
-                    listing_id=item.listing_id,
-                    provider=self.provider.name,
-                    observed_actions=hydration.actions,
-                    observed_adjusted_closes=hydration.adjusted_closes,
-                    history_start=bars[0].session_date,
-                    history_end=self.as_of_session,
-                    requested_as_of=self.as_of_session,
-                    observed_at=observed_at,
-                )
+                    ActionAuditObservation(
+                        listing_id=item.listing_id,
+                        provider=self.provider.name,
+                        actions=hydration.actions,
+                        adjusted_closes=hydration.adjusted_closes,
+                        history_start=bars[0].session_date,
+                        history_end=self.as_of_session,
+                        observed_at=observed_at,
+                    ),
+                )[0]
                 adjusted_revision = self.store.provider_adjusted_revision(receipt.receipt_hash)
                 if adjusted_revision is not None:
                     adjusted_return_change_sessions.update(

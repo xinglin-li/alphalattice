@@ -10,7 +10,7 @@ digit. `--seen` takes a message's number: the answer's `seen`, so message M7 is 
 
 | Rule | What was wrong | Corrected example |
 |---|---|---|
-| ROLE | The kind is not this member's: STANCE and REPLY any member; CHALLENGE and PASS a specialist; RULING, VERDICT and PERSON_ANSWER the PM. | A specialist that disagrees sends `kind: CHALLENGE`, never `kind: RULING`. |
+| ROLE | The kind is not this member's: STANCE and REPLY any member; CHALLENGE and PASS a specialist; RULING, VERDICT and PERSON_ANSWER the PM. Its `may_send` lists what this sender may send now. | A specialist that disagrees sends `kind: CHALLENGE`, never `kind: RULING`; the PM has no turn to pass, so it sends a REPLY, a RULING or the VERDICT. |
 | STANCES | The blind round takes only one STANCE from each member. | Send the STANCE; run `committee wait` until the stances are revealed, then challenge or reply. |
 | DEBATE | The stances are revealed; a STANCE is no longer taken. | Send `kind: REPLY` with `reply_to: M2` instead. |
 | CLOSED | The floor closed by its verdict or its time box. | A specialist sends nothing more and returns its receipt. The PM sends the offered `report` request, or `kind: PERSON_ANSWER` with `reply_to` naming the item handed to the person. |
@@ -25,7 +25,7 @@ digit. `--seen` takes a message's number: the answer's `seen`, so message M7 is 
 | FACTS | A RESERVE cites none of the floor's facts for this member's questions. | `positions: {T2: RESERVE}` with text that cites `S3`. |
 | NUMBER | A digit typed outside an alias. | `text: H3 carries the most of T1's risk.`, not `AAPL carries 12% of the risk.` |
 | AGENDA | Positions keyed outside the agenda, or by a fact alias. | `positions: {T1: SUPPORT}` or `{H3: OBJECT}`, never `{S2: SUPPORT}`: an S alias is cited in the text. The PM may raise one below-line point through a REPLY's positions. |
-| MEMBER | A specialist's message came without its own session or bundle key. | Start the member with its bundle; it submits from its own session with its own key. |
+| MEMBER | A member's submit came without its key, or from another session. | Run the command under Your route in the bundle's README.md as it stands: it carries `--key` and the key. A lead starts the member with its bundle instead. |
 | KEY | The key belongs to another member or bundle. | Use the key in this member's own bundle; the PM's is the open's `pm_key`. |
 | ENDED | The member's thread has ended. | Return the receipt it gave to your lead. |
 

@@ -91,6 +91,7 @@ from tests.feature_engine.panel_workspace import (
     panel_workspace,
     seed_feature_input_fixture,
 )
+from tests.workspace_maintenance.audit_workspace import audit_one
 
 CASE_ROOT = Path(__file__).resolve().parent
 PLAYPEN_ROOT = CASE_ROOT.parents[1]
@@ -1197,12 +1198,13 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
         workspace.panel_state.panel_source_state_hash(
             **kwargs, allow_missing_market_observations=True
         )
-    workspace.market_data.complete_action_audit(
+    audit_one(
+        workspace.market_data,
         recovered,
         listing_id=missing,
         provider=workspace.provider.name,
-        observed_actions=(),
-        observed_adjusted_closes=workspace.provider.fetch_adjusted_close_history(
+        actions=(),
+        adjusted_closes=workspace.provider.fetch_adjusted_close_history(
             listing_id=missing,
             provider_symbol=recovered.listings[0].provider_symbol,
             start=today,
@@ -1347,10 +1349,11 @@ def _clipping_evidence(resolver: ArtifactResolver, manifest_payload: dict[str, o
 
 
 def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_retention(
-    tmp_path,
+    tmp_path, monkeypatch
 ) -> None:
     """Daily append reuses closed years and keeps provenance recovery and retention."""
 
+    from alphalattice.foundation.feature_engine.panels import logical_identity
     from alphalattice.foundation.feature_engine.panels.closure import PanelClosurePublisher
     from alphalattice.foundation.feature_engine.panels.closure_source import (
         PanelClosureSourceRepository,
@@ -1397,6 +1400,17 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
         latest_session=day_two,
         observed_at=NOW + timedelta(days=1),
     )
+    whole_reads: list[object] = []
+
+    class CountedParquet:
+        def __getattr__(self, name: str) -> object:
+            return getattr(pq, name)
+
+        def read_table(self, path: object, **kwargs: object) -> object:
+            whole_reads.extend([path] if kwargs.get("columns") is None else [])
+            return pq.read_table(path, **kwargs)
+
+    monkeypatch.setattr(logical_identity, "pq", CountedParquet())
     second, manifest_two = build_and_publish(
         workspace,
         manifest,
@@ -1409,6 +1423,7 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
     binding_two = str(manifest_two["panel_binding_hash"])
     assert binding_two != binding_one
     years = [int(chunk["year"]) for chunk in manifest_two["chunks"]]
+    assert len(whole_reads) == 1  # the current year; the years day one published are taken
     assert second.coverage_summary["panel_partitions_reused"] == len(years) - 1
     assert second.coverage_summary["panel_partitions_written"] == 1
     assert second.coverage_summary["panel_partitions_reused_years"] == years[:-1]

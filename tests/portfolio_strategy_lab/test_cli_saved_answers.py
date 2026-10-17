@@ -535,8 +535,9 @@ def test_a_retry_replaces_only_a_saved_refusal(
         assert saved.read_text("utf-8") == held and len(fake_host.sent) == 2
 
 
+@pytest.mark.parametrize("view", ["compact", "full"])
 def test_an_accepted_bundle_heads_the_compact_answer_before_its_queued_task_detail(
-    tmp_path: Path, capsys: Any, fake_host: Any
+    tmp_path: Path, capsys: Any, fake_host: Any, view: str
 ) -> None:
     """Accepted submission succeeds while its queued Task remains visible and followable."""
     task = str(uuid4())
@@ -548,19 +549,27 @@ def test_an_accepted_bundle_heads_the_compact_answer_before_its_queued_task_deta
         "next_action": "READ_TASK",
         "receipt": {"verdict": "ACCEPTED"},
         "next_requests": {"task": {"operation": "STATUS", "task_id": task}},
+        "payload": "x" * 20_000,
     }
     source = tmp_path / "answer.json"
     source.write_text("{}", "utf-8")
-    options = ["--dir", str(tmp_path), "--file", str(source)]
-    arguments = ["--workspace", str(tmp_path), "bundle", "submit", *options]
+    saved = tmp_path / "saved.json"
+    options = ["--dir", str(tmp_path), "--file", str(source), "--output", str(saved)]
+    arguments = ["--workspace", str(tmp_path), "--view", view, "bundle", "submit", *options]
     assert cli.main(arguments, serve=lambda _: 99) == 0
-    answer = json.loads(capsys.readouterr().out)
+    stdout = capsys.readouterr().out
+    answer = json.loads(stdout)
     assert list(answer)[:3] == ["status", "next_action", "task_id"]
+    assert list(answer)[3:6] == ["operation", "outcome", "output_file"]
     assert (answer["status"], answer["next_action"]) == ("ACCEPTED", "READ_TASK")
-    assert answer["task_id"] == task[:12] and answer["outcome"] == "OK"
+    shown_task = task[:12] if view == "compact" else task
+    assert answer["task_id"] == shown_task and answer["outcome"] == "OK"
     assert answer["data"]["task_lifecycle"] == "QUEUED"
     assert answer["data"]["receipt"] == fake_host.answer["receipt"]
-    assert answer["next_requests"]["task"] == {"operation": "STATUS", "task_id": task[:12]}
+    assert answer["next_requests"]["task"] == {"operation": "STATUS", "task_id": shown_task}
+    assert list(answer)[-1] == "data"
+    assert f'"output_file": {json.dumps(str(saved.resolve()))}' in stdout[:9000]
+    assert json.loads(saved.read_text("utf-8")) == fake_host.answer
 
 
 def test_schema_show_writes_its_output_file(tmp_path: Path, capsys: Any) -> None:

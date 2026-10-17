@@ -21,6 +21,7 @@ from tests.researcher_methodology_surface.real_workspace import (
     OBSERVED_AT,
     _source_loader_for,
 )
+from tests.workspace_maintenance.audit_workspace import audit_one
 from tests.workspace_maintenance.local_data_provider import RecordingProvider, recording_provider
 
 
@@ -121,12 +122,13 @@ def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
                 )
                 bars = market.raw_bars(listing.listing_id, through=AS_OF)
                 live.session.mutation_gate.run(
-                    market.complete_action_audit,
+                    audit_one,
+                    market,
                     manifest,
                     listing_id=listing.listing_id,
                     provider=provider.name,
-                    observed_actions=(),
-                    observed_adjusted_closes=provider.fetch_adjusted_close_history(
+                    actions=(),
+                    adjusted_closes=provider.fetch_adjusted_close_history(
                         listing_id=listing.listing_id,
                         provider_symbol=symbol,
                         start=bars[0].session_date,

@@ -40,6 +40,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from tests.workspace_maintenance.audit_workspace import audit_one
 
 AS_OF = date(2026, 7, 31)
 OBSERVED_AT = datetime(2026, 8, 2, tzinfo=UTC)
@@ -798,12 +799,13 @@ def test_same_session_membership_uses_its_unchanged_full_anchor_and_real_rolling
                 start=rolling_start,
                 end=target,
             )
-            store.complete_action_audit(
+            audit_one(
+                store,
                 manifest,
                 listing_id=listing.listing_id,
                 provider=initial_provider.name,
-                observed_actions=evidence.actions,
-                observed_adjusted_closes=evidence.adjusted_closes,
+                actions=evidence.actions,
+                adjusted_closes=evidence.adjusted_closes,
                 history_start=rolling_start,
                 history_end=target,
                 requested_as_of=target,

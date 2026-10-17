@@ -889,25 +889,20 @@ def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
     from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
     from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
 
-    audit, paying = MarketDataRepository.complete_action_audit, TEN_SECTOR_SYMBOLS[1 : 1 + payers]
+    audit, paying = MarketDataRepository.complete_action_audits, TEN_SECTOR_SYMBOLS[1 : 1 + payers]
 
-    def dividend(self, manifest, *, listing_id, history_start, requested_as_of, **rest):  # type: ignore[no-untyped-def]
+    def dividend(self, manifest, *observations, **rest):  # type: ignore[no-untyped-def]
         # Day 2 is the payers' ex-date: each provider back-adjusts the whole history, which a
-        # rolling audit cannot explain; a full-history audit does.
-        named = {item.listing_id: item.symbol for item in manifest.listings}.get(listing_id)
-        rolling = (requested_as_of - history_start).days < 400
-        if named in paying and requested_as_of > NOW.date() and rolling:
-            raise ActionAuditScopeInsufficient("dividend back-adjustment")
-        return audit(
-            self,
-            manifest,
-            listing_id=listing_id,
-            history_start=history_start,
-            requested_as_of=requested_as_of,
-            **rest,
-        )
+        # rolling audit cannot explain; a full-history audit does. A batch holding a payer
+        # refuses whole, and each listing then audits alone.
+        named = {item.listing_id: item.symbol for item in manifest.listings}
+        for item in observations:
+            rolling = (item.as_of - item.history_start).days < 400
+            if named.get(item.listing_id) in paying and item.as_of > NOW.date() and rolling:
+                raise ActionAuditScopeInsufficient("dividend back-adjustment")
+        return audit(self, manifest, *observations, **rest)
 
-    monkeypatch.setattr(MarketDataRepository, "complete_action_audit", dividend)
+    monkeypatch.setattr(MarketDataRepository, "complete_action_audits", dividend)
 
     def cli(*arguments: str) -> dict:
         line = ["--workspace", str(workspace), "--view", "full", *arguments]

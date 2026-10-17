@@ -1201,6 +1201,15 @@ def _rule_words(
     return words
 
 
+def _may_send(floor: Floor | None, rule: str, role: str | None, now: datetime) -> dict[str, Any]:
+    """A ROLE refusal names what this sender may send at the floor's stage."""
+    if rule != "ROLE" or floor is None:
+        return {}
+    stage = floor.stage(now)
+    sends = [k for k, (who, at, _) in RULES.items() if role in who and stage in at]
+    return {"may_send": sends, "detail": RULE_WORDS["ROLE"].replace("{subject}", ", ".join(sends))}
+
+
 def _corrected(
     store: GoalStore, request: PortfolioResearchOperationRequest, rule: str, now: datetime
 ) -> dict[str, Any]:
@@ -1214,6 +1223,7 @@ def _corrected(
     message, floor = request.committee_message, floor_of(store, str(request.update_task_id))
     owed = _owed(floor, request, member, rule, now)
     words = _rule_words(floor, message, rule, "corrected" in owed)
+    words |= _may_send(floor, rule, request.committee_role, now)
     lead = {"MEMBER": "START_THE_MEMBER", "CLOSED": "EXPORT_THE_REPORT"}.get(
         rule, "SEND_THE_CORRECTED_MESSAGE" if "corrected" in owed else "READ_THE_FLOOR"
     )
@@ -2228,4 +2238,5 @@ def _member(floor: Floor, role: str, stage: str) -> str:
         return "IN" if "STANCE" in said else "NOT_YET"
     if "STANCE" not in said:
         return "NOT_ADDRESSED"
-    return "IN" if said - {"STANCE"} else "TURN_OPEN"
+    # The PM has no discussion turn: it rules and gives the verdict.
+    return "IN" if said - {"STANCE"} or role == "PM" else "TURN_OPEN"

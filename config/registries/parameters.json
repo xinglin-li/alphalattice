@@ -4480,7 +4480,7 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::mismatches::5.0": {
+"src/alphalattice/foundation/market_data_ops/storage/action_audit.py::mismatches::5.0": {
 "class": "METHOD",
 "count": 1
 },

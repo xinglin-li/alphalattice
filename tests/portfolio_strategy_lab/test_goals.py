@@ -20,12 +20,13 @@ from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
 import pytest
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.publication.goals import GoalStore, session_work_declaration
 from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
 from alphalattice.interface.local_application.cli_contract import RequestProvenance
+from alphalattice.interface.local_application.failure_codes import located_failure
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
@@ -376,6 +377,23 @@ def test_a_formula_factors_trial_and_packet_are_goal_evidence(goal_app):
     assert {"FEATURE_REVIEW", "FEATURE_TRIAL_READBACK"} <= {op for op, _caller in calls}
     held = {ref.reference_id: ref.stage for ref in app.store.load(head["goal_hash"]).references}
     assert held == {"packet": "DATA_FEATURES", "trial": "DATA_FEATURES"}
+
+    # regression (the fresh-folder run): a read's field it does not take was refused with an
+    # empty path; it is located under the reference's request and names the fields it takes.
+    update = {"operation": "RESEARCH_UPDATE_READBACK", "update_task_id": str(UUID(int=4))}
+    reference = {"reference_id": "positions", "label": "Positions", "stage": "PORTFOLIO"}
+    attach = Request(
+        operation="GOAL_ATTACH",
+        goal_hash=head["goal_hash"],
+        change_reason="The positions",
+        goal_reference={**reference, "request": update},
+    )
+    with pytest.raises(ValidationError) as refused:
+        app.operate(attach, "EXTERNAL_AUTOMATION")
+    located = located_failure(refused.value, "goal.document_invalid")
+    assert located["fields"] == [["request", "update_task_id"]], located
+    assert located["allowed_fields"] == {"request": ["strategy_package_id", "task_id"]}
+    assert "task_id" in str(located["message"]).partition("update_task_id")[2]
 
 
 def test_goal_revision_reopen_narrative_no_work_and_tamper(goal_app):
@@ -1596,6 +1614,16 @@ def test_an_unmet_objective_completes_but_an_answer_that_contradicts_it_does_not
         "EXTERNAL_AUTOMATION",
     )
     assert [m["code"] for m in contradicted["missing"]] == ["goal.outcome_contradicts_criteria"]
+    # regression (the fresh-folder run): PARTLY_ACHIEVED beside its only criterion MET was sealed;
+    # the outcome is the criteria's, so the answer offers the same submission with it corrected.
+    partly = _submission(outcome="PARTLY_ACHIEVED")
+    request = Request(operation="GOAL_SUBMIT", goal_id=UUID(int=1), goal_submission=partly)
+    understated = app.operate(request, "EXTERNAL_AUTOMATION")
+    assert understated["missing"] == [
+        {"code": "goal.outcome_contradicts_criteria", "outcome": "ACHIEVED"}
+    ]
+    corrected = understated["next_requests"]["resubmit"]["goal_submission"]
+    assert corrected == {**partly, "outcome": "ACHIEVED"}
     unreasoned = app.operate(
         Request(
             operation="GOAL_SUBMIT",

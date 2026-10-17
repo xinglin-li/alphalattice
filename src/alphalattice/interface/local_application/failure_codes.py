@@ -18,7 +18,7 @@ import subprocess
 from collections.abc import Mapping
 from copy import deepcopy
 from hashlib import sha256
-from typing import Final
+from typing import Any, Final
 from uuid import UUID
 
 FAILURE_DETAIL_WITHHELD = "activity.failure_detail_withheld"
@@ -203,6 +203,25 @@ def untyped_failure(code: str) -> bool:
     return bool(_UNTYPED.match(code))
 
 
+def within(error: BaseException, *place: str) -> BaseException:
+    """A nested document's refusal, located under the field that holds it.
+
+    Args:
+        error: The nested document's contract refusal; any other error is returned as it is.
+        place: The holding field's path, e.g. ``("request",)``.
+
+    Returns:
+        The same refusal with each item's location prefixed by `place`.
+    """
+    from pydantic import ValidationError
+
+    if not isinstance(error, ValidationError):
+        return error
+    lines: list[Any] = [{**item, "loc": (*place, *item["loc"])} for item in error.errors()]
+    located: BaseException = ValidationError.from_exception_data(error.title, lines)
+    return located
+
+
 def located_failure(
     error: BaseException, fallback: str, *, request: Mapping[str, object] | None = None
 ) -> dict[str, object]:
@@ -222,6 +241,7 @@ def located_failure(
 
     fields: list[list[str]] = []
     reasons: dict[str, str] = {}
+    allowed: dict[str, list[str]] = {}
     words: list[str] = []
     items = error.errors(include_input=False, include_url=False)
     located = [tuple(str(part) for part in item.get("loc", ())) for item in items]
@@ -244,11 +264,11 @@ def located_failure(
         )
         # A validator's own text is the owner's code or withheld: it may carry the value.
         reason = code or kind
-        if reason.startswith("portfolio_research.operation_field_required:"):
-            missing = reason.partition(":")[2].split(",")
-            fields.extend([[name] for name in missing])
-            reasons.update({name: reason for name in missing})
-            words.append(reason)
+        named = re.fullmatch(
+            r"portfolio_research\.operation_field_(required|not_allowed):(.+)", reason
+        )
+        if named:
+            words.append(_contract_fields(named, location, cause, (fields, reasons, allowed)))
             continue
         fields.append(location)
         reasons[".".join(location)] = reason
@@ -261,11 +281,31 @@ def located_failure(
         "fields": fields,
         "reasons": reasons,
         "message": "; ".join(words)[:600],
+        **({"allowed_fields": allowed} if allowed else {}),
     }
     if request is not None:
         answer["next_action"] = "READ_CAPABILITIES_SCHEMA"
         answer.update(_way_back(fields, reasons, request, fallback))
     return answer
+
+
+def _contract_fields(
+    named: re.Match[str],
+    location: list[str],
+    cause: object,
+    into: tuple[list[list[str]], dict[str, str], dict[str, list[str]]],
+) -> str:
+    """A request's field contract: each field it refused where it sits, and the fields its
+    operation takes, written `into` the refusal's fields, reasons and allowed fields."""
+    fields, reasons, allowed = into
+    paths = [[*location, name] for name in named[2].split(",")]
+    fields.extend(paths)
+    reasons.update({".".join(path): named[0] for path in paths})
+    takes = getattr(cause, "allowed", None)
+    if takes is not None:
+        allowed[".".join(location)] = list(takes)
+    said = ", ".join(".".join(path) for path in paths) + ": " + named[1].replace("_", " ")
+    return said + (f"; it takes {', '.join(takes)}" if takes else "")
 
 
 def _way_back(

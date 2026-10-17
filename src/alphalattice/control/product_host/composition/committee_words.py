@@ -15,7 +15,7 @@ COMMAND: Final = " ".join(command_prefix())
 RULE_WORDS: Final = {
     "ROLE": "Only its senders send this kind, each with the key in its own bundle: a STANCE or "
     "REPLY any member, a CHALLENGE or PASS a specialist, a RULING, VERDICT or PERSON_ANSWER the "
-    "PM.",
+    "PM. This sender may send now: {subject}",
     "STANCES": "The floor is in its blind first round, which takes only one STANCE from each "
     f"member; follow `{COMMAND} committee wait` until the stances are revealed.",
     "DEBATE": "The floor is past its stances; it takes challenges, replies, passes, rulings and "
@@ -43,8 +43,10 @@ RULE_WORDS: Final = {
     "message the answer offers.",
     "UNRULED": "A verdict closes the floor, so the PM rules on every challenge first and one "
     "stands unruled; read it, send its ruling in your own words, then the verdict.",
-    "MEMBER": "This bundle's member submits from its own session with its key and takes the Host's "
-    "corrections itself; start it with its bundle, then run this again for its receipt.",
+    "MEMBER": "This bundle's member submits from its own session with its key: run the command "
+    "under Your route in its bundle's README.md as it stands, which carries `--key` and the key, "
+    "and take the Host's corrections yourself. A lead starts the member with its bundle, then "
+    "runs this again for its receipt.",
     "KEY": "This key is not this bundle's: a member's key admits only its own bundle's answer, "
     "with the command its route names.",
     "ENDED": "This bundle's answer is accepted and its key has ended; only that answer reads its "

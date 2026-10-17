@@ -379,6 +379,7 @@ class WorkspaceMaintenanceCoordinator:
         default=None, init=False, repr=False
     )
     _cycle_id: str | None = field(default=None, init=False, repr=False)
+    _verified: tuple[str, ...] = field(default=(), init=False, repr=False)
     clock: Callable[[], datetime] | None = None
 
     def __post_init__(self) -> None:
@@ -438,7 +439,7 @@ class WorkspaceMaintenanceCoordinator:
         maintenance_work_budget: int | None,
     ) -> WorkspaceMaintenanceOutcome:
         cycle = self.registry.admit(request, observed_at=now)
-        self._cycle_id = cycle.cycle_id
+        self._cycle_id, self._verified = cycle.cycle_id, ()
         # A cycle stopped inside quality governance (awaiting a decision, in review, refused
         # binding the derived child's evidence, or cancelled) resumes governance when run again;
         # else it would read an older admission as clearance and drop the decision.
@@ -1828,13 +1829,12 @@ class WorkspaceMaintenanceCoordinator:
                 reduced,
                 requested_as_of=request.target_market_session,
                 now=observed_at,
+                verified=frozenset(self._verified),
             )
         except ValueError:
-            # A reduced child's member holds no reusable audit receipt for this session, so the
-            # exclusion cannot bind its evidence: it is not applied and a later run retries, as
-            # the governed child binding does. The cycle stops by the cause the user can act on:
-            # the day's refresh failed for its members (a stale payload seals no audit), or the
-            # evidence is missing, expired or changed since the parent's audit.
+            # No reusable receipt for a member: the exclusion is not applied and a later run
+            # retries. The cycle stops by the cause the user can act on: the day's refresh failed
+            # for its members, or the evidence is missing, expired or changed since its audit.
             return self._refused_binding_cause(request, admitted_ids)
         if carried is None:
             # Through the activation coordinator, as every activation: its map and receipt,
@@ -3447,11 +3447,10 @@ class WorkspaceMaintenanceCoordinator:
         if source_manifest.revision_sha256 == target_manifest.revision_sha256:
             return True
         try:
-            # Evidence readers join through the candidate membership rows. This
-            # registers the governed child without activating it; activation
-            # still follows successful action and Sector readback below.
+            # Registers the governed child for the evidence readers, without activating it. The
+            # receipts it binds were verified now: the cycle's Sector exclusion takes them as such.
             self.mutation_gate.run(self.market_data.bootstrap, target_manifest)
-            self.mutation_gate.run(
+            self._verified = self.mutation_gate.run(
                 self.market_data.bind_action_audit_receipts_to_manifest,
                 source_manifest,
                 target_manifest,

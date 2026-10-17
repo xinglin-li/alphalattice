@@ -76,6 +76,8 @@ from alphalattice.protocols.actor_execution.bundles import AgentRole
 class LocalApplicationError(ValueError):
     """Stable refusal for a Local Application Service boundary failure."""
 
+    allowed: list[str] | None = None  # the fields its operation takes
+
 
 class FactorCurationChoice(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -798,16 +800,12 @@ class PortfolioResearchOperationRequest:
             for field in fields(self)
             if field.name != "operation" and getattr(self, field.name) is not None
         }
-        missing = sorted(required - supplied)
-        if missing:
-            raise LocalApplicationError(
-                "portfolio_research.operation_field_required:" + ",".join(missing)
-            )
-        unexpected = sorted(supplied - allowed)
-        if unexpected:
-            raise LocalApplicationError(
-                "portfolio_research.operation_field_not_allowed:" + ",".join(unexpected)
-            )
+        for code, names in (("required", required - supplied), ("not_allowed", supplied - allowed)):
+            if names:
+                named = ",".join(sorted(names))
+                bad = LocalApplicationError(f"portfolio_research.operation_field_{code}:{named}")
+                bad.allowed = sorted(allowed)
+                raise bad
 
     @staticmethod
     def field_contract(

@@ -57,6 +57,7 @@ from alphalattice.interface.local_application.cli_contract import (
     WORKSPACE_FROM,
     Outcome,
     agent_session,
+    answer_json,
     client_refusal,
     command_table,
     count_launch,
@@ -220,7 +221,7 @@ class _Parser(argparse.ArgumentParser):
         # What the parser found, its usage and the help that answers it, in the envelope where
         # an agent reads (the review's F5); stderr keeps argparse's own lines.
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation=None,
                     outcome=refusal.outcome,
@@ -238,7 +239,6 @@ class _Parser(argparse.ArgumentParser):
                         **repair,
                     },
                 ),
-                sort_keys=True,
             )
         )
         raise SystemExit(EXIT_CODES[refusal.outcome])
@@ -1043,7 +1043,7 @@ def _restore(
     elapsed = time.perf_counter() - started
     if answer is not None:
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation="WORKSPACE_RESTORE",
                     outcome="OK",
@@ -1051,7 +1051,6 @@ def _restore(
                     elapsed_seconds=elapsed,
                     **_saved(args, answer),
                 ),
-                sort_keys=True,
             )
         )
         return 0
@@ -1063,7 +1062,7 @@ def _restore(
         "next_action": refusal.next_action,
     }
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="WORKSPACE_RESTORE",
                 outcome=refusal.outcome,
@@ -1075,7 +1074,6 @@ def _restore(
                 next_action=refusal.next_action,
                 **_saved(args, refused_body),
             ),
-            sort_keys=True,
         )
     )
     return EXIT_CODES[refusal.outcome]
@@ -1124,7 +1122,7 @@ def _sandbox(
     elapsed = time.perf_counter() - started
     if answer is not None:
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation="MODEL_SANDBOX",
                     outcome="OK",
@@ -1132,7 +1130,6 @@ def _sandbox(
                     elapsed_seconds=elapsed,
                     **_saved(args, answer),
                 ),
-                sort_keys=True,
             )
         )
         return 0
@@ -1144,7 +1141,7 @@ def _sandbox(
         "next_action": refusal.next_action,
     }
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="MODEL_SANDBOX",
                 outcome=refusal.outcome,
@@ -1156,7 +1153,6 @@ def _sandbox(
                 next_action=refusal.next_action,
                 **_saved(args, refused_body),
             ),
-            sort_keys=True,
         )
     )
     return EXIT_CODES[refusal.outcome]
@@ -1190,7 +1186,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
                 "next_action": refusal.next_action,
             }
             print(
-                json.dumps(
+                answer_json(
                     envelope(
                         operation=operation,
                         outcome=refusal.outcome,
@@ -1202,7 +1198,6 @@ def _model(args: argparse.Namespace, started: float) -> int:
                         next_action=refusal.next_action,
                         **_saved(args, refused_body),
                     ),
-                    sort_keys=True,
                 )
             )
             return EXIT_CODES[refusal.outcome]
@@ -1212,7 +1207,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
             "next": f'model scaffold --file "{written}"',
         }
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation=operation,
                     outcome="OK",
@@ -1220,7 +1215,6 @@ def _model(args: argparse.Namespace, started: float) -> int:
                     elapsed_seconds=time.perf_counter() - started,
                     **_saved(args, body),
                 ),
-                sort_keys=True,
             )
         )
         return EXIT_CODES["OK"]
@@ -1242,7 +1236,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
             "next_action": refusal.next_action,
         }
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation=operation,
                     outcome=refusal.outcome,
@@ -1254,7 +1248,6 @@ def _model(args: argparse.Namespace, started: float) -> int:
                     next_action=refusal.next_action,
                     **_saved(args, refused_body),
                 ),
-                sort_keys=True,
             )
         )
         return EXIT_CODES[refusal.outcome]
@@ -1263,7 +1256,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
     outcome: Outcome = found.outcome if found else "OK"
     extra: dict[str, Any] = {"next_action": found.next_action} if found else {}
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation=operation,
                 outcome=outcome,
@@ -1274,7 +1267,6 @@ def _model(args: argparse.Namespace, started: float) -> int:
                 **extra,
                 **_saved(args, answer),
             ),
-            sort_keys=True,
         )
     )
     return EXIT_CODES[outcome]
@@ -1311,7 +1303,7 @@ def _offline(args: argparse.Namespace, started: float) -> int:
         # The registry's nearest names, where argparse answered only READ_HELP (V111).
         refusal = client_refusal("local_client.operation_unknown")
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation="SCHEMA",
                     outcome=refusal.outcome,
@@ -1325,7 +1317,6 @@ def _offline(args: argparse.Namespace, started: float) -> int:
                         args.operation_name, known, n=3, cutoff=0.5
                     ),
                 ),
-                sort_keys=True,
             )
         )
         return EXIT_CODES[refusal.outcome]
@@ -1345,7 +1336,7 @@ def _offline(args: argparse.Namespace, started: float) -> int:
                 "next_action": refusal.next_action,
             }
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="SCHEMA",
                 outcome="OK",
@@ -1353,7 +1344,6 @@ def _offline(args: argparse.Namespace, started: float) -> int:
                 elapsed_seconds=time.perf_counter() - started,
                 **saved,
             ),
-            sort_keys=True,
         )
     )
     return 0
@@ -1646,7 +1636,7 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
             **diagnostics,
         )
         exit_code = EXIT_CODES[refusal.outcome]
-    print(json.dumps(result, default=client._json_value, sort_keys=True))
+    print(answer_json(result, default=client._json_value))
     return exit_code
 
 
@@ -1674,7 +1664,7 @@ def _refused(
             "{subject}", context["requested_workspace"], 1
         )
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation=None,
                 outcome=refusal.outcome,
@@ -1690,7 +1680,6 @@ def _refused(
                     else {}
                 ),
             ),
-            sort_keys=True,
         )
     )
     return EXIT_CODES[refusal.outcome]
@@ -1732,7 +1721,7 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
         code = f"native_bridge.files_unavailable:{type(error).__name__}"
         return _refused(f"local_client.session_unbind_refused:{code}", started)
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="SESSION_UNBIND",
                 outcome="OK",
@@ -1740,7 +1729,6 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
                 elapsed_seconds=time.perf_counter() - started,
                 **_saved(args, answer),
             ),
-            sort_keys=True,
         )
     )
     return 0
@@ -1761,7 +1749,7 @@ def _problem(args: argparse.Namespace, started: float) -> int:
     except NativeBridgeError as error:
         return _refused(str(error), started)
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="PROBLEM_REPORT",
                 outcome="OK",
@@ -1831,7 +1819,7 @@ def _bind(args: argparse.Namespace, started: float) -> int:
         }
     answer = bound
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="SESSION_BIND",
                 outcome=outcome,
@@ -1839,7 +1827,6 @@ def _bind(args: argparse.Namespace, started: float) -> int:
                 elapsed_seconds=time.perf_counter() - started,
                 **_saved(args, answer),
             ),
-            sort_keys=True,
         )
     )
     return EXIT_CODES[outcome]

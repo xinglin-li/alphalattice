@@ -663,6 +663,7 @@ def test_a_review_member_answers_its_own_bundle_on_its_thread(
     member, other = (("ANALYST", reference, {"findings": f}) for f in ([], [{}]))
     refused = [committee.admit(store, member, k) for k in (None, "0" * 32)]
     assert [isinstance(r, dict) and r["rule"] for r in refused] == ["MEMBER", "KEY"]
+    assert "--key" in refused[0]["detail"]  # the flag a keyless submit lacks (fresh-folder run)
     correct = {"status": "CORRECT", "problems": [{}], "rounds_left": 2}
     for sent, body, k in (
         (other, correct, key),
@@ -877,7 +878,22 @@ def test_the_pm_keeps_its_stance_and_its_verdict_when_a_member_falls_silent(
     assert (
         opened["discussion_closes_at"] in opened["detail"]
         and opened["members"]["CRO"] == "TURN_OPEN"
+        and opened["members"]["PM"] == "IN"  # the PM has no turn to pass (fresh-folder run)
     )
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    pm = {**turn["pass"], "committee_role": "PM", "committee_key": floor.key("PM")}
+    opener = RequestProvenance(session=floor.opened["session"][1])
+    passed = committee.operate(
+        store, Request(**pm), now[0], provenance=opener, dated=lambda: None, file_floor=lambda: None
+    )
+    assert passed["rule"] == "ROLE" and passed["may_send"] == [
+        "REPLY",
+        "RULING",
+        "VERDICT",
+        "PERSON_ANSWER",
+    ]
+    assert all(kind in passed["detail"].rpartition(":")[2] for kind in passed["may_send"])
     now[0] += timedelta(minutes=committee.DISCUSSION_MINUTES + 1)
     assert _read(store, now, "PM", seen)["settled"]
     expired = cro_read()  # regression (pre-release review): no turn offered past its window

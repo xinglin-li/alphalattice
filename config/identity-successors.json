@@ -12615,6 +12615,104 @@
    "successor": "dd5c85118ef5a06c80b431ac79bf708ba589f10e44817bc38dc7eb78c0db8af6",
    "change": "ISSUE-10-REVIEW-WORDS",
    "reason": "Lead-signed 2026-10-17: the CRO policy change is wording only; identical AST once string literals are stripped, with no routing or threshold change. The other three move only through reporting.static in their closure: the same source weights and changes are formatted once and split into held and exit sections by the installed held bound. Publication arrays and computational owners are unchanged; JSON and HTML controls pass."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "9f7abe0003b8147d9e45b6c945a36535eb2f94094f9d8cd4d13aaa64c705a0ce",
+   "successor": "ef67839edb0c8df3377fa9cfdbd94be10140ff0c242482a6ef5e9d19f11f6abb",
+   "change": "a Panel publication takes an unchanged chunk's year as the last publication published it",
+   "reason": "Equal chunk bytes (content and metadata hashes) give equal logical annual content and session semantics, so the publisher reuses the last publication's records for an unchanged year under the same logical algorithm and Panel mode, rechecking the axis and epochs; every published hash is equal to a fresh build (test_an_unchanged_chunk_is_taken_as_published) and the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "4f1b8fa2e7a17214bc09dd407ce4aaedff0a48b059f75519b172e0d92de4cb6f",
+   "successor": "4e5e2e2f89da5b4f82ff251193f910e7ab2784c19fbf376a7f76830ce627070c",
+   "change": "a Panel publication takes an unchanged chunk's year as the last publication published it",
+   "reason": "Equal chunk bytes (content and metadata hashes) give equal logical annual content and session semantics, so the publisher reuses the last publication's records for an unchanged year under the same logical algorithm and Panel mode, rechecking the axis and epochs; every published hash is equal to a fresh build (test_an_unchanged_chunk_is_taken_as_published) and the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "1a2e21e2fa8d0418dd01de5cf6fa0d8a7859d9966d91d1a49df0fe3a2004af38",
+   "successor": "a966cbfa67ee32b04389bf3e2002dbfe4052518d6698aa455f80a5b173fefcba",
+   "change": "a Panel publication takes an unchanged chunk's year as the last publication published it",
+   "reason": "Equal chunk bytes (content and metadata hashes) give equal logical annual content and session semantics, so the publisher reuses the last publication's records for an unchanged year under the same logical algorithm and Panel mode, rechecking the axis and epochs; every published hash is equal to a fresh build (test_an_unchanged_chunk_is_taken_as_published) and the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "1a2e21e2fa8d0418dd01de5cf6fa0d8a7859d9966d91d1a49df0fe3a2004af38",
+   "successor": "a966cbfa67ee32b04389bf3e2002dbfe4052518d6698aa455f80a5b173fefcba",
+   "change": "a Panel publication takes an unchanged chunk's year as the last publication published it",
+   "reason": "Equal chunk bytes (content and metadata hashes) give equal logical annual content and session semantics, so the publisher reuses the last publication's records for an unchanged year under the same logical algorithm and Panel mode, rechecking the axis and epochs; every published hash is equal to a fresh build (test_an_unchanged_chunk_is_taken_as_published) and the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "906d5bf51c48427fc879bc0ed3da0420b6b5ea3e85d8952f50cfb748a5e4cfd4",
+   "successor": "0d5b04974aa1b65d968db734bc6ff4f8a47227da4f78e04722fcd10e01a0e677",
+   "change": "a derived manifest's binding takes the receipts its cycle just bound from verified bytes without a second digest",
+   "reason": "The market-data store's receipt rebinding accepts an optional set of receipts its caller bound this cycle from bytes it had just verified, and answers the receipts it binds; the maintenance cycle hands the governed child's to its Sector exclusion. Every binding without that set is unchanged; the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "a34e6bde65ae5ca75beb952d8f89a77b6ab2fdfc6aa01f9a1fcc212d8bb917c1",
+   "successor": "b84f29a7d19b853cb6a28c24c513bf30a9581ee942e9d7c193443ae05b9f50ec",
+   "change": "a derived manifest's binding takes the receipts its cycle just bound from verified bytes without a second digest",
+   "reason": "The market-data store's receipt rebinding accepts an optional set of receipts its caller bound this cycle from bytes it had just verified, and answers the receipts it binds; the maintenance cycle hands the governed child's to its Sector exclusion. Every binding without that set is unchanged; the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "b9e74c96286f49e1df50f53cf8699e9d6096443e4e52b4ebbc429267d1d846c2",
+   "successor": "d42e4f1b7aeebd402886ef71e6ef6c082bf5941edc0d29e9a40d6bd51c538fe0",
+   "change": "a derived manifest's binding takes the receipts its cycle just bound from verified bytes without a second digest",
+   "reason": "The market-data store's receipt rebinding accepts an optional set of receipts its caller bound this cycle from bytes it had just verified, and answers the receipts it binds; the maintenance cycle hands the governed child's to its Sector exclusion. Every binding without that set is unchanged; the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "bbbf634a30d79b92288e8898ebd7f64f465c0035f2567bce192d061750de852a",
+   "successor": "601c0479575d509bfb0e1e9748fe817931185bd65317170c2f55dcf6e4fb5a1e",
+   "change": "a derived manifest's binding takes the receipts its cycle just bound from verified bytes without a second digest",
+   "reason": "The market-data store's receipt rebinding accepts an optional set of receipts its caller bound this cycle from bytes it had just verified, and answers the receipts it binds; the maintenance cycle hands the governed child's to its Sector exclusion. Every binding without that set is unchanged; the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "1688af4eac8285be270326191a867ddec3e8f1c06b7c4d68c9363bbc9d2da839",
+   "successor": "5e58fff36baf0a7ebc93f3811e63fa254148eb7fe09c947355e66d18e6cf4701",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "0d5b04974aa1b65d968db734bc6ff4f8a47227da4f78e04722fcd10e01a0e677",
+   "successor": "dadcd4fc9c13677d473e0d3e76dbb2bac17cc301d17cebd4be636d250edbd6b2",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "b84f29a7d19b853cb6a28c24c513bf30a9581ee942e9d7c193443ae05b9f50ec",
+   "successor": "bb07424489bedd1fc78e514aa6cfb602619cc5054e9e965691b5129e79eec1a9",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "d42e4f1b7aeebd402886ef71e6ef6c082bf5941edc0d29e9a40d6bd51c538fe0",
+   "successor": "28c086388e483c297e69fc8916522a8844ce14eaea67b01b485356913d7147e2",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "601c0479575d509bfb0e1e9748fe817931185bd65317170c2f55dcf6e4fb5a1e",
+   "successor": "d64c6a8dc6ebcdf2665162be60de68ea470580e8b8e5fed5bb2b449c93895ebd",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "4e5e2e2f89da5b4f82ff251193f910e7ab2784c19fbf376a7f76830ce627070c",
+   "successor": "7e14a8c358af50b6108d4bbd21ae8f3229ae156b4eb2a4566c75a1a87aec6496",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
   }
  ]
 }

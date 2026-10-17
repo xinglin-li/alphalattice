@@ -821,7 +821,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The requests that go on: resubmit and show after `INCOMPLETE`, with an `attach:<reference_id>` ready for each update the goal's Tasks published when a cited reference is absent; show, narrative, export and each Task's readback after `COMPLETE`."
+    "meaning": "The requests that go on: after `INCOMPLETE`, show, an `attach:<reference_id>` ready for each update the goal's Tasks published when a criterion cites no evidence or a cited reference is absent, and resubmit: the submission as the Host can correct it (those criteria citing the attaches, the outcome its criteria require), unbound to the revision when an attach comes first, else left open; show, narrative, export and each Task's readback after `COMPLETE`."
    },
    {
     "name": "claim",
@@ -833,7 +833,7 @@
     "name": "missing",
     "kind": "array",
     "required": false,
-    "meaning": "Each item the record lacks, by code, with the criterion, deliverable, reference or Task it concerns. Only with `INCOMPLETE`."
+    "meaning": "Each item the record lacks, by code, with the criterion, deliverable, reference or Task it concerns, and for `goal.outcome_contradicts_criteria` the `outcome` its criteria require. Only with `INCOMPLETE`."
    },
    {
     "name": "record",
@@ -10676,7 +10676,7 @@
     "name": "members",
     "kind": "object",
     "required": true,
-    "meaning": "Each member's state in the current round: `IN`, `NOT_YET` (stance not in), `TURN_OPEN` (discussion turn not taken) or `NOT_ADDRESSED` (no stance on the floor, or silent at the close)."
+    "meaning": "Each member's state in the current round: `IN`, `NOT_YET` (stance not in), `TURN_OPEN` (a specialist's discussion turn not taken; the PM has none) or `NOT_ADDRESSED` (no stance on the floor, or silent at the close)."
    },
    {
     "name": "tension_points",

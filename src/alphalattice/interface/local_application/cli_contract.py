@@ -1753,6 +1753,17 @@ def envelope(
     }
 
 
+def answer_json(
+    answer: Mapping[str, Any], *, default: Callable[[object], Any] | None = None
+) -> str:
+    """Keep all envelope metadata ahead of data without changing keys or values."""
+    leading = ("status", "next_action", "task_id", "operation", "outcome", "output_file")
+    fields = {**{name: answer[name] for name in leading if name in answer}, **answer}
+    if "data" in fields:
+        fields["data"] = fields.pop("data")
+    return json.dumps(fields, default=default)
+
+
 @functools.cache
 def _zh() -> dict[str, str]:
     """The Chinese table's entries; a context-prefixed key (`tp|Queued`) is a page's own."""

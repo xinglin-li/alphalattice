@@ -34,6 +34,8 @@ from alphalattice.control.data_platform.data_decision_rule import audit as audit
 from alphalattice.control.product_host.composition.goal_check import (
     missing_items,
     offered_attach,
+    reference_request,
+    resubmit,
     submission_grammar,
 )
 from alphalattice.control.product_host.composition.plain_refusals import explain
@@ -58,7 +60,10 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.cli_contract import (
     entry as command_entry,
 )
-from alphalattice.interface.local_application.failure_codes import located_failure, public_failure
+from alphalattice.interface.local_application.failure_codes import (
+    located_failure,
+    public_failure,
+)
 from alphalattice.interface.local_application.goals import (
     FIRST_USE_HOURS,
     Goal,
@@ -1653,21 +1658,16 @@ class GoalApplication:
                 cited_known=frozenset(known | declared),
             )
         if missing:
+            offered = offered_attach(goal, missing, tasks, lambda r: self._resolve(r, caller))
             return {
                 "status": "INCOMPLETE",
                 **self._identity_of(goal),
                 "missing": missing,
                 "record": record,
                 "next_requests": {
-                    "resubmit": {
-                        "operation": "GOAL_SUBMIT",
-                        "goal_id": str(goal.goal_id),
-                        "goal_hash": goal.goal_hash,
-                        # Left open, the goal and its revision bound (V441).
-                        "goal_submission": None,
-                    },
+                    "resubmit": resubmit(goal, submission, missing, offered),
                     "show": {"operation": "GOAL_SHOW", "goal_id": str(goal.goal_id)},
-                    **offered_attach(goal, missing, tasks, lambda r: self._resolve(r, caller)),
+                    **offered,
                 },
                 "claim": "Nothing was sealed. Each item names what the record lacks; the "
                 "Host does not judge whether the summary is true.",
@@ -1838,9 +1838,7 @@ class GoalApplication:
         operation = str(ref.request.get("operation", ""))
         if ref.stage not in REFERENCE_OPERATIONS.get(operation, ()):
             raise ValueError("goal.reference_operation_not_admitted")
-        request = PortfolioResearchRequestDocument.model_validate(
-            ref.request
-        ).to_operation_request()
+        request = reference_request(ref.request)
         if operation == "EXPERIMENT_CONTROLS" and not (
             request.input_binding_hash and request.research_input_id
         ):

@@ -32,6 +32,7 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import (
     CorruptedPayload,
     sanitize_payload,
 )
+from alphalattice.foundation.market_data_ops.storage.action_audit import ActionAuditObservation
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditScopeInsufficient,
     MarketDataRepository,
@@ -116,10 +117,7 @@ class MarketReferenceMaintainer:
                 return ReferenceRefreshOutcome(
                     "blocked", None, "market_reference.provider_identity_mismatch"
                 )
-            return ReferenceRefreshOutcome(
-                "completed",
-                str(current["revision_hash"]),
-            )
+            return ReferenceRefreshOutcome("completed", str(current["revision_hash"]))
         parent_range = self.market_data.manifest_raw_range(self.parent_manifest)
         if parent_range is None:
             return ReferenceRefreshOutcome("blocked", None, "feature.parent_raw_history_missing")
@@ -205,17 +203,18 @@ class MarketReferenceMaintainer:
                         start=start,
                         end=as_of_session,
                     )
-                receipt, _audit_summary = self.market_data.complete_action_audit(
+                receipt, _audit_summary = self.market_data.complete_action_audits(
                     reference.manifest,
-                    listing_id=reference.listing_id,
-                    provider=self.provider.name,
-                    observed_actions=actions,
-                    observed_adjusted_closes=adjusted,
-                    history_start=start,
-                    history_end=as_of_session,
-                    requested_as_of=as_of_session,
-                    observed_at=observed_at,
-                )
+                    ActionAuditObservation(
+                        listing_id=reference.listing_id,
+                        provider=self.provider.name,
+                        actions=actions,
+                        adjusted_closes=adjusted,
+                        history_start=start,
+                        history_end=as_of_session,
+                        observed_at=observed_at,
+                    ),
+                )[0]
             revision = canonical_hash(
                 {
                     "reference": SPY_REFERENCE_ID,

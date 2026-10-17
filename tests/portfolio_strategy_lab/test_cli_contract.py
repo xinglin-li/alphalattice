@@ -1321,7 +1321,7 @@ def test_a_compact_answer_holds_its_next_requests_to_the_read(
     size, compact = answer()
     kept = compact["next_requests"]
     assert size <= client.COMPACT_ANSWER_BYTES, size
-    # The owner's first, in its order (the envelope prints its keys sorted).
+    # The owner's first, in its order.
     assert set(kept) == set(list(offered)[: len(kept)]) == set(compact["next_commands"])
     assert compact["next_left"] == {"count": 200 - len(kept), "list": "--list-next"}
 

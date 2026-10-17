@@ -35,6 +35,7 @@ from alphalattice.interface.local_application.cli_contract import (
     Outcome,
     agent_provenance_headers,
     agent_session,
+    answer_json,
     choices,
     client_failure,
     client_refusal,
@@ -3426,10 +3427,9 @@ def run(
                 cut = compact_display(selected["value"], budget=room, section=selected["section"])
                 answer.update({**cut, "data": {**selected, "value": cut["data"]}})
         print(
-            json.dumps(
+            answer_json(
                 (short_references if compact else _same)(answer),
                 default=_json_value,
-                sort_keys=not compact,
             )
         )
         return EXIT_CODES[answer["outcome"]]
@@ -3549,7 +3549,7 @@ def run(
                 },
             )
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation=document.get("operation") or args.command,
                     request=document,
@@ -3570,7 +3570,6 @@ def run(
                     **transport,
                 ),
                 default=_json_value,
-                sort_keys=display_view != "compact",
             )
         )
         return EXIT_CODES[refusal.outcome]
@@ -3579,7 +3578,7 @@ def run(
         code = "local_client.request_invalid"
         refusal = client_refusal(code)
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation=None,
                     outcome=refusal.outcome,
@@ -3590,7 +3589,6 @@ def run(
                     detail=refusal.detail,
                     next_action=refusal.next_action,
                 ),
-                sort_keys=display_view != "compact",
             )
         )
         return EXIT_CODES[refusal.outcome]
