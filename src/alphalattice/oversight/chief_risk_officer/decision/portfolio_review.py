@@ -1040,7 +1040,7 @@ def _risk_cell(
 ) -> tuple[PortfolioReviewRoute, str]:
     """Route one risk against one issuer's exposure.
 
-    A supported high-severity risk on an exposed holding objects; limited or
+    A supported high-severity risk on exposure or its change objects; limited or
     contested support asks a person to weigh it. Other material risks are accepted
     with limits, while low risks are listed without objection.
     """
@@ -1168,7 +1168,7 @@ def route_portfolio_review(
     elif route is PortfolioReviewRoute.MATERIAL_OBJECTION:
         reasons = tuple(
             f"{value.issue_handle} ({value.entity_id}): a high-severity risk its findings "
-            "support stands on an exposed holding."
+            "support concerns the book's exposure or position change."
             for value in spokesmen
         )[:8]
         rule_ids = tuple(sorted({value.rule_id for value in triggering}))[:8]
@@ -1196,8 +1196,8 @@ def route_portfolio_review(
         )[:8]
     elif route is PortfolioReviewRoute.HUMAN_REVIEW_REQUIRED:
         reasons = tuple(
-            f"{value.issue_handle} ({value.entity_id}): a high-severity risk on an exposed "
-            "holding whose findings are contested or limited; a person should weigh them."
+            f"{value.issue_handle} ({value.entity_id}): a high-severity risk on exposure or "
+            "position change whose findings are contested or limited; a person should weigh them."
             for value in spokesmen
         )[:8]
         rule_ids = tuple(sorted({value.rule_id for value in triggering}))[:8]

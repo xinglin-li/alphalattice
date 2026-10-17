@@ -230,6 +230,27 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     from alphalattice.interface.local_application.client import continued
 
     readback = service.get(update_url)
+    positions = portfolio_update_positions(c.value)
+    expected_held = {
+        k
+        for k, w in zip(c.n.checkpoint.ordered_listing_ids, positions.weights, strict=True)
+        if w > 0
+    }
+    expected_exits = {
+        k
+        for k, w, before in zip(
+            c.n.checkpoint.ordered_listing_ids, positions.weights, positions.preceding, strict=True
+        )
+        if w == 0 and before > 0
+    }
+    assert expected_exits
+    assert {r["listing_id"] for r in readback["position_rows"]} == expected_held
+    assert {r["listing_id"] for r in readback["exit_rows"]} == expected_exits
+    held_page, exit_page = readback["html"].split("<h2>Exits", 1)
+    assert all(
+        f"<td>{name}</td>" not in held_page and f"<td>{name}</td>" in exit_page
+        for name in expected_exits
+    )
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         reused_read,
     )
@@ -321,6 +342,16 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     )
     entry = c.value.pending_proposal.schedule.entry_session.isoformat()
     assert recovery["subject_context"]["date"] == entry
+    reading = service.agent(Request(operation="CRO_REVIEW_DOSSIER", **c.selector))
+    bundle = service.agent(
+        Request(
+            **reading["next_requests"]["cro_bundle"],
+            bundle_directory=str(c.path / "cro-bundle"),
+        )
+    )
+    index = next(row["text"] for row in bundle["files"] if row["name"] == "README.md")
+    assert subject["strategy_package_id"] in index
+    assert title(subject["strategy_package_id"]) in index
     cro = service.post("/api/cro-review", c.selector)
     assert cro["disposition"] == "ADMITTED"
     service.drain()
@@ -363,6 +394,10 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     assert exported["review"]["dossier"]["update_subject"] == subject
     assert exported["evidence"]["verified_spans"]
     assert "Evidence &amp; CRO" in exported["html"]
+    assert all(line in exported["html"] for line in reading["coverage_words"])
+    issuers = exported["review"]["dossier"]["issuers"]
+    held = sum(value["ending_weight"] > 0 for value in issuers)
+    assert f"<dt>Held issuers in scope</dt><dd>{held}</dd>" in exported["html"]
     assert exported["export_hash"] == canonical_hash(
         {k: v for k, v in exported.items() if k != "export_hash"}
     )
@@ -373,6 +408,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     positions = delivery["sections"]["positions"]
     assert positions["status"] == "PRESENT" and readback["position_rows"]
     assert positions["value"]["position_rows"] == readback["position_rows"]
+    assert positions["value"]["exit_rows"] == readback["exit_rows"]
     review = delivery["sections"]["evidence_cro"]["value"]
     assert review["portfolio"]["publication"] == exported["portfolio"]["publication"]
     code, body = service.request(

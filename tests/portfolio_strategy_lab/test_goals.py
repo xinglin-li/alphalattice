@@ -1745,6 +1745,75 @@ def test_a_declared_event_reaches_its_goal_through_the_host(
     assert {row["payload"]["subject"]["goal_id"] for row in rows} == {goal_id}
 
 
+def test_only_a_sealing_answer_offers_experience_with_sendable_owner_reads(live):
+    """A served sealing answer offers experience recording once with exact owner reads."""
+    from alphalattice.interface.local_application.client import LocalResearchClient, compact_display
+    from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
+    from tests.workspace_task_runner.task_control_support import task_contract
+
+    client = LocalResearchClient(live.workspace)
+    opened = client.request(
+        {
+            "operation": "GOAL_OPEN",
+            "goal_declaration": {
+                "title": "Date records",
+                "objective": "Keep the date's records",
+                "kind": "DATA",
+                "criteria": [{"criterion_id": "done", "text": "Record the outcome"}],
+            },
+            "change_reason": "Register the question",
+        }
+    )
+    gid = opened["goal_id"]
+    registry = live.session.task_control_registry
+    envelope, task_goal, plan = task_contract(salt="experience-record")
+    task = registry.admit(
+        input_envelope=envelope, goal=task_goal, plan=plan, observed_at=NOW
+    ).record
+    registry.request_cancel(
+        task_id=task.task_id, expected_task_hash=task.record_hash, observed_at=NOW
+    )
+    goal = live.operations.goals.store.head(UUID(gid))
+    live.operations.goals.attribute(
+        goal,
+        Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+        {"task_id": str(task.task_id)},
+        SESSION,
+    )
+    submission = {
+        "outcome": "NOT_ACHIEVED",
+        "summary": "The record is kept",
+        "criteria": [{"criterion_id": "done", "answer": "MET"}],
+    }
+    request = {"operation": "GOAL_SUBMIT", "goal_id": gid, "goal_submission": submission}
+    incomplete = client.request(request)
+    assert incomplete["status"] == "INCOMPLETE" and "next_action" not in incomplete, incomplete
+    request["goal_submission"] = {
+        **submission,
+        "criteria": [{"criterion_id": "done", "answer": "NOT_ASSESSED", "note": "No result"}],
+    }
+    sealed = client.request(request)
+    assert sealed["status"] == "COMPLETE", sealed
+    assert sealed["next_action"] == "RECORD_THE_EXPERIENCE"
+    assert gid in sealed["detail"] and "alphalattice_maintainer" in sealed["detail"]
+    words = read_in_chinese([sealed["detail"]], missing="UI Node unavailable", required=True)
+    assert words["missing"] == [] and words["read"] != [sealed["detail"]]
+    reads = sealed["next_requests"]
+    compact = compact_display(sealed)["data"]
+    assert compact["next_action"] == sealed["next_action"]
+    assert compact["detail"] == sealed["detail"]
+    assert compact["next_requests"] == reads
+    assert reads["show"] == {"operation": "GOAL_SHOW", "goal_id": gid}
+    task_reads = [r for r in reads.values() if r["operation"] == "STATUS"]
+    assert task_reads == [{"operation": "STATUS", "task_id": str(task.task_id)}]
+    assert client.request(task_reads[0]).get("failure_code") is None
+    shown = client.request(reads["show"])
+    assert shown["goal"]["state"] == "COMPLETE" and "next_action" not in shown
+    repeated = client.request(request)
+    assert repeated["status"] == "REFUSED"
+    assert repeated.get("next_action") != "RECORD_THE_EXPERIENCE"
+
+
 def test_the_workbench_reaches_what_the_ui_pass_reads(live, tmp_path: Path):
     """requirement (V321, UI-P D10): the goals a person keeps, the saved studies' sweep and
     Guanyin's incidents answer on the Local Web, each route its registered operation, a write

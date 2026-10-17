@@ -33,7 +33,10 @@ from alphalattice.oversight.chief_risk_officer.decision.views import (
     MAXIMUM_UNREPORTED_NAMES,
     render_review_bundle,
 )
-from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import ExposureBand
+from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
+    POSITION_EPSILON,
+    ExposureBand,
+)
 from alphalattice.protocols.actor_execution.bundles import (
     BUNDLE_FILE_BYTES,
     BUNDLE_FILE_LINES,
@@ -387,6 +390,16 @@ def test_the_review_bundle_states_the_holdings_once_and_packs_the_findings() -> 
     assert names == ["README.md", "holdings-01.md", "findings-01.md"]
     _within_bounds(bundle.files)
     assert bundle.text("holdings-01.md").count("| AAPL |") == 1
+    expected_held = sum(issuer.ending_weight > 0 for issuer in dossier.issuers)
+    count = re.search(r"## Holdings \((\d+) held", bundle.text("holdings-01.md"))
+    assert count and int(count[1]) == expected_held
+    exited = _issuer("EXIT").model_copy(
+        update={"ending_weight": POSITION_EPSILON / 2, "transition": "EXITED"}
+    )
+    scoped = render_review_bundle(_dossier(issuers=(*dossier.issuers, exited)), task_procedure="")
+    assert re.search(r"## Holdings \((\d+) held", scoped.text("holdings-01.md"))[1] == str(
+        expected_held
+    )
     assert "### F1 · OPERATIONS_SUPPLY · ADVERSE" in bundle.text("findings-01.md")
     assert '"findings": [' in bundle.text("README.md")
     book = str(dossier.book_authority)  # the kind in words, its code beside them to copy

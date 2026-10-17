@@ -12587,6 +12587,34 @@
    "successor": "d0095e24a209736d3c762e40e676b1f32469e2daba5e834bfb93f5710e8591a5",
    "change": "issue 9: the Host reads three findings an issuer and counts the rest",
    "reason": "Lead-signed 2026-10-17: the Host now enforces the three-findings-per-issuer intake cap the Analyst README already stated, and counts what it leaves out, per issuer, in the analysis, the CRO bundle and the receipt; the publication change is the whole-answer drop's words only. Retrieval and canonicalization bindings and packets are unchanged. Earlier sealed analyses and publications keep their recorded policy and meaning, with no re-analysis on upgrade."
+  },
+  {
+   "role": "chief_risk_officer.portfolio_review_policy",
+   "predecessor": "24148616e668d41a14b7a6faaab65d42e028f67340019c74efcdd5b3132bff19",
+   "successor": "2b9e6cd6e32568edb0bd5b39423fbef03c7a856bb09e4eb4ab33c43f9e012b39",
+   "change": "ISSUE-10-REVIEW-WORDS",
+   "reason": "Lead-signed 2026-10-17: the CRO policy change is wording only; identical AST once string literals are stripped, with no routing or threshold change. The other three move only through reporting.static in their closure: the same source weights and changes are formatted once and split into held and exit sections by the installed held bound. Publication arrays and computational owners are unchanged; JSON and HTML controls pass."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "04b59920ad7d006e4286db69da38e80474f3e9b82e0aa3ded0614cf625b2335e",
+   "successor": "28a62021ba840c7e1569c0c02ac21f1b96e10765d546f426dc35db8897487681",
+   "change": "ISSUE-10-REVIEW-WORDS",
+   "reason": "Lead-signed 2026-10-17: the CRO policy change is wording only; identical AST once string literals are stripped, with no routing or threshold change. The other three move only through reporting.static in their closure: the same source weights and changes are formatted once and split into held and exit sections by the installed held bound. Publication arrays and computational owners are unchanged; JSON and HTML controls pass."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "702c305586c9b767928b63c6e7c7e77b8277f4a6658a53632787bf0f2e1d73c6",
+   "successor": "682bdf015a2ddb1d8fde0a7bcdeb75ebe7f30b86145bf6bd301665fad906e295",
+   "change": "ISSUE-10-REVIEW-WORDS",
+   "reason": "Lead-signed 2026-10-17: the CRO policy change is wording only; identical AST once string literals are stripped, with no routing or threshold change. The other three move only through reporting.static in their closure: the same source weights and changes are formatted once and split into held and exit sections by the installed held bound. Publication arrays and computational owners are unchanged; JSON and HTML controls pass."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "e19974f50fe4315ae9f8a2b78bba15b199ee151d5428b835fc8d8872d73bf71e",
+   "successor": "dd5c85118ef5a06c80b431ac79bf708ba589f10e44817bc38dc7eb78c0db8af6",
+   "change": "ISSUE-10-REVIEW-WORDS",
+   "reason": "Lead-signed 2026-10-17: the CRO policy change is wording only; identical AST once string literals are stripped, with no routing or threshold change. The other three move only through reporting.static in their closure: the same source weights and changes are formatted once and split into held and exit sections by the installed held bound. Publication arrays and computational owners are unchanged; JSON and HTML controls pass."
   }
  ]
 }

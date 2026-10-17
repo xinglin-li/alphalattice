@@ -302,6 +302,33 @@ def generated_evidence_sentences():
             elif n == "1" and words[:1].isupper():  # a whole sentence, not a part of the f-string
                 said.append(words)
     said.append(NOT_ADDRESSED_RATIONALE)
+    # Historical review receipts keep these exact word shapes after the producer changes.
+    said.extend(
+        [
+            "I1 (QA): a high-severity risk its findings support stands on an exposed holding.",
+            "I1 (QA): a high-severity risk on an exposed holding whose findings are contested "
+            "or limited; a person should weigh them.",
+        ]
+    )
+    from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
+        PortfolioReviewCoverage,
+    )
+    from alphalattice.oversight.chief_risk_officer.decision.views import coverage_words
+
+    said.extend(
+        coverage_words(
+            PortfolioReviewCoverage(
+                reviewed_ending_weight_coverage=0.9,
+                reviewed_absolute_change_coverage=1.0,
+                mapping_coverage=1.0,
+                selected_issuer_coverage=1.0,
+                nothing_filed_ending_weight_coverage=0.1,
+                unreached_ending_weight_coverage=0.0,
+                nothing_filed_window_days=30,
+                missing_evidence=("Route gap",),
+            )
+        )
+    )
     coverage = next(
         filled(n, "{subject}")
         for n in ast.walk(

@@ -581,6 +581,40 @@ def card_holdings(
     ]
 
 
+def below_findings(
+    points: Sequence[Mapping[str, Any]],
+    below: Sequence[str],
+    evidence: Mapping[str, Any],
+    held: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Each HIGH issue card on a holding whose Evidence point sits below the agenda line.
+
+    No stance judges such a card, so the report carries it whole, as an appendix the person reads.
+
+    Args:
+        points: The floor's tension points.
+        below: The aliases of the points below the agenda line.
+        evidence: The Evidence projection, with its issue cards and issuer rows.
+        held: The floor's holdings.
+
+    Returns:
+        Each such card's handle, its below-line holdings and the CRO's inference.
+    """
+    adverse = {
+        t
+        for p in points
+        if p["alias"] in below and p["kind"] == "HELD_WITH_ADVERSE_EVIDENCE"
+        for t in p["targets"]
+    }
+    found = []
+    for card in evidence.get("issue_cards") or ():
+        hit = [h for h in card_holdings(card, evidence, held)[0] if h in adverse]
+        if card.get("severity_if_true") == "HIGH" and hit:
+            text = str(card.get("cro_inference") or "")
+            found.append({"handle": card.get("issue_handle"), "holdings": hit, "text": text})
+    return found
+
+
 def issue_lines(evidence: Mapping[str, Any], held: Sequence[Mapping[str, Any]]) -> list[str]:
     """The CRO view's issue cards, each with the held aliases it affects.
 

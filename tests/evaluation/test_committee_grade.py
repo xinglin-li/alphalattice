@@ -258,7 +258,9 @@ def test_recorded_message_keeps_the_host_contract(change, reason):
     [
         ("PROCEED_WITH_NOTES", {}, None),
         ("DECLINE", {}, "decline_without_hard_defect"),
-        ("DECLINE", {"hard_defects": ["Key evidence on H1 is missing."]}, None),
+        # A holding's gap is a note and a suggestion, never a whole-book DECLINE (#7).
+        ("DECLINE", {"hard_defects": ["Key evidence on H1 is missing."]}, "decline_on_holdings"),
+        ("DECLINE", {"hard_defects": ["The book's Risk bound is breached."]}, None),
         ("FOR_THE_PERSON", {}, "for_the_person_without_a_decision"),
         ("FOR_THE_PERSON", {"person_decisions": ["M6"]}, None),
     ],

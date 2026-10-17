@@ -84,6 +84,7 @@ APP_FILES = [
     "js/app/live-committee.js",
     "js/app/live-team.js",
     "js/app/live-tasks.js",
+    "js/app/review-positions.js",
     "js/app/live-review.js",
     "js/app/live-study.js",
     "js/app/actions.js",

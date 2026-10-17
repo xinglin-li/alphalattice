@@ -125,7 +125,7 @@ def build_portfolio_review_policy_binding(playpen_root: Path) -> CROHostPolicyBi
                     "an adverse fact and never gates the route"
                 ),
                 "route": (
-                    "high severity on an exposed holding objects when supported and asks a "
+                    "high severity on exposure or its change objects when supported and asks a "
                     "person (advisory) when contested or limited; other material risks are "
                     "accepted with limits; expired evidence is refused, never routed"
                 ),

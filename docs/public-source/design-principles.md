@@ -54,7 +54,7 @@ In the investment committee, members refer to figures by the aliases the floor s
 - the portfolio manager rules on every challenge, adopting it, rejecting it or handing it to the person, whose own words are relayed;
 - one short discussion round follows the reveal; a specialist silent past it has passed, and the verdict never waits on silence;
 - the chief risk officer's standing dissent goes into the delivery report in its own words, beside the verdict.
-- the committee is a showcase of discussion, never a gate: the verdict defaults to proceeding with notes, declines only for a named hard defect, and the report leads with each member's suggestions on holdings for the person to decide.
+- the committee is a showcase of discussion, never a gate: the verdict defaults to proceeding with notes, turns a problem with particular holdings into a suggestion to avoid or reduce them, declines only for a named book-level hard defect, and the report leads with each member's suggestions on holdings for the person to decide.
 
 Members argue from records already kept (principle 5), so the debate is about judgment, never about which numbers are true.
 

@@ -212,10 +212,14 @@ def _message_issues(
 
 
 def _verdict_grounds(context: dict[str, Any], message: dict[str, Any]) -> list[str]:
-    """Reservations proceed with notes: DECLINE names a hard defect, FOR_THE_PERSON a decision."""
+    """Reservations proceed with notes: DECLINE names a book-level hard defect, FOR_THE_PERSON a
+    decision; a defect naming only particular holdings is a note and a suggestion."""
     grounds = {"DECLINE": "hard_defects", "FOR_THE_PERSON": "person_decisions"}
     needed = grounds.get(message.get("outcome") or "") if message["kind"] == "VERDICT" else None
-    if needed is None or context.get(needed):
+    named = context.get(needed) if needed else None
+    if named and needed == "hard_defects" and all(re.search(r"\bH\d+\b", d) for d in named):
+        return ["decline_on_holdings"]
+    if needed is None or named:
         return []
     return [
         "decline_without_hard_defect"
@@ -412,6 +416,10 @@ def _expected_suggestions(closed) -> list[tuple[Any, ...]]:
     targets = {p["alias"]: p.get("targets", []) for p in closed.get("tension_points", [])}
     held, expected = standing_messages(closed.get("messages", [])), []
     typed = {item["id"]: item for item in closed.get("messages", [])}
+    adopted = {item.get("reply_to") for item in typed.values() if item.get("outcome") == "ADOPT"}
+    held |= {
+        i: dict.fromkeys(m.get("targets", []), "OBJECT") for i, m in typed.items() if i in adopted
+    }
     for position in ("OBJECT", "SUPPORT"):
         for message, positions in held.items():
             own = _own_positions(typed[message])

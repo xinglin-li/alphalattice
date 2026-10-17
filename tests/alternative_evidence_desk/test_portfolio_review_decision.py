@@ -549,6 +549,43 @@ def test_the_four_axis_route_matrix_is_deterministic(
         assert not any(value.blocking for value in recommendation.required_actions)
 
 
+def test_an_exited_issuer_retains_its_change_review_without_being_called_held() -> None:
+    """Exit evidence remains reviewable, with current holding status stated honestly."""
+    from alphalattice.interface.local_application.evidence_cro import (
+        EvidenceCroBook,
+        evidence_cro_body,
+        project_published_review,
+    )
+    from alphalattice.oversight.chief_risk_officer.decision.views import render_review_bundle
+
+    for weight in (0.0, 0.06):
+        issuer = _issuer().model_copy(
+            update={"ending_weight": weight, "transition": "EXITED" if not weight else "INCREASED"}
+        )
+        dossier = _dossier(issuers=(issuer,))
+        receipt, recommendation = _seal(dossier, controlled_answer(dossier, ControlledRisk(ENTITY)))
+        assert recommendation.route is PortfolioReviewRoute.MATERIAL_OBJECTION
+        assert receipt.outcome.issue_evaluations[0].entity_id == ENTITY
+        assert all("exposed holding" not in reason for reason in recommendation.reasons)
+        files = dict(render_review_bundle(dossier, task_procedure="").files)
+        assert ("not held" in files["findings-01.md"]) == (weight == 0)
+        view = evidence_cro_body(
+            project_published_review(
+                recommendation=recommendation,
+                dossier=dossier,
+                receipt=receipt,
+                percent=str,
+                change=str,
+                book=EvidenceCroBook(
+                    authority=str(dossier.book_authority),
+                    explanation="Controlled book",
+                    result_hash=None,
+                ),
+            )
+        )
+        assert ("not held" in view["issuer_rows"][0]["findings_summary"].lower()) == (weight == 0)
+
+
 def test_an_irrelevant_or_favourable_issue_is_not_evaluated() -> None:
     receipt, recommendation = _seal(
         _dossier(),
@@ -656,11 +693,10 @@ def test_a_holding_that_filed_nothing_is_counted_apart_and_never_as_no_risk() ->
         assert coverage["unreached_ending_weight"] == f"{unreached:.3%}"
         assert coverage["nothing_filed_window_days"] == 30
         assert coverage["accounted_ending_weight"] == f"{1.0 - unreached:.3%}"
-        # The agent's dossier reads the same partition in words: a quiet holding was checked
-        # and had nothing to read, never unread; only the unreached share is (FLOW-3).
+        # Issuer reading coverage keeps topic-route completeness separate.
         words = coverage_words(dossier.coverage)
         assert "they were checked and nothing was there to read, so they are not unread" in words[1]
-        assert f"Only {unreached:.2%} of the ending weight was not read." in words[1]
+        assert any(f"{unreached:.2%}" in line and "topic-route gaps" in line for line in words)
         assert "Not unread" in REVIEW_STATE_WORDS["NOTHING_FILED"]
         return receipt, recommendation
 

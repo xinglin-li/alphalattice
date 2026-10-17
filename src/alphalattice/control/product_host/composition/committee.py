@@ -30,6 +30,7 @@ from alphalattice.control.product_host.composition.committee_materials import (
 from alphalattice.control.product_host.composition.committee_materials import (
     QUESTIONS,
     agenda,
+    below_findings,
     concentration,
     evidence_gap,
     facts,
@@ -41,6 +42,17 @@ from alphalattice.control.product_host.composition.committee_materials import (
 )
 from alphalattice.control.product_host.composition.committee_materials import (
     holdings as holdings,
+)
+from alphalattice.control.product_host.composition.committee_words import (
+    ALIAS_RULE,
+    BELOW_FINDING,
+    COMMAND,
+    COMPLETE_DATE,
+    COMPLETE_FIRST_USE,
+    COMPLETE_HOW,
+    RULE_WORDS,
+    TAKE_TURN,
+    VERDICT_RULE,
 )
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.publication.goals import GoalStore
@@ -61,7 +73,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.advancement_task
     ADVANCEMENT_TASK_KIND,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.actor_execution.bundles import bundle_slot, moment_text
 
 ROLES: Final = ("PM", "ALPHA", "RISK", "CRO")
@@ -94,13 +105,6 @@ SUGGESTIONS: Final = {
 }
 """The report's lead: a member's standing OBJECT or SUPPORT on holdings, as a suggestion."""
 NO_SUGGESTION: Final = "No member suggested avoiding, reducing or adding a holding"
-VERDICT_RULE: Final = (
-    "not an approval or advice. PROCEED_WITH_NOTES by default, members' reservations carried as "
-    "notes; DECLINE endorsement only for a named hard defect (a data error, a Risk bound breached, "
-    "key evidence missing), naming it; FOR_THE_PERSON only for a named decision of the person; "
-    "PROCEED when nothing needs noting."
-)
-"""How the PM chooses its verdict: the committee is a showcase of discussion, never a gate."""
 NO_NUMBER: Final = (
     "The committee changed no number; whether to act on its suggestions is the person's decision."
 )
@@ -122,55 +126,8 @@ OUTCOMES: Final = {
     "VERDICT": frozenset({"PROCEED", "PROCEED_WITH_NOTES", "DECLINE", "FOR_THE_PERSON"}),
 }
 """Each kind's outcomes; a kind not named takes none (SHAPE, with what it answers)."""
-COMMAND: Final = " ".join(command_prefix())
 MEMBER_COMMANDS: Final = ("committee submit", "committee wait")
 """What a member's own route runs; its card's allowlist names the same (materialize)."""
-RULE_WORDS: Final = {
-    "ROLE": "Only its senders send this kind, each with the key in its own bundle: a STANCE or "
-    "REPLY any member, a CHALLENGE or PASS a specialist, a RULING, VERDICT or PERSON_ANSWER the "
-    "PM.",
-    "STANCES": "The floor is in its blind first round, which takes only one STANCE from each "
-    f"member; follow `{COMMAND} committee wait` until the stances are revealed.",
-    "DEBATE": "The floor is past its stances; it takes challenges, replies, passes, rulings and "
-    "the verdict, not a STANCE.",
-    "CLOSED": "The floor is closed; it takes only the PM's answer relayed from the person to "
-    "an item handed to them. Export the report from it.",
-    "STANCE_IN": "This member's stance is on the floor already, one each; speak again by a "
-    "CHALLENGE or REPLY once the stances are revealed.",
-    "CAP": "This member has sent its three challenges or replies after its stance; the floor "
-    "takes no more from it.",
-    "TURN": "A PASS yields this member's one discussion turn: it comes from a member whose stance "
-    "is on the floor, before it challenged or replied, and names no target or position; after it "
-    "the member sends nothing more.",
-    "TARGET": "A target, position or alias names nothing on the floor; name only the tension "
-    f"points, holdings and messages `{COMMAND} committee show` lists. A point typed by its kind "
-    "or a holding by its name is offered corrected, with its alias.",
-    "REPLY_TO": "The message named in reply_to cannot be answered by this kind: a REPLY answers "
-    "any message, a RULING a challenge not yet ruled, a PERSON_ANSWER an item handed to the "
-    "person. Send the corrected message the answer offers.",
-    "SHAPE": "This kind's shape does not fit: a REPLY, RULING or PERSON_ANSWER names in "
-    "reply_to the message it answers and no other kind does; a RULING's or the VERDICT's "
-    "outcome is required and no other kind takes one. Send the corrected message the answer "
-    "offers.",
-    "UNRULED": "A verdict closes the floor, so the PM rules on every challenge first and one "
-    "stands unruled; read it, send its ruling in your own words, then the verdict.",
-    "MEMBER": "This bundle's member submits from its own session with its key and takes the Host's "
-    "corrections itself; start it with its bundle, then run this again for its receipt.",
-    "KEY": "This key is not this bundle's: a member's key admits only its own bundle's answer, "
-    "with the command its route names.",
-    "ENDED": "This bundle's answer is accepted and its key has ended; only that answer reads its "
-    "receipt again. Return the receipt it gave to your lead.",
-    "FACTS": "A RESERVE rests on the floor's facts: cite by S alias the facts, or the named "
-    f"absences, that `{COMMAND} committee show` lists under this member's questions; resubmit.",
-    "NUMBER": "A digit is typed outside an alias ({subject}), and the Host renders every number: "
-    "resubmit the same message with each typed figure or reference replaced by its alias on the "
-    "floor.",
-    "AGENDA": "This message's point selection does not fit the agenda of {subject} points. The PM "
-    "may raise one below-line point through REPLY positions; other messages name only agenda or "
-    "raised tension points. Read the floor and send the offered correction, or revise the named "
-    "text field.",
-}
-"""Each floor rule's own words, as its refusal says them."""
 _VIEWS: Final = frozenset({"STANCE", "CHALLENGE", "REPLY"})
 ALIAS: Final = re.compile(r"\b[CHMST][0-9]{1,4}\b")
 """A floor alias: a component (C), a holding (H3), a message (M4), a fact (S) or a point (T2)."""
@@ -356,6 +313,8 @@ def offer(host: Any, review: dict[str, Any], book: Any, caller: str) -> dict[str
             "operation": "COMMITTEE_OPEN",
             "update_task_id": task,
         }
+        if not convenes:  # the PM's view ends the date's road
+            return _complete(_date_goal(host.goals), review, "GIVE_THE_PM_VIEW", COMPLETE_DATE)
     return review
 
 
@@ -435,20 +394,21 @@ def set_daily(workspace: Path, *, enabled: bool, relayed_by: str | None) -> dict
     return daily_answer(workspace)
 
 
-def _first_use_update(goals: Any, task: str) -> bool:
-    """Whether this update ran under the workspace's first-use goal (its own date)."""
+def _first_use_update(goals: Any, task: str) -> Any:
+    """The workspace's first-use goal, when this update ran under it (its own date)."""
     first = goals.first_use()
-    return first is not None and any(
+    ran = first is not None and any(
         e.get("operation") == "RESEARCH_UPDATE_RUN" and e.get("task_id") == task
         for e in goals.store.attributed(first.goal_id)
     )
+    return first if ran else None
 
 
 def _convenes_daily(host: Any, task: str) -> bool:
     """A published review convenes its committee on the first use's date or the person's yes."""
     if committee_daily(host.workspace_session.workspace):
         return True
-    return _first_use_update(host.goals, task)
+    return _first_use_update(host.goals, task) is not None
 
 
 def daily_asked(
@@ -463,10 +423,14 @@ def daily_asked(
         answer: The report's answer.
 
     Returns:
-        The answer, with `ask_now` (the question and its relay) on the first use's own date.
+        The answer, with `ask_now` (the question and its relay) on the first use's own date
+        while it stands unanswered; otherwise its goal's completion, the road's end.
     """
-    if committee_daily(workspace) is not None or not _first_use_update(goals, task):
-        return answer
+    first = _first_use_update(goals, task)
+    if first is None:
+        return _complete(_date_goal(goals), answer, "COMPLETE_THE_GOAL", COMPLETE_DATE)
+    if committee_daily(workspace) is not None:
+        return _complete(first, answer, "COMPLETE_THE_FIRST_USE_GOAL", COMPLETE_FIRST_USE)
     relay = (
         f'{COMMAND} committee daily --enabled true --person-said "<their words>" '
         f'--asked "{DAILY_ASK}"'
@@ -497,6 +461,32 @@ def _set_daily(
     relayed = provenance is not None and provenance.relayed
     by = f"{provenance.vendor}:{provenance.session}" if relayed and provenance else None
     return set_daily(workspace, enabled=request.committee_daily_enabled, relayed_by=by)
+
+
+def _complete(goal: Any, answer: dict[str, Any], action: str, words: str) -> dict[str, Any]:
+    """An open goal's completion, offered where its road ends, with the read that writes it."""
+    if goal is None or goal.state != "OPEN" or answer.get("status") == "REFUSED":
+        return answer
+    read = {"operation": "GOAL_SHOW", "goal_id": str(goal.goal_id)}
+    return answer | {
+        "next_action": action,
+        "detail": f"{answer.get('detail', '')} {words} {COMPLETE_HOW}".strip(),
+        "next_requests": {**answer.get("next_requests", {}), "goal": read},
+    }
+
+
+def _first_use(store: GoalStore) -> Any:
+    """The workspace's one first-use goal, once opened."""
+    heads = (store.head(goal_id) for goal_id in store.goal_ids())
+    return next((h for h in heads if h and h.declaration.kind == "FIRST_USE"), None)
+
+
+def _date_goal(goals: Any) -> Any:
+    """The Session's goal a date's road counts toward; the first use's ends at its daily ask."""
+    with suppress(ValueError):
+        goal = goals.attributed_goal(REQUEST_PROVENANCE.get())
+        return None if goal is None or goal.declaration.kind == "FIRST_USE" else goal
+    return None
 
 
 LEAD_PUBLISHED: Final = (
@@ -698,6 +688,8 @@ def open_floor(
         "facts": facts(readback, evidence, held),
     }
     opened.update(agenda(opened["tension_points"], held, agenda_limit))
+    if below := (opened.get("agenda") or {}).get("below"):
+        opened["below_findings"] = below_findings(opened["tension_points"], below, evidence, held)
     with store.lock:
         kept = store.committee(task, goal_id)
         assert kept is not None
@@ -728,7 +720,10 @@ def operate(
     """
     if request.operation == "COMMITTEE_DAILY_SET":
         assert workspace is not None
-        return _set_daily(request, caller, workspace, provenance)
+        answer = _set_daily(request, caller, workspace, provenance)
+        return _complete(
+            _first_use(store), answer, "COMPLETE_THE_FIRST_USE_GOAL", COMPLETE_FIRST_USE
+        )
     task, role = str(request.update_task_id), request.committee_role
     try:
         if request.operation == "COMMITTEE_SUBMIT":
@@ -779,13 +774,31 @@ def operate(
         # The member's one turn is its next step, so a member that follows only its route
         # speaks or passes rather than ending at the reveal.
         read["next_action"] = "TAKE_YOUR_DISCUSSION_TURN"
-        offered["pass"] = {
-            "operation": "COMMITTEE_SUBMIT",
-            **{k: getattr(request, k) for k in ("committee_role", "committee_key")},
-            "update_task_id": task,
-            "committee_message": {"kind": "PASS", "text": "Nothing to add."},
-        }
-    return {"status": "COMMITTEE_FLOOR", **read, "next_requests": offered}
+        read["detail"] = TAKE_TURN.format(at=floor_status(found, now)["discussion_closes_at"])
+        offered |= _turn_offers(found, request, task)
+    return {
+        "status": "COMMITTEE_FLOOR",
+        **floor_status(found, now),
+        **read,
+        "next_requests": offered,
+    }
+
+
+def _turn_offers(
+    floor: Floor, request: PortfolioResearchOperationRequest, task: str
+) -> dict[str, dict[str, Any]]:
+    """A member's turn as offers alike: its challenge on what it objects to, its words to
+    write, beside its pass ready to send; never the pass alone."""
+    role = request.committee_role
+    member = {k: getattr(request, k) for k in ("committee_role", "committee_key")}
+    sent = {"operation": "COMMITTEE_SUBMIT", **member, "update_task_id": task}
+    mine = [m for m in floor.messages if m["role"] == role]
+    objects = [p for m in mine for p, said in m["positions"].items() if said == "OBJECT"]
+    return {
+        "challenge": sent
+        | {"committee_message": {"kind": "CHALLENGE", "text": None, "targets": objects}},
+        "pass": sent | {"committee_message": {"kind": "PASS", "text": "Nothing to add."}},
+    }
 
 
 def _opened(floor: Floor, session: tuple[str, str], task: str, now: datetime) -> dict[str, Any]:
@@ -903,10 +916,12 @@ def _turn_refused(mine: Sequence[dict[str, Any]], message: CommitteeMessage) -> 
 def _outside_agenda(
     message: CommitteeMessage, named: Sequence[str], points: set[str] | None
 ) -> bool:
-    """No message names an unraised point, and a stance judges only agenda or raised points."""
+    """No message names an unraised point, and a stance judges only agenda or raised points,
+    beside any holding it objects to or supports by its own alias (a suggestion's source)."""
+    judged = {a for a in message.positions if not a.startswith("H")}
     return points is not None and (
         any(a.startswith("T") and a not in points for a in named)
-        or (message.kind == "STANCE" and not set(message.positions) <= points)
+        or (message.kind == "STANCE" and not judged <= points)
     )
 
 
@@ -965,6 +980,38 @@ def _for_you(
         and m["role"] != role
         and ((int(m["id"][1:]) > seen and addressed(m)) or m["id"] in owed)
     ]
+
+
+def floor_status(floor: Floor, now: datetime) -> dict[str, Any]:
+    """Where the floor stands and whom it waits on, the line a wait leads with.
+
+    Args:
+        floor: The floor.
+        now: The Host's clock.
+
+    Returns:
+        `floor_status` (STANCES, OPEN, SETTLED, WINDOW_PASSED or CLOSED) and `waiting_on`, the
+        roles the floor waits for, specialists first.
+    """
+    stage, revealed = floor.stage(now), floor.revealed_at()
+    minutes = floor.opened.get("discussion_minutes")
+    closes = revealed + timedelta(minutes=minutes) if revealed and minutes else None
+    window = {"discussion_closes_at": closes.isoformat() if closes else None}
+    return window | _standing(floor, stage, now)
+
+
+def _standing(floor: Floor, stage: str, now: datetime) -> dict[str, Any]:
+    """`floor_status` and `waiting_on` for `floor_status`."""
+    if stage != "DEBATE":
+        spoke = {m["role"] for m in floor.messages if m["kind"] == "STANCE"}
+        waiting = [r for r in (*ROLES[1:], "PM") if r not in spoke and stage == "STANCES"]
+        return {"floor_status": stage, "waiting_on": waiting}
+    if floor.discussion_over(now) or settled(floor, now):
+        status = "WINDOW_PASSED" if floor.discussion_over(now) else "SETTLED"
+        return {"floor_status": status, "waiting_on": ["PM"]}
+    turns = [r for r in ROLES[1:] if _turn_open(floor, r, now)]
+    owed = ["PM"] if _owed_challenges(floor, "PM") else []
+    return {"floor_status": "OPEN", "waiting_on": turns + owed}
 
 
 def _owed_challenges(floor: Floor, role: str | None) -> set[str]:
@@ -1051,7 +1098,7 @@ def _within_agenda(
         "positions": {
             a: p
             for a, p in message.positions.items()
-            if a in aliases or (message.kind != "STANCE" and a not in blocked)
+            if a in aliases or a.startswith("H") or (message.kind != "STANCE" and a not in blocked)
         },
         "targets": [a for a in message.targets if a not in blocked],
     }
@@ -1061,9 +1108,11 @@ def _within_agenda(
 
 
 def _aliased(floor: Floor, message: CommitteeMessage, member: dict[str, Any]) -> dict[str, Any]:
-    """A message whose only unknown names are points typed by their kind or holdings by their
-    name, offered with their aliases: a kind names each of its points."""
+    """A message whose only unknown names are points typed by their kind, holdings by their
+    name or members by their role, offered with their aliases: a kind names each of its
+    points, and a role, never a target, leaves it."""
     names: dict[str, list[str]] = {h["name"]: [h["alias"]] for h in floor.opened["holdings"]}
+    names |= {role: [] for role in ROLES}
     for point in floor.opened["tension_points"]:
         names.setdefault(point["kind"], []).append(point["alias"])
     known = _known(floor)
@@ -1178,6 +1227,8 @@ def _rule_words(
         words["agenda_size"] = size
         if not corrected:
             words["author_revision_fields"] = ["committee_message.text"]
+    if rule in {"NUMBER", "TARGET"} and floor is not None:  # what may be named, by alias
+        words["aliases"] = sorted(_known(floor), key=lambda a: (a[0], int(a[1:] or 0)))
     return words
 
 
@@ -1628,6 +1679,7 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
             )
             for p in floor.opened["tension_points"]
         )
+        items.extend(_appendix(floor))
     items.append(("The person decides", {}, NO_NUMBER, {"text_word": NO_NUMBER}))
     held = floor.opened["holdings"]
     return [
@@ -1666,12 +1718,31 @@ def set_apart(text: str, positions: Mapping[str, str]) -> dict[Any, str]:
     return apart
 
 
+def _appendix(floor: Floor) -> list[tuple[Any, ...]]:
+    """The report's appendix: each HIGH Evidence negative below the agenda line, in its words."""
+    held = floor.opened["holdings"]
+    return [
+        (
+            BELOW_FINDING,
+            {"holdings": render(", ".join(f["holdings"]), held)},
+            f"{f['handle']}: {f['text']}",
+            {"finding_holdings": f["holdings"]},
+        )
+        for f in floor.opened.get("below_findings") or ()
+    ]
+
+
 def _suggestions(floor: Floor) -> list[tuple[Any, ...]]:
     """Each member's standing OBJECT, then SUPPORT, on holdings, as a suggestion: the holdings
     its point targets (or the holding it names) that the member did not set apart, who holds
     it and the message that says why."""
     targets = {p["alias"]: p["targets"] for p in floor.opened["tension_points"]}
     said, held = {m["id"]: m for m in floor.messages}, standing_messages(floor)
+    # An adopted challenge is the floor's objection to its targets: kept, never erased.
+    adopted = {m["reply_to"] for m in floor.messages if m.get("outcome") == "ADOPT"}
+    held |= {
+        m["id"]: dict.fromkeys(m["targets"], "OBJECT") for m in said.values() if m["id"] in adopted
+    }
     items: list[tuple[Any, ...]] = []
     for position in SUGGESTIONS:
         for message, positions in held.items():
@@ -1869,9 +1940,7 @@ def route(
         "before any challenge or reply, a PASS (kind PASS, a line saying you have nothing to add, "
         "no targets or positions) that yields it and ends your turn; the floor settles when every "
         "member has spoken or passed. "
-        f"You may send up to {MESSAGE_CAP} CHALLENGE or REPLY in all, each naming its targets by "
-        "alias (T1, H3, M4, a fact by its S alias); type no other digit, since the Host renders "
-        "every number. "
+        f"You may send up to {MESSAGE_CAP} CHALLENGE or REPLY in all. {ALIAS_RULE} "
         f"The PM's verdict is the committee's discussion record: {VERDICT_RULE} "
         "Write each message as a YAML file in this bundle directory "
         "(kind, text, positions, targets, reply_to), send it "
@@ -1904,7 +1973,8 @@ def pm_route(floor: Floor) -> tuple[str, ...]:
         f"{VERDICT_RULE} End your reply to the person with the report's last line: {NO_NUMBER}",
         f"Write each message as a YAML file (kind, text, positions, targets, reply_to; "
         f"`{COMMAND} schema show COMMITTEE_SUBMIT` shows every field) and send it with {send}. "
-        f"Follow what is addressed to you with `{COMMAND} committee wait --update {task} "
+        f"{ALIAS_RULE} Follow what is addressed to you with "
+        f"`{COMMAND} committee wait --update {task} "
         f"--role PM --key {key} --seen <seen>`; read the whole floor with "
         f"`{COMMAND} committee show --update {task}`.",
     )
@@ -2186,7 +2256,9 @@ def agenda_view(floor: Floor) -> dict[str, Any]:
 
 
 def _member(floor: Floor, role: str, stage: str) -> str:
-    """A member's state in the current round: IN, NOT_YET, or NOT_ADDRESSED once it passed.
+    """A member's state in the round: IN, NOT_YET (its stance), TURN_OPEN (its turn untaken).
+
+    NOT_ADDRESSED in the discussion for a member with no stance on the floor.
 
     At the close, a member that spoke at all is IN.
     """
@@ -2197,4 +2269,4 @@ def _member(floor: Floor, role: str, stage: str) -> str:
         return "IN" if "STANCE" in said else "NOT_YET"
     if "STANCE" not in said:
         return "NOT_ADDRESSED"
-    return "IN" if said - {"STANCE"} else "NOT_YET"
+    return "IN" if said - {"STANCE"} else "TURN_OPEN"

@@ -31,8 +31,10 @@ The shipped [research Skill](../alphalattice-research/SKILL.md) reads its matchi
 
 ## When
 
-- At a goal's end, and after a critical handoff once the date's positions are published (never
-  before them): start the maintainer to RECORD.
+- A sealing goal answer returns `RECORD_THE_EXPERIENCE`, with Goal and Task read requests.
+  The Host supplies this completion trigger; the agent starts the maintainer in RECORD mode
+  with those readbacks and the person's corrections, then reports its changes in one line.
+  A date's positions and critical handoff are completed before the goal is sealed.
 - On the person's correction or requested language or reporting preference: RECORD at once, with their own words. The agent starts `alphalattice_maintainer` to update the matching memory and its `.alphalattice/user/memory/MEMORY.md` index; no extra choice about whether or where to remember it is needed.
 - Before an upgrade: back up (below). After it: CLEAN in full.
 - When a bound is reached: CLEAN before adding; one in, one out.

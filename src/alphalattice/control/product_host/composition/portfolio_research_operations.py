@@ -91,6 +91,7 @@ from alphalattice.control.product_host.composition.portfolio_application import 
 from alphalattice.control.product_host.composition.portfolio_result_context import (
     date_risk,
     installed_temporal_statements,
+    position_summary,
     saved_portfolio_context,
 )
 from alphalattice.control.product_host.composition.portfolio_updates import (
@@ -376,6 +377,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
+    position_row_groups,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
@@ -6413,41 +6415,37 @@ def _position_rows(
     risk: Callable[[dict[str, object], PortfolioUpdatePositions], dict[str, Any]] | None = None,
     now: datetime | None = None,
 ) -> dict[str, object]:
-    publication = body.get("publication")
-    if isinstance(publication, dict):
-        value = PortfolioUpdatePublication.model_validate(publication)
+    raw = body.get("publication")
+    if isinstance(raw, dict):
+        value = PortfolioUpdatePublication.model_validate(raw)
         history = tuple(
             PortfolioUpdatePublication.model_validate(v)
             for v in cast(list[object], body.get("history", []))
         )
         positions = portfolio_update_positions(value, history)
         body["schedule"] = positions.schedule.model_dump(mode="json")
-        weights, changes = positions.weights, positions.changes
-        previous = positions.preceding or weights
         labels = cast(dict[str, str], body["listing_labels"])
-        body["position_rows"] = [
-            {
-                "listing_id": listing,
-                "name": label,
-                "weight": format_book_weight(weights[i], precision=2),
-                "change": "Not an estimate" if changes is None else format_book_change(changes[i]),
-                "basis": position_basis(positions.basis, positions.schedule.entry_open_at, now),
-            }
-            for i, (listing, label) in enumerate(labels.items())
-            if weights[i] > 0 or previous[i] > 0
-        ]
+        groups = position_row_groups(
+            positions,
+            labels,
+            basis=position_basis(positions.basis, positions.schedule.entry_open_at, now),
+        )
+        body.update(groups)
+        body["summary"] = position_summary(
+            positions, labels, groups["position_rows"] + groups["exit_rows"]
+        )
         body["review_selector"] = {
             "update_task_id": body["task_id"],
             "update_publication_hash": value.content_hash,
             "position_basis": positions.basis,
         }
-        # Review the dated positions, never the default book (V483).
+        # Review dated positions.
         body["next_requests"] = {
             **cast(dict[str, object], body.get("next_requests") or {}),
             **review_requests(cast(dict[str, str], body["review_selector"])),
         }
         if risk is not None:
-            # The date's predicted Risk, report only.
+            # Report-only date Risk.
             body["date_risk"] = risk(body, positions)
         if review is not None:
             try:
@@ -6459,7 +6457,7 @@ def _position_rows(
                     )
                 )
             except Exception as error:
-                # An optional review's broken lineage cannot hide the day's sealed positions.
+                # Broken review lineage cannot hide sealed positions.
                 standing = {
                     "status": "UNREADABLE",
                     "detail": "Review standing unreadable.",

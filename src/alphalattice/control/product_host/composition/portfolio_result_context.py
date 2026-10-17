@@ -93,6 +93,30 @@ from alphalattice.investment.risk_research.surfaces.returns import (
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
+def position_summary(
+    positions: PortfolioUpdatePositions, labels: Mapping[str, str], rows: list[dict[str, str]]
+) -> dict[str, object]:
+    """Summarize exact current weights using the already formatted position rows.
+
+    Exited positions stay in the full table; tiny positive holdings still count.
+    Ranking precedes display rounding, with ties in the canonical listing order.
+    """
+    by_listing = {row["listing_id"]: row for row in rows}
+    held = sorted(
+        (
+            (weight, listing)
+            for weight, listing in zip(positions.weights, labels, strict=True)
+            if weight > 0
+        ),
+        key=lambda item: -item[0],
+    )
+    return {
+        "position_basis": positions.basis,
+        "positions_count": len(held),
+        "top_holdings": [by_listing[listing] for _, listing in held[:5]],
+    }
+
+
 def installed_source_binding(workspace: Path, manifest: ResearchWorkspaceManifest) -> str | None:
     """The research input the installed strategy's lifecycle authority was built on, if kept.
 

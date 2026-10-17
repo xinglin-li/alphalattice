@@ -840,6 +840,12 @@ def test_each_wait_takes_the_reread_its_compact_answer_offers() -> None:
     committee = ["committee", "wait", "--update", "u", "--role", "PM", "--key", "k"]
     for wait in (["activity", "wait"], committee):
         assert cli._parser().parse_args([*wait, "--section", "messages"]).section == "messages"
+    parser = cli._parser()
+    for word in committee[:2]:
+        sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+        parser = sub.choices[word]
+    seen = next(a for a in parser._actions if a.dest == "committee_seen")
+    assert "M7 is 7" in seen.help  # the number, not the id the floor shows (#5)
 
 
 def test_an_answer_carries_the_titles_of_the_installed_ids_it_names() -> None:

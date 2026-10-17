@@ -55,6 +55,11 @@ fields remain in `data` and in the saved answer.
 `--save-declaration` writes an editable declaration. Compact view names omitted
 paths in `omitted_sections`; `--section <dotted-path>` selects one for display,
 while `--output` still saves the full answer. `--view full` displays everything.
+Long workflows announce request steps on stderr; Task waits report changes in
+`current_stage` without adding requests. Stdout remains one answer envelope.
+The compact update readback keeps the positive-position count, five largest
+holdings, dates and current review standing. Raw publications, history, HTML,
+labels and full position rows are named in `omitted_sections` for `--section`.
 
 Read a saved full answer locally, without a workspace, session or Host:
 

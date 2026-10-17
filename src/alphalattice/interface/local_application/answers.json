@@ -821,7 +821,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The requests that go on: resubmit and show after `INCOMPLETE`, with an `attach:<reference_id>` ready for each update the goal's Tasks published when a cited reference is absent; show, narrative and export after `COMPLETE`."
+    "meaning": "The requests that go on: resubmit and show after `INCOMPLETE`, with an `attach:<reference_id>` ready for each update the goal's Tasks published when a cited reference is absent; show, narrative, export and each Task's readback after `COMPLETE`."
    },
    {
     "name": "claim",
@@ -852,6 +852,18 @@
     "kind": "string",
     "required": false,
     "meaning": "Whether numerical work ran: always `NONE`. Only with `COMPLETE`."
+   },
+   {
+    "name": "next_action",
+    "kind": "string",
+    "required": false,
+    "meaning": "`RECORD_THE_EXPERIENCE` only on the answer that seals the goal: start the experience maintainer in RECORD mode using the offered readbacks."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": false,
+    "meaning": "The experience maintainer's instruction, present only on the sealing answer."
    },
    {
     "name": "outcome",
@@ -1107,7 +1119,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "`reopen`: this delivery's selection, ready to send again."
+    "meaning": "`reopen`: this delivery's selection, ready to send again. Where it ends a date's road, `goal`: the open goal's read, which writes its completion to fill."
    },
    {
     "name": "claim",
@@ -1131,13 +1143,19 @@
     "name": "next_action",
     "kind": "string",
     "required": false,
-    "meaning": "On the first use's own report, while the daily committee setting stands unanswered: `ASK_THE_PERSON_ONCE`."
+    "meaning": "On the first use's own report, while the daily committee setting stands unanswered: `ASK_THE_PERSON_ONCE`; once it is answered, `COMPLETE_THE_FIRST_USE_GOAL`. On a later date's report, `COMPLETE_THE_GOAL` while the Session's goal stands open: give the person the report, then complete the goal."
    },
    {
     "name": "ask_now",
     "kind": "array",
     "required": false,
     "meaning": "With `ASK_THE_PERSON_ONCE`: how to ask, the one question whether each daily update also convenes the committee, and the command that relays the person's answer."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": false,
+    "meaning": "Where this answer ends a date's road: that the road ends here, and how to complete its open goal from the offered `goal` read."
    }
   ]
  },
@@ -7136,7 +7154,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": false,
-    "meaning": "The requests out of this state, each ready to send, as the state offers them: `refresh`, `review`, `dossier`, `export`, `preview`, `status`, `packet_<unit>`, and on an agent's read of a research update's published review `committee` or, once its floor has closed, `committee_report`."
+    "meaning": "The requests out of this state, each ready to send, as the state offers them: `refresh`, `review`, `dossier`, `export`, `preview`, `status`, `packet_<unit>`, and on an agent's read of a research update's published review `committee` or, once its floor has closed, `committee_report`. Where it ends a date's road, `goal`: the open goal's read, which writes its completion to fill."
    },
    {
     "name": "next_action",
@@ -7191,6 +7209,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The filter the page applied: `entity_id` and `unit_id`, each none when unused; on a citations page only."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": false,
+    "meaning": "Where this answer ends a date's road: that the road ends here, and how to complete its open goal from the offered `goal` read."
    }
   ]
  },
@@ -9702,7 +9726,13 @@
     "name": "position_rows",
     "kind": "array",
     "required": false,
-    "meaning": "Each listing held or just left: its id, name, weight, change and basis, as shown in the report. Only with a publication."
+    "meaning": "Positive-weight holdings: each listing's id, name, weight, change and basis. Exits are in exit_rows. Only with a publication."
+   },
+   {
+    "name": "exit_rows",
+    "kind": "array",
+    "required": false,
+    "meaning": "Listings exited in this update: zero ending weight, with their id, name, change and basis. They are not held. Only with a publication."
    },
    {
     "name": "review_selector",
@@ -9915,6 +9945,18 @@
  "RESEARCH_UPDATE_READBACK": {
   "fields": [
    {
+    "name": "summary",
+    "kind": "object",
+    "required": false,
+    "meaning": "Current positive-weight positions_count and up to five top_holdings, ranked by the canonical position basis's exact weights. Exits are not holdings; displayed weights retain their existing precision. Only with a publication."
+   },
+   {
+    "name": "schedule",
+    "kind": "object",
+    "required": false,
+    "meaning": "The canonical positions' formation, entry and holding-end sessions and their timestamps. Only with a publication; the compact answer keeps these dates beside its summary and current review standing."
+   },
+   {
     "name": "status",
     "kind": "string",
     "required": true,
@@ -9990,7 +10032,13 @@
     "name": "position_rows",
     "kind": "array",
     "required": false,
-    "meaning": "Each listing held or just left: its id, name, weight, change and basis, as shown in the report. Only with a publication."
+    "meaning": "Positive-weight holdings: each listing's id, name, weight, change and basis. Exits are in exit_rows. Only with a publication."
+   },
+   {
+    "name": "exit_rows",
+    "kind": "array",
+    "required": false,
+    "meaning": "Listings exited in this update: zero ending weight, with their id, name, change and basis. They are not held. Only with a publication."
    },
    {
     "name": "review_selector",
@@ -10002,7 +10050,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": false,
-    "meaning": "The requests that read these positions' own current Evidence state and preparation preview: `review` and `evidence_preview`, only with a publication. The current Evidence answer offers its ordered continuation or CRO requests. For a Task stopped where its plan's rerun resumes it, or deferred, `resume`, that rerun, a deferred one's once `retry_after_at` has passed. On an agent's read of the Task's own publication whose review stands published, with no stop of its own, the date's `committee`, or `committee_report` once its floor has closed."
+    "meaning": "The requests that read these positions' own current Evidence state and preparation preview: `review` and `evidence_preview`, only with a publication. The current Evidence answer offers its ordered continuation or CRO requests. For a Task stopped where its plan's rerun resumes it, or deferred, `resume`, that rerun, a deferred one's once `retry_after_at` has passed. On an agent's read of the Task's own publication whose review stands published, with no stop of its own, the date's `committee`, or `committee_report` once its floor has closed. Where it ends a date's road, `goal`: the open goal's read, which writes its completion to fill."
    },
    {
     "name": "review_standing",
@@ -10529,6 +10577,24 @@
     "meaning": "`COMMITTEE_FLOOR`: the floor as this reader reads it."
    },
    {
+    "name": "floor_status",
+    "kind": "string",
+    "required": true,
+    "meaning": "Where the floor stands, the line a wait leads with: STANCES, OPEN (turns or rulings owed), SETTLED, WINDOW_PASSED (the PM gives the verdict) or CLOSED."
+   },
+   {
+    "name": "waiting_on",
+    "kind": "array",
+    "required": true,
+    "meaning": "The roles the floor waits on, specialists first: a stance or turn still owed, then the PM for a ruling or the verdict; empty once closed."
+   },
+   {
+    "name": "discussion_closes_at",
+    "kind": "string",
+    "required": true,
+    "meaning": "When the discussion window closes and a silent turn counts as passed (ISO 8601); null before the stances are revealed."
+   },
+   {
     "name": "update_task_id",
     "kind": "string",
     "required": true,
@@ -10592,7 +10658,7 @@
     "name": "members",
     "kind": "object",
     "required": true,
-    "meaning": "Each member's state in the current round: `IN`, `NOT_YET` or `NOT_ADDRESSED`."
+    "meaning": "Each member's state in the current round: `IN`, `NOT_YET` (stance not in), `TURN_OPEN` (discussion turn not taken) or `NOT_ADDRESSED` (no stance on the floor, or silent at the close)."
    },
    {
     "name": "tension_points",
@@ -10646,13 +10712,13 @@
     "name": "next_action",
     "kind": "string",
     "required": false,
-    "meaning": "`TAKE_YOUR_DISCUSSION_TURN` once the stances are revealed and this member's one turn is open, inside the discussion window: send a CHALLENGE or REPLY, or the offered pass, then wait again. Past the window the turn has passed (silent) and nothing is offered."
+    "meaning": "`TAKE_YOUR_DISCUSSION_TURN` once the stances are revealed and this member's one turn is open, inside the discussion window: send the offered challenge (its words written) or a REPLY, or the offered pass, then wait again. Past the window the turn has passed (silent) and nothing is offered."
    },
    {
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "While the member's discussion turn is open, `pass`: its PASS, ready to send as it stands; once the floor closed, `report`: the delivery that carries it as commentary."
+    "meaning": "While the member's discussion turn is open, `challenge`: its CHALLENGE on what it objects to, its text to write, and `pass`: its PASS, ready to send as it stands; once the floor closed, `report`: the delivery that carries it as commentary."
    }
   ]
  },
@@ -11461,10 +11527,16 @@
     "meaning": "What the setting means for a daily update, in words."
    },
    {
+    "name": "next_action",
+    "kind": "string",
+    "required": false,
+    "meaning": "`COMPLETE_THE_FIRST_USE_GOAL` while the first use's goal stands open: this answer is its road's last step, so complete the goal from the offered `goal` read."
+   },
+   {
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The request that turns the setting the other way, as `set`; only a person's relayed answer sends it."
+    "meaning": "The request that turns the setting the other way, as `set`; only a person's relayed answer sends it. While the first use's goal stands open, `goal`: its read, which writes the completion to fill."
    },
    {
     "name": "attributed_goal_id",

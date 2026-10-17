@@ -363,7 +363,7 @@ def export_update_delivery(
                     "basis": request.position_basis,
                     **{
                         k: readback[k]
-                        for k in ("position_rows", "schedule", "date_risk")
+                        for k in ("position_rows", "exit_rows", "schedule", "date_risk")
                         if k in readback
                     },
                 },

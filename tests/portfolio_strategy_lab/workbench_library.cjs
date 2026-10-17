@@ -9,8 +9,9 @@ const vm = require('node:vm');
 // Create each harness context in one place; only an explicit app directory adds library defaults.
 library.context = function(c, appDir) {
   const context = vm.createContext(arguments.length === 1 ? c : library.into(c, appDir));
-  if (appDir && !vm.runInContext("typeof CommitteeAgenda !== 'undefined'", context))
-    vm.runInContext(fs.readFileSync(path.join(appDir, 'live-committee.js'), 'utf8'), context);
+  for (const [owner, file] of [['CommitteeAgenda','live-committee.js'],['ReviewPositions','review-positions.js']])
+    if (appDir && !vm.runInContext(`typeof ${owner} !== 'undefined'`, context))
+      vm.runInContext(fs.readFileSync(path.join(appDir, file), 'utf8'), context);
   return context;
 };
 // These pure renderers retain the formats their callers assert, including meaningful spaces.

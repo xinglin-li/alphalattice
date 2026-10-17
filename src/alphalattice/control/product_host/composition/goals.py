@@ -1,12 +1,7 @@
-"""Goals: what an agent is asked to achieve, recorded by the Host and checked when submitted.
+"""The Host's revisioned Goal ledger and exact-read submission check (LAWS OP13).
 
-The Host keeps a goal's declaration and its revisions, its exact-read references and attributed
-statements, what the agent sessions bound to it did and said (their requests, and the Team
-events each session sent while it held the goal, among them assignments and their replies),
-and its submission, which it checks against that record and seals, or answers with each
-missing item and the request that supplies it
-(LAWS OP13). It runs no loop, judges no summary's truth and computes no number: "never a second
-research engine".
+Records declarations, attributed activity and submissions; never judges their truth or
+computes research.
 """
 
 from __future__ import annotations
@@ -45,7 +40,11 @@ from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
-from alphalattice.control.product_host.publication.goals import GoalStore, sessions_of
+from alphalattice.control.product_host.publication.goals import (
+    EXPERIENCE_RECORD_WORDS,
+    GoalStore,
+    sessions_of,
+)
 from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputAgentCase
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
@@ -1562,11 +1561,7 @@ class GoalApplication:
 
     @staticmethod
     def _reference_clash(goal: Goal, submission: GoalSubmission) -> dict[str, Any] | None:
-        """Refuse a submission declaring a held id, or one id twice, naming each entry's field.
-
-        A re-declared held reference (the same request) leaves the offered resubmission, its
-        citations kept; another result under a held id is the agent's to rename (V385).
-        """
+        """Refuse clashing ids; identical held references keep a sendable retry (V385)."""
         held = {r.reference_id: r for r in goal.references}
         declared = [
             ("references", index, draft.reference_id)
@@ -1813,13 +1808,25 @@ class GoalApplication:
         )
         value = Goal.seal(**fields)
         saved = self.store.publish(value, prior.goal_hash if prior else None)
-        return {
+        answer: dict[str, Any] = {
             "status": "GOAL_SAVED",
             **self._identity_of(saved),
             "task_id": None,
             "numerical_work": "NONE",
             "next_requests": self._next(saved),
         }
+        if request.operation == "GOAL_SUBMIT" and saved.completion is not None:
+            answer.update(
+                next_action="RECORD_THE_EXPERIENCE",
+                detail=EXPERIENCE_RECORD_WORDS.format(subject=saved.goal_id),
+            )
+            answer["next_requests"].update(
+                {
+                    f"task:{task.task_id}": {"operation": "STATUS", "task_id": str(task.task_id)}
+                    for task in saved.completion.tasks
+                }
+            )
+        return answer
 
     def _resolve(
         self,

@@ -454,7 +454,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             dest="committee_seen",
             type=int,
             default=0,
-            help="The last floor message this member has seen, by number (its answer's `seen`).",
+            help="The last floor message seen, by number: the answer's `seen` (M7 is 7).",
         )
     elif (noun, verb) == ("first-use", "prepare"):
         child.add_argument(

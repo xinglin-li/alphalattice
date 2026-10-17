@@ -1662,21 +1662,22 @@ def _listing_page(
 def compact_display(
     body: Any, *, budget: int = COMPACT_ANSWER_BYTES, section: str = "", whole: bool = False
 ) -> dict[str, Any]:
-    """Bound display work and size without inventing values or replacing a raw export.
+    """Project within budget without inventing values or changing the saved answer.
 
-    The display, omissions included, prints within ``budget`` bytes (V402). Each omitted subtree
-    is named in ``omitted_sections`` as ``--section`` reads it from the answer's top (``section``
-    is this display's part): a key's value, or a list's rest as a page (``items.3:``).
-    ``whole`` shows a refusal whole when it fits. A section's list shows as many leading items
-    as fit, the rest its next page. Counts describe size, not research coverage; this view is
-    not hashed as the original artifact.
+    Omissions name root --section paths, including list-tail pages (items.3:).
+    Sections keep the requested part; refusals stay whole when they fit.
+    Counts describe display size, never research coverage or an artifact identity.
     """
     trimmed: list[str] = []
-    if isinstance(body, dict) and "timing" in body and not section:
-        # A Task's stage timings: no agent's decision reads them, and they were half of a
-        # `task show` answer (V280). The full view and --output keep them.
-        body = {key: value for key, value in body.items() if key != "timing"}
-        trimmed.append("timing")
+    if isinstance(body, dict) and not section:
+        raw = {"timing"}
+        summary = body.get("summary")
+        if isinstance(summary, dict) and "positions_count" in summary:
+            raw |= {"publication", "history", "html", "listing_labels", "position_rows"}
+        trimmed = [key for key in body if key in raw]
+        body = {key: value for key, value in body.items() if key not in raw}
+        if trimmed and len(raw) > 1:
+            body["_omitted_keys"] = len(trimmed)
     if whole and _size(body) + _size(trimmed) + len(_FULL_RESPONSE) + 160 <= budget:
         return {
             "representation": _REPRESENTATION,
@@ -2205,14 +2206,7 @@ def _follow(
     each_stage: bool = False,
     deadline: float | None = None,
 ) -> dict[str, Any]:
-    """Follow admitted work until it ends or needs a decision; never on a timer (WK).
-
-    A Task by STATUS long polls, a feature trial by its readback, across Host restarts (Task
-    Control runs it on). ``max_wait`` ends it early, as pending; ``each_stage`` once a further
-    stage verifies (V421); a state the Task never leaves itself (`WAIT_EXITS`: a decision, a
-    recovery, a deferral with its retry and resume request, V507) ends it too. State changes go
-    to stderr; the answer keeps the admission and names what happened in ``wait_event``.
-    """
+    """Follow work across Host restarts, ending at an action, stage boundary or deadline."""
     if max_wait is not None and not max_wait > 0:
         raise LocalResearchClientError("local_client.max_wait_invalid")
     trial = body.get("feature_trial_id") if body.get("status") == "FEATURE_TRIAL" else None
@@ -2298,9 +2292,14 @@ def _follow(
                 current.get("total_stage_count"),
             )
         )
-        if state != last:
-            print(json.dumps({"follow": document, "state": state}), file=sys.stderr, flush=True)
-            last = state
+        stage = current.get("current_stage")
+        if (state, stage) != last:
+            print(
+                json.dumps({"follow": document, "state": state, "current_stage": stage}),
+                file=sys.stderr,
+                flush=True,
+            )
+            last = (state, stage)
         # A review to decide, a Task to recover or a deferral waits on a request, not on this
         # waiter (V507).
         if (exit_event := WAIT_EXITS.get(task_state(current) or "")) is not None:
@@ -2485,6 +2484,11 @@ class _Chain:
     """The Codex thread and this verb's rerun, sent when its first running Task ends."""
 
     def send(self, step: str, document: dict[str, Any]) -> dict[str, Any]:
+        print(
+            json.dumps({"flow": self.name, "step": step, "operation": document["operation"]}),
+            file=sys.stderr,
+            flush=True,
+        )
         body = self.client.request(document)
         self.steps.append(
             {"step": step, "sent": document.get("operation"), "outcome": outcome_of(body)}

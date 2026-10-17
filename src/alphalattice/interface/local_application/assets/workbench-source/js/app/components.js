@@ -1703,7 +1703,7 @@ const CodeEditor = {
     const host = el.closest('.code-editor'); if (!host) return;
     const nums = host.querySelector(':scope > .editor-line-numbers'), count = Math.max(1, el.value.split('\n').length); // no empty numbered wall
     if (nums && nums.children.length !== count) nums.innerHTML = Array.from({length: count}, (_, i) => '<span>' + (i + 1) + '</span>').join('');
-    // a <span> first defeats the parser's dropped leading newline; a trailing newline gets a space so the paint's last line exists as the textarea's does
+    // a <span> first defeats the parser's dropped leading newline; a trailing one gets a space so the paint's last line shows
     const paint = host.querySelector(':scope > .editor-paint');
     if (paint) paint.innerHTML = '<span>' + codeMarkup(el.value, host.dataset.codeLang || 'yaml') + (el.value.endsWith('\n') ? ' ' : '') + '</span>';
     CodeEditor.scroll(el);
@@ -1778,7 +1778,7 @@ const CODE_WORDS = {
   "risk_research.positions_outside_the_risk_axis": "Positions are outside the risk model coverage",
 
   PM:'Main PM', CRO:'CRO',
-  STANCES:'Blind stances', DEBATE:'Debate', CLOSED:'Closed', NOT_YET:'Not yet received', ADOPTED:'Adopted', ADOPT:'Adopt', REJECT:'Rejected', FOR_THE_PERSON:'For you', PROCEED:'Proceed', PROCEED_WITH_NOTES:'Proceed with notes', DECLINE:'Decline endorsement',
+  STANCES:'Blind stances', DEBATE:'Debate', CLOSED:'Closed', NOT_YET:'Not yet received', TURN_OPEN:'Turn not taken', ADOPTED:'Adopted', ADOPT:'Adopt', REJECT:'Rejected', FOR_THE_PERSON:'For you', PROCEED:'Proceed', PROCEED_WITH_NOTES:'Proceed with notes', DECLINE:'Decline endorsement',
   RESEARCH_DELIVERY_EXPORTED:'Delivery exported', COMMITTEE_FLOOR:'Committee floor', COMMITTEE_DAILY:'Daily committee setting', CONDITIONAL_ESTIMATE:'Conditional estimated weights',
   UNRECOVERABLE: 'Unrecoverable execution',
   SETTLE_EVIDENCE_CONTINUATION: 'Settle evidence continuation',

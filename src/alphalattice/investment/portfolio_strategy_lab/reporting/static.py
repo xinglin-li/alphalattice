@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
+    HELD_WEIGHT_EPSILON,
     PortfolioBenchmarkComparison,
     PortfolioDeclaredPathReport,
     PortfolioEconomicLedger,
@@ -48,6 +49,7 @@ class PortfolioReportContext:
 if TYPE_CHECKING:
     from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
         PortfolioDecisionCheckpoint,
+        PortfolioUpdatePositions,
         PortfolioUpdatePublication,
     )
 
@@ -62,6 +64,29 @@ DECISION_WORDS = {
 }
 
 
+def position_row_groups(
+    positions: PortfolioUpdatePositions, labels: Mapping[str, str], *, basis: str = ""
+) -> dict[str, list[dict[str, str]]]:
+    """Present held listings and exits separately on the exact source axis."""
+    groups: dict[str, list[dict[str, str]]] = {"position_rows": [], "exit_rows": []}
+    previous, changes = positions.preceding or positions.weights, positions.changes
+    for i, (listing, name) in enumerate(labels.items()):
+        weight = positions.weights[i]
+        if weight > HELD_WEIGHT_EPSILON or previous[i] > HELD_WEIGHT_EPSILON:
+            groups["position_rows" if weight > HELD_WEIGHT_EPSILON else "exit_rows"].append(
+                {
+                    "listing_id": listing,
+                    "name": name,
+                    "weight": format_book_weight(weight, precision=2),
+                    "change": "Not an estimate"
+                    if changes is None
+                    else format_book_change(changes[i]),
+                    "basis": basis,
+                }
+            )
+    return groups
+
+
 def render_decision_update(
     checkpoint: PortfolioDecisionCheckpoint, history: tuple[PortfolioUpdatePublication, ...]
 ) -> str:
@@ -73,24 +98,27 @@ def render_decision_update(
     current = history[-1]
     proposal = current.pending_proposal
     facts = portfolio_update_positions(current, history)
-    rows = []
-    weights = facts.weights
-    changes = facts.changes
-    previous = facts.preceding or weights
-    for index, (listing, label, weight) in enumerate(
-        zip(checkpoint.ordered_listing_ids, checkpoint.listing_labels, weights, strict=True)
-    ):
-        delta = (
-            "Not available in this historical artifact"
-            if changes is None
-            else format_book_change(changes[index])
+    groups = position_row_groups(
+        facts, dict(zip(checkpoint.ordered_listing_ids, checkpoint.listing_labels, strict=True))
+    )
+    unavailable = "Not available in this historical artifact"
+    tables = "".join(
+        f'<h2>{heading}</h2><div class="scroll"><table><thead><tr><th>Name</th><th>Listing</th>'
+        "<th>Weight (%)</th><th>Change (bps)</th></tr></thead><tbody>"
+        + "".join(
+            f"<tr><td>{html.escape(r['name'])}</td><td>{html.escape(r['listing_id'])}</td>"
+            f"<td>{r['weight'].removesuffix('%')}</td><td>"
+            + html.escape(r["change"] if facts.preceding is not None else unavailable)
+            + "</td></tr>"
+            for r in rows
         )
-        if weight > 0 or previous[index] > 0:
-            rows.append(
-                f"<tr><td>{html.escape(label)}</td><td>{html.escape(listing)}</td>"
-                f"<td>{format_book_weight(weight, precision=2).removesuffix('%')}</td>"
-                f"<td>{delta}</td></tr>"
-            )
+        + "</tbody></table></div>"
+        for heading, rows in (
+            ("Holdings", groups["position_rows"]),
+            ("Exits (not held)", groups["exit_rows"]),
+        )
+        if rows
+    )
     events = []
     seen_proposals: set[str] = set()
     for publication in history:
@@ -155,10 +183,8 @@ def render_decision_update(
             if current.source_revision is not None
             else ""
         )
-        + '<div class="scroll"><table><thead><tr><th>Name</th><th>Listing</th>'
-        "<th>Weight (%)</th><th>Change (bps)</th></tr></thead><tbody>"
-        + "".join(rows)
-        + "</tbody></table></div><h2>As-issued history and observed settlement</h2>"
+        + tables
+        + "<h2>As-issued history and observed settlement</h2>"
         '<div class="scroll"><table><thead><tr><th>Decision</th><th>Phase</th>'
         "<th>Entry</th><th>One-way turnover (%)</th><th>Gross return (%)</th>"
         "<th>Net, 5 bps/side (%)</th><th>Net, 10 bps/side (%)</th></tr></thead><tbody>"

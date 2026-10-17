@@ -20,10 +20,10 @@ guide, and method for each card and Skill. No release contains or writes it. Rea
 its index and guide first, as above, and `agent-notes/INDEX.md` in a workspace you
 continue. They refine this
 guide and never widen what it permits; a memory is background, so verify what it
-names before acting on it. With the alphalattice-maintenance Skill, start the
-experience maintainer at a goal's end, on the person's correction, and after a
-critical handoff once the date's positions are published; back the layer up before
-upgrading the checkout.
+names before acting on it. A sealing goal answer offers `RECORD_THE_EXPERIENCE`:
+follow it through the alphalattice-maintenance Skill, using its Goal and Task reads.
+The Host supplies the trigger; the agent summarizes the experience. Record the person's
+correction in their own words at once, and back the layer up before upgrading the checkout.
 
 ## Change the checkout
 
@@ -218,17 +218,22 @@ and then you give the verdict at once. Inside the window the floor refuses a ver
 stands unruled and offers its ruling to fill; past it, a silent specialist has passed (silent) and
 an unruled challenge is reported as unruled. The VERDICT is the committee's discussion record,
 not an approval or advice: PROCEED_WITH_NOTES by default, members' reservations carried as notes;
-DECLINE endorsement of action on the positions only for a named hard defect (a data error, a Risk
-bound breached, key evidence missing), naming it, and it preserves the research record and
-positions; FOR_THE_PERSON only for a named decision of the person; PROCEED when nothing needs noting. The stances are blind until all four are in; after the reveal each
+a problem with particular holdings is a note and a suggestion to avoid or reduce them, never a
+DECLINE. DECLINE endorsement of action on the positions only for a book-level hard defect (a data
+error affecting the book, a breached book Risk bound, or key evidence missing for the book as a
+whole), naming it, and it preserves the research record and positions; FOR_THE_PERSON only for a named decision of the person; PROCEED when nothing needs noting. The stances are blind until all four are in; after the reveal each
 specialist takes one discussion turn, a CHALLENGE or REPLY or a PASS that yields it, with three
 challenges or replies in all, and the floor closes at its time box
-whoever is silent. Messages name holdings, points, components and messages by alias
-and type no other digit. A refused message names the rule it broke and, where only its
-shape or a typed holding name is wrong, offers the same message corrected: send that as
-it stands. The report keeps
+whoever is silent. Messages name holdings, points, components, messages and facts by their
+floor alias listed in `aliases` and type no other digit; a member's role is never a target,
+so answer its message by M alias. A refused message names the rule it broke and the aliases
+it may use, and where only its shape or a typed name is wrong, offers the same message
+corrected: send that as it stands; [committee refusals](.agents/skills/alphalattice-research/references/committee.md)
+gives each rule with a corrected example. Take your one discussion turn before the wait's
+`discussion_closes_at`; never wait again with your turn open. A stance may give a holding its own position (H5: OBJECT)
+beside the agenda points; a holding's objection leads the report as a suggestion. The report keeps
 each member's last message and every earlier one whose position it has not changed, verbatim.
-Read the agenda points before speaking: below the agenda line, no stance is required; the PM may raise one listed point through the positions of a REPLY to a revealed message.
+Read the agenda points before speaking: below the agenda line, no stance is required; the PM may raise one listed point through the positions of a REPLY to a revealed message. A HIGH Evidence negative on a below-line holding reaches the report's appendix in the CRO's words.
 
 The committee changes no number. Members may suggest avoiding, reducing or adding specific
 holdings, with reasons from the materials: the report leads with those suggestions, then the
@@ -245,7 +250,9 @@ alphalattice request --from "<out>/committee/floor.json" --action report
 The first use's report asks the person once (`ask_now`), in its words, whether each
 daily update also convenes the committee: ask it, then relay their answer with the
 command it offers. Unanswered, it is off; one sentence from them changes it later
-(`committee daily --enabled true|false`, relayed).
+(`committee daily --enabled true|false`, relayed). That answer is the road's last step: its
+next action, COMPLETE_THE_FIRST_USE_GOAL, offers the goal's read, which writes the
+completion to fill; submit it as the goals procedure says, sending each attach it offers.
 
 ## Run an installed strategy forward
 
@@ -262,7 +269,9 @@ its next action is `GIVE_THE_PM_VIEW`: as PM, give the person your view of the
 reviewed positions from the Host's materials (the positions, the date's Risk, the
 CRO's review), with suggestions on holdings from the review's findings, the positions
 unchanged and the person deciding, then offer the committee for that date in one
-line (`committee open --update <task>`). For a date the
+line (`committee open --update <task>`). The date's road ends with its report or your
+view given to the person: that answer offers the Session's goal's read (`goal`);
+complete the goal as the first use's. For a date the
 person names, plan `research-update plan --package <package> --date <date>`: as
 in the first use, the date is the trade date its positions are entered on, decided
 at the close before it, and the plan's `positions_for` names that date. With no

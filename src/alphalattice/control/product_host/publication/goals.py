@@ -25,6 +25,12 @@ from alphalattice.interface.local_application.goals import (
 )
 from alphalattice.interface.local_application.operations import GRAMMAR
 
+EXPERIENCE_RECORD_WORDS = (
+    "Start alphalattice_maintainer in RECORD mode with this goal (goal show {subject}), "
+    "the person's corrections in their own words, and the Tasks' readbacks; then tell the "
+    "person in one line what was added, merged or deleted."
+)
+
 
 def session_work_declaration(operation: str, vendor: str) -> dict[str, object]:
     """The Host's automatic declaration, also identifying exact historical declarations."""

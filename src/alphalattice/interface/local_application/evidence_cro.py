@@ -940,7 +940,7 @@ def project_published_review(
         summary_parts = [*open_parts.get(issuer.entity_id, ())]
         if issuer.entity_id in carried:
             summary_parts.append((f"no new filing; read {carried[issuer.entity_id]}", ""))
-        summary_parts.append((summary, ""))
+        summary_parts.append((_holding_context(issuer.transition, summary), ""))
         rows.append(
             EvidenceCroIssuerRow(
                 entity_id=issuer.entity_id,
@@ -960,7 +960,7 @@ def project_published_review(
                         else f"no new filing; read {carried[issuer.entity_id]}: "
                     )
                 )
-                + summary,
+                + _holding_context(issuer.transition, summary),
                 findings_summary_parts=tuple(summary_parts),
             )
         )
@@ -1115,6 +1115,11 @@ def _scope_coverage(
             for value in failures
         ),
     )
+
+
+def _holding_context(transition: str, summary: str) -> str:
+    """Keep a retained concern distinct from a currently held issuer."""
+    return "Not held in this book. " + summary if transition == "EXITED" else summary
 
 
 def _findings_summary(conclusion: str, *, findings: int, adverse: int) -> str:
@@ -1413,9 +1418,9 @@ _ANSWERED_ROUTE_IN_WORDS = {
     "NO_MATERIAL_OBJECTION": "no major negative was found in the evidence read",
     "ACCEPT_WITH_LIMITS": "the reviewer named material risks that do not rise to an "
     "objection; they are listed with the limits of what was read",
-    "HUMAN_REVIEW_REQUIRED": "a high-severity risk on an exposed holding rests on contested "
+    "HUMAN_REVIEW_REQUIRED": "a high-severity risk on exposure or its change rests on contested "
     "or limited findings; a person should read it (advisory, not blocking)",
-    "MATERIAL_OBJECTION": "a supported high-severity risk on an exposed holding is a major "
+    "MATERIAL_OBJECTION": "a supported high-severity risk on exposure or its change is a major "
     "negative for the book; a human must weigh it and no weight changes here",
 }
 """The route in words for a review answered in the judgment-only format; a
@@ -1603,6 +1608,14 @@ def _coverage_section(review: dict[str, Any]) -> str:
     Keep mapping and each completion stage separate from count and weight
     coverage.
     """
+    from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
+        PortfolioReviewCoverage,
+    )
+    from alphalattice.oversight.chief_risk_officer.decision.views import (
+        coverage_words,
+        held_issuer_count,
+    )
+
     dossier = review["dossier"]
     recommendation = review["recommendation"]
     coverage_labels = {
@@ -1632,13 +1645,16 @@ def _coverage_section(review: dict[str, Any]) -> str:
             for key, value in dossier["coverage"].items()
             if key.endswith("coverage")
         )
-        + f"<dt>Reviewed issuers</dt><dd>{len(dossier.get('issuers', []))}</dd>"
         + "<dt>Mapping failures</dt><dd>"
         + html.escape(str(dossier.get("mapping_failure_count")))
-        + "</dd><dt>Held positions</dt><dd>"
-        + html.escape(str(dossier.get("held_count")))
+        + "</dd><dt>Held issuers in scope</dt><dd>"
+        + str(held_issuer_count(float(v["ending_weight"]) for v in dossier["issuers"]))
         + "</dd>"
         + "</dl>"
+    )
+    pieces.extend(
+        f"<p>{html.escape(line)}</p>"
+        for line in coverage_words(PortfolioReviewCoverage.model_validate(dossier["coverage"]))
     )
     pieces.append(
         "<table><thead><tr><th>Issuer</th><th>Tickers</th><th>Ending weight</th>"
@@ -1659,6 +1675,7 @@ def _coverage_section(review: dict[str, Any]) -> str:
             + f"{float(issuer.get('ending_weight', 0.0)):.3%}"
             + "</td><td>"
             + html.escape(str(issuer.get("transition")))
+            + html.escape(" " + _holding_context(str(issuer.get("transition")), ""))
             + "</td><td>"
             + html.escape(str(issuer.get("review_state", "UNSTATED")))
             + "</td><td>"

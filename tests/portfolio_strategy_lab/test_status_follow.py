@@ -83,11 +83,16 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     task_id = str(uuid4())
     sent: list[dict[str, Any]] = []
+    running = dict(
+        status="RUNNING",
+        lifecycle="RUNNING",
+        task_id=task_id,
+        verified_stage_count=0,
+        total_stage_count=2,
+    )
     answers = iter(
-        [
-            {"status": "RUNNING", "lifecycle": "RUNNING", "task_id": task_id},
-            {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", "task_id": task_id},
-        ]
+        [{**running, "current_stage": stage} for stage in ("input", "input", "features")]
+        + [dict(running, status="SUCCEEDED", lifecycle="SUCCEEDED")]
     )
 
     class _Client:
@@ -102,11 +107,13 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
     final = client_module._follow(_Client(), admitted, 60)  # type: ignore[arg-type]
     assert final["lifecycle"] == "SUCCEEDED" and final["admission"] == admitted
     assert all(d["operation"] == "STATUS" and 0 < d["wait_seconds"] <= 20 for d in sent)
-    assert len(sent) == 2 and time.monotonic() - begun < 0.2
+    assert len(sent) == 4 and time.monotonic() - begun < 0.2
     # Its first line tells the agent this call is the wait, and its host's way to wait for it.
-    first = json.loads(capsys.readouterr().err.splitlines()[0])
+    first, *progress = map(json.loads, capsys.readouterr().err.splitlines())
     assert first["follow"]["operation"] == "STATUS" and "do not poll" in first["returns"]
     assert "run_in_background" in first["returns"]
+    assert [line["current_stage"] for line in progress] == ["input", "features", None]
+    assert [line["state"] for line in progress[:2]] == [["RUNNING", 0, 2]] * 2
     # On Codex it names both ways: the queued wake when idle, this one call under a goal.
     codex = AGENT_HOST_WAITS["codex"]
     assert "--notify codex-queue" in codex and "get_goal" in codex
@@ -1071,6 +1078,15 @@ def test_a_review_of_a_dates_positions_binds_their_publication(
 ) -> None:
     """A date review's wake resumes its exact preparation despite an advancing preview clock."""
     host = _ScriptedHost(tmp_path / "workspace")
+    request = host.request
+
+    def with_progress(doc, timeout=None):
+        if doc["operation"] == "RESEARCH_UPDATE_READBACK":
+            progress = json.loads(capsys.readouterr().err.splitlines()[-1])
+            assert progress == dict(flow="book_review", step="update", operation=doc["operation"])
+        return request(doc, timeout)
+
+    host.request = with_progress
     monkeypatch.setenv("CODEX_THREAD_ID", str(uuid4()))
     monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
     monkeypatch.setattr(client_module, "LocalResearchClient", lambda *a, **k: host)

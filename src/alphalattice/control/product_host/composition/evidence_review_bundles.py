@@ -30,6 +30,7 @@ from alphalattice.evidence.alternative_evidence.publication.contracts import (
     AlternativeEvidenceAnalysisPublication,
 )
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
+from alphalattice.interface.local_application.labels import label
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioEvidenceReviewError,
@@ -399,8 +400,13 @@ class EvidenceReviewBundles:
                         "book": {"operation": "EVIDENCE_CRO", **chosen.request_fields()},
                     },
                 )
+            subject = dossier.update_subject
+            installed = label(subject.strategy_package_id) if subject else None
             bundle = render_review_bundle(
-                dossier, task_procedure=procedure, last_review=self._last_review(chosen)
+                dossier,
+                task_procedure=procedure,
+                last_review=self._last_review(chosen),
+                strategy_title=installed.title if installed else None,
             )
             submission = self.app._review_submission(dossier, read_at=read_at)
         if route is not None:  # a review member's own submit, ending its README

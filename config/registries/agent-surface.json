@@ -609,6 +609,13 @@
         "type": "string"
       }
     },
+    "answer:COMMITTEE_DAILY_SET.next_action": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
     "answer:COMMITTEE_DAILY_SET.next_requests": {
       "required": true,
       "schema": {
@@ -682,6 +689,18 @@
       "schema": {
         "additionalProperties": true,
         "type": "object"
+      }
+    },
+    "answer:COMMITTEE_READ.discussion_closes_at": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:COMMITTEE_READ.floor_status": {
+      "required": true,
+      "schema": {
+        "type": "string"
       }
     },
     "answer:COMMITTEE_READ.for_you": {
@@ -825,6 +844,13 @@
         "additionalProperties": true,
         "default": null,
         "type": "object"
+      }
+    },
+    "answer:COMMITTEE_READ.waiting_on": {
+      "required": true,
+      "schema": {
+        "items": {},
+        "type": "array"
       }
     },
     "answer:COMMITTEE_SUBMIT.message_id": {
@@ -2740,6 +2766,13 @@
           }
         ],
         "default": null
+      }
+    },
+    "answer:EVIDENCE_CRO.detail": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
       }
     },
     "answer:EVIDENCE_CRO.disposition": {
@@ -4848,6 +4881,13 @@
       "schema": {
         "additionalProperties": true,
         "type": "object"
+      }
+    },
+    "answer:EXPERIMENT_DELIVERY_EXPORT.detail": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
       }
     },
     "answer:EXPERIMENT_DELIVERY_EXPORT.export_hash": {
@@ -9768,6 +9808,13 @@
         "type": "string"
       }
     },
+    "answer:GOAL_SUBMIT.detail": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
     "answer:GOAL_SUBMIT.goal_hash": {
       "required": true,
       "schema": {
@@ -9786,6 +9833,13 @@
         "default": null,
         "items": {},
         "type": "array"
+      }
+    },
+    "answer:GOAL_SUBMIT.next_action": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
       }
     },
     "answer:GOAL_SUBMIT.next_requests": {
@@ -11024,6 +11078,14 @@
       "schema": {
         "default": null,
         "type": "string"
+      }
+    },
+    "answer:PORTFOLIO_UPDATE_READBACK.exit_rows": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
       }
     },
     "answer:PORTFOLIO_UPDATE_READBACK.history": {
@@ -13040,6 +13102,14 @@
         "type": "string"
       }
     },
+    "answer:RESEARCH_UPDATE_READBACK.exit_rows": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
     "answer:RESEARCH_UPDATE_READBACK.failure_code": {
       "required": false,
       "schema": {
@@ -13167,6 +13237,14 @@
         "type": "object"
       }
     },
+    "answer:RESEARCH_UPDATE_READBACK.schedule": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
+      }
+    },
     "answer:RESEARCH_UPDATE_READBACK.status": {
       "required": true,
       "schema": {
@@ -13178,6 +13256,14 @@
       "schema": {
         "default": null,
         "type": "string"
+      }
+    },
+    "answer:RESEARCH_UPDATE_READBACK.summary": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:RESEARCH_UPDATE_READBACK.task_id": {
@@ -17750,6 +17836,7 @@
     "envelope:timing": {},
     "exchange:ACCEPTANCE": {},
     "exchange:ANSWER": {},
+    "exchange:CHALLENGE": {},
     "exchange:CORRECTION": {},
     "exchange:ISSUE": {},
     "exchange:PASS": {},

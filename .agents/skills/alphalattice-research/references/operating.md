@@ -74,6 +74,7 @@ The grammar is `alphalattice <object> <action>`, then any id and flags; `request
 - Take ids, hashes and choices exactly from an answer. A compact id is usable only when unique. An offered edge is navigation, not proof its prerequisites hold; the Host revalidates every continuation.
 - Write outputs under a new `<out>` directory in the workspace, never into the checkout. `--output` saves the full answer, `--save-declaration` an editable declaration; `--file` reads a document, `-` reads stdin. A retry may replace a saved JSON/YAML refusal without an admitted Task and prints `output_note`; other files stay protected.
 - Consult help or `schema show` only when the answer lacks a field or form you need.
+- Long workflows print request steps and Task stage changes on stderr; stdout stays one envelope. Compact update readback keeps counts, top holdings, dates, review and next steps; use each `omitted_sections` path with `--section`, or `--view full`, for its raw data.
 
 <!-- Generated from the CLI's registered outcomes and _PROCEED meanings. -->
 | Exit | Outcome | Do |

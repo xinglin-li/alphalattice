@@ -13,13 +13,16 @@ or internal code reaches the view.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Final
 from zoneinfo import ZoneInfo
 
-from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import BOOK_NAMES
+from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
+    BOOK_NAMES,
+    POSITION_EPSILON,
+)
 from alphalattice.protocols.actor_execution.bundles import (
     AgentBundle,
     BundleBlock,
@@ -38,6 +41,7 @@ from .portfolio_review import (
     PortfolioReviewCoverage,
     PortfolioReviewDossier,
     PortfolioReviewDossierFinding,
+    PortfolioReviewDossierIssuer,
     finding_aliases,
     finding_sources,
     open_issue_aliases,
@@ -71,6 +75,7 @@ def render_review_bundle(
     *,
     task_procedure: str,
     last_review: EarlierReview | None = None,
+    strategy_title: str | None = None,
 ) -> AgentBundle:
     """Render the whole view: an index, the holdings file and the findings files.
 
@@ -87,7 +92,12 @@ def render_review_bundle(
         for handle, (_publication, _bare, found) in finding_sources(dossier).items()
         if found < cutoff
     }
-    holdings = pack_sections([_holdings(dossier)], stem="holdings")
+    held = tuple(v for v in dossier.issuers if v.ending_weight > POSITION_EPSILON)
+    exited = tuple(v for v in dossier.issuers if v.ending_weight <= POSITION_EPSILON)
+    holdings = pack_sections(
+        [_holdings(dossier, held), *([_holdings(dossier, exited, held=False)] if exited else [])],
+        stem="holdings",
+    )
     by_issuer: dict[str, list[PortfolioReviewDossierFinding]] = {}
     for finding in dossier.findings:
         by_issuer.setdefault(finding.affected_entities[0], []).append(finding)
@@ -98,7 +108,8 @@ def render_review_bundle(
             continue
         name = _name(issuer.entity_id, issuer.tickers)
         heading = (
-            f"## {name} -- weight {_percent(issuer.ending_weight)}, exposure {issuer.exposure_band}"
+            f"## {name} -- {'held' if issuer.ending_weight > POSITION_EPSILON else 'not held'}, "
+            f"weight {_percent(issuer.ending_weight)}, exposure {issuer.exposure_band}"
         )
         blocks = tuple(
             BundleBlock(
@@ -115,8 +126,13 @@ def render_review_bundle(
         sections.append(BundleSection(key=issuer.entity_id, heading=heading, blocks=blocks))
     findings = pack_sections(sections, stem="findings")
     coverage = _coverage_overflow(dossier)
+    index = _index(dossier, task_procedure, last_review, coverage)
+    if dossier.update_subject is not None:
+        package = dossier.update_subject.strategy_package_id
+        name = strategy_title + " " if strategy_title else ""
+        index[1:1] = ["", f"Reviewed installed package: {name}`{package}`."]
     return compose_bundle(
-        _index(dossier, task_procedure, last_review, coverage),
+        index,
         (*holdings, *findings, *coverage),
     )
 
@@ -155,16 +171,28 @@ def _coverage_overflow(dossier: PortfolioReviewDossier) -> tuple[BundleFile, ...
     return pack_sections(sections, stem="coverage")
 
 
-def _holdings(dossier: PortfolioReviewDossier) -> BundleSection:
+def held_issuer_count(weights: Iterable[float]) -> int:
+    """Count positive-weight issuer rows, never the book's listing-position total."""
+    return sum(weight > POSITION_EPSILON for weight in weights)
+
+
+def _holdings(
+    dossier: PortfolioReviewDossier,
+    issuers: Sequence[PortfolioReviewDossierIssuer],
+    *,
+    held: bool = True,
+) -> BundleSection:
     rows = [
         "| issuer | weight | change | transition | rank | exposure |",
         "| --- | --- | --- | --- | --- | --- |",
     ]
     blocks = []
-    ranked = sorted(dossier.issuers, key=lambda value: value.weight_rank)
+    ranked = sorted(issuers, key=lambda value: value.weight_rank)
     for index, issuer in enumerate(ranked):
         if index and index % HOLDINGS_ROWS_PER_BLOCK == 0:
-            blocks.append(BundleBlock(tuple(rows), {"holdings": len(rows) - 2}))
+            blocks.append(
+                BundleBlock(tuple(rows), {"holdings" if held else "exits": len(rows) - 2})
+            )
             rows = [
                 "| issuer | weight | change | transition | rank | exposure |",
                 "| --- | --- | --- | --- | --- | --- |",
@@ -174,12 +202,16 @@ def _holdings(dossier: PortfolioReviewDossier) -> BundleSection:
             f"{_points(issuer.signed_change)} | {issuer.transition} | {issuer.weight_rank} | "
             f"{issuer.exposure_band} |"
         )
-    blocks.append(BundleBlock(tuple(rows), {"holdings": len(rows) - 2}))
+    blocks.append(BundleBlock(tuple(rows), {"holdings" if held else "exits": len(rows) - 2}))
+    count = held_issuer_count(v.ending_weight for v in ranked)
     return BundleSection(
-        key="the book's holdings",
+        key="the book's holdings" if held else "exits",
         heading=(
-            f"## Holdings ({dossier.held_count} held; effective number of positions "
+            f"## Holdings ({count} held issuers in this "
+            "dossier; effective number of listing positions "
             f"{dossier.window_end_effective_n:.1f})"
+            if held
+            else "## Exits (not held)"
         ),
         blocks=tuple(blocks),
     )
@@ -453,9 +485,13 @@ def coverage_words(coverage: PortfolioReviewCoverage) -> tuple[str, ...]:
             f"{coverage.nothing_filed_window_days} days carry "
             f"{_percent(coverage.nothing_filed_ending_weight_coverage)} of the ending weight: "
             "they were checked and nothing was there to read, so they are not unread, and that "
-            "is not a finding of no risk. Only "
-            f"{_percent(coverage.unreached_ending_weight_coverage or 0.0)} of the ending weight "
-            "was not read."
+            "is not a finding of no risk."
+        )
+    if coverage.unreached_ending_weight_coverage is not None:
+        words.append(
+            f"Unread ending weight: {_percent(coverage.unreached_ending_weight_coverage)}; "
+            "holdings checked with no filing are excluded. Issuer reading coverage and "
+            "topic-route gaps are separate measures; recorded gaps remain limitations."
         )
     return tuple(words)
 
@@ -487,6 +523,7 @@ __all__ = [
     "REVIEW_STATE_WORDS",
     "coverage_words",
     "cutoff_words",
+    "held_issuer_count",
     "render_review_bundle",
     "review_cutoff_words",
 ]
