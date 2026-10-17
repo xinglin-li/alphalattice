@@ -102,6 +102,7 @@ from alphalattice.interface.local_application.native_bridge import (
 )
 from alphalattice.interface.local_application.native_bridge import (
     HOSTS,
+    joined_members,
 )
 from alphalattice.interface.local_application.portfolio_research import (
     OperationCaller,
@@ -166,6 +167,26 @@ ArtifactResolver = Callable[[str, UUID], ArtifactReference | None]
 """Given a command kind and a Task, open the owner's published result and answer
 with its reference, or `None` when that kind publishes nothing this observer
 names. Opening is the verification: an index entry alone must not answer."""
+
+
+def _joined(
+    records: list[dict[str, Any]], snapshots: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Both reads with each member's submits under that member, as its session file proves."""
+    both = records + snapshots
+    subjects = joined_members(
+        [(item.get("payload") or {}).get("subject") or {} for item in both],
+        agent="native_agent_id",
+        session="native_session_id",
+        members=True,
+    )
+    both = [
+        {**item, "payload": {**item["payload"], "subject": subject}}
+        if item.get("payload")
+        else item
+        for item, subject in zip(both, subjects, strict=True)
+    ]
+    return both[: len(records)], both[len(records) :]
 
 
 @dataclass
@@ -898,6 +919,10 @@ class WorkspaceActivity:
             else None
         )
         records = [] if page is None else [activity_item(item) for item in page.items]
+        snapshot_items = (
+            [] if snapshots is None else [activity_item(item) for item in snapshots.items]
+        )
+        records, snapshot_items = _joined(records, snapshot_items)
         by_kind: dict[str, list[dict[str, Any]]] = {
             EXTERNAL_ACTIVITY_SCHEMA: [],
             PRODUCT_OPERATION_SCHEMA: [],
@@ -905,9 +930,6 @@ class WorkspaceActivity:
         for item in records:
             by_kind[item["schema_kind"]].append(item)
         items, product_items = by_kind[EXTERNAL_ACTIVITY_SCHEMA], by_kind[PRODUCT_OPERATION_SCHEMA]
-        snapshot_items = (
-            [] if snapshots is None else [activity_item(item) for item in snapshots.items]
-        )
         return {
             "workspace_id": self.workspace_id,
             "disposition": "UNAVAILABLE" if page is None else page.disposition,
@@ -1130,10 +1152,10 @@ class WorkspaceActivity:
         return tasks
 
     def wake_readiness(self, path: str | None = None) -> dict[str, object]:
-        """Share successful queue probes; retry a supplied path after failure."""
+        """Share successful reach probes; retry a supplied path after failure."""
         from alphalattice.interface.local_application.native_bridge import (
             codex_command,
-            codex_queue_readiness,
+            codex_queue_reach,
         )
 
         with self._lock:
@@ -1143,7 +1165,7 @@ class WorkspaceActivity:
                 or self._wake_capability.get("command") != command
                 or (path and not self._wake_capability.get("present"))
             ):
-                self._wake_capability = codex_queue_readiness(path)
+                self._wake_capability = codex_queue_reach(path)
             return {**self._wake_capability, "command_source": source}
 
     def observer_state(self) -> dict[str, object]:
@@ -1324,7 +1346,7 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
     line in its queue, not that the model read it: Codex takes its queue while the thread is idle,
     and an active goal's next turn starts first.
     """
-    from alphalattice.interface.local_application.native_bridge import codex_command
+    from alphalattice.interface.local_application.native_bridge import codex_command, first_line
 
     codex, source = codex_command(path)
     result: dict[str, Any] = {
@@ -1342,8 +1364,8 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
             capture_output=True,
             timeout=60,
         )
-    except subprocess.CalledProcessError:
-        return {**result, "failure": "CODEX_QUEUE_FAILED"}
+    except subprocess.CalledProcessError as error:
+        return {**result, "failure": "CODEX_QUEUE_FAILED", "detail": first_line(error.stderr)}
     except subprocess.TimeoutExpired:
         return {**result, "failure": "CODEX_QUEUE_TIMED_OUT"}
     except OSError:

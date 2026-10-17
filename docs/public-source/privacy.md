@@ -1,7 +1,7 @@
 # Privacy and native usage reading
 Date: 2026-10-08
 
-The workspace Host reads usage facts from this machine's Claude Code or Codex files for Sessions bound to the workspace. It keeps response IDs, models, recorded effort, token counts and timestamps, including first and last times. Conversation text, prompts, tool bodies, private reasoning and file paths are discarded.
+The workspace Host reads usage facts from this machine's Claude Code or Codex files for Sessions bound to the workspace. It keeps response IDs, models, recorded effort, token counts and timestamps, including first and last times. From a Claude Code subagent's own commands that name a member key, it also keeps bounded attribution facts: the key's SHA-256, the committee thread or a hash of the bundle directory, the role named, whether the command submits, hashed claim and tool-use identifiers, and the floor message IDs or answer references its accepted submits made (at most 64 commands, 8 references each). Conversation text, prompts, tool bodies, raw keys, private reasoning and file paths are discarded.
 
 ## Workspace network and consent
 
@@ -22,7 +22,7 @@ Say "Turn AlphaLattice's network off" to your agent, or turn it off in **Setting
 | Claude Code | `~/.claude/projects/` or `CLAUDE_CONFIG_DIR/projects/` |
 | Codex | `~/.codex/sessions/` or `CODEX_HOME/sessions/` |
 
-Research requires no product hook. The reader opens the bound Session's file and its directly linked children: Codex records child threads in the lead's rollout; Claude uses `subagents/agent-<id>.jsonl` beneath the lead's session directory. A child's metadata must name that direct parent; specialist-role verification remains separate from reading its usage. Other Sessions, symlinks, non-files, ambiguous parents, wrong Session names and paths outside the resolved root are refused.
+Research requires no product hook. The reader opens the bound Session's file and its directly linked children: Codex records child threads in the lead's rollout; Claude uses `subagents/agent-<id>.jsonl` beneath the lead's session directory. A child's metadata must name that direct parent. On Claude Code, where a subagent's commands carry its lead's Session, a child whose own file holds a member key the Host issued reads as that member (a Codex specialist is told apart by its own thread): the Host checks the key's hash, and each message an accepted submit with it made, named in that submit's own result, shows under the child on the Team page. Messages the lead submitted stay the lead's, and a goal's record keeps every message's declared Session. Other Sessions, symlinks, non-files, ambiguous parents, wrong Session names and paths outside the resolved root are refused.
 
 Reads occur when a goal is taken or submitted, an answer is submitted, a Team or Goal page opens, or `alphalattice session usage` asks. There is no timer; a Session is read at most once in ten seconds. Reading failures are named and do not stop research.
 

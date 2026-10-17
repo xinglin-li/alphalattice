@@ -24,6 +24,7 @@ from alphalattice.protocols.actor_execution.bundles import (
     BundleFile,
     BundleSection,
     compose_bundle,
+    moment_text,
     pack_sections,
     wrap_text,
 )
@@ -217,6 +218,23 @@ def _finding_lines(
     return tuple(lines)
 
 
+def _book_header(dossier: PortfolioReviewDossier) -> list[str]:
+    """Keep the positions' research date distinct from the Evidence and expiry instants."""
+    session = (
+        dossier.update_subject.entry_session
+        if dossier.update_subject
+        else dossier.experiment_subject.portfolio_session
+        if dossier.experiment_subject
+        else None
+    )
+    return [
+        f"Book: {BOOK_NAMES[dossier.book_authority]} (`{dossier.book_authority}`).",
+        *([f"Positions for {session}."] if session else []),
+        f"Evidence cutoff: {moment_text(dossier.evidence_as_of)}; "
+        f"expires {moment_text(dossier.evidence_expires_at)}.",
+    ]
+
+
 def _index(
     dossier: PortfolioReviewDossier,
     task_procedure: str,
@@ -240,9 +258,7 @@ def _index(
     lines = [
         "# Portfolio evidence review: the CRO's bundle",
         "",
-        f"Book: {BOOK_NAMES[dossier.book_authority]} (`{dossier.book_authority}`). Evidence as of "
-        f"{dossier.evidence_as_of.date().isoformat()}; it expires "
-        f"{dossier.evidence_expires_at.date().isoformat()}.",
+        *_book_header(dossier),
         f"{len(dossier.issuers)} issuer(s) in scope; {len(dossier.findings)} finding(s) from the "
         "Alternative Evidence Analyst, each named by an alias (F1, F2, ...).",
         "",
@@ -289,8 +305,8 @@ def _index(
             "## The book's last review",
             "",
             *wrap_text(
-                f"Published {last_review.published_on.isoformat()}, on evidence as of "
-                f"{last_review.evidence_as_of.isoformat()}; it reads back exactly as it was "
+                f"Published {moment_text(last_review.published_on)}, on evidence as of "
+                f"{moment_text(last_review.evidence_as_of)}; it reads back exactly as it was "
                 f"sealed, under {policy}."
             ),
         ]

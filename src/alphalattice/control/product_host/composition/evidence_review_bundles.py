@@ -13,6 +13,7 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import fields, replace
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, get_args
 from uuid import UUID
@@ -372,7 +373,7 @@ class EvidenceReviewBundles:
         else:
             # The dossier as read now, and that time sealed with the bundle: its answer
             # meets this dossier, never one read on a later clock.
-            read_at = self.app.clock()
+            read_at = self._read_at(directory, chosen)
             dossier = self.app._resolve_review_dossier(chosen, read_at=read_at)
             if isinstance(dossier, ReviewOutcome):
                 return dossier
@@ -516,6 +517,18 @@ class EvidenceReviewBundles:
             },
             allowed_references=allowed,
         )
+
+    def _read_at(self, directory: str, chosen: BookSelector) -> datetime:
+        """Continue the held CRO reading only for its own role, operation and selected book."""
+        held = self.agent_bundle(directory)
+        if (
+            held is not None
+            and held.role == "CRO"
+            and held.submission.get("operation") == "CRO_REVIEW_SUBMIT"
+            and all(held.submission.get(k) == v for k, v in chosen.request_fields().items())
+        ):
+            return datetime.fromisoformat(held.submission["review_read_at"])
+        return self.app.clock()
 
     def store_bundle(
         self,

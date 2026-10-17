@@ -70,7 +70,7 @@ def _bound(tmp_path: Path) -> Any:
 
 
 def _install(
-    tmp_path: Path, *, served: list[bool], during: Any = None, runs: int = 1
+    tmp_path: Path, *, served: list[bool], during: Any = None, runs: int = 1, hold: Any = None
 ) -> tuple[Any, str, str]:
     """Run one install Task of an SEC acquisition in a workspace session `runs` times (a recovery
     after the first): its record, and the bound package's path before and after."""
@@ -86,7 +86,9 @@ def _install(
     binding = _bound(tmp_path)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         install = setup.EvidenceInstall(
-            session=session, clock=lambda: datetime.now(UTC), installed=lambda: served.append(True)
+            session=session,
+            clock=lambda: datetime.now(UTC),
+            installed=lambda: (hold and hold(install), served.append(True)),
         )
         admitted = install.admit(
             [
@@ -155,6 +157,43 @@ def test_the_running_host_installs_a_package_as_a_task_of_five_stages(tmp_path, 
     assert task.lifecycle.value == "SUCCEEDED", task.failure_code
     assert served == [True] and len(acquisition.calls) == 3
     assert after != before and after.startswith("authority/evidence-cro/")
+
+
+def test_a_request_while_the_install_publishes_needs_no_restart(tmp_path, acquisition):
+    """regression (the person's fresh-checkout first use, 2026-10-16): a wait arriving between the
+    install's manifest write and the Host holding it was refused as a restart. The Host's own
+    publication passes; a manifest changed outside the Host still refuses, with words."""
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
+    from alphalattice.control.product_host.composition.research_workspace import (
+        read_research_workspace_manifest,
+    )
+    from alphalattice.control.workspace_runtime.network_access import set_network_access
+    from alphalattice.interface.local_application.cli_contract import refusal_words
+
+    set_network_access(tmp_path, enabled=True, now=datetime.now(UTC))
+    before: list[Any] = []
+    owned = SimpleNamespace(has_tasks=lambda: True, owns_published_manifest=lambda _: False)
+
+    def refresh(install: Any) -> None:  # the request the Host answers in that window
+        host = SimpleNamespace(
+            workspace_session=SimpleNamespace(workspace=tmp_path),
+            _manifest_stamp=None,
+            preparation=owned,
+            model_training_inputs=SimpleNamespace(task_kind="t", **vars(owned)),
+            workspace_manifest=before[0],
+            evidence_install=install,
+        )
+        PortfolioResearchOperations._refresh_prepared_inputs(host)  # type: ignore[arg-type]
+
+    snapshot = lambda *_: before.append(read_research_workspace_manifest(tmp_path))  # noqa: E731
+    task, _, _ = _install(tmp_path, served=[], during=snapshot, hold=refresh)
+    assert task.lifecycle.value == "SUCCEEDED", task.failure_code
+    with pytest.raises(ValueError, match="configuration_changed_restart_required"):
+        refresh(SimpleNamespace(publishing=False))  # the same change, outside an install
+    words = refusal_words("research_workspace.configuration_changed_restart_required")
+    assert words["detail"] and words["next_action"] == "TELL_THE_PERSON_THE_HOST_NEEDS_A_RESTART"
 
 
 def test_a_recovered_install_runs_only_the_stage_it_stopped_in(tmp_path, acquisition, monkeypatch):
@@ -234,9 +273,12 @@ def test_an_installed_package_is_served_before_the_runtime_it_replaced_closes(tm
     assert order[:4] == ["review", "storage", "admission", "close"] and len(order) == 5
 
 
-def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(tmp_path, monkeypatch):
+def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
+    tmp_path, monkeypatch, acquisition
+):
     """requirement: a Host without the retrieval runtime blocks its install by name, the package
-    bound before stays bound, and the declared environment filled afterwards is read in place."""
+    bound before stays bound, and the declared environment filled afterwards is read in place;
+    the same request sent again continues the blocked Task, which then reads as resolved."""
     from alphalattice.interface.local_application import retrieval_environment
 
     environment, (major, minor) = tmp_path / "declared-retrieval", sys.version_info[:2]
@@ -262,6 +304,33 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(tmp_p
     config = f"version_info = {major}.{minor}\n"  # as uv writes it, with no patch number
     (environment / "pyvenv.cfg").write_text(config, encoding="utf-8")
     assert retrieval_environment.load() and str(site) == sys.path[-1]
+    # regression (the person's fresh-checkout first use, 2026-10-16): the blocked Task stayed
+    # under Blocked though the same install, sent again, succeeded.
+    from alphalattice.control.product_host.composition.application_session import (
+        WorkspaceApplicationSession,
+    )
+    from alphalattice.control.product_host.composition.task_recovery import (
+        resolved_read,
+        task_attention,
+    )
+    from alphalattice.control.workspace_runtime.network_access import set_network_access
+
+    set_network_access(tmp_path, enabled=True, now=datetime.now(UTC))
+    again, _, _ = _install(tmp_path, served=served)
+    assert again.lifecycle.value == "SUCCEEDED", again.failure_code
+    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        registry = session.task_control_registry
+        fact = task_attention(
+            registry.task(task.task_id),
+            successors={again.task_id: registry.task(again.task_id)},
+            links=registry.recovery_links(),
+        )
+    assert (fact.resolution, fact.successor_task_id) == ("SUCCESSOR_SUCCEEDED", str(again.task_id))
+    read: dict[str, object] = {"lifecycle": "BLOCKED", "next_requests": {}}
+    resolved_read(read, fact)  # what the Tasks page and a status read show for the stop
+    assert read["next_requests"] == {
+        "successor": {"operation": "STATUS", "task_id": str(again.task_id)}
+    }
 
 
 def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path, monkeypatch):

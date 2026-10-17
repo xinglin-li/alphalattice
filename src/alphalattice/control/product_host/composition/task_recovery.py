@@ -66,6 +66,7 @@ from alphalattice.control.task_control.registry import (
     LEDGER_REBUILT_DETAIL,
     LEDGER_REBUILT_NEXT,
     TaskBoardSnapshot,
+    TaskNotFoundError,
     task_is_unrecoverable,
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReadout
@@ -346,6 +347,7 @@ def _owner_words(code: str) -> str | None:
         (refusal_words(code).get("detail") if code.startswith(("data.", "feature.")) else None)
         or explain(code).get("detail")
         or maintenance_words(code)
+        or refusal_words(code).get("detail")
     )
     return worded if isinstance(worded, str) and worded else None
 
@@ -1255,5 +1257,34 @@ __all__ = [
     "build_task_recovery_view",
     "stop_detail",
     "task_attention",
+    "task_facts",
     "way_on",
 ]
+
+
+def task_facts(registry: Any, task_id: UUID) -> tuple[Any, ...] | None:
+    """A Task's kind, lifecycle, update clock and the successor that continued its stop.
+
+    Args:
+        registry: Task Control's registry.
+        task_id: The Task.
+
+    Returns:
+        The facts a goal reads, the last the successor that succeeded (read as
+        `task_attention` reads it) or none; nothing when the Task is absent.
+    """
+    try:
+        task = registry.task(task_id)
+    except TaskNotFoundError:
+        return None
+    facts = task.task_kind, task.lifecycle.value, task.updated_at
+    if task.lifecycle is not TaskLifecycle.BLOCKED:
+        return (*facts, None)
+    links = registry.recovery_links(task.task_id)
+    successors = {}
+    for link in links:
+        if link.successor_task_id is not None:
+            successors[link.successor_task_id] = registry.task(link.successor_task_id)
+    fact = task_attention(task, successors=successors, links=links)
+    ended = fact.resolution == "SUCCESSOR_SUCCEEDED" and fact.successor_task_id
+    return (*facts, UUID(fact.successor_task_id) if ended else None)

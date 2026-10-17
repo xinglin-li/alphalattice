@@ -224,8 +224,6 @@ def _help_command(kind: str) -> list[str]:
     """The setup's own help, its only read-only way on, as the person runs it (V590)."""
     if kind == "gpu_environment":
         return [sys.executable, "scripts/create_gpu_environment.py", "--help"]
-    if (PLAYPEN / "pyproject.toml").is_file():
-        return [sys.executable, "scripts/create_retrieval_environment.py", "--help"]
     return [
         sys.executable,
         "-m",

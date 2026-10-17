@@ -1,8 +1,10 @@
 """Bound native usage, resumed through one checked checkpoint per exact file.
 
 Only response-id hashes, model/effort, token counts, timestamps and exact-parent child
-locators survive. Conversation bytes are discarded. Complete records advance the cursor;
-source replacement, shrink, same-size modification or a bad checksum rebuild the checkpoint.
+locators survive, and of a Claude member's own commands, the hash of the key it ran with and
+the thread it named (`member_claims`). Conversation bytes are discarded. Complete records
+advance the cursor; source replacement, shrink, same-size modification or a bad checksum
+rebuild the checkpoint.
 Only older checkpoints with child locators need discovery migration; it is not a source change.
 A cumulative mismatch remains named without rescanning an unchanged file. Claude repeats
 response counts by block; Codex includes cached reads/writes in its input counts.
@@ -14,18 +16,23 @@ import json
 import os
 import re
 from collections import deque
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import asdict, dataclass, replace
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, BinaryIO
 from uuid import UUID
 
+from alphalattice.protocols.actor_execution.bundles import bundle_slot
+
 HOST_CLAUDE_CODE = "claude-code"
 HOST_CODEX = "codex"
 _CHILD_DISCOVERY_VERSION = 2
+_CLAIMS_VERSION = 1
+"""A child's checkpoint without this many claims passes is read once again from its start."""
 _MARKERS = {
-    HOST_CLAUDE_CODE: (b'"usage":',),
+    HOST_CLAUDE_CODE: (b'"usage":', b"ACCEPTED"),
     HOST_CODEX: (b"token_usage_record", b"turn_context", b"SubAgentActivity"),
 }
 
@@ -93,6 +100,8 @@ class SessionUsage:
     bytes_read: int = 0
     rescan: bool = False
     cumulative_mismatch: bool = False
+    members: tuple[dict[str, Any], ...] = ()
+    """A Claude file's key evidence (`member_claims`), for the key's owner to verify."""
 
     def by_model(self) -> tuple[ModelUsage, ...]:
         """One row per model, in model order.
@@ -344,17 +353,20 @@ def read_session(
     max_line_bytes: int | None = None,
     checkpoint: dict[str, Any] | None = None,
     binding_key: str | None = None,
+    members: bool = False,
 ) -> SessionUsage:
     """Read whitelisted counts, resuming complete records of this exact native file.
 
     Byte bounds apply per read and per line; a record that cannot fit raises a read-limit
     refusal. The optional binding hash associates the checkpoint with its cleanup owner.
+    ``members`` also keeps a child's key claims (`member_claims`); a lead's are never read.
     """
     with path.open("rb") as stream:
         state = {} if checkpoint is None else checkpoint
         stat = os.fstat(stream.fileno())
-        rescan = _resume(stream, state, stat)
+        rescan = _resume(stream, state, stat, members)
         state.update(
+            **({"claims": _CLAIMS_VERSION} if members else {}),
             child_discovery=_CHILD_DISCOVERY_VERSION,
             offset=state.get("offset", 0),
             size=stat.st_size,
@@ -366,7 +378,9 @@ def read_session(
             for row in state.get("responses", ()):
                 row["response_id"] = sha256(row["response_id"].encode()).hexdigest()
             state["hashed_ids"] = True
-        reading = _read_records(stream, host, state, max_bytes, max_line_bytes)
+        claims = state.setdefault("members", []) if members else None
+        collect = partial(member_claims, claims=claims) if claims is not None else _kept_none
+        reading = _read_records(stream, host, state, (max_bytes, max_line_bytes), collect)
         through = state.get("offset", stream.tell())
         cumulative = state.get("cumulative")
         mismatch = (
@@ -421,7 +435,7 @@ def _boundary(stream: BinaryIO, offset: int) -> list[str]:
     ]
 
 
-def _resume(stream: BinaryIO, state: dict[str, Any], stat: os.stat_result) -> bool:
+def _resume(stream: BinaryIO, state: dict[str, Any], stat: os.stat_result, members: bool) -> bool:
     offset = state.get("offset")
     valid = (
         state.get("digest") == _checksum(state)
@@ -443,7 +457,7 @@ def _resume(stream: BinaryIO, state: dict[str, Any], stat: os.stat_result) -> bo
     rescan = bool(state) and not valid
     migrate = (
         bool(state.get("children")) and state.get("child_discovery") != _CHILD_DISCOVERY_VERSION
-    )
+    ) or (members and bool(state) and state.get("claims") != _CLAIMS_VERSION)
     if not valid or migrate:
         state.clear()
     stream.seek(state.get("offset", 0))
@@ -454,9 +468,10 @@ def _read_records(
     stream: BinaryIO,
     host: str,
     state: dict[str, Any],
-    max_bytes: int | None,
-    max_line_bytes: int | None,
+    bounds: tuple[int | None, int | None],
+    collect: Callable[[Mapping[str, object]], None],
 ) -> SessionUsage:
+    max_bytes, max_line_bytes = bounds
     markers = _MARKERS[host]
     responses = {row["response_id"]: ResponseUsage(**row) for row in state.get("responses", ())}
     incomplete = state.get("incomplete", 0)
@@ -483,7 +498,7 @@ def _read_records(
             continue
         record = _record(line)
         if not record:
-            incomplete += 1
+            incomplete += int(host == HOST_CODEX or b'"usage":' in line)
             continue
         if host == HOST_CODEX and b"SubAgentActivity" in line:
             child = _codex_child(record)
@@ -491,6 +506,7 @@ def _read_records(
                 children.setdefault(child)
             continue
         if host == HOST_CLAUDE_CODE:
+            collect(record)
             response = _claude_response(record)
         else:
             turn = _codex_turn(record, turn)
@@ -522,6 +538,7 @@ def _read_records(
         first_at=first_at,
         last_at=next((stamp for stamp in reversed(stamps) if stamp), None),
         children=tuple(children),
+        members=tuple(state.get("members", ())),
     )
 
 
@@ -677,6 +694,85 @@ def _claude_response(record: Mapping[str, object]) -> ResponseUsage | int | None
         output_tokens=output,
         at=_text(record.get("timestamp")),
     )
+
+
+MEMBER_CLAIMS = 64
+"""The most distinct key claims one file keeps; a member runs a handful."""
+_KEY = re.compile(r"--key[=\s]+['\"]?([0-9a-f]{32})\b")
+_COMMITTEE = re.compile(r"\bcommittee\s+(submit|wait)\b")
+_UPDATE = re.compile(r"--update[=\s]+['\"]?([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\b")
+_ROLE = re.compile(r"--role[=\s]+['\"]?([A-Z]+)\b")
+_BUNDLE = re.compile(r"\bbundle\s+submit\b")
+_DIR = re.compile(r"--dir[=\s]+(?:\"([^\"]+)\"|'([^']+)'|(\S+))")
+_USE_FIELD = {"tool_use": "id", "tool_result": "tool_use_id"}
+_SPOKE = re.compile(r'"(?:message_id|answer_reference)":\s*"(M\d+|[0-9a-f]{64})"')
+_ACCEPTED = re.compile(r'"(?:answer_)?status":\s*"(?:COMMITTEE_MESSAGE_)?ACCEPTED"')
+
+
+def _kept_none(record: Mapping[str, object]) -> None:
+    """A lead's file: its claims are never verified, so none are kept."""
+
+
+def member_claims(record: Mapping[str, object], claims: list[dict[str, Any]]) -> None:
+    """Add the key evidence one Claude record holds: a command it ran, or that command's result.
+
+    A command that names one member key and one committee thread and role, or one review bundle
+    directory, is a claim: the key's SHA-256 (never the key), the thread or the bundle's slot,
+    the role and whether it submits. A later result that reports the submit accepted names what
+    it made: the floor message's id or the review answer's reference (``spoke``). The key's
+    owner verifies a claim; the reader trusts none.
+    """
+    message = record.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    for block in content if isinstance(content, list) else ():
+        kind = block.get("type") if isinstance(block, dict) else None
+        use = block.get(_USE_FIELD.get(kind, "")) if kind else None
+        if not isinstance(use, str):
+            continue
+        use = sha256(use.encode()).hexdigest()[:16]
+        if kind == "tool_result":
+            _accepted(block.get("content"), use, claims)
+            continue
+        found = _claim(block.get("input"), record.get("cwd"))
+        if found is None:
+            continue
+        same = next((c for c in claims if c["id"] == found["id"]), None)
+        if same is None and len(claims) < MEMBER_CLAIMS:
+            claims.append(same := found)
+        if same is not None and same["submit"]:
+            same["use"] = use  # the latest attempt is the one a result answers
+
+
+def _accepted(text: object, use: str, claims: list[dict[str, Any]]) -> None:
+    """Name what the submit a result answers made, when the result reports it accepted."""
+    if isinstance(text, list):
+        text = " ".join(str(p.get("text", "")) for p in text if isinstance(p, dict))
+    if isinstance(text, str) and _ACCEPTED.search(text):
+        for claim in (c for c in claims if c.get("use") == use):
+            claim["spoke"] = sorted({*claim["spoke"], *_SPOKE.findall(text)})[:8]
+
+
+def _claim(tool_input: object, cwd: object) -> dict[str, Any] | None:
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    keys = set(_KEY.findall(command)) if isinstance(command, str) else set()
+    if not isinstance(command, str) or len(keys) != 1:
+        return None
+    key = sha256(keys.pop().encode()).hexdigest()
+    threads, roles = set(_UPDATE.findall(command)), set(_ROLE.findall(command))
+    verb, folders = _COMMITTEE.search(command), _DIR.findall(command)
+    if verb is not None and len(threads) == len(roles) == 1:
+        found = {"thread": threads.pop(), "role": roles.pop(), "submit": verb[1] == "submit"}
+    elif _BUNDLE.search(command) is not None and len(folders) == 1:
+        named = next(part for part in folders[0] if part)
+        folder = Path(re.sub(r"^/([a-zA-Z])/", r"\1:/", named) if os.name == "nt" else named)
+        if not folder.is_absolute() and not isinstance(cwd, str):
+            return None
+        folder = folder if folder.is_absolute() else Path(str(cwd)) / folder
+        found = {"reference": bundle_slot(str(folder)), "submit": True}
+    else:
+        return None
+    ident = sha256(json.dumps([key, found], sort_keys=True).encode()).hexdigest()[:16]
+    return {"id": ident, "key": key, **found, "spoke": []}
 
 
 def _codex_turn(

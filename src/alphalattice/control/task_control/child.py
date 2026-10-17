@@ -52,9 +52,15 @@ POLL_SECONDS = 0.5
 PARENT_WATCH_SECONDS = 2.0
 """How often the worker looks for its parent; a worker whose parent is gone ends at once."""
 
+KEPT_WORKER_IDLE_SECONDS = 180.0
+"""How long a kept worker waits with no call before it retires; the next call starts it again.
+An execution parameter: an idle Host keeps no workers the person would see for its whole life."""
+
 _WORKERS: dict[int, ProcessPoolExecutor] = {}
 """The kept workers by position; 0 is the Task's."""
 _WORKER_LOCK = threading.Lock()
+_BUSY: dict[ProcessPoolExecutor, int] = {}
+"""Each kept worker's calls in flight; one with none retires after `KEPT_WORKER_IDLE_SECONDS`."""
 _SHARED: dict[str, dict[str, Any]] = {}
 """In a kept worker, by call set, the values that set shipped once, by content key. Sets may
 interleave on one worker; each set's close forgets its own."""
@@ -277,7 +283,35 @@ def _submitted(
         if pool is not None:
             _retire_worker(worker, pool)
         raise ChildStartFailed(error) from error
+    _hold(worker, pool, future)
     return _Submitted(worker, pool, future, answer)
+
+
+def _hold(worker: int, pool: ProcessPoolExecutor, future: Future[Any]) -> None:
+    """Count a call in flight on a kept worker; its last call's end starts the idle wait."""
+    with _WORKER_LOCK:
+        _BUSY[pool] = _BUSY.get(pool, 0) + 1
+
+    def ended(_done: Future[Any]) -> None:
+        with _WORKER_LOCK:
+            _BUSY[pool] -= 1
+            idle = not _BUSY[pool]
+        if idle:
+            timer = threading.Timer(KEPT_WORKER_IDLE_SECONDS, _retire_idle, (worker, pool))
+            timer.daemon = True
+            timer.start()
+
+    future.add_done_callback(ended)
+
+
+def _retire_idle(worker: int, pool: ProcessPoolExecutor) -> None:
+    """Retire a kept worker that took no call since its idle wait began."""
+    with _WORKER_LOCK:
+        if _BUSY.get(pool) or _WORKERS.get(worker) is not pool:
+            return
+        del _WORKERS[worker]
+        _BUSY.pop(pool, None)
+    pool.shutdown(wait=False, cancel_futures=False)
 
 
 def _waited(
@@ -332,6 +366,7 @@ def _retire_worker(worker: int, pool: ProcessPoolExecutor) -> None:
     with _WORKER_LOCK:
         if _WORKERS.get(worker) is pool:
             del _WORKERS[worker]
+        _BUSY.pop(pool, None)
     # Only the failing call: other Tasks' calls queued on it are answered as they stand.
     pool.shutdown(wait=False, cancel_futures=False)
 

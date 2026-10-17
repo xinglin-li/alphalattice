@@ -134,6 +134,11 @@ function durationOf(x) {
   return Number.isFinite(end) && end >= start ? durationText(end - start) : '';
 }
 const STAGES = {
+  environment: {word: 'Prepare retrieval environment'},
+  model: {word: 'Prepare retrieval models'},
+  acquisition: {word: 'Prepare source evidence'},
+  index: {word: 'Build retrieval index'},
+  publish: {word: 'Publish Evidence package'},
   build_historical_tradability: {word: 'Build historical tradability'}, pre_research_delta_gate: {word: 'Pre research delta gate'},
   // the workspace preparation: the five steps, each with its note for the unprepared Home
   freeze_sources: {word: 'Freeze sources', note: 'Keep a reproducible copy of the selected source membership.', line: 'Capturing the current index memberships from the declared sources: the exact candidate list this preparation uses.'},

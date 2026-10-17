@@ -6,9 +6,10 @@
 
 **Turn an investment idea into a reviewed research portfolio.**
 
-Tell your Codex or Claude Code agent what you want to investigate. It uses
+Tell your Claude Code or Codex agent what you want to investigate. It uses
 AlphaLattice to run quantitative studies, check source evidence and bring the
-results to a research committee. Follow the work and its results in your browser.
+results to a research committee. Follow the work and its results in your coding app's
+built-in browser.
 
 Numerical inputs are bounded by the date's cutoff, with a grader checking for
 look-ahead in verification runs. The committee can decline endorsement;
@@ -16,7 +17,7 @@ AlphaLattice runs locally and is open source.
 
 Give your agent this repository's link and one intent:
 
-> Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your browser so I can follow it.
+> Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your built-in browser so I can follow it.
 
 <!-- Hero image reserved: committee discussion from the final acceptance run. -->
 
@@ -134,7 +135,7 @@ historical source availability alongside the performance.
 ## Before you start
 
 - **Environment:** Windows is the supported platform. Setup uses Python 3.12, uv
-  and locked dependencies, with Codex or Claude Code. On Linux and macOS, CI checks
+  and locked dependencies, with Claude Code or Codex. On Linux and macOS, CI checks
   installation and an offline first use; other use there is not guaranteed. On
   macOS, install the OpenMP runtime:
 
@@ -151,7 +152,7 @@ historical source availability alongside the performance.
   Task to writing the delivery report. Installation and live downloads were outside
   that interval. Data and model-pack downloads add time when needed, depending
   on your connection. This is an observation, not a runtime guarantee.
-- **Agent costs:** Your Codex or Claude Code access and usage costs are separate
+- **Agent costs:** Your Claude Code or Codex access and usage costs are separate
   from AlphaLattice; check your provider's terms.
 
 See [Getting started](docs/public-source/getting-started.md) and the

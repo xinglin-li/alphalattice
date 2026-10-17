@@ -30,9 +30,11 @@ from alphalattice.interface.local_application.native_usage import (
     claude_children,
     claude_thread_spawn,
     codex_session_file,
+    member_claims,
     read_session,
     session_file,
 )
+from alphalattice.protocols.actor_execution.bundles import bundle_slot
 from devtools.evaluation.native_usage import STEPS, walk
 
 SECRET = "SECRET-TRANSCRIPT-TEXT"
@@ -159,6 +161,41 @@ def _lead_records():
         _assistant("msg_2", "claude-opus-5-5", output=7, at="2026-09-29T01:00:09Z"),
         _assistant("msg_3", "claude-opus-5-5", output=1, at="2026-09-29T01:00:10Z", usage={}),
     ]
+
+
+KEY, THREAD = "0123456789abcdef0123456789abcdef", "afc0f906-28c2-4c6d-9d0b-fd249bdf88d4"
+CLAIMS = [
+    (f"x committee submit --update {THREAD} --role ALPHA --key={KEY}", ("ALPHA", True)),
+    (f"x committee wait --update '{THREAD}' --role RISK --key \"{KEY}\"", ("RISK", False)),
+    (f'x bundle submit --dir "out/a 1" --key {KEY}', "out/a 1"),
+    (f"x bundle submit --dir /d/w/out --key {KEY}", "D:/w/out" if os.name == "nt" else "/d/w/out"),
+    (f"x --key {KEY}; x committee submit --update {THREAD} --role ALPHA --key {KEY[::-1]}", None),
+    (f"x committee submit --update {THREAD} --role ALPHA --key $key", None),
+]
+
+
+@pytest.mark.parametrize(("command", "claimed"), CLAIMS)
+def test_a_member_claim_keeps_only_its_keys_hash_its_thread_and_what_it_spoke(
+    tmp_path, command, claimed
+):
+    """One key per command, quoted or `=`, a relative or MSYS bundle path; never the key."""
+    claims: list[dict] = []
+    use = {"type": "tool_use", "id": "u1", "input": {"command": command}}
+    member_claims({"cwd": str(tmp_path), "message": {"content": [use]}}, claims)
+    said = '{"status": "COMMITTEE_MESSAGE_ACCEPTED", "message_id": "M3"}'
+    result = {"type": "tool_result", "tool_use_id": "u1", "content": said}
+    member_claims({"message": {"content": [result]}}, claims)
+    if claimed is None:
+        assert claims == []
+        return
+    (claim,) = claims
+    assert claim["key"] == sha256(KEY.encode()).hexdigest() and KEY not in json.dumps(claims)
+    if isinstance(claimed, str):
+        folder = Path(claimed) if Path(claimed).is_absolute() else tmp_path / claimed
+        assert (claim["reference"], claim["spoke"]) == (bundle_slot(str(folder)), ["M3"])
+    else:
+        assert (claim["thread"], claim["role"], claim["submit"]) == (THREAD, *claimed)
+        assert claim["spoke"] == (["M3"] if claimed[1] else [])
 
 
 def test_a_claude_session_counts_each_response_once_and_keeps_no_text(tmp_path):

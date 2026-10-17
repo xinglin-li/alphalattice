@@ -24,6 +24,7 @@ from alphalattice.protocols.actor_execution.bundles import (
     BundleBlock,
     BundleSection,
     compose_bundle,
+    moment_text,
     pack_sections,
     wrap_text,
 )
@@ -217,8 +218,8 @@ def _index(
         "# Alternative Evidence: the Analyst's bundle",
         "",
         f"Question: {obligation.question}",
-        f"Issuers: {', '.join(entity_ids)}. Evidence as of "
-        f"{obligation.evidence_as_of.date().isoformat()}.",
+        f"Issuers: {', '.join(entity_ids)}. Evidence cutoff: "
+        f"{moment_text(obligation.evidence_as_of)}.",
         "",
         "Read this index, then every material file under Files below, before you decide. Every "
         "excerpt is quoted verbatim from an admitted filing and named by an alias (S1, S2, ...). "

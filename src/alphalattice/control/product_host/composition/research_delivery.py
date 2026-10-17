@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
+from pydantic import ValidationError
 from pydantic_core import to_jsonable_python
 
 from alphalattice.control.product_host.publication.goals import GoalStore
@@ -383,3 +384,28 @@ def export_update_delivery(
     rendered = render_research_delivery(snapshot)
     body = {**snapshot, "html": rendered}
     return {**body, "export_hash": str(canonical_hash(body))}
+
+
+def refused_document(operation: str, error: ValidationError) -> dict[str, object]:
+    """The refusal for an invalid document in an EXPERIMENT operation.
+
+    Args:
+        operation: The refused operation.
+        error: Its validation error.
+
+    Returns:
+        In a delivery export, the product's fault: nothing changed, send once more, then report
+        it. Elsewhere, the declaration to correct and replan.
+    """
+    if operation == "EXPERIMENT_DELIVERY_EXPORT":
+        return {
+            "status": "REFUSED",
+            **located_failure(error, "research_delivery.export_failed"),
+            "next_action": "SEND_ONCE_MORE_THEN_REPORT_THE_PROBLEM",
+        }
+    return {
+        "status": "REFUSED",
+        **located_failure(error, "research_experiment.document_invalid"),
+        "next_action": "CORRECT_DECLARATION_AND_REPLAN",
+        "next_requests": {"inputs": {"operation": "RESEARCH_INPUTS"}},
+    }

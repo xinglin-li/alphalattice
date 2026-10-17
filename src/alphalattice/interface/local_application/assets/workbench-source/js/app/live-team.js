@@ -226,6 +226,7 @@ const LiveTeam = (() => {
     return candidates.length === 1 && candidates[0].paths.size === 1 ? candidates[0].pt : null;
   }
   const recipientName = (s, id, entry = null) => {
+    if (entry?.subject.recipient_role) return roleName(entry.subject.recipient_role);
     const bundle = entry?.subject.bundle_reference;
     const roles = new Set(bundle && entry.messageKind === 'issue' ? [...s.entries.values()].filter((e) => e.channel === REVIEW && e.subject.authorship_basis === 'HOST_ACCEPTED' && e.replyTo === entry.messageId && e.subject.bundle_reference === bundle && e.role && ![PM_ROLE, HOST_ROLE].includes(e.role)).map((e) => ROLE_SAME[e.role] || e.role) : []);
     if (roles.size === 1) return roleName([...roles][0]);
@@ -587,7 +588,7 @@ const LiveTeam = (() => {
     const accepted = acceptedAnswer(e), kind = accepted ? ['Accepted answer', 'file'] : e.kind === 'message' ? MESSAGE_KINDS[e.messageKind] || ['Message kind not declared', 'info'] : ['Host input', 'activity'];
     const pmOf = (r) => { const pt = s.participants.get(r.actor); return ['pm_response', 'ruling'].includes(r.messageKind) && (r.ownerFloor ? r.role === PM_ROLE && r.actor === s.id : Boolean(pt) && isLead(pt, s)); };
     const person = e.channel === COMMITTEE && e.messageKind === 'person_answer', author = person ? t('Person') : e.ownerFloor || e.channel === REVIEW ? roleName(e.role) : actorName(s, e.actor);
-    const mention = person ? e.subject.relay_word ? html`<span class="team-kind">· ${t(e.subject.relay_word)}</span>` : '' : e.recipient ? html`<span class="team-mention" tabindex="0" data-tip="${e.recipient}">→ @${e.recipientRole ? roleName(e.recipientRole) : recipientName(s, e.recipient, e)}</span>` : '';
+    const mention = person ? e.subject.relay_word ? html`<span class="team-kind">· ${t(e.subject.relay_word)}</span>` : '' : e.recipient ? html`<span class="team-mention" tabindex="0" data-tip="${e.recipient}">→ @${recipientName(s, e.recipient, e)}</span>` : '';
     const declaredPm = e.messageKind === 'pm_response' && !pmOf(e) ? html` <span class="muted">(${t('declared pm_response, not the Main PM')})</span>` : '';
     const kindMark = accepted ? html`<span class="team-kind" tabindex="0" data-tip="${t(CHANNELS.PRODUCT_ACCEPTED_ANSWER)}">· ${t(kind[0])}</span>` : html`<span class="team-kind">· ${t(kind[0])}${declaredPm}</span>`;
     const submitter = accepted ? html`<span class="team-kind">· ${t('Submitted by')} <span tabindex="0" data-tip="${e.subject.submitted_by || ''}">${recipientName(s, e.subject.submitted_by)}</span></span>` : '';
@@ -898,8 +899,8 @@ const LiveTeam = (() => {
   }
   function committeeEntries(b) {
     return b.messages.map(m => {
-      const row = m.row, sub = row.subject, recipient = Object.keys(b.member_agents).find(role => b.member_agents[role] === sub.recipient_id);
-      return {id: row.producer_session + ':' + m.id, ordinal: row.producer_sequence, kind: 'message', at: row.occurred_at, subject: sub, payload: row, actor: sub.native_agent_id, role: sub.role, channel: sub.input_channel, messageKind: sub.message_kind, messageId: sub.message_id, recipient: sub.recipient_id, recipientRole: b.member_cards[recipient], reference: sub.reference, replyTo: sub.reply_to, qualified: qualify(sub.reference), text: m.text, outcome: m.outcome, targets: m.targets, targetText: m.target_text, dissentStands: b.standing_dissents.includes(m.id), ownerFloor: true, conflictsWith: []};
+      const row = m.row, sub = row.subject;
+      return {id: row.producer_session + ':' + m.id, ordinal: row.producer_sequence, kind: 'message', at: row.occurred_at, subject: sub, payload: row, actor: sub.native_agent_id, role: sub.role, channel: sub.input_channel, messageKind: sub.message_kind, messageId: sub.message_id, recipient: sub.recipient_id, reference: sub.reference, replyTo: sub.reply_to, qualified: qualify(sub.reference), text: m.text, outcome: m.outcome, targets: m.targets, targetText: m.target_text, dissentStands: b.standing_dissents.includes(m.id), ownerFloor: true, conflictsWith: []};
     });
   }
   function committeeView(s, actor) {

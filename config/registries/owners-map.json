@@ -169,10 +169,11 @@
    "note": "level 1 with no peers: only code importing level 0 alone may move there (V213) The Host's research_authoring files are its composition (O3, 2026-09-29): the Desk handoffs, the drafts that compose the Host's input envelope with a Desk's installed domain, the authority resolver over the workspace, and the paired methodology's source resolver over five owners' stores; their one-owner helpers adapt an owner's store to the workspace or translate its refusal into the authoring vocabulary. The Desk computations they held moved: the execution-outcome selection to causal outcomes and the development Alpha mandate to Alpha. One component's lifecycle admission moved to Alpha's scores/lifecycle_preparation.py with MODEL_KERNEL's rotation for V365 and V366 (V325, 2026-10-01)."
   },
   "the agent seam": {
-   "covers": "an agent's submissions and their provenance",
+   "covers": "an agent's submissions, provenance and readable answer/bundle moments",
    "owner": "alphalattice.protocols.actor_execution",
    "defined_by": [
-    "alphalattice.protocols.actor_execution.contracts"
+    "alphalattice.protocols.actor_execution.contracts",
+    "alphalattice.protocols.actor_execution.bundles"
    ],
    "folds_in": [],
    "retiring": [],
@@ -218,6 +219,23 @@
    ],
    "folds_in": [],
    "note": "left the retired goal loop's package in GR4; a goal is the Host's ledger (GR1)"
+  },
+  "the committee": {
+   "covers": "the investment committee on a date's published positions: its floor, its report, and the person's daily committee setting, stored at runtime/committee-daily.json in the workspace",
+   "owner": "alphalattice.control.product_host.composition",
+   "defined_by": [
+    "alphalattice.control.product_host.composition.committee"
+   ],
+   "folds_in": []
+  },
+  "native session": {
+   "covers": "an agent Session bound to the workspace and its members: the binding, each member's usage read from the host's own session files, which role each member is by the key evidence its file holds, and the wake",
+   "owner": "alphalattice.interface.local_application",
+   "defined_by": [
+    "alphalattice.interface.local_application.native_bridge",
+    "alphalattice.interface.local_application.native_usage"
+   ],
+   "folds_in": []
   }
  }
 }

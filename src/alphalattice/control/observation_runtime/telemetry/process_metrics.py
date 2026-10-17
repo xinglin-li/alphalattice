@@ -500,11 +500,14 @@ class RuntimeCapacityRequest(_CapacityContract):
         maximum_memory_fraction: Fractional memory ceiling used when no absolute reservation is
             supplied.
         reserved_logical_processors: Positive processor headroom kept outside the workload.
+        maximum_kept_workers: The most kept workers a Task's spread work starts, however many
+            cores its budget holds: each is a process the person sees for as long as it is kept.
     """
 
     maximum_memory_gib: float | None = Field(default=None, gt=0.0)
     maximum_memory_fraction: float = Field(default=0.60, gt=0.0, le=0.90)
     reserved_logical_processors: int = Field(default=1, ge=1)
+    maximum_kept_workers: int = Field(default=8, ge=1)
 
 
 class RuntimeParallelismRequest(_CapacityContract):
@@ -837,11 +840,14 @@ def worker_processes(cores: int) -> int:
     writes what comes back, never fewer than one worker. Memory admits as many workers of this
     process's current size as fit in the share of available memory a runtime plan admits by
     default: a worker imports what its parent imported, so the parent's size is a cautious
-    measure of one.
+    measure of one. However many cores, no more than `maximum_kept_workers` (a 32-thread
+    machine kept 21 idle processes for the Host's life).
     """
     _total, available = _memory_capacity()
-    admitted = int(available * RuntimeCapacityRequest().maximum_memory_fraction)
-    return max(1, min(cores - 1, admitted // max(1, current_rss_bytes())))
+    request = RuntimeCapacityRequest()
+    admitted = int(available * request.maximum_memory_fraction)
+    fit = admitted // max(1, current_rss_bytes())
+    return max(1, min(cores - 1, request.maximum_kept_workers, fit))
 
 
 def resolve_runtime_capacity_plan(

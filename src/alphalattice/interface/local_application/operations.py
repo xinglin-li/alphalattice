@@ -89,7 +89,8 @@ GRAMMAR: Final[dict[str, Command]] = {
     "AGENT_BUNDLE_PREPARE": Command(
         "bundle",
         "prepare",
-        "Writes a specialist's complete bundle into a new directory; names its answer file.",
+        "Writes or continues a specialist's complete bundle in its own directory; "
+        "names its answer file.",
     ),
     "CANCEL": Command(
         "task",
@@ -195,12 +196,19 @@ GRAMMAR: Final[dict[str, Command]] = {
         "committee",
         "open",
         "Opens the investment committee on a date's published positions, or reads the one "
-        "open; writes each member's bundle into a new directory with its commands.",
+        "open; offers each member's bundle, which `bundle prepare` writes into a new, empty or "
+        "matching directory.",
     ),
     "COMMITTEE_SUBMIT": Command(
         "committee",
         "submit",
         "Sends one member's message to the committee's floor, checked by its rules.",
+    ),
+    "COMMITTEE_DAILY_SET": Command(
+        "committee",
+        "daily",
+        "Sets, on the person's relayed answer, whether each daily update's published review "
+        "convenes the committee; off, the PM gives its view and the committee is offered.",
     ),
     "COMMITTEE_READ": Command(
         "committee",
@@ -1014,6 +1022,7 @@ FLAGS: Final[dict[str, str]] = {
     "automation_package_ids": "packages",
     "backup_generations_kept": "keep",
     "bundle_directory": "dir",
+    "committee_daily_enabled": "enabled",
     "committee_key": "key",
     "committee_role": "role",
     "committee_seen": "seen",

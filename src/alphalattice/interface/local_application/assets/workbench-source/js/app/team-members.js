@@ -40,7 +40,7 @@ const TeamMembers = (() => {
   };
   function externalItems(X) {
     const merged = new Map(X.items);
-    for (const g of LiveActivity.retained()) for (const item of g.items) if (item.schema_kind === 'ExternalActivityObserved') merged.set(item.observation_id, item);
+    for (const g of LiveActivity.retained()) for (const item of g.items) if (item.schema_kind === 'ExternalActivityObserved' && !X.items.has(item.observation_id)) merged.set(item.observation_id, item); // the Team read's row is joined
     const usage = new Map(), usageKey = item => { const sub = item.payload?.subject || {}; return [sub.native_session_id, sub.native_agent_id, sub.model].join('|'); };
     for (const item of merged.values()) if (item.payload?.event_kind === 'NATIVE_AGENT_USAGE') { const key = usageKey(item), held = usage.get(key); if (!held || held.ordinal < item.ordinal) usage.set(key, item); }
     const items = [...merged.values()].filter(item => {

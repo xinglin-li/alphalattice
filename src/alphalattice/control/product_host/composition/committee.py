@@ -13,6 +13,7 @@ box closes it. The committee changes no number.
 from __future__ import annotations
 
 import hmac
+import json
 import re
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
@@ -43,6 +44,7 @@ from alphalattice.control.product_host.composition.committee_materials import (
 )
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.publication.goals import GoalStore
+from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
@@ -50,6 +52,7 @@ from alphalattice.interface.local_application.cli_contract import (
 )
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.interface.local_application.labels import label as installed_label
+from alphalattice.interface.local_application.native_bridge import SUBJECT_VALUE_CHARACTERS
 from alphalattice.interface.local_application.portfolio_research import (
     CommitteeMessage,
     PortfolioResearchOperationRequest,
@@ -59,7 +62,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.advancement_task
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
-from alphalattice.protocols.actor_execution.bundles import bundle_slot
+from alphalattice.protocols.actor_execution.bundles import bundle_slot, moment_text
 
 ROLES: Final = ("PM", "ALPHA", "RISK", "CRO")
 CARDS: Final = {r: f"alphalattice_{r.lower()}" for r in ROLES[1:]} | {"PM": "research_lead"}
@@ -75,6 +78,32 @@ RELAY_WORD: Final = "Relayed by the agent"
 PASSED: Final = "{member} passed its discussion turn"
 """A yielded turn, as the report reads it."""
 STANCE_MINUTES, FLOOR_MINUTES, MESSAGE_CAP = 10, 40, 3
+DISCUSSION_MINUTES: Final = 5
+"""The one discussion round after the reveal, a floor rule recorded on the floor: a specialist
+silent past it has passed (silent), and an unruled challenge no longer holds the verdict."""
+PASSED_SILENT: Final = "{member} passed its discussion turn (silent)"
+"""A turn the discussion window closed on silence, as the report reads it."""
+UNRULED_ON: Final = "Challenge stood unruled on {targets}"
+NO_PM_STANCE: Final = (
+    "The PM gave no stance, so the floor never reached its debate; its time box closed it "
+    "without a verdict."
+)
+SUGGESTIONS: Final = {
+    "OBJECT": "Consider avoiding or reducing {holdings}: {member}",
+    "SUPPORT": "Could keep or add to {holdings}: {member}",
+}
+"""The report's lead: a member's standing OBJECT or SUPPORT on holdings, as a suggestion."""
+NO_SUGGESTION: Final = "No member suggested avoiding, reducing or adding a holding"
+VERDICT_RULE: Final = (
+    "not an approval or advice. PROCEED_WITH_NOTES by default, members' reservations carried as "
+    "notes; DECLINE endorsement only for a named hard defect (a data error, a Risk bound breached, "
+    "key evidence missing), naming it; FOR_THE_PERSON only for a named decision of the person; "
+    "PROCEED when nothing needs noting."
+)
+"""How the PM chooses its verdict: the committee is a showcase of discussion, never a gate."""
+NO_NUMBER: Final = (
+    "The committee changed no number; whether to act on its suggestions is the person's decision."
+)
 TURN: Final = frozenset({"CHALLENGE", "REPLY", "PASS"})
 """A specialist's discussion turn: spoken, or passed."""
 RULES: Final[dict[str, tuple[tuple[str, ...], frozenset[str], str | None]]] = {
@@ -112,7 +141,8 @@ RULE_WORDS: Final = {
     "is on the floor, before it challenged or replied, and names no target or position; after it "
     "the member sends nothing more.",
     "TARGET": "A target, position or alias names nothing on the floor; name only the tension "
-    f"points, holdings and messages `{COMMAND} committee show` lists.",
+    f"points, holdings and messages `{COMMAND} committee show` lists. A point typed by its kind "
+    "or a holding by its name is offered corrected, with its alias.",
     "REPLY_TO": "The message named in reply_to cannot be answered by this kind: a REPLY answers "
     "any message, a RULING a challenge not yet ruled, a PERSON_ANSWER an item handed to the "
     "person. Send the corrected message the answer offers.",
@@ -172,9 +202,61 @@ class Floor:
         kinds = [m["kind"] for m in self.messages]
         if "VERDICT" in kinds or now >= datetime.fromisoformat(self.opened["closes_at"]):
             return "CLOSED"
-        stances = {m["role"] for m in self.messages if m["kind"] == "STANCE"}
-        late = now >= datetime.fromisoformat(self.opened["stances_close_at"])
-        return "DEBATE" if stances >= set(ROLES) or late else "STANCES"
+        revealed = self.revealed_at()
+        return "DEBATE" if revealed is not None and now >= revealed else "STANCES"
+
+    def revealed_at(self) -> datetime | None:
+        """When the stances are revealed.
+
+        Once all four are in inside the stance window, at the last of them; else at the window's
+        close or the PM's stance, whichever is later. Never without the PM's stance.
+
+        Returns:
+            The reveal's time, or None while the PM's stance is not in.
+        """
+        stances = {
+            m["role"]: datetime.fromisoformat(m["at"])
+            for m in self.messages
+            if m["kind"] == "STANCE"
+        }
+        if "PM" not in stances:
+            return None
+        window = datetime.fromisoformat(self.opened["stances_close_at"])
+        last = max(stances.values())
+        return last if set(stances) >= set(ROLES) and last <= window else max(window, stances["PM"])
+
+    def discussion_over(self, now: datetime) -> bool:
+        """Whether this floor's recorded discussion window has passed since the reveal.
+
+        Args:
+            now: The time the floor is read at.
+
+        Returns:
+            True once the window has passed; False before it, or on a floor without the rule.
+        """
+        revealed, minutes = self.revealed_at(), self.opened.get("discussion_minutes")
+        return (
+            revealed is not None
+            and minutes is not None
+            and now >= revealed + timedelta(minutes=minutes)
+        )
+
+    def silent(self, now: datetime) -> list[str]:
+        """The specialists the discussion window closed on without a turn of their own.
+
+        A closed floor is read at its close (its verdict, else its time box), so its report
+        never moves with the clock.
+
+        Args:
+            now: The time the floor is read at.
+
+        Returns:
+            Their roles, in the floor's order; none while the window is open.
+        """
+        spoke = {m["role"] for m in self.messages if m["kind"] in TURN}
+        verdict = next((m["at"] for m in self.messages if m["kind"] == "VERDICT"), None)
+        moment = min(now, datetime.fromisoformat(verdict or self.opened["closes_at"]))
+        return [r for r in ROLES[1:] if r not in spoke] if self.discussion_over(moment) else []
 
 
 OPENER_WORDS: Final = (
@@ -188,12 +270,13 @@ def settled(floor: Floor, now: datetime) -> bool:
     """Whether the debate has settled, so the PM gives the verdict on an event.
 
     It has once every specialist used its turn (a CHALLENGE or REPLY) or passed it, and no
-    challenge stands unruled.
+    challenge stands unruled; or once the discussion window has passed, whatever stands.
     """
     spoke = {m["role"] for m in floor.messages if m["kind"] in TURN}
     ruled = {m["reply_to"] for m in floor.messages if m["kind"] == "RULING"}
     open_ = [m for m in floor.messages if m["kind"] == "CHALLENGE" and m["id"] not in ruled]
-    return floor.stage(now) == "DEBATE" and spoke >= set(ROLES[1:]) and not open_
+    done = spoke >= set(ROLES[1:]) and not open_
+    return floor.stage(now) == "DEBATE" and (done or floor.discussion_over(now))
 
 
 def member_key(seed: str, thread: str, role: str) -> str:
@@ -265,12 +348,153 @@ def offer(host: Any, review: dict[str, Any], book: Any, caller: str) -> dict[str
         review["next_action"] = "REPORT_THE_COMMITTEE"
         review["next_requests"]["committee_report"] = delivery(floor)
     else:
-        review["next_action"] = "CONVENE_THE_COMMITTEE"
+        convenes = floor is not None or _convenes_daily(host, str(task))
+        review["next_action"] = "CONVENE_THE_COMMITTEE" if convenes else "GIVE_THE_PM_VIEW"
         review["next_requests"]["committee"] = {
             "operation": "COMMITTEE_OPEN",
             "update_task_id": task,
         }
     return review
+
+
+DAILY_PATH: Final = Path("runtime") / "committee-daily.json"
+"""The person's daily committee setting, in the workspace's runtime folder; none means off."""
+DAILY_ASK: Final = (
+    "Should each daily update also convene the investment committee, about ten more minutes? "
+    "Without it, the PM gives its view on the reviewed positions."
+)
+"""The one question the first use's report asks, word for word, until the person answers it."""
+_DAILY_WORDS: Final = {
+    "ON": "Each daily update's published review convenes the investment committee.",
+    "OFF": "A daily update's published review gets the PM's view on the reviewed positions; the "
+    "committee is offered, not convened.",
+    "UNANSWERED": "Never answered, so off: a daily update's review gets the PM's view, and the "
+    "committee is offered.",
+}
+
+
+def committee_daily(workspace: Path) -> bool | None:
+    """Whether each daily update convenes the committee; None when never answered (off).
+
+    A record this owner did not write reads as off.
+    """
+    try:
+        record = json.loads((workspace / DAILY_PATH).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return False
+    return (
+        isinstance(record, dict)
+        and record.get("schema") == "committee-daily"
+        and record.get("version") == 1
+        and record.get("enabled") is True
+    )
+
+
+def daily_answer(workspace: Path) -> dict[str, object]:
+    """The setting as `workspace show` and its set read it, with the request that turns it.
+
+    Args:
+        workspace: The workspace root.
+
+    Returns:
+        Its standing (ON, OFF or UNANSWERED), what that means and the opposite request.
+    """
+    enabled = committee_daily(workspace)
+    standing = "UNANSWERED" if enabled is None else "ON" if enabled else "OFF"
+    return {
+        "status": "COMMITTEE_DAILY",
+        "committee_daily": standing,
+        "detail": _DAILY_WORDS[standing],
+        "next_requests": {
+            "set": {"operation": "COMMITTEE_DAILY_SET", "committee_daily_enabled": not enabled}
+        },
+    }
+
+
+def set_daily(workspace: Path, *, enabled: bool, relayed_by: str | None) -> dict[str, object]:
+    """Atomically write the person's answer with the session that relayed it, then read it back.
+
+    Args:
+        workspace: The workspace root.
+        enabled: Whether each daily update convenes the committee.
+        relayed_by: The agent session that relayed the person's words, if one did.
+
+    Returns:
+        The setting's answer.
+    """
+    path = workspace / DAILY_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staged = path.with_suffix(".json.tmp")
+    record = {"schema": "committee-daily", "version": 1, "enabled": enabled}
+    staged.write_text(json.dumps(record | {"relayed_by": relayed_by}), "utf-8")
+    replace_shared_file(staged, path)
+    return daily_answer(workspace)
+
+
+def _first_use_update(goals: Any, task: str) -> bool:
+    """Whether this update ran under the workspace's first-use goal (its own date)."""
+    first = goals.first_use()
+    return first is not None and any(
+        e.get("operation") == "RESEARCH_UPDATE_RUN" and e.get("task_id") == task
+        for e in goals.store.attributed(first.goal_id)
+    )
+
+
+def _convenes_daily(host: Any, task: str) -> bool:
+    """A published review convenes its committee on the first use's date or the person's yes."""
+    if committee_daily(host.workspace_session.workspace):
+        return True
+    return _first_use_update(host.goals, task)
+
+
+def daily_asked(
+    workspace: Path, goals: Any, task: str, answer: dict[str, object]
+) -> dict[str, object]:
+    """The first use's report answer, asking the daily question once while it stands unanswered.
+
+    Args:
+        workspace: The workspace root.
+        goals: The Host's goals (its first use and their store).
+        task: The reported update's Task.
+        answer: The report's answer.
+
+    Returns:
+        The answer, with `ask_now` (the question and its relay) on the first use's own date.
+    """
+    if committee_daily(workspace) is not None or not _first_use_update(goals, task):
+        return answer
+    relay = (
+        f'{COMMAND} committee daily --enabled true --person-said "<their words>" '
+        f'--asked "{DAILY_ASK}"'
+    )
+    return answer | {
+        "next_action": answer.get("next_action") or "ASK_THE_PERSON_ONCE",
+        "ask_now": [
+            "Ask the person once, in these words. On their yes, run the command after the "
+            "question once, their words verbatim in place of `<their words>`; on a no, the same "
+            "with `--enabled false`:",
+            DAILY_ASK,
+            relay,
+        ],
+    }
+
+
+def _set_daily(
+    request: PortfolioResearchOperationRequest,
+    caller: str,
+    workspace: Path,
+    provenance: RequestProvenance | None,
+) -> dict[str, object]:
+    """The person's answer, relayed: an agent sets it only with their words (`PERSON_ONLY`)."""
+    if caller != "HUMAN":
+        code = "committee.daily_setting_human_only"
+        return {"status": "REFUSED", "failure_code": code, "refused": code, **explain(code)}
+    assert request.committee_daily_enabled is not None
+    relayed = provenance is not None and provenance.relayed
+    by = f"{provenance.vendor}:{provenance.session}" if relayed and provenance else None
+    return set_daily(workspace, enabled=request.committee_daily_enabled, relayed_by=by)
 
 
 LEAD_PUBLISHED: Final = (
@@ -463,6 +687,7 @@ def open_floor(
         "labels": readback.get("labels") or (label.model_dump() if label else {}),
         "schedule": proposal.get("schedule"),
         "stances_close_at": (now + timedelta(minutes=STANCE_MINUTES)).isoformat(),
+        "discussion_minutes": DISCUSSION_MINUTES,
         "closes_at": (now + timedelta(minutes=FLOOR_MINUTES)).isoformat(),
         "session": list(session),
         "holdings": held,
@@ -490,6 +715,8 @@ def operate(
     dated: Callable[[], tuple[dict[str, Any], dict[str, Any]] | None],
     file_floor: Callable[[], None],
     agenda_limit: int = AGENDA_LIMIT,
+    caller: str = "HUMAN",
+    workspace: Path | None = None,
 ) -> dict[str, object]:
     """Open, speak on or read an update's floor (`committee`), as the CLI answers it.
 
@@ -497,6 +724,9 @@ def operate(
     the floor, at the open and again on its later open, so a lead whose context was cut keeps
     the floor. A row `file_floor` cannot file now is filed at the next read.
     """
+    if request.operation == "COMMITTEE_DAILY_SET":
+        assert workspace is not None
+        return _set_daily(request, caller, workspace, provenance)
     task, role = str(request.update_task_id), request.committee_role
     try:
         if request.operation == "COMMITTEE_SUBMIT":
@@ -543,7 +773,10 @@ def operate(
         file_floor()
     read = state(found, role, request.committee_seen or 0, now)
     offered = {"report": read["delivery"]} if read["stage"] == "CLOSED" else {}
-    if read["stage"] == "DEBATE" and _turn_open(found, role):
+    if read["stage"] == "DEBATE" and _turn_open(found, role, now):
+        # The member's one turn is its next step, so a member that follows only its route
+        # speaks or passes rather than ending at the reveal.
+        read["next_action"] = "TAKE_YOUR_DISCUSSION_TURN"
         offered["pass"] = {
             "operation": "COMMITTEE_SUBMIT",
             **{k: getattr(request, k) for k in ("committee_role", "committee_key")},
@@ -579,10 +812,12 @@ def _opened(floor: Floor, session: tuple[str, str], task: str, now: datetime) ->
     }
 
 
-def _turn_open(floor: Floor, role: str | None) -> bool:
-    """Whether this specialist may still pass: its stance is in, its turn not yet taken."""
+def _turn_open(floor: Floor, role: str | None, now: datetime) -> bool:
+    """Whether this specialist may still take its turn: its stance is in, its turn not yet
+    taken, and the discussion window, past which `_late` refuses it, still open."""
     kinds = {m["kind"] for m in floor.messages if m["role"] == role}
-    return role in ROLES[1:] and "STANCE" in kinds and not kinds & TURN
+    open_ = role in ROLES[1:] and "STANCE" in kinds and not kinds & TURN
+    return open_ and not floor.discussion_over(now)
 
 
 def submit(
@@ -618,6 +853,7 @@ def submit(
             ("ROLE", role not in senders),
             (stage, stage not in stages),
             ("STANCE_IN", message.kind == "STANCE" and any(m["kind"] == "STANCE" for m in mine)),
+            ("LATE", _late(floor, role, message, now)),
             ("TURN", _turn_refused(mine, message)),
             (
                 "CAP",
@@ -626,7 +862,7 @@ def submit(
             ("TARGET", any(t not in known for t in named)),
             ("SHAPE", misshapen(message)),
             ("REPLY_TO", answers is not None and (not fits or ruled is not None)),
-            ("UNRULED", bool(_unruled(floor, message))),
+            ("UNRULED", _holds_verdict(floor, message, now)),
             # The Host renders every number; the person's own relayed words keep theirs.
             ("NUMBER", message.kind != "PERSON_ANSWER" and typed),
             ("FACTS", _unsourced(floor, role, message)),
@@ -691,6 +927,66 @@ def _unsourced(floor: Floor, role: str, message: CommitteeMessage) -> bool:
     return "RESERVE" in message.positions.values() and asked and not cited
 
 
+def _after_window_rows(
+    floor: Floor, now: datetime, named: Mapping[str, str]
+) -> list[tuple[str, dict[str, str], str, dict[str, Any]]]:
+    """The report's rows for silent turns and challenges that stood unruled, by name."""
+    Row = tuple[str, dict[str, str], str, dict[str, Any]]
+    silent: list[Row] = [
+        (PASSED_SILENT, {"member": member}, PASSED_SILENT.format(member=member), {})
+        for member in floor.silent(now)
+    ]
+    unruled: list[Row] = [
+        (
+            UNRULED_ON if named[challenge] else "Challenge stood unruled",
+            {"message": challenge, "targets": named[challenge]},
+            next(m["text"] for m in floor.messages if m["id"] == challenge),
+            {},
+        )
+        for challenge in sorted(_owed_challenges(floor, "PM"), key=lambda alias: int(alias[1:]))
+    ]
+    return [*silent, *unruled]
+
+
+def _for_you(
+    visible: Sequence[Mapping[str, Any]],
+    role: str | None,
+    seen: int,
+    addressed: Callable[[Mapping[str, Any]], bool],
+    owed: set[str],
+) -> list[str]:
+    """What the floor addresses to this member past what it has seen, and what it still owes."""
+    return [
+        m["id"]
+        for m in visible
+        if role is not None
+        and m["role"] != role
+        and ((int(m["id"][1:]) > seen and addressed(m)) or m["id"] in owed)
+    ]
+
+
+def _owed_challenges(floor: Floor, role: str | None) -> set[str]:
+    """A challenge stays the PM's until ruled, whatever its wait has seen."""
+    if role != "PM":
+        return set()
+    ruled = {m["reply_to"] for m in floor.messages if m["kind"] == "RULING"}
+    return {m["id"] for m in floor.messages if m["kind"] == "CHALLENGE"} - ruled
+
+
+def _late(floor: Floor, role: str, message: CommitteeMessage, now: datetime) -> bool:
+    """A specialist's stance after its window, or its turn after the discussion window."""
+    if role == "PM":
+        return False
+    if message.kind == "STANCE":
+        return now >= datetime.fromisoformat(floor.opened["stances_close_at"])
+    return message.kind in TURN and floor.discussion_over(now)
+
+
+def _holds_verdict(floor: Floor, message: CommitteeMessage, now: datetime) -> bool:
+    """An unruled challenge holds a VERDICT inside the discussion window, never past it."""
+    return bool(_unruled(floor, message)) and not floor.discussion_over(now)
+
+
 def _unruled(floor: Floor, message: CommitteeMessage) -> list[str]:
     """The challenges no ruling answers yet, which a VERDICT waits for; none for another kind."""
     if message.kind != "VERDICT":
@@ -715,23 +1011,9 @@ def _owed(
     if rule == "AGENDA":
         assert floor is not None
         assert message is not None
-        aliases = _agenda_points(floor, request.committee_role, message)
-        assert aliases is not None
-        blocked = set(floor.opened["agenda"]["below"]) - aliases
-        offered = {"schema": schema_request("COMMITTEE_SUBMIT")}
-        if blocked & set(ALIAS.findall(message.text)):
-            return offered
-        sent = message.model_dump(mode="json") | {
-            "positions": {
-                a: p
-                for a, p in message.positions.items()
-                if a in aliases or (message.kind != "STANCE" and a not in blocked)
-            },
-            "targets": [a for a in message.targets if a not in blocked],
-        }
-        return offered | {
-            "corrected": {"operation": "COMMITTEE_SUBMIT", **member, "committee_message": sent},
-        }
+        return _within_agenda(floor, request, message, member)
+    if rule == "TARGET" and floor is not None and message is not None:
+        return _aliased(floor, message, member)
     renamed = _typed(floor, message)[1] if rule == "NUMBER" else None
     if message is not None and renamed and not any(c.isnumeric() for c in ALIAS.sub("", renamed)):
         sent = message.model_dump(mode="json") | {"text": renamed}
@@ -747,6 +1029,56 @@ def _owed(
         for challenge in owed
         for outcome in sorted(OUTCOMES["RULING"])
     }
+
+
+def _within_agenda(
+    floor: Floor,
+    request: PortfolioResearchOperationRequest,
+    message: CommitteeMessage,
+    member: dict[str, Any],
+) -> dict[str, Any]:
+    """An AGENDA refusal's way back: the same message without its unraised below-line points,
+    or only the schema when its text names one."""
+    aliases = _agenda_points(floor, request.committee_role, message)
+    assert aliases is not None
+    blocked = set(floor.opened["agenda"]["below"]) - aliases
+    offered = {"schema": schema_request("COMMITTEE_SUBMIT")}
+    if blocked & set(ALIAS.findall(message.text)):
+        return offered
+    sent = message.model_dump(mode="json") | {
+        "positions": {
+            a: p
+            for a, p in message.positions.items()
+            if a in aliases or (message.kind != "STANCE" and a not in blocked)
+        },
+        "targets": [a for a in message.targets if a not in blocked],
+    }
+    return offered | {
+        "corrected": {"operation": "COMMITTEE_SUBMIT", **member, "committee_message": sent},
+    }
+
+
+def _aliased(floor: Floor, message: CommitteeMessage, member: dict[str, Any]) -> dict[str, Any]:
+    """A message whose only unknown names are points typed by their kind or holdings by their
+    name, offered with their aliases: a kind names each of its points."""
+    names: dict[str, list[str]] = {h["name"]: [h["alias"]] for h in floor.opened["holdings"]}
+    for point in floor.opened["tension_points"]:
+        names.setdefault(point["kind"], []).append(point["alias"])
+    known = _known(floor)
+    named = [*message.targets, *message.positions]
+    if any(n not in known and n not in names for n in named) or any(
+        a not in known for a in ALIAS.findall(message.text)
+    ):
+        return {}
+
+    def alias(name: str) -> list[str]:
+        return [name] if name in known else names[name]
+
+    sent = message.model_dump(mode="json") | {
+        "positions": {a: p for n, p in message.positions.items() for a in alias(n)},
+        "targets": list(dict.fromkeys(a for n in message.targets for a in alias(n))),
+    }
+    return {"corrected": {"operation": "COMMITTEE_SUBMIT", **member, "committee_message": sent}}
 
 
 def _known(floor: Floor) -> set[str]:
@@ -930,6 +1262,8 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
         **summary,
         **{k: floor.opened[k] for k in ("strategy_package_id", "schedule")},
         **{k: floor.opened[k] for k in ("stances_close_at", "closes_at", "holdings")},
+        "stances_close_at_reading": moment_text(floor.opened["stances_close_at"]),
+        "closes_at_reading": moment_text(floor.opened["closes_at"]),
         "session": floor.opened["session"],
         "labels": floor.opened.get("labels") or {},
         "holdings_count": sum(1 for h in held if h["weight"] > 0),
@@ -955,11 +1289,7 @@ def state(floor: Floor, role: str | None, seen: int, now: datetime) -> dict[str,
         "first_message_at": visible[0]["at"] if visible else None,
         "last_message_at": visible[-1]["at"] if visible else None,
         "standing_dissents": [m["id"] for m in standing_dissents(floor)],
-        "for_you": [
-            m["id"]
-            for m in visible
-            if role is not None and int(m["id"][1:]) > seen and m["role"] != role and addressed(m)
-        ],
+        "for_you": _for_you(visible, role, seen, addressed, _owed_challenges(floor, role)),
         "person_items": [
             {
                 "id": m["id"],
@@ -983,12 +1313,8 @@ def verdict(floor: Floor, now: datetime) -> dict[str, Any] | None:
     if given is not None:
         return {"outcome": given["outcome"], "text": given["text"], "at": given["at"]}
     if floor.stage(now) == "CLOSED":
-        return {
-            "outcome": "FOR_THE_PERSON",
-            "text": "The PM gave no verdict.",
-            "at": None,
-            "text_word": "The PM gave no verdict.",
-        }
+        words = "The PM gave no verdict." if floor.revealed_at() is not None else NO_PM_STANCE
+        return {"outcome": "FOR_THE_PERSON", "text": words, "at": None, "text_word": words}
     return None
 
 
@@ -1005,6 +1331,61 @@ def member_agent(floor: Floor, role: str) -> str:
     return f"{session}:{_card(floor, role)}" + (f":{unit}" if unit else "")
 
 
+_PROOFS: dict[str, dict[str, str] | None] = {}
+"""Each session file's verdict by its claims' digest: keys and floors never change, so a file is
+verified again only when its claims do, never on each usage read."""
+
+
+def member_of(store: GoalStore, claims: Sequence[Mapping[str, Any]]) -> dict[str, str] | None:
+    """The member a Claude session file shows by the keys it ran with, which this owner issued.
+
+    A Claude Code subagent declares only its lead's session, so the Host cannot tell it from the
+    lead by its requests; its own file can. Each claim (`native_usage.member_claims`) names a
+    thread or a review bundle and the SHA-256 of a key: a member key of that thread is this
+    member's card, and the messages its accepted submits made (``spoke``) are its own.
+
+    Returns:
+        The one card the file's keys prove and, when it spoke on exactly one thread, that thread
+        and its messages (``reference``); None for no proof, or for keys of more than one card.
+    """
+    seen = [[c.get(k) for k in ("key", "thread", "reference", "role", "spoke")] for c in claims]
+    digest = canonical_hash([str(store.content.root), seen])
+    if digest not in _PROOFS:
+        if len(_PROOFS) > 1024:
+            _PROOFS.clear()
+        _PROOFS[digest] = _proof(store, claims)
+    return _PROOFS[digest]
+
+
+def _proof(store: GoalStore, claims: Sequence[Mapping[str, Any]]) -> dict[str, str] | None:
+    cards: set[str] = set()
+    spoke: dict[str, set[str]] = {}
+    floors: dict[str, Floor | None] = {}
+    for claim in claims:
+        thread = claim.get("thread") or thread_id(str(claim.get("reference")))
+        if thread not in floors:
+            floors[thread] = thread_of(store, thread)
+        floor = floors[thread]
+        role = claim.get("role") or (floor.opened.get("role") if floor is not None else None)
+        if floor is None or role not in {*ROLES[1:], *REVIEWERS}:
+            continue
+        own = sha256(floor.key(str(role)).encode()).hexdigest()
+        if hmac.compare_digest(own, str(claim.get("key"))):
+            cards.add(_card(floor, str(role)))
+            if claim.get("spoke"):
+                spoke.setdefault(thread, set()).update(map(str, claim["spoke"]))
+    if len(cards) != 1:
+        return None
+    if len(spoke) != 1:
+        return {"role": cards.pop()}
+    ((thread, said),) = spoke.items()
+    named = [thread]  # messages past the subject's bound stay as filed
+    for one in sorted(said):
+        if len(" ".join([*named, one])) <= SUBJECT_VALUE_CHARACTERS:
+            named.append(one)
+    return {"role": cards.pop(), "reference": " ".join(named)}
+
+
 def _card(floor: Floor, role: str) -> str:
     """The card a thread's member speaks as: a seat's on the floor, a reviewer's on its bundle."""
     review = REVIEWERS if "bundle_reference" in floor.opened else {}
@@ -1015,13 +1396,22 @@ def floor_row(floor: Floor, message: Mapping[str, Any]) -> dict[str, Any]:
     """A revealed Team row, with the recorded speaker and recipient under the lead's session."""
     vendor, session = floor.opened["session"]
     answered = next((m for m in floor.messages if m["id"] == message.get("reply_to")), None)
+    # The protocol names the recipient: an answer goes to the PM, a reply to the role it answers.
+    to = {"role": "PM"} if message["kind"] == "ANSWER" else answered or {}
     reply = (
-        {"reply_to": _qualified(floor, answered["id"]), "recipient_id": _speaker(floor, answered)}
+        {
+            "reply_to": _qualified(floor, answered["id"]),
+            "recipient_id": _speaker(floor, to),
+            "recipient_role": _card(floor, to["role"]),
+        }
         if answered
         else {}
     )
     if message["kind"] == "ISSUE":  # from the lead to the member the bundle is for
-        reply = {"recipient_id": member_agent(floor, floor.opened["role"])}
+        reply = {
+            "recipient_id": member_agent(floor, floor.opened["role"]),
+            "recipient_role": _card(floor, floor.opened["role"]),
+        }
     task = floor.opened["update_task_id"]
     return {
         "event_kind": "NATIVE_COORDINATION_MESSAGE",
@@ -1029,7 +1419,7 @@ def floor_row(floor: Floor, message: Mapping[str, Any]) -> dict[str, Any]:
         "producer_session": task.replace("-", ""),
         "producer_sequence": int(message["id"][1:]),
         "occurred_at": message["at"],
-        "summary": render(message["text"], floor.opened.get("holdings", ())),
+        "summary": _fitted(floor, message),
         "subject": {
             "native_host": vendor,
             "native_session_id": session,
@@ -1068,6 +1458,22 @@ def _references(floor: Floor, message: Mapping[str, Any]) -> dict[str, str]:
     found = {"bundle_reference": floor.opened["bundle_reference"]}
     found["answer_reference"] = message.get("answer_reference")
     return {k: str(v) for k, v in found.items() if v}
+
+
+def _fitted(floor: Floor, message: Mapping[str, Any]) -> str:
+    """A message's rendered text within a conversation row's bound. A cut is named, and points to
+    the whole message on the floor, so filing and the report never refuse a long message."""
+    from alphalattice.interface.local_application.activity import SUMMARY_MAXIMUM_CHARACTERS
+
+    text = render(message["text"], floor.opened.get("holdings", ()))
+    if len(text) <= SUMMARY_MAXIMUM_CHARACTERS:
+        return text
+    note = (
+        f" … [cut at {SUMMARY_MAXIMUM_CHARACTERS} characters; the whole message is "
+        f"{_qualified(floor, message['id'])} on the floor: alphalattice committee show "
+        f"--update {floor.opened['update_task_id']}]"
+    )
+    return text[: SUMMARY_MAXIMUM_CHARACTERS - len(note)].rstrip() + note
 
 
 def unfiled(floor: Floor, now: datetime) -> list[dict[str, Any]]:
@@ -1125,7 +1531,8 @@ def standing_dissents(floor: Floor) -> list[dict[str, Any]]:
 def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
     """The closed floor as the delivery's commentary; None while it is open.
 
-    The verdict first, then each standing CRO dissent in the CRO's own words, each member's
+    The members' suggestions on holdings first (`_suggestions`), then the verdict, each standing
+    CRO dissent in the CRO's own words, each member's
     final view and every earlier message of it that still holds a position
     (`standing_messages`), what was handed to the person with their relayed answer, and each
     ruling.
@@ -1152,6 +1559,7 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
 
     named = {m["id"]: targets(m["id"]) for m in floor.messages}
     items: list[tuple[str, dict[str, str], str, dict[str, Any]]] = [
+        *_suggestions(floor),
         (
             "Committee verdict: {outcome}",
             {"outcome": closed["outcome"]},
@@ -1183,6 +1591,7 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
             for m in floor.messages
             if m.get("outcome") == "FOR_THE_PERSON"
         ),
+        *_after_window_rows(floor, now, named),
         *(
             (
                 "PM ruling on {targets}: {outcome}" if named[m["id"]] else "PM ruling: {outcome}",
@@ -1217,6 +1626,7 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
             )
             for p in floor.opened["tension_points"]
         )
+    items.append(("The person decides", {}, NO_NUMBER, {"text_word": NO_NUMBER}))
     held = floor.opened["holdings"]
     return [
         {
@@ -1228,6 +1638,56 @@ def commentary(floor: Floor, now: datetime) -> list[dict[str, Any]] | None:
         }
         for word, words, text, details in items
     ]
+
+
+def set_apart(text: str, positions: Mapping[str, str]) -> dict[Any, str]:
+    """The holdings a member gives a position of their own, by (point, holding) or holding.
+
+    A holding keyed in the message's positions holds its own; in the message's words, a
+    sentence naming holdings and exactly one position word gives them that position on the
+    point it names, or on the last point named before it.
+
+    Args:
+        text: The message as typed, by alias.
+        positions: Its positions.
+
+    Returns:
+        Each such holding's own position: a suggestion on its point leaves a holding set apart.
+    """
+    apart: dict[Any, str] = {h: p for h, p in positions.items() if h.startswith("H")}
+    point = ""
+    for sentence in re.split(r"[.;!?]", text):
+        point = ([point, *re.findall(r"\bT\d+\b", sentence)])[-1]
+        said = set(re.findall(r"\b(?:SUPPORT|OBJECT|RESERVE)\b", sentence))
+        for holding in re.findall(r"\bH\d+\b", sentence) if len(said) == 1 else ():
+            apart[(point, holding)] = next(iter(said))
+    return apart
+
+
+def _suggestions(floor: Floor) -> list[tuple[Any, ...]]:
+    """Each member's standing OBJECT, then SUPPORT, on holdings, as a suggestion: the holdings
+    its point targets (or the holding it names) that the member did not set apart, who holds
+    it and the message that says why."""
+    targets = {p["alias"]: p["targets"] for p in floor.opened["tension_points"]}
+    said, held = {m["id"]: m for m in floor.messages}, standing_messages(floor)
+    items: list[tuple[Any, ...]] = []
+    for position in SUGGESTIONS:
+        for message, positions in held.items():
+            apart = set_apart(said[message]["text"], said[message]["positions"])
+            aliases = [
+                h
+                for point, p in positions.items()
+                if p == position
+                for h in targets.get(point, [point] if point.startswith("H") else [])
+                if apart.get((point, h), apart.get(h, p)) == p
+            ]
+            if aliases:
+                aliases = list(dict.fromkeys(aliases))
+                shown = render(", ".join(aliases), floor.opened["holdings"])
+                words = {"holdings": shown, "member": said[message]["role"], "message": message}
+                details = {"position": position, "holding_aliases": aliases}
+                items.append((SUGGESTIONS[position], words, said[message]["text"], details))
+    return items or [(NO_SUGGESTION, {}, NO_SUGGESTION + ".", {"text_word": NO_SUGGESTION + "."})]
 
 
 def _passed(floor: Floor, role: str) -> list[tuple[Any, ...]]:
@@ -1334,7 +1794,13 @@ def role_lines(
     )
     if floor is None or role == "DATA":
         return [head, *view]
-    return [head, *_asked(role, floor), *view]
+    return [
+        head,
+        f"Stances close: {moment_text(floor.opened['stances_close_at'])}. "
+        f"Discussion closes: {moment_text(floor.opened['closes_at'])}.",
+        *_asked(role, floor),
+        *view,
+    ]
 
 
 def _asked(role: str, floor: Floor) -> list[str]:
@@ -1392,7 +1858,11 @@ def route(
         f"On the committee's floor you are {role}. Send one STANCE first (the round is blind); "
         f"its position on each {point} point (T1, never a question) is about the date's "
         "positions: SUPPORT, they may stand; OBJECT, they should not stand as they are; RESERVE, "
-        "this bundle cannot tell, citing by S alias the facts it rests on.",
+        "this bundle cannot tell, citing by S alias the facts it rests on. A standing OBJECT or "
+        "SUPPORT leads the report as a suggestion on the holdings its point names, less any you "
+        "set apart: give one its own position (H5: RESERVE), or name it in a sentence on that "
+        "point with that one position word. You may suggest avoiding, reducing or adding "
+        "specific holdings, with reasons from the materials; the person decides.",
         "Once the stances are revealed, take your one discussion turn: a CHALLENGE or REPLY, or, "
         "before any challenge or reply, a PASS (kind PASS, a line saying you have nothing to add, "
         "no targets or positions) that yields it and ends your turn; the floor settles when every "
@@ -1400,8 +1870,7 @@ def route(
         f"You may send up to {MESSAGE_CAP} CHALLENGE or REPLY in all, each naming its targets by "
         "alias (T1, H3, M4, a fact by its S alias); type no other digit, since the Host renders "
         "every number. "
-        "The PM may approve (PROCEED), approve with conditions (PROCEED_WITH_NOTES), decline "
-        "endorsement (DECLINE), or hand the decision to the person (FOR_THE_PERSON). "
+        f"The PM's verdict is the committee's discussion record: {VERDICT_RULE} "
         "Write each message as a YAML file in this bundle directory "
         "(kind, text, positions, targets, reply_to), send it "
         f"with `{COMMAND} committee submit "
@@ -1412,8 +1881,9 @@ def route(
         "A refused message names its rule; where only "
         "its shape is wrong, send the corrected message the refusal offers.",
         "This route is the bundle's only final action: there is no answer file and nothing for "
-        "the lead to submit. It runs these two commands, so the lead starts you as a general "
-        "subagent.",
+        "the lead to submit. Its steps: send your STANCE, wait, then take the turn the wait "
+        "offers (TAKE_YOUR_DISCUSSION_TURN: a CHALLENGE or REPLY, or its offered pass) and wait "
+        "again until the floor settles or closes. The lead starts you as a general subagent.",
     )
 
 
@@ -1427,8 +1897,9 @@ def pm_route(floor: Floor) -> tuple[str, ...]:
         "session from its bundle, so their stances arrive at once.",
         "As PM send your own STANCE (the round is blind), then a RULING on each CHALLENGE "
         "addressed to you (ADOPT, REJECT or FOR_THE_PERSON). Your wait returns `settled` once "
-        "every member has spoken or passed its turn and no challenge stands unruled: give the "
-        "VERDICT then: PROCEED, PROCEED_WITH_NOTES, DECLINE or FOR_THE_PERSON.",
+        "every member has spoken or passed its turn and no challenge stands unruled, or once the "
+        "discussion window has passed: give the VERDICT then, your discussion record: "
+        f"{VERDICT_RULE} End your reply to the person with the report's last line: {NO_NUMBER}",
         f"Write each message as a YAML file (kind, text, positions, targets, reply_to; "
         f"`{COMMAND} schema show COMMITTEE_SUBMIT` shows every field) and send it with {send}. "
         f"Follow what is addressed to you with `{COMMAND} committee wait --update {task} "

@@ -1,7 +1,7 @@
 # AlphaLattice research workstation
 Date: 2026-10-08
 
-Give your Codex or Claude Code agent one research intent and the repository link.
+Give your Claude Code or Codex agent one research intent and the repository link.
 It installs AlphaLattice and continues in the same session. You can follow Tasks,
 results and reviews in Local Web. [Getting started](getting-started.md) covers
 first use. The [agent guide](../../AGENTS.md) owns procedures and person decisions.

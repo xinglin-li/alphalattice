@@ -9,7 +9,7 @@ assert.ok(chineseCause!==englishCause&&/[\u3400-\u9fff]/.test(chineseCause)&&!ch
 assert.deepEqual(chineseCause.match(/\d+/g)?.sort(),englishCause.match(/\d+/g)?.sort(),'translated stop keeps every owner date and count');
 for(const [owner,codes] of Object.entries(groups)) {
   assert.ok(codes.length,'nonempty owner declaration: '+owner);
-  for(const code of codes)if(owner==='actor kinds' ? !w.ACTORS[code] : !w.declaredCodeWord(code))missing.push(`${owner}: ${code}`);
+  for(const code of codes)if(owner==='Task stages' ? w.stageOf(code).word==='Word not declared' : owner==='actor kinds' ? !w.ACTORS[code] : !w.declaredCodeWord(code))missing.push(`${owner}: ${code}`);
 }
 assert.deepEqual(missing,[],'every consumed closed owner value has explicit words');
 // A declaration without its word fails the same census, rather than quietly escaping it.
@@ -21,7 +21,7 @@ for(const code of groups['Task incident codes']) {
 for(const lang of ['en','zh']) {
   w.I18N.set(lang);
   for(const [owner,codes] of Object.entries(groups))for(const code of codes) {
-    const word=owner==='actor kinds' ? w.actorWords(code) : w.codeWords(code);
+    const word=owner==='Task stages' ? w.t(w.stageOf(code).word) : ['TaskLifecycle','WorkItemLifecycle'].includes(owner) ? w.t(w.stateOf(code).word) : owner==='actor kinds' ? w.actorWords(code) : w.codeWords(code);
     assert.notEqual(word,w.t('Word not declared'),code);
     assert.notEqual(word,w.t('Unidentified'),code);
     assert.ok(word,code);

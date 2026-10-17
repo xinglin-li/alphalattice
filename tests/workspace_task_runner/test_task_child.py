@@ -319,6 +319,31 @@ def shared_length(value: int, payload: _Counted, cancelled) -> dict[str, int]:
     return {"value": value, "length": len(payload.data)}
 
 
+def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(monkeypatch) -> None:
+    """Kept workers are capped however many cores, and one idle past its wait ends; the next
+    call starts it again with the same answer."""
+    from alphalattice.control.observation_runtime.telemetry.process_metrics import (
+        RuntimeCapacityRequest,
+        worker_processes,
+    )
+    from alphalattice.control.task_control import child
+
+    assert worker_processes(64) <= RuntimeCapacityRequest().maximum_kept_workers
+    monkeypatch.setattr(child, "KEPT_WORKER_IDLE_SECONDS", 0.5)
+    with child_calls(f"{HERE}:doubled", workers=2) as calls:
+        calls.make({"value": 2})
+        calls.make({"value": 3})
+        assert [calls.answer()["value"], calls.answer()["value"]] == [4, 6]
+    started = [process for pool in child._WORKERS.values() for process in pool._processes.values()]
+    deadline = time.monotonic() + 30
+    while (child._WORKERS or any(p.is_alive() for p in started)) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not child._WORKERS and started and not any(p.is_alive() for p in started)
+    with child_calls(f"{HERE}:doubled", workers=1) as calls:
+        calls.make({"value": 5})
+        assert calls.answer()["value"] == 10
+
+
 def test_a_shared_argument_ships_once_to_each_worker_of_a_call_set() -> None:
     """requirement: a shared argument goes to each worker once per call set, by its
     content key after that; another set ships its own, even interleaved on one worker, so

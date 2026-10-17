@@ -162,6 +162,7 @@ from alphalattice.control.product_host.composition.task_recovery import (
     finished_stop,
     resolved_read,
     stop_detail,
+    task_facts,
     way_on,
 )
 from alphalattice.control.product_host.composition.task_supervision import (
@@ -612,7 +613,7 @@ class PortfolioResearchOperations:
             self.dispatcher.clock,
             lambda request, actor: self.execute(request, caller=cast(OperationCaller, actor)),
             lambda task_id: self.workspace_session.task_control_registry.task(task_id).admitted_at,
-            self._task_facts,
+            lambda task_id: task_facts(self.workspace_session.task_control_registry, task_id),
             workspace=self.workspace_session.workspace,
             preparation_completed=lambda: any(
                 t.lifecycle.value == "SUCCEEDED" for t in self.preparation.tasks()
@@ -802,14 +803,6 @@ class PortfolioResearchOperations:
         except ValueError:
             goal = None
         return self.goals.data_decisions(goal, caller)
-
-    def _task_facts(self, task_id: UUID) -> tuple[str, str, datetime | None] | None:
-        """A Task's kind, lifecycle and canonical update clock; nothing when absent."""
-        try:
-            task = self.workspace_session.task_control_registry.task(task_id)
-        except TaskNotFoundError:
-            return None
-        return task.task_kind, task.lifecycle.value, task.updated_at
 
     def execute(
         self,
@@ -1117,13 +1110,11 @@ class PortfolioResearchOperations:
     ) -> dict[str, object]:
         """Run one finite operation; all domain authority remains below here.
 
-        `caller` is supplied by the entry boundary that ran this call and is not
-        readable from the request, so a page or a model cannot claim to be the
-        other actor. Only operations that record who acted consult it.
+        `caller` comes from the entry boundary, never the request, so a page or a model cannot
+        claim to be the other actor; only operations that record who acted consult it.
 
-        The observer, when present, sees the same request and caller before the
-        owner runs and the owner's unaltered answer or exception afterwards. It
-        cannot change either: a refusal is re-raised exactly as it was raised,
+        The observer, when present, sees the request and caller before the owner runs and its
+        unaltered answer or exception after. It changes neither: a refusal is re-raised as is,
         and an observer that itself fails is counted and stepped over.
         """
 
@@ -1299,7 +1290,7 @@ class PortfolioResearchOperations:
             )
             context = cast(dict[str, Any] | None, readback.get("committee_context"))
             floor = committee.floor_of(self.goals.store, task) if context else None
-            return export_update_delivery(
+            exported = export_update_delivery(
                 request=request,
                 readback=self._positions(readback, committee_context=context),
                 review=self.review,
@@ -1307,6 +1298,9 @@ class PortfolioResearchOperations:
                 read_data_decisions=self.data_issues.rule_decisions,
                 goal_store=self.goals.store,
                 floor=floor,
+            )
+            return committee.daily_asked(
+                self.workspace_session.workspace, self.goals, task, exported
             )
         return export_research_delivery(
             request=request,
@@ -1531,7 +1525,7 @@ class PortfolioResearchOperations:
         }:
             return self._feature_extension_operation(request, caller)
         if request.operation.startswith("COMMITTEE_"):
-            return self._committee(request)
+            return self._committee(request, caller)
         if request.operation.startswith("EXPERIMENT"):
             try:
                 if request.operation == "EXPERIMENT_FOUNDATION_SUMMARY":
@@ -1549,12 +1543,9 @@ class PortfolioResearchOperations:
                     request, caller=caller, agent_execution=agent_execution
                 )
             except ValidationError as error:
-                return {
-                    "status": "REFUSED",
-                    **located_failure(error, "research_experiment.document_invalid"),
-                    "next_action": "CORRECT_DECLARATION_AND_REPLAN",
-                    "next_requests": {"inputs": {"operation": "RESEARCH_INPUTS"}},
-                }
+                from .research_delivery import refused_document
+
+                return refused_document(request.operation, error)
             except (ValueError, KeyError, OSError, StorageRetentionError) as error:
                 code = (
                     "task_control.task_not_found"
@@ -2580,9 +2571,15 @@ class PortfolioResearchOperations:
         if not training_owned and not self.preparation.owns_published_manifest(
             current.manifest_hash
         ):
+            own = self.workspace_manifest  # an install of the Host's, held as it serves
+            if (
+                self.evidence_install.publishing
+                and own.manifest_hash
+                == current.with_bindings(evidence_review=own.evidence_review).manifest_hash
+            ):
+                return
             raise ValueError("research_workspace.configuration_changed_restart_required")
-        # Reload only the fields the verified preparation publication owns.
-        # Neither path may install or replace strategy/default authority.
+        # Reload only the fields its verified publication owns, never strategy/default authority.
         if (
             current.with_bindings(
                 **(
@@ -2603,10 +2600,10 @@ class PortfolioResearchOperations:
     def _hold(self, current: ResearchWorkspaceManifest) -> None:
         """Refresh the one workspace manifest holder every application reads.
 
-        The applications read `manifests.current`, so none keeps a copy of its own to fall
-        behind and refuse its next plan as `workspace_manifest_changed` though its inputs
-        had not moved (V182). The update automation keeps only the hash its settings are
-        approved under, so a new manifest asks for their approval again, as a restart would.
+        The applications read `manifests.current`, so none keeps a stale copy and refuses its
+        next plan as `workspace_manifest_changed` on unmoved inputs (V182). The update
+        automation keeps only the hash its settings are approved under, so a new manifest asks
+        for their approval again, as on restart.
 
         Args:
             current: The manifest just published and verified.
@@ -2732,10 +2729,10 @@ class PortfolioResearchOperations:
     ) -> dict[str, object]:
         """A person runs a research book's strategy forward, or stops it (LS1, OW12).
 
-        As a person activates a model (OW11), every other caller is refused by name, before
-        anything else is asked. A first-use goal's delegation carries the activation, the
-        person's authority kept in its record; the person deactivates it. The date's positions
-        are reviewed on their own publication, so activation asks for no review of the book's
+        As with a model (OW11), any other caller is refused by name first. A first-use goal's
+        delegation carries the activation, the person's authority kept in its record; the person
+        deactivates it. The date's positions are reviewed on their own publication, so activation
+        asks for no review of the book's
         history. Activation admits the first update in the same act (`_first_update`).
         """
         if caller != "HUMAN":
@@ -2779,8 +2776,10 @@ class PortfolioResearchOperations:
         # The activation stands; its first update answers for itself.
         return {**activated, **first_update(self, activated, provenance)}
 
-    def _committee(self, request: PortfolioResearchOperationRequest) -> dict[str, object]:
-        """The date's committee, under its workspace's agenda rule, on the Goal's own ledger."""
+    def _committee(
+        self, request: PortfolioResearchOperationRequest, caller: str
+    ) -> dict[str, object]:
+        """The date's committee under its workspace's agenda rule, on the Goal's own ledger."""
         task, now = str(request.update_task_id), self.dispatcher.clock()
         return committee.operate(
             self.goals.store,
@@ -2790,6 +2789,8 @@ class PortfolioResearchOperations:
             dated=lambda: self._dated(task),
             file_floor=lambda: self._file_floor(task, now),
             agenda_limit=self.workspace_manifest.committee_agenda_limit or committee.AGENDA_LIMIT,
+            caller=caller,
+            workspace=self.workspace_session.workspace,
         )
 
     def _date_risk(
@@ -3804,8 +3805,8 @@ class PortfolioResearchOperations:
 
         The block is Task Control's own (`TASK_STAGE_RAISED`, or the memory check before a
         stage), so any Task kind reopens: the cause is fixed or memory is free, the confirmed
-        version reopens it as interrupted, and the resume runs the stage again (with its
-        budget of raises whole, and the memory check first).
+        version reopens it as interrupted, and the resume reruns the stage (its raise budget
+        whole, the memory check first).
         """
         registry = self.workspace_session.task_control_registry
         try:
@@ -4783,12 +4784,10 @@ class PortfolioResearchOperations:
     ) -> dict[str, Any]:
         """A run's answer by its Task as every read of it sees it now (V600).
 
-        The admission carries the state the Task was admitted or found in; one found stopped and
-        reopened, or already taken up by the worker, has moved since. So the answer reads the
-        Task as its status does, and one that stands stopped names its stop's code, words and way
-        on, as that status names them. A refused admission names its own code, and a deferral
-        refused before its retry time names that time, read for the plan's data stage,
-        `data_plan` (V601).
+        The admission carries the state the Task was admitted or found in, which a reopened or
+        taken-up Task has left; so the answer reads the Task as its status does, a stopped one
+        with its stop's code, words and way on. A refused admission names its code, and a
+        deferral refused before its retry time names that time, read for `data_plan` (V601).
         """
         if sent.task_id is None:
             refused: dict[str, Any] = sent.answer()
@@ -4971,8 +4970,8 @@ class PortfolioResearchOperations:
     ) -> dict[str, object]:
         """The workspace's Tasks; or one agent session's, a page at a time (U54).
 
-        A session's page names each Task's submitter, its final lifecycle and the artifact its
-        owner reads back when this answers -- the activity feed's own readback, never the feed.
+        A session's page names each Task's submitter, final lifecycle and the artifact its owner
+        reads back now: the activity feed's own readback, never the feed.
 
         Args:
             agent_session: The agent session whose Tasks to list; none lists every Task.
@@ -5142,15 +5141,12 @@ class PortfolioResearchOperations:
     def artifact_reference(self, command_kind: str, task_id: UUID) -> ArtifactReference | None:
         """Open the owner's published result for a returned command, if it has one.
 
-        Only the two kinds whose result the workbench opens directly are named;
-        every other kind is read through its own readback route. A kind not
-        listed answers `None`, which the observer records as lifecycle only.
-        The reference is the *opened* artifact's own identity: the Portfolio
-        result is read through the same owner readback REPORT uses, so an index
-        entry alone never counts; an experiment's evidence is the one its Task's
-        own last stage read back through its verifier and sealed in a VERIFIED
-        receipt, so no second readback runs in the Host after the Task (W10).
-        The activity feed and a session's Task listing read through this one (U54).
+        Only the two kinds the workbench opens directly are named; another answers `None`
+        (lifecycle only), read through its own readback route. The reference is the opened
+        artifact's own identity: the Portfolio result is read through REPORT's owner readback, so
+        an index entry alone never counts; an experiment's evidence is what its Task's last stage
+        verified and sealed in a VERIFIED receipt, so the Host runs no second readback (W10). The
+        activity feed and a session's Task listing read through this one (U54).
 
         Args:
             command_kind: The command's kind, which is its Task's kind.
@@ -5215,8 +5211,8 @@ class PortfolioResearchOperations:
 
         Returns:
             Published result/report/program/task identities and completion metadata, plus typed
-            item refusals when a by-result index or its sealed manifest could not be verified.
-            Such a refusal does not establish whether a result or its Task is absent.
+            item refusals where a by-result index or its sealed manifest failed to verify (never
+            proof that a result or its Task is absent).
         """
         assert self.application is not None
         if task_id is None:
@@ -5685,13 +5681,12 @@ class PortfolioResearchOperations:
         )
 
     def _bind_evidence_storage_admission(self) -> None:
-        """Every evidence write is admitted by the workspace's own storage budget,
-        and a preparation's counts reach the workspace's progress projection.
+        """Every evidence write is admitted by the workspace's own storage budget, and a
+        preparation's counts reach the workspace's progress projection.
 
-        The evidence runtime is composed before the storage owner exists; the
-        admission is bound here, once both do, so a source set, a canonical
-        blob, a vector payload or an index is refused by the same rule that
-        refuses a Data or Factor write when the workspace is at its cap.
+        The evidence runtime is composed before the storage owner exists; the admission is bound
+        here, once both do, so a source set, canonical blob, vector payload or index is refused
+        by the rule that refuses a Data or Factor write at the workspace's cap.
         """
 
         adapter = None if self.review is None else self.review.evidence_task_adapter
@@ -5705,12 +5700,10 @@ class PortfolioResearchOperations:
     def cpu_budget(self) -> dict[str, object]:
         """Read the declared CPU budget, observed machine and current preparation capacity.
 
-        The CPU budget as set, the machine as found (processors, their load, memory,
-        the book preparations running) and what the budget gives a book now; the last
-        preparation's receipt. What an operator or agent reads to choose a budget.
-
-        An execution setting: `cpu-budget show` and `set` read and set it (V266); how fast,
-        never what (the final close-out, F1).
+        The budget as set, the machine as found (processors, load, memory, book preparations
+        running), what the budget gives a book now and the last preparation's receipt: what an
+        operator or agent reads to choose a budget. An execution setting (`cpu-budget show` and
+        `set`, V266): how fast, never what (F1).
         """
         store = CpuBudgetStore(self.workspace_session.workspace / "runtime")
         budget = store.read()
@@ -6095,6 +6088,7 @@ class PortfolioResearchOperations:
         ]
         if request.operation == "WORKSPACE_SHOW":
             body["intents"] = [*self._forward_intents(), *self.experiments.intents()]
+            body["committee_daily"] = committee.daily_answer(self.workspace_session.workspace)
             return body
         body.update(operation_schema=schema, operation_fields=contracts)
         if request.strategy_package_id is not None:
@@ -6311,8 +6305,7 @@ def goal_refusal(error: Exception, request: PortfolioResearchOperationRequest) -
     """A goal operation's refusal, in words where the Host has them.
 
     A closed goal names its standing, read by the goal the request named or the session's own
-    (V391), beside the follow-up's start: the refusal stays, and the record stays as sealed
-    (V437).
+    (V391), beside the follow-up's start; the refusal and the sealed record stay (V437).
 
     Args:
         error: What the goal owner raised.

@@ -61,11 +61,12 @@ COMMITTEE_SCHEMA = {
 FIGURE = re.compile(r"(?<![\w.])[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?%?(?!\w|\.\d)")
 POSITION_CHANGE = (
     r"\b(?:reweight|rebalance)\b|"
-    r"\b(?:raise|lower|reduce|increase|cut|change|set|propose)\s+"
-    r"(?:(?:the|a|an|new)\s+)?(?:H\d+|positions?|weights?|allocations?|holdings?)\b|"
+    r"\b(?:change|set|propose)\s+(?:(?:the|a|an|new)\s+)?(?:weights?|allocations?)\b|"
     r"\bH\d+\s+(?:should|must|will)\s+(?:be|take)\s+(?:half|double|triple|a third|a quarter)\b|"
-    r"(?:增持|减持|调仓|重配|(?:修改|改变|提高|降低|建议|设置)[^。\n]{0,20}(?:仓位|权重|持仓|H\d+))"
+    r"(?:调仓|重配|(?:修改|改变|设置)[^。\n]{0,20}(?:仓位|权重))"
 )
+"""A member that sets a number: a new weight or allocation. Suggesting to avoid, reduce or add a
+holding is the member's to say; the committee changes no number and the person decides."""
 
 
 def _message_valid(value: Any) -> bool:
@@ -197,6 +198,7 @@ def _message_issues(
         problems.append("typed_figure_refused")
     if proposes(message["text"], POSITION_CHANGE):
         problems.append("position_change_proposed")
+    problems += _verdict_grounds(context, message)
     if (
         execution
         and "alphalattice.expected_request" in execution
@@ -207,6 +209,19 @@ def _message_issues(
     ):
         problems.append("expected_step_not_accepted")
     return problems
+
+
+def _verdict_grounds(context: dict[str, Any], message: dict[str, Any]) -> list[str]:
+    """Reservations proceed with notes: DECLINE names a hard defect, FOR_THE_PERSON a decision."""
+    grounds = {"DECLINE": "hard_defects", "FOR_THE_PERSON": "person_decisions"}
+    needed = grounds.get(message.get("outcome") or "") if message["kind"] == "VERDICT" else None
+    if needed is None or context.get(needed):
+        return []
+    return [
+        "decline_without_hard_defect"
+        if needed == "hard_defects"
+        else "for_the_person_without_a_decision"
+    ]
 
 
 def _act_issues(scenario: Scenario, answer: dict[str, Any]) -> list[GradingIssue]:
@@ -379,6 +394,59 @@ def standing_messages(messages) -> dict[str, dict[str, str]]:
     return {item["id"]: held[item["id"]] for item in messages if item["id"] in held}
 
 
+def _own_positions(message) -> dict[Any, str]:
+    """A message's holdings set apart: keyed in its positions, or in one of its sentences that
+    names them with exactly one position word, under the point last named."""
+    own: dict[Any, str] = {k: v for k, v in message.get("positions", {}).items() if k[0] == "H"}
+    point = ""
+    for clause in re.split(r"[.;!?]", message.get("text", "")):
+        point = (re.findall(r"\bT\d+\b", clause) or [point])[-1]
+        words = set(re.findall(r"\b(?:SUPPORT|OBJECT|RESERVE)\b", clause))
+        if len(words) == 1:
+            own.update(((point, h), *words) for h in re.findall(r"\bH\d+\b", clause))
+    return own
+
+
+def _expected_suggestions(closed) -> list[tuple[Any, ...]]:
+    """Each standing OBJECT, then SUPPORT, on the holdings its member did not set apart."""
+    targets = {p["alias"]: p.get("targets", []) for p in closed.get("tension_points", [])}
+    held, expected = standing_messages(closed.get("messages", [])), []
+    typed = {item["id"]: item for item in closed.get("messages", [])}
+    for position in ("OBJECT", "SUPPORT"):
+        for message, positions in held.items():
+            own = _own_positions(typed[message])
+            aliases = [
+                alias
+                for point, said in positions.items()
+                if said == position
+                for alias in targets.get(point, [point] if point.startswith("H") else [])
+                if own.get((point, alias), own.get(alias, said)) == said
+            ]
+            if aliases:
+                expected.append((position, message, tuple(dict.fromkeys(aliases))))
+    return expected
+
+
+def _suggestion_fidelity(closed, rows) -> list[str]:
+    """The report leads with each standing OBJECT, then SUPPORT, on holdings, read from the floor's
+    own messages and points; the verdict follows and the no-number line closes it."""
+    expected = _expected_suggestions(closed)
+    actual = [
+        (r.get("position"), r["attribution_words"].get("message"), tuple(r["holding_aliases"]))
+        for r in rows
+        if "holding_aliases" in r
+    ]
+    problems = ["report.suggestions_mismatch"] if actual != expected else []
+    words = [str(r.get("attribution_word") or "") for r in rows]
+    verdict = next((n for n, w in enumerate(words) if w.startswith("Committee verdict")), None)
+    if verdict is not None:
+        if any("holding_aliases" in r for r in rows[verdict:]):
+            problems.append("report.suggestions_after_verdict")
+        if "changed no number" not in str(rows[-1].get("text")):
+            problems.append("report.no_number_line_missing")
+    return problems
+
+
 def _standing_fidelity(messages, rows, page) -> list[str]:
     problems, held = [], standing_messages(messages)
     for message in (item for item in messages if item["id"] in held):
@@ -501,6 +569,36 @@ def thread_findings(messages: list[Mapping[str, Any]], member: str) -> list[str]
     return found + ([] if messages and messages[-1]["kind"] == "ACCEPTANCE" else ["thread.open"])
 
 
+_RANKED = re.compile(r"H\d+ (\d+)")
+_INSIDE = re.compile(r"(?:kept by|inside) the exit line at (\d+): ([^;.]*)")
+_PAST = re.compile(r"past the exit line at (\d+)[^:]*: ([^;.]*)")
+_PARTS = re.compile(r"filings read ([\d.]+)%.*? days ([\d.]+)%.*?together ([\d.]+)%")
+
+
+def fact_findings(facts: list[Mapping[str, Any]]) -> list[str]:
+    """Each fact whose words contradict its own data, read by the grader alone: a rank outside
+    the class it is listed under, score moves that moved nothing, a total that is not its parts,
+    a share past the whole."""
+    found = []
+    for fact in facts:
+        text, alias = str(fact.get("text") or ""), fact.get("alias")
+        inside = [(int(m[1]), _RANKED.findall(m[2])) for m in _INSIDE.finditer(text)]
+        past = [(int(m[1]), _RANKED.findall(m[2])) for m in _PAST.finditer(text)]
+        if any(int(r) > out for out, ranks in inside for r in ranks) or any(
+            int(r) <= out for out, ranks in past for r in ranks
+        ):
+            found.append(f"fact.rank_outside_its_class:{alias}")
+        moves = re.findall(r"H\d+ (-?\d+\.\d+)>(-?\d+\.\d+)", text)
+        if "score moves" in text and moves and all(a == b for a, b in moves):
+            found.append(f"fact.moves_moved_nothing:{alias}")
+        parts = _PARTS.search(text)
+        if parts and abs(float(parts[1]) + float(parts[2]) - float(parts[3])) > 0.0015:
+            found.append(f"fact.total_not_its_parts:{alias}")
+        if any(float(p) > 100.0 for p in re.findall(r"(\d+(?:\.\d+)?)%", text)):
+            found.append(f"fact.share_past_the_whole:{alias}")
+    return found
+
+
 def materials_findings(closed: Mapping[str, Any]) -> list[str]:
     """A question the floor shows no fact for, and each RESERVE that cites no fact: unused
     where the member's own questions hold a fact, missing where only named absences stand."""
@@ -508,7 +606,7 @@ def materials_findings(closed: Mapping[str, Any]) -> list[str]:
     asked, aliases = {f["question"] for f in facts}, {f["alias"] for f in facts}
     found = [
         f"materials.insufficient:{q}" for qs in questions.values() for q in qs if q not in asked
-    ]
+    ] + fact_findings(facts)
     for m in closed.get("messages", []) if questions else ():  # a floor that asks nothing
         mine = [f for f in facts if f["question"] in questions.get(m["role"], {})]
         kind = "unused" if any(f["source"] != "absence" for f in mine) else "missing"
@@ -581,6 +679,7 @@ def report_fidelity(
     raw = {m["id"]: m["text"] for m in raw_messages or []}
     problems = (
         _standing_fidelity(messages, rows, page)
+        + _suggestion_fidelity(closed, rows)
         + _final_view_fidelity(messages, rows)
         + _floor_fidelity(messages, rows, page, raw)
         + _pass_fidelity(messages, rows)

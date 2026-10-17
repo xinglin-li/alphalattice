@@ -51,6 +51,9 @@
 "actor_execution.answer_record_slot_invalid": {
 "owner": "actor_execution"
 },
+"actor_execution.encoding_damaged": {
+"owner": "actor_execution"
+},
 "actor_execution.specialist_answer_problems": {
 "owner": "actor_execution"
 },
@@ -6114,6 +6117,9 @@
 "local_client.codex_queue_unavailable": {
 "owner": "local_client"
 },
+"local_client.codex_unreachable": {
+"owner": "local_client"
+},
 "local_client.connection_lost_task_may_still_run": {
 "owner": "local_client"
 },
@@ -6175,6 +6181,9 @@
 "owner": "local_client"
 },
 "local_client.first_use_date_outside_calendar": {
+"owner": "local_client"
+},
+"local_client.first_use_setup_missing": {
 "owner": "local_client"
 },
 "local_client.max_wait_invalid": {
@@ -6766,6 +6775,9 @@
 "owner": "person_confirmation"
 },
 "person_confirmation.decision_mismatch": {
+"owner": "person_confirmation"
+},
+"person_confirmation.not_the_persons_words": {
 "owner": "person_confirmation"
 },
 "person_confirmation.refused": {
@@ -10531,6 +10543,9 @@
 "owner": "research_delivery"
 },
 "research_delivery.completed_portfolio_required": {
+"owner": "research_delivery"
+},
+"research_delivery.export_failed": {
 "owner": "research_delivery"
 },
 "research_delivery.factor_source_mismatch": {

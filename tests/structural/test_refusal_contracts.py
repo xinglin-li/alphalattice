@@ -119,6 +119,9 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ),
         ("interface/local_application/cli.py", "<module>"): "`session bind`'s help",
         ("interface/local_application/cli.py", "_command"): "serve's arguments to its launcher",
+        ("control/product_host/composition/web_launcher.py", "_detach"): (
+            "a detached Host's arguments to its own launcher"
+        ),
         ("interface/local_application/cli.py", "_global_options"): "the option and its help",
         ("interface/local_application/cli.py", "_repair"): (
             "a malformed --workspace's repair, the unexpected case"

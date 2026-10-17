@@ -111,6 +111,7 @@ OBSERVED_OPERATIONS: frozenset[str] = frozenset(
         "EVIDENCE_CONSENT_SET",
         "EVIDENCE_INSTALL",
         "USAGE_READING_SET",
+        "COMMITTEE_DAILY_SET",
         "CPU_BUDGET_SET",
         "HOST_STOP",
         "WORKSPACE_BACKUP",

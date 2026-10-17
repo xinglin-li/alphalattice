@@ -1034,7 +1034,7 @@ function objectRow({lead: ic = '', state = null, name = '', why = '', ref = '', 
   const leadKind = state ? 'dot' : typeof ic === 'string' ? (ic ? 'icon' : '') : /class="mark\b/.test(String(ic)) ? 'mark' : /class="row-dot\b/.test(String(ic)) ? 'dot' : /class="feature-icon\b/.test(String(ic)) ? 'icon' : '';
   if (state) slots = {...(slots || {}), props: [stateLine(state, {dot: false, next: '', until: slots?.until, word: slots?.word}), ...(slots?.props || [])], columns: slots?.columns ? ['state', ...slots.columns] : null}; // the next action is the row's second line, not the slot's
   const copy = html`<strong>${name}</strong>${why ? html`<span class="list-row-why">${why}</span>` : ''}`;
-  // a dense row's title keeps one line (law 136) and reads whole on hover or focus where the line cuts it -- on the row's main part, which takes the pointer (the clip census, 2026-09-24: the hidden part was readable nowhere)
+  // a dense row's title keeps one line (law 136), whole on hover or focus where cut, on the row's main part (clip census, 09-24)
   const main = !to ? html`<span class="list-row-main" data-tip="@overflow">${copy}</span>` : to.page ? html`<a class="list-row-main" data-tip="@overflow" href="${routeUrl(to.page, to.extra || {})}">${copy}</a>` : html`<button type="button" class="list-row-main" data-tip="@overflow" data-action="${to.action}" data-value="${to.value}">${copy}</button>`;
   // every fact keeps its slot (an absent one an empty span, hidden unless the list sizes its slots), so the columns align across rows
   const facts = slots?.columns || slots?.props?.filter(Boolean).length ? (slots?.props || []).map((p, i) => {
@@ -1769,6 +1769,8 @@ function pctText(s, threshold = null) {
 /* ---- reading helpers: an owner's code in words (the code itself stays on hover and in the
    exports). Owner strings stay in the details; displayed meanings change no value. */
 const CODE_WORDS = {
+  'alternative_evidence.scoped_refresh': 'Refresh Evidence',
+  'evidence_review.retrieval_environment_not_loaded': 'Retrieval environment not loaded',
   "EVIDENCE_AUTHORITY_NOT_ADMITTED": "Evidence authority not admitted",
   "risk_research.installed_risk_surface_absent": "Installed risk surface not available",
   "risk_research.date_risk_unavailable": "Risk for this date not available",
@@ -1777,7 +1779,7 @@ const CODE_WORDS = {
 
   PM:'Main PM', CRO:'CRO',
   STANCES:'Blind stances', DEBATE:'Debate', CLOSED:'Closed', NOT_YET:'Not yet received', ADOPTED:'Adopted', ADOPT:'Adopt', REJECT:'Rejected', FOR_THE_PERSON:'For you', PROCEED:'Proceed', PROCEED_WITH_NOTES:'Proceed with notes', DECLINE:'Decline endorsement',
-  RESEARCH_DELIVERY_EXPORTED:'Delivery exported', COMMITTEE_FLOOR:'Committee floor', CONDITIONAL_ESTIMATE:'Conditional estimated weights',
+  RESEARCH_DELIVERY_EXPORTED:'Delivery exported', COMMITTEE_FLOOR:'Committee floor', COMMITTEE_DAILY:'Daily committee setting', CONDITIONAL_ESTIMATE:'Conditional estimated weights',
   UNRECOVERABLE: 'Unrecoverable execution',
   SETTLE_EVIDENCE_CONTINUATION: 'Settle evidence continuation',
   SELECT_ANALYSIS: 'Choose the analysis',
@@ -1906,6 +1908,7 @@ const CODE_WORDS = {
   AGENT_ANSWER_SUBMIT: "Submit bundle answer",
   AGENT_BUNDLE_PREPARE: "Prepare agent bundle",
   COMPARE: "Compare installed results",
+  COMMITTEE_DAILY_SET: "Set the daily committee",
   COMMITTEE_OPEN: "Open the committee",
   COMMITTEE_READ: "Committee floor",
   COMMITTEE_SUBMIT: "Committee message",
@@ -2306,9 +2309,7 @@ Object.assign(CODE_LINES, {
   "task_control.task_not_found": "The named Task is not held by Task Control in this workspace. Read workspace show and backup list; restore a generation that holds it into a new directory, or follow the offered owner action to plan new work.",
 });
 const explainCode = (message) => { const s = String(message || ''); const code = Object.keys(CODE_LINES).find((k) => s.includes(k)); return code ? t(CODE_LINES[code]) : ''; };
-/* U72 (V451, NM1b): what the product installs is named by its title from the one label table (labels.json, embedded by
- * the build as LABELS) -- a strategy, component, recipe, policy, risk method, target, objective or weight rule -- its
- * Chinese title under Chinese; the id stays where a person copies one (a code cell's tip and copy). */
+/* U72 (V451, NM1b): LABELS from labels.json owns installed titles and their Chinese form; ids stay in code cell tips/copy. */
 const labelOf = (id) => (typeof LABELS !== 'undefined' && id !== null && id !== undefined && Object.prototype.hasOwnProperty.call(LABELS, String(id)) ? LABELS[String(id)] : null);
 const labelWords = (label) => (typeof I18N !== 'undefined' && I18N.locale === 'zh-CN' ? label.title_zh : label.title);
 const declaredCodeWord = (code) => CODE_WORDS[code] || STATES[String(code ?? '').toLowerCase()]?.word || (typeof MESSAGE_KINDS === 'object' && MESSAGE_KINDS[code]?.[0]) || stageWord(code)?.word || '';

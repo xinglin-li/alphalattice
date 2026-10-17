@@ -8,6 +8,12 @@
     "meaning": "The answer's status: `AVAILABLE`."
    },
    {
+    "name": "grammar",
+    "kind": "object",
+    "required": true,
+    "meaning": "The words a submission is checked in, whole in the compact view: the reference id pattern, a problem's fields and each stage's admitted reads."
+   },
+   {
     "name": "schemas",
     "kind": "object",
     "required": true,
@@ -815,7 +821,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The requests that go on: resubmit and show after `INCOMPLETE`; show, narrative and export after `COMPLETE`."
+    "meaning": "The requests that go on: resubmit and show after `INCOMPLETE`, with an `attach:<reference_id>` ready for each update the goal's Tasks published when a cited reference is absent; show, narrative and export after `COMPLETE`."
    },
    {
     "name": "claim",
@@ -1089,7 +1095,7 @@
     "name": "commentary",
     "kind": "array",
     "required": true,
-    "meaning": "The caller's commentary entries, as submitted."
+    "meaning": "The caller's commentary entries, as submitted; a committee's leads with each member's suggestions on holdings (`position`, `holding_aliases`), then its verdict, and ends with the line that the person decides."
    },
    {
     "name": "commentary_provenance",
@@ -1120,6 +1126,18 @@
     "kind": "string",
     "required": true,
     "meaning": "The export's hash, over every other field."
+   },
+   {
+    "name": "next_action",
+    "kind": "string",
+    "required": false,
+    "meaning": "On the first use's own report, while the daily committee setting stands unanswered: `ASK_THE_PERSON_ONCE`."
+   },
+   {
+    "name": "ask_now",
+    "kind": "array",
+    "required": false,
+    "meaning": "With `ASK_THE_PERSON_ONCE`: how to ask, the one question whether each daily update also convenes the committee, and the command that relays the person's answer."
    }
   ]
  },
@@ -7124,7 +7142,7 @@
     "name": "next_action",
     "kind": "string",
     "required": false,
-    "meaning": "On an agent's read of a research update's published review: `CONVENE_THE_COMMITTEE` with its `committee` request, or `REPORT_THE_COMMITTEE` with its `committee_report` once the floor opened on that publication has closed."
+    "meaning": "On an agent's read of a research update's published review: `CONVENE_THE_COMMITTEE` with its `committee` request (on a daily date with the person's daily committee setting off, `GIVE_THE_PM_VIEW`, the same request offered), or `REPORT_THE_COMMITTEE` with its `committee_report` once the floor opened on that publication has closed."
    },
    {
     "name": "committee_unreadable",
@@ -7518,7 +7536,7 @@
     "name": "acquisition_scope",
     "kind": "object",
     "required": false,
-    "meaning": "What official SEC acquisition would take for this book under the workspace's consent, said before that consent and before any source package: `issuers`, `units`, `documents_per_issuer`, `documents_at_most`, `bytes_at_most`, `requests_estimated` and `seconds_estimated` (without retries), and `beyond_one_package`, the issuers a one-unit package leaves out."
+    "meaning": "The cold/full official SEC acquisition upper bound for this book under the workspace's consent: `estimate_basis` and `estimate_detail` explain that held sources and retrieval packs may be reused, and that seconds exclude retries and processing; this is not remaining time. `issuers`, `units`, `documents_per_issuer`, `documents_at_most`, `bytes_at_most`, `requests_estimated`, `seconds_estimated` and `beyond_one_package` retain their scope before reuse."
    },
    {
     "name": "source_candidates",
@@ -9996,7 +10014,7 @@
     "name": "next_action",
     "kind": "string",
     "required": false,
-    "meaning": "On an agent's read whose review stands published: `CONVENE_THE_COMMITTEE` with its `committee` request, or `REPORT_THE_COMMITTEE` with its `committee_report` once the floor opened on that publication has closed."
+    "meaning": "On an agent's read whose review stands published: `CONVENE_THE_COMMITTEE` with its `committee` request (on a daily date with the person's daily committee setting off, `GIVE_THE_PM_VIEW`, the same request offered), or `REPORT_THE_COMMITTEE` with its `committee_report` once the floor opened on that publication has closed."
    },
    {
     "name": "committee_unreadable",
@@ -10189,6 +10207,12 @@
     "kind": "array",
     "required": true,
     "meaning": "First, `RUN_FORWARD`: with no strategy installed its `detail` names the shortest way to a book that runs forward (the research strategy's controls and required studies, no Factor study), and an installed strategy with no book yet offers its book controls; then each research input's standard flows, what each needs and asks next, with the requests ready to send; and each installed research strategy's `RUN_FORWARD`, its `activation` as the book's controls offer it and, while it runs forward, its daily update's plan in `next_requests.update`; with no strategy installed, one `RUN_FORWARD` whose `strategy_controls` names each missing component's first step. Its activation carries review_standing from the exact book Task's published Evidence/CRO review owner."
+   },
+   {
+    "name": "committee_daily",
+    "kind": "object",
+    "required": true,
+    "meaning": "The person's daily committee setting, as `committee daily` answers it: `ON`, `OFF` or `UNANSWERED` (off), its meaning and the request that turns it."
    }
   ]
  },
@@ -10538,7 +10562,7 @@
     "name": "settled",
     "kind": "boolean",
     "required": false,
-    "meaning": "True once every specialist has spoken or passed its discussion turn and no challenge stands unruled: the PM gives the verdict then."
+    "meaning": "True once every specialist has spoken or passed its discussion turn and no challenge stands unruled, or once the discussion window has passed, whatever stands: the PM gives the verdict then."
    },
    {
     "name": "stances_close_at",
@@ -10556,7 +10580,7 @@
     "name": "verdict",
     "kind": "object",
     "required": false,
-    "meaning": "The PM's verdict once given (`PROCEED`, `PROCEED_WITH_NOTES` or `FOR_THE_PERSON`) with its words; `FOR_THE_PERSON` when the floor closed without one."
+    "meaning": "The PM's verdict once given (`PROCEED`, `PROCEED_WITH_NOTES`, `DECLINE` or `FOR_THE_PERSON`) with its words, the committee's discussion record and not an approval or advice; `FOR_THE_PERSON` when the floor closed without one."
    },
    {
     "name": "stances_in",
@@ -10619,10 +10643,16 @@
     "meaning": "The delivery report's request for these positions, which carries the closed floor as its commentary."
    },
    {
+    "name": "next_action",
+    "kind": "string",
+    "required": false,
+    "meaning": "`TAKE_YOUR_DISCUSSION_TURN` once the stances are revealed and this member's one turn is open, inside the discussion window: send a CHALLENGE or REPLY, or the offered pass, then wait again. Past the window the turn has passed (silent) and nothing is offered."
+   },
+   {
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "Once the floor closed, `report`: the delivery that carries it as commentary."
+    "meaning": "While the member's discussion turn is open, `pass`: its PASS, ready to send as it stands; once the floor closed, `report`: the delivery that carries it as commentary."
    }
   ]
  },
@@ -11407,6 +11437,40 @@
     "kind": "string",
     "required": true,
     "meaning": "FORMAT_ONLY_PLAN_REQUIRED: conversion admits no plan or Task."
+   }
+  ]
+ },
+ "COMMITTEE_DAILY_SET": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "The answer's status: `COMMITTEE_DAILY`, after the setting."
+   },
+   {
+    "name": "committee_daily",
+    "kind": "string",
+    "required": true,
+    "meaning": "`ON` when each daily update's published review convenes the committee; `OFF` when it gets the PM's view with the committee offered; `UNANSWERED`, off. A record the product did not write reads as `OFF`."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": true,
+    "meaning": "What the setting means for a daily update, in words."
+   },
+   {
+    "name": "next_requests",
+    "kind": "object",
+    "required": true,
+    "meaning": "The request that turns the setting the other way, as `set`; only a person's relayed answer sends it."
+   },
+   {
+    "name": "attributed_goal_id",
+    "kind": "string",
+    "required": false,
+    "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
    }
   ]
  }

@@ -25,9 +25,7 @@
   "direct_mutual_package_dependencies": [],
   "module_proof_reach": {
     "no_executable_evidence": [],
-    "reached_only_by_a_case_helper": [
-      "task_control.projection"
-    ],
+    "reached_only_by_a_case_helper": [],
     "reached_only_by_a_script": [
       "playpen_governance.evidence_bindings"
     ]

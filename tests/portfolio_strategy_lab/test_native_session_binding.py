@@ -298,6 +298,11 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
         assert notice["next_action"] == "NAME_THE_WORKSPACE_ON_EACH_COMMAND"
     root = autobind_root(live.workspace)
     assert NativeResearchBinding.read(root, session=("codex", "sandboxed")) is not None
+    _usage_files(tmp_path, monkeypatch, "sandboxed")
+    reading = LocalResearchClient(live.workspace).publish_native_event(
+        root, {"source": "native_usage_read"}
+    )
+    assert reading["status"] == "DELIVERED"
     assert (
         cli.main(["--workspace", str(live.workspace), "session", "unbind"], serve=lambda _: 99) == 0
     )

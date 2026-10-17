@@ -31,6 +31,7 @@ from alphalattice.interface.local_application.native_bridge import (
     PROJECT_DECLARATION_SCHEMA,
     SPAWN_HOPS,
     USAGE_READINGS,
+    WORKBENCH_BUILD,
     NativeBridgeError,
     NativeResearchBinding,
     attachment_preflight,
@@ -92,6 +93,13 @@ def _installed_leg() -> dict[str, Any]:
         return {"present": False, "command": command, "reason": "DISTRIBUTION_MISSING"}
 
 
+def _workbench_current() -> bool:
+    """Whether serve would take this checkout's built Workbench (`workbench_current`)."""
+    from alphalattice.interface.local_application import workbench_assets
+
+    return workbench_assets.workbench_current()
+
+
 def _host_facts(binding: NativeResearchBinding | None) -> dict[str, Any]:
     """Read existing Host facts when bound; an absent Host supplies no made-up measurements."""
     from alphalattice.interface.local_application.client import (
@@ -127,7 +135,14 @@ HOST_DEPENDENCIES = {
     "installed_leg": (
         "Resolve the clean alphalattice command",
         "Run uv sync --locked and the documented tool install; disclose it. "
-        "Check an unproved PATH owner first.",
+        "Check an unproved PATH owner first. A first use opens nothing until a fresh shell "
+        "runs `alphalattice`; off PATH, `uv tool update-shell` and a restart are the person's.",
+        "AGENT",
+    ),
+    "workbench_build": (
+        "Serve the Workbench",
+        f"Run the documented Workbench build (`{WORKBENCH_BUILD}`) from the checkout root, "
+        "disclosing it; serve refuses until the built files match the sources.",
         "AGENT",
     ),
     "retrieval_runtime": (
@@ -278,6 +293,7 @@ def host_readiness(
         ),
         ("uv", (uv := command_readiness([os.environ.get("UV", "uv"), "--version"]))["present"], uv),
         ("installed_leg", (installed := _installed_leg())["present"], installed),
+        ("workbench_build", _workbench_current(), {"command": WORKBENCH_BUILD}),
         (
             "retrieval_runtime",
             retrieval["present"] and packs["ready"],

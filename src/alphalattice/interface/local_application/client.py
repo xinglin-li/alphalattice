@@ -53,6 +53,7 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.goals import (
     DAILY_NETWORK_RELAY,
     FIRST_USE_ASK_NOW,
+    WATCH_IN_WORKBENCH,
     target_sessions,
 )
 
@@ -761,9 +762,8 @@ def _listed(path: Path) -> list[Any]:
 
 
 def _response_document(path: Path) -> dict[str, Any]:
-    """Read a saved full or compact JSON/YAML answer.
-
-    Only a continued part must be whole (`_whole`); a local refusal keeps its own offer.
+    """Read saved JSON/YAML, full or compact.
+    Only continued parts must be whole; refusals retain offers.
     """
 
     import yaml
@@ -826,10 +826,9 @@ _BOOK_CONTEXT: Final = frozenset({"position_basis", "portfolio_session"})
 
 
 def _offered_book(offered: dict[str, dict[str, Any]], allowed: frozenset[str]) -> dict[str, Any]:
-    """The one book the answer's own requests select, as the operation takes it (V473).
-
-    A book's answer offers its Evidence and review bound to the book; an operation it does not
-    offer continues that book, never the workspace's default. Two books are refused by name.
+    """Use the answer's bound book (V473).
+    Offers bind Evidence/review; other operations inherit it, never the default.
+    Refuse two books.
     """
     books = {
         tuple(sorted((k, v) for k, v in request.items() if k in BOOK_SELECTORS | _BOOK_CONTEXT))
@@ -854,9 +853,8 @@ name: a published or prepared Task, a plan, a factor, a prepared unit (V449)."""
 
 
 def _located(answer: dict[str, Any], *keys: str) -> str:
-    """Read returned locators, not declarations of authority; the Host revalidates.
-
-    The answer's own first, then the read's request its CLI copy keeps (`named_read`, V454).
+    """Answer locators precede named_read's (V454).
+    The Host revalidates authority.
     """
     kept = answer.get("read_request")
     for source in (answer, kept if isinstance(kept, dict) else {}):
@@ -866,29 +864,59 @@ def _located(answer: dict[str, Any], *keys: str) -> str:
     raise LocalResearchClientError("local_client.response_reference_missing:" + ",".join(keys))
 
 
+def _bundle_output(directory: Path, expected: Mapping[str, str | None]) -> set[str]:
+    """Reuse matching output; refuse other files."""
+    try:
+        if not directory.exists():
+            return set()
+        if not directory.is_dir():
+            raise LocalResearchClientError("local_client.bundle_directory_exists")
+        kept = {path.name: path for path in directory.iterdir()}
+        if kept and BUNDLE_WORKSPACE in expected and BUNDLE_WORKSPACE not in kept:
+            raise LocalResearchClientError("local_client.bundle_directory_exists")
+        for name, path in kept.items():
+            if path.is_symlink() or path.is_junction():
+                raise LocalResearchClientError("local_client.bundle_directory_exists")
+            value = expected.get(name)
+            mutable = name in {"answer.json", "message.yaml"} and "README.md" in expected
+            valid = (
+                (path.is_file() if mutable else path.is_dir())
+                if value is None
+                else (path.is_file() and path.read_bytes() == value.encode("utf-8"))
+            )
+            if not (name in expected or mutable) or not valid:
+                raise LocalResearchClientError("local_client.bundle_directory_exists")
+        return set(kept)
+    except OSError as error:
+        raise LocalResearchClientError("local_client.bundle_write_refused") from error
+
+
 def _write_bundle(
     directory: Path, body: dict[str, Any], workspace: Path | None = None, *, prefix: tuple[str, ...]
 ) -> dict[str, Any]:
-    """Write a new bundle; return file sizes, answer path and the scoped submit command."""
+    """Write/continue a bundle; return sizes, answer and scoped submit."""
     files = body.get("files")
     if not isinstance(files, list) or not files:
         raise LocalResearchClientError("local_client.bundle_response_invalid")
-    listing: list[dict[str, object]] = []
+    output = {str(item.get("name", "")): item.get("text") for item in files}
+    if any(not n or Path(n).name != n or not isinstance(t, str) for n, t in output.items()):
+        raise LocalResearchClientError("local_client.bundle_response_invalid")
+    expected: dict[str, str] = {
+        **(
+            {BUNDLE_WORKSPACE: json.dumps({"workspace": str(workspace.resolve())}) + "\n"}
+            if workspace is not None
+            else {}
+        ),
+        **output,
+    }
     try:
-        directory.mkdir(parents=True, exist_ok=False)
-        if workspace is not None:
-            (directory / BUNDLE_WORKSPACE).write_bytes(
-                (json.dumps({"workspace": str(workspace.resolve())}) + "\n").encode()
-            )
-        for item in files:
-            name, text = str(item.get("name", "")), item.get("text")
-            if not name or Path(name).name != name or not isinstance(text, str):
-                raise LocalResearchClientError("local_client.bundle_response_invalid")
+        kept = _bundle_output(directory, expected)
+        directory.mkdir(parents=True, exist_ok=True)
+        for name, text in expected.items():
+            if name in kept:
+                continue
             with (directory / name).open("x", encoding="utf-8", newline="\n") as stream:
                 stream.write(text)
-            listing.append(
-                {"name": name, "lines": text.count("\n"), "bytes": len(text.encode("utf-8"))}
-            )
     except OSError as error:
         raise LocalResearchClientError("local_client.bundle_write_refused") from error
     answer = directory / "answer.json"
@@ -906,7 +934,10 @@ def _write_bundle(
     command = join([*prefix[:width], *arguments], shell())
     return {
         **{key: value for key, value in body.items() if key != "files"},
-        "files": listing,
+        "files": [
+            {"name": n, "lines": t.count("\n"), "bytes": len(t.encode("utf-8"))}
+            for n, t in output.items()
+        ],
         "answer_file": str(answer),
         "submit_arguments": arguments,
         **({} if command is None else {"submit_command": command}),
@@ -914,18 +945,15 @@ def _write_bundle(
 
 
 def _bundle_directory(document: dict[str, Any]) -> Path | None:
-    """Resolve the bundle directory named by a supported operation.
-
-    A bundle is prepared only into a directory that does not yet exist.
-    """
+    """Resolve output; preflight before contacting the Host."""
     operation, value = document.get("operation"), document.get("bundle_directory")
     if operation not in {"AGENT_BUNDLE_PREPARE", "AGENT_ANSWER_SUBMIT"} or not isinstance(
         value, str
     ):
         return None
     directory = Path(value).resolve()
-    if operation == "AGENT_BUNDLE_PREPARE" and directory.exists():
-        raise LocalResearchClientError("local_client.bundle_directory_exists")
+    if operation == "AGENT_BUNDLE_PREPARE" and not (directory / BUNDLE_WORKSPACE).is_file():
+        _bundle_output(directory, {})
     document["bundle_directory"] = str(directory)
     return directory
 
@@ -933,10 +961,8 @@ def _bundle_directory(document: dict[str, Any]) -> Path | None:
 def _request_fields(
     template: dict[str, Any], supplied: dict[str, Any], path: str = ""
 ) -> dict[str, Any]:
-    """Fill declared choices without silently replacing an owner's bound reference.
-
-    A field the owner wrote as None is a choice left to the reader (V136), filled like an
-    absent one.
+    """Fill choices without replacing bound references.
+    The owner's None or absent field is open (V136).
     """
     result = dict(template)
     for key, value in supplied.items():
@@ -975,9 +1001,8 @@ def _shown_as(left: str, right: str) -> bool:
 
 
 def _document_value(field: str, given: str) -> object:
-    """The document `--file` names: its text for a text field (a declaration kept as written),
-    the YAML or JSON it holds otherwise; `-` reads stdin, and a value that is JSON itself, as a
-    next command prints it, is the document."""
+    """Read --file: text fields keep text; others parse YAML/JSON.
+    `-` reads stdin; inline JSON is a document, as next_commands prints it."""
     if given.lstrip().startswith(("{", "[")):
         try:
             return json.loads(given)
@@ -990,17 +1015,11 @@ def _document_value(field: str, given: str) -> object:
 
 
 def document_field(documents: list[str], given: str) -> tuple[str, object]:
-    """Read the declaration into the selected operation's registered document field.
+    """Return a registered field and its declaration (V432).
 
-    A path fills the first field; an inline JSON value fills the first whose kind fits it,
-    so a printed `--file '{...}'` sends the request it came from (V432).
-
-    Args:
-        documents: The selected operation's document fields, in registry order.
-        given: A file path, stdin marker or inline JSON value.
-
-    Returns:
-        The request field and the document it reads.
+    `documents` follows registry order; `given` is a path, stdin or inline JSON.
+    Paths fill the first field; inline JSON fills the first matching kind.
+    Thus a printed --file JSON continues the request it came from.
     """
     value = _document_value(documents[0], given)
     if isinstance(value, dict | list):
@@ -1113,33 +1132,24 @@ def continuation(
 def continued(
     operation: str, bundle: dict[str, Any], given: dict[str, Any], allowed: frozenset[str]
 ) -> dict[str, Any]:
-    """Build an operation request from an answer and explicit fields.
+    """Continue the saved answer into an operation.
 
-    A draft's ``plan_request`` starts a plan with the references it binds kept (a field that
-    would replace one is refused); a declaration given replaces the draft's, and without one
-    the draft's own document is planned. A controls
-    answer starts one on its input, its template planned when no declaration is given (V355).
-    A next request for the operation starts it with its bound references kept (a field that
-    would replace one is refused, as ``request --from`` refuses it); a preview's ``replan`` is
-    one, and a declaration given replaces the one it offers, as it replaces a draft's (V148).
-    Otherwise the answer's locators fill the fields the operation takes. Its Task and its goal
-    are the request's target: one the answer does not name is refused, and a flag naming another
-    is refused, never preferred. Every other reference the operation takes (a hash or an id) is
-    filled from the answer under its own name or its `LOCATORS` alias, so a read reads again
-    from its own answer; a flag giving one wins over the answer's (V449).
-
-    Args:
-        operation: The operation the command sends.
-        bundle: The answer it continues.
-        given: The fields the command's flags give.
-        allowed: The fields the operation takes.
-
-    Returns:
-        The request.
-
-    Raises:
-        LocalResearchClientError: A target the answer does not name, a flag naming another,
-            a choice left open, or a part a compact view cut.
+    `given` flags may fill only `allowed` fields.
+    Draft plan_request keeps bound references.
+    Explicit declarations replace the draft's.
+    Otherwise plan the draft's own document.
+    Controls preserve their input (V355).
+    Their template supplies a missing declaration.
+    Next requests retain bound references (V148).
+    A preview's replan is such a request.
+    Explicit declarations replace its offered spec.
+    Other fields use their own names or LOCATORS.
+    Task and Goal are the answer's target.
+    Missing targets are refused.
+    Flags naming other targets are refused.
+    Other references may be overridden by flags (V449).
+    Thus saved reads keep their selection.
+    Missing references, open choices and truncated parts refuse.
     """
     offered = offered_requests(bundle)
     kept = bundle.get("read_request")
@@ -1285,9 +1295,9 @@ def _save_output(
 ) -> None:
     """The whole answer in the format asked, which `--from` reads back; html is its report.
 
-    YAML is written in the declaration loader's dialect, so it reads back the same values
-    (V146); the editable declaration alone is `--save-declaration`'s (V130). ``replace`` is for the
-    admission this command saved before its wait, which the final answer takes over (V273).
+    YAML in the declaration loader's dialect reads back the same values (V146); the editable
+    declaration alone is `--save-declaration`'s (V130). ``replace``: the final answer takes
+    over the admission saved before its wait (V273).
     """
     if format == "json":
         payload = body["json"].encode("utf-8") if isinstance(body.get("json"), str) else raw
@@ -1408,19 +1418,16 @@ def reference_field(name: str | None) -> bool:
 
 
 def _issued_reference(name: str) -> bool:
-    """Whether a request field holds only values the Host issued: a hash, or a reference the
-    request contract types (a UUID, a hash, an issued entry id). Only there is a short value
-    read back as the whole one it begins, and refused when it begins none or several. An
-    authored id, a dated input or a criterion named by the person, is sent as written whatever
-    the ledger holds (V393, V544, V561)."""
+    """Whether a request field holds only Host-issued values (a hash, a typed UUID or entry
+    id): only there a short value reads back as the one whole value it begins. An authored id
+    is sent as written (V393, V544, V561)."""
     return name.endswith(("_hash", "_hashes")) or name in command_table()["references"]
 
 
 def _shortened(name: str | None) -> bool:
     """Whether the compact display shortens a field's whole hashes and ids: an issued reference,
-    or an answer's own id the request contract does not take, which a reader sends back through
-    the typed request field it selects. A request field the contract leaves untyped holds an
-    authored value, shown and sent as written (V561)."""
+    or an answer's own id the contract does not take (sent back through the typed field it
+    selects). An untyped request field holds an authored value, shown as written (V561)."""
     if name is None or not reference_field(name):
         return False
     return _issued_reference(name) or name not in command_table()["types"]
@@ -1526,10 +1533,9 @@ def _same(value: Any) -> Any:
 def _context(
     workspace: Path, goal: str | None, body: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """The context a command worked in, which every answer names, as the agent CLIs' JSON
-    output names its session (V401): the workspace and how it was chosen (`WORKSPACE_FROM`:
-    named, or the session's binding, V568), the goal the Host counted the request toward (the
-    one named, or the one the session took) and the agent session it came from."""
+    """The context every answer names, as agent CLIs name their session (V401): the workspace
+    and how it was chosen (`WORKSPACE_FROM`, V568), the goal the request counted toward and
+    the agent session it came from."""
     headers = agent_provenance_headers(os.environ)
     session = headers.get(AGENT_SESSION_HEADER)
     counted = (body or {}).get("attributed_goal_id")
@@ -2174,13 +2180,11 @@ def _follow(
 ) -> dict[str, Any]:
     """Follow admitted work until it ends or needs a decision; never on a timer (WK).
 
-    A Task is followed through STATUS long polls, a feature trial through its readback; a Host
-    that stops or restarts is waited for, since the Task runs on under Task Control. Only
-    ``max_wait``, the caller's cap, ends it early, as pending. ``each_stage`` also ends it once
-    the Task verifies a further stage (a coverage run's unit, V421). A state the Task never
-    leaves by itself ends it too (`WAIT_EXITS`): a decision, a recovery, or a deferral naming its
-    retry time and the request that resumes it (V507). State changes go to stderr; the answer
-    keeps the admission that started the work and names what happened in ``wait_event``.
+    A Task by STATUS long polls, a feature trial by its readback, across Host restarts (Task
+    Control runs it on). ``max_wait`` ends it early, as pending; ``each_stage`` once a further
+    stage verifies (V421); a state the Task never leaves itself (`WAIT_EXITS`: a decision, a
+    recovery, a deferral with its retry and resume request, V507) ends it too. State changes go
+    to stderr; the answer keeps the admission and names what happened in ``wait_event``.
     """
     if max_wait is not None and not max_wait > 0:
         raise LocalResearchClientError("local_client.max_wait_invalid")
@@ -2341,11 +2345,9 @@ def _goal_wake_refused(client: LocalResearchClient, goal_id: str) -> dict[str, A
 def _wait_for_goal(
     client: LocalResearchClient, goal_id: str, max_wait: float | None
 ) -> dict[str, Any]:
-    """Wait for the next Task of a goal to end or need a decision, the next message under it
-    for this waiter (an accepted answer wakes the lead it is filed for), or the goal to close.
-
-    The waiter is the agent session the command runs in; a message between two other agents
-    never wakes it (V503). A request's own Conversation row wakes no one: its Task does."""
+    """Wait for a goal's next Task to end or need a decision, its next message for this waiter
+    (the session running the command; an accepted answer wakes its lead, never a message
+    between two others, V503; a request's own row wakes no one, its Task does), or its close."""
     me = agent_provenance_headers(os.environ).get(AGENT_SESSION_HEADER)
     document = {"operation": "GOAL_NARRATIVE", "goal_id": goal_id}
     read = {"operation": "GOAL_SHOW", "goal_id": goal_id}
@@ -2508,15 +2510,42 @@ class _Chain:
             (collection / BUNDLE_WORKSPACE).write_bytes(
                 (json.dumps({"workspace": str(self.client.workspace)}) + "\n").encode()
             )
+        keys = ("status", "index", "files", "answer_file", "submit_command", "submit_arguments")
         return {
-            "status": written.get("status"),
+            **{k: written.get(k) for k in keys},
             "bundle_directory": written.get("bundle_directory", str(target)),
-            "index": written.get("index"),
-            "files": written.get("files"),
-            "answer_file": written.get("answer_file"),
-            "submit_command": written.get("submit_command"),
-            "submit_arguments": written.get("submit_arguments"),
         }
+
+    def bundles(self, current: dict[str, Any], root: Path) -> list[dict[str, Any]] | dict[str, Any]:
+        """Validate and continue the prepared review's exact Analyst collection."""
+        requests = {
+            name: request
+            for name, request in offered_requests(current).items()
+            if name.startswith("analyst_bundle") and isinstance(request, dict)
+        }
+        expected: dict[str, str | None] = {
+            "analyst-"
+            + _UNIT_NAME.sub("-", n.removeprefix("analyst_bundle").lstrip("_") or "book"): None
+            for n in requests
+        }
+        expected[BUNDLE_WORKSPACE] = (
+            json.dumps({"workspace": str(self.client.workspace.resolve())}) + "\n"
+        )
+        if requests:
+            _bundle_output(root, expected)
+        bundles = []
+        for name, request in requests.items():
+            unit = name.removeprefix("analyst_bundle").lstrip("_") or "book"
+            written = self.bundle(
+                "analyst_bundle",
+                request,
+                root / ("analyst-" + _UNIT_NAME.sub("-", unit)),
+                collection=root,
+            )
+            if "answer_file" not in written:
+                return self.stop("analyst_bundle", written)
+            bundles.append({"unit": unit, **written})
+        return bundles
 
 
 def _chain(client: LocalResearchClient, args: argparse.Namespace, name: str) -> _Chain:
@@ -2562,10 +2591,7 @@ def _next_output(output: str | Path) -> Path:
 
 
 def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """Prepare Evidence and Analyst bundles for a book or dated positions (AGENT-TIME verb 2).
-
-    Follow offered steps in order to their first stop; no later work runs detached.
-    """
+    """Follow a book or date's Evidence offers to Analyst bundles, ending at the first stop."""
     package = str(args.strategy_package_id)
     root = Path(args.bundle_root).resolve()
     chain = _chain(client, args, "book_review")
@@ -2642,20 +2668,9 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         return ended
     # The run's own bundles at its cutoff: the same preparation asked again reuses it.
     current = chain.send("evidence_prepared", prepare) if pending else prepared
-    bundles: list[dict[str, Any]] = []
-    for name, request in offered_requests(current).items():
-        if not name.startswith("analyst_bundle") or not isinstance(request, dict):
-            continue
-        unit = name.removeprefix("analyst_bundle").lstrip("_") or "book"
-        written = chain.bundle(
-            "analyst_bundle",
-            request,
-            root / ("analyst-" + _UNIT_NAME.sub("-", unit)),
-            collection=root,
-        )
-        if "answer_file" not in written:
-            return chain.stop("analyst_bundle", written)
-        bundles.append({"unit": unit, **written})
+    bundles = chain.bundles(current, root)
+    if isinstance(bundles, dict):
+        return bundles
     review = chain.offered(readback, "review")
     return {
         "status": "BOOK_REVIEW_READY" if bundles else "EVIDENCE_PREPARED",
@@ -2734,15 +2749,7 @@ def _review_published(
 
 
 def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """`review continue`: a book's review carried on from its specialists' written answers, in
-    one call (AGENT-TIME verb 3).
-
-    Every answer under ``--dir`` is submitted; one the Host asks to correct is named with its
-    problems and the call ends there, the accepted kept (an answer resent is the one
-    filed). Each publication is followed to its end. After the Analysts, Evidence offers its
-    dossier and the dossier the CRO's bundle, written into ``--cro-dir``; the CRO's answer is
-    `_review_published`.
-    """
+    """Submit written answers to their first correction or publication, then follow its offer."""
     folders = _answer_folders(Path(args.bundle_root).resolve(), args.strategy_package_id)
     chain = _chain(client, args, "review_continue")
     receipts: list[dict[str, Any]] = []
@@ -2921,6 +2928,11 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
             "next_action": refusal.next_action,
             chain.name: {"steps": chain.steps},
         }
+    from alphalattice.interface.local_application.native_bridge import first_use_setup
+
+    setup, refused = first_use_setup(client.workspace)  # fail fast: the agent's setup first
+    if refused:
+        return {**refused, chain.name: {"steps": chain.steps}}
     answer, note = _prepared(chain, str(args.objective), named)
     prefix = _entry_of(client)
     road = [
@@ -2930,24 +2942,29 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
     answer[chain.name] = {
         **answer.get(chain.name, {"steps": chain.steps}),
         "date": named,
-        "setup": _setup(client.workspace),
+        "setup": setup,
         "road": road,
         "ask_now": [
+            WATCH_IN_WORKBENCH.format(link=client.selected_url({"operation": "GOAL_SHOW"}, answer)),
             *FIRST_USE_ASK_NOW,
             *(join([*prefix, *w], shell()) for w in DAILY_NETWORK_RELAY),
         ],
         **({"sentence": note} if note else {}),
     }
     if answer.get("status") == "ALREADY_PREPARED":
-        answer.update(next_action="BUILD_THE_STRATEGY", next_command=road[1]["command"])
+        # The road goes on where the workspace stands.
+        intents = chain.send("workspace", {"operation": "WORKSPACE_SHOW"}).get("intents") or ()
+        forward: dict[str, Any] = next((i for i in intents if i["flow"] == "RUN_FORWARD"), {})
+        package = forward.get("strategy_package_id")
+        if package and forward.get("status") != "NO_BOOK_YET":
+            controls = join([*prefix, "strategy-book", "controls", "--package", package], shell())
+            answer.update(next_action="READ_THE_STRATEGY_BOOK_CONTROLS", next_command=controls)
+        else:
+            answer["next_action"] = "RUN_THE_BOOK" if package else "BUILD_THE_STRATEGY"
+            answer["next_command"] = road[2 if package else 1]["command"].replace(
+                "<package>", str(package)
+            )
     return answer
-
-
-def _setup(workspace: Path) -> dict[str, Any]:
-    """Read this agent Session's setup (`session_setup`)."""
-    from alphalattice.interface.local_application.native_bridge import setup_reading
-
-    return setup_reading(Path.cwd(), workspace, agent_session(os.environ))
 
 
 def _prepared(
@@ -3018,15 +3035,14 @@ once its window is known, and the plan."""
 
 
 def _build_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """`strategy build`: the research strategy's required studies run on their defaults, and the
-    strategy prepared and installed from them, in one call.
+    """`strategy build`: the strategy's required studies on their defaults, then the strategy
+    prepared and installed from them, in one call.
 
-    Each round reads the strategy controls and takes every step they offer, each followed to
-    its end, one Task at a time: the missing training inputs, each component's Alpha study, then
-    the Risk study once a calibrated study names its window, each from its own template; then
-    the strategy's plan, preparation and installation. Finished steps are reused. The first
-    answer that stops it is the answer, the studies started so far beside it; an agent that
-    would choose a model, a window or a parent sends the steps itself.
+    Each round reads the controls and takes every step offered, one Task at a time, each to its
+    end: missing training inputs, each component's Alpha study, then the Risk study once a
+    calibrated study names its window; then plan, preparation and installation. Finished steps
+    are reused; the first stop is the answer, with the studies started. An agent choosing a
+    model, a window or a parent sends the steps itself.
     """
     chain = _chain(client, args, "strategy_build")
     studies: list[dict[str, Any]] = []
@@ -3291,14 +3307,12 @@ def run(
     before_send: Callable[[dict[str, Any]], None] | None = None,
     after_send: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
 ) -> int:
-    """One command over the running Host, printed as one envelope; returns its exit code.
+    """Print one Host command's envelope and return its exit code.
 
-    ``args.command`` is ``request`` (one operation document) or one of the client's own:
-    ``workspace``, ``operations``, ``activity``, ``event``, ``cpu-budget``; the other fields are
-    that command's. ``document_override`` is the request document, or the function that reads
-    it, so a document that cannot be read is refused in the same envelope. ``before_send`` sees
-    the request document before it goes: the CLI reads a session's lead there (V301), which the
-    native bridge delivers through this client, so the client never imports the bridge.
+    args.command selects request or a client verb; other fields belong to that command.
+    document_override may read lazily, so unreadable input gets the same envelope.
+    before_send sees the request and reads the session's lead (V301) before transport;
+    the bridge delivers through this client. after_send observes the returned answer.
     """
     started = time.perf_counter()
     body: dict[str, Any] | None = None

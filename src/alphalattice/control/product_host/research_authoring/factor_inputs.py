@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Any, BinaryIO, Self, cast
 from uuid import UUID
 
@@ -37,6 +36,7 @@ from alphalattice.control.product_host.storage.inventory import require_storage_
 from alphalattice.control.product_host.storage.retention import require_available_input
 from alphalattice.control.research_program.authoring.workflow import ResearchProgramWorkflow
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.content_store import staging_directory
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
@@ -363,7 +363,7 @@ def _copy_input(
     pool = confined(workspace, f"research-inputs/{relative}")
     if not pool.exists():
         pool.parent.mkdir(parents=True, exist_ok=True)
-        with TemporaryDirectory(dir=pool.parent) as temporary:
+        with staging_directory(pool.parent) as temporary:
             staged = Path(temporary) / "object"
             if not database and source.resolve().is_relative_to(workspace.resolve()):
                 try:
@@ -652,7 +652,7 @@ def _bind_factor_inputs(
         market.load_universe_manifest_revision(
             str(panel["safe_summary"]["lineage"]["manifest_revision"])
         )
-        with TemporaryDirectory(dir=parent) as probe:
+        with staging_directory(parent) as probe:
             first = Path(probe) / "first"
             first.write_bytes(b"")
             try:
@@ -679,7 +679,7 @@ def _bind_factor_inputs(
             if not links_available:
                 required += item.stat().st_size
         require_storage_capacity(workspace, additional_bytes=required)
-        with TemporaryDirectory(dir=parent, prefix=".binding-") as temporary:
+        with staging_directory(parent, ".binding-") as temporary:
             staged = Path(temporary) / "complete"
             # Every staged object is verified once by the bytes it will keep:
             # a pooled object by its digest when staged or already pooled
@@ -789,7 +789,7 @@ def _record_input_publication(
     if target.exists() and target.read_text(encoding="utf-8") != payload:
         raise AuthoringError("research_experiment.input_publication_conflict")
     if not target.exists():
-        with TemporaryDirectory(dir=folder) as temporary:
+        with staging_directory(folder) as temporary:
             staged_receipt = Path(temporary) / "receipt.json"
             staged_receipt.write_text(payload, encoding="utf-8")
             staged_receipt.rename(target)

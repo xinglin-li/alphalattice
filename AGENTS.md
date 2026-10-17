@@ -55,12 +55,20 @@ Use a new workspace for new research:
 alphalattice --workspace "workspaces/my-research" serve --no-browser --stop-on-stdin
 ```
 
-Run it in the background. `alphalattice host stop` stops it after its workers
+Run it in the background on Claude Code. On Codex, where a turn ends its shell's
+children, start it with `serve --no-browser --detach` instead: it returns once the
+Host serves, and the Host outlives the turn. `alphalattice host stop` stops it after its workers
 join; where your shell holds its standard input open, `stop` on it does the same,
-and a background shell that gives it none leaves it serving until then. If
-your host has a browser tool, open the printed launch link once so the person can
-watch; otherwise print the link and go on. Never navigate or click the Workbench
-to show work. Your Session binds itself when it first works on the workspace, and
+and a background shell that gives it none leaves it serving until then. Once it
+serves, its ready lines end with the next action, OPEN_THE_WORKBENCH. The rule: the
+Workbench opens in the coding app's built-in browser, visibly, once, never in a separate
+system browser, so keep `--no-browser` on every serve you start. In Claude Code's desktop
+app, load the browser pane's tools and open the printed link with `preview_start` (url),
+which shows the person a card in the chat; never `navigate` or a background tab for this
+first open. In Codex, open it in Codex's built-in browser. Then tell the person in one line
+that the Workbench is open there, with the link. Only a host with no built-in browser (a
+terminal CLI) gives the person the link alone. Never navigate or click the Workbench to
+show work. Your Session binds itself when it first works on the workspace, and
 its first research request opens a goal when it holds none. A committee member's
 bundle, message or review answer counts toward its floor's or thread's open goal
 instead, and a committee message never opens one; once that goal has closed, a
@@ -81,8 +89,12 @@ Start it with the person's exact sentence and the date it names for the position
 alphalattice first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09 --output "<out>/first-use.json"
 ```
 
-It opens the workspace's one `FIRST_USE` goal, prepares the data under the goal's
-delegation and follows each Task. Tell the person first how the product reads the
+It first checks the setup a first use cannot run without, and opens nothing while
+it is missing: the bare `alphalattice` command your specialists' routes run in their
+own fresh shells, and the retrieval environment. Run each `missing` item's `commands`,
+disclosing them (a person's item is asked once, in one line), then the same command
+again. It then opens the workspace's one `FIRST_USE` goal, prepares the data under the
+goal's delegation and follows each Task. Tell the person first how the product reads the
 date, from `first_use.date`: the positions are entered on its `entry_session`,
 decided at the `formation_session` close, and a date that is not a session says
 so. Asked during the US session for the next session's positions, the usual case,
@@ -109,6 +121,8 @@ when an answer refuses for them. Never restart the Host or serve a second one fo
 network access, and never ask the person to.
 
 Follow the wait and first-use wake procedure in [operating](.agents/skills/alphalattice-research/references/operating.md).
+On Codex, a wake registration that answers `local_client.codex_unreachable` means no wake
+will come: wait inside the turn with `alphalattice activity wait --task <task-id>`.
 
 While the goal is open, for 24 hours from opening, it delegates to you: opening
 the preparation's network, confirming the preparation and its resumes, deciding
@@ -150,6 +164,8 @@ alphalattice review continue --dir "<out>/analysts" --cro-dir "<out>/cro"
 alphalattice review continue --dir "<out>/cro"
 ```
 
+Bundle outputs accept new/empty directories or matching output from the same review;
+rerun with that directory after a stop. Unrelated files are refused and never overwritten.
 The first reads that update's published positions, bound by their publication,
 prepares their Evidence and writes every Analyst bundle; start one Evidence Analyst
 per bundle. Where no Evidence is installed it stops with the install offered ready (`install`),
@@ -177,22 +193,27 @@ with Alpha, Risk and the CRO. `alphalattice committee open` offers each speciali
 view of the date's positions and its `submit` and `wait` on the floor. Prepare the
 three (ALPHA, RISK, CRO), then in one turn start them as general subagents (the
 registered CRO card runs no command, and each bundle's route runs two), each
-prompt its card's text and its bundle's path, and submit your own stance after
-reading `alphalattice committee show --update <task>`, which lists each member's questions with the
-floor's facts by their S alias: argue from them. As PM you judge whether the book adds
+prompt its card's text and its bundle's path, and in that same turn submit your own stance,
+argued from `alphalattice committee show --update <task>`, which lists each member's questions with the
+floor's facts by their S alias: the reveal waits for your stance, and nothing of theirs shows before it. As PM you judge whether the book adds
 up: what changed and what it cost, its research envelope, whether it can be carried out,
 and what the committee hands on; its dates are in the CRO's process fact. The open's answer gives your PM key
 (`pm_key`), and your session's later open gives it again: pass it as `--key` with
 `--role PM`, and keep it out of every file a specialist reads; each specialist's
 key is in its own bundle. Each specialist
-moves itself: it submits, then waits for what is addressed to it. Keep `alphalattice committee
+moves itself: it submits its stance, waits, takes the one discussion turn its wait offers
+(`TAKE_YOUR_DISCUSSION_TURN`: speak or pass) and waits again; brief it to follow its route to the end. Keep `alphalattice committee
 wait --update <task> --role PM --key <key>` running in the background and rule
 each challenge as it arrives (ADOPT, REJECT or FOR_THE_PERSON); the wait answers
 `settled` once every specialist has spoken or passed its turn and no challenge stands
-unruled, and then you give the verdict; the floor refuses a verdict while a challenge stands unruled and offers its
-ruling to fill. VERDICT may PROCEED, PROCEED_WITH_NOTES, DECLINE endorsement of action on
-the positions, or FOR_THE_PERSON; DECLINE closes the discussion and preserves the research
-record and positions. The stances are blind until all four are in; after the reveal each
+unruled, or once the floor's discussion window (`discussion_minutes` from the reveal) has passed,
+and then you give the verdict at once. Inside the window the floor refuses a verdict while a challenge
+stands unruled and offers its ruling to fill; past it, a silent specialist has passed (silent) and
+an unruled challenge is reported as unruled. The VERDICT is the committee's discussion record,
+not an approval or advice: PROCEED_WITH_NOTES by default, members' reservations carried as notes;
+DECLINE endorsement of action on the positions only for a named hard defect (a data error, a Risk
+bound breached, key evidence missing), naming it, and it preserves the research record and
+positions; FOR_THE_PERSON only for a named decision of the person; PROCEED when nothing needs noting. The stances are blind until all four are in; after the reveal each
 specialist takes one discussion turn, a CHALLENGE or REPLY or a PASS that yields it, with three
 challenges or replies in all, and the floor closes at its time box
 whoever is silent. Messages name holdings, points, components and messages by alias
@@ -202,7 +223,10 @@ it stands. The report keeps
 each member's last message and every earlier one whose position it has not changed, verbatim.
 Read the agenda points before speaking: below the agenda line, no stance is required; the PM may raise one listed point through the positions of a REPLY to a revealed message.
 
-The committee changes no number. Ask the person
+The committee changes no number. Members may suggest avoiding, reducing or adding specific
+holdings, with reasons from the materials: the report leads with those suggestions, then the
+verdict, and ends with one line that also ends your reply to the person: the committee changed
+no number; whether to act on its suggestions is the person's decision. Ask the person
 about each item it hands them in one line, and relay their words as a
 PERSON_ANSWER. Then export the report from the closed floor:
 
@@ -210,6 +234,11 @@ PERSON_ANSWER. Then export the report from the closed floor:
 alphalattice committee show --update <task> --output "<out>/committee/floor.json"
 alphalattice request --from "<out>/committee/floor.json" --action report
 ```
+
+The first use's report asks the person once (`ask_now`), in its words, whether each
+daily update also convenes the committee: ask it, then relay their answer with the
+command it offers. Unanswered, it is off; one sentence from them changes it later
+(`committee daily --enabled true|false`, relayed).
 
 ## Run an installed strategy forward
 
@@ -219,9 +248,14 @@ the offer's `review_holdings`: the book's last sealed holdings, not next positio
 Before activating, read `strategy_dates.information_cutoff` and the conditional
 `strategy_dates.first_actionable_session`. Activation admits the first update in
 the same act, for the first use's date while its goal is open: follow it at once,
-then review its published positions on their own publication. A reviewed date runs,
-as the first use does, through Evidence, the CRO, the committee and its report: the
-published review offers that date's committee. For a date the
+then review its published positions on their own publication. A reviewed date runs
+through Evidence and the CRO; with the person's daily committee setting on, its
+published review convenes the committee and its report, as the first use does. Off,
+its next action is `GIVE_THE_PM_VIEW`: as PM, give the person your view of the
+reviewed positions from the Host's materials (the positions, the date's Risk, the
+CRO's review), with suggestions on holdings from the review's findings, the positions
+unchanged and the person deciding, then offer the committee for that date in one
+line (`committee open --update <task>`). For a date the
 person names, plan `research-update plan --package <package> --date <date>`: as
 in the first use, the date is the trade date its positions are entered on, decided
 at the close before it, and the plan's `positions_for` names that date. With no
@@ -250,7 +284,9 @@ Everything else is a default you take and disclose in one line. These are the
 person's. Name the decision and ask once, in one line; on a clear yes, send it
 with their words, `--person-said "<their words>" --asked "<your question>"`.
 Never paraphrase or invent the words, and never send the person to a page to
-click. Each yes answers one request, once. The daily network question's yes is the one
+click. Words that say no person gave them are refused
+(`person_confirmation.not_the_persons_words`): with no person to ask, leave the
+decision undone and say so. Each yes answers one request, once. The daily network question's yes is the one
 standing exception: it answers its two requests (network on, SEC filings at the
 default budget), and under it you may send the Evidence install the Host offers,
 as it stands; the Host takes nothing else for it.
@@ -262,7 +298,7 @@ as it stands; the Host takes nothing else for it.
   change issuers or scope.
 - Strategy activation, except under the first use's delegation; deactivation
   always. Model and Factor activation.
-- Daily research automation and the usage-reading switch.
+- Daily research automation, the daily committee setting and the usage-reading switch.
 - Storage cleanup and pins; data-decision grants and their revocation.
 - Preparation, data issues and membership changes outside the first use's
   delegation, and a new research-input version: keep the current input and tell

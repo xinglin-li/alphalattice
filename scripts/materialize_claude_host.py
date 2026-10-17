@@ -50,9 +50,10 @@ CLAUDE_TOOLS = {
     # workspace, as its Codex card's workspace-write sandbox allows (V384).
     "workspace-write": "Read, Grep, Glob, Edit, Write, Bash",
 }
+COMMAND = " ".join(command_prefix())  # the routes' own prefix: one pattern, one owner
 BUNDLE_TOOLS = (
-    "Read, Write, Bash(alphalattice bundle submit:*), Bash(alphalattice session unbind:*), "
-    "Bash(alphalattice --workspace * session bind:*)"
+    f"Read, Write, Bash({COMMAND} bundle submit:*), Bash({COMMAND} session unbind:*), "
+    f"Bash({COMMAND} --workspace * session bind:*)"
 )
 """The two evidence specialists read their bundle whole, write their own answer file and run its
 route's one submit with their key: no Grep or Glob (none of 27 measured runs used either), and

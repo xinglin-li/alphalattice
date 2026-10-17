@@ -1,7 +1,7 @@
 # Design principles
 Date: 2026-10-10
 
-AlphaLattice is a local quantitative research workstation operated by a person's own Codex or Claude Code agent. From one sentence it takes a research intention through recorded inputs, numerical studies, a book, an investment committee and a delivery report. Its positions are research results, never investment advice or orders.
+AlphaLattice is a local quantitative research workstation operated by a person's own Claude Code or Codex agent. From one sentence it takes a research intention through recorded inputs, numerical studies, a book, an investment committee and a delivery report. Its positions are research results, never investment advice or orders.
 
 These are the maintainer's choices and the reasons for them. Together they describe one idea: the agent brings judgment, the system makes that judgment safe and reliable, and a measured loop makes both better over time. Each principle points to a mechanism a reader can inspect in this repository. A passing check proves the requirement it states, not that an investment conclusion is right.
 
@@ -25,7 +25,7 @@ The evaluation grades safety on every turn: a forbidden act or a skipped questio
 
 ## 2. Build where the host agents are not, and ride where they are
 
-AlphaLattice runs on the person's own host agent, today Codex or Claude Code, and chooses deliberately where to spend its effort. It does not compete with what host agents and model providers already do, and do better every month: the model, the agent loop, coding, tool calling, context management and subagents. Each of their improvements reaches AlphaLattice for free.
+AlphaLattice runs on the person's own host agent, today Claude Code or Codex, and chooses deliberately where to spend its effort. It does not compete with what host agents and model providers already do, and do better every month: the model, the agent loop, coding, tool calling, context management and subagents. Each of their improvements reaches AlphaLattice for free.
 
 Setting that layer aside does not leave little to do. It reveals how much remains: everything a domain needs before an agent's work can be trusted. That space lies outside every harness, whichever host or model runs on top, and it grows as more harnesses appear, including ones built on open-weight models and plain model APIs. It is not a thin layer around a model; it is the hardest part of the system to get right. The command contract is host-agnostic: one source already serves two hosts, and another harness needs an adapter for its guidance, not a new product.
 
@@ -49,11 +49,12 @@ The program owns every number and its binding to inputs and methods. The agent i
 In the investment committee, members refer to figures by the aliases the floor shows, and the Host renders the kept value. A member can argue that a weight is too large without copying, rounding or recomputing it. In the [committee admission test](../../tests/portfolio_strategy_lab/test_committee.py), `Hold H1.` is admitted and `Hold 5%.` is refused as a typed figure, with the same message offered using the alias. The committee changes no number.
 
 **Judgment is argued, not averaged.** The committee is built so that disagreement surfaces instead of blending away:
-- the first round is blind: each member's stance stays hidden until all four are in or the time box ends, so no one anchors on another;
+- the first round is blind: each member's stance stays hidden until all four are in, or the stance window ends with the portfolio manager's in, so no one anchors on another;
 - after its stance, each specialist takes one turn, speaking or passing, with three challenges or replies in all, so they go to what matters most and the floor settles once every member has spoken or passed;
 - the portfolio manager rules on every challenge, adopting it, rejecting it or handing it to the person, whose own words are relayed;
-- the floor closes at its time box, whoever is silent;
+- one short discussion round follows the reveal; a specialist silent past it has passed, and the verdict never waits on silence;
 - the chief risk officer's standing dissent goes into the delivery report in its own words, beside the verdict.
+- the committee is a showcase of discussion, never a gate: the verdict defaults to proceeding with notes, declines only for a named hard defect, and the report leads with each member's suggestions on holdings for the person to decide.
 
 Members argue from records already kept (principle 5), so the debate is about judgment, never about which numbers are true.
 
@@ -125,7 +126,7 @@ These choices cost real effort and paid off beyond their first purpose. Every op
 
 ## 8. The person's window: the Workbench sits beside the conversation
 
-The agent works through commands; the person watches through the Workbench. It is built for where the person actually is: the browser pane of the Codex or Claude Code desktop app, beside the conversation, about half a screen wide. Every surface is designed at that split width first, and its content folds to its own width. Navigation is docked at the right edge, next to the conversation, as the host apps' own panels are; a standalone window can move it left. The Workbench takes the host's light or dark theme and speaks the visual language of the apps it sits in, showing state as marks, chips and numbers rather than banners and sentences. The [Workbench laws](../../src/alphalattice/interface/local_application/assets/workbench-source/LAWS.md) hold these rules.
+The agent works through commands; the person watches through the Workbench. It is built for where the person actually is: the browser pane of the Claude Code or Codex desktop app, beside the conversation, about half a screen wide. Every surface is designed at that split width first, and its content folds to its own width. Navigation is docked at the right edge, next to the conversation, as the host apps' own panels are; a standalone window can move it left. The Workbench takes the host's light or dark theme and speaks the visual language of the apps it sits in, showing state as marks, chips and numbers rather than banners and sentences. The [Workbench laws](../../src/alphalattice/interface/local_application/assets/workbench-source/LAWS.md) hold these rules.
 
 It is one product with the command interface, not a second one. Its pages show the same Goals, Tasks, results, team conversation, committee floor and incidents that the agent's answers carry, and they update as Tasks move. The agent opens the launch link once so the person can watch, and never clicks through the Workbench to show its work. The person can act there directly, and every action there also has a command route, so nothing the person sees is out of the agent's reach (principle 1). Answer details and pages read in English or Chinese, while codes and next actions stay in English for the agent.
 

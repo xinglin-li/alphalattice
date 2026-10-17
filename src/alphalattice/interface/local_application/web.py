@@ -42,6 +42,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import re
 import secrets
 import threading
@@ -197,6 +198,10 @@ class AdmittedRequest:
     provenance: RequestProvenance | None = None
 
 
+LAUNCH_KEY_VARIABLE = "ALPHALATTICE_LAUNCH_KEY"
+"""Where a detached launch hands the Host the launch key it made (`web_launcher`)."""
+
+
 @dataclass
 class LocalWebApplication:
     """Routing, authorisation and encoding. It owns no domain logic.
@@ -208,8 +213,14 @@ class LocalWebApplication:
     """
 
     session_token: str = field(default_factory=lambda: secrets.token_urlsafe(32), repr=False)
-    launch_key: str = field(default_factory=lambda: secrets.token_urlsafe(32), repr=False)
-    """Held in memory and put only in the launch URL; never on disk or in an answer."""
+    launch_key: str = field(
+        default_factory=lambda: (
+            os.environ.pop(LAUNCH_KEY_VARIABLE, None) or secrets.token_urlsafe(32)
+        ),
+        repr=False,
+    )
+    """Held in memory and put only in the launch URL; never on disk or in an answer. A detached
+    launch makes it and hands it over in `LAUNCH_KEY_VARIABLE`, taken from the environment once."""
     external_token: str = field(default_factory=lambda: secrets.token_urlsafe(32), repr=False)
     external_instance: str = field(default_factory=lambda: secrets.token_hex(16))
     external_workspace_id: str | None = None

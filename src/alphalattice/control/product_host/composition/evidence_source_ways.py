@@ -138,13 +138,14 @@ def evidence_setup(
     Returns:
         The setup's ``pack`` and ``authority`` steps.
     """
+    from alphalattice.interface.local_application.cli_contract import join, shell
+    from alphalattice.interface.local_application.retrieval_environment import fill_command
+
     windows = os.name == "nt"
     python = ".venv/Scripts/python.exe" if windows else ".venv/bin/python"
     retrieval = ".venv-retrieval/Scripts/python.exe" if windows else ".venv-retrieval/bin/python"
     installed = not (resolve_playpen_root(Path(__file__)) / "pyproject.toml").is_file()
     if installed:
-        from alphalattice.interface.local_application.cli_contract import join, shell
-
         python = join([sys.executable], shell())
         retrieval = python
     # The running Host installs a package as a Task (its setup script is the path with no Host).
@@ -171,13 +172,11 @@ def evidence_setup(
     }
     if installed:
         from alphalattice.control.product_host.composition.retrieval_pack_setup import pack_command
-        from alphalattice.interface.local_application.retrieval_environment import fill_command
 
         pack["check"] = join(pack_command("--status"), shell())
         pack["install"] = join(pack_command("--install", RECIPE_MINILM_CPU, "--network"), shell())
-        pack["environment"] = join(fill_command(), shell())
-    elif not (resolve_playpen_root(Path(__file__)) / retrieval).is_file():
-        pack["environment"] = f"{python} scripts/create_retrieval_environment.py --offline"
+    if installed or not (resolve_playpen_root(Path(__file__)) / retrieval).is_file():
+        pack["environment"] = join(fill_command(), shell())  # the one command, on either leg
     scope = " ".join(
         [
             *(["--research-input-id <id> --research-input-hash <hash>"] if authored else []),

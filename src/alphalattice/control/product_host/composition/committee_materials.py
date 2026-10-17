@@ -9,12 +9,12 @@ this composes the material only, by reading the sealed records and taking differ
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import UTC, datetime
 from typing import Any, Final
 
 import numpy as np
 
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.protocols.actor_execution.bundles import moment_text as when
 
 AGENDA_LIMIT: Final = 12
 AGENDA_RANKING: Final = "Affected holding weight, then adverse count, then original alias."
@@ -176,17 +176,6 @@ def status_word(code: Any) -> str:
     return _WORDS.get(str(code), str(code))
 
 
-def when(value: Any) -> str:
-    """A recorded instant as its date and minute in UTC; a date alone reads as itself."""
-    try:
-        at = datetime.fromisoformat(str(value))
-    except ValueError:
-        return str(value)
-    if at.tzinfo is None:
-        return str(value)
-    return at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
-
-
 _FACTS: Final = {
     "turnover": (
         "PM.change",
@@ -211,7 +200,9 @@ _FACTS: Final = {
     "rule": (
         "ALPHA.held",
         "publication",
-        "{c} holds {n}, top {top} by rank; kept by the exit line at {out}: {kept}.",
+        "{c} holds {n}, top {top} by rank; past the top {top}, inside the exit line at {out}: "
+        "{kept}; past the exit line at {out}, held by tranches formed on earlier sessions until "
+        "each rebalances: {tranche}.",
     ),
     "spread": (
         "ALPHA.cost",
@@ -241,21 +232,21 @@ _FACTS: Final = {
         "CRO.coverage",
         "evidence",
         "Of the book's ending weight: filings read {read}; checked with nothing filed in "
-        "{days} days {nothing}; not reached {unread}. Read and checked together {reviewed}, "
-        "against the minimum {minimum}.",
+        "{days} days {nothing}; not reached {unread}. Read and checked together {together}; "
+        "the review's in-scope weight {reviewed}, against the minimum {minimum}.",
     ),
     "scope_total": (
         "CRO.coverage",
         "evidence",
-        "Read and checked together {reviewed}, against the minimum {minimum}; the split by part "
-        "is not recorded for this review.",
+        "The review's in-scope weight {reviewed}, against the minimum {minimum}; the split by "
+        "part is not recorded for this review.",
     ),
     "review": ("CRO.coverage", "review_standing", "{now}"),
     "package": (
         "CRO.process",
         "publication",
         "Package hash {same} the installed book's; observed through {seen}; enters {entry} "
-        "from the {formation} close, target session {target}.",
+        "from the {formation} close; the update advanced its data through the {target} session.",
     ),
     "caps": (
         "CRO.rules",
@@ -296,8 +287,8 @@ def _view(readback: Mapping[str, Any], held: Sequence[Mapping[str, Any]]) -> dic
     except (KeyError, ValueError):
         return view
     events = {e.formation_session: e for v in (*earlier, value) for e in v.events}.values()
-    before = next((p.pending_proposal for p in reversed(earlier) if p.pending_proposal), None)
     proposal, package = value.pending_proposal, readback.get("strategy_package_id")
+    before = _previous_proposal(proposal, earlier)
     return view | {
         "value": value,
         "proposal": proposal,
@@ -306,6 +297,22 @@ def _view(readback: Mapping[str, Any], held: Sequence[Mapping[str, Any]]) -> dic
         "settled": sorted(e.turnover for e in events if e.phase == "ENTRY_SETTLED"),
         "missed": sum(e.missed_executions for e in events),
     }
+
+
+def _previous_proposal(proposal: Any, earlier: Sequence[Any]) -> Any:
+    """The latest earlier proposal formed on a session before this one's: a history can hold this
+    very publication, whose scores are today's, never the session before."""
+    formed = getattr(getattr(proposal, "schedule", None), "formation_session", None)
+    return next(
+        (
+            p.pending_proposal
+            for p in reversed(earlier)
+            if p.pending_proposal
+            and formed is not None
+            and p.pending_proposal.schedule.formation_session < formed
+        ),
+        None,
+    )
 
 
 def _components(readback: Mapping[str, Any], proposal: Any, before: Any) -> list[dict[str, Any]]:
@@ -442,16 +449,14 @@ def _component_values(
     )
     moved += f", and {ties} others moved equally" if ties else ""
     unscored = _listed(alias.get(k, k) for k in mine if k not in rank)
-    kept = _listed(
-        f"{alias.get(k, k)} {rank[k]}"
-        for k in sorted(mine, key=lambda k: (rank.get(k, 0), k))
-        if top < rank.get(k, 0)
-    )
+    past = sorted((k for k in mine if top < rank.get(k, 0)), key=lambda k: (rank[k], k))
+    kept = _listed(f"{alias.get(k, k)} {rank[k]}" for k in past if rank[k] <= out)
+    tranche = _listed(f"{alias.get(k, k)} {rank[k]}" for k in past if rank[k] > out)
     gap = [score.get(k) or 0.0 for k in moves] or [0.0]
     ranks = dict(c=name, top=sum(curve[:4]) / 4, bottom=sum(curve[-4:]) / 4)
     return [
         ("moves", dict(c=name, moved=moved, unscored=unscored)),
-        ("rule", dict(c=name, n=len(c["mine"]), top=top, out=out, kept=kept)),
+        ("rule", dict(c=name, n=len(c["mine"]), top=top, out=out, kept=kept, tranche=tranche)),
         ("spread", dict(c=name, spread=max(gap) - min(gap), cost=cost) if moves else None),
         ("curve", ranks if len(curve) > 7 else None),
     ]
@@ -528,6 +533,9 @@ def _coverage(scope: Mapping[str, Any], split: Mapping[str, Any]) -> Said:
     parts = {k: split.get(f"{f}_ending_weight") for k, f in _SPLIT}
     parts["days"] = split.get("nothing_filed_window_days")
     whole = total is not None and None not in parts.values()
+    if whole:  # the total is its named parts, in the parts' own form
+        read, nothing = (float(str(parts[k]).rstrip("%")) for k in ("read", "nothing"))
+        parts["together"] = f"{read + nothing:.3f}%"
     return [
         ("scope", {**total, **parts} if total and whole else None),
         ("scope_total", None if whole else total),
@@ -628,8 +636,8 @@ def _outliers(
         ),
         (
             "KEPT_BY_RULE",
-            "{holdings} sit among the five largest weights, kept by the exit line "
-            "rather than by score.",
+            "{holdings} sit among the five largest weights though past the top of that formation "
+            "session's ranking by score: the exit line or an earlier tranche holds them.",
             {"holdings": ", ".join(kept)},
             kept,
             bool(kept),

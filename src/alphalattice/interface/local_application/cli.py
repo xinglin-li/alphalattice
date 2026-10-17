@@ -483,7 +483,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             dest="bundle_root",
             type=Path,
             required=True,
-            help="A folder for the Analyst bundles; each unit's is a new folder inside it.",
+            help="A new/empty folder or this review's own output, one subfolder per unit.",
         )
         child.add_argument(
             "--update",
@@ -505,7 +505,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             "--cro-dir",
             dest="cro_root",
             type=Path,
-            help="A new folder for the CRO's bundle, needed after the Analysts' answers.",
+            help="A new/empty folder or this CRO bundle's own earlier output.",
         )
         child.add_argument(
             "--package",
@@ -603,6 +603,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
     )
     start = nouns.add_parser("serve", description="Start the Local Web Host on this workspace.")
     start.add_argument("--stop-on-stdin", action="store_true")
+    start.add_argument("--detach", action="store_true")
     start.add_argument("--no-browser", action="store_true")
     start.add_argument("--port", type=int, default=0)
     whole = nouns.add_parser(
@@ -662,8 +663,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
                 ),
             ]
         )
-        # One line per action: what it does, then its contract, so one object's help shows
-        # every action's use (V377, the review's F3).
+        # One line per action, what it does then its contract: help shows each use (V377, F3).
         child = by_noun[noun].add_parser(
             verb,
             help=f"{purpose}{' (the person decides it)' if person else ''}  {line}".strip(),
@@ -1876,8 +1876,11 @@ def _command(
                 str(args.workspace),
                 "--port",
                 str(args.port),
-                *(["--no-browser"] if args.no_browser else []),
-                *(["--stop-on-stdin"] if args.stop_on_stdin else []),
+                *(
+                    "--" + switch.replace("_", "-")
+                    for switch in ("no_browser", "stop_on_stdin", "detach")
+                    if getattr(args, switch)
+                ),
             ]
         )
     common = {
@@ -1965,6 +1968,34 @@ def request_of(argv: Sequence[str]) -> dict[str, Any]:
     return _line_document(parser, args)()
 
 
+def _whole_request(
+    operation: str, field: str, value: object, fields: dict[str, Any]
+) -> tuple[dict[str, Any], object]:
+    """The line's fields and its document; a file holding the whole request for this operation
+    (`goal show --save-declaration`) gives its document and its other fields, each one the line
+    also gives saying the same.
+
+    Args:
+        operation: The line's operation.
+        field: The document field the file fills.
+        value: The file's document.
+        fields: The fields the line gives.
+
+    Returns:
+        The fields and the document to send.
+
+    Raises:
+        LocalResearchClientError: `local_client.field_given_twice:<fields>` for a contradiction.
+    """
+    if not (isinstance(value, dict) and value.get("operation") == operation and field in value):
+        return fields, value
+    whole = {k: v for k, v in value.items() if k != "operation"}
+    twice = sorted(k for k in set(whole) & set(fields) if str(whole[k]) != str(fields[k]))
+    if twice:
+        raise client.LocalResearchClientError("local_client.field_given_twice:" + ",".join(twice))
+    return {**whole, **fields}, whole[field]
+
+
 def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], dict[str, Any]]:
     """The request an operation's parsed command line sends, read when the Host is found."""
     operation = _operation(parser, args)
@@ -2006,6 +2037,7 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
         fields = {name: _value(name, text) for name, text in given.items()}
         if documents and args.primary_file is not None:
             field, value = client.document_field(documents, args.primary_file)
+            fields, value = _whole_request(operation, field, value, fields)
             fields[field] = value
         if args.choices is not None:
             # The choices fill the offered request's open root fields; a field given twice, by

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from threading import Lock
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Final
 
+from alphalattice.control.product_host.composition import committee
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
@@ -42,6 +44,26 @@ if TYPE_CHECKING:
 UNVERIFIED_LIMIT: Final = 8
 CATCHING_UP: Final = "native_bridge.usage_catching_up"
 PROGRESS: Final = ("read_through", "total_bytes", "bytes_read", "rescan")
+
+
+def read_usage(
+    operations: PortfolioResearchOperations,
+    project: Path,
+    binding: NativeResearchBinding,
+    publish: Callable[[dict[str, Any]], dict[str, Any]],
+    goal_id: str | None,
+) -> dict[str, object]:
+    """One bound Session's usage, its subagents' member keys verified by the committee.
+
+    The goal store is reached only when a child's file holds claims to verify.
+    """
+
+    def proof(claims: Sequence[Mapping[str, Any]]) -> Mapping[str, str] | None:
+        return committee.member_of(operations.goals.store, claims)
+
+    return read_session_usage(
+        project, binding, publish=publish, goal_id=goal_id, member_proof=proof
+    )
 
 
 def own_standing(receipt: dict[str, Any]) -> dict[str, object]:
@@ -208,7 +230,7 @@ class NativeUsageReader:
                 finally:
                     REQUEST_PROVENANCE.reset(token)
 
-        receipt = read_session_usage(project, binding, publish=publish, goal_id=goal_id)
+        receipt = read_usage(self.operations, project, binding, publish, goal_id)
         self._read_at[(binding.host, binding.session_id)] = (monotonic(), receipt)
         own = self._sessions[binding.host, binding.session_id] = own_standing(receipt)
         self._progress = {key: own[key] for key in PROGRESS if key in own}

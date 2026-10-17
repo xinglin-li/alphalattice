@@ -7,6 +7,7 @@ against that record, sealing it or naming each missing item.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any, Final, Literal, Self, cast
@@ -58,6 +59,8 @@ FIRST_USE_ASK_NOW: Final = (
 )
 """What a first use answers at its start: its delegated steps, said in one line, and the one
 question only the person answers; the client adds the relay's commands."""
+WATCH_IN_WORKBENCH: Final = "You can watch this run in the Workbench: {link}"
+"""The first line a first use asks the lead to relay, with its Workbench link."""
 
 _DAILY_REQUESTS: Final = (
     (
@@ -79,14 +82,26 @@ DAILY_NETWORK_RELAY: Final = tuple(
 """The same two requests as the commands that relay the person's yes, verbatim but its words."""
 
 
+NOT_A_PERSON: Final = re.compile(
+    r"\bno (?:person|human) is (?:here|present)\b|\b(?:person|human) is (?:not present|absent)\b"
+    r"|\bwithout (?:a|the) person\b|\banswered yes as authori[sz]ed\b|\boperator rule\b",
+    re.IGNORECASE,
+)
+"""Words that say no person gave them, as a run's operator rule wrote them: they relay nothing.
+Narrow on purpose: a person's own yes is never refused for its phrasing."""
+
+
 def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirmation) -> str:
     """The decision a relayed yes answers: the one it was bound to.
 
     For the daily question it is only one of its two (`DAILY_NETWORK_DECISIONS`).
 
     Raises:
-        ValueError: `person_confirmation.decision_mismatch` or `.beyond_its_question`.
+        ValueError: `person_confirmation.not_the_persons_words`, `.decision_mismatch` or
+            `.beyond_its_question`.
     """
+    if NOT_A_PERSON.search(confirmation.words):
+        raise ValueError("person_confirmation.not_the_persons_words")
     decision = decision_hash(request)
     if confirmation.decision_hash != decision:
         raise ValueError("person_confirmation.decision_mismatch")
@@ -447,13 +462,17 @@ class GoalTaskFact(GoalContract):
     updated_at: datetime | None = Field(
         default=None, description="Task Control's canonical last-update time, when available."
     )
+    continued_by: UUID | None = Field(
+        default=None, description="The Task that continued this stop and succeeded, if one did."
+    )
 
     @model_serializer(mode="wrap")  # type: ignore[untyped-decorator]
     def _serialize_available_update(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
-        """Keep an absent clock absent, preserving the pre-field sealed Goal shape."""
+        """Keep an absent clock or continuation absent, preserving the sealed Goal shape."""
         serialized: dict[str, Any] = handler(self)
-        if self.updated_at is None:
-            serialized.pop("updated_at", None)
+        for field in ("updated_at", "continued_by"):
+            if getattr(self, field) is None:
+                serialized.pop(field, None)
         return serialized
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]

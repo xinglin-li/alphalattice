@@ -949,8 +949,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "NO_HOST",
             _REOPEN,
-            "No Host serves this workspace, so nothing was sent. Start one with `serve`, or "
-            "open the Local Web.",
+            "No Host serves this workspace, so nothing was sent. Start one with "
+            "`serve --no-browser --detach`, which returns once it serves, or open the Local Web.",
         ),
     ),
     (
@@ -1364,7 +1364,7 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "INVALID_INPUT",
             "GIVE_A_NEW_CRO_FOLDER",
             "The Analysts' answers are accepted and the CRO's bundle is offered; name a new "
-            "folder for it with --cro-dir and run the command again.",
+            "or empty folder for it with --cro-dir and run the command again.",
         ),
     ),
     (
@@ -1372,7 +1372,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "INVALID_INPUT",
             _BUNDLE,
-            "The bundle directory already exists; a bundle is written to a new one.",
+            "The directory contains unrelated or changed output. Choose a new or empty "
+            "directory, or continue this review's matching output. Existing files are kept.",
         ),
     ),
     (
@@ -1478,6 +1479,19 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "The exchange calendars plan no session on or after this date, so its positions "
             "have no entry session and nothing was opened. Ask the person for a date the "
             "calendars plan.",
+        ),
+    ),
+    (
+        "local_client.first_use_setup_missing",
+        ClientRefusal(
+            "REFUSED",
+            "RUN_THE_SETUP_COMMANDS_THEN_THIS_AGAIN",
+            "This checkout's first use lacks setup its agent fills, so nothing was opened: the "
+            "specialists' routes run the product's own command in fresh shells of their own, "
+            "and the Evidence review reads the retrieval environment. Run each item's `commands` "
+            "under "
+            "`missing`, disclosing them (ask the person once, in one line, for an item that is "
+            "theirs), then run the same command again.",
         ),
     ),
     (

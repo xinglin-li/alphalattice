@@ -40,6 +40,9 @@ WORD_CATALOGS = frozenset(
         LOCAL + "assets/workbench-source/js/data/zh.js",
     }
 )
+# third-party data the package ships whole, never edited: tiktoken's cl100k encoding (NOTICE), kept
+# so a token count needs no download; its size is the upstream file's, checked by its SHA-256
+VENDORED_DATA = frozenset({"src/alphalattice/protocols/actor_execution/cl100k_base.tiktoken.gz"})
 CONTROL_OWNER = "src/alphalattice/kernel/shared_kernel/environment.py"
 WRITE = re.compile(
     r'\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM|MERGE\s+INTO)\s+([\w."`]+)',
@@ -322,7 +325,7 @@ def problems(path: str, old: str | None, new: str) -> list[str]:
         found = []
         size = len(new.encode("utf-8", errors="surrogateescape"))
         grew = size > len((old or "").encode("utf-8", errors="surrogateescape"))
-        if size > CAP_BYTES and grew and path not in WORD_CATALOGS:
+        if size > CAP_BYTES and grew and path not in WORD_CATALOGS | VENDORED_DATA:
             found.append(f"{path}:1: source size {size} > {CAP_BYTES}; split at its owner")
         if path.endswith(".py"):
             before, after = _tree(old or ""), _tree(new)

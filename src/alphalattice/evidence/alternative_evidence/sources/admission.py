@@ -566,6 +566,13 @@ def acquisition_scope(
     documents = min(issuers * consent.documents_per_issuer, consent.total_documents)
     requests = 1 + issuers + REQUESTS_PER_DOCUMENT * documents
     return {
+        "estimate_basis": "COLD_FULL_ACQUISITION_UPPER_BOUND",
+        "estimate_detail": (
+            "Cold/full source acquisition scope upper bound before reuse. Held sources and "
+            "retrieval packs may be reused, reducing new work. Seconds use the configured SEC "
+            "request rate, exclude retries and processing, and are not total or remaining "
+            "Task time."
+        ),
         "issuers": issuers,
         "units": -(-issuers // issuers_per_unit),
         "documents_per_issuer": consent.documents_per_issuer,

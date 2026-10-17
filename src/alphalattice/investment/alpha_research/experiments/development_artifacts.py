@@ -13,7 +13,6 @@ from contextvars import ContextVar
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from threading import Lock
 from time import perf_counter
 from typing import Any, Self, TypeVar, cast
@@ -40,6 +39,7 @@ from alphalattice.capabilities.causal_inputs.contracts import (
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
+    staging_directory,
     verified_npz_arrays,
     verified_request_value,
     verified_source_value,
@@ -472,7 +472,7 @@ class AlphaDevelopmentArtifactStore:
         if target.exists() or self._sharing_workspace is None:
             return self._publish_packed_bytes(category="current/" + category, payload=payload)
         target.parent.mkdir(parents=True, exist_ok=True)
-        with TemporaryDirectory(dir=target.parent, prefix=".input-") as temporary:
+        with staging_directory(target.parent, ".input-") as temporary:
             staged = Path(temporary) / "payload"
             try:
                 os.link(origin, staged)

@@ -58,7 +58,7 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 @pytest.fixture
 def goal_app(tmp_path):
     calls = []
-    tasks: dict[UUID, tuple[str, str, datetime | None]] = {}
+    tasks: dict[UUID, tuple[Any, ...]] = {}
     body = {
         "status": "EXPERIMENT_PUBLISHED",
         "task_id": str(UUID(int=2)),
@@ -1296,15 +1296,16 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
     app, opened, _calls, _body, tasks = goal_app
     attached = _attach(app, opened)
     goal = app.store.load(attached["goal_hash"])
-    done, running, stuck = UUID(int=11), UUID(int=12), UUID(int=13)
+    done, running, stuck, resent = UUID(int=11), UUID(int=12), UUID(int=13), UUID(int=14)
     tasks.update(
         {
             done: ("alpha_research.development", "SUCCEEDED", None),
             running: ("alpha_research.development", "RUNNING", None),
             stuck: ("alpha_research.development", "RECOVERY_REQUIRED", None),
+            resent: ("alpha_research.development", "BLOCKED", None, done),  # done continued it
         }
     )
-    for task in (done, running, stuck):
+    for task in (done, running, stuck, resent):
         app.attribute(
             goal,
             Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
@@ -1312,7 +1313,7 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
             SESSION,
         )
     shown = app.operate(Request(operation="GOAL_SHOW", goal_id=UUID(int=1)), "HUMAN")
-    assert shown["record"]["request_count"] == 3
+    assert shown["record"]["request_count"] == 4
     assert shown["record"]["sessions"] == [{"vendor": "claude-code", "session_id": SESSION.session}]
     listed = app.operate(Request(operation="GOAL_LIST"), "HUMAN")["goals"]
     assert listed[0]["sessions"] == shown["record"]["sessions"], "U23: a row names its sessions"
@@ -1379,7 +1380,12 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
     assert sealed["status"] == "COMPLETE" and sealed["outcome"] == "ACHIEVED"
     closed = app.store.head(UUID(int=1))
     assert closed.state == "COMPLETE" and closed.submission.files[0].text == "# Decision notes"
-    assert {t.task_id for t in closed.completion.tasks} == {done, running, stuck}
+    assert {(t.task_id, t.continued_by) for t in closed.completion.tasks} == {
+        (done, None),
+        (running, None),
+        (stuck, None),
+        (resent, done),
+    }
     assert closed.completion.sessions[0].session_id == SESSION.session
     # U54: a complete goal's row names its deliverables and when the Host checked it.
     (row,) = app.operate(Request(operation="GOAL_LIST", agent_session=SESSION.session), "HUMAN")[
@@ -1830,11 +1836,13 @@ def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
     assert client.navigation({"operation": "GOAL_SHOW"}, goal)["kind"] == "goal"
 
 
-def test_an_open_goal_offers_its_completion_to_fill(goal_app):
+def test_an_open_goal_offers_its_completion_to_fill(goal_app, tmp_path):
     """An open goal offers its completion to fill."""
 
     import yaml
 
+    from alphalattice.interface.local_application import cli
+    from alphalattice.interface.local_application.client import LocalResearchClientError
     from alphalattice.interface.local_application.goals import GoalSubmission
 
     app, opened, *_ = goal_app
@@ -1878,6 +1886,13 @@ def test_an_open_goal_offers_its_completion_to_fill(goal_app):
     sealed = app.operate(written(current), "EXTERNAL_AUTOMATION", SESSION)
     assert sealed["goal_id"] == str(UUID(int=1)), sealed
     assert app.store.head(UUID(int=5)).state == "OPEN"
+    # regression (a fresh-folder first use): the saved completion, sent by the offered
+    # `goal submit`, reads as the request it is; a line naming another revision is refused.
+    (saved := tmp_path / "completion.yaml").write_text(yaml.safe_dump(current), "utf-8")
+    line = ["goal", "submit", current["goal_id"], "--revision", current["goal_hash"]]
+    assert cli.request_of([*line, "--file", str(saved)]) == current
+    with pytest.raises(LocalResearchClientError, match="field_given_twice:goal_hash"):
+        cli.request_of([*line[:-1], "f" * 64, "--file", str(saved)])
 
 
 def test_a_closed_goal_refuses_with_its_standing_and_the_follow_up_start() -> None:

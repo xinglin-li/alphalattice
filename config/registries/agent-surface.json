@@ -590,6 +590,38 @@
         "type": "integer"
       }
     },
+    "answer:COMMITTEE_DAILY_SET.attributed_goal_id": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
+    "answer:COMMITTEE_DAILY_SET.committee_daily": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:COMMITTEE_DAILY_SET.detail": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:COMMITTEE_DAILY_SET.next_requests": {
+      "required": true,
+      "schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "answer:COMMITTEE_DAILY_SET.status": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
     "answer:COMMITTEE_OPEN.detail": {
       "required": false,
       "schema": {
@@ -4783,6 +4815,14 @@
         "type": "string"
       }
     },
+    "answer:EXPERIMENT_DELIVERY_EXPORT.ask_now": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
     "answer:EXPERIMENT_DELIVERY_EXPORT.claim": {
       "required": true,
       "schema": {
@@ -4825,6 +4865,13 @@
     "answer:EXPERIMENT_DELIVERY_EXPORT.kind": {
       "required": true,
       "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIMENT_DELIVERY_EXPORT.next_action": {
+      "required": false,
+      "schema": {
+        "default": null,
         "type": "string"
       }
     },
@@ -12965,6 +13012,13 @@
         "type": "string"
       }
     },
+    "answer:RESEARCH_UPDATE_READBACK.committee_unreadable": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
     "answer:RESEARCH_UPDATE_READBACK.detail": {
       "required": false,
       "schema": {
@@ -13014,6 +13068,13 @@
         "additionalProperties": true,
         "default": null,
         "type": "object"
+      }
+    },
+    "answer:RESEARCH_UPDATE_READBACK.next_action": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
       }
     },
     "answer:RESEARCH_UPDATE_READBACK.next_requests": {
@@ -16659,6 +16720,13 @@
         "type": "object"
       }
     },
+    "answer:WORKSPACE_SHOW.committee_daily": {
+      "required": true,
+      "schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
     "answer:WORKSPACE_SHOW.execution_mode": {
       "required": true,
       "schema": {
@@ -16827,6 +16895,11 @@
       ]
     },
     "command:committee": {},
+    "command:committee daily": {
+      "operations": [
+        "COMMITTEE_DAILY_SET"
+      ]
+    },
     "command:committee open": {
       "operations": [
         "COMMITTEE_OPEN"
@@ -17951,6 +18024,15 @@
       ],
       "required": [
         "task_id"
+      ]
+    },
+    "operation:COMMITTEE_DAILY_SET": {
+      "allowed": [
+        "committee_daily_enabled",
+        "person_confirmation"
+      ],
+      "required": [
+        "committee_daily_enabled"
       ]
     },
     "operation:COMMITTEE_OPEN": {
@@ -22216,6 +22298,136 @@
       "type": "Path"
     },
     "option:candidate/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--asked": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:committee daily/--enabled": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:committee daily/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:committee daily/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:committee daily/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:committee daily/--person-said": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--repeat": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:committee daily/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--view": {
+      "choices": [
+        "compact",
+        "full"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:committee daily/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:committee daily/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -38033,6 +38245,12 @@
       "required": false,
       "type": null
     },
+    "option:serve/--detach": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
     "option:serve/--goal": {
       "choices": null,
       "nargs": null,
@@ -45664,6 +45882,7 @@
     "refusal:chief_risk_officer.submission_own_issues_exceeded": {},
     "refusal:chief_risk_officer.submitted_actor_invalid": {},
     "refusal:cli.not_an_operation_command": {},
+    "refusal:committee.daily_setting_human_only": {},
     "refusal:committee.message_refused": {},
     "refusal:committee.not_open": {},
     "refusal:committee.publication_required": {},
@@ -46272,6 +46491,7 @@
     "refusal:local_client.bundle_write_refused": {},
     "refusal:local_client.codex_notify_needs_task": {},
     "refusal:local_client.codex_queue_unavailable": {},
+    "refusal:local_client.codex_unreachable": {},
     "refusal:local_client.connection_lost_task_may_still_run": {},
     "refusal:local_client.connection_not_local": {},
     "refusal:local_client.connection_owner_mismatch": {},
@@ -46293,6 +46513,7 @@
     "refusal:local_client.field_given_twice": {},
     "refusal:local_client.first_use_date_invalid": {},
     "refusal:local_client.first_use_date_outside_calendar": {},
+    "refusal:local_client.first_use_setup_missing": {},
     "refusal:local_client.max_wait_invalid": {},
     "refusal:local_client.next_from_invalid": {},
     "refusal:local_client.next_request_invalid": {},
@@ -46497,6 +46718,7 @@
     "refusal:person_confirmation.already_used": {},
     "refusal:person_confirmation.beyond_its_question": {},
     "refusal:person_confirmation.decision_mismatch": {},
+    "refusal:person_confirmation.not_the_persons_words": {},
     "refusal:person_confirmation.refused": {},
     "refusal:person_confirmation.repeat_unknown": {},
     "refusal:person_confirmation.session_required": {},
@@ -47760,6 +47982,7 @@
     "refusal:research_delivery.comparison_pair_required": {},
     "refusal:research_delivery.comparison_subject_mismatch": {},
     "refusal:research_delivery.completed_portfolio_required": {},
+    "refusal:research_delivery.export_failed": {},
     "refusal:research_delivery.factor_source_mismatch": {},
     "refusal:research_delivery.foundation_source_mismatch": {},
     "refusal:research_delivery.portfolio_subject_mismatch": {},
@@ -48943,6 +49166,20 @@
           {
             "pattern": "^u[0-9]{2,3}$",
             "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.committee_daily_enabled": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "type": "boolean"
           },
           {
             "type": "null"
@@ -51377,6 +51614,7 @@
         "STRATEGY_DEACTIVATE",
         "COMMITTEE_OPEN",
         "COMMITTEE_SUBMIT",
+        "COMMITTEE_DAILY_SET",
         "COMMITTEE_READ"
       ],
       "type": "string"

@@ -17,7 +17,7 @@ from uuid import uuid4
 import pytest
 
 from alphalattice.interface.local_application import native_setup as setup
-from alphalattice.interface.local_application import retrieval_environment
+from alphalattice.interface.local_application import retrieval_environment, workbench_assets
 from alphalattice.interface.local_application.client import (
     LocalResearchClient,
     LocalResearchConnection,
@@ -42,6 +42,7 @@ READINESS_KEYS = (
     "python",
     "uv",
     "installed_leg",
+    "workbench_build",
     "retrieval_runtime",
     "background_notices",
     "disk",
@@ -86,6 +87,10 @@ def test_complete_usage_snapshot_fits_public_event_subject_and_files_once(live, 
     document = observation_request(project, binding, event)
     subject = document["subject"]
     assert len(subject) == 15
+    # A member's own messages are its proof: they take its verification's key, never a 17th.
+    spoke = {**usage, "specialist_verified": True, "reference": "t M1", "first_at": "t0"}
+    member = observation_request(project, binding, {"source": "native_usage", "usage": spoke})
+    assert len(member["subject"]) == 16 and member["subject"]["reference"] == "t M1"
     assert "native_event_id" not in subject and "source_kind" not in subject
     assert subject["efforts"] == "medium,high"
     assert subject["pin_differs"] == "model,effort"
@@ -457,6 +462,7 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
         lambda: {"python": "3.11.0" if missing == "python" else "3.12.0"},
     )
     monkeypatch.setattr(os, "cpu_count", lambda: 0 if missing == "cpu" else 4)
+    monkeypatch.setattr(workbench_assets, "workbench_current", lambda: missing != "workbench_build")
     monkeypatch.delenv("UV", raising=False)
 
     def which(name):

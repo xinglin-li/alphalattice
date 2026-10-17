@@ -547,3 +547,20 @@ def test_every_book_selector_refusal_has_door_words_and_owner_context(code) -> N
             for package in packages
         }
         assert all(package in answer["detail"] for package in packages)
+
+
+def test_an_invalid_document_in_a_delivery_export_is_the_products_fault() -> None:
+    """requirement (REPORT-SUMMARY-BOUND): an export refused for a document the Host wrote never
+    asks the agent to correct a declaration; elsewhere the declaration is still the agent's."""
+    from pydantic import TypeAdapter, ValidationError
+
+    from alphalattice.control.product_host.composition.research_delivery import refused_document
+
+    with pytest.raises(ValidationError) as caught:
+        TypeAdapter(int).validate_python("not a number")
+    export = refused_document("EXPERIMENT_DELIVERY_EXPORT", caught.value)
+    assert export["failure_code"] == "research_delivery.export_failed"
+    assert export["next_action"] == "SEND_ONCE_MORE_THEN_REPORT_THE_PROBLEM"
+    assert "next_requests" not in export
+    plan = refused_document("EXPERIMENT_PLAN", caught.value)
+    assert plan["next_action"] == "CORRECT_DECLARATION_AND_REPLAN"

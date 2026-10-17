@@ -1960,6 +1960,10 @@ def test_a_bundle_on_a_book_with_no_run_is_answered_as_it_was_read(tmp_path: Pat
         assert bundle is not None
         prepared_dossier_hash = bundle.submission["review_dossier_hash"]
         now[0] += timedelta(seconds=11)  # AX1f's two reads were 11 seconds apart
+        repeated = _operation(service, request)
+        assert repeated["status"] == "AGENT_BUNDLE_READY", repeated
+        assert repeated["files"] == prepared["files"]
+        assert EvidenceReviewBundles(review).agent_bundle(str(directory)) == bundle
         answered = _operation(
             service,
             {

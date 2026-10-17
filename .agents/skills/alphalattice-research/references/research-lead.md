@@ -54,12 +54,18 @@ Quote the publication's `claim` with its `risk_status` and `cro_status`. They ar
 | Activated, its update held | The activation answer's `update.plan.held_until` and `reading` | Tell the person the time in one line; keep `alphalattice activity wait --goal <goal-id>` running, which wakes when the held update ends |
 | Positions published | `alphalattice research-update show --task <task>`: formation, entry, basis, `claim` | Read them out with their dates; they are research positions |
 | Their review prepared | `alphalattice strategy-book review --update <task> --package <package> --dir "<out>/review"` | Start one Evidence Analyst per bundle |
-| CRO review published | `alphalattice review continue --dir "<out>/review"` after the CRO | Cite the review beside the publication's own status, then follow its offered `committee` (`CONVENE_THE_COMMITTEE`), or its `committee_report` once the floor has closed; the update's read, or your earlier bundle refused as stale or ambiguous after a second preparation, offers the same |
+| CRO review published | `alphalattice review continue --dir "<out>/review"` after the CRO | Cite the review beside the publication's own status, then follow its offered `committee` (`CONVENE_THE_COMMITTEE`), or its `committee_report` once the floor has closed; on a daily date with the person's daily committee setting off, `GIVE_THE_PM_VIEW`: your view as PM from the Host's materials, the committee offered in one line; the update's read, or your earlier bundle refused as stale or ambiguous after a second preparation, offers the same |
 | Delivered | The goal's record | State coverage, expiry and Risk limits, then complete the goal |
 
 Read the agenda points before speaking: below the agenda line, no stance is required; the PM may raise one listed point through the positions of a REPLY to a revealed message.
 
-The committee's PM may approve with PROCEED, approve with conditions with PROCEED_WITH_NOTES,
-or decline endorsement of action with DECLINE. FOR_THE_PERSON remains available. A decline
-closes the discussion and retains the research record and positions. The report labels the
-PM's last ruling as its final view, keeping earlier standing views under their own labels.
+The committee is a showcase of its members' discussion, never a gate, and its verdict is that
+discussion's record, not an approval or advice. The PM's default is PROCEED_WITH_NOTES, with
+members' reservations carried as notes. DECLINE endorsement of action only for a named hard
+defect (a data error, a Risk bound breached, key evidence missing), naming it; a decline closes
+the discussion and retains the research record and positions. FOR_THE_PERSON only for a named
+decision of the person; PROCEED when nothing needs noting. Members may suggest avoiding, reducing
+or adding specific holdings, with reasons from the materials. The report leads with those
+suggestions, then the verdict; it labels the PM's last ruling as its final view, keeping earlier
+standing views under their own labels, and ends with one line that also ends your reply: the
+committee changed no number; whether to act on its suggestions is the person's decision.

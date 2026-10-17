@@ -316,6 +316,7 @@ type PortfolioResearchOperation = Literal[
     "STRATEGY_DEACTIVATE",
     "COMMITTEE_OPEN",
     "COMMITTEE_SUBMIT",
+    "COMMITTEE_DAILY_SET",
     "COMMITTEE_READ",
 ]
 
@@ -358,6 +359,7 @@ PERSON_ONLY: Final[frozenset[str]] = frozenset(
         "EVIDENCE_CONSENT_SET",
         "EVIDENCE_INSTALL",
         "USAGE_READING_SET",
+        "COMMITTEE_DAILY_SET",
         "STORAGE_CONFIRM",
         "STORAGE_PIN",
         "RESEARCH_INPUT_CONFIRM",
@@ -374,14 +376,9 @@ PERSON_ONLY: Final[frozenset[str]] = frozenset(
 )
 """The operations only a person decides.
 
-Each owner refuses every other caller, a client's and an Agent's included, unless the request
-relays the person's yes (`person_confirmation`, `PERSON_DECISIONS`): the network
-authority, the storage confirmation and pin, the research input's confirmation, the data
-issues' delegation and its revocation, the daily research
-update's automation (its owner refused every client while the CLI offered it), and a
-research strategy's activation and deactivation (LS1, OW12). The CLI
-marks each, so that an agent asks the person in one line before it sends one. A test holds this
-set to the owners' refusals.
+Each owner refuses every other caller, an Agent's included, unless the request relays the person's
+yes (`person_confirmation`, `PERSON_DECISIONS`) (LS1, OW12). The CLI marks each, so an agent asks
+the person in one line first; a test holds this set to the owners' refusals.
 
 Data change confirmation reads its plan kind: membership requires the person's approval,
 while an exactly scoped full-history audit also admits the installed agent. It is not
@@ -579,6 +576,7 @@ class PortfolioResearchOperationRequest:
     evidence_total_bytes: int | None = None
     evidence_setup: str | None = None
     usage_reading_enabled: bool | None = None
+    committee_daily_enabled: bool | None = None
     automation_package_ids: tuple[str, ...] | None = None
     upgrade_set_hash: str | None = None
     """The installed identity set an upgrade overview showed, when acknowledging it."""
@@ -1189,10 +1187,8 @@ class PortfolioResearchOperationRequest:
                 frozenset({"task_id", "wake_thread", "wake_read"}),
                 frozenset({"task_id", "wake_thread", "wake_read", "wake_codex_path"}),
             ),
-            "USAGE_READING_SET": (
-                frozenset({"usage_reading_enabled"}),
-                frozenset({"usage_reading_enabled"}),
-            ),
+            "USAGE_READING_SET": (frozenset({"usage_reading_enabled"}),) * 2,
+            "COMMITTEE_DAILY_SET": (frozenset({"committee_daily_enabled"}),) * 2,
             # One of the three, which the owner holds to: a setting a request (V100).
             "CPU_BUDGET_SET": (
                 frozenset(),
@@ -1787,6 +1783,8 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     usage_reading_enabled: bool | None = Field(default=None, strict=True)
     """true lets the Host read the bound agent Sessions' own files for usage; false reads
     nothing."""
+    committee_daily_enabled: bool | None = Field(default=None, strict=True)
+    """true: each daily update's review convenes the committee; false: the PM's view."""
     automation_package_ids: tuple[str, ...] | None = None
     """The strategy packages the automatic research update covers."""
     upgrade_set_hash: str | None = None

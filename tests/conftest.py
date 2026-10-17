@@ -35,6 +35,35 @@ from devtools.evaluation.round_trip import (
     plan_admission_problem as observed_plan_admission_problem,
 )
 
+
+@pytest.fixture
+def setup_done(tmp_path, monkeypatch):
+    """A checkout whose first-use setup is done (`setup_support.setup_done`), in this process
+    and in the environment its subprocesses inherit."""
+    from tests.setup_support import setup_done as done
+
+    with done(tmp_path) as env:
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+        yield env
+
+
+@pytest.fixture
+def host_local_clock(monkeypatch):
+    """A Host in New York after local evening has crossed midnight in UTC."""
+    from datetime import UTC, datetime
+    from zoneinfo import ZoneInfo
+
+    from alphalattice.protocols.actor_execution import bundles
+
+    class HostDatetime(datetime):
+        def astimezone(self, tz=None):
+            return super().astimezone(tz or ZoneInfo("America/New_York"))
+
+    monkeypatch.setattr(bundles, "datetime", HostDatetime, raising=False)
+    return HostDatetime(2026, 10, 18, 2, 44, tzinfo=UTC)
+
+
 # Every test runs outside an agent session: a vendor's session variable would otherwise ride
 # into each request the tests send, and into its activity (LAWS OP13). A test that needs one
 # sets it itself. Popped at import, so each worker and the commands it starts inherit none.

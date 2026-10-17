@@ -27,6 +27,7 @@ from alphalattice.evidence.alternative_evidence.analysis.views import (
     excerpt_groups,
     render_analyst_bundle,
 )
+from alphalattice.evidence.alternative_evidence.contracts import seal_contract
 from alphalattice.oversight.chief_risk_officer.decision.views import (
     MAXIMUM_COVERAGE_LINES,
     MAXIMUM_UNREPORTED_NAMES,
@@ -319,6 +320,43 @@ def test_the_analyst_bundle_is_clean_packed_and_merges_near_identical_excerpts(
     )
     merged = sum(len(group.members) for group in groups)
     assert f"{merged} near-identical excerpt(s) shown by their differing words" in index
+
+
+def test_the_review_header_keeps_positions_date_apart_from_evidence_clock(host_local_clock):
+    """The dated book and the Evidence cutoff are separate facts in the agent's header."""
+    from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
+        PortfolioUpdateReviewSubject,
+    )
+
+    subject = PortfolioUpdateReviewSubject(
+        update_task_id="00000000-0000-4000-8000-000000000001",
+        update_publication_hash="a" * 64,
+        position_hash="b" * 64,
+        checkpoint_hash="c" * 64,
+        position_basis="OBSERVED_RESEARCH_ENTRY",
+        strategy_package_id="test",
+        observed_through="2026-10-16",
+        formation_session="2026-10-15",
+        entry_session="2026-10-16",
+    )
+    dossier = _dossier()
+    dossier = seal_contract(
+        type(dossier),
+        "dossier_hash",
+        **{
+            **{key: value for key, value in dossier if key != "dossier_hash"},
+            **dict.fromkeys(("report_hash", "result_hash", "candidate_hash", "handoff_hash")),
+            "book_authority": subject.book_authority,
+            "update_subject": subject,
+            "evidence_as_of": host_local_clock,
+            "evidence_expires_at": host_local_clock + timedelta(days=1),
+        },
+    )
+    before = dossier.model_dump(mode="json")
+    head = render_review_bundle(dossier, task_procedure="").text("README.md")
+    assert "Positions for 2026-10-16" in head
+    assert "2026-10-17 22:44" in head and host_local_clock.isoformat() in head
+    assert dossier.model_dump(mode="json") == before
 
 
 def test_the_review_bundle_states_the_holdings_once_and_packs_the_findings() -> None:

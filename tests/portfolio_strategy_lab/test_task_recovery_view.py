@@ -1298,3 +1298,16 @@ def test_a_replan_preview_and_admission_link_a_distinct_successor_across_restart
     finally:
         resolver.release.set()
         live.stop()
+
+
+def test_every_declared_failure_keeps_its_owner_words_in_task_recovery():
+    """Any declared refusal keeps its explanation when read as a Task stop."""
+    from alphalattice.control.product_host.composition.task_recovery import stop_detail
+    from alphalattice.kernel.shared_kernel.project_layout import (
+        REFUSAL_WORDS_RESOURCE,
+        runtime_json,
+    )
+
+    unknown = stop_detail("evidence_install", "owner.future_stop", "TASK_CONTROL")
+    for code in runtime_json(REFUSAL_WORDS_RESOURCE):
+        assert stop_detail("evidence_install", code, "TASK_CONTROL") != unknown, code

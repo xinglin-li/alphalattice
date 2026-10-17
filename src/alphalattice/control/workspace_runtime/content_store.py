@@ -15,6 +15,7 @@ import ctypes
 import hashlib
 import json
 import os
+import shutil
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -448,6 +449,35 @@ class _WindowsReadLeaseIssuer:
             self.thread.join()
         self.breaks_stopped.set()
         self.break_thread.join()
+
+
+@contextmanager
+def staging_directory(parent: Path, prefix: str = ".staging-") -> Iterator[Path]:
+    """A new staging folder under `parent` that keeps `parent`'s permissions, removed on leaving.
+
+    Never `tempfile.mkdtemp` here: on Windows it restricts its folder to the account that made it
+    (CVE-2024-4030), what is staged in it inherits that, and a rename keeps it. A Host running as
+    another account (an agent's sandbox) would then publish data the workspace's own account
+    cannot read. A plain folder inherits the workspace's access (POSIX: the umask).
+
+    Args:
+        parent: The folder the staged content will be renamed into, or beside.
+        prefix: The staging folder's name prefix.
+
+    Yields:
+        The staging folder, absent again once the block leaves.
+    """
+    while True:
+        folder = parent / f"{prefix}{uuid4().hex}"
+        try:
+            folder.mkdir()
+            break
+        except FileExistsError:
+            continue
+    try:
+        yield folder
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def _acquire_source_lease(path: Path) -> _WindowsReadLease:

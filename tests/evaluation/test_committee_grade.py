@@ -197,6 +197,7 @@ COMPONENT, FACT, UNKNOWN_COMPONENT = (f"{k}{n}" for k, n in (("C", 1), ("S", 1),
         ("rounded", "figure_not_in_dossier"),
         ("numbered_name", None),
         ("proposed", "position_change_proposed"),
+        ("suggested", None),
         ("verbal", "position_change_proposed"),
         ("prohibited", None),
         ("rank_description", None),
@@ -235,7 +236,8 @@ def test_recorded_message_keeps_the_host_contract(change, reason):
             "exact": {"text": "Weight is 0.125."},
             "rounded": {"text": "Weight is 0.13."},
             "numbered_name": {"text": "Read H1."},
-            "proposed": {"text": "Reduce H1."},
+            "proposed": {"text": "Set the weight of H1 lower."},
+            "suggested": {"text": "Reduce H1; T1 could add to it."},
             "verbal": {"text": "H1 should be half of the book."},
             "prohibited": {"text": "Never reduce H1."},
             "rank_description": {"text": "Lower-middle of the book; only H1 differs."},
@@ -249,6 +251,26 @@ def test_recorded_message_keeps_the_host_contract(change, reason):
     assert reason is None or reason in {issue["reason"] for issue in result["reasons"]}
     if change == "entry_time":
         assert "figure_not_in_dossier" not in {issue["reason"] for issue in result["reasons"]}
+
+
+@pytest.mark.parametrize(
+    "outcome,named,reason",
+    [
+        ("PROCEED_WITH_NOTES", {}, None),
+        ("DECLINE", {}, "decline_without_hard_defect"),
+        ("DECLINE", {"hard_defects": ["Key evidence on H1 is missing."]}, None),
+        ("FOR_THE_PERSON", {}, "for_the_person_without_a_decision"),
+        ("FOR_THE_PERSON", {"person_decisions": ["M6"]}, None),
+    ],
+)
+def test_reservations_without_a_hard_defect_proceed_with_notes(outcome, named, reason):
+    """requirement (committee calibration): DECLINE only for a named hard defect and
+    FOR_THE_PERSON only for a named person decision; reservations alone proceed with notes."""
+    scenario, context, parts, answer = recorded("decision")
+    context.update(named)
+    answer["message"]["outcome"] = outcome
+    result = judged(scenario, context, parts, answer)
+    assert {issue["reason"] for issue in result["reasons"]} == ({reason} - {None})
 
 
 @pytest.mark.parametrize(
@@ -631,3 +653,67 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
         assert "report.review_hash_mismatch" in problems
     if broken.startswith("home_"):
         assert "home." + broken.removeprefix("home_") + "_mismatch" in problems
+
+
+@pytest.mark.parametrize(
+    "broken,finding",
+    [
+        ("clean", None),
+        ("dropped", "report.suggestions_mismatch"),
+        ("after", "report.suggestions_after_verdict"),
+        ("unclosed", "report.no_number_line_missing"),
+    ],
+)
+def test_the_suggestions_lead_the_report_as_the_floor_holds_them(broken, finding):
+    """requirement (committee calibration): each standing OBJECT or SUPPORT on a point's holdings
+    leads the report, then the verdict, and the no-number line closes it."""
+    closed = {
+        "tension_points": [{"alias": "T1", "targets": ["H1", "H2"]}],
+        "messages": [
+            floor_message("M1", "CRO", "STANCE", text="Object T1.", positions={"T1": "OBJECT"}),
+            floor_message("M2", "PM", "VERDICT", text="Proceed."),
+        ],
+    }
+    suggestion = {
+        "attribution_words": {"message": "M1"},
+        "position": "OBJECT",
+        "holding_aliases": ["H1", "H2"],
+    }
+    rows = [
+        suggestion,
+        {"attribution_word": "Committee verdict: {outcome}", "text": "Proceed."},
+        {"attribution_word": "closing", "text": "It changed no number"},
+    ]
+    if broken == "dropped":
+        rows.pop(0)
+    if broken == "after":
+        rows.insert(1, rows.pop(0))
+    if broken == "unclosed":
+        rows.pop()
+    problems = report_fidelity(closed, {"commentary": rows})
+    found = {p for p in problems if p.startswith("report.suggestions") or "no_number" in p}
+    assert found == ({finding} - {None})
+
+
+def test_a_fact_that_contradicts_its_own_data_is_named():
+    """requirement (committee facts, 2026-10-16): a rank listed outside its class, moves that
+    moved nothing and a total that is not its parts are each named by the fact's alias."""
+    from alphalattice.control.product_host.composition import committee_materials
+    from devtools.evaluation.committee import fact_findings
+
+    rule = committee_materials._FACTS["rule"][2].format(
+        c="C3", n=3, top=35, out=70, kept="H1 36, H4 90", tranche="H3 71"
+    )
+    moves = committee_materials._FACTS["moves"][2].format(
+        c="C3", moved="H1 0.98>0.98, H2 0.96>0.96", unscored="none"
+    )
+    parts = dict(read="10.861%", days=30, nothing="88.628%", unread="0.511%", minimum="50.000%")
+    scope = committee_materials._FACTS["scope"][2].format(
+        together="100.000%", reviewed="100.000%", **parts
+    )
+    facts = [{"alias": f"S{n}", "text": t} for n, t in enumerate((rule, moves, scope), 5)]
+    assert fact_findings(facts) == [
+        "fact.rank_outside_its_class:S5",
+        "fact.moves_moved_nothing:S6",
+        "fact.total_not_its_parts:S7",
+    ]

@@ -301,7 +301,7 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 
 ## 0.2.0
 
-0.2.0 is the public launch. One sentence to Codex or Claude Code leads to a dated set of research positions, argued by an investment committee and written up as a report, and to the same positions kept current day by day. Its acceptance ran on the release tree with no code change during the runs: an offline first use, and a first use followed by two daily updates with a Claude Code lead on Windows. A daily update took 18 minutes with the review and the committee, and 14 minutes for the review alone. Its own update stage took 3 to 4 minutes, down from more than 10.
+0.2.0 is the public launch. One sentence to Claude Code or Codex leads to a dated set of research positions, discussed by an investment committee and written up as a report, and to the same positions kept current day by day. Its acceptance ran on the release tree with no code change during the runs, on Windows: an offline first use, and a first use followed by daily updates, with a Claude Code (Haiku) lead and with a Codex lead that started its own Host inside Codex's default sandbox. A daily update took 15 minutes with the Codex lead and 25 minutes with the Haiku lead, both including the review and the committee, on a machine running other work. Its own update stage took 3 to 7 minutes, down from more than 10. Most of the remaining time is the agents' own review, committee and write-up.
 
 ### Added
 
@@ -311,10 +311,22 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 - A first use asks once whether the workspace may keep its network on for daily updates, within the default SEC budget, until the person says stop. Each use of the network is recorded on the answer and in the activity, including scheduled updates, and one sentence turns it off.
 - A review without Evidence offers its install ready to run: the eight largest issuers by weight, and the next eight after a quiet stop. The preflight offers the same install, and the daily yes admits only that offer.
 - Once a date's review is published, `research-update show` offers that date's committee. So does a lead's continue on an earlier bundle refused as stale or ambiguous after a second preparation.
-- The committee gives each member one discussion turn after the stances are revealed. A member may speak or pass, and the floor settles as soon as every member has used or passed its turn and no challenge stands unruled. The report records a passed turn in words.
+- At the end of a first use, the agent asks once whether daily updates should also convene the committee (about ten more minutes). The answer is kept as a workspace setting, and one sentence changes it. Without it, the PM gives its view on the reviewed positions and offers the committee for that day in one line.
+- Before a first use opens anything, it checks its own setup: the `alphalattice` command, the retrieval environment and the Workbench build. A missing item is named with the command that fills it, and a step only the person can take is asked in one line.
+- A goal's submission that cites a reference the goal does not hold offers that reference's attach, ready to send. The goal schema's compact view shows the reference form, the problem fields and the reads each stage admits.
+- `serve --no-browser --detach` starts the Host as its own process, which outlives the agent's turn. A Codex lead uses it, since a Codex turn ends its shell's children. After launch, the answer's next step is to open the Workbench once in the coding app's built-in browser (Claude Code's browser pane through `preview_start`, or Codex's), never a separate system browser, and the first use's first line to relay carries its link.
+- The committee gives each member one discussion turn after the stances are revealed, and the wait offers that turn to a member that follows only its route. A member may speak or pass, and the floor settles as soon as every member has used or passed its turn and no challenge stands unruled. The report records a passed turn in words. The discussion has a short window. A member silent past it counts as passed, an unruled challenge is reported as unruled, and the PM is woken to give its verdict; a floor that reaches its time box without one closes and says so.
 
 ### Changed
 
+- The committee is a discussion of the research, not an approval. Its verdict is PROCEED_WITH_NOTES unless a named hard defect stands, such as a data error, a breached Risk bound or missing key evidence. Its report leads with suggestions on individual holdings: what to avoid or reduce, and what could be added. It changes no number, and the person decides.
+- The worker pool keeps at most eight workers by default, bounded by memory and the CPU budget, and idle workers exit. A worker holds about 0.07 GB of memory instead of about 1.8 GB.
+- Introductions name Claude Code first.
+- Deadlines and windows a person reads show the Host's local time beside UTC. Research dates stay the session dates the positions belong to.
+- A command's `--file` accepts the whole request its own answer saved.
+- A bundle folder may be new, empty, or hold the same bundle's earlier output, so a step reruns in place after a stop. Any other content is refused with a way on.
+- The Evidence install's estimate is labelled as the upper bound of a first, cold download; held sources and packs are reused.
+- The Sessions page shows each specialist once, with its own usage, joined by the key it ran with. Each message names its recipient by the thread it belongs to.
 - Windows is the supported platform. On Linux and macOS, CI checks installation and an offline first use; other use there is not guaranteed.
 - The README, the guide and the Workbench use plain words, for example "strategy" where the text said "book". Commands, fields and message kinds keep their names.
 - The Workbench names every status it shows in words, in English and Chinese, including the committee's and the review's. Codes stay in the records. A committee member's session reads as its part in that date's committee.
@@ -338,10 +350,18 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 
 ### Fixed
 
+- A committee could stall until its time box when a member stayed silent or a challenge went unseen. Past its discussion window it now settles, and the PM is woken to give its verdict.
+- A committee report with a long message no longer fails to export. A cut is named and points to the full record.
+- Committee facts now agree with their own data. A holding kept by its tranche is named as such, score moves come from the previous session, and a coverage total equals its parts.
+- On Windows, workers no longer open console windows, and counting tokens no longer downloads an encoding at Host start: the encoding ships in the package.
+- A relay of words that say no person gave them is refused.
+- A Host that cannot reach Codex from inside an agent's sandbox says so, and the lead waits inside its turn instead of for a wake that cannot arrive.
+- A lead could open the Workbench in a hidden browser pane without telling the person. It now opens it visibly in the coding app's built-in browser and tells the person in one line, with the link.
 - A daily update asked for a named date reviewed and convened on the next session's positions. It now reviews that date's positions.
 - A dividend that a provider added or corrected late, inside the daily window, no longer stops the daily update. A refusal of that check names its listing.
 - A past Session's usage no longer disappears from its page after a later Session binds the workspace.
 - The workspace database waits for a file still held by an instance that is closing, instead of failing.
+- Files a workspace publishes now carry the workspace folder's own access, also when the Host runs under another account, as in Codex's Windows sandbox. Before, a published folder kept a private temporary-folder access list that only the Host's account could read.
 - A daily update raised the same data issues every day and sent them to the person, and could wait on a provider that was not down. The rule now decides them in line.
 - The network control reads the Host's clock. A delegation opened while the workspace runs on a historical date stays open until its end.
 - A held data update no longer wakes the Host repeatedly. Taking the hold disarms its wake, a refused package waits for its next attempt, failed wakes back off, and a lost read is answered as a read.
@@ -350,6 +370,12 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 - An Evidence setup refusal names its reason.
 - A review with nothing new filed names its way on instead of stopping without one.
 - A link among a row's facts can be pressed where the row itself also opens a page.
+- A request that arrived while the Host published its own Evidence install was refused as a configuration change needing a restart. It now passes.
+- The same Evidence install sent again after a stop continues the stopped one, which then reads as resolved.
+- A first use already past its strategy build named the build as its next step. It now names where it stands.
+- A committee message that named a point or holding by its name was refused without a way on. The refusal now offers the same message with aliases.
+- A report suggestion listed every holding its member mentioned, including ones the member set apart. It now lists only those suggested.
+- Some status words and steps showed as undeclared on the Workbench. Each now has its words, in English and Chinese.
 
 ### Previews
 

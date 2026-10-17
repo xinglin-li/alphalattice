@@ -43,6 +43,7 @@ from alphalattice.control.task_control.registry import (
     TASK_CONTROL_DATABASE_FILENAME,
     DuckDbTaskControlRegistry,
 )
+from alphalattice.control.workspace_runtime.content_store import staging_directory
 from alphalattice.control.workspace_runtime.database import (
     WorkspaceDatabase,
     open_workspace_database,
@@ -353,7 +354,7 @@ class WorkspaceBackups:
         entries: list[BackupEntry] = []
         absent: list[str] = []
         self._writable_root()
-        with tempfile.TemporaryDirectory(dir=self.root, prefix=".export-") as staging_name:
+        with staging_directory(self.root, ".export-") as staging_name:
             staging = Path(staging_name)
             for store, database, tables in (
                 ("market", self.workspace / MARKET_DATABASE, MARKET_TABLES),

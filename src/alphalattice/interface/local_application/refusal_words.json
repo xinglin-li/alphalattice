@@ -1,6 +1,6 @@
 {
  "local_web.assets_stale": {
-  "detail": "The Local Web's built files differ from this checkout's sources. Run `python scripts/build_local_web_ui.py --product`, then serve again.",
+  "detail": "The Local Web's built files differ from this checkout's sources. Run `uv run python scripts/build_local_web_ui.py --product`, then serve again.",
   "next_action": "BUILD_LOCAL_WEB_ASSETS_AND_SERVE_AGAIN"
  },
  "workspace_preparation.human_confirmation_required": {
@@ -831,6 +831,10 @@
   "detail": "`committee_agenda_limit` must be a strict integer from 1 through 24. Omit the field to use 12, or correct the workspace declaration and retry.",
   "next_action": "CORRECT_THE_WORKSPACE_DECLARATION"
  },
+ "research_workspace.configuration_changed_restart_required": {
+  "detail": "This workspace's configuration was changed outside this running Host, so it takes no more work rather than serve two configurations; nothing was changed. Tell the person in one line: the Host reads the new configuration once they restart it (`alphalattice host stop`, then start it again).",
+  "next_action": "TELL_THE_PERSON_THE_HOST_NEEDS_A_RESTART"
+ },
  "research_workspace.manifest_refused": {
   "detail": "The workspace's manifest does not read as its contract says (`{subject}`: each field refused and its rule), so nothing in it runs; restore the workspace from a backup that holds a readable manifest (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
@@ -1114,6 +1118,10 @@
  "local_client.codex_queue_unavailable": {
   "detail": "Background wakes need a Codex thread and a runnable `codex queue`. Run `python -m alphalattice.interface.local_application.native_setup doctor`; ask once before installing the Codex CLI outside the lock, then the agent installs it and sends the same request again. Until it is available, wait inside this turn without `--notify`.",
   "next_action": "WAIT_IN_THE_TURN"
+ },
+ "local_client.codex_unreachable": {
+   "detail": "The Host cannot reach Codex: Codex refused before reading its own sessions, as it does for a Host running inside an agent's sandbox, so no wake can be queued (`codex_reach.detail` holds what Codex said). Wait inside this turn with `activity wait --task <id>`; the Task's work is unchanged.",
+   "next_action": "WAIT_IN_THE_TURN"
  },
  "alpha_modeling.lightgbm_thread_canary_mismatch": {
   "detail": "LightGBM on this machine grew other trees at the CPU budget's thread count than the sealed canary, so the study did not fit. Set the workspace's CPU budget to 1 (`alphalattice cpu-budget set --cores 1`) and run it again: on one thread it fits as the method was sealed.",
@@ -1519,6 +1527,10 @@
   "detail": "A book, score, calibration or update Task on the installed strategies is in progress, so nothing was installed. Wait for that Task ({subject}) to end, then install again.",
   "next_action": "WAIT_FOR_THE_TASK_THEN_INSTALL"
  },
+ "person_confirmation.not_the_persons_words": {
+  "detail": "These words say no person gave them, so they relay no decision and nothing was done. Ask the person in one line and relay their own words; without them, leave the decision undone and say so.",
+  "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
+ },
  "person_confirmation.decision_mismatch": {
   "detail": "The person's yes answers another request than this one, so nothing was done. Ask them about this decision in one line, and relay that yes with this request.",
   "next_action": "ASK_THE_PERSON_ABOUT_THIS_DECISION"
@@ -1567,6 +1579,10 @@
   "detail": "The acquired source yielded no listing ready for Feature inputs. Read `issue list` for each failed listing and the provider cause. Retained source data is unchanged; follow the offered preparation recovery after correcting the source.",
   "next_action": "DATA_ISSUES"
  },
+ "committee.daily_setting_human_only": {
+  "detail": "Whether each daily update convenes the investment committee is the person's decision: ask the person in one line and, on their answer, send this again with --person-said and --asked. Nothing was changed.",
+  "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
+ },
  "committee.not_open": {
   "detail": "No committee is open on this update; open it with `alphalattice committee open --update <task>`.",
   "next_action": "OPEN_THE_COMMITTEE"
@@ -1583,6 +1599,10 @@
   "detail": "That channel is the committee's own; a client's event cannot take it.",
   "next_action": "DECLARE_ON_YOUR_OWN_CHANNEL"
  },
+ "research_delivery.export_failed": {
+  "detail": "The Host could not write this report, a fault in the product, not in your request; nothing changed. Send the same request once more; if it is refused the same way, report the problem with `alphalattice problem report --output <file>`.",
+  "next_action": "SEND_ONCE_MORE_THEN_REPORT_THE_PROBLEM"
+ },
  "research_delivery.subject_required": {
   "detail": "A delivery names its subject: a study's book (its Task, receipt and session) or a date's published positions (its update, publication and basis).",
   "next_action": "NAME_THE_DELIVERY_SUBJECT"
@@ -1592,7 +1612,7 @@
   "next_action": "SEND_THE_OFFERED_SELECTOR"
  },
  "committee.message_refused": {
-  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias; AGENDA, an unraised below-line point or more than one point raised by a PM reply. For review and committee members: MEMBER, a missing own session or bundle key; KEY, another member's key; ENDED, changed work after the thread ends. Read the floor with `alphalattice committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
+  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; LATE, a specialist's stance after its window or its turn after the discussion window; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias; AGENDA, an unraised below-line point or more than one point raised by a PM reply. For review and committee members: MEMBER, a missing own session or bundle key; KEY, another member's key; ENDED, changed work after the thread ends. Read the floor with `alphalattice committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
   "next_action": "READ_THE_FLOOR"
  },
  "committee.session_required": {

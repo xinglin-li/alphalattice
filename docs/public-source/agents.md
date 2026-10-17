@@ -1,7 +1,7 @@
 # Work with research agents
 Date: 2026-10-08
 
-Codex or Claude Code leads your research; AlphaLattice calculates, validates and
+Claude Code or Codex leads your research; AlphaLattice calculates, validates and
 records it. The installing agent continues in the same session, and a session
 binds itself when it first works on the workspace. The [agent guide](../../AGENTS.md)
 owns setup, delegation and person decisions. Its
@@ -27,7 +27,7 @@ standing fields: `comparison`, `execution`, `contract`, `evidence` and
 establishes no scientific correctness or activation. [Research flows](research-flows.md)
 covers prerequisites and claims. [Extending](extending.md) covers trials and activation.
 
-In the committee, initial stances stay blind until they are revealed. Each specialist then uses its discussion turn with a `CHALLENGE` or `REPLY`, or yields it with `PASS`. A pass names no target or position and ends that specialist's participation. The existing cap is three challenges or replies per specialist in all; a pass does not count toward it. The portfolio manager rules on every challenge. The floor is settled once every specialist has spoken or passed and no challenge remains unruled; the portfolio manager can then give the verdict. A time-box close can still leave a member unaddressed. Committee judgment changes no position number.
+In the committee, initial stances stay blind until they are revealed. Each specialist then uses its discussion turn with a `CHALLENGE` or `REPLY`, or yields it with `PASS`. A pass names no target or position and ends that specialist's participation. The existing cap is three challenges or replies per specialist in all; a pass does not count toward it. The portfolio manager rules on every challenge. The floor is settled once every specialist has spoken or passed and no challenge remains unruled, or once its short discussion window after the reveal has passed: a specialist silent past it has passed (silent), and a challenge still unruled is reported as unruled; the portfolio manager can then give the verdict. A time-box close can still leave a member unaddressed. The verdict is the committee's discussion record, not an approval or advice: `PROCEED_WITH_NOTES` by default, with reservations carried as notes; `DECLINE` only for a named hard defect (a data error, a Risk bound breached, key evidence missing); `FOR_THE_PERSON` only for a named decision of the person. Members may suggest avoiding, reducing or adding specific holdings, with reasons from the materials. The report leads with those suggestions, then the verdict, and ends by saying that the committee changed no number and that whether to act on its suggestions is the person's decision.
 
 ## Goals and Team
 

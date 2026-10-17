@@ -447,6 +447,9 @@ class EvidenceInstall:
         """Bind the install to the Host's session, its clock and how it serves a new package."""
         self.session, self.clock, self.installed = session, clock, installed
         self.official_source = official_source
+        self.publishing = False
+        """True from the publish stage's manifest write until the Host has served and held it: a
+        request in between reads the Host's own publication, never a configuration changed."""
 
     def admit(self, argv: Sequence[str]) -> CommandAdmission:
         """Admit one install of the setup's command line."""
@@ -478,7 +481,29 @@ class EvidenceInstall:
         record = self.session.task_control_registry.admit(
             input_envelope=envelope, goal=goal, plan=plan, observed_at=self.clock()
         ).record
+        self._continue_blocked(argv, record.task_id)
         return CommandAdmission(task_id=record.task_id, lifecycle=record.lifecycle.value)
+
+    def _continue_blocked(self, argv: Sequence[str], successor: UUID) -> None:
+        """The same install sent again continues each blocked one (a BLOCKED Task does not
+        resume), so the stop reads as resolved once its successor succeeds (`task_attention`)."""
+        registry = self.session.task_control_registry
+        request = {"operation": "EVIDENCE_INSTALL", "evidence_setup": shlex.join(argv)}
+        for blocked in registry.tasks():  # a control act reads complete authority
+            if (
+                blocked.task_kind != EVIDENCE_INSTALL_TASK_KIND
+                or blocked.lifecycle is not TaskLifecycle.BLOCKED
+                or blocked.input.payload.get("arguments") != list(argv)
+            ):
+                continue
+            for linked in (None, successor):  # its preview, then the confirmed successor
+                registry.record_recovery_link(
+                    source_task_id=blocked.task_id,
+                    source_record_hash=blocked.record_hash,
+                    admission_request=request,
+                    successor_task_id=linked,
+                    observed_at=self.clock(),
+                )
 
     def execute(self, task_id: UUID, *, expected_task_hash: str | None = None) -> None:
         """Run or recover an admitted install through Task Control's runner."""
@@ -507,6 +532,7 @@ class EvidenceInstall:
         stage, path = work_item.stage_id, self._path(task)
         held = self._outputs(task)
         arguments = setup_arguments(task.input.payload["arguments"], self.session.workspace)
+        self.publishing = stage == INSTALL_STAGES[-1]
         try:
             if stage == "environment" and not load():
                 raise ValueError("evidence_review.retrieval_environment_not_loaded")
@@ -528,9 +554,12 @@ class EvidenceInstall:
             )
             if held[stage].get("installed"):
                 self.installed()
+            self.publishing = False
         except AlternativeEvidenceTaskCancelled:
+            self.publishing = False
             return StageExecutionResult(StageDisposition.CANCELLED)
         except (ValueError, RuntimeError, OSError) as error:
+            self.publishing = False
             refusal = setup_refusal(arguments, error, now=self.clock())
             code = str(refusal["failure_code"])
             cause = StageFailureCause(

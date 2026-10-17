@@ -95,6 +95,10 @@ alphalattice research-update plan --package <package> --date <date> --output upd
 
 For the one daily-network question, the agent relays the person's yes through `network set --enabled true` and `evidence-consent set --per-issuer 3`, using `--person-said` and `--asked` for their words and the question. This authorizes the stated daily updates and default SEC budget until the person says stop. `alphalattice evidence-consent show` reads the source budget; `alphalattice evidence-consent set --per-issuer 10` changes it with the required authority. Omitted `--documents` and `--bytes` retain the current total bounds; a wider budget needs the person's decision. See [network consent and revocation](privacy.md#workspace-network-and-consent).
 
+## The daily committee
+
+The first use's report asks the person once whether each daily update also convenes the investment committee. The agent relays their answer with `alphalattice committee daily --enabled true` or `alphalattice committee daily --enabled false`, using `--person-said` and `--asked`. Unanswered, the setting is off: a daily update's published review then answers `GIVE_THE_PM_VIEW`, so the agent gives the portfolio manager's view of the reviewed positions, and the committee for that date stays offered. `alphalattice workspace show` reads the setting as `committee_daily`.
+
 ## Waits, document limits and units
 
 `--wait` follows the named Task until completion, decision, deferral, incident or
@@ -110,7 +114,9 @@ and act on its completion notice. On Codex, they accept `--notify codex-queue` t
 return at the first running Task while the Host keeps its notification; a notice
 names the continuation when the Task ends, needs a decision or is deferred, and
 failures to queue it appear in Task activity. Under an active Codex goal, wait inside
-the turn instead: the goal's next turn starts before a queued notice is taken.
+the turn instead: the goal's next turn starts before a queued notice is taken. A
+registration answering `local_client.codex_unreachable` means the Host cannot reach
+Codex (it runs inside the agent's sandbox), so no notice will come: wait inside the turn.
 
 With `--wait --output`, admission is saved first and replaced by the final
 answer; save failure does not undo admission. Request documents are limited to
