@@ -504,6 +504,65 @@ def test_a_request_a_listed_item_offers_is_followed(tmp_path: Path, fake_host, c
     assert fake_host.sent == [plan] * len(aliases)
 
 
+@pytest.mark.parametrize("format", ["json", "yaml"])
+def test_a_retry_replaces_only_a_saved_refusal(
+    tmp_path: Path, capsys: Any, fake_host: Any, format: str
+) -> None:
+    """A saved refusal permits retry; accepted work and unrelated files remain protected."""
+    saved = tmp_path / ("answer." + format)
+    options = ["--output", str(saved), "--format", format]
+    arguments = ["--workspace", str(tmp_path), "task", "list", *options]
+    fake_host.answer = refusal = {"status": "REFUSED", "failure_code": "task_control.queue_full"}
+    assert cli.main(arguments, serve=lambda _: 99) == 2
+    capsys.readouterr()
+    assert client._response_document(saved) == fake_host.answer
+    fake_host.answer = {"status": "OK", "tasks": []}
+    assert cli.main(arguments, serve=lambda _: 99) == 0
+    answer = json.loads(capsys.readouterr().out)
+    expected = {**fake_host.answer, "read_request": {"operation": "TASKS"}}
+    assert answer["output_note"] and client._response_document(saved) == expected
+    for held in (
+        saved.read_text("utf-8"),
+        "{}",
+        "not an answer",
+        json.dumps({**refusal, "task_id": "held"}),
+        json.dumps({**refusal, "admission": {"task_id": "held"}}),
+    ):
+        saved.write_text(held, "utf-8")
+        assert cli.main(arguments, serve=lambda _: 99) == 1
+        refused = json.loads(capsys.readouterr().out)
+        assert refused["failure_code"] == "local_client.output_exists_choose_another_path"
+        assert saved.read_text("utf-8") == held and len(fake_host.sent) == 2
+
+
+def test_an_accepted_bundle_heads_the_compact_answer_before_its_queued_task_detail(
+    tmp_path: Path, capsys: Any, fake_host: Any
+) -> None:
+    """Accepted submission succeeds while its queued Task remains visible and followable."""
+    task = str(uuid4())
+    fake_host.answer = {
+        "status": "ACCEPTED",
+        "answer_status": "ACCEPTED",
+        "task_id": task,
+        "task_lifecycle": "QUEUED",
+        "next_action": "READ_TASK",
+        "receipt": {"verdict": "ACCEPTED"},
+        "next_requests": {"task": {"operation": "STATUS", "task_id": task}},
+    }
+    source = tmp_path / "answer.json"
+    source.write_text("{}", "utf-8")
+    options = ["--dir", str(tmp_path), "--file", str(source)]
+    arguments = ["--workspace", str(tmp_path), "bundle", "submit", *options]
+    assert cli.main(arguments, serve=lambda _: 99) == 0
+    answer = json.loads(capsys.readouterr().out)
+    assert list(answer)[:3] == ["status", "next_action", "task_id"]
+    assert (answer["status"], answer["next_action"]) == ("ACCEPTED", "READ_TASK")
+    assert answer["task_id"] == task[:12] and answer["outcome"] == "OK"
+    assert answer["data"]["task_lifecycle"] == "QUEUED"
+    assert answer["data"]["receipt"] == fake_host.answer["receipt"]
+    assert answer["next_requests"]["task"] == {"operation": "STATUS", "task_id": task[:12]}
+
+
 def test_schema_show_writes_its_output_file(tmp_path: Path, capsys: Any) -> None:
     """Schema, model, restore and scaffold commands save complete success and refusal answers."""
 

@@ -1082,17 +1082,14 @@ def _restore(
 
 
 def _saved(args: argparse.Namespace, body: dict[str, Any]) -> dict[str, Any]:
-    """Save a command's own answer where `--output` names, as every command does (V349).
-
-    The owner's exact answer, a refusal included, through the one no-overwrite writer, so an
-    agent that asked for a file finds one; a write that fails is named in the envelope.
-    """
+    """Save the exact owner answer; only a saved refusal permits replacement on retry."""
     output = getattr(args, "output", None)
     if output is None:
         return {}
     try:
+        replace = client.output_replacement(output)
         raw = json.dumps(body, sort_keys=True).encode("utf-8")
-        client._save_output(output, body, raw, getattr(args, "format", "json"))
+        client._save_output(output, body, raw, getattr(args, "format", "json"), replace=replace)
     except client.LocalResearchClientError as error:
         code = public_failure(error, "local_client.output_write_refused")
         refusal = client_refusal(code)
@@ -1103,7 +1100,7 @@ def _saved(args: argparse.Namespace, body: dict[str, Any]) -> dict[str, Any]:
                 "next_action": refusal.next_action,
             }
         }
-    return {"output_file": str(output.resolve())}
+    return client.output_fields(output, replaced=replace)
 
 
 def _sandbox(
@@ -1596,11 +1593,10 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
     """Read a historical file before resolving any workspace, binding or Host.
 
     The existing answer-part owner selects the display; the full snapshot is saved
-    through the same format and no-overwrite owner as a live answer.
+    through the same format and refusal-retry owner as a live answer.
     """
     try:
-        if args.output is not None and args.output.exists():
-            raise client.LocalResearchClientError("local_client.output_exists_choose_another_path")
+        replace = client.output_replacement(args.output)
         body = client.saved_answer(
             args.saved_answer, section=args.section, list_sections=args.list_sections
         )
@@ -1612,8 +1608,9 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
                 full,
                 json.dumps(full, default=client._json_value).encode("utf-8"),
                 args.format,
+                replace=replace,
             )
-            saved["output_file"] = str(args.output.resolve())
+            saved = client.output_fields(args.output, replaced=replace)
         display = (
             {key: value for key, value in body.items() if key != "answer"}
             if args.section is not None or args.list_sections

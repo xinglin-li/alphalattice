@@ -36,15 +36,22 @@ references and follow that continuation.
 | `PENDING` | 3 | Follow admitted work or its decision. |
 | `NO_HOST` | 4 | Follow the named connection route; start a Host only if absent. |
 
+An accepted `bundle submit` exits `OK` (0). Its `task_lifecycle` and offered Task
+read report the review's continuing work; `--wait` can follow that Task.
+
 Declarations request installed owners. `@path` reads text, YAML or JSON according
 to the field's type; `@@` starts a literal `@`. Boolean values are `true` or
 `false`; repeated YAML keys and invalid Boolean values are refused. Existing
-output paths are refused. HTML is a report, not a continuation file.
+output paths are protected, except a saved JSON/YAML refusal without an admitted
+Task: a retry replaces it and prints `output_note`. HTML is a report, not a
+continuation file.
 
 ## Saved answers and live continuations
 
 `--output` saves the full owner answer as JSON or YAML in either view. Its fields
 are at the file's root: read `position`, not `data.position`.
+Compact output leads with `status`, `next_action` and `task_id`; the original
+fields remain in `data` and in the saved answer.
 `--save-declaration` writes an editable declaration. Compact view names omitted
 paths in `omitted_sections`; `--section <dotted-path>` selects one for display,
 while `--output` still saves the full answer. `--view full` displays everything.

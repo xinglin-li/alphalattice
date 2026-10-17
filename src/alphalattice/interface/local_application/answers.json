@@ -8556,13 +8556,13 @@
     "name": "answer_status",
     "kind": "string",
     "required": true,
-    "meaning": "The answer verdict, independently of its Task: ACCEPTED, CORRECT, DONE or REFUSED. The envelope outcome follows the named Task lifecycle when present."
+    "meaning": "The answer verdict, independently of its Task: ACCEPTED, CORRECT, DONE or REFUSED. An ACCEPTED or DONE submission has envelope outcome OK and exits 0."
    },
    {
     "name": "task_lifecycle",
     "kind": "string",
     "required": false,
-    "meaning": "The answer's named Task state, independently of answer_status; the envelope outcome follows this lifecycle when present."
+    "meaning": "The answer's named Task state, independently of answer_status. Its offered task read or --wait follows that Task; an accepted submission exits 0."
    }
   ]
  },

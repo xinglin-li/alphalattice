@@ -2,6 +2,7 @@
  * English phrase is worded differently in another part of the product. Generated data; edit
  * translations here, never in the templates. */
 window.ALPHA_ZH = {
+  "Replaced the saved refusal at --output; accepted work was not overwritten.": "已替换 --output 中保存的拒绝答复；未覆盖已受理的工作。",
   '{utc} (Host local: {local})': '{utc}（Host 本地时间：{local}）',
   'Host local': 'Host 本地时间',
   'Evidence cutoff': '证据截止时点',
@@ -5986,7 +5987,7 @@ window.ALPHA_ZH = {
   "No Host serves this workspace, so nothing was sent. Start one with `serve --no-browser --detach`, which returns once it serves, or open the Local Web.": "没有 Host 为此工作区服务，因此什么也没有发送。请用 `serve --no-browser --detach` 启动一个（它在 Host 开始服务后返回），或打开 Local Web。",
   "No operation has that name; `nearest_operations` names the closest, and `operation list` lists them all.": "没有这个名称的操作；`nearest_operations` 列出最接近的，`operation list` 列出全部。",
   "The --from file does not hold the reference this command needs; continue from the full answer that named it.": "--from 文件不包含此命令需要的引用；请从指出它的完整回答继续。",
-  "The --output path already exists, and an output never overwrites; choose an unused path.": "--output 路径已存在，输出从不覆盖；请选择一个未使用的路径。",
+  "The output cannot replace this file; only a saved refusal without an admitted Task can be replaced. Choose an unused writable path.": "无法替换此输出文件；只有未受理任务的已保存拒绝答复可以替换。请选择一个未使用且可写的路径。",
   "The Host's answer is not one this client can read, so the outcome is unknown. Inspect the same Task before sending work again.": "Host 的回答不是此客户端能读取的，因此结果未知。再次发送工作之前，请先查看同一个任务。",
   "The answer offers next requests, and the command names none of them it can send; the ones offered follow the code.": "此回答提供了后续请求，但命令没有指出其中任何一个可以发送的；提供的请求列在代码之后。",
   "The compact view left out the part named after the colon, which this continues from: continue from a full response (--view full) or the exact --output file.": "紧凑视图省略了冒号后指出的部分，而本次操作要从该部分继续：请从完整响应（--view full）或确切的 --output 文件继续。",

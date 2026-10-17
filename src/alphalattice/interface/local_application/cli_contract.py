@@ -1355,8 +1355,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "INVALID_INPUT",
             "CHOOSE_UNUSED_OUTPUT_PATH",
-            "The --output path already exists, and an output never overwrites; choose an "
-            "unused path.",
+            "The output cannot replace this file; only a saved refusal without an admitted "
+            "Task can be replaced. Choose an unused writable path.",
         ),
     ),
     ("local_client.review_answers_missing", _ANSWERS_MISSING),
@@ -1525,30 +1525,8 @@ _OTHER = ClientRefusal(
 
 
 def task_exit_words(task: object, lifecycle: str) -> str:
-    """Why an accepted answer's command exits as the Task it started does (`outcome_of`).
-
-    The answer waits on nothing, so a pending exit must never read as a pending answer.
-
-    Args:
-        task: The Task the answer started.
-        lifecycle: That Task's state.
-
-    Returns:
-        One sentence naming the Task, its state and the exit it gives.
-    """
-    outcome = outcome_of({"lifecycle": lifecycle})
-    code = EXIT_CODES[outcome]
-    if outcome == "PENDING":
-        return (
-            f"The review goes on in Task {task}, now {lifecycle}, so this command reads pending "
-            f"(exit {code}) until that Task ends; your answer waits on nothing. "
-        )
-    if outcome == "REFUSED":
-        return (
-            f"The review's Task {task} is {lifecycle}, so this command reads refused (exit "
-            f"{code}); your answer stands, and the way on is your lead's. "
-        )
-    return f"The review's Task {task} is {lifecycle}. "
+    """Name the review Task separately from the successful answer submission."""
+    return f"The review's Task {task} is {lifecycle}; your submission exits OK (exit 0). "
 
 
 def client_refusal(code: str) -> ClientRefusal:
@@ -1732,6 +1710,12 @@ def envelope(
         The answer with status, failure, next requests, and timing beside data.
     """
     owner = body or {}
+    if (
+        operation == "AGENT_ANSWER_SUBMIT"
+        and not refused(owner)
+        and owner.get("answer_status", owner.get("status")) in {"ACCEPTED", "DONE"}
+    ):
+        outcome = "OK"  # Submission succeeded; outcome_of still follows the review Task.
     refusal = owner.get("refused")
     titles: dict[str, str] = {}
     if body is not None:
@@ -1740,10 +1724,12 @@ def envelope(
         # What it installs, named by the label table beside the ids the answer keeps.
         titles = titles_in(body, chinese=ANSWER_LANGUAGE.get() == "zh")
     return {
+        "status": status or owner.get("status", owner.get("disposition")),
+        "next_action": owner.get("next_action"),
+        "task_id": owner.get("task_id") or owner.get("publication_task_id"),
         "schema_version": SCHEMA_VERSION,
         "operation": operation,
         "outcome": outcome,
-        "status": status or owner.get("status", owner.get("disposition")),
         "data": body if display is None else display,
         **({"titles": titles} if titles else {}),
         "failure_code": failure_code

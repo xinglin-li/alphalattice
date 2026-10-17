@@ -251,8 +251,8 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
         Path(bundle["answer_file"]).write_text(
             json.dumps({**answer, "read": read}), encoding="utf-8"
         )
-        # The answer's Task is pending until it runs, so the submit exits 3 (OP3, V580).
-        assert main(["--view", "full", *bundle["submit_arguments"]], serve=lambda _: 99) == 3
+        # The answer is accepted while its Task remains queued.
+        assert main(["--view", "full", *bundle["submit_arguments"]], serve=lambda _: 99) == 0
         verdict = json.loads(capsys.readouterr().out)["data"]
         assert verdict["status"] == "ACCEPTED" and verdict["agent_role"] == "ANALYST"
         assert verdict["task_lifecycle"] == "QUEUED"
@@ -552,7 +552,7 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
     with monkeypatch.context() as patch:
         patch.setattr(PortfolioReviewCommand, "execute", lambda *_: None)
         patch.setattr(service.review, "review_task_contract", counted_contract)
-        assert main(["--view", "full", *bundle["submit_arguments"]], serve=lambda _: 99) == 3
+        assert main(["--view", "full", *bundle["submit_arguments"]], serve=lambda _: 99) == 0
         first = json.loads(capsys.readouterr().out)["data"]
         second_submission = {**submission, "summary": "A second reading of the same findings."}
         second_document = {**document, "review_answer": second_submission}
@@ -1887,7 +1887,7 @@ def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> N
 
     answer = {"verdict": "ACCEPTED", "accepted_items": [1], "dropped": []}
     for role in ("ANALYST", "CRO"):
-        for lifecycle, expected, code in (("QUEUED", "PENDING", 3), ("BLOCKED", "REFUSED", 2)):
+        for lifecycle, expected in (("QUEUED", "PENDING"), ("BLOCKED", "REFUSED")):
             admitted = agent_answer_result(
                 role,
                 {
@@ -1899,7 +1899,7 @@ def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> N
             )
             assert admitted["status"] == admitted["answer_status"] == "ACCEPTED"
             assert (admitted["task_lifecycle"], outcome_of(admitted)) == (lifecycle, expected)
-            words = ("accepted", "t-1", lifecycle, f"(exit {code})")  # an accepted answer
+            words = ("accepted", "t-1", lifecycle, "(exit 0)")  # an accepted answer
             assert all(word in admitted["message"] for word in words)  # never reads as pending
             assert admitted["next_requests"]["task"] == {"operation": "STATUS", "task_id": "t-1"}
         reused = agent_answer_result(

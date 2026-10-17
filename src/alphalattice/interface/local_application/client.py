@@ -46,6 +46,7 @@ from alphalattice.interface.local_application.cli_contract import (
     named_read,
     offered_requests,
     outcome_of,
+    refused,
     shell,
     task_state,
     worded,
@@ -1290,14 +1291,39 @@ def continued(
     return request
 
 
+OUTPUT_REPLACED = "Replaced the saved refusal at --output; accepted work was not overwritten."
+
+
+def output_replacement(path: Path | None) -> bool:
+    """Permit an explicit retry over a complete refusal, never an admitted Task receipt."""
+    if path is None or not path.exists():
+        return False
+    if path.is_file() and not path.is_symlink() and not path.is_junction():
+        with suppress(LocalResearchClientError):
+            previous = _response_document(path)
+            held = any(previous.get(key) for key in ("admission", *LOCATORS["task_id"]))
+            if refused(previous) and not (task_state(previous) or held):
+                return True
+    raise LocalResearchClientError("local_client.output_exists_choose_another_path")
+
+
+def output_fields(path: Path | None, *, replaced: bool = False) -> dict[str, Any]:
+    """Report a completed output write and any refusal it replaced."""
+    return (
+        {
+            "output_file": str(path.resolve()),
+            **({"output_note": worded(OUTPUT_REPLACED)} if replaced else {}),
+        }
+        if path is not None
+        else {}
+    )
+
+
 def _save_output(
     path: Path, body: dict[str, Any], raw: bytes, format: str, *, replace: bool = False
 ) -> None:
-    """The whole answer in the format asked, which `--from` reads back; html is its report.
-
-    YAML in the declaration loader's dialect reads back the same values (V146); the editable
-    declaration alone is `--save-declaration`'s (V130). ``replace``: the final answer takes
-    over the admission saved before its wait (V273).
+    """Save full JSON/YAML for --from, or HTML; declarations use --save-declaration.
+    Replacement is a refusal retry or the successor to this command's saved admission.
     """
     if format == "json":
         payload = body["json"].encode("utf-8") if isinstance(body.get("json"), str) else raw
@@ -1380,7 +1406,7 @@ def _save_declaration(path: Path, body: dict[str, Any]) -> None:
 
 def _write_new(path: Path, payload: bytes, *, replace: bool = False) -> None:
     """Write a file that does not exist yet; an existing one is never replaced, but for
-    ``replace``: the file this command wrote itself, swapped whole for its successor."""
+    ``replace``: a verified refusal retry or this command's own admission."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         if replace:
@@ -3318,6 +3344,7 @@ def run(
     body: dict[str, Any] | None = None
     raw_body: bytes | None = None
     saved_output: Path | None = None
+    replaced_output = False
     document: dict[str, Any] = (
         {"operation": getattr(args, "operation", None)}
         if callable(document_override)
@@ -3338,8 +3365,7 @@ def run(
         templates = _next_commands(
             body, client.workspace, listed=listed, left=True, options=options
         )
-        # `--list-next` shows every listed request as the answer's view, in the one envelope
-        # (V261); a `--section` asked for beside it is the view instead.
+        # A selected section precedes the next-request listing.
         listing = {"next_commands": commands, "next_templates": templates} if listed else None
         viewed = selected or listing
         compact = display_view == "compact"
@@ -3358,7 +3384,7 @@ def run(
             next_templates=templates,
             context=_context(client.workspace, client.goal, body),
             **navigation,
-            **({"output_file": str(saved_output.resolve())} if saved_output is not None else {}),
+            **output_fields(saved_output, replaced=replaced_output),
             **(
                 {"declaration_file": str(saved_declaration[0].resolve())}
                 if saved_declaration
@@ -3368,12 +3394,10 @@ def run(
         )
         if listing is not None and not selected:
             if compact:
-                # The listing is the data, its page measured with next_left's key (V411).
                 answer.update(dict.fromkeys((*_NEXT_KEYS, "next_left")))
             elif next_from:
                 answer["data"] = _listing_page(listing, next_from, None)[0]
         if compact:
-            # Its next requests too are held to the read, the rest counted (V411).
             _hold_next(answer, COMPACT_NEXT_BYTES)
         if compact and listing is not None and not selected:
             room = max(
@@ -3383,7 +3407,6 @@ def run(
             answer["data"], left = _listing_page(listing, next_from, room)
             answer["next_left"] = left
         if compact and (selected or not viewed):
-            # A compact answer is one read: its data keeps what the rest leaves (V402).
             room = max(
                 COMPACT_DATA_FLOOR_BYTES,
                 COMPACT_ANSWER_BYTES - _size(short_references({**answer, "data": None})),
@@ -3401,10 +3424,10 @@ def run(
             json.dumps(
                 (short_references if compact else _same)(answer),
                 default=_json_value,
-                sort_keys=True,
+                sort_keys=not compact,
             )
         )
-        return EXIT_CODES[outcome]
+        return EXIT_CODES[answer["outcome"]]
 
     try:
         if not 0 < args.request_timeout <= 600:
@@ -3414,9 +3437,7 @@ def run(
         if sum(getattr(args, field, None) == Path("-") for field in ("file", "from_response")) > 1:
             raise LocalResearchClientError("local_client.document_multiple_stdin_sources")
         output = getattr(args, "output", None)
-        display_view = args.view or "compact"
-        if output is not None and output.exists():
-            raise LocalResearchClientError("local_client.output_exists_choose_another_path")
+        replaced_output = output_replacement(output)
         client = LocalResearchClient(
             args.workspace, timeout=args.request_timeout, goal=getattr(args, "goal", None)
         )
@@ -3446,20 +3467,19 @@ def run(
             if after_send is not None:
                 after_send(document, body)
             if (named := named_read(document, body)) is not body:
-                # The CLI's copy names what the read read, printed and saved, so `--from` reads
-                # it again; the Host's answer stays its owner's (OP15, V449).
+                # Save the full read's selectors for --from.
                 body, raw_body = named, None
             if document.get("operation") == "ACTIVITY_RECENT":
                 body = _with_read_commands(body, _entry_of(client))
             if args.wait:
                 if output is not None and args.format in {"json", "yaml"}:
-                    # The admission first, so an interrupt while waiting never loses the Task
-                    # it started; the final answer replaces it (V273, OP3).
+                    # Save admission before waiting; an interrupt must retain its Task.
                     _save_output(
                         output,
                         body,
                         raw_body or json.dumps(body, default=_json_value).encode("utf-8"),
                         args.format,
+                        replace=replaced_output,
                     )
                     saved_output = output
                 body = _follow(client, body, getattr(args, "max_wait", None))
@@ -3471,26 +3491,21 @@ def run(
             ):
                 body = _write_bundle(directory, body, client.workspace, prefix=_entry_of(client))
         if output is not None:
-            # The owner's exact answer, a refusal included, so a script reading --output
-            # never loses one and --from can continue a blocked owner's next requests.
-            # Every command shares the same no-overwrite writer. Preserve transport
-            # bytes when available; schema/activity/wait projections are full JSON,
-            # never the compact presentation that is printed below.
+            # Preserve the full owner's bytes, including refusals and their recovery offers.
             raw_body = raw_body or json.dumps(body, default=_json_value).encode("utf-8")
             _save_output(
                 output,
                 body,
                 raw_body,
                 getattr(args, "format", "json"),
-                replace=saved_output is not None,
+                replace=replaced_output or saved_output is not None,
             )
             saved_output = output
         if getattr(args, "declaration", None) is not None:
             _save_declaration(args.declaration, body)
             saved_declaration.append(args.declaration)
         if getattr(args, "section", None):
-            # Read before anything prints, so a path the answer lacks is reported beside the
-            # owner's outcome, the whole answer shown, as any local failure is (V129).
+            # Report an unavailable section beside the owner's outcome.
             selected.update(answer_part(body, str(args.section)))
         return answered(client, outcome_of(body))
     except LocalResearchClientError as error:
@@ -3550,7 +3565,7 @@ def run(
                     **transport,
                 ),
                 default=_json_value,
-                sort_keys=True,
+                sort_keys=display_view != "compact",
             )
         )
         return EXIT_CODES[refusal.outcome]
@@ -3570,7 +3585,7 @@ def run(
                     detail=refusal.detail,
                     next_action=refusal.next_action,
                 ),
-                sort_keys=True,
+                sort_keys=display_view != "compact",
             )
         )
         return EXIT_CODES[refusal.outcome]

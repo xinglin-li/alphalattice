@@ -68,7 +68,7 @@ The grammar is `alphalattice <object> <action>`, then any id and flags; `request
 - The answer's top-level `next_action` and `next_requests` decide the next step. A part's own `next_action`, such as a nested `network_access`, describes that part only and never overrides them.
 - Run `next_commands` as returned; fill a `next_templates` entry only with its named choices. Take a named edge with `alphalattice request --from "<out>/answer.json" --action <returned-action-name>`; same-named requests from separate parts carry a qualified name. `--choices` fills open fields and never replaces a bound reference.
 - Take ids, hashes and choices exactly from an answer. A compact id is usable only when unique. An offered edge is navigation, not proof its prerequisites hold; the Host revalidates every continuation.
-- Write outputs to new paths under a new `<out>` directory in the workspace, never into the checkout. `--output` saves the full answer, `--save-declaration` an editable declaration; `--file` reads a document, `-` reads stdin. The CLI overwrites no file.
+- Write outputs under a new `<out>` directory in the workspace, never into the checkout. `--output` saves the full answer, `--save-declaration` an editable declaration; `--file` reads a document, `-` reads stdin. A retry may replace a saved JSON/YAML refusal without an admitted Task and prints `output_note`; other files stay protected.
 - Consult help or `schema show` only when the answer lacks a field or form you need.
 
 <!-- Generated from the CLI's registered outcomes and _PROCEED meanings. -->
@@ -79,6 +79,8 @@ The grammar is `alphalattice <object> <action>`, then any id and flags; `request
 | 2 | REFUSED | request refused or work blocked, cancelled or stopped: read `failure_code`, `fields`, `detail` and `next_requests`; take only an authorized continuation, else report the stop |
 | 3 | PENDING | follow the admitted Task or answer its decision; never resubmit queued or running work; use the answer's offered deferral resume after its retry time |
 | 4 | NO_HOST | report it: the lead starts or reconnects the Host |
+
+An accepted bundle submission exits 0; its `task_lifecycle` and offered Task read name the continuing review. Compact answers lead with `status`, `next_action` and `task_id`, repeated from the owner without removing its fields.
 
 A refusal names its owner's code, detail and legal way on; take only that or a person-authorized act, never a workaround. If a compact reference is refused with `compact_reference_requires_full_response:<part>`, save the full answer or read that part with `--section <part>`.
 

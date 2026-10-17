@@ -638,7 +638,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
     answer_file.write_text(json.dumps({**subset, "read": read}), encoding="utf-8")
     code, verdict = run(*keyed(analyst))
     # Accepted, its Task pending: the receipt names the Task's state.
-    assert code == 3 and verdict["status"] == "ACCEPTED"
+    assert code == 0 and verdict["status"] == "ACCEPTED"
     assert verdict["bundle_reference"] == analyst["bundle_reference"]
     assert verdict["task_lifecycle"] in {"QUEUED", "RUNNING"}
     assert verdict["receipt"] == {
@@ -709,7 +709,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         assert code == 0 and verdict["status"] == "CORRECT"
         assert (verdict["rounds_left"], verdict["problems"]) == (rounds_left, [problem])
     code, verdict = run(*keyed(cro))
-    assert code == 3 and verdict["status"] == "DONE" and verdict["dropped"] == [problem]
+    assert code == 0 and verdict["status"] == "DONE" and verdict["dropped"] == [problem]
     assert verdict["bundle_reference"] == cro["bundle_reference"]
     assert verdict["receipt"] == {
         "agent_role": "CRO",
