@@ -381,6 +381,10 @@ RULES = [
             "docs/images/research-positions-dark.png",
             "docs/images/research-conversation-light.png",
             "docs/images/research-conversation-dark.png",
+            "docs/images/first-use-codex-light.png",
+            "docs/images/first-use-codex-dark.png",
+            "docs/images/committee-codex-light.png",
+            "docs/images/committee-codex-dark.png",
         ],
         "reason": (
             "Non-Python product resources, Local Web source/build assets and "

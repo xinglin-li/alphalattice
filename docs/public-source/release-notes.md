@@ -306,26 +306,34 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 ### Added
 
 - Public CI installs AlphaLattice and runs an offline first use on Windows, macOS and Linux.
+- A numbered [first-run checklist](getting-started.md) covers the locked environment, the doctor and its repair commands, source and wheel installation, agent configuration, the workspace and the goal a non-agent shell must name. ([#3](https://github.com/xinglin-li/alphalattice/issues/3))
+- The [README](../../README.md#two-ways-to-use-alphalattice) distinguishes first use in a new folder from daily updates in a new session in the same folder, and shows first-use and committee views in the coding app.
 - `doctor` names the system libraries a platform needs, with the command that installs them: the OpenMP runtime (`libomp`) on macOS, and `libatomic1` and `libgomp1` on Linux.
 - `research-update plan --date <date>` plans a named date's positions on the daily road. Every plan answer states which date's positions it holds, when they are decided and when they are entered.
-- A first use asks once whether the workspace may keep its network on for daily updates, within the default SEC budget, until the person says stop. Each use of the network is recorded on the answer and in the activity, including scheduled updates, and one sentence turns it off.
+- A first use pauses for a yes or no on keeping the workspace network on for daily market updates and SEC filings within the default budget: 3 per issuer, 600 documents and 3 GB overall. A yes remains in force until revoked. Each network use is disclosed in its answer and recorded in activity, including scheduled updates.
 - A review without Evidence offers its install ready to run: the eight largest issuers by weight, and the next eight after a quiet stop. The preflight offers the same install, and the daily yes admits only that offer.
 - Once a date's review is published, `research-update show` offers that date's committee. So does a lead's continue on an earlier bundle refused as stale or ambiguous after a second preparation.
-- At the end of a first use, the agent asks once whether daily updates should also convene the committee (about ten more minutes). The answer is kept as a workspace setting, and one sentence changes it. Without it, the PM gives its view on the reviewed positions and offers the committee for that day in one line.
-- Before a first use opens anything, it checks its own setup: the `alphalattice` command, the retrieval environment and the Workbench build. A missing item is named with the command that fills it, and a step only the person can take is asked in one line.
-- A goal's submission that cites a reference the goal does not hold offers that reference's attach, ready to send. The goal schema's compact view shows the reference form, the problem fields and the reads each stage admits.
-- `serve --no-browser --detach` starts the Host as its own process, which outlives the agent's turn. A Codex lead uses it, since a Codex turn ends its shell's children. After launch, the answer's next step is to open the Workbench once in the coding app's built-in browser (Claude Code's browser pane through `preview_start`, or Codex's), never a separate system browser, and the first use's first line to relay carries its link.
-- The committee gives each member one discussion turn after the stances are revealed, and the wait offers that turn to a member that follows only its route. A member may speak or pass, and the floor settles as soon as every member has used or passed its turn and no challenge stands unruled. The report records a passed turn in words. The discussion has a short window. A member silent past it counts as passed, an unruled challenge is reported as unruled, and the PM is woken to give its verdict; a floor that reaches its time box without one closes and says so.
+- The first-use report asks whether daily updates should convene the committee. You can decide in the conversation then or later and change the setting the same way. The question never holds the first use open: its goal can be completed while the choice is unanswered. Until enabled, later updates get the portfolio manager's view on the reviewed positions, with the committee offered.
+- The doctor and first-use startup share the command and retrieval-environment checks, using the command a fresh shell can reach. The doctor also names a missing Workbench build and its repair; installed dependencies no longer appear to await a decision. ([#2](https://github.com/xinglin-li/alphalattice/issues/2))
+- An incomplete goal submission offers its missing evidence reads to attach and, where the Host can correct it, the corrected submission to send next. Its compact schema shows the reference form, problem fields and the reads each stage admits.
+- A completed goal offers the experience-maintenance handoff, with its Goal and Task readbacks, so verified lessons and corrections can be kept in your personal layer.
+- Delivery exports appear in the activity log as recorded reads; exporting a report does not open a separate research goal.
+- `serve --no-browser --detach` starts the Host as its own process, which outlives the agent's turn. Each session's first answer offers a fresh Workbench link, including when the Host is already running. The agent opens it visibly in Claude Code's or Codex's built-in browser, rather than a separate system browser; a terminal without a built-in browser receives the link instead.
+- After the blind stances are revealed, the committee offers each specialist its discussion turn, including a challenge to fill or a pass. The floor settles when all have spoken or passed and no challenge remains unruled, or when its discussion window ends. A silent turn and an unruled challenge are recorded as such; a floor that closes without a portfolio manager's verdict says so.
 
 ### Changed
 
-- The committee is a discussion of the research, not an approval. Its verdict is PROCEED_WITH_NOTES unless a named hard defect stands, such as a data error, a breached Risk bound or missing key evidence. Its report leads with suggestions on individual holdings: what to avoid or reduce, and what could be added. It changes no number, and the person decides.
+- Committee guidance treats concerns about particular holdings as notes and suggestions to avoid or reduce those holdings. Declining endorsement is reserved for a hard defect affecting the research portfolio as a whole, such as a portfolio-wide data error, a breached Risk bound or missing key evidence. Major negatives below the agenda line remain in the report appendix, and the portfolio manager can raise a below-line point. No position number changes; you decide whether to act. ([#7](https://github.com/xinglin-li/alphalattice/issues/7))
 - The worker pool keeps at most eight workers by default, bounded by memory and the CPU budget, and idle workers exit. A worker holds about 0.07 GB of memory instead of about 1.8 GB.
 - Introductions name Claude Code first.
 - Deadlines and windows a person reads show the Host's local time beside UTC. Research dates stay the session dates the positions belong to.
-- A command's `--file` accepts the whole request its own answer saved.
+- A command's `--file` accepts the whole request its own answer saved. A saved goal submission can be sent with the command offered for it, without manually extracting its nested document. ([#1](https://github.com/xinglin-li/alphalattice/issues/1))
 - A bundle folder may be new, empty, or hold the same bundle's earlier output, so a step reruns in place after a stop. Any other content is refused with a way on.
 - The Evidence install's estimate is labelled as the upper bound of a first, cold download; held sources and packs are reused.
+- Evidence intake reads the first three acceptable findings per issuer and names how many it leaves out in the receipt and CRO material. An excerpt cut inside a sentence is visibly marked. ([#9](https://github.com/xinglin-li/alphalattice/issues/9))
+- Compact answers begin with status, next action, Task and saved-file receipt fields before nested data. An accepted bundle submission exits successfully even while its review Task is queued. Long client commands report their stage, dated update readbacks include a positions summary, and committee waits name their current standing and who is awaited. ([#5](https://github.com/xinglin-li/alphalattice/issues/5))
+- A relayed network permission keeps the person's words, the question, the relaying session, the time and the scope. Network readback and use disclosures carry that origin across sessions; older permissions say which provenance was not recorded. ([#13](https://github.com/xinglin-li/alphalattice/issues/13))
+- Update claims are explained as research positions, not trade advice, in answers, the Workbench, review material and reports. Activation dates retain their separate replay disclosure.
 - The Sessions page shows each specialist once, with its own usage, joined by the key it ran with. Each message names its recipient by the thread it belongs to.
 - Windows is the supported platform. On Linux and macOS, CI checks installation and an offline first use; other use there is not guaranteed.
 - The README, the guide and the Workbench use plain words, for example "strategy" where the text said "book". Commands, fields and message kinds keep their names.
@@ -335,7 +343,7 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 - On a later day, Evidence reads only filings that are new since it last read, and reuses sealed selections across a restart.
 - On macOS and Linux, capacity reads total and available memory from the operating system, and macOS may use all its processors. Windows is unchanged.
 - The automatic storage cap admits a write the disk can hold with its recovery headroom, and grows with free disk. A cap the operator set is unchanged. A short disk is refused by name with a way on, and a research stage stopped by it can be retried.
-- A daily update recomputes only what changed. A listing whose history the provider restated rebuilds its own columns alone, and a quiet day reads only the current year. Publishing the day's Panel rereads only the current year, the day's corporate-action audit runs once per batch of listings instead of once per listing, and the receipts it verified are not verified again later in the same update. The first daily update after upgrading from 0.1.x recomputes once in full, its score inputs included, which takes a few minutes longer that one day.
+- A daily update recomputes only what changed. A listing whose history the provider restated rebuilds its own columns alone, and a quiet day reads only the current year. Publishing the day's Panel rereads only the current year, the day's corporate-action audit runs once per batch of listings instead of once per listing, and the receipts it verified are not verified again later in the same update. The first daily update after upgrading from 0.1.x recomputes once in full, its score inputs included. Maintenance progress continues to advance per listing while audits run in batches.
 - Under an agent sandbox that protects the project's `.codex` folder (Codex's default), the Host keeps the Session's binding in the workspace's own folder, and every answer says so.
 - Each Session keeps its own usage reading. Participants that cannot be verified are shown as a bounded sample with their total count.
 - Operational commands such as `host stop` and `cpu-budget set` are recorded but never open or join a research goal. A committee member's request counts toward its committee's goal instead of opening its own.
@@ -350,7 +358,8 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 
 ### Fixed
 
-- A committee could stall until its time box when a member stayed silent or a challenge went unseen. Past its discussion window it now settles, and the PM is woken to give its verdict.
+- A committee could stall until its time box when a member stayed silent or a challenge went unseen. Its wait now reports the discussion standing, pending members and closing time; a submitted stance updates the member's status, and a member with an open turn is told to act rather than wait on itself. ([#12](https://github.com/xinglin-li/alphalattice/issues/12))
+- Committee refusals explain the alias, target, message-shape and agenda rules, name what the sender may submit, and offer a corrected message where possible. The guide documents every refusal and that `--seen` takes the returned message number. ([#6](https://github.com/xinglin-li/alphalattice/issues/6))
 - A committee report with a long message no longer fails to export. A cut is named and points to the full record.
 - Committee facts now agree with their own data. A holding kept by its tranche is named as such, score moves come from the previous session, and a coverage total equals its parts.
 - On Windows, workers no longer open console windows, and counting tokens no longer downloads an encoding at Host start: the encoding ships in the package.
@@ -359,7 +368,7 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 - A lead could open the Workbench in a hidden browser pane without telling the person. It now opens it visibly in the coding app's built-in browser and tells the person in one line, with the link.
 - A daily update asked for a named date reviewed and convened on the next session's positions. It now reviews that date's positions.
 - A dividend that a provider added or corrected late, inside the daily window, no longer stops the daily update. A refusal of that check names its listing.
-- A past Session's usage no longer disappears from its page after a later Session binds the workspace.
+- A past Session's usage no longer disappears from its page after a later Session binds the workspace. One completed usage read no longer prevents another session's pending usage from being read.
 - The workspace database waits for a file still held by an instance that is closing, instead of failing.
 - Files a workspace publishes now carry the workspace folder's own access, also when the Host runs under another account, as in Codex's Windows sandbox. Before, a published folder kept a private temporary-folder access list that only the Host's account could read.
 - A daily update raised the same data issues every day and sent them to the person, and could wait on a provider that was not down. The rule now decides them in line.
@@ -372,7 +381,16 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 - A link among a row's facts can be pressed where the row itself also opens a page.
 - A request that arrived while the Host published its own Evidence install was refused as a configuration change needing a restart. It now passes.
 - The same Evidence install sent again after a stop continues the stopped one, which then reads as resolved.
-- A first use already past its strategy build named the build as its next step. It now names where it stands.
+- A first use already past its strategy build named the build as its next step. It now names where it stands. Repeating the same first-use sentence and date from another session reuses the workspace's existing first use.
+- A far-past first-use date before the supported history is refused by name before a goal opens, rather than starting an unsupported preparation. A review whose Evidence postdates its positions names that later cutoff.
+- A refused request no longer permanently occupies its output path: a retry can replace a saved refusal that admitted no Task, while answers tied to admitted work remain protected. ([#4](https://github.com/xinglin-li/alphalattice/issues/4))
+- A cancelled Task reports its stop and keeps verified stages and published results. A replan remains available where supported, but is sent only if the person or the lead that cancelled the work wants to continue.
+- A goal's claimed outcome must agree with its criterion answers. A contradiction is named and the offered correction uses the outcome those answers support.
+- The shipped CRO role can run the committee commands its route needs. Fresh installations use the shipped specialist cards without requiring an optional personal card file. ([#8](https://github.com/xinglin-li/alphalattice/issues/8))
+- Setup and selection refusals name the actual cause and the next command: the configured host, an explicit workspace when none is bound, and the strategy id when a package hash was supplied instead. ([#11](https://github.com/xinglin-li/alphalattice/issues/11))
+- Review materials name the installed strategy, count held issuers once and show route gaps separately from recorded reading coverage. ([#10](https://github.com/xinglin-li/alphalattice/issues/10))
+- Exits have their own section apart from current holdings, and the current positions' review no longer treats an exited name as held exposure. ([#14](https://github.com/xinglin-li/alphalattice/issues/14))
+- Older review exports omit issuer facts and coverage they did not record; complete dated exports use the owner's cutoff explanation. A replay date without recorded holdings says so.
 - A committee message that named a point or holding by its name was refused without a way on. The refusal now offers the same message with aliases.
 - A report suggestion listed every holding its member mentioned, including ones the member set apart. It now lists only those suggested.
 - Some status words and steps showed as undeclared on the Workbench. Each now has its words, in English and Chinese.
