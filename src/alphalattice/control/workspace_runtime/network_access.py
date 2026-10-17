@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal
 
@@ -37,6 +37,15 @@ _USE: Final = {
     "FIRST_USE_DELEGATION": "AlphaLattice may use the network for this step, under the first "
     "use's delegation, which ends with its goal.",
 }
+_YES_SCOPE: Final = (
+    "this workspace's daily updates, and SEC filings at the default budget, until the person "
+    "says stop"
+)
+"""What the person's relayed daily yes answers, as the first use's daily question asks it."""
+_YES_UNRECORDED: Final = (
+    "relayed before the Host kept the person's words, the question and the time; ask the person "
+    "if they want it confirmed"
+)
 _DELEGATED_OPEN: Final = (
     "The first use's delegation opened the network for its own steps; it closes when the goal "
     "ends. That does not answer the daily question, which stays open until the person answers "
@@ -65,8 +74,12 @@ class NetworkAccess:
     delegation_holds: bool = False
     """Whether a first use's delegation holds the control open; the daily question outlives it."""
 
-    def use(self) -> dict[str, str]:
-        """Whose setting lets a step use the network, and the one line said each time it does."""
+    def use(self) -> dict[str, object]:
+        """Whose setting lets a step use the network, and the one line said each time it does.
+
+        Returns:
+            ``under``, ``words`` and, for a relayed yes, where it came from (``yes``).
+        """
         under = (
             "FIRST_USE_DELEGATION"
             if self.set_by and "delegation" in self.set_by
@@ -74,7 +87,8 @@ class NetworkAccess:
             if self.set_by
             else "PERSON"
         )
-        return {"under": under, "words": _USE[under]}
+        origin = {"yes": self.set_by} if under == "RELAYED_YES" else {}
+        return {"under": under, "words": _USE[under], **origin}
 
     def body(
         self, *, for_refusal: bool = False, delegation: str | None = None
@@ -167,6 +181,7 @@ def _control(workspace: Path, now: datetime) -> tuple[bool | None, dict[str, str
     keys = {1: {"schema", "version", "network_enabled"}}
     keys[2] = keys[1] | {"delegation", "until"}
     keys[3] = keys[1] | {"relayed_by"}
+    keys[4] = keys[3] | {"words", "asked", "at"}
     if (
         not isinstance(record, dict)
         or record.get("schema") != _SCHEMA
@@ -177,8 +192,11 @@ def _control(workspace: Path, now: datetime) -> tuple[bool | None, dict[str, str
         return False, None, False
     if record["version"] == 1:
         return bool(record["network_enabled"]), None, True
-    if record["version"] == 3:
-        return bool(record["network_enabled"]), {"relayed_by": str(record["relayed_by"])}, True
+    if record["version"] in {3, 4}:
+        try:
+            return bool(record["network_enabled"]), _yes_origin(record), True
+        except ValueError:
+            return False, None, False
     try:
         until = datetime.fromisoformat(str(record["until"]))
     except ValueError:
@@ -187,6 +205,25 @@ def _control(workspace: Path, now: datetime) -> tuple[bool | None, dict[str, str
         return False, None, False
     set_by = {"delegation": record["delegation"], "until": until.isoformat()}
     return bool(record["network_enabled"]) and now < until, set_by, False
+
+
+def _yes_origin(record: Mapping[str, object]) -> dict[str, str]:
+    """Where a relayed yes came from; an older record says what it lacks.
+
+    Who relayed it, the person's words, the question, when (UTC beside the Host's local time)
+    and what it answers.
+    """
+    origin = {"relayed_by": str(record["relayed_by"])}
+    if record["version"] == 3:
+        return origin | {"origin": _YES_UNRECORDED}
+    at = datetime.fromisoformat(str(record["at"]))
+    return origin | {
+        "words": str(record["words"]),
+        "asked": str(record["asked"]),
+        "at": at.isoformat(),
+        "at_host_local": at.astimezone().isoformat(timespec="seconds"),
+        "scope": _YES_SCOPE,
+    }
 
 
 def persons_stop(workspace: Path | None, now: datetime) -> bool:
@@ -233,7 +270,7 @@ def set_network_access(
     enabled: bool,
     delegation: str | None = None,
     until: datetime | None = None,
-    relayed_by: str | None = None,
+    relayed: tuple[str, str, str] | None = None,
     now: datetime,
 ) -> NetworkAccess:
     """Atomically persist the typed workspace setting and read effective permission.
@@ -243,7 +280,8 @@ def set_network_access(
         enabled: Requested workspace network setting; offline holds still take precedence.
         delegation: The person's delegation that sets it (a first-use goal), with ``until``.
         until: When that delegation's setting ends; after it the control reads closed.
-        relayed_by: The agent session that relayed the person's yes, when one did.
+        relayed: The agent session that relayed the person's yes, their words and the question
+            asked, kept with the Host's time.
         now: The Host's clock, on which ``until`` was computed and is read back.
 
     Returns:
@@ -255,8 +293,10 @@ def set_network_access(
     record: dict[str, object] = {"schema": _SCHEMA, "version": 1, "network_enabled": enabled}
     if delegation is not None and until is not None:
         record.update(version=2, delegation=delegation, until=until.isoformat())
-    elif relayed_by is not None:
-        record.update(version=3, relayed_by=relayed_by)
+    elif relayed is not None:
+        by, words, asked = relayed
+        record.update(version=4, relayed_by=by, words=words, asked=asked)
+        record["at"] = now.astimezone(UTC).isoformat()
     path = workspace / CONTROL_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     staged = path.with_suffix(".json.tmp")

@@ -270,7 +270,7 @@ def test_a_first_use_ends_without_undoing_what_the_person_set_since(
     if relayed:
         yes = ("--person-said", "Yes.", "--asked", "Daily network?")
         code, person = _cli(live, "network", "set", "--enabled", "true", *yes)
-        assert code == 0 and person["set_by"] == {"relayed_by": f"claude-code:{SESSION}"}
+        assert code == 0 and person["set_by"]["relayed_by"] == f"claude-code:{SESSION}"
     else:
         person = live.operations.execute(
             Request(operation="NETWORK_ACCESS_SET", network_enabled=True), caller="HUMAN"
@@ -386,7 +386,13 @@ def test_a_persons_yes_relayed_whole_completes_their_decision_once(
     line = ("network", "set", "--enabled", "true", "--person-said", "Yes.", "--asked", "Open it?")
     code, set_ = _cli(live, *line)
     assert code == 0 and _network(live), set_
-    assert _cli(live, "network", "show")[1]["set_by"] == {"relayed_by": f"claude-code:{SESSION}"}
+    origin = _cli(live, "network", "show")[1]["set_by"]  # who, what, asked how, when, for what
+    assert (origin["relayed_by"], origin["words"], origin["asked"]) == (
+        f"claude-code:{SESSION}",
+        "Yes.",
+        "Open it?",
+    )
+    assert origin["at"].endswith("+00:00") and origin["at_host_local"] and origin["scope"]
     code, again = _cli(live, *line)
     used = str(_code(again))
     assert code == 2 and used.startswith("person_confirmation.already_used:"), again

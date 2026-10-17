@@ -344,11 +344,11 @@ class PortfolioSourceRevision(_Sealed):
 
 
 class PortfolioUpdatePublication(_Sealed):
-    """Bind post-observed QA book/update publication to source and continuation authority.
+    """Bind a research positions publication to source and continuation authority.
 
     Pending proposal, observed entry/events, optional source correction and retained HTML identity
-    describe the issued update. The claim is post-observed QA, with Risk and CRO explicitly
-    unevaluated for this proposal; publication is not timely advice.
+    describe the issued update. Its sealed Risk and CRO statuses remain unevaluated for this
+    proposal; these are research positions, not trade advice.
     """
 
     kind: Literal["PortfolioUpdatePublication"] = "PortfolioUpdatePublication"

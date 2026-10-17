@@ -113,7 +113,10 @@ returned words: disclose its delegated steps in one line, then ask the person it
 question in its words; ask nothing else. On their yes, run each command it offers once,
 their words verbatim in place of `<their words>`: a `network set` under the delegation
 never answers that question. On every step whose answer carries `network_use`, read its
-`words` aloud to the person in one line, as returned.
+`words` aloud to the person in one line, as returned. Under a relayed yes, its `yes` (and
+`network show`'s `set_by`) names the person's words, the question, when and what it covers:
+the daily yes stands until they say stop, so name it when asked, and ask again only if they
+want to change it.
 
 The road: data, the strategy's models and Risk, its whole-support book (the
 numerical check), activation with the date's update in the same act, then Evidence
@@ -270,7 +273,7 @@ from the first actionable session; sessions before it are a causal replay, insid
 the research window where marked. Report each position with its basis, dates and
 the publication's `claim`
 ([reading the dates](.agents/skills/alphalattice-research/references/research-lead.md)):
-research positions, never orders or advice. Past the horizon, about eleven
+research positions, not trade advice or orders. Past the horizon, about eleven
 months, request a newer book. Time a phase from its Goal and Task records, never
 from one `--wait`, and resume a stopped Task as itself after a fix.
 

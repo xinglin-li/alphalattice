@@ -634,7 +634,7 @@ async function projectionAssertions() {
  assert.equal(D.raw().forward_holdings.holdings[0].current_weight,0.025);
  assert.deepEqual(holdingCells().slice(1),['2.5%','+0.50 pp']);
  assert.match(text(performance()),new RegExp(SESSIONS[0]+'.*'+SESSIONS[1]));
- assert.match(text(performance()),/Not timely advice|事后观测 QA/);
+ assert.ok(text(performance()).includes(read("codeWords('POST_OBSERVED_QA_NOT_TIMELY_ADVICE')")));
  assert.equal(performanceNodes().filter(node=>hasClass(node,'stat-strip')&&hasClass(node,'five')).length,0);
  assert.equal(performanceNodes().filter(node=>hasClass(node,'rolling-provenance')).length,0);
  assert.equal(markupNodes(render()).filter(node=>node.attrs['data-navigator']).length,0);
@@ -650,7 +650,8 @@ async function projectionAssertions() {
  const empty=text(performance());
  assert.match(empty,/Fewer than two settled outcomes were recorded/);
  assert.match(empty,/0 observations.*Net of 5 bps per side/);
- assert.doesNotMatch(empty,/Not timely advice|No published observations|Realized window|2024-08-05|2024-08-12/);
+ assert.ok(!empty.includes(read("codeWords('POST_OBSERVED_QA_NOT_TIMELY_ADVICE')")));
+ assert.doesNotMatch(empty,/No published observations|Realized window|2024-08-05|2024-08-12/);
  assert.equal(performanceNodes().filter(node=>hasClass(node,'performance-surface')||node.attrs['data-box']).length,0);
  assert.equal(performanceNodes().filter(node=>hasClass(node,'stat-strip')&&hasClass(node,'five')).length,0);
  assert.equal(performanceNodes().filter(node=>node.attrs['data-empty']==='elsewhere').length,1);

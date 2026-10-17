@@ -3,7 +3,7 @@ Date: 2026-10-08
 
 Give your agent the repository link and one research intent. It installs
 AlphaLattice and continues in the same session. The
-[setup procedure](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch)
+[setup procedure](../../.agents/skills/alphalattice-research/references/operating.md)
 covers locked Python 3.12 and uv dependencies, the editable checkout or installed
 wheel, and Local Web. The [README](../../README.md) states the scope of platform checks.
 
@@ -16,8 +16,95 @@ Every system needs Python 3.12, uv and a browser; the lock brings the Node that 
 - **Linux:** libatomic1, which the locked Node loads to build the Workbench, and libgomp1, which LightGBM
   loads to train and score models: `sudo apt install libatomic1 libgomp1`, or your distribution's packages.
 
-These are system packages outside the lock. The doctor (`python -m alphalattice.interface.local_application.native_setup doctor`)
+These are system packages outside the lock. The doctor (`uv run python -m alphalattice.interface.local_application.native_setup doctor`, after the locked sync below)
 names any missing under `system_libraries`, and your agent asks you once before installing them.
+
+## First run from a source checkout
+
+Use Windows PowerShell from the checkout root. Your agent follows these steps;
+[operating the CLI](../../.agents/skills/alphalattice-research/references/operating.md)
+holds the installation and launch procedure.
+
+1. Install the locked environment before running any product module:
+
+   ```powershell
+   uv sync --locked --all-extras
+   ```
+
+2. Read the setup requirements with that environment's interpreter:
+
+   ```powershell
+   uv run python -m alphalattice.interface.local_application.native_setup doctor
+   ```
+
+   For each missing `host_readiness` item, follow its `who_decides` and repair
+   instructions. Only missing items carry `who_decides`; it is not an outstanding
+   decision on an item already present. Commands are under `facts.commands`, or
+   `facts.command` for the Workbench build. Typical checkout repairs are:
+
+   ```powershell
+   uv run python scripts/build_local_web_ui.py --product
+   uv export --locked --all-extras --no-dev --no-emit-project --no-hashes --output-file .venv/alphalattice-runtime-requirements.txt
+   uv tool install --python 3.12 --editable . --with-requirements .venv/alphalattice-runtime-requirements.txt --constraints .venv/alphalattice-runtime-requirements.txt
+   ```
+
+   Run the retrieval runtime's offline fill exactly as the doctor prints it.
+   If its package cache is cold, follow its returned network form within the
+   stated download permission. If the installed command is off PATH, you run
+   `uv tool update-shell` once and restart the session or terminal, then the agent
+   repeats the doctor. Dependency repairs outside the lock require your permission.
+
+3. Configure the agent project from the same checkout root:
+
+   ```powershell
+   uv run python -m alphalattice.interface.local_application.native_setup configure --host claude-code
+   ```
+
+   Use `--host codex` for Codex; omitting the flag selects Codex. The installing
+   agent continues in the same session by reading `continue_here`'s files. In a shell
+   with no agent session, give the doctor the same `--host` choice; otherwise it
+   defaults to Codex.
+
+4. Run the doctor again after repairs and configuration. Finish missing required
+   setup before the first use. Workspace-dependent readings can remain unavailable
+   before its Host starts; the optional user layer and its backup are not research
+   prerequisites.
+
+5. Start one Host on an explicit workspace and keep its printed launch link:
+
+   ```powershell
+   alphalattice --workspace "workspaces/my-research" serve --no-browser --detach
+   ```
+
+   The [agent guide](../../AGENTS.md) says how the agent opens that link visibly
+   in its coding app's Workbench pane. Reuse a Host already serving this workspace.
+
+6. Start the first use with your exact sentence and the date you named:
+
+   ```powershell
+   alphalattice --workspace "workspaces/my-research" first-use prepare --sentence "Positions for 2026-10-19, reviewed." --date 2026-10-19
+   ```
+
+   A bound agent session carries its goal automatically. A shell with no agent
+   session must keep naming the workspace and add `--goal <goal_id>` from the
+   first-use answer on later steps. The same sentence and date reuse this
+   workspace's first use; follow its returned next action.
+
+### Release wheel
+
+The [operating reference](../../.agents/skills/alphalattice-research/references/operating.md)
+gives the wheel's locked tool install; no checkout is needed. Run its doctor and
+configure with the installed tool's own interpreter, naming your agent folder:
+
+```powershell
+$toolDir = uv tool dir
+& "$toolDir/alphalattice/Scripts/python.exe" -m alphalattice.interface.local_application.native_setup --project <agent-project> doctor --host claude-code
+& "$toolDir/alphalattice/Scripts/python.exe" -m alphalattice.interface.local_application.native_setup --project <agent-project> configure --host claude-code
+```
+
+On macOS and Linux that interpreter is `bin/python`. Then run the doctor again,
+start the Host with an explicit workspace and follow the same first-use and goal
+rules above.
 
 ## First preparation
 

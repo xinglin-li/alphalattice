@@ -9568,7 +9568,7 @@
     "name": "limitation",
     "kind": "string",
     "required": false,
-    "meaning": "`POST_OBSERVED_QA_NOT_TIMELY_ADVICE`: the update is post-observed QA, not timely advice. Only with `PLANNED`."
+    "meaning": "`POST_OBSERVED_QA_NOT_TIMELY_ADVICE`: research positions, not trade advice. Only with `PLANNED`."
    },
    {
     "name": "task_id",
@@ -9814,7 +9814,7 @@
     "name": "limitation",
     "kind": "string",
     "required": false,
-    "meaning": "`POST_OBSERVED_QA_NOT_TIMELY_ADVICE`: the update is post-observed QA, not timely advice. Only with `PLANNED`."
+    "meaning": "`POST_OBSERVED_QA_NOT_TIMELY_ADVICE`: research positions, not trade advice. Only with `PLANNED`."
    },
    {
     "name": "task_id",

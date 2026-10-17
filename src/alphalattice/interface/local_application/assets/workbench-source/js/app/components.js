@@ -2132,7 +2132,7 @@ const CODE_WORDS = {
   sector_aggregate_derived: 'Sector aggregate derived', verified_panel_child: 'Verified panel child',
   'task_control.ledger_rebuilt': 'Task control ledger rebuilt', WORKSPACE_DEFAULT: 'Workspace default',
   CLOSE_T: 'At the formation session\'s close', // the position clock's decision phase (portfolio_result_context)
-  POST_OBSERVED_QA_NOT_TIMELY_ADVICE: 'Not timely advice', // a research update's claim (answers.json: post-observed QA, not timely advice)
+  POST_OBSERVED_QA_NOT_TIMELY_ADVICE: 'Research positions, not trade advice',
   'alternative_evidence.answer_problems': 'Returned by the evidence owner',
   'chief_risk_officer.answer_problems': 'Returned by the review owner',
   'chief_risk_officer.portfolio-evidence-review': 'CRO portfolio evidence review', // the review route's policy (codeCell)

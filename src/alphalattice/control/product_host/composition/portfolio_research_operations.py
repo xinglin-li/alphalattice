@@ -1044,12 +1044,12 @@ class PortfolioResearchOperations:
         )
 
     @staticmethod
-    def _relayed_by() -> str | None:
-        """The agent session that relayed the person's yes to this request, if one did (OP23)."""
+    def _relay(said: Any) -> dict[str, Any]:
+        """Who relayed the person's yes, their words and question (OP23)."""
         provenance = REQUEST_PROVENANCE.get()
-        if provenance is None or not provenance.relayed:
-            return None
-        return f"{provenance.vendor}:{provenance.session}"
+        if provenance is None or not provenance.relayed or said is None:
+            return {}
+        return {"relayed": (f"{provenance.vendor}:{provenance.session}", said.words, said.question)}
 
     def _network(self) -> dict[str, Any]:
         """The workspace's network control and the Host's clock it is read on."""
@@ -1399,8 +1399,7 @@ class PortfolioResearchOperations:
                 delegation=self.goals.network_delegation(REQUEST_PROVENANCE.get(), caller)
             )
         if request.operation == "NETWORK_ACCESS_SET":
-            # Network access is an authority, like the background update settings: a
-            # person sets it; a client or an Agent reads it.
+            # Network access is the person's authority; a client or an Agent reads it.
             if caller != "HUMAN":
                 return refused("local_application.network_access_human_only")
             assert request.network_enabled is not None
@@ -1411,7 +1410,7 @@ class PortfolioResearchOperations:
                 enabled=request.network_enabled,
                 delegation=None if delegated is None else f"first-use-goal:{delegated.goal_id}",
                 until=None if delegated is None else self.goals.delegation_ends(delegated),
-                relayed_by=self._relayed_by(),
+                **self._relay(request.person_confirmation),
             ).body()
         if request.operation == "EVIDENCE_CONSENT":
             return self._evidence_consent(evidence_source_consent(self.workspace_session.workspace))

@@ -204,8 +204,9 @@ def test_admitted_network_work_names_whose_setting_allowed_it(
     admitted = {"status": "ADMITTED", "task_id": "t1"}
     control = lambda: {"workspace": tmp_path, "now": now}  # noqa: E731
     delegated = {"delegation": "first-use-goal:g", "until": now + timedelta(hours=1)}
+    yes = {"relayed": ("claude-code:s", "Yes.", "Keep the network on?")}
     for setting, under in (
-        ({"relayed_by": "claude-code:s"}, "RELAYED_YES"),
+        (yes, "RELAYED_YES"),
         (delegated, "FIRST_USE_DELEGATION"),
         ({}, "PERSON"),
     ):
@@ -215,6 +216,10 @@ def test_admitted_network_work_names_whose_setting_allowed_it(
         assert answer["network_use"]["under"] == under
         assert answer["ask_now"] == [answer["network_use"]["words"]]  # said, as the guide says
         assert returned_subject(answer)["network_used_under"] == under
+        origin = answer["network_use"].get("yes", {})
+        assert (origin.get("words"), origin.get("asked")) == (
+            yes["relayed"][1:] if setting is yes else (None, None)
+        )
     assert disclosed(admitted, "RECOVER", control)["network_use"]
     assert "network_use" not in disclosed(admitted, "STATUS", lambda: 1 / 0)  # type: ignore
     set_network_access(tmp_path, enabled=False, now=now)

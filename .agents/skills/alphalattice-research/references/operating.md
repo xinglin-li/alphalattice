@@ -23,10 +23,13 @@ Windows is the certified platform for this source-checkout setup; macOS and Linu
 
 ```powershell
 uv sync --locked --all-extras
+uv run python -m alphalattice.interface.local_application.native_setup doctor
 uv run python scripts/build_local_web_ui.py --product
 uv export --locked --all-extras --no-dev --no-emit-project --no-hashes --output-file .venv/alphalattice-runtime-requirements.txt
 uv tool install --python 3.12 --editable . --with-requirements .venv/alphalattice-runtime-requirements.txt --constraints .venv/alphalattice-runtime-requirements.txt
 ```
+
+Run each missing item's returned `facts.commands` (the Workbench's `facts.command`), including the retrieval runtime's offline fill, and follow its download-permission words if a cold cache needs its network form. Run the doctor again after repairs and configuration; optional user-layer readings and Host-dependent measurements do not prevent research by themselves.
 
 `uv sync` installs the checkout's command editable, so source edits are live; the tool install is editable too and pins its runtime to the exported lock. When `uv tool dir --bin` is not on the shell's PATH, your own commands may run `python scripts/run_alphalattice.py` from the checkout, but your specialists' routes run the bare `alphalattice` in fresh shells of their own, so `first-use prepare` refuses until it resolves: a persistent PATH is the person's shell setting, asked once (`uv tool update-shell`, then a restart). Each host command starts a fresh shell, so variables do not carry over. `uv run alphalattice` runs the checkout's command too, but the doctor and the first use read PATH as a fresh shell has it, without the folder `uv run` puts first. The first use's goal is the session's that ran `first-use prepare`; the same sentence and date reuse it from another session, and a shell with no agent session puts `--goal <goal_id>` before each later step's command. Run `uv tool uninstall alphalattice` before switching installation legs.
 
@@ -37,10 +40,11 @@ python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalat
 uv tool install --python 3.12 ./alphalattice-0.2.0-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
 ```
 
-A checkout is its own agent project: configure it from its root, `uv run python -m alphalattice.interface.local_application.native_setup configure --host <codex-or-claude-code>`. On the wheel leg, configure the separate agent folder with the tool environment's own interpreter, beneath `uv tool dir`:
+A checkout is its own agent project: configure it from its root, `uv run python -m alphalattice.interface.local_application.native_setup configure --host <codex-or-claude-code>`. On the wheel leg, configure the separate agent folder with the tool environment's own interpreter, beneath `uv tool dir`. In a shell with no agent session, give the doctor the same `--host` choice; otherwise it defaults to Codex:
 
 ```powershell
 $toolDir = uv tool dir
+& "$toolDir/alphalattice/Scripts/python.exe" -m alphalattice.interface.local_application.native_setup --project <agent-project> doctor --host <codex-or-claude-code>
 & "$toolDir/alphalattice/Scripts/python.exe" -m alphalattice.interface.local_application.native_setup --project <agent-project> configure --host <codex-or-claude-code>
 ```
 
@@ -52,7 +56,7 @@ On macOS and Linux the interpreter is `bin/python`:
 
 `configure` refuses to overwrite different files and answers `continue_here`: the files to read, the cards to start specialists from and a one-line `disclosure` for the person. A session opened with its `open_session` command loads them itself; offer it, never require it. On Claude Code with Bedrock, Vertex or Foundry, set `ANTHROPIC_DEFAULT_SONNET_MODEL` to pin a Sonnet version. Evidence review needs its declared retrieval environment, local model packs and an admitted issuer-source package; when `serve` reports one missing, run the setup command it returns.
 
-Start the Host on an explicit workspace, a new directory for new research; the launcher initializes it without preparing data:
+Start the Host on an explicit workspace, a new directory for new research; the launcher initializes it without preparing data. Keep naming `--workspace` on the first-use command unless the session is already bound:
 
 ```powershell
 alphalattice --workspace "workspaces/my-research" serve --no-browser --stop-on-stdin

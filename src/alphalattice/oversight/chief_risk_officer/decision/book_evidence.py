@@ -1051,7 +1051,7 @@ def _book_claim_limits(book: SealedBook) -> tuple[str, ...]:
         ()
         if book.update_subject is None
         else (
-            "POST_OBSERVED_QA_NOT_TIMELY_ADVICE; no protected validation "
+            "Research positions, not trade advice; no protected validation "
             "or verified venue execution.",
             "Review evidence has its own cutoff; evidence after the decision is "
             "retrospective, not decision-time support.",
