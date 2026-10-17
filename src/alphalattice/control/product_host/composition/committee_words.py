@@ -1,7 +1,8 @@
-"""The committee floor's words: each rule's refusal, the verdict's rule and the alias rule.
+"""The committee floor's words: its refusals, rules, routes, report phrases and road ends.
 
-Owned by the committee floor (`committee.py`), which reads them; split from it for size, so
-the floor's logic and the sentences agents learn from are kept apart.
+Owned by the committee floor (`committee.py`), which reads and re-exports them, so readers
+of `committee.MEMBER_COMMANDS` and the like are unchanged; split from it for size, so the
+floor's logic and the sentences agents learn from are kept apart.
 """
 
 from __future__ import annotations
@@ -106,3 +107,74 @@ COMPLETE_HOW: Final = (
     "offers for a reference it lacks."
 )
 """How a goal's completion is written, from the read its road's end offers."""
+
+NO_PM_STANCE: Final = (
+    "The PM gave no stance, so the floor never reached its debate; its time box closed it "
+    "without a verdict."
+)
+
+SUGGESTIONS: Final = {
+    "OBJECT": "Consider avoiding or reducing {holdings}: {member}",
+    "SUPPORT": "Could keep or add to {holdings}: {member}",
+}
+"""The report's lead: a member's standing OBJECT or SUPPORT on holdings, as a suggestion."""
+NO_SUGGESTION: Final = "No member suggested avoiding, reducing or adding a holding"
+NO_NUMBER: Final = (
+    "The committee changed no number; whether to act on its suggestions is the person's decision."
+)
+
+MEMBER_COMMANDS: Final = ("committee submit", "committee wait")
+"""What a member's own route runs; its card's allowlist names the same (materialize)."""
+
+OPENER_WORDS: Final = (
+    "The PM's key and route belong to the session that opened this floor; its wait goes on "
+    "there. Read the floor here, or continue in that session."
+)
+"""Why another session's open names no key, and its way on."""
+
+DAILY_ASK: Final = (
+    "Should each daily update also convene the investment committee, about ten more minutes? "
+    "Without it, the PM gives its view on the reviewed positions."
+)
+"""The one question the first use's report asks, word for word, until the person answers it."""
+DAILY_WORDS: Final = {
+    "ON": "Each daily update's published review convenes the investment committee.",
+    "OFF": "A daily update's published review gets the PM's view on the reviewed positions; the "
+    "committee is offered, not convened.",
+    "UNANSWERED": "Never answered, so off: a daily update's review gets the PM's view, and the "
+    "committee is offered.",
+}
+
+LEAD_PUBLISHED: Final = (
+    "Nothing was submitted for this bundle; the date's review is already published, so its "
+    "committee is offered."
+)
+"""A refusal to the lead where the review stands published: the committee, not a new bundle."""
+
+RELAY_WORD: Final = "Relayed by the agent"
+PASSED: Final = "{member} passed its discussion turn"
+"""A yielded turn, as the report reads it."""
+
+PASSED_SILENT: Final = "{member} passed its discussion turn (silent)"
+"""A turn the discussion window closed on silence, as the report reads it."""
+UNRULED_ON: Final = "Challenge stood unruled on {targets}"
+
+ROUTE_STANCE: Final = (
+    "On the committee's floor you are {role}. Send one STANCE first (the round is blind); "
+    "its position on each {point} point (T1, never a question) is about the date's "
+    "positions: SUPPORT, they may stand; OBJECT, they should not stand as they are; RESERVE, "
+    "this bundle cannot tell, citing by S alias the facts it rests on. A standing OBJECT or "
+    "SUPPORT leads the report as a suggestion on the holdings its point names, less any you "
+    "set apart: give one its own position (H5: RESERVE), or name it in a sentence on that "
+    "point with that one position word. You may suggest avoiding, reducing or adding "
+    "specific holdings, with reasons from the materials; the person decides."
+)
+"""A member route's first step, its stance, for its role and the floor's kind of point."""
+
+ROUTE_END: Final = (
+    "This route is the bundle's only final action: there is no answer file and nothing for "
+    "the lead to submit. Its steps: send your STANCE, wait, then take the turn the wait "
+    "offers (TAKE_YOUR_DISCUSSION_TURN: a CHALLENGE or REPLY, or its offered pass) and wait "
+    "again until the floor settles or closes. The lead starts you as a general subagent."
+)
+"""A member route's last step: the route is its only final action."""

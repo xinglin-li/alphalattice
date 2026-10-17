@@ -50,8 +50,23 @@ from alphalattice.control.product_host.composition.committee_words import (
     COMPLETE_DATE,
     COMPLETE_FIRST_USE,
     COMPLETE_HOW,
+    DAILY_ASK,
+    DAILY_WORDS,
+    LEAD_PUBLISHED,
+    MEMBER_COMMANDS,
+    NO_NUMBER,
+    NO_PM_STANCE,
+    NO_SUGGESTION,
+    OPENER_WORDS,
+    PASSED,
+    PASSED_SILENT,
+    RELAY_WORD,
+    ROUTE_END,
+    ROUTE_STANCE,
     RULE_WORDS,
+    SUGGESTIONS,
     TAKE_TURN,
+    UNRULED_ON,
     VERDICT_RULE,
 )
 from alphalattice.control.product_host.composition.plain_refusals import explain
@@ -85,29 +100,10 @@ CHANNEL: Final = "PRODUCT_COMMITTEE"
 REVIEW_CHANNEL: Final = "PRODUCT_REVIEW"
 """The Host's own channel for a review thread's rows, which Conversation shows."""
 CHANNELS: Final = frozenset({CHANNEL, REVIEW_CHANNEL})
-RELAY_WORD: Final = "Relayed by the agent"
-PASSED: Final = "{member} passed its discussion turn"
-"""A yielded turn, as the report reads it."""
 STANCE_MINUTES, FLOOR_MINUTES, MESSAGE_CAP = 10, 40, 3
 DISCUSSION_MINUTES: Final = 5
 """The one discussion round after the reveal, a floor rule recorded on the floor: a specialist
 silent past it has passed (silent), and an unruled challenge no longer holds the verdict."""
-PASSED_SILENT: Final = "{member} passed its discussion turn (silent)"
-"""A turn the discussion window closed on silence, as the report reads it."""
-UNRULED_ON: Final = "Challenge stood unruled on {targets}"
-NO_PM_STANCE: Final = (
-    "The PM gave no stance, so the floor never reached its debate; its time box closed it "
-    "without a verdict."
-)
-SUGGESTIONS: Final = {
-    "OBJECT": "Consider avoiding or reducing {holdings}: {member}",
-    "SUPPORT": "Could keep or add to {holdings}: {member}",
-}
-"""The report's lead: a member's standing OBJECT or SUPPORT on holdings, as a suggestion."""
-NO_SUGGESTION: Final = "No member suggested avoiding, reducing or adding a holding"
-NO_NUMBER: Final = (
-    "The committee changed no number; whether to act on its suggestions is the person's decision."
-)
 TURN: Final = frozenset({"CHALLENGE", "REPLY", "PASS"})
 """A specialist's discussion turn: spoken, or passed."""
 RULES: Final[dict[str, tuple[tuple[str, ...], frozenset[str], str | None]]] = {
@@ -126,12 +122,10 @@ OUTCOMES: Final = {
     "VERDICT": frozenset({"PROCEED", "PROCEED_WITH_NOTES", "DECLINE", "FOR_THE_PERSON"}),
 }
 """Each kind's outcomes; a kind not named takes none (SHAPE, with what it answers)."""
-MEMBER_COMMANDS: Final = ("committee submit", "committee wait")
-"""What a member's own route runs; its card's allowlist names the same (materialize)."""
 _VIEWS: Final = frozenset({"STANCE", "CHALLENGE", "REPLY"})
+"""The kinds that carry a member's own view; a ruling, the verdict and a relay do not."""
 ALIAS: Final = re.compile(r"\b[CHMST][0-9]{1,4}\b")
 """A floor alias: a component (C), a holding (H3), a message (M4), a fact (S) or a point (T2)."""
-"""The kinds that carry a member's own view; a ruling, the verdict and a relay do not."""
 
 
 @dataclass(frozen=True)
@@ -216,13 +210,6 @@ class Floor:
         verdict = next((m["at"] for m in self.messages if m["kind"] == "VERDICT"), None)
         moment = min(now, datetime.fromisoformat(verdict or self.opened["closes_at"]))
         return [r for r in ROLES[1:] if r not in spoke] if self.discussion_over(moment) else []
-
-
-OPENER_WORDS: Final = (
-    "The PM's key and route belong to the session that opened this floor; its wait goes on "
-    "there. Read the floor here, or continue in that session."
-)
-"""Why another session's open names no key, and its way on."""
 
 
 def settled(floor: Floor, now: datetime) -> bool:
@@ -320,18 +307,6 @@ def offer(host: Any, review: dict[str, Any], book: Any, caller: str) -> dict[str
 
 DAILY_PATH: Final = Path("runtime") / "committee-daily.json"
 """The person's daily committee setting, in the workspace's runtime folder; none means off."""
-DAILY_ASK: Final = (
-    "Should each daily update also convene the investment committee, about ten more minutes? "
-    "Without it, the PM gives its view on the reviewed positions."
-)
-"""The one question the first use's report asks, word for word, until the person answers it."""
-_DAILY_WORDS: Final = {
-    "ON": "Each daily update's published review convenes the investment committee.",
-    "OFF": "A daily update's published review gets the PM's view on the reviewed positions; the "
-    "committee is offered, not convened.",
-    "UNANSWERED": "Never answered, so off: a daily update's review gets the PM's view, and the "
-    "committee is offered.",
-}
 
 
 def committee_daily(workspace: Path) -> bool | None:
@@ -367,7 +342,7 @@ def daily_answer(workspace: Path) -> dict[str, object]:
     return {
         "status": "COMMITTEE_DAILY",
         "committee_daily": standing,
-        "detail": _DAILY_WORDS[standing],
+        "detail": DAILY_WORDS[standing],
         "next_requests": {
             "set": {"operation": "COMMITTEE_DAILY_SET", "committee_daily_enabled": not enabled}
         },
@@ -488,12 +463,6 @@ def _date_goal(goals: Any) -> Any:
         return None if goal is None or goal.declaration.kind == "FIRST_USE" else goal
     return None
 
-
-LEAD_PUBLISHED: Final = (
-    "Nothing was submitted for this bundle; the date's review is already published, so its "
-    "committee is offered."
-)
-"""A refusal to the lead where the review stands published: the committee, not a new bundle."""
 
 SUPERSEDED: Final = frozenset(
     {"agent_bundle.preparation_stale", "REFUSED_EVIDENCE_SELECTION_AMBIGUOUS"}
@@ -1928,14 +1897,7 @@ def route(
     )
     point = "agenda" if "agenda" in floor.opened else "tension"
     return (
-        f"On the committee's floor you are {role}. Send one STANCE first (the round is blind); "
-        f"its position on each {point} point (T1, never a question) is about the date's "
-        "positions: SUPPORT, they may stand; OBJECT, they should not stand as they are; RESERVE, "
-        "this bundle cannot tell, citing by S alias the facts it rests on. A standing OBJECT or "
-        "SUPPORT leads the report as a suggestion on the holdings its point names, less any you "
-        "set apart: give one its own position (H5: RESERVE), or name it in a sentence on that "
-        "point with that one position word. You may suggest avoiding, reducing or adding "
-        "specific holdings, with reasons from the materials; the person decides.",
+        ROUTE_STANCE.format(role=role, point=point),
         "Once the stances are revealed, take your one discussion turn: a CHALLENGE or REPLY, or, "
         "before any challenge or reply, a PASS (kind PASS, a line saying you have nothing to add, "
         "no targets or positions) that yields it and ends your turn; the floor settles when every "
@@ -1951,10 +1913,7 @@ def route(
         "--seen <seen>`. Run these from your own session; the key is yours alone. "
         "A refused message names its rule; where only "
         "its shape is wrong, send the corrected message the refusal offers.",
-        "This route is the bundle's only final action: there is no answer file and nothing for "
-        "the lead to submit. Its steps: send your STANCE, wait, then take the turn the wait "
-        "offers (TAKE_YOUR_DISCUSSION_TURN: a CHALLENGE or REPLY, or its offered pass) and wait "
-        "again until the floor settles or closes. The lead starts you as a general subagent.",
+        ROUTE_END,
     )
 
 

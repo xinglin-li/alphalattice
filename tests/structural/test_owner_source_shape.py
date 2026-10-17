@@ -193,6 +193,7 @@ def test_every_specialist_bundle_slice_has_a_named_disposition() -> None:
             "list(places.values())[:MAXIMUM_DIFFERENCE_PLACES]",
         ): "full excerpt below",
         ("analyst", "_shingles", "words[index:index + 3]"): "similarity computation",
+        ("analyst", "_marked_cuts", "text[:1]"): "first character, read to mark a cut",
         ("packer", "_fit", "word[:limit]"): "next piece below",
         ("packer", "_fit", "word[limit:]"): "remaining pieces below",
     }
