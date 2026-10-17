@@ -6506,13 +6506,13 @@
     "name": "next_action",
     "kind": "string",
     "required": false,
-    "meaning": "The next cancellation step: `SEND_THE_OFFERED_REQUEST`."
+    "meaning": "While cancellation is pending, `SEND_THE_OFFERED_REQUEST` reads the Task. Once cancelled, `REPORT_THE_STOP` reports it without sending the optional replan."
    },
    {
     "name": "next_requests",
     "kind": "object",
     "required": false,
-    "meaning": "The same Task's `task` read while cancellation is pending; its owner's `replan` once cancellation is acknowledged."
+    "meaning": "The same Task's `task` read while cancellation is pending; its owner's bound `replan` after cancellation, only if the person or the lead that cancelled it wants to continue."
    }
   ]
  },

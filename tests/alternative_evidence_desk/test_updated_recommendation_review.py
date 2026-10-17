@@ -395,6 +395,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     assert exported["evidence"]["verified_spans"]
     assert "Evidence &amp; CRO" in exported["html"]
     assert all(line in exported["html"] for line in reading["coverage_words"])
+    assert said and all(line in exported["html"] for line in said)
     issuers = exported["review"]["dossier"]["issuers"]
     held = sum(value["ending_weight"] > 0 for value in issuers)
     assert f"<dt>Held issuers in scope</dt><dd>{held}</dd>" in exported["html"]

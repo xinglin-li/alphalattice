@@ -2,11 +2,10 @@
  * English phrase is worded differently in another part of the product. Generated data; edit
  * translations here, never in the templates. */
 window.ALPHA_ZH = {
-  'Cancellation is acknowledged. Verified stages and published results are kept. Send the offered replan to continue.': '取消已确认完成。已核验的阶段和已发布的结果均予以保留。要继续工作，请发送所提供的重新规划请求。',
-  'Cancellation is requested, not yet acknowledged. Read this Task; it keeps running until its next safe checkpoint.': '已请求取消，但尚未确认完成。请读取此任务；它会继续运行到下一个安全检查点。',
+  "The cancellation stands. Verified stages and published results are kept. If a replan is offered, it continues the work only when the person, or the lead that cancelled it, wants to go on.": "取消决定继续生效。已核验的阶段和已发布的结果均予以保留。只有用户或作出取消决定的主代理希望继续时，才使用所提供的重新规划请求继续工作。",
   'The cancellation state and how to continue, in words.': '取消所处的状态，以及下一步操作的文字说明。',
-  'The next cancellation step: `SEND_THE_OFFERED_REQUEST`.': '取消的下一步：`SEND_THE_OFFERED_REQUEST`。',
-  "The same Task's `task` read while cancellation is pending; its owner's `replan` once cancellation is acknowledged.": '等待取消完成时，提供同一任务的读取请求；取消确认完成后，提供其所属模块的重新规划请求。',
+  "While cancellation is pending, `SEND_THE_OFFERED_REQUEST` reads the Task. Once cancelled, `REPORT_THE_STOP` reports it without sending the optional replan.": "取消尚未完成时，`SEND_THE_OFFERED_REQUEST` 读取该任务；取消完成后，`REPORT_THE_STOP` 报告取消结果，不发送可选的重新规划请求。",
+  "The same Task's `task` read while cancellation is pending; its owner's bound `replan` after cancellation, only if the person or the lead that cancelled it wants to continue.": "等待取消完成时，提供同一任务的读取请求；取消完成后，提供所属模块绑定的重新规划请求，仅当用户或作出取消决定的主代理希望继续时使用。",
   "Start alphalattice_maintainer in RECORD mode with this goal (goal show {subject}), the person's corrections in their own words, and the Tasks' readbacks; then tell the person in one line what was added, merged or deleted.": "以 `RECORD` 模式启动 `alphalattice_maintainer`，提供此目标（`goal show {subject}`）、用户的纠正原话和任务回读；然后用一句话告知用户新增、合并或删除了什么。",
   "`RECORD_THE_EXPERIENCE` only on the answer that seals the goal: start the experience maintainer in RECORD mode using the offered readbacks.": "仅封存目标的回答包含 `RECORD_THE_EXPERIENCE`：使用提供的回读，以 `RECORD` 模式启动经验维护者。",
   "The experience maintainer's instruction, present only on the sealing answer.": "经验维护者的操作说明，仅出现在封存目标的回答中。",

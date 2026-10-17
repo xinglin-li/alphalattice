@@ -85,16 +85,21 @@ execution, the latter through the read-only `TaskHeartbeatReader` over the runne
 
 _TERMINAL = frozenset({TaskLifecycle.SUCCEEDED, TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED})
 CANCELLATION_REPLAN = (
-    "Cancellation is acknowledged. Verified stages and published results are kept. "
-    "Send the offered replan to continue."
+    "The cancellation stands. Verified stages and published results are kept. If a replan is "
+    "offered, it continues the work only when the person, or the lead that cancelled it, "
+    "wants to go on."
+)
+
+CANCELLATION_PENDING = (
+    "Cancellation is requested; the worker acknowledges it at its next safe checkpoint, "
+    "and until then the Task keeps running. Requested is not acknowledged."
 )
 
 
 def cancellation_pending(task_id: UUID) -> dict[str, object]:
     """The pending cancellation's own read, before the worker acknowledges its checkpoint."""
     return {
-        "detail": "Cancellation is requested, not yet acknowledged. Read this Task; it keeps "
-        "running until its next safe checkpoint.",
+        "detail": CANCELLATION_PENDING,
         "next_action": "SEND_THE_OFFERED_REQUEST",
         "next_requests": {"task": {"operation": "STATUS", "task_id": str(task_id)}},
     }
@@ -898,11 +903,7 @@ def _actions(
             if lifecycle is TaskLifecycle.QUEUED
             else "Cancelled at once: this Task's execution cannot be recovered."
             if task_is_unrecoverable(task)
-            else (
-                "Cancellation is requested; the worker acknowledges it at its next safe "
-                "checkpoint, and until then the Task keeps running. Requested is not "
-                "acknowledged."
-            )
+            else CANCELLATION_PENDING
         ),
         reason=cancel_reason,
     )
@@ -1258,9 +1259,15 @@ def way_on(
     requests = {**owned, **offered, **subject}
     if requests:
         body["next_requests"] = requests
-    if "detail" in body and body.get("lifecycle") == "CANCELLED" and "replan" in requests:
+    if "detail" in body and body.get("lifecycle") == "CANCELLED":
         body["detail"] = CANCELLATION_REPLAN
-    lead = way.get("next_action") or ("SEND_THE_OFFERED_REQUEST" if offered and stopped else None)
+    lead = (
+        "REPORT_THE_STOP"
+        if body.get("lifecycle") == "CANCELLED"
+        else (
+            way.get("next_action") or ("SEND_THE_OFFERED_REQUEST" if offered and stopped else None)
+        )
+    )
     if lead:
         body["next_action"] = lead
 
@@ -1268,6 +1275,7 @@ def way_on(
 RecoverableKinds = Callable[[], frozenset[str]]
 
 __all__ = [
+    "CANCELLATION_PENDING",
     "CANCELLATION_REPLAN",
     "STALE_HEARTBEAT_SECONDS",
     "LivenessFact",

@@ -29,6 +29,7 @@ from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
 from alphalattice.control.product_host.composition.task_recovery import (
+    CANCELLATION_REPLAN,
     TaskRecoveryView,
     build_task_recovery_view,
 )
@@ -457,6 +458,7 @@ def test_cancellation_requested_is_shown_apart_from_acknowledged(
         assert after["cancellation"] == "REQUESTED" and after["lifecycle"] == "CANCEL_REQUESTED"
         assert after["status"]["cancel_pending"] is True
         cancel = _actions(after)["CANCEL"]
+        assert seen["cancel"]["detail"] == cancel["expected_effect"]
         assert cancel["available"] is False and "not acknowledged" in cancel["reason"]
         assert "ACKNOWLEDGED" not in (after["cancellation"], after["stop"])
         final = _view(live, task_id)
@@ -511,8 +513,14 @@ def test_a_queued_task_cancelled_before_execution_reads_cancelled_while_its_comm
         )
         waited = json.loads(capsys.readouterr().out)["data"]
         assert code == 2 and waited["lifecycle"] == "CANCELLED"
-        assert waited["next_action"] == "SEND_THE_OFFERED_REQUEST"
-        assert waited["next_requests"]["replan"] == final["next_requests"]["replan"]
+        cancelled = _json(live, "/api/cancel", method="POST", payload={"task_id": task_id})
+        for answer in (waited, _json(live, f"/api/status?task_id={task_id}"), cancelled):
+            assert (
+                answer["lifecycle"] == "CANCELLED"
+                and answer.get("next_action") == "REPORT_THE_STOP"
+                and answer["detail"] == CANCELLATION_REPLAN
+            ), answer
+            assert answer["next_requests"]["replan"] == final["next_requests"]["replan"]
     finally:
         live.stop()
 

@@ -343,11 +343,19 @@ class Explorer:
         kinds: set[str] | list[str] | None = None,
         fields: set[str] | None = None,
     ) -> dict[str, Any] | None:
-        """Probe offered-request mistakes through the same CLI, recording feedback defects."""
+        """Probe offered-request mistakes; cancelled writes are findings before any CLI call."""
         if self.mutation_seconds >= self.mutation_budget:
             return None
         started = time.monotonic()
         operation = str(request["operation"])
+        if self._cancelled_write(request, baseline) and (kinds is None or "duplicate" in kinds):
+            row, _ = self._mistake_answer(
+                request, baseline, "duplicate", "CANCELLED", where, baseline
+            )
+            row["reason"] = "automatic resend after CANCELLED"
+            self.mutation_checks.append(row)
+            self.findings.append({**row, "loop_part": "agent"})
+            return None
         required = self.request_fields.get(operation, {}).get("required", [])
         variants = [v for v in mutations(request, required) if v[1] != request]
         variants += [("misspell-flag", request, "--flie")]
@@ -379,6 +387,15 @@ class Explorer:
                 return corrected
         self.mutation_seconds += time.monotonic() - started
         return None
+
+    def _cancelled_write(self, request: dict[str, Any], answer: dict[str, Any] | None) -> bool:
+        """A duplicate write would contradict cancellation; reads and cancelling again do not."""
+        return (
+            answer is not None
+            and _state(answer) == "CANCELLED"
+            and request["operation"] not in self.read_operations
+            and request["operation"] != "CANCEL"
+        )
 
     def _mistake_answer(
         self,
@@ -763,7 +780,15 @@ class Explorer:
         return None
 
     def _horizon(self, path: tuple[str, ...], code: str, answer: dict[str, Any]) -> bool:
-        """A step limit, the walk's budget, or a way on that waits for its time."""
+        """A cancellation, step limit, the walk's budget, or a way on waiting for its time."""
+        lead = _data(answer).get("next_action") or answer.get("next_action")
+        if _state(answer) == "CANCELLED" and lead != "READ_THE_TASK_WITH_TASK_SHOW":
+            if lead not in (None, "REPORT_THE_STOP"):
+                self._problem(
+                    f"cancelled Task directs automatic continuation at {' > '.join(path)}",
+                    "feedback",
+                )
+            return True
         timed = "not_due" in code and "retry_after_at" in json.dumps(answer)
         self.terminal_reached |= self.terminal(answer)
         return self.terminal_reached or len(path) >= DEPTH or self._spent() or timed
@@ -832,6 +857,7 @@ class Explorer:
         if (
             self.mutation_budget
             and sent.get("outcome") not in {"REFUSED", "FAILED"}
+            and not self._cancelled_write(step, sent)
             and not self.events[-1].attributes.get("alphalattice.retired_offer")
         ):
             self.inject(step, path, baseline=sent)

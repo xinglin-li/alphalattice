@@ -1,8 +1,14 @@
-"""Evidence and CRO facts beside the Portfolio result.
+"""The Evidence & CRO projection: one small section beside the Portfolio result.
 
-Each declared intermediate state reads sealed artifacts and supplies formatted
-values and bound next requests. The browser infers no metric, binding or
-authority. Analysts and the CRO answer bundles; the product runs no model.
+It names every intermediate state rather than collapsing them into an empty
+panel: no book selected, no admitted evidence authority, awaiting or refreshing
+evidence, a prepared analyst packet, evidence ready for review, expired or
+ambiguous evidence, and one published review. Every value is a typed fact read
+from a sealed artifact; nothing is computed here, and the browser is handed
+strings it can only display. The next step out of each state is a request the
+product composed, with its bindings, never one the page infers. An agent answers
+the Analyst's packet and the CRO's dossier through its bundle; the product runs no
+model of its own (AG2).
 """
 
 from __future__ import annotations
@@ -1236,8 +1242,8 @@ def _review_evidence_content(review: dict[str, Any], evidence: object) -> str:
         "<h3>Coverage limits</h3><ul>",
     ]
     for gap in (
-        *dossier["coverage"].get("unavailable_reasons", []),
-        *dossier["coverage"].get("missing_evidence", []),
+        *dossier.get("coverage", {}).get("unavailable_reasons", []),
+        *dossier.get("coverage", {}).get("missing_evidence", []),
         *dossier.get("limitations", []),
     ):
         pieces.append("<li>" + html.escape(str(gap)) + "</li>")
@@ -1599,14 +1605,15 @@ def _conclusion_section(review: dict[str, Any]) -> str:
 def _coverage_facts(dossier: dict[str, Any]) -> str:
     """Render only recorded coverage facts, including older partial exports."""
     from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
-        PortfolioReviewCoverage,
+        PortfolioReviewDossier,
     )
     from alphalattice.oversight.chief_risk_officer.decision.views import (
         coverage_words,
-        cutoff_words,
         held_issuer_count,
+        review_cutoff_words,
     )
 
+    coverage = dossier.get("coverage", {})
     coverage_labels = {
         "mapping_coverage": "Whole-book mapped ending weight",
         "reviewed_ending_weight_coverage": "Whole-book reviewed ending weight",
@@ -1622,15 +1629,14 @@ def _coverage_facts(dossier: dict[str, Any]) -> str:
         + "".join(
             f"<dt>{html.escape(coverage_labels.get(key, key.replace('_', ' ')))}</dt>"
             f"<dd>{float(value):.3%}</dd>"
-            for key, value in dossier["coverage"].items()
+            for key, value in coverage.items()
             if key.endswith("coverage") and value is not None
         )
     ]
     if "mapping_failure_count" in dossier:
         pieces.append(
             "<dt>Mapping failures</dt><dd>"
-            + html.escape(str(dossier["mapping_failure_count"]))
-            + "</dd>"
+            f"{html.escape(str(dossier['mapping_failure_count']))}</dd>"
         )
     if "issuers" in dossier:
         pieces.append(
@@ -1640,20 +1646,12 @@ def _coverage_facts(dossier: dict[str, Any]) -> str:
         )
     pieces.append("</dl>")
     required = {
-        key for key, field in PortfolioReviewCoverage.model_fields.items() if field.is_required()
+        key for key, field in PortfolioReviewDossier.model_fields.items() if field.is_required()
     }
-    words = (
-        list(coverage_words(PortfolioReviewCoverage.model_validate(dossier["coverage"])))
-        if required <= dossier["coverage"].keys()
-        else []
-    )
-    if dossier.get("evidence_as_of"):
-        words.extend(
-            cutoff_words(
-                datetime.fromisoformat(dossier["evidence_as_of"]),
-                (dossier.get("update_subject") or {}).get("formation_session"),
-            )
-        )
+    words: tuple[str, ...] = ()
+    if required <= dossier.keys():
+        view = PortfolioReviewDossier.model_validate(dossier)
+        words = (*coverage_words(view.coverage), *review_cutoff_words(view))
     pieces.extend(f"<p>{html.escape(line)}</p>" for line in words)
     return "".join(pieces)
 
@@ -1724,8 +1722,8 @@ def _coverage_section(review: dict[str, Any]) -> str:
                 + ".</p>"
             )
     gaps = [
-        *dossier["coverage"].get("unavailable_reasons", []),
-        *dossier["coverage"].get("missing_evidence", []),
+        *dossier.get("coverage", {}).get("unavailable_reasons", []),
+        *dossier.get("coverage", {}).get("missing_evidence", []),
     ]
     if gaps:
         pieces.append(
