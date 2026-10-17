@@ -203,7 +203,7 @@ class MarketReferenceMaintainer:
                         start=start,
                         end=as_of_session,
                     )
-                receipt, _audit_summary = self.market_data.complete_action_audits(
+                receipt, _audit_summary = self.market_data.complete_action_audit(
                     reference.manifest,
                     ActionAuditObservation(
                         listing_id=reference.listing_id,

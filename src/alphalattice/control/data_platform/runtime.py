@@ -171,7 +171,7 @@ class PreFactorDataOperations:
                 )
                 if reusable is not None:
                     continue
-                self.market_data.complete_action_audits(
+                self.market_data.complete_action_audit(
                     self.manifest,
                     ActionAuditObservation(
                         listing_id=listing.listing_id,

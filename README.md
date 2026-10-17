@@ -19,6 +19,30 @@ Give your agent this repository's link and one intent:
 
 > Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your built-in browser so I can follow it.
 
+## Two ways to use AlphaLattice
+
+1. **First use, in a new folder.** Send your Claude Code or Codex agent the
+   intent above, or `Positions for <date>, reviewed.` The agent prepares data
+   and the strategy, produces that date's research positions and follows them
+   through review, committee discussion and a report.
+
+   **Expect a pause for your answer.** The agent stops once to ask whether
+   AlphaLattice may keep this workspace's network on for daily updates, fetching
+   market data and SEC filings within the default budget (3 per issuer,
+   600 documents and 3 GB overall). **The work waits until you answer yes or no.**
+   Your yes stays in force until you tell it to stop; each network use is disclosed
+   and recorded in activity, including automated updates.
+
+   At the first-use report, the agent also asks whether daily updates should
+   convene the investment committee. Without that setting, later updates get the
+   portfolio manager's view on the reviewed positions.
+
+2. **Daily update, in a new session in the same folder.** Say
+   `Positions for <next session>, reviewed.` The agent uses the installed strategy
+   and your standing network yes to update data and produce that session's reviewed
+   research positions, following your daily committee setting. It asks nothing
+   further unless a decision belongs to you.
+
 <!-- Hero image reserved: committee discussion from the final acceptance run. -->
 
 [Getting started](docs/public-source/getting-started.md) covers installation,
@@ -111,15 +135,10 @@ historical source availability alongside the performance.
   data, handle data issues within the declared rules, open the preparation's
   network, set up Evidence within the default budget and activate the strategy's
   completed book. It reports each act.
-- **When permission ends.** It ends when the goal's submission is accepted,
-  when the goal is abandoned or when the 24 hours expire. Network access opened
-  only under that delegation ends with it; your separate daily-network yes is
-  your own setting, which the delegation cannot overwrite. Your agent asks once, at the
-  start, whether daily updates may keep the network on for new market data and
-  SEC filings within the default budget. Your yes stays until you tell it to
-  stop, which also stops SEC acquisition. Each step that uses the network says
-  so in one line, and the Workbench's activity shows it, updates the Host runs
-  on its own included.
+- **When permission ends.** The first-use delegation ends when the goal's
+  submission is accepted, the goal is abandoned or its 24 hours expire. Network
+  access opened only under that delegation ends with it. The separate standing
+  permission is described in [Two ways to use AlphaLattice](#two-ways-to-use-alphalattice).
 - **Your controls.** Stop the strategy through your agent or on **Portfolio**.
   Stopping a goal and cancelling a Task are separate controls. The guide lists
   [what only you decide](AGENTS.md#what-only-a-person-decides).

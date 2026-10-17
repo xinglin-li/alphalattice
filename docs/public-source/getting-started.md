@@ -108,15 +108,31 @@ rules above.
 
 ## First preparation
 
-Your sentence becomes the first-use goal's unchanged objective. Its delegation
+The [README overview](../../README.md#two-ways-to-use-alphalattice) describes
+both supported uses:
+
+- **First use:** start in a new folder with your intent, or
+  `Positions for <date>, reviewed.` The agent prepares data and the strategy,
+  then follows the date's positions through review, committee discussion and a report.
+  It stops once to ask whether daily updates may keep the network on for market
+  data and SEC filings within the default budget (3 per issuer, 600 documents
+  and 3 GB overall). **Work waits until you answer yes or no.** Your yes is a
+  continuing setting until you tell it to stop. At the first-use report, the
+  agent also asks whether daily updates should convene the investment committee;
+  without that setting, later updates get the portfolio manager's view on the
+  reviewed positions.
+- **Daily update:** open a new session in the same folder and say
+  `Positions for <next session>, reviewed.` It uses the installed strategy and
+  standing network yes to update data and produce that session's reviewed research
+  positions, following your daily committee setting. It asks nothing further unless
+  a decision belongs to you.
+
+Your first-use sentence becomes the goal's unchanged objective. Its delegation
 lasts 24 hours from opening: the agent handles the admitted preparation and
-activates the book, telling you each act. Accepted submission, abandonment
-or expiry ends that delegation. At the start, the agent asks once whether the
-network may stay on for daily market updates and SEC filings within the default
-budget, in the [exact consent words](privacy.md#workspace-network-and-consent).
-Your relayed yes is your continuing setting until you say stop; it survives the
-24-hour delegation and is disclosed on admitted network steps and in activity. The [agent guide](../../AGENTS.md) owns the flow and sole
-list of [person decisions](../../AGENTS.md#what-only-a-person-decides).
+activates the book, telling you each act. Accepted submission, abandonment or
+expiry ends that delegation. The separate continuing permission above survives
+it. The [agent guide](../../AGENTS.md) owns the flow and the list of
+[person decisions](../../AGENTS.md#what-only-a-person-decides).
 
 Follow Tasks, results and review in the Workbench. Deactivate the book on
 **Portfolio**. To stop the goal, use **Stop** in Local Web or ask the agent to
@@ -133,10 +149,8 @@ keeps the process offline even when its workspace setting allows access.
 Research calculations are held offline. An admitted preparation answer's offered
 confirmation is sent; network access becomes a step only when a refusal names it.
 A first-use delegation can authorize that step only while its terms hold and
-never replaces your own network setting. Your separate daily-network yes stays
-in force until revoked. Say "Turn AlphaLattice's network off" to your agent, or
-turn it off in **Settings**; this also stops new SEC acquisition. A data update
-already fetching finishes its current stage unless its Task is cancelled.
+never replaces your own network setting. [Privacy](privacy.md#workspace-network-and-consent)
+gives the exact consent words, activity disclosure and controls for stopping access.
 
 ## Measured preparation and CPU budget
 

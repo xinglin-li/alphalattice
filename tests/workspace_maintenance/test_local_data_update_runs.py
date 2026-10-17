@@ -889,7 +889,7 @@ def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
     from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
     from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
 
-    audit, paying = MarketDataRepository.complete_action_audits, TEN_SECTOR_SYMBOLS[1 : 1 + payers]
+    audit, paying = MarketDataRepository.complete_action_audit, TEN_SECTOR_SYMBOLS[1 : 1 + payers]
 
     def dividend(self, manifest, *observations, **rest):  # type: ignore[no-untyped-def]
         # Day 2 is the payers' ex-date: each provider back-adjusts the whole history, which a
@@ -902,7 +902,7 @@ def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
                 raise ActionAuditScopeInsufficient("dividend back-adjustment")
         return audit(self, manifest, *observations, **rest)
 
-    monkeypatch.setattr(MarketDataRepository, "complete_action_audits", dividend)
+    monkeypatch.setattr(MarketDataRepository, "complete_action_audit", dividend)
 
     def cli(*arguments: str) -> dict:
         line = ["--workspace", str(workspace), "--view", "full", *arguments]

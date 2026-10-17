@@ -981,7 +981,7 @@ class CurrentUniverseOnboarding:
             {value.session_date: value for value in evidence.adjusted_closes}
         )
         try:
-            self.store.complete_action_audits(
+            self.store.complete_action_audit(
                 self.acquisition_manifest,
                 ActionAuditObservation(
                     listing_id=item.listing_id,
@@ -1352,7 +1352,7 @@ class CurrentUniverseOnboarding:
         history_start = bars[0].session_date
 
         def complete(actions, adjusted_closes):
-            return self.store.complete_action_audits(
+            return self.store.complete_action_audit(
                 self.acquisition_manifest,
                 ActionAuditObservation(
                     listing_id=item.listing_id,

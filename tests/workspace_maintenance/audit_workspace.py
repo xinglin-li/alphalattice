@@ -76,4 +76,4 @@ def build_audit_workspace(root: Path) -> tuple[Path, UniverseManifest]:
 def audit_one(store, manifest, *, _connection=None, **observation):  # type: ignore[no-untyped-def]
     """One observation's receipt and counts: the store's batch audit of that one alone."""
     audit = ActionAuditObservation(**observation)
-    return store.complete_action_audits(manifest, audit, _connection=_connection)[0]
+    return store.complete_action_audit(manifest, audit, _connection=_connection)[0]

@@ -350,10 +350,10 @@ class CurrentUniverseMaintenance:
                                 self._publish_running(current_item=listing.symbol)
                         with span("write", "listing_maintenance"):
                             results = self._apply_listings(ready, observed_at=now)
-                        for (_item, listing, *_rest), result in zip(ready, results, strict=True):
+                        for result in results:
                             if result.startswith("DEFERRED:"):
                                 systemic_failure = systemic_failure or result.partition(":")[2]
-                            self._publish_running(current_item=listing.symbol)
+                        self._publish_applied(ready, results)
                         if pending and not any(f.done() for f in pending):
                             retained.close()
                             held = False
@@ -652,7 +652,7 @@ class CurrentUniverseMaintenance:
                 try:
                     with span("verify", "listing_action_audit"):
                         audited = self._mutate(
-                            self.store.complete_action_audits,
+                            self.store.complete_action_audit,
                             self.manifest,
                             observation,
                             _connection=connection,
@@ -706,7 +706,7 @@ class CurrentUniverseMaintenance:
                 results[index] = str(stop.value)
         with span("verify", "listing_action_audit"):
             audited = self._mutate(
-                self.store.complete_action_audits,
+                self.store.complete_action_audit,
                 self.manifest,
                 *observations.values(),
                 _connection=connection,
@@ -1008,7 +1008,7 @@ class CurrentUniverseMaintenance:
                     for key in set(write_counts) | set(full_counts)
                 }
                 receipt, audit_counts = self._mutate(
-                    self.store.complete_action_audits,
+                    self.store.complete_action_audit,
                     self.manifest,
                     ActionAuditObservation(
                         listing_id=item.listing_id,
@@ -1387,6 +1387,29 @@ class CurrentUniverseMaintenance:
             ),
             current_item=current_item,
         )
+
+    def _publish_applied(self, ready: list[_Ready], results: list[str]) -> None:
+        """Each applied listing's progress in turn, from one count read after its batch."""
+        if self.progress_sink is None:
+            return
+        listings, updated, failed = self.store.current_universe_maintenance_counts(
+            self.maintenance_id
+        )
+        # The batch committed at once: each listing's tick leaves out the results after it.
+        later_updated, later_failed = results.count("UPDATED"), results.count("FAILED")
+        for (_item, listing, *_rest), result in zip(ready, results, strict=True):
+            later_updated -= result == "UPDATED"
+            later_failed -= result == "FAILED"
+            self._publish_progress(
+                CurrentUniverseMaintenanceOutcome(
+                    maintenance_id=self.maintenance_id,
+                    status=CurrentUniverseMaintenanceStatus.RUNNING,
+                    listings=listings,
+                    updated=updated - later_updated,
+                    failed=failed - later_failed,
+                ),
+                current_item=listing.symbol,
+            )
 
     def _publish_progress(
         self,

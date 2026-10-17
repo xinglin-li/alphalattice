@@ -5303,7 +5303,7 @@ class MarketDataRepository(WorkspaceRepository):
             connection.close()
         return frozenset(str(row[0]) for row in rows if bool(row[1]))
 
-    def complete_action_audits(
+    def complete_action_audit(
         self,
         manifest: UniverseManifest,
         *observations: ActionAuditObservation,

@@ -992,13 +992,13 @@ def test_a_batch_audit_writes_what_each_listing_writes_alone(audit_source, tmp_p
             connection.close()
 
     batch, alone, refused = store("batch"), store("alone"), store("refused")
-    together = batch.complete_action_audits(manifest, *(observed(batch, item) for item in listings))
-    singly = [alone.complete_action_audits(manifest, observed(alone, item))[0] for item in listings]
+    together = batch.complete_action_audit(manifest, *(observed(batch, item) for item in listings))
+    singly = [alone.complete_action_audit(manifest, observed(alone, item))[0] for item in listings]
     assert together == tuple(singly)
     assert tables(batch) == tables(alone)
     before = tables(refused)
     with pytest.raises(ActionAuditScopeInsufficient):
-        refused.complete_action_audits(
+        refused.complete_action_audit(
             manifest, observed(refused, listings[0]), observed(refused, listings[1], drop=1)
         )
     assert tables(refused) == before

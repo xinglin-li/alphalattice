@@ -2864,7 +2864,7 @@ def test_rolling_action_ambiguity_uses_one_full_history_hydration(
                 ),
             )
 
-    original_audit = market_data.complete_action_audits
+    original_audit = market_data.complete_action_audit
     audits: list[date] = []
 
     def ambiguous_when_rolling(manifest, *observations, **kwargs):
@@ -2873,7 +2873,7 @@ def test_rolling_action_ambiguity_uses_one_full_history_hydration(
             raise ActionAuditScopeInsufficient("rolling session-set ambiguity")
         return original_audit(manifest, *observations, **kwargs)
 
-    monkeypatch.setattr(market_data, "complete_action_audits", ambiguous_when_rolling)
+    monkeypatch.setattr(market_data, "complete_action_audit", ambiguous_when_rolling)
     provider = RecordingProvider()
     outcome = CurrentUniverseMaintenance(
         store=market_data,
@@ -2956,7 +2956,7 @@ def test_rolling_ambiguity_never_expands_to_full_history_without_authorization(
 
     monkeypatch.setattr(
         market_data,
-        "complete_action_audits",
+        "complete_action_audit",
         lambda *args, **kwargs: (_ for _ in ()).throw(ActionAuditScopeInsufficient("ambiguous")),
     )
     provider = RecordingProvider()
