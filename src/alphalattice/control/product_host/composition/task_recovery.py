@@ -344,10 +344,14 @@ def _owner_words(code: str) -> str | None:
     RR5's book read the bare code).
     """
     worded = (
-        (refusal_words(code).get("detail") if code.startswith(("data.", "feature.")) else None)
+        (
+            refusal_words(code, for_stop=True).get("detail")
+            if code.startswith(("data.", "feature."))
+            else None
+        )
         or explain(code).get("detail")
         or maintenance_words(code)
-        or refusal_words(code).get("detail")
+        or refusal_words(code, for_stop=True).get("detail")
     )
     return worded if isinstance(worded, str) and worded else None
 

@@ -373,7 +373,7 @@ NETWORK_ACCESS_REFUSALS: Final = frozenset(
 
 
 def refusal_words(
-    code: str, *, workspace: Path | None = None, now: datetime | None = None
+    code: str, *, workspace: Path | None = None, now: datetime | None = None, for_stop: bool = False
 ) -> dict[str, Any]:
     """A refusal code's words and next action, where the table words it (OP4, V449).
 
@@ -381,6 +381,7 @@ def refusal_words(
         code: The refusal's code; what follows its first colon fills the words' `{subject}`.
         workspace: The actual control for network advice; absent context offers a read only.
         now: The Host's clock, on which a workspace's control is read.
+        for_stop: Select an owner's bounded stop wording, where declared.
 
     Returns:
         Its ``detail`` and ``next_action``; empty for a code the table does not word.
@@ -390,7 +391,9 @@ def refusal_words(
     if found is None:
         return {}
     words: dict[str, Any] = {
-        "detail": found["detail"].replace("{subject}", subject),
+        "detail": (
+            found.get("stop_detail", found["detail"]) if for_stop else found["detail"]
+        ).replace("{subject}", subject),
         "next_action": found["next_action"],
     }
     if base == "task_control.queue_full":

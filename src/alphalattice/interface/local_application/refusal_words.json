@@ -168,6 +168,7 @@
   "next_action": "CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN"
  },
  "alternative_evidence.book_sources_short": {
+  "stop_detail": "This book cannot be reviewed under the installed sources: every unit lacks enough issuers with documents for the installed package's floor. `coverage.units_short_of_sources` names the missing issuers. With the person's consent, official SEC acquisition reads every holding's filing index at one cutoff. One package covers one unit; units prepared under different packages cannot be reviewed together (`source_ways`).",
   "detail": "This book cannot be reviewed under the installed sources: none of its units holds a source document for enough of its issuers for the floor the installed Evidence package sets, so a preparation would fail every one, as `coverage.units_short_of_sources` names with the issuers without a source. It can be reviewed after the person consents to official SEC acquisition, which reads every holding's filing index at one cutoff; a package covers one unit, and units prepared under different packages cannot be reviewed together (`source_ways`).",
   "next_action": "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE"
  },
@@ -332,10 +333,12 @@
   "next_action": "PREFLIGHT_AND_GIVE_EXPLICIT_SEC_CONSENT"
  },
  "evidence_review.materialization_has_no_admitted_documents": {
+  "stop_detail": "None of the package's issuers holds a document at its cutoff; a package needs at least one. An empty filing index in the window means none to hold. A stopped install offers the next eight holdings by weight as `install`. Otherwise follow `next_commands`: if an official fetch failed, retry and check the same acquisition at that cutoff; otherwise run the setup's check. Details:{subject}",
   "detail": "None of the package's issuers holds a document at its cutoff, so there is nothing to install: {subject}. An issuer whose filing index at the cutoff shows nothing filed in the window has none to hold, and a package needs at least one document. A stopped install offers the next eight holdings by weight ready as `install`; `next_commands` holds the way on otherwise: after an official acquisition in which one failed, the same acquisition at that cutoff, which may obtain it, and its check; otherwise the setup's own check.",
   "next_action": "ACQUIRE_AGAIN_AT_THE_CUTOFF_OR_NAME_ISSUERS_THAT_FILED"
  },
  "evidence_review.materialization_issuer_coverage_incomplete": {
+  "stop_detail": "Too few issuers hold documents at the cutoff for the package's floor. Empty filing indexes are excluded from the share; failed or unread acquisitions count against it. Follow `next_commands`: for official sources, retry the same acquisition at that cutoff and check it; quiet issuers remain excluded. For recorded imports, run the import's check. The package's floor is unchanged. Details:{subject}",
   "detail": "Too few of the package's issuers hold a document at its cutoff for its coverage floor: {subject}. An issuer whose filing index at the cutoff shows nothing filed in the window holds nothing to count and is left out of the share; one whose acquisition failed or left its filings unread counts against it. `next_commands` holds the way on: after an official acquisition, the same acquisition at that one cutoff, which fetches again what failed and leaves the quiet ones uncounted, and its check; after a recorded import, the import's own check. The floor stays the package's.",
   "next_action": "RUN_THE_OFFERED_WAY_AT_ONE_CUTOFF"
  },
@@ -1612,6 +1615,7 @@
   "next_action": "SEND_THE_OFFERED_SELECTOR"
  },
  "committee.message_refused": {
+  "stop_detail": "Committee rules: ROLE/MEMBER/KEY, own role/session/key; STANCES/DEBATE/CLOSED/LATE, stage or time; ENDED, changed work after end; STANCE_IN, one stance; CAP, three challenges/replies; TARGET/REPLY_TO, valid alias/message; SHAPE, permitted fields; NUMBER, aliases only; AGENDA, raise one below-line point per PM reply first. Read `alphalattice committee show`, then correct the message and replace typed figures with floor aliases. Rule:{subject}",
   "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; LATE, a specialist's stance after its window or its turn after the discussion window; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias; AGENDA, an unraised below-line point or more than one point raised by a PM reply. For review and committee members: MEMBER, a missing own session or bundle key; KEY, another member's key; ENDED, changed work after the thread ends. Read the floor with `alphalattice committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
   "next_action": "READ_THE_FLOOR"
  },
