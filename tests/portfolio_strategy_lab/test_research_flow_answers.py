@@ -842,6 +842,8 @@ def test_a_named_date_is_never_answered_with_another_dates_plan():
         ("2026-02-30", "research_update.date_invalid"),
     ):
         assert ask(positions_date=date_asked)["failure_code"] == code
+    far = ask(positions_date="2010-01-04")["failure_code"]  # its history precedes the calendars
+    assert far.startswith("research_update.date_before_history:") and far[-10:] > "2016", far
     both = ask(positions_date="2026-09-10", observed_through="2026-09-09")
     assert both["next_requests"]["plan"] == {
         "operation": "RESEARCH_UPDATE_PLAN",

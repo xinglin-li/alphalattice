@@ -76,12 +76,16 @@ class RecordingProvider(SeededWalkProvider):
 
 
 def recording_provider(
-    *, now: datetime = NOW, symbols: Sequence[str] = SYMBOLS, sector_size: int = 5
+    *,
+    now: datetime = NOW,
+    symbols: Sequence[str] = SYMBOLS,
+    sector_size: int = 5,
+    start: date = HISTORY_START,
 ) -> RecordingProvider:
-    """A provider serving ``symbols`` on the XNAS calendar through ``now``."""
+    """A provider serving ``symbols`` on the XNAS calendar from ``start`` through ``now``."""
 
     schedule = materialize_calendar_schedule(
-        ("XNAS",), start=HISTORY_START, end=now.date(), as_of_timestamp=now
+        ("XNAS",), start=start, end=now.date(), as_of_timestamp=now
     )
     return RecordingProvider(
         tuple(symbols),

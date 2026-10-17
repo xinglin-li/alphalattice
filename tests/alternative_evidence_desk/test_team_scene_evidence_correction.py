@@ -604,7 +604,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
     )
     assert unrouted(analyst) == {k: v.rstrip() for k, v in view.files}
     readme = files_of(analyst)["README.md"]
-    assert "`findings`: at most three an issuer and 32 in one answer" in readme
+    assert "reads three an issuer" in readme and "32 in one answer" in readme
     full = _CitingActor(topics=topics)(packet=packet).answer.model_dump(mode="json")
     subset = {**full, "findings": full["findings"][:2]}
     assert len(subset["findings"]) == 2

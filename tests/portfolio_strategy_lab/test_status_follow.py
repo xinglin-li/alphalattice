@@ -1491,6 +1491,8 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     ("named", "read"),
     [
         ("2026-09-07", "first_use.date_not_session"),
+        ("2025-01-01", "first_use.date_not_session"),  # a far-past first use (FAR-PAST)
+        ("2010-01-04", "first_use.date_before_history"),  # its history precedes the calendars
         ("2026-10-09", (True, "2026-10-09", "2026-10-08")),
         ("2026-13-01", "local_client.first_use_date_invalid"),
         ("0001-01-01", "local_client.first_use_date_outside_calendar"),
@@ -1508,10 +1510,13 @@ def test_a_first_use_reads_the_named_date_by_the_exchange_calendars(
         assert answer["failure_code"] == read and answer["detail"], answer
         assert all(d["operation"] == "GOAL_OPEN" for d in host.sent)
         assert host.goals.first_use() is None
+        nearest = {"2026-09-07": "2026-09-08", "2025-01-01": "2025-01-02"}.get(named)
         if read == "first_use.date_not_session":
-            assert answer["target_date"] == named and answer["nearest_date"] == "2026-09-08"
-            assert "2026-09-08" in answer["next_command"]
+            assert answer["target_date"] == named and answer["nearest_date"] == nearest
+            assert nearest in answer["next_command"]
             assert "Positions for Monday." in answer["next_command"]
+        if read == "first_use.date_before_history":  # the calendars' floor plus ten years
+            assert answer["nearest_date"] > "2016" and answer["nearest_date"] in answer["detail"]
         return
     date_ = answer["first_use"]["date"]
     assert (date_["named_is_session"], date_["entry_session"], date_["formation_session"]) == read

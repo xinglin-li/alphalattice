@@ -85,7 +85,7 @@ const LiveActivation = (() => {
     if (!r) return '';
     if (r.status !== 'REVIEWED') return hint(t(r.status === 'NOT_REVIEWED' ? 'Not reviewed' : 'Not available'), t(r.detail || ''));
     const prepared = r.coverage?.prepared || {};
-    const words = [t(r.detail || ''), r.evidence_as_of ? t('Evidence as of {date}.', {date: String(r.evidence_as_of).slice(0, 10)}) : '',
+    const words = [t(r.detail || ''), r.evidence_as_of ? t('Evidence as of {date}.', {date: String(r.evidence_as_of).slice(0, 10)}) : '', ...(r.cutoff_words || []).map((said) => t(said)),
       Number.isFinite(prepared.packets) ? t('{a} of {n} analysis-linked packets carry a preparation receipt.', {a: count(prepared.with_preparation_receipt ?? 0), n: count(prepared.packets)}) : '',
       prepared.detail ? t(prepared.detail) : ''].filter(Boolean).join(' ');
     return hint(html`${t('Reviewed {date}', {date: String(r.published_at || '').slice(0, 10)})}${r.cro?.route ? html` · ${codeWords(r.cro.route)}` : ''}`, words);

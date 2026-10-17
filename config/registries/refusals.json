@@ -5862,6 +5862,9 @@
 "first_use.date_after_clock": {
 "owner": "first_use"
 },
+"first_use.date_before_history": {
+"owner": "first_use"
+},
 "first_use.date_not_session": {
 "owner": "first_use"
 },
@@ -11104,6 +11107,9 @@
 "owner": "research_update"
 },
 "research_update.date_after_clock": {
+"owner": "research_update"
+},
+"research_update.date_before_history": {
 "owner": "research_update"
 },
 "research_update.date_not_session": {

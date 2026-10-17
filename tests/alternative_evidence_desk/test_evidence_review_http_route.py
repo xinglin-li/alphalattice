@@ -749,6 +749,49 @@ def test_a_dropped_analyst_item_reaches_the_review_as_a_gap(service):
     assert bundle.index(line) < bundle.index(dossier.coverage.missing_evidence[1])
 
 
+def test_findings_past_three_an_issuer_are_counted_in_the_receipt_and_the_cros_bundle(service):
+    """The Host reads three findings an issuer; the rest are left out by count, never silently."""
+    from alphalattice.control.product_host.composition.evidence_review_application import (
+        agent_answer_result,
+    )
+    from alphalattice.interface.local_application.client import LocalResearchClient
+    from alphalattice.oversight.chief_risk_officer.decision.views import render_review_bundle
+    from tests.alternative_evidence_desk.planted_corpus import _CitingActor
+
+    adapter = service.review.evidence_task_adapter
+    topics = adapter.resources.analysis_actor.topics
+    adapter.resources = replace(adapter.resources, analysis_actor=None)
+    service.review.model_authority_admitted = False
+    service.review.review_actor = None
+    client = LocalResearchClient(service.session.workspace)
+    selected = {"result_hash": service.result_hash()}
+    preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
+    prepared = client.request(preview["next_requests"]["prepare"])
+    service.drain()
+    exported = client.request(_packet(service.evidence_cro()))
+    source = UUID(prepared["task_id"])
+    packet = adapter.prepared_packet(source, now=service.review.clock(), unit_id=ONE_UNIT)
+    answer = _CitingActor(topics=topics)(packet=packet).answer.model_dump(mode="json")
+    first = answer["findings"][0]
+    same = [f for f in answer["findings"] if f["issuer"] == first["issuer"]]
+    extra = [{**first, "summary": f"Another {n}."} for n in range(4 - len(same) + 1)]
+    written = {**answer, "findings": [*answer["findings"], *extra]}
+    left = len(same) + len(extra) - 3
+    document = {**exported["submission_template"], "analysis_answer": written}
+    done = client.request(document)
+    assert done["answer"]["verdict"] == "ACCEPTED", done
+    receipt = agent_answer_result("ANALYST", done)["receipt"]
+    assert done["answer"]["left_out"] == receipt["left_out"] == {first["issuer"]: left}
+    service.drain()
+    view = adapter.published_analysis(UUID(done["task_id"]), now=service.review.clock())
+    assert len(view.lineage.brief.findings) == len(written["findings"]) - left
+    line = next(v for v in view.lineage.cro_package.missing_evidence if first["issuer"] in v)
+    assert line.startswith("The Analyst's answer left out ") and f"{left} finding" in line
+    dossier = service.review._resolve_review_dossier(service.review._review_selector(None))
+    files = render_review_bundle(dossier, task_procedure="").files
+    assert line in "\n".join(text for _name, text in files)
+
+
 def test_external_review_expiry_before_publication_keeps_the_assessment_but_not_a_publication(
     service, monkeypatch
 ):

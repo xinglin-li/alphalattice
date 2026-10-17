@@ -718,6 +718,13 @@
         "type": "array"
       }
     },
+    "answer:COMMITTEE_READ.next_action": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
     "answer:COMMITTEE_READ.next_requests": {
       "required": true,
       "schema": {
@@ -9571,6 +9578,13 @@
       "required": true,
       "schema": {
         "type": "string"
+      }
+    },
+    "answer:GOAL_SCHEMA.grammar": {
+      "required": true,
+      "schema": {
+        "additionalProperties": true,
+        "type": "object"
       }
     },
     "answer:GOAL_SCHEMA.read_request": {
@@ -44442,6 +44456,7 @@
     "refusal:activity.storage_unavailable": {},
     "refusal:activity.watch_invalid": {},
     "refusal:actor_execution.answer_record_slot_invalid": {},
+    "refusal:actor_execution.encoding_damaged": {},
     "refusal:actor_execution.specialist_answer_problems": {},
     "refusal:actor_execution.specialist_reference_invalid": {},
     "refusal:actor_execution.specialist_text_empty": {},
@@ -46401,6 +46416,7 @@
     "refusal:feature_trial.study_factor_not_in_prepared_input": {},
     "refusal:feature_trial.study_not_from_factor_evidence": {},
     "refusal:first_use.date_after_clock": {},
+    "refusal:first_use.date_before_history": {},
     "refusal:first_use.date_not_session": {},
     "refusal:first_use.date_outside_calendar": {},
     "refusal:frozen_portfolio.alpha_input_mismatch": {},
@@ -48138,6 +48154,7 @@
     "refusal:research_update.component_binding_axis_invalid": {},
     "refusal:research_update.date_after_clock": {},
     "refusal:research_update.date_and_through": {},
+    "refusal:research_update.date_before_history": {},
     "refusal:research_update.date_before_update": {},
     "refusal:research_update.date_behind_update": {},
     "refusal:research_update.date_invalid": {},

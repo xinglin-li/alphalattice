@@ -297,6 +297,8 @@ def target_sessions(
         if clock_date is not None and point.formation_session > clock_date:
             code = "first_use.date_after_clock"
             nearest = target_sessions(clock_date + timedelta(days=1), now)["entry_session"]
+        elif (earliest := _earliest_entry(point.formation_session)) is not None:
+            code, nearest = "first_use.date_before_history", earliest
         elif point.entry_session != named:
             code, nearest = "first_use.date_not_session", point.entry_session.isoformat()
         if code is not None:
@@ -307,6 +309,28 @@ def target_sessions(
                 nearest_date=nearest,
             )
     return reading
+
+
+def _earliest_entry(formation: date) -> str | None:
+    """The first entry whose formation's ten-year history the calendars plan, when this
+    formation's history would start before their first session; else nothing."""
+    from importlib import import_module
+
+    from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
+        _ten_calendar_year_anniversary as history_start,
+    )
+    from alphalattice.kernel.data.calendar import SUPPORTED_CALENDARS
+
+    get_calendar = import_module("exchange_calendars").get_calendar  # their first sessions
+    floor = max(get_calendar(c).first_session.date() for c in SUPPORTED_CALENDARS)
+    if history_start(formation) >= floor:
+        return None
+    named = date(floor.year + 10, floor.month, min(floor.day, 28))
+    while True:
+        reading = target_sessions(named)
+        if history_start(date.fromisoformat(str(reading["formation_session"]))) >= floor:
+            return str(reading["entry_session"])
+        named += timedelta(days=1)
 
 
 class GoalReferenceRequest(GoalContract):

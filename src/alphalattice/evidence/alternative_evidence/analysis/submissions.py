@@ -9,6 +9,7 @@ the brief's texts from delivery facts and seals it.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Self
@@ -59,7 +60,7 @@ from .contracts import (
     IssuerCheckOutcome,
     IssuerReviewState,
 )
-from .packet import span_aliases
+from .packet import AlternativeEvidencePacket, span_aliases
 
 
 class AlternativeEvidenceBriefAuthorityError(ValueError):
@@ -220,6 +221,9 @@ def build_alternative_evidence_decision_policy_binding(
 MAXIMUM_ANSWER_FINDINGS = 32
 """The findings one answer holds, as the answer model bounds them."""
 
+MAXIMUM_ISSUER_FINDINGS = 3
+"""The findings the Host reads for one issuer, in the answer's order, the most material first."""
+
 MAXIMUM_SUBMISSION_BYTES = 64 * 1024
 """The whole serialized brief submission. Every field is bounded on its own;
 this bounds their sum, so a submission is one delivery the consumer can hold."""
@@ -323,6 +327,63 @@ def screen_analyst_answer(
         check_item=check,
         text_fields=ANALYST_ANSWER_TEXT_FIELDS,
     )
+
+
+def issuer_cap(
+    screened: ScreenedAnswer[AlternativeEvidenceAnswerFinding], *, entity_ids: Sequence[str]
+) -> tuple[
+    ScreenedAnswer[AlternativeEvidenceAnswerFinding], tuple[AnswerProblem, ...], dict[str, int]
+]:
+    """Read the first three acceptable findings an issuer and count the rest, never silently.
+
+    Returns:
+        The screen with only the findings read, one problem an issuer naming what was left
+        out, and the count left out by issuer.
+    """
+    issuers = {value.casefold(): value for value in entity_ids}
+    kept: list[tuple[int, AlternativeEvidenceAnswerFinding]] = []
+    read: dict[str, int] = {}
+    left: dict[str, list[int]] = {}
+    for number, item in screened.items:
+        issuer = issuers[item.issuer.strip().casefold()]
+        if read.get(issuer, 0) < MAXIMUM_ISSUER_FINDINGS:
+            read[issuer] = read.get(issuer, 0) + 1
+            kept.append((number, item))
+        else:
+            left.setdefault(issuer, []).append(number)
+    problems = tuple(
+        AnswerProblem(
+            text=f"{issuer}: {len(numbers)} finding(s) past the {MAXIMUM_ISSUER_FINDINGS} an "
+            f"issuer the Host reads (item(s) {', '.join(map(str, numbers))})."
+        )
+        for issuer, numbers in left.items()
+    )
+    counts = {issuer: len(numbers) for issuer, numbers in left.items()}
+    return replace(screened, items=tuple(kept)), problems, counts
+
+
+def screened_analysis(
+    answer: object, packet: AlternativeEvidencePacket
+) -> tuple[
+    ScreenedAnswer[AlternativeEvidenceAnswerFinding], tuple[AnswerProblem, ...], dict[str, int]
+]:
+    """An Analyst's answer screened against the packet it answers, then capped (`issuer_cap`)."""
+    entity_ids = packet.request.ordered_entity_ids
+    aliases = span_aliases(packet.spans, entity_ids)
+    screened = screen_analyst_answer(answer, entity_ids=entity_ids, aliases=aliases)
+    return issuer_cap(screened, entity_ids=entity_ids)
+
+
+def left_out_words(answer: Mapping[str, object]) -> tuple[str, dict[str, object]]:
+    """What a receipt says of the findings past three an issuer: its words and its field."""
+    left = answer.get("left_out")
+    if not isinstance(left, dict) or not left:
+        return "", {}
+    words = (
+        f"It read three findings an issuer and left out {sum(left.values())}, counted by issuer "
+        "under 'left_out'; the CRO's bundle names them. "
+    )
+    return words, {"left_out": left}
 
 
 def accepted_analyst_answer(
@@ -569,7 +630,10 @@ __all__ = [
     "analysis_completion",
     "build_alternative_analysis_policy_binding",
     "build_alternative_evidence_decision_policy_binding",
+    "issuer_cap",
+    "left_out_words",
     "normalize_analyst_answer",
     "screen_analyst_answer",
+    "screened_analysis",
     "seal_alternative_evidence_analyst_brief",
 ]

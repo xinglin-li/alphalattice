@@ -671,6 +671,7 @@ def review_now(readback: Mapping[str, Any]) -> str:
             + (f", published {when(published)}" if published else "")
             + (f"; CRO route {status_word(route)}" if route else "")
             + "."
+            + "".join(f" {said}" for said in standing.get("cutoff_words") or ())
         )
     sealed = status_word(readback["publication"].get("cro_status"))
     return f"Review of this proposal at publication: {sealed}."

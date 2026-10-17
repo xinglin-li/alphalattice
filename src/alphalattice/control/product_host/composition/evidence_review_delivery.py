@@ -74,6 +74,7 @@ from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import 
 from alphalattice.oversight.chief_risk_officer.decision.views import (
     REVIEW_STATE_WORDS,
     coverage_words,
+    review_cutoff_words,
 )
 from alphalattice.oversight.chief_risk_officer.publication.portfolio_review import (
     PortfolioReviewView,
@@ -786,7 +787,7 @@ class EvidenceReviewDelivery:
             "claim": "EXTERNAL_ASSESSMENT_IS_NOT_A_ROUTE_OR_PROTECTED_VALIDATION",
             # The coverage in words beside its numbers: a quiet holding was checked and had
             # nothing to read; only the unreached share is unread (FLOW-3).
-            "coverage_words": list(coverage_words(dossier.coverage)),
+            "coverage_words": [*coverage_words(dossier.coverage), *review_cutoff_words(dossier)],
             "review_state_words": REVIEW_STATE_WORDS,
             "external_host_usage": "UNAVAILABLE",
             # Beside the sealed dossier, never inside it: its hash and every
@@ -946,6 +947,7 @@ class EvidenceReviewDelivery:
             "review_publication_hash": view.publication.publication_hash,
             "published_at": view.publication.published_at.isoformat(),
             "evidence_as_of": dossier.evidence_as_of.isoformat(),
+            "cutoff_words": list(review_cutoff_words(dossier)),
             "evidence_expires_at": dossier.evidence_expires_at.isoformat(),
             "under_installed_policy": view.under_installed_policy,
             "coverage": {

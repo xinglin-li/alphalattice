@@ -1536,6 +1536,10 @@
 "class": "LIMIT",
 "count": 1
 },
+"src/alphalattice/evidence/alternative_evidence/analysis/submissions.py::MAXIMUM_ISSUER_FINDINGS::3": {
+"class": "METHOD",
+"count": 1
+},
 "src/alphalattice/evidence/alternative_evidence/analysis/submissions.py::MAXIMUM_SUBMISSION_BYTES::1024": {
 "class": "LIMIT",
 "count": 1

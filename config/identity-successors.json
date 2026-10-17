@@ -12566,6 +12566,27 @@
    "successor": "21570889465cc56ffe18cbb5d578cf54a1b685e136396722c90442d61c323733",
    "change": "kept history review fixes",
    "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "1e0a84f859aade29d3415002c27a851bfa63034cda358c4653261d80c036d301",
+   "successor": "3147420b8694e89ae0fc9fe60cf28eac07f83320832d8b97bdaebef3ac863242",
+   "change": "issue 9: the Host reads three findings an issuer and counts the rest",
+   "reason": "Lead-signed 2026-10-17: the Host now enforces the three-findings-per-issuer intake cap the Analyst README already stated, and counts what it leaves out, per issuer, in the analysis, the CRO bundle and the receipt; the publication change is the whole-answer drop's words only. Retrieval and canonicalization bindings and packets are unchanged. Earlier sealed analyses and publications keep their recorded policy and meaning, with no re-analysis on upgrade."
+  },
+  {
+   "role": "alternative_evidence.decision_policy",
+   "predecessor": "fd1161bf40ca1077ad8d9a5a1a18f7ec2990d7ed5cb60b6a9ccad3e8fef4993c",
+   "successor": "b6c20ccd60d75b42f42654664264f599c60062dadd60f0b196e641ebc211916b",
+   "change": "issue 9: the Host reads three findings an issuer and counts the rest",
+   "reason": "Lead-signed 2026-10-17: the Host now enforces the three-findings-per-issuer intake cap the Analyst README already stated, and counts what it leaves out, per issuer, in the analysis, the CRO bundle and the receipt; the publication change is the whole-answer drop's words only. Retrieval and canonicalization bindings and packets are unchanged. Earlier sealed analyses and publications keep their recorded policy and meaning, with no re-analysis on upgrade."
+  },
+  {
+   "role": "alternative_evidence.publication_binding",
+   "predecessor": "906d733cbae3d8904964959d1ebd72f8182f0d316f8e54aa19d69e28f575742a",
+   "successor": "d0095e24a209736d3c762e40e676b1f32469e2daba5e834bfb93f5710e8591a5",
+   "change": "issue 9: the Host reads three findings an issuer and counts the rest",
+   "reason": "Lead-signed 2026-10-17: the Host now enforces the three-findings-per-issuer intake cap the Analyst README already stated, and counts what it leaves out, per issuer, in the analysis, the CRO bundle and the receipt; the publication change is the whole-answer drop's words only. Retrieval and canonicalization bindings and packets are unchanged. Earlier sealed analyses and publications keep their recorded policy and meaning, with no re-analysis on upgrade."
   }
  ]
 }

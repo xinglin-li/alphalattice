@@ -7,7 +7,7 @@ it is not another model fit or a claim about the admitted research corpus.
 """
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
@@ -329,6 +329,16 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     published = service.get(evidence_url)
     assert published["state"] == "REVIEW_PUBLISHED", published
     assert published["review_publication_hash"]
+    # regression (FAR-PAST-FIRST-USE B): Evidence read after the positions' formation is named
+    # where the review is read; on the formation's own session nothing is said.
+    from alphalattice.oversight.chief_risk_officer.decision.views import cutoff_words
+
+    standing = service.get(update_url)["review_standing"]
+    formation = c.value.pending_proposal.schedule.formation_session.isoformat()
+    said = cutoff_words(datetime.fromisoformat(standing["evidence_as_of"]), formation)
+    assert said and standing["cutoff_words"] == list(said), standing
+    close = c.value.pending_proposal.schedule.formation_close_at
+    assert cutoff_words(close + timedelta(hours=2), formation) == ()
     # No committee opens on this kind of update, so neither the page's read nor an agent's
     # offers one: COMMITTEE_OPEN would refuse it.
     read = Request.model_validate({"operation": "EVIDENCE_CRO", **c.selector})

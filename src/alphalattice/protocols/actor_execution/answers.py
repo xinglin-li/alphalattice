@@ -301,6 +301,61 @@ def screen_answer[ItemT: BaseModel](
     return ScreenedAnswer(items=tuple(accepted), texts=texts, problems=tuple(problems))
 
 
+def answer_view(
+    record: AgentAnswerRecord,
+    delivery: dict[str, object] | None = None,
+    *,
+    record_filed: bool = True,
+    left_out: Mapping[str, int] | None = None,
+) -> dict[str, object]:
+    """Return what the agent that answered reads back, in plain words.
+
+    Args:
+        record: The answer as the Host recorded it.
+        delivery: The accepted answer's delivery, when one was filed.
+        record_filed: Whether the record itself was filed and may be named.
+        left_out: The findings past an issuer's cap, counted by issuer.
+
+    Returns:
+        The verdict, the answer's number, the corrections left, the items and what was left out.
+    """
+    problems = [value.model_dump(mode="json") for value in record.problems]
+    # After a correction the Host reads this many more answers to the bundle;
+    # after the last it keeps the acceptable part.
+    rounds_left = (
+        ANSWER_CORRECTION_BOUND - record.corrections_used + 1
+        if record.verdict is AnswerVerdict.CORRECT
+        else 0
+    )
+    view: dict[str, object] = {
+        "verdict": str(record.verdict),
+        "number": record.number,
+        "rounds_left": rounds_left,
+        "accepted_items": list(record.accepted_items),
+    }
+    stored = delivery.get("answer_record") if delivery is not None else None
+    if isinstance(stored, dict):
+        view["answer_reference"] = stored["record_hash"]
+        if stored.get("agent_run") is not None:
+            view["recorded_agent"] = stored["agent_run"]
+    elif record_filed:
+        view["answer_reference"] = record.record_hash
+        if record.agent_run is not None:
+            view["recorded_agent"] = record.agent_run.model_dump(mode="json")
+    if record.verdict is AnswerVerdict.CORRECT:
+        view["problems"] = problems
+        view["message"] = correction_text(
+            record.problems, accepted=record.accepted_items, rounds_left=rounds_left
+        )
+    elif record.verdict is AnswerVerdict.DONE:
+        view["dropped"] = problems
+    if left_out:
+        view["left_out"] = dict(left_out)
+    if delivery is not None:
+        view["accepted_delivery"] = delivery
+    return view
+
+
 def correction_text(
     problems: tuple[AnswerProblem, ...],
     *,

@@ -118,6 +118,23 @@ def test_every_cro_coverage_preview_retains_its_complete_list(
         assert location_words not in index
 
 
+def test_an_excerpt_cut_inside_a_sentence_is_marked_where_it_is_cut(tmp_path: Path) -> None:
+    """An excerpt that starts or stops inside a sentence shows the cut; a whole one does not."""
+    packet = _packet(tmp_path)
+    base = packet.spans[0]
+    texts = ("The term is defined. It holds.", "which the Company calls the Adjusted Net")
+    spans = tuple(
+        base.model_copy(update={"span_handle": f"SPAN-CUT-{n}", "excerpt": text})
+        for n, text in enumerate(texts)
+    )
+    bundle = render_analyst_bundle(replace(packet, spans=spans), task_procedure="")
+    material = " ".join(
+        " ".join(text for name, text in bundle.files if name != "README.md").split()
+    )
+    assert "It holds. [" not in material
+    assert "[…] which" in material and "Adjusted Net […]" in material
+
+
 @pytest.mark.parametrize("extra", [0, 1], ids=["at-bound", "one-over"])
 def test_an_analyst_preview_names_omitted_differences_and_retains_the_full_excerpt(
     tmp_path: Path, extra: int

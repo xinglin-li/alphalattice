@@ -1570,6 +1570,10 @@
   "detail": "target_date is not a common XNYS/XNAS trading session. The nearest entry on or after it is {subject}; confirm that date with the person, then send the offered preparation command. No Goal was opened.",
   "next_action": "PREPARE_THE_NEAREST_SESSION"
  },
+ "first_use.date_before_history": {
+  "detail": "target_date's formation needs ten years of market history before it, which would start before the exchange calendars' first session. The earliest supported entry is {subject}; confirm that date with the person, then send the offered preparation command. No Goal was opened.",
+  "next_action": "PREPARE_THE_NEAREST_SESSION"
+ },
  "first_use.date_after_clock": {
   "detail": "target_date needs information from a formation after the Host's current exchange date. The latest supported entry is {subject}; confirm that date with the person, then send the offered preparation command. No Goal was opened.",
   "next_action": "PREPARE_THE_NEAREST_SESSION"
@@ -1638,6 +1642,10 @@
  "research_update.date_and_through": {
   "detail": "A plan names either the positions' trade date (`--date`) or the close it runs through (`--through`), not both: the trade date's positions are decided at the close before it. Send one of them.",
   "next_action": "CORRECT_THE_REQUEST"
+ },
+ "research_update.date_before_history": {
+  "detail": "The named date's positions need ten years of market history before their formation, which would start before the exchange calendars' first session, so they cannot be planned. The earliest supported trade date is {subject}; confirm that date with the person, then send the offered plan.",
+  "next_action": "PLAN_THE_NEAREST_SESSION"
  },
  "research_update.date_after_clock": {
   "detail": "The named date's positions are decided at a close after the Host's current exchange date, so they cannot be planned yet. The nearest trade date the Host's clock admits is {subject}; its close may still need to settle. Confirm that date with the person, then send the offered plan.",

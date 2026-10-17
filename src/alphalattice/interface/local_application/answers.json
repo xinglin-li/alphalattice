@@ -6630,7 +6630,7 @@
     "name": "review_standing",
     "kind": "object",
     "required": true,
-    "meaning": "The exact book's latest published Evidence/CRO review: date, analysis-linked prepared/analyzed coverage, sealed reviewed coverage and CRO route/state/reasons; NOT_REVIEWED with words when none exists."
+    "meaning": "The exact book's latest published Evidence/CRO review: date, analysis-linked prepared/analyzed coverage, sealed reviewed coverage and CRO route/state/reasons, and `cutoff_words`, naming Evidence read on a session after the positions' formation; NOT_REVIEWED with words when none exists."
    },
    {
     "name": "standing",
@@ -9720,7 +9720,7 @@
     "name": "review_standing",
     "kind": "object",
     "required": false,
-    "meaning": "The later sealed review bound to this exact publication. publication.cro_status records its standing at publication time; next_requests.published_review opens the later review when one exists. If its lineage cannot be read, review_standing is UNREADABLE with detail and failure_code; the sealed positions and original continuation requests remain readable."
+    "meaning": "The later sealed review bound to this exact publication. publication.cro_status records its standing at publication time; next_requests.published_review opens the later review when one exists. Its `cutoff_words` name Evidence read on a session after the positions' formation. If its lineage cannot be read, review_standing is UNREADABLE with detail and failure_code; the sealed positions and original continuation requests remain readable."
    }
   ]
  },
@@ -10008,7 +10008,7 @@
     "name": "review_standing",
     "kind": "object",
     "required": false,
-    "meaning": "The later sealed review bound to this exact publication. publication.cro_status records its standing at publication time; next_requests.published_review opens the later review when one exists. If its lineage cannot be read, review_standing is UNREADABLE with detail and failure_code; the sealed positions and original continuation requests remain readable."
+    "meaning": "The later sealed review bound to this exact publication. publication.cro_status records its standing at publication time; next_requests.published_review opens the later review when one exists. Its `cutoff_words` name Evidence read on a session after the positions' formation. If its lineage cannot be read, review_standing is UNREADABLE with detail and failure_code; the sealed positions and original continuation requests remain readable."
    },
    {
     "name": "next_action",
@@ -11156,7 +11156,7 @@
     "name": "review_standing",
     "kind": "object|null",
     "required": true,
-    "meaning": "The exact book's latest published Evidence/CRO review: date, analysis-linked prepared/analyzed coverage, sealed reviewed coverage and CRO route/state/reasons; NOT_REVIEWED with words when none exists."
+    "meaning": "The exact book's latest published Evidence/CRO review: date, analysis-linked prepared/analyzed coverage, sealed reviewed coverage and CRO route/state/reasons, and `cutoff_words`, naming Evidence read on a session after the positions' formation; NOT_REVIEWED with words when none exists."
    },
    {
     "name": "network_use",

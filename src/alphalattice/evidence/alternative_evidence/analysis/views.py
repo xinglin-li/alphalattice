@@ -268,8 +268,9 @@ def _index(
         ).splitlines(),
         "```",
         "",
-        f"- `findings`: at most three an issuer and {MAXIMUM_ANSWER_FINDINGS} in one answer; "
-        "the Host reads no more.",
+        f"- `findings`: the most material first, up to {MAXIMUM_ANSWER_FINDINGS} in one answer; "
+        "the Host reads three an issuer and counts the rest by issuer in your receipt and the "
+        "CRO's bundle, so list every material item rather than leave one out.",
         f"- `issuer`: one of {', '.join(entity_ids)}.",
         f"- `topic`: one of {', '.join(value.value for value in EvidenceTopic)}.",
         f"- `direction`: {', '.join(value.value for value in EvidenceDirection)} (at the "
@@ -277,7 +278,8 @@ def _index(
         "- `summary`: one or two sentences -- what happened, when, the amount as stated, its "
         "status; at most 1,200 characters.",
         "- `cite`: the aliases of the excerpts that state it, exactly as shown; at least one, "
-        "at most eight, all of that issuer.",
+        "at most eight, all of that issuer. `[…]` marks where an excerpt starts or stops inside "
+        "a sentence: state nothing the cut leaves out.",
         "- `contrary` (optional): aliases of excerpts that argue against it; never the same "
         "alias in both lists.",
         f"- `lifecycle` (optional): {', '.join(value.value for value in EvidenceLifecycle)}.",
@@ -373,6 +375,14 @@ def _common_limitations(spans: Sequence[AlternativeEvidenceResolvedSpan]) -> tup
     return tuple(value for value, count in counts.items() if count * 2 >= len(spans) > 0)
 
 
+def _marked_cuts(excerpt: str) -> str:
+    """The excerpt with ``[…]`` where it starts or stops inside a sentence; the source goes on."""
+    text = excerpt.strip()
+    head = "[…] " if text[:1].islower() else ""
+    tail = "" if re.search(r"[.!?:;][\"')\]]*$", text) else " […]"
+    return head + text + tail
+
+
 def _excerpt_lines(span: AlternativeEvidenceResolvedSpan) -> list[str]:
     """The excerpt verbatim.
 
@@ -380,7 +390,7 @@ def _excerpt_lines(span: AlternativeEvidenceResolvedSpan) -> list[str]:
     a table's rendering keeps its rows, a row over the bound wrapped.
     """
     if span.table_view is None:
-        return wrap_text(span.excerpt)
+        return wrap_text(_marked_cuts(span.excerpt))
     return [
         row
         for line in span.excerpt.splitlines()

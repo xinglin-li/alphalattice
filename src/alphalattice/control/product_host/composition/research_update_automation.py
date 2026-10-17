@@ -604,7 +604,7 @@ def _named_date(
     if not code:
         return reading
     nearest = str(reading["nearest_date"])
-    kind = "date_after_clock" if code == "first_use.date_after_clock" else "date_not_session"
+    kind = code.removeprefix("first_use.")  # its date rule, worded for a plan
     return {
         **refused(f"research_update.{kind}:{nearest}"),
         "next_requests": {"plan": {**offer, "positions_date": nearest}},

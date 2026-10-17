@@ -68,11 +68,11 @@ from alphalattice.evidence.alternative_evidence.analysis.packet import (
     AlternativeEvidencePacket,
     reading_remainders,
     routed_pending_work,
-    span_aliases,
 )
 from alphalattice.evidence.alternative_evidence.analysis.submissions import (
     accepted_analyst_answer,
-    screen_analyst_answer,
+    left_out_words,
+    screened_analysis,
 )
 from alphalattice.evidence.alternative_evidence.contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
@@ -231,7 +231,6 @@ from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task imp
 )
 from alphalattice.protocols.actor_execution import ActorKind, seal_actor_submission
 from alphalattice.protocols.actor_execution.answers import (
-    ANSWER_CORRECTION_BOUND,
     AgentAnswerRecord,
     AgentRun,
     AnswerProblem,
@@ -240,7 +239,7 @@ from alphalattice.protocols.actor_execution.answers import (
     answer_digest,
     answer_slot,
     answer_verdict,
-    correction_text,
+    answer_view,
     screen_specialist_answer,
 )
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
@@ -584,50 +583,6 @@ ANSWER_CATEGORY = "agent-answers"
 BUNDLE_CATEGORY = "agent-bundles"
 
 
-def _answer_view(
-    record: AgentAnswerRecord,
-    delivery: dict[str, object] | None = None,
-    *,
-    record_filed: bool = True,
-) -> dict[str, object]:
-    """What the agent that answered reads back: the verdict, the answer's
-    number, the corrections left and the items -- in plain words."""
-
-    problems = [value.model_dump(mode="json") for value in record.problems]
-    # After a correction the Host reads this many more answers to the bundle;
-    # after the last it keeps the acceptable part.
-    rounds_left = (
-        ANSWER_CORRECTION_BOUND - record.corrections_used + 1
-        if record.verdict is AnswerVerdict.CORRECT
-        else 0
-    )
-    view: dict[str, object] = {
-        "verdict": str(record.verdict),
-        "number": record.number,
-        "rounds_left": rounds_left,
-        "accepted_items": list(record.accepted_items),
-    }
-    stored = delivery.get("answer_record") if delivery is not None else None
-    if isinstance(stored, dict):
-        view["answer_reference"] = stored["record_hash"]
-        if stored.get("agent_run") is not None:
-            view["recorded_agent"] = stored["agent_run"]
-    elif record_filed:
-        view["answer_reference"] = record.record_hash
-        if record.agent_run is not None:
-            view["recorded_agent"] = record.agent_run.model_dump(mode="json")
-    if record.verdict is AnswerVerdict.CORRECT:
-        view["problems"] = problems
-        view["message"] = correction_text(
-            record.problems, accepted=record.accepted_items, rounds_left=rounds_left
-        )
-    elif record.verdict is AnswerVerdict.DONE:
-        view["dropped"] = problems
-    if delivery is not None:
-        view["accepted_delivery"] = delivery
-    return view
-
-
 def agent_answer_result(
     role: str, body: Mapping[str, object], book: Mapping[str, object] | None = None
 ) -> dict[str, object]:
@@ -672,7 +627,8 @@ def agent_answer_result(
         task_clause = (
             task_exit_words(task, lifecycle) if task and isinstance(lifecycle, str) else ""
         )
-        message = lead + task_clause + "Stop here and return the receipt to your lead."
+        said, left = left_out_words(answer)
+        message = lead + said + task_clause + "Stop here and return the receipt to your lead."
         return {
             "status": verdict,
             "answer_status": verdict,
@@ -708,6 +664,7 @@ def agent_answer_result(
                 "task_id": task,
                 "accepted_items": accepted,
                 "dropped_items": len(dropped),
+                **left,
             },
             "next_action": "RETURN_THE_RECEIPT_TO_YOUR_LEAD",
             # For the lead: the Task the answer started and the book it answered for, so the
@@ -743,7 +700,7 @@ def _answer_correction(code: str, record: AgentAnswerRecord) -> dict[str, object
         "status": "CORRECT",
         "failure_code": code,
         "task_id": None,
-        "answer": _answer_view(record),
+        "answer": answer_view(record),
         "next_action": "CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN",
     }
 
@@ -2841,9 +2798,8 @@ class EvidenceReviewApplication:
         adapter = self.evidence_task_adapter
         assert adapter is not None
         entity_ids = packet.request.ordered_entity_ids
-        screened = screen_analyst_answer(
-            answer, entity_ids=entity_ids, aliases=span_aliases(packet.spans, entity_ids)
-        )
+        screened, unread, left = screened_analysis(answer, packet)
+        view_of = partial(answer_view, left_out=left)
         binding: dict[str, object] = {
             "role": "alternative_evidence.analyst",
             "task_id": str(task_id),
@@ -2862,7 +2818,7 @@ class EvidenceReviewApplication:
                 self._file_answer(record)
                 return _answer_correction("alternative_evidence.answer_problems", record)
             accepted = accepted_analyst_answer(screened, entity_ids=entity_ids)
-            dropped = screened.problems if record.verdict is AnswerVerdict.DONE else ()
+            dropped = (screened.problems if record.verdict is AnswerVerdict.DONE else ()) + unread
             submitted = SubmittedEvidenceAnalysis(
                 prepared_task_id=task_id,
                 prepared_unit_id=unit_id,
@@ -2925,7 +2881,7 @@ class EvidenceReviewApplication:
                     "analysis_publication_hash": publication.publication.publication_hash,
                     **({} if unit_id is None else {"evidence_unit_id": unit_id}),
                     "external_host_usage": "UNAVAILABLE",
-                    "answer": _answer_view(
+                    "answer": view_of(
                         record,
                         self.accepted_answer_delivery(
                             record, accepted.model_dump(mode="json"), task_id=published.task_id
@@ -2949,7 +2905,7 @@ class EvidenceReviewApplication:
             )
             outcome = replace(
                 _submitted(submission),
-                answer=_answer_view(record, delivery, record_filed=submission.admitted),
+                answer=view_of(record, delivery, record_filed=submission.admitted),
             )
             # The unit is the answer's own field, as a published answer says; a next request
             # is one the Host accepts (V449).
@@ -3666,7 +3622,7 @@ class EvidenceReviewApplication:
             )
             return replace(
                 outcome,
-                answer=_answer_view(
+                answer=answer_view(
                     record, delivery, record_filed=outcome.disposition == "ADMITTED"
                 ),
             )
@@ -3721,7 +3677,7 @@ class EvidenceReviewApplication:
                 "disposition": "ADMITTED" if newly_filed else "REUSED_EXACT",
                 "task_id": str(task_id),
                 "lifecycle": str(task.lifecycle),
-                "answer": _answer_view(
+                "answer": answer_view(
                     record,
                     self.accepted_answer_delivery(
                         record, contribution, task_id=task_id, newly_filed=newly_filed

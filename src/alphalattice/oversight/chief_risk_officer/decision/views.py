@@ -15,7 +15,9 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
+from typing import Final
+from zoneinfo import ZoneInfo
 
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import BOOK_NAMES
 from alphalattice.protocols.actor_execution.bundles import (
@@ -352,7 +354,7 @@ def _index(
         "",
         "## Coverage (written by the program)",
         "",
-        *(f"- {sentence}" for sentence in coverage_words(coverage)),
+        *(f"- {said}" for said in (*coverage_words(coverage), *review_cutoff_words(dossier))),
     ]
     if dossier.mapping_failure_count:
         lines.append(
@@ -409,6 +411,31 @@ REVIEW_STATE_WORDS: dict[str, str] = {
 """Each issuer `review_state` in words, so a quiet holding never reads as an unread one."""
 
 
+CUTOFF_WORDS: Final = (
+    "Evidence was read through {subject}, after these positions were decided (the {subject} "
+    "close); filings after that close may inform this review but never the positions."
+)
+"""A dated review's Evidence read on a session after its positions' formation, named."""
+
+
+def cutoff_words(evidence_as_of: datetime, formation_session: str | None) -> tuple[str, ...]:
+    """The review's Evidence cutoff beside its positions' decision, when it is a later session.
+
+    Args:
+        evidence_as_of: The review's Evidence cutoff.
+        formation_session: The positions' formation session, for a dated update's review.
+
+    Returns:
+        The one sentence naming both, or nothing on the formation's own session or for a book
+        with no dated positions.
+    """
+    read = evidence_as_of.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+    if formation_session is None or read <= formation_session:
+        return ()
+    said = f"{evidence_as_of.astimezone(UTC):%Y-%m-%d %H:%M} UTC"
+    return (CUTOFF_WORDS.replace("{subject}", said, 1).replace("{subject}", formation_session),)
+
+
 def coverage_words(coverage: PortfolioReviewCoverage) -> tuple[str, ...]:
     """The dossier's coverage in words: read, quiet and unreached kept apart (FLOW-3).
 
@@ -442,4 +469,24 @@ def _points(value: float) -> str:
     return "0.00 pp" if points == 0 else f"{points:+.2f} pp"
 
 
-__all__ = ["REVIEW_STATE_WORDS", "coverage_words", "render_review_bundle"]
+def review_cutoff_words(dossier: PortfolioReviewDossier) -> tuple[str, ...]:
+    """A review dossier's `cutoff_words`, its update's formation beside its Evidence cutoff.
+
+    Args:
+        dossier: The review's sealed dossier.
+
+    Returns:
+        The sentence, or nothing.
+    """
+    subject = dossier.update_subject
+    return cutoff_words(dossier.evidence_as_of, subject.formation_session if subject else None)
+
+
+__all__ = [
+    "CUTOFF_WORDS",
+    "REVIEW_STATE_WORDS",
+    "coverage_words",
+    "cutoff_words",
+    "render_review_bundle",
+    "review_cutoff_words",
+]
