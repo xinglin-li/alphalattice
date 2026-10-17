@@ -36,7 +36,7 @@ WAITS = frozenset({"ACTIVITY_WAIT", "WAKE_REGISTER"})
 DEPTH = 12
 _CHOICE = re.compile(r"<[^<>]+>")
 _OPERATOR_SWITCH = "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
-_ENDING = ("_CANCEL", "_ABANDON", "_STOP")
+_ENDING = ("CANCEL", "_ABANDON", "_STOP")
 
 
 def data_decision_findings(
@@ -130,7 +130,15 @@ def daily_findings(feed: dict[str, Any], projection: dict[str, Any]) -> list[dic
     selected, value = home.get("selection") or {}, home.get("value") or {}
     sessions, previous = projection.get("session", {}), projection.get("previous") or {}
     shown = {m["id"]: m for s in sessions.get("sessions", []) for m in s.get("members", [])}
-    sealed = ("task_id", "publication", "review_selector", "position_rows", "schedule", "date_risk")
+    sealed = (
+        "task_id",
+        "publication",
+        "review_selector",
+        "position_rows",
+        "exit_rows",
+        "schedule",
+        "date_risk",
+    )
     failures = {
         "daily.home_stale": selected.get("task_id") != current["task_id"],
         "daily.home_publication": value.get("review_selector") != current["review_selector"],

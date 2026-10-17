@@ -1324,8 +1324,8 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     reviewed = committee.role_lines(
         "CRO", {**readback, "review_standing": standing}, {}, floor, NOW
     )
-    said = "now: reviewed, published 2026-09-10 23:56 UTC; CRO route accepted with limits."
-    assert any(said in line for line in reviewed or [])  # never the sealed status
+    said = next(line for line in reviewed or [] if "now: reviewed" in line)
+    assert at in said and f"CRO route {committee.status_word(route)}" in said
     way = committee.route("CRO", floor, NOW) or ()
     assert f"--role CRO --key {floor.key('CRO')}" in way[1] and "only final action" in way[-1]
     assert committee.route("CRO", None, NOW) is None  # no floor: the answer file stands

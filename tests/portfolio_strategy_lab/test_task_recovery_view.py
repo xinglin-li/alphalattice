@@ -449,6 +449,11 @@ def test_cancellation_requested_is_shown_apart_from_acknowledged(
         assert running["health"]["status"] == "HEALTHY"
         assert _actions(running)["CANCEL"]["available"] is True
         assert seen["cancel"]["cancel_requested"] is True
+        assert seen["cancel"]["next_action"] == "SEND_THE_OFFERED_REQUEST"
+        assert seen["cancel"]["next_requests"]["task"] == {
+            "operation": "STATUS",
+            "task_id": task_id,
+        }
         assert after["cancellation"] == "REQUESTED" and after["lifecycle"] == "CANCEL_REQUESTED"
         assert after["status"]["cancel_pending"] is True
         cancel = _actions(after)["CANCEL"]
@@ -467,7 +472,7 @@ def test_cancellation_requested_is_shown_apart_from_acknowledged(
 
 
 def test_a_queued_task_cancelled_before_execution_reads_cancelled_while_its_command_returns(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     """A queued task cancelled before execution reads cancelled while its command returns."""
 
@@ -498,6 +503,16 @@ def test_a_queued_task_cancelled_before_execution_reads_cancelled_while_its_comm
         final = _view(live, task_id)
         assert final["lifecycle"] == "CANCELLED" and final["operation_running"] is False
         assert _json(live, "/api/results")["results"] == []
+        from alphalattice.interface.local_application.cli import main
+
+        code = main(
+            [f"--workspace={live.workspace}", "--view=full", "activity", "wait", "--task", task_id],
+            serve=lambda _: 99,
+        )
+        waited = json.loads(capsys.readouterr().out)["data"]
+        assert code == 2 and waited["lifecycle"] == "CANCELLED"
+        assert waited["next_action"] == "SEND_THE_OFFERED_REQUEST"
+        assert waited["next_requests"]["replan"] == final["next_requests"]["replan"]
     finally:
         live.stop()
 

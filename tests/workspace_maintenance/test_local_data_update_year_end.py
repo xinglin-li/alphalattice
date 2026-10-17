@@ -172,11 +172,7 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     from alphalattice.foundation.feature_engine.publication.snapshots import (
         resolve_panel_preprocessing_lineage,
     )
-    from tests.workspace_maintenance import local_data_provider
 
-    # The seeded walk's closes are a cumulative product from its first
-    # session: the update Providers must start where the baseline's did.
-    monkeypatch.setattr(local_data_provider, "HISTORY_START", YEAR_END_HISTORY_START)
     workspace = tmp_path / "workspace"
     shutil.copytree(year_end, workspace)
     manifest = bind_existing_data_workspace(workspace)
@@ -212,7 +208,7 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
         return len(_lifecycles(workspace))
 
     # Day one: an ordinary new session, same membership, sector, catalog and policy.
-    provider_one = recording_provider(now=DAY_ONE)
+    provider_one = recording_provider(now=DAY_ONE, start=YEAR_END_HISTORY_START)
     with boot(DAY_ONE, provider_one) as live:
         plan_one = _json(live, "/api/data-update/plan", method="POST", payload={})
         assert plan_one["status"] == "PLANNED", plan_one
@@ -262,7 +258,7 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
 
     # Restart: the published result is what the page reads back; nothing is
     # fetched or rebuilt, and the same plan is an exact reuse.
-    provider_restart = recording_provider(now=DAY_ONE)
+    provider_restart = recording_provider(now=DAY_ONE, start=YEAR_END_HISTORY_START)
     with boot(DAY_ONE, provider_restart) as live:
         assert not live.resumed_task_ids
         reopened = _json(live, "/api/data-update")
@@ -290,7 +286,7 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     # Day two: the Provider restates one close in the previous year, inside
     # the refresh overlap, for one listing. Small enough to be no raw-move
     # case: what it triggers is the full-history audit approval.
-    provider_two = recording_provider(now=DAY_TWO)
+    provider_two = recording_provider(now=DAY_TWO, start=YEAR_END_HISTORY_START)
     closes = provider_two._closes
     original_close = closes(SYMBOLS[0], DAY_TWO.date())[CORRECTED_SESSION]
 

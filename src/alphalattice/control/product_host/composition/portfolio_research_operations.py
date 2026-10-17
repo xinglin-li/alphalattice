@@ -160,6 +160,7 @@ from alphalattice.control.product_host.composition.task_recovery import (
     TaskAttentionFact,
     TaskRecoveryView,
     build_task_recovery_view,
+    cancellation_pending,
     finished_stop,
     resolved_read,
     stop_detail,
@@ -4810,14 +4811,17 @@ class PortfolioResearchOperations:
         }
 
     def _stopped_answer(self, projection: TaskSafeProjection) -> dict[str, Any]:
-        """A stop's owned words and action; truth review leads to decisions before recovery."""
+        """Cancellation or stop, with its owner's words and next request."""
         state = projection.lifecycle.value
-        if state not in {"BLOCKED", "RECOVERY_REQUIRED"}:
+        if projection.lifecycle is TaskLifecycle.CANCEL_REQUESTED:
+            return cast(dict[str, Any], cancellation_pending(projection.task_id))
+        if projection.lifecycle not in _RECOVERY_SOURCES:
             return {}
         task_id, code = projection.task_id, projection.latest_failure_code
         way = self._stopped_way(task_id, code, state) if code else {}
         answer: dict[str, Any] = {
-            key: way[key] for key in ("next_action", "network_access") if key in way
+            "lifecycle": state,
+            **{key: way[key] for key in ("next_action", "network_access") if key in way},
         }
         answer["detail"] = way.get("detail") or stop_detail(
             projection.task_kind, code or "", "TASK_CONTROL"
@@ -4827,15 +4831,10 @@ class PortfolioResearchOperations:
         elif code == "task_control.child_start_failed":
             answer["failure_code"] = code
             answer.update({key: way[key] for key in ("detail", "next_action") if key in way})
-        answer["next_requests"] = {
-            **cast(dict[str, Any], way.get("next_requests") or {}),
-            **(self._resume_offer(task_id) if state == "BLOCKED" else {}),
-            **(
-                {"recovery": {"operation": "TASK_RECOVERY", "task_id": str(task_id)}}
-                if code != "data.truth_review_required"
-                else {}
-            ),
-        }
+        offered = self._resume_offer(task_id) if state == "BLOCKED" else {}
+        if code != "data.truth_review_required":
+            offered["recovery"] = {"operation": "TASK_RECOVERY", "task_id": str(task_id)}
+        way_on(answer, way, offered, {}, True)
         return answer
 
     def _resume_offer(self, task_id: UUID) -> dict[str, object]:
@@ -5181,11 +5180,7 @@ class PortfolioResearchOperations:
         return None if evidence_hash is None else ArtifactReference(published, evidence_hash)
 
     def cancel(self, task_id: UUID, *, expected_task_hash: str | None = None) -> dict[str, object]:
-        """Request task cancellation with exact optimistic version enforcement.
-
-        Request cancellation; a confirmed version is enforced by Task Control's own
-        transaction, and a Task that moved meanwhile is refused with nothing applied.
-        """
+        """Cancel an exact version; Task Control refuses a moved one without a write."""
         try:
             accepted = self.dispatcher.request_cancel(
                 task_id, expected_task_hash=expected_task_hash
@@ -5200,9 +5195,12 @@ class PortfolioResearchOperations:
                 "task_record_hash": current["task_record_hash"],
                 "refused_at": "TASK_CONTROL",
             }
-        body = task_status_body(self.dispatcher.status(task_id))
-        body["cancel_requested"] = accepted
-        return body
+        projection = self.dispatcher.status(task_id)
+        return {
+            **task_status_body(projection),
+            **self._stopped_answer(projection),
+            "cancel_requested": accepted,
+        }
 
     def results(self, task_id: UUID | None = None) -> dict[str, object]:
         """List readable retained results and name unreadable discovery records.

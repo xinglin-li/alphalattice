@@ -27,6 +27,7 @@ from alphalattice.control.product_host.composition.committee import (
 from alphalattice.control.product_host.composition.committee_materials import (
     QUESTIONS,
     facts,
+    review_now,
     sufficiency,
     tension_points,
 )
@@ -563,27 +564,17 @@ def test_standing_message_mirror_agrees_with_the_floor_owner(change):
 @pytest.mark.parametrize(
     "broken",
     [
-        "clean",
-        "ruling",
-        "after",
-        "relay",
-        "hash",
-        "standing",
-        "cro",
-        "numbers",
-        "raw",
-        "missing_raw",
-        "missing_cro",
-        "alias_attribution",
-        "stale_status",
-        "closed_hash",
-        "home_question",
-        "home_goal",
+        *("clean", "ruling", "after", "relay", "home_question", "home_goal"),
+        *("hash", "standing", "cro", "stale_status", "closed_hash", "published", "route"),
+        *("numbers", "raw", "missing_raw", "missing_cro", "alias_attribution"),
     ],
 )
 def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
     """Rulings, person relays, review identity and raw number checks have independent evidence."""
     closed, report, evidence = fidelity_floor()
+    standing = evidence["review_standing"]
+    standing.update(published_at="2026-10-17T02:44:00+00:00", cro={"route": "ACCEPT_WITH_LIMITS"})
+    evidence["cro_view"] = [review_now({"review_standing": standing})]
     challenge = floor_message("M4", "CRO", "CHALLENGE", text="Check T1.")
     ruling = floor_message("M5", "PM", "RULING", reply_to="M4", text="Ask person.")
     ruling["outcome"] = "FOR_THE_PERSON"
@@ -626,6 +617,10 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
         evidence["review_standing"]["review_publication_hash"] = "b" * 64
     elif broken == "cro":
         evidence["cro_view"] = ["Review now: not reviewed."]
+    elif broken == "published":
+        standing["published_at"] = "2026-10-17T02:44:01+00:00"
+    elif broken == "route":
+        standing["cro"]["route"] = "MATERIAL_OBJECTION"
     elif broken == "numbers":
         evidence["raw_messages"][0]["text"] = "Weight 2%."
     elif broken == "raw":
@@ -651,6 +646,8 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
         assert "UNPROVED:raw_messages" in problems
     if broken == "missing_cro":
         assert "UNPROVED:cro_view" in problems
+    if broken in {"published", "route"}:
+        assert "report.cro_review_source_mismatch" in problems
     if broken == "closed_hash":
         assert "report.review_hash_mismatch" in problems
     if broken.startswith("home_"):

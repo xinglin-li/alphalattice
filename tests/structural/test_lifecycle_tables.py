@@ -153,11 +153,6 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): RESUMABLE,
     (
         "control/product_host/composition/portfolio_research_operations.py",
-        "PortfolioResearchOperations._stopped_answer",
-        "BLOCKED,RECOVERY_REQUIRED",
-    ): STOPPED,
-    (
-        "control/product_host/composition/portfolio_research_operations.py",
         "PortfolioResearchOperations._resume_refusal",
         "QUEUED,RECOVERY_REQUIRED",
     ): RESUMABLE,

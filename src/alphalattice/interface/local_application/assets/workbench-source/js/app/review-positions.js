@@ -15,7 +15,7 @@ const ReviewPositions = (() => {
     const sections = groups.filter(([,key,rows])=>key==='positions' || rows?.length).map(([label,key,rows])=>
       html`${sectionHead(t(label))}${rows?.length
         ? collection('delivery-'+key,rows,columns,cells)
-        : emptyState(t('No current holdings'))}`);
+        : emptyState(t('No holdings for this date'))}`);
     return html`${basis ? html`<p class="caption">${said(basis)}</p>` : ''}${sections}`;
   }
   return {render};

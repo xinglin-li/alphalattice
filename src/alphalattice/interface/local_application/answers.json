@@ -6495,6 +6495,24 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": false,
+    "meaning": "The cancellation state and how to continue, in words."
+   },
+   {
+    "name": "next_action",
+    "kind": "string",
+    "required": false,
+    "meaning": "The next cancellation step: `SEND_THE_OFFERED_REQUEST`."
+   },
+   {
+    "name": "next_requests",
+    "kind": "object",
+    "required": false,
+    "meaning": "The same Task's `task` read while cancellation is pending; its owner's `replan` once cancellation is acknowledged."
    }
   ]
  },

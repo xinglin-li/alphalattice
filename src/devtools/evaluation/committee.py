@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 import re
+from collections import Counter
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -365,8 +366,9 @@ def committee_problems(
         if m["text"] not in page or json.dumps(m["text"], ensure_ascii=False) not in said
     ]
     positions = report["sections"]["positions"]["value"]
-    held = {h["listing_id"]: f"{h['weight']:.2%}" for h in opened["holdings"]}
-    shown = {row["listing_id"]: row["weight"] for row in positions["position_rows"]}
+    held = Counter((h["listing_id"], f"{h['weight']:.2%}") for h in opened["holdings"])
+    rows = positions["position_rows"] + positions.get("exit_rows", [])
+    shown = Counter((row["listing_id"], row["weight"]) for row in rows)
     if shown != held or report["selection"] != opened["delivery"]:
         problems.append("the report's positions are not the ones the committee opened on")
     if positions["date_risk"].get("risk_status") != "EVALUATED":

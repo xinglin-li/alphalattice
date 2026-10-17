@@ -8,7 +8,7 @@ const table=(id,rows)=>{calls.push([id,rows]);return id;};
 const page=Array.from(c.reader.render({position_rows:held,exit_rows:exits},table,()=>''),String).join('');
 assert.deepEqual(calls,[['delivery-positions',held],['delivery-exits',exits]]);
 assert(page.includes('Exits (not held)'));assert.equal(c.reader.render({},table,()=>''),'');
-assert(String(c.reader.render({position_rows:[] ,exit_rows:[]},table,()=>'' )).includes('No current holdings'));
+assert(String(c.reader.render({position_rows:[] ,exit_rows:[]},table,()=>'' )).includes(c.t('No holdings for this date')));
 assert(String(c.reader.render({position_rows:held},table,()=>'' )).includes('Positions and changes'));
 assert(String(c.reader.render({position_rows:[],exit_rows:[{name:'Exit',basis:'known-basis'}]},table,()=>'' )).includes('known-basis'));
 finish();

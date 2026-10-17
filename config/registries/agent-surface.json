@@ -509,6 +509,13 @@
         ]
       }
     },
+    "answer:CANCEL.detail": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
     "answer:CANCEL.goal_summary": {
       "required": true,
       "schema": {
@@ -538,6 +545,21 @@
       "required": true,
       "schema": {
         "type": "string"
+      }
+    },
+    "answer:CANCEL.next_action": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
+    "answer:CANCEL.next_requests": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:CANCEL.queued_next_task_id": {

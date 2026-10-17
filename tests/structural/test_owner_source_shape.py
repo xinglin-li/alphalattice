@@ -176,6 +176,11 @@ def test_every_specialist_bundle_slice_has_a_named_disposition() -> None:
         "packer": "protocols/actor_execution/bundles.py",
     }
     reviewed = {
+        (
+            "cro",
+            "render_review_bundle",
+            "index[1:1]",
+        ): "insert the reviewed installed package; no reading is cut",
         ("cro", "_finding_lines", "finding.affected_entities[1:]"): "first issuer is the heading",
         ("cro", "_index", "['F1', 'F2'][:max(1, min(2, len(dossier.findings)))]"): "answer example",
         ("cro", "_index", "coverage.unavailable_reasons[:MAXIMUM_COVERAGE_LINES]"): "coverage file",

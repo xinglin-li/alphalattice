@@ -59,6 +59,24 @@ def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(tmp_path:
     assert not grade["passed"] and trace.events[0].attributes["alphalattice.offers"] == ["replan"]
 
 
+@pytest.mark.parametrize(
+    "ending", ["CANCEL", "WORKSPACE_PREPARE_CANCEL", "GOAL_ABANDON", "HOST_STOP"]
+)
+def test_a_positive_walk_does_not_choose_to_end_its_work(tmp_path, ending):
+    """Ending offers remain visible, but are not continuations of the requested work."""
+    offers = {"cancel": {"operation": ending}, "task": {"operation": "STATUS"}}
+    start = {"outcome": "OK", "next_requests": offers}
+
+    def call(argv):
+        return start if argv == ["start"] else {"outcome": "OK", "data": {"lifecycle": "SUCCEEDED"}}
+
+    route = Scenario("w", "w", "2026-10-17T02:44:00Z", (), (("SUCCEEDED",),), "agent", ())
+    grade, trace = Explorer(call, lambda _: {}, route, tmp_path).explore([["start"]])
+    assert grade["passed"] and len(trace.events) == 2
+    assert trace.events[-1].attributes["alphalattice.path"].endswith(" > task")
+    assert trace.events[0].attributes["alphalattice.offers"] == ["cancel", "task"]
+
+
 def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: Path) -> None:
     """regression (a merge set under load, 2026-10-15): one wait's time box ended the path."""
     wait = {"task_id": "t", "lifecycle": "RUNNING", "wait_event": {"event": "MAX_WAIT_REACHED"}}

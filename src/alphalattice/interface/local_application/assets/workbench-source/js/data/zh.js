@@ -2,6 +2,11 @@
  * English phrase is worded differently in another part of the product. Generated data; edit
  * translations here, never in the templates. */
 window.ALPHA_ZH = {
+  'Cancellation is acknowledged. Verified stages and published results are kept. Send the offered replan to continue.': '取消已确认完成。已核验的阶段和已发布的结果均予以保留。要继续工作，请发送所提供的重新规划请求。',
+  'Cancellation is requested, not yet acknowledged. Read this Task; it keeps running until its next safe checkpoint.': '已请求取消，但尚未确认完成。请读取此任务；它会继续运行到下一个安全检查点。',
+  'The cancellation state and how to continue, in words.': '取消所处的状态，以及下一步操作的文字说明。',
+  'The next cancellation step: `SEND_THE_OFFERED_REQUEST`.': '取消的下一步：`SEND_THE_OFFERED_REQUEST`。',
+  "The same Task's `task` read while cancellation is pending; its owner's `replan` once cancellation is acknowledged.": '等待取消完成时，提供同一任务的读取请求；取消确认完成后，提供其所属模块的重新规划请求。',
   "Start alphalattice_maintainer in RECORD mode with this goal (goal show {subject}), the person's corrections in their own words, and the Tasks' readbacks; then tell the person in one line what was added, merged or deleted.": "以 `RECORD` 模式启动 `alphalattice_maintainer`，提供此目标（`goal show {subject}`）、用户的纠正原话和任务回读；然后用一句话告知用户新增、合并或删除了什么。",
   "`RECORD_THE_EXPERIENCE` only on the answer that seals the goal: start the experience maintainer in RECORD mode using the offered readbacks.": "仅封存目标的回答包含 `RECORD_THE_EXPERIENCE`：使用提供的回读，以 `RECORD` 模式启动经验维护者。",
   "The experience maintainer's instruction, present only on the sealing answer.": "经验维护者的操作说明，仅出现在封存目标的回答中。",
@@ -6957,7 +6962,7 @@ window.ALPHA_ZH = {
   "Held issuers in scope": "评审范围内的持仓发行人数",
   "Exits (not held)": "已退出（未持仓）",
   "Positions and changes": "仓位与变化",
-  "No current holdings": "当前没有持仓",
+  "No holdings for this date": "该日期没有持仓",
   "Positive-weight holdings: each listing's id, name, weight, change and basis. Exits are in exit_rows. Only with a publication.": "正权重持仓：各上市标的的标识、名称、权重、变化和依据。退出项见 `exit_rows`。仅在存在发布记录时提供。",
   "Listings exited in this update: zero ending weight, with their id, name, change and basis. They are not held. Only with a publication.": "本次更新中已退出的上市标的：期末权重为零，列出其标识、名称、变化和依据。这些标的未被持有。仅在存在发布记录时提供。",
   "Reviewed ending-weight coverage {subject}; selected-issuer coverage {subject} counts only issuers with a reading; mapping coverage {subject}.": "已评审期末权重覆盖率为 {subject}；所选发行人的覆盖率为 {subject}，仅计入具有阅读记录的发行人；映射覆盖率为 {subject}。",

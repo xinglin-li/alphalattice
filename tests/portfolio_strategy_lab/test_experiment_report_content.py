@@ -114,6 +114,7 @@ def test_review_export_keeps_partial_coverage_unadjudicated_findings_and_exact_c
     }
     before = deepcopy(snapshot)
     rendered = render_review_export(snapshot, "<html><h1>Original book</h1></html>")
+    assert "Held issuers in scope" not in rendered
     assert "Original book" in rendered
     assert rendered.index("Linked recommendation review") < rendered.index("Original book")
     assert "Review completeness: PARTIAL" in rendered

@@ -84,6 +84,22 @@ Control timestamp (a stage boundary) and the runner's operational heartbeat for 
 execution, the latter through the read-only `TaskHeartbeatReader` over the runner's sidecar."""
 
 _TERMINAL = frozenset({TaskLifecycle.SUCCEEDED, TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED})
+CANCELLATION_REPLAN = (
+    "Cancellation is acknowledged. Verified stages and published results are kept. "
+    "Send the offered replan to continue."
+)
+
+
+def cancellation_pending(task_id: UUID) -> dict[str, object]:
+    """The pending cancellation's own read, before the worker acknowledges its checkpoint."""
+    return {
+        "detail": "Cancellation is requested, not yet acknowledged. Read this Task; it keeps "
+        "running until its next safe checkpoint.",
+        "next_action": "SEND_THE_OFFERED_REQUEST",
+        "next_requests": {"task": {"operation": "STATUS", "task_id": str(task_id)}},
+    }
+
+
 _DATA_KINDS = frozenset(
     {"workspace_preparation", "workspace_data_update", "research_input_capture"}
 )
@@ -1239,8 +1255,11 @@ def way_on(
         stopped: Whether the Task stopped, so an offer it carries leads.
     """
     owned = way.get("next_requests") or {}
-    if offered or owned or subject:
-        body["next_requests"] = {**owned, **offered, **subject}
+    requests = {**owned, **offered, **subject}
+    if requests:
+        body["next_requests"] = requests
+    if "detail" in body and body.get("lifecycle") == "CANCELLED" and "replan" in requests:
+        body["detail"] = CANCELLATION_REPLAN
     lead = way.get("next_action") or ("SEND_THE_OFFERED_REQUEST" if offered and stopped else None)
     if lead:
         body["next_action"] = lead
@@ -1249,6 +1268,7 @@ def way_on(
 RecoverableKinds = Callable[[], frozenset[str]]
 
 __all__ = [
+    "CANCELLATION_REPLAN",
     "STALE_HEARTBEAT_SECONDS",
     "LivenessFact",
     "PermittedAction",
@@ -1259,6 +1279,7 @@ __all__ = [
     "TaskRecoveryView",
     "WorkerStop",
     "build_task_recovery_view",
+    "cancellation_pending",
     "stop_detail",
     "task_attention",
     "task_facts",
