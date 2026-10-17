@@ -1699,6 +1699,7 @@ _IMPORTANT: Final = frozenset(
     {
         "status",
         "session_binding",
+        "workbench",
         "answer_status",
         "task_lifecycle",
         "lifecycle",
@@ -1733,8 +1734,8 @@ _IMPORTANT: Final = frozenset(
         "execution_numerical_call_count",
         "declaration_changes",
         # What the next step read from saved answers in AX's runs (AGENT-TIME R2): a book's
-        # activation, its dates within it, a curation's choices, an Evidence preview's sources
-        # and scope. A strategy's dates keep their one owner, so they are drawn as part of it.
+        # activation, its dates, a curation's choices, an Evidence preview's sources and
+        # scope. A strategy's dates keep one owner and are drawn with it.
         "activation",
         "choices",
         "source_inventory",

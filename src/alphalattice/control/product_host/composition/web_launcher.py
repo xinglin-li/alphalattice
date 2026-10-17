@@ -36,7 +36,7 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
-from alphalattice.interface.local_application.web import LAUNCH_KEY_VARIABLE
+from alphalattice.interface.local_application.web import LAUNCH_KEY_VARIABLE, OPEN_THE_WORKBENCH
 
 # The Host's session (and the numerical libraries it brings) is imported in `main`, never here:
 # a Host run as `-m` this module has each spawned worker re-import it first, before the worker
@@ -51,17 +51,6 @@ STOPPING: dict[str, object] = {
     "next_action": "SERVE_AGAIN_WHEN_WORK_NEEDS_IT",
 }
 """The answer to `host stop`, given before the Host begins to stop."""
-
-
-OPEN_THE_WORKBENCH = (
-    "Next action OPEN_THE_WORKBENCH: open the launch link above once, visibly, in your coding "
-    "app's built-in browser, never a separate system browser: in Claude Code's desktop app, load "
-    "its browser pane's tools and open it with `preview_start` (url), which shows the person a "
-    "card in the chat, never `navigate` or a background tab; in Codex, its built-in browser. "
-    "Then tell the person in one line that the Workbench is open there, with the link. Only a "
-    "host with no built-in browser (a terminal CLI) gives the person the link alone."
-)
-"""The step right after a launch with `--no-browser`: the person watches the Workbench."""
 
 
 def _windows_stdin(descriptor: int) -> tuple[Any, Any, int]:

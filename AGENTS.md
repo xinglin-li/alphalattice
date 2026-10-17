@@ -43,7 +43,7 @@ refusal at its cause; never bypass the check or edit a stored record to make it 
 
 ## Open the workspace
 
-At first use and any refusal naming a missing dependency, run `python -m alphalattice.interface.local_application.native_setup doctor`; follow each `host_readiness` item's `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
+At first use and any refusal naming a missing dependency, run the doctor from the checkout's root, after `uv sync --locked --all-extras`: `uv run python -m alphalattice.interface.local_application.native_setup doctor` (on the wheel leg, with the tool environment's interpreter beneath `uv tool dir`). Fill each missing `host_readiness` item by its `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
 
 If you installed AlphaLattice in this session, continue here: read this guide and
 the research Skill by the paths `configure` printed under `continue_here`, start
@@ -67,8 +67,10 @@ app, load the browser pane's tools and open the printed link with `preview_start
 which shows the person a card in the chat; never `navigate` or a background tab for this
 first open. In Codex, open it in Codex's built-in browser. Then tell the person in one line
 that the Workbench is open there, with the link. Only a host with no built-in browser (a
-terminal CLI) gives the person the link alone. Never navigate or click the Workbench to
-show work. Your Session binds itself when it first works on the workspace, and
+terminal CLI) gives the person the link alone. Open it so at the start of every session,
+first use or daily: on a Host already serving, your Session's first answer carries
+`workbench`, the same next action with a launch link of its own; open that link the same
+way. Never navigate or click the Workbench to show work. Your Session binds itself when it first works on the workspace, and
 its first research request opens a goal when it holds none. A committee member's
 bundle, message or review answer counts toward its floor's or thread's open goal
 instead, and a committee message never opens one; once that goal has closed, a
@@ -94,7 +96,9 @@ it is missing: the bare `alphalattice` command your specialists' routes run in t
 own fresh shells, and the retrieval environment. Run each `missing` item's `commands`,
 disclosing them (a person's item is asked once, in one line), then the same command
 again. It then opens the workspace's one `FIRST_USE` goal, prepares the data under the
-goal's delegation and follows each Task. Tell the person first how the product reads the
+goal's delegation and follows each Task. The goal is this session's; the same sentence and
+date reuse it from another session, and a shell with no agent session puts
+`--goal <goal_id>` before each later step's command. Tell the person first how the product reads the
 date, from `first_use.date`: the positions are entered on its `entry_session`,
 decided at the `formation_session` close, and a date that is not a session says
 so. Asked during the US session for the next session's positions, the usual case,
@@ -191,8 +195,8 @@ alphalattice bundle prepare --role ALPHA --task <task> --dir "<out>/committee/al
 On a date's published positions, you, the PM, convene the investment committee
 with Alpha, Risk and the CRO. `alphalattice committee open` offers each specialist's bundle: its
 view of the date's positions and its `submit` and `wait` on the floor. Prepare the
-three (ALPHA, RISK, CRO), then in one turn start them as general subagents (the
-registered CRO card runs no command, and each bundle's route runs two), each
+three (ALPHA, RISK, CRO), then in one turn start them as general subagents (each
+bundle's route runs two commands, which the registered CRO type's allowlist also covers), each
 prompt its card's text and its bundle's path, and in that same turn submit your own stance,
 argued from `alphalattice committee show --update <task>`, which lists each member's questions with the
 floor's facts by their S alias: the reveal waits for your stance, and nothing of theirs shows before it. As PM you judge whether the book adds

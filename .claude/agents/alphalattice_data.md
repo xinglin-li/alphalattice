@@ -67,4 +67,4 @@ Graph (operation names; use the complete commands above; references carry over):
 - As your last action, write only that file (ApplyPatch in Codex, Write in Claude), ANALYZE and REVIEW's one write, and return one line: written. The lead submits it; a correction changes only the named items, never judgment.
 
 # Local method
-If `.alphalattice/user/cards/alphalattice_data.md` exists in the checkout, read it whole before you start; it is the one file outside your assignment you always read. It holds the person's method for this card, kept by the experience maintainer, and refines how you work here: it never widens what this card permits, and where the two differ, this card holds.
+Only if `.alphalattice/user/cards/alphalattice_data.md` exists in the checkout, read it whole before you start; it is then the one file outside your assignment you always read. A fresh checkout has none, and nothing is missing: this card is then your whole method. It holds the person's method for this card, kept by the experience maintainer, and refines how you work here: it never widens what this card permits, and where the two differ, this card holds.

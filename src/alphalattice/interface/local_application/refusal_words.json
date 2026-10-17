@@ -309,7 +309,7 @@
   "next_action": "CORRECT_THE_CONSENT_AND_SEND_AGAIN"
  },
  "evidence_review.consent_human_only": {
-  "detail": "Official SEC acquisition and the consent to it are the person's; a first use's agent takes them only within the default budget, under its goal, and under the person's daily yes (their own standing consent to SEC filings within the default budget) an agent sends only the install the Host offers, as it stands. With no such consent, or for any other install, ask the person in one line and, on a clear yes, send this again with `--person-said` and `--asked`.",
+  "detail": "Official SEC acquisition and the consent to it are the person's; a first use's agent takes them only within the default budget, under its goal (a shell holding none names it with --goal <goal_id>), and under the person's daily yes (their own standing consent to SEC filings within the default budget) an agent sends only the install the Host offers, as it stands. With no such consent, or for any other install, ask the person in one line and, on a clear yes, send this again with `--person-said` and `--asked`.",
   "next_action": "ASK_THE_PERSON_FOR_SEC_SOURCE_CONSENT"
  },
  "evidence_review.source_admission_waits_for_evidence_task": {
@@ -427,7 +427,7 @@
   "next_action": "OPEN_A_GOAL_OF_ANOTHER_KIND"
  },
  "goal.first_use_already_opened": {
-  "detail": "This workspace has had its first use: a first-use goal opens once, from the person's sentence, and the person decides each step after it. Open a goal of another kind for this work (`alphalattice goal schema` prints one to edit).",
+  "detail": "This workspace has had its first use, from another sentence or date: a first-use goal opens once, from the person's sentence, and the person decides each step after it; its own sentence and date continue it from any session (`alphalattice goal list` names it). Open a goal of another kind for this work (`alphalattice goal schema` prints one to edit).",
   "next_action": "OPEN_A_GOAL_OF_ANOTHER_KIND"
  },
  "goal.first_use_is_not_revised": {
@@ -1475,7 +1475,7 @@
   "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
  },
  "native_bridge.local_environment_missing": {
-  "detail": "The folder named for configure has no .venv of its own, so it is not a source checkout. Configure the checkout you work from, or a separate agent folder with the installed product; never a workspace or data folder. A configured project binds a workspace kept anywhere.",
+  "detail": "The folder named for configure has no .venv of its own, so it is not a source checkout, and this interpreter runs a checkout's command. For a checkout, run `uv sync --locked --all-extras` in it, then from its root `uv run python -m alphalattice.interface.local_application.native_setup configure --host <codex-or-claude-code>`. A separate agent folder takes the installed release wheel: configure it with that tool environment's own interpreter beneath `uv tool dir` (`alphalattice/Scripts/python.exe` on Windows, `alphalattice/bin/python` elsewhere) and `--project <agent-folder>`. Never configure a workspace or data folder; a configured project binds a workspace kept anywhere.",
   "next_action": "CONFIGURE_A_CHECKOUT_OR_AN_INSTALLED_AGENT_FOLDER"
  },
  "execution.memory_insufficient": {

@@ -34,6 +34,7 @@ from alphalattice.interface.local_application.native_bridge import (
     WORKBENCH_BUILD,
     NativeBridgeError,
     NativeResearchBinding,
+    agent_setup,
     attachment_preflight,
     autobind_root,
     binding_notice,
@@ -41,6 +42,7 @@ from alphalattice.interface.local_application.native_bridge import (
     codex_queue_readiness,
     command_readiness,
     declares_product,
+    fresh_path,
     session_binding,
     session_project,
 )
@@ -62,7 +64,7 @@ ROOT = Path.cwd() if INSTALLED else RESOURCE_ROOT
 
 def _installed_leg() -> dict[str, Any]:
     """Compare the active distribution with this checkout, naming unproved PATH ownership."""
-    command = shutil.which("alphalattice")
+    command = shutil.which("alphalattice", path=fresh_path())
     expected = None
     if (RESOURCE_ROOT / "pyproject.toml").is_file():
         expected = tomllib.loads((RESOURCE_ROOT / "pyproject.toml").read_text("utf-8"))["project"][
@@ -255,11 +257,11 @@ def host_readiness(
     project: Path, host: str, binding: NativeResearchBinding | None
 ) -> list[dict[str, Any]]:
     """One advisory dependency list: the measured facts, what they enable and who fills them."""
-    from alphalattice.interface.local_application.retrieval_environment import interpreter_path
     from alphalattice.kernel.knowledge.model_store import default_store_root, recipe_readiness
 
     facts = _host_facts(binding)
-    retrieval = command_readiness([str(interpreter_path()), "-c", "import fastembed, onnxruntime"])
+    # What the agent fills is read from the first use's own source, so the two never disagree.
+    fillable = {key: dict(item) for key, item in agent_setup().items()}
     packs = recipe_readiness(default_store_root(), "hybrid-v2-minilm")
     queue = (
         {"present": True, "scope": "HOST_FEATURE"}
@@ -292,11 +294,15 @@ def host_readiness(
             {"version": python_version, "interpreter": sys.executable},
         ),
         ("uv", (uv := command_readiness([os.environ.get("UV", "uv"), "--version"]))["present"], uv),
-        ("installed_leg", (installed := _installed_leg())["present"], installed),
+        (
+            "installed_leg",
+            (tool := fillable["installed_leg"]).pop("present"),
+            {**{k: v for k, v in _installed_leg().items() if k != "present"}, **tool},
+        ),
         ("workbench_build", _workbench_current(), {"command": WORKBENCH_BUILD}),
         (
             "retrieval_runtime",
-            retrieval["present"] and packs["ready"],
+            (retrieval := fillable["retrieval_runtime"]).pop("present"),
             {**retrieval, "packs": packs},
         ),
         (
@@ -344,7 +350,8 @@ def host_readiness(
             "present": present,
             "what_it_enables": guidance[key][0],
             "how_to_fill": guidance[key][1],
-            "who_decides": guidance[key][2],
+            # Who fills an item matters only while it is missing.
+            **({} if present is True else {"who_decides": guidance[key][2]}),
             "facts": {"scope": "LOCAL_PROCESS", **measured},
         }
         for key, present, measured in specifications
@@ -1267,8 +1274,11 @@ def main() -> int:
             if session is not None and args.host is not None and args.host != session[0]:
                 raise NativeBridgeError("native_bridge.session_mismatch")
             binding = NativeResearchBinding.read(ROOT, session=session)
-            host = args.host or (binding.host if binding is not None else "codex")
-            preflight = attachment_preflight(ROOT, binding)
+            # An unbound session's declaration is its own host's, as the first use reads it.
+            host = args.host or (
+                binding.host if binding is not None else session[0] if session else "codex"
+            )
+            preflight = attachment_preflight(ROOT, binding, host)
             result = {
                 **preflight,
                 "session_bound": binding is not None,

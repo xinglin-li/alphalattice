@@ -1436,7 +1436,9 @@ def read_session_usage(
     }
 
 
-def readiness(project: Path, binding: NativeResearchBinding | None) -> dict[str, Any]:
+def readiness(
+    project: Path, binding: NativeResearchBinding | None, host: str | None = None
+) -> dict[str, Any]:
     """Whether this project's Session binding is usable for research.
 
     It reads only the project declaration and the supplied exact binding; no native file,
@@ -1445,11 +1447,12 @@ def readiness(project: Path, binding: NativeResearchBinding | None) -> dict[str,
     Args:
         project: The agent project.
         binding: The caller's exact binding, when bound.
+        host: The unbound caller's host, from its session; its declaration is the one read.
 
     Returns:
         ``READY``, or ``REFUSED`` naming what is missing; research never waits on it.
     """
-    host = "codex" if binding is None else binding.host
+    host = binding.host if binding is not None else host or "codex"
     missing: list[str] = []
     failure: str | None = None
     try:
@@ -1512,7 +1515,7 @@ def tool_setup() -> dict[str, Any] | None:
     and a restart; otherwise the agent's documented install, the checkout's or the wheel's. A
     command that resolves is no gap, whoever installed it (the doctor names its owner).
     """
-    if shutil.which("alphalattice") is not None:
+    if shutil.which("alphalattice", path=fresh_path()) is not None:
         return None
     if _tool_bin() is not None:
         words = (
@@ -1538,6 +1541,23 @@ def tool_setup() -> dict[str, Any] | None:
     }
 
 
+def fresh_path() -> str | None:
+    """This shell's PATH as a fresh shell has it, for the bare-command check.
+
+    `uv run` puts its environment's folder first, whose checkout command no specialist's own
+    shell reaches.
+
+    Returns:
+        PATH without that folder under `uv run`; otherwise None, PATH as it is.
+    """
+    venv = os.environ.get("VIRTUAL_ENV")
+    if venv is None or "UV_RUN_RECURSION_DEPTH" not in os.environ:
+        return None
+    own = {Path(venv) / "Scripts", Path(venv) / "bin"}
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    return os.pathsep.join(part for part in parts if part and Path(part) not in own)
+
+
 def _tool_bin() -> str | None:
     """uv's tool directory, where it holds an `alphalattice` this shell's PATH does not reach."""
     uv = shutil.which("uv")
@@ -1554,23 +1574,31 @@ def _tool_bin() -> str | None:
 def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, Any]:
     """An agent Session's setup: its binding preflight, and the command and runtime it lacks.
 
-    Outside a Session there is no binding to check. The `alphalattice` command its specialists
-    run (`installed_leg`, `tool_setup`) and the retrieval runtime, the lock's own dependency, are
-    the agent's to fill before a first use opens.
+    Outside a Session there is no binding to check. What the agent fills before a first use opens
+    comes from `agent_setup`, the doctor's source too: only its missing items appear here.
     """
-    from alphalattice.interface.local_application.retrieval_environment import fill_command, load
-
     answer: dict[str, Any] = {"status": "NO_AGENT_SESSION"}
     if session is not None:
         try:
             binding = NativeResearchBinding.read(project, session=session)
         except (OSError, ValueError):
             binding = None
-        answer = attachment_preflight(project, binding)
-    if (tool := tool_setup()) is not None:
-        answer["installed_leg"] = tool
+        answer = attachment_preflight(project, binding, session[0])
+    answer.update({k: item for k, item in agent_setup().items() if item["present"] is False})
+    return answer
+
+
+def agent_setup() -> dict[str, dict[str, Any]]:
+    """The setup an agent fills, each item present or missing with its commands.
+
+    The one readiness source the doctor (`host_readiness`) and a first use's gate both read: the
+    `alphalattice` command its specialists run (`tool_setup`) and the retrieval runtime.
+    """
+    from alphalattice.interface.local_application.retrieval_environment import fill_command, load
+
+    retrieval: dict[str, Any] = {"present": True}
     if not load():
-        answer["retrieval_runtime"] = {
+        retrieval = {
             "present": False,
             "who_decides": "AGENT",
             "commands": [join(fill_command(), shell())],
@@ -1578,14 +1606,14 @@ def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, A
             "words": "Fill it offline, disclosing it; on a cold package cache that fails, and "
             "the network form resolves the lock's dependencies online, disclosed too.",
         }
-    return answer
+    return {"installed_leg": tool_setup() or {"present": True}, "retrieval_runtime": retrieval}
 
 
 def attachment_preflight(
-    project: Path, binding: NativeResearchBinding | None = None
+    project: Path, binding: NativeResearchBinding | None = None, host: str | None = None
 ) -> dict[str, Any]:
-    """Read the binding's readiness and attach the named way forward."""
-    result = readiness(project, binding)
+    """Read the binding's readiness (for an unbound caller, its own host's) and the way forward."""
+    result = readiness(project, binding, host)
     return {
         **result,
         **(refusal_words(result["failure_code"]) if result.get("failure_code") else {}),

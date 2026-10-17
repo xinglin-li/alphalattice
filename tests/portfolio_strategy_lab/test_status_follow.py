@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
 import shlex
 import time
 from datetime import UTC, datetime, timedelta
@@ -1466,7 +1467,14 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     monkeypatch.setattr(retrieval_environment, "load", lambda: False)
     host, bare, held = _FirstUseHost(tmp_path / "w", prepared=True), tmp_path / "a", tmp_path / "b"
     bare.mkdir()
-    monkeypatch.setenv("PATH", str(bare))
+    venv = tmp_path / "venv"  # under `uv run`, whose own command no specialist's shell has
+    (venv / "Scripts").mkdir(parents=True)
+    for name in ("alphalattice", "alphalattice.cmd"):
+        (venv / "Scripts" / name).write_text("", encoding="utf-8")
+        (venv / "Scripts" / name).chmod(0o755)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(venv / "Scripts"), str(bare)]))
+    monkeypatch.setenv("VIRTUAL_ENV", str(venv))
+    monkeypatch.setenv("UV_RUN_RECURSION_DEPTH", "1")
     refused, code = _first_use(host), "local_client.first_use_setup_missing"
     words = client_refusal(code)
     assert (refused["failure_code"], refused["next_action"]) == (code, words.next_action)

@@ -228,8 +228,17 @@
    ],
    "folds_in": []
   },
+  "host setup": {
+   "covers": "what a checkout needs before research: the doctor's host readiness and a first use's setup gate, each item present or missing, who fills a missing one and its commands; the agent-fillable items come from one source both read",
+   "owner": "alphalattice.interface.local_application",
+   "defined_by": [
+    "alphalattice.interface.local_application.native_bridge",
+    "alphalattice.interface.local_application.native_setup"
+   ],
+   "folds_in": []
+  },
   "native session": {
-   "covers": "an agent Session bound to the workspace and its members: the binding, each member's usage read from the host's own session files, which role each member is by the key evidence its file holds, and the wake",
+   "covers": "an agent Session bound to the workspace and its members: the binding, each member's usage read from the host's own session files, which role each member is by the key evidence its file holds, and the wake, and the Workbench launch each Session's first answer offers once",
    "owner": "alphalattice.interface.local_application",
    "defined_by": [
     "alphalattice.interface.local_application.native_bridge",

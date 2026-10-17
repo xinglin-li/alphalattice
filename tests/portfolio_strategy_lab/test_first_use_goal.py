@@ -141,6 +141,8 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     again.write_text(json.dumps({**FIRST_USE, "objective": "Another sentence."}), encoding="utf-8")
     code, second = _cli(live, "goal", "open", "--file", str(again))
     assert code == 2 and second["failure_code"] == "goal.first_use_already_opened"
+    code, reused = _cli(live, "goal", "open", "--file", str(declaration), session=OTHER_SESSION)
+    assert reused["goal_id"] == opened["goal_id"], reused  # the same sentence, another session
     code, ended = _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")
     assert code == 0 and ended["state"] == "ABANDONED"
     assert not _network(live)

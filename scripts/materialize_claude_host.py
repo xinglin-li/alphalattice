@@ -33,6 +33,7 @@ from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+from alphalattice.control.product_host.composition.committee import MEMBER_COMMANDS  # noqa: E402
 from alphalattice.interface.local_application.failure_codes import setup_failure  # noqa: E402
 
 CARDS = ROOT / ".codex" / "agents"
@@ -59,6 +60,8 @@ BUNDLE_TOOLS = (
 route's one submit with their key: no Grep or Glob (none of 27 measured runs used either), and
 Bash scoped to that one command. The Host admits only what the key covers, whatever shell the
 member holds; the Codex card's sandbox cannot scope it, so there the limit is its instruction."""
+COMMITTEE_TOOLS = "".join(f", Bash({COMMAND} {verb}:*)" for verb in MEMBER_COMMANDS)
+"""The CRO also sits on the committee: its route's own commands, from their one owner."""
 HOOK_MATCHER = "^alphalattice_.*$"
 HOOK_EVENTS = ("SubagentStart", "SubagentStop")
 
@@ -743,9 +746,11 @@ STAGE_BOUNDARIES = "\n".join(
 
 LOCAL_METHOD = (
     "# Local method\n"
-    "If `.alphalattice/user/cards/{card}.md` exists in the checkout, read it whole before you "
-    "start; it is the one file outside your assignment you always read. It holds the person's "
-    "method for this card, kept by the experience maintainer, and refines how you work here: it "
+    "Only if `.alphalattice/user/cards/{card}.md` exists in the checkout, read it whole before "
+    "you start; it is then the one file outside your assignment you always read. A fresh "
+    "checkout has none, and nothing is missing: this card is then your whole method. It holds "
+    "the person's method for this card, kept by the experience maintainer, and refines how you "
+    "work here: it "
     "never widens what this card permits, and where the two differ, this card holds."
 )
 """Every card's last paragraph: where the person's own method for it lives (the user layer)."""
@@ -821,7 +826,8 @@ def agent_markdown(card: dict[str, str]) -> str:
         f"model: {CLAUDE_MODEL}",
         f"effort: {CLAUDE_EFFORT}",
         "tools: "
-        + (BUNDLE_TOOLS if card["name"] in BUNDLE_ROLES else CLAUDE_TOOLS[card["sandbox_mode"]]),
+        + (BUNDLE_TOOLS if card["name"] in BUNDLE_ROLES else CLAUDE_TOOLS[card["sandbox_mode"]])
+        + COMMITTEE_TOOLS * (card["name"] == "alphalattice_cro"),
         "---",
         f"<!-- Derived from .codex/agents/{card['name']}.toml"
         " by scripts/materialize_claude_host.py; edit the TOML, then rerun the script. -->",

@@ -123,6 +123,8 @@ OUTCOMES: Final = {
 }
 """Each kind's outcomes; a kind not named takes none (SHAPE, with what it answers)."""
 COMMAND: Final = " ".join(command_prefix())
+MEMBER_COMMANDS: Final = ("committee submit", "committee wait")
+"""What a member's own route runs; its card's allowlist names the same (materialize)."""
 RULE_WORDS: Final = {
     "ROLE": "Only its senders send this kind, each with the key in its own bundle: a STANCE or "
     "REPLY any member, a CHALLENGE or PASS a specialist, a RULING, VERDICT or PERSON_ANSWER the "
@@ -1873,9 +1875,9 @@ def route(
         f"The PM's verdict is the committee's discussion record: {VERDICT_RULE} "
         "Write each message as a YAML file in this bundle directory "
         "(kind, text, positions, targets, reply_to), send it "
-        f"with `{COMMAND} committee submit "
+        f"with `{COMMAND} {MEMBER_COMMANDS[0]} "
         f"--update {task} --role {role} --key {key} --file {message}` and follow what is "
-        f"addressed to you with `{COMMAND} committee wait --update {task} "
+        f"addressed to you with `{COMMAND} {MEMBER_COMMANDS[1]} --update {task} "
         f"--role {role} --key {key} "
         "--seen <seen>`. Run these from your own session; the key is yours alone. "
         "A refused message names its rule; where only "

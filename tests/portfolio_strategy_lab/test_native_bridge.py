@@ -28,6 +28,7 @@ from alphalattice.interface.local_application.native_bridge import (
     NativeResearchBinding,
     file_observation,
     observation_request,
+    session_setup,
 )
 from alphalattice.interface.local_application.native_setup import (
     PRODUCT_HOOK_MATCHER,
@@ -424,6 +425,10 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     }
     assert run("configure", "--host", "claude-code")[1]["status"] == "LOCAL_DECLARATIONS_VALIDATED"
     assert (project / ".claude/settings.json").read_bytes() == settings
+    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "parent")
+    unbound = run("doctor")[1]  # configured, not yet bound: the declaration read is Claude's
+    assert "project_declaration" not in unbound.get("missing", []), unbound
     code, bound = run(
         "bind", "--host", "claude-code", "--session-id", "parent", "--workspace", str(workspace)
     )
@@ -442,7 +447,7 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     assert report["session_bound"] is True and report["session_id"] == "parent"
     assert report["usage_reading"] == "READ"
     notices = next(item for item in report["host_readiness"] if item["key"] == "background_notices")
-    assert notices["present"] is True and notices["who_decides"] == "AGENT"
+    assert notices["present"] is True and "who_decides" not in notices  # only a missing item's
     assert (project / ".codex" / BINDING_NAME).read_bytes() == binding_before_doctor
     assert not (project / ".codex/config.toml").exists()
     # The Codex host still reads its own file, and refuses without it.
@@ -465,8 +470,9 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
     monkeypatch.setattr(workbench_assets, "workbench_current", lambda: missing != "workbench_build")
     monkeypatch.delenv("UV", raising=False)
 
-    def which(name):
-        return None if name == missing else str(python.parent / name)
+    def which(name, **_):  # no `alphalattice` resolves where the installed leg is missing
+        gone = name == missing or (missing == "installed_leg" and name == "alphalattice")
+        return None if gone else str(python.parent / name)
 
     monkeypatch.setattr(shutil, "which", which)
     distribution = SimpleNamespace(
@@ -474,7 +480,7 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
         read_text=lambda _: json.dumps({"url": tmp_path.as_uri()}),
     )
     monkeypatch.setattr(importlib.metadata, "distribution", lambda _: distribution)
-    monkeypatch.setattr(retrieval_environment, "interpreter_path", lambda: python)
+    monkeypatch.setattr(retrieval_environment, "load", lambda: missing != "retrieval_runtime")
     monkeypatch.setattr(model_store, "default_store_root", lambda: tmp_path / "packs")
     monkeypatch.setattr(model_store, "recipe_readiness", lambda *_: {"ready": True})
     # Linux, here, without libgomp1: the locked Node finds libatomic, LightGBM finds no OpenMP.
@@ -483,8 +489,7 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
     monkeypatch.setattr(setup, "find_library", lambda name: None if name == "gomp" else name)
 
     def run(argv, **_):
-        exit_code = int(missing == "retrieval_runtime" and "-c" in argv)
-        return subprocess.CompletedProcess(argv, exit_code)
+        return subprocess.CompletedProcess(argv, 0, stdout="")
 
     monkeypatch.setattr(subprocess, "run", run)
     user = tmp_path / ".alphalattice/user"
@@ -512,6 +517,9 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
     descriptor.write_text(connection.to_json(), encoding="utf-8")
     binding = NativeResearchBinding("parent", workspace, ("alphalattice_cro",))
     items = {item["key"]: item for item in setup.host_readiness(tmp_path, "codex", binding)}
+    gate = session_setup(tmp_path, None)  # a first use reads what the doctor reads
+    fillable = ("installed_leg", "retrieval_runtime")
+    assert [key in gate for key in fillable] == [items[key]["present"] is False for key in fillable]
     if missing is None:
         assert all(item["present"] is True for item in items.values())
     else:

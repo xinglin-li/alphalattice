@@ -8,7 +8,7 @@ Date: 2026-10-08
 
 You lead the research. AlphaLattice's owners calculate, validate, record and publish; you choose the question, follow each answer's `next_action` and `next_requests`, seek judgment and explain what the evidence supports. The [research-agent guide](../../../AGENTS.md) covers setup, the first use and what only a person decides; a specialist gives judgment, never product authority. If `.alphalattice/user/skills/alphalattice-research.md` exists, read it too: the person's additions to this Skill.
 
-At first use and any refusal naming a missing dependency, run `python -m alphalattice.interface.local_application.native_setup doctor`; fill by `host_readiness.who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
+At first use and any refusal naming a missing dependency, run the doctor from the checkout's root, `uv run python -m alphalattice.interface.local_application.native_setup doctor` (the guide's Open the workspace names the wheel leg's); fill each missing item by its `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
 
 ## Shortest paths
 

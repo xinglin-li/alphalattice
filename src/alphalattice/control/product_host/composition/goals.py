@@ -504,12 +504,9 @@ class GoalApplication:
         return None if session is None else self.store.bound(session)
 
     def first_use(self) -> Goal | None:
-        """The workspace's first-use goal, if one was ever opened (V452)."""
-        for goal_id in self.store.goal_ids():
-            head = self.store.head(goal_id)
-            if head is not None and head.declaration.kind == "FIRST_USE":
-                return head
-        return None
+        """The workspace's one first-use goal, if opened (V452); its sentence and date reuse it."""
+        heads = (self.store.head(goal_id) for goal_id in self.store.goal_ids())
+        return next((h for h in heads if h and h.declaration.kind == "FIRST_USE"), None)
 
     def network_delegation(
         self, subject: Goal | RequestProvenance | None, caller: str
@@ -1491,9 +1488,10 @@ class GoalApplication:
             ),
         )
         prior = self.store.head(goal_id)
-        if prior is None and declaration.kind == "FIRST_USE" and self.first_use() is not None:
-            # A workspace has one first use, opened from the person's sentence (V452).
-            raise ValueError("goal.first_use_already_opened")
+        if prior is None and declaration.kind == "FIRST_USE":
+            prior = self.first_use()
+            if prior and prior.declaration != declaration:
+                raise ValueError("goal.first_use_already_opened")
         if prior is not None:
             if prior.revision == 1 and prior.declaration == declaration:
                 answer = {"status": "REUSED_EXACT", **self._identity_of(prior)}

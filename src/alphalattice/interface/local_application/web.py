@@ -91,6 +91,16 @@ LAUNCH_PATH = "/launch"
 """The one route that issues the session cookie, with the Host's launch key."""
 REOPEN_FROM_LAUNCH_URL = "REOPEN_FROM_LAUNCH_URL"
 """The way on from a refused session: open the launch URL the Host printed."""
+OPEN_THE_WORKBENCH = (
+    "Next action OPEN_THE_WORKBENCH: open the Workbench's launch link once, visibly, in your "
+    "coding app's built-in browser, never a separate system browser: in Claude Code's desktop "
+    "app, load its browser pane's tools and open it with `preview_start` (url), which shows the "
+    "person a card in the chat, never `navigate` or a background tab; in Codex, its built-in "
+    "browser. Then tell the person in one line that the Workbench is open there, with the link. "
+    "Only a host with no built-in browser (a terminal CLI) gives the person the link alone."
+)
+"""The step after a launch with `--no-browser`, and in each agent Session's first answer
+(`workbench`): the person watches the Workbench."""
 
 
 """The token travels in both a cookie and a header.
@@ -221,6 +231,11 @@ class LocalWebApplication:
     )
     """Held in memory and put only in the launch URL; never on disk or in an answer. A detached
     launch makes it and hands it over in `LAUNCH_KEY_VARIABLE`, taken from the environment once."""
+    offered: set[tuple[str, str]] = field(default_factory=set, init=False, repr=False)
+    """The agent Sessions whose first answer offered the Workbench, once each per run."""
+    offer_keys: set[str] = field(default_factory=set, init=False, repr=False)
+    """The launch keys those offers carry: each opens the Workbench once, never the Host's key."""
+    _offers: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     external_token: str = field(default_factory=lambda: secrets.token_urlsafe(32), repr=False)
     external_instance: str = field(default_factory=lambda: secrets.token_hex(16))
     external_workspace_id: str | None = None
@@ -447,7 +462,11 @@ class LocalWebApplication:
         refusal = self._authorised(method="GET", headers=headers, mutates=False)
         keys = parse_qs(query).get("key", [])
         if refusal is None and (
-            len(keys) != 1 or not secrets.compare_digest(keys[0].encode(), self.launch_key.encode())
+            len(keys) != 1
+            or (
+                not secrets.compare_digest(keys[0].encode(), self.launch_key.encode())
+                and not self._spent_offer(keys[0])
+            )
         ):
             refusal = "local_web.launch_key_invalid"
         if refusal is not None:
@@ -461,6 +480,42 @@ class LocalWebApplication:
             issues_session=True,
             launch=True,
         )
+
+    def _offer_workbench(self, answer: object, provenance: RequestProvenance | None) -> object:
+        """An agent Session's first answer this run, with the Workbench offered once.
+
+        A daily Session works on a Host already serving and never sees `serve`'s launch line, so
+        its first answer carries `workbench`: OPEN_THE_WORKBENCH's words and a launch link of its
+        own that opens the Workbench once. The Host's own launch key never leaves its line.
+        """
+        session = (getattr(provenance, "vendor", None), getattr(provenance, "session", None))
+        loopback = [host for host in self.allowed_hosts if host.startswith(LOOPBACK_HOST)]
+        if not (session[0] and session[1]) or not isinstance(answer, dict) or not loopback:
+            return answer
+        with self._offers:
+            if session in self.offered:
+                return answer
+            self.offered.add((str(session[0]), str(session[1])))
+            key = secrets.token_urlsafe(32)
+            self.offer_keys.add(key)
+        url = f"http://{loopback[0]}{LAUNCH_PATH}?key={key}"
+        offer = {
+            "next_action": "OPEN_THE_WORKBENCH",
+            "launch_url": url,
+            "words": OPEN_THE_WORKBENCH,
+        }
+        return {**answer, "workbench": offer}
+
+    def _spent_offer(self, key: str) -> bool:
+        """Whether a key is an offered launch key, spent as it opens the Workbench once."""
+        with self._offers:
+            found = next(
+                (k for k in self.offer_keys if secrets.compare_digest(k.encode(), key.encode())),
+                None,
+            )
+            if found is not None:
+                self.offer_keys.discard(found)
+        return found is not None
 
     def dispatch(self, admitted: AdmittedRequest, body: bytes) -> LocalWebResponse:
         """Run the route that preflight authorised, over the body it bounded."""
@@ -492,7 +547,9 @@ class LocalWebApplication:
         scope = REQUEST_PROVENANCE.set(admitted.provenance)
         notice = BINDING_NOTICE.set(None)
         try:
-            answer = with_binding_notice(route.handler(admitted.query, payload))
+            answer = self._offer_workbench(
+                with_binding_notice(route.handler(admitted.query, payload)), admitted.provenance
+            )
         except LocalWebError as error:
             return self._refuse(
                 HTTPStatus.BAD_REQUEST,

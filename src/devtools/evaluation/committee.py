@@ -521,12 +521,12 @@ def _floor_fidelity(messages, rows, page, raw) -> list[str]:
 
 
 def _published(value: Any) -> str:
-    """A recorded instant as the CRO view dates it: its date and minute in UTC."""
+    """A recorded instant as the CRO view dates it: its UTC instant, beside the Host's local one."""
     try:
         at = datetime.fromisoformat(str(value))
     except ValueError:
         return str(value)
-    return at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC") if at.tzinfo else str(value)
+    return at.astimezone(UTC).isoformat() if at.tzinfo else str(value)
 
 
 def _review_fidelity(standing, cro_view, expected) -> list[str]:

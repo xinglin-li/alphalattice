@@ -650,6 +650,28 @@ def test_a_session_that_opens_a_goal_here_is_bound_without_a_separate_step(
     )
     assert again["status"] == "GOAL_SAVED", again
     assert binding.record_path(project).read_bytes() == record
+    # Each Session's first answer offers the Workbench once, a link opened once; never again.
+    offered = opened["workbench"]
+    assert offered["next_action"] == "OPEN_THE_WORKBENCH" and "workbench" not in again
+    assert offered["launch_url"].startswith(live.url.rstrip("/") + "/launch?key=")
+    assert [_launch_status(offered["launch_url"]) for _ in "ab"] == [303, 403]
+    _session(monkeypatch, host, "fixture-other")
+    other = client.request({"operation": "GOAL_LIST"})
+    assert other["workbench"]["launch_url"] != offered["launch_url"]
+    assert "workbench" not in client.request({"operation": "GOAL_LIST"})
+
+
+def _launch_status(url: str) -> int:
+    """The status a browser gets opening a launch link, without following its redirect."""
+    from http.client import HTTPConnection
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    connection = HTTPConnection(parts.hostname, parts.port, timeout=10)
+    connection.request("GET", f"{parts.path}?{parts.query}", headers={"Host": parts.netloc})
+    status = connection.getresponse().status
+    connection.close()
+    return status
 
 
 @pytest.mark.parametrize("host", ("codex", "claude-code"))
