@@ -1403,7 +1403,7 @@ def main(
                 getattr(args, "workspace", None), directory, args.request_timeout
             )
         except client.LocalResearchClientError as error:
-            return _refused(error, started)
+            return _refused(error, started, line=arguments)
         bound_token = BOUND_WORKSPACE.set(bound)
         args.bound_workspace = bound
         chosen_token = WORKSPACE_FROM.set(chosen_by)
@@ -1650,12 +1650,22 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
     return exit_code
 
 
-def _refused(error: str | client.LocalResearchClientError, started: float) -> int:
-    """A refusal the client raised before sending anything, in the one envelope (V568)."""
+def _refused(
+    error: str | client.LocalResearchClientError, started: float, line: Sequence[str] = ()
+) -> int:
+    """A refusal the client raised before sending anything, in the one envelope (V568).
+
+    A line that named no workspace is shown again with one named, the exact next command.
+    """
     code = str(error)
     refusal = client_refusal(code)
     context = getattr(error, "binding_context", None)
     detail = str(worded(refusal.detail))
+    if line and code == "local_client.workspace_unbound":
+        again = join(["alphalattice", "--workspace", "<dir>", *line], shell())
+        detail += " " + str(worded("This line with its workspace named: {subject}.")).replace(
+            "{subject}", f"`{again}`"
+        )
     if context:
         detail += " " + str(
             worded("Selected workspace: {subject}; requested workspace: {subject}.")

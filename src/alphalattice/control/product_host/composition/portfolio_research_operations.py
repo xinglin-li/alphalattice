@@ -1880,7 +1880,7 @@ class PortfolioResearchOperations:
                         "research_workspace.strategy_not_installed",
                     } and not code.startswith("local_application.strategy_package_not_installed:"):
                         raise
-                    return refused(code, installed_packages=tuple(sorted(self._packages)))
+                    return refused(code, installed_packages=self._packages)
             case "RESULTS":
                 return self.results(request.task_id)
             case "REPORT":

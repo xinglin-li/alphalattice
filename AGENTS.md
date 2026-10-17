@@ -84,11 +84,11 @@ on each command, with nothing to approve. Use the **alphalattice-research** Skil
 
 ## Run the first use from the person's sentence
 
-Start it with the person's exact sentence and the date it names for the positions
-(today's when it names none), as you read it:
+Start it in the workspace you serve, with the person's exact sentence and the date it names
+for the positions (today's when it names none), as you read it:
 
 ```powershell
-alphalattice first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09 --output "<out>/first-use.json"
+alphalattice --workspace "workspaces/my-research" first-use prepare --sentence "Positions for 2026-10-09, reviewed." --date 2026-10-09 --output "<out>/first-use.json"
 ```
 
 It first checks the setup a first use cannot run without, and opens nothing while

@@ -10,7 +10,7 @@ so an Agent and a test read exactly what they read before.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -266,8 +266,49 @@ def kind_words(kind: str) -> str:
     return _KIND_WORDS.get(kind) or kind.partition(".")[0].capitalize()
 
 
+def _package_selection(
+    base: str, subject: str, installed_packages: Collection[str] | None
+) -> dict[str, Any]:
+    """A missing or unknown book selector's words and its installed choices; a selector that
+    gave an installed package's hash in place of its id is told so, with that id."""
+    packages = tuple(sorted(installed_packages or ()))
+    hashed = [
+        package
+        for package, installed in (
+            installed_packages.items() if isinstance(installed_packages, Mapping) else ()
+        )
+        if getattr(installed, "package_hash", None) == subject
+    ]
+    selection = (
+        "The book document did not select a strategy: give `strategy_package_id`."
+        if base == "strategy_book.strategy_package_required"
+        else f"`{subject}` is the package hash of the installed strategy `{hashed[0]}`; select a "
+        f"package by its strategy id, `{hashed[0]}`, and read its controls."
+        if hashed
+        else f"The selected strategy package `{subject}` is not installed in this workspace."
+    )
+    packages = tuple(hashed) or packages
+    return {
+        "detail": selection
+        + (
+            ""
+            if hashed
+            else " Installed packages: " + ", ".join(packages) + ". "
+            "Read a package's controls and save its flat declaration, then preview that file."
+            if packages
+            else " Read the installed strategy controls before selecting a package."
+        ),
+        "next_action": "SELECT_STRATEGY_PACKAGE_FROM_CONTROLS",
+        "next_requests": {
+            f"controls:{package}": {"operation": "CONTROLS", "strategy_package_id": package}
+            for package in packages
+        }
+        or {"strategies": {"operation": "RESEARCH_STRATEGY_CONTROLS"}},
+    }
+
+
 def forward_availability_words(
-    code: str, installed_packages: tuple[str, ...] | None, strategy_package_id: str | None
+    code: str, installed_packages: Collection[str] | None, strategy_package_id: str | None
 ) -> dict[str, Any]:
     """Distinguish an unavailable package selector from an installed inactive strategy."""
     if (
@@ -314,7 +355,7 @@ def explain(
     origin: str | None = None,
     portfolio: Mapping[str, str | None] | None = None,
     trial: Mapping[str, Any] | None = None,
-    installed_packages: tuple[str, ...] | None = None,
+    installed_packages: Collection[str] | None = None,
     strategy_package_id: str | None = None,
     workspace: Path | None = None,
     now: datetime | None = None,
@@ -327,7 +368,8 @@ def explain(
     `portfolio` is the Alpha study and candidate a Portfolio declaration named.
     `trial` is a refused trial's way on: the studies it can run against, or the Factor studies
     whose handoff opens one (`FeatureTrials.way_on`). `installed_packages` names the book's
-    admitted choices when its selector is missing or unavailable.
+    admitted choices when its selector is missing or unavailable, by id or as the installed
+    packages themselves, whose hashes a selector may have given in place of an id.
     """
     task = {"task_id": task_id} if task_id else {}
     base, _sep, subject = code.partition(":")
@@ -354,27 +396,7 @@ def explain(
         "strategy_book.strategy_package_required",
         "local_application.strategy_package_not_installed",
     }:
-        packages = tuple(sorted(installed_packages or ()))
-        selection = (
-            "The book document did not select a strategy: give `strategy_package_id`."
-            if base == "strategy_book.strategy_package_required"
-            else f"The selected strategy package `{subject}` is not installed in this workspace."
-        )
-        return {
-            "detail": selection
-            + (
-                " Installed packages: " + ", ".join(packages) + ". "
-                "Read a package's controls and save its flat declaration, then preview that file."
-                if packages
-                else " Read the installed strategy controls before selecting a package."
-            ),
-            "next_action": "SELECT_STRATEGY_PACKAGE_FROM_CONTROLS",
-            "next_requests": {
-                f"controls:{package}": {"operation": "CONTROLS", "strategy_package_id": package}
-                for package in packages
-            }
-            or {"strategies": {"operation": "RESEARCH_STRATEGY_CONTROLS"}},
-        }
+        return _package_selection(base, subject, installed_packages)
     if base == "research_update.input_source_access_not_admitted":
         from alphalattice.control.product_host.maintenance.data_update import NETWORK_WORK_WORDS
 

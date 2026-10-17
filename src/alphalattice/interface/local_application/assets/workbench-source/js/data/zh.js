@@ -5466,6 +5466,7 @@ window.ALPHA_ZH = {
   "The book document did not select a strategy: give `strategy_package_id` from the installed packages and save its controls declaration before previewing it.": "账本文档没有选择策略：请从已安装的策略包中给出 `strategy_package_id`，并在预览之前保存其控制项声明。",
   "The book document did not select a strategy: give `strategy_package_id`. Read the installed strategy controls before selecting a package.": "账本文档没有选择策略：请给出 `strategy_package_id`。选择策略包之前，请先读取已安装策略的控制项。",
   "The book document did not select a strategy: give `strategy_package_id`. Installed packages: {subject}. Read a package's controls and save its flat declaration, then preview that file.": "账本文档没有选择策略：请给出 `strategy_package_id`。已安装的策略包：{subject}。请读取某个策略包的控制项并保存其扁平声明，然后预览该文件。",
+  "`{subject}` is the package hash of the installed strategy `{subject}`; select a package by its strategy id, `{subject}`, and read its controls.": "`{subject}` 是已安装策略 `{subject}` 的策略包哈希；请按其策略标识 `{subject}` 选择策略包，并读取其控制项。",
   "The selected strategy package `{subject}` is not installed in this workspace. Read the installed strategy controls before selecting a package.": "所选策略包 `{subject}` 未安装在此工作区中。选择策略包之前，请先读取已安装策略的控制项。",
   "The selected strategy package `{subject}` is not installed in this workspace. Installed packages: {subject}. Read a package's controls and save its flat declaration, then preview that file.": "所选策略包 `{subject}` 未安装在此工作区中。已安装的策略包：{subject}。请读取某个策略包的控制项并保存其扁平声明，然后预览该文件。",
   "The selected operation named after the colon reads execution results, not an editable declaration; use study export or the retained study preview, or feature controls or the Feature catalog readback, to save its declaration.": "冒号后指出的所选操作读取的是执行结果，而不是可编辑的声明；请使用 study export 或保留的研究预览，或 feature controls 或特征目录读回，来保存其声明。",
@@ -7307,6 +7308,7 @@ window.ALPHA_ZH = {
   "The workspace's inputs have an unfinished transition or data decision. The current positions are kept. Follow the offered input owner's request, then plan this date again.": "工作区输入仍有未完成的变更或数据决策。当前仓位保留。按提供的输入所有者请求继续，之后重新规划该日期。",
 
   "This request names a bundle from another workspace, or this session's existing binding differs from the requested workspace. Nothing was submitted. Host locations and availability are shown in binding_context. Run the offered commands in this caller's session, then send the unchanged request again; never remove a parent's binding.": "此请求指定的任务包来自另一个工作空间，或本会话的现有绑定与请求指定的工作空间不同。尚未提交任何内容。绑定上下文列出了宿主地址和可用状态。请在当前调用者的会话中执行提供的命令，再原样重试请求；不要移除父会话的绑定。",
+  "This line with its workspace named: {subject}.": "写明工作区后，这一行为：{subject}。",
   "Selected workspace: {subject}; requested workspace: {subject}.": "选定工作空间：{subject}；请求指定的工作空间：{subject}。",
   "The bundle's workspace locator must be a JSON object containing one absolute workspace path. Ask the lead to prepare a fresh bundle in a new directory; do not guess a workspace or edit another session's binding.": "任务包的工作空间定位信息必须是只包含一个绝对工作空间路径的 JSON 对象。请让主代理在新目录中准备新的任务包；不要猜测工作空间，也不要修改其他会话的绑定。",
   "Below the agenda line, no stance required": "议程线以下，无需表态",

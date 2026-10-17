@@ -762,10 +762,11 @@ def test_a_workspace_left_out_is_the_bound_sessions_and_any_other_is_refused_in_
     lead, other = str(uuid4()), str(uuid4())
     code, body = run("task", "list", session=lead)
     assert (code, body["failure_code"]) == (1, "local_client.workspace_unbound")
-    assert ["alphalattice", "--workspace", "<dir>", "session", "bind"] in [
-        shlex.split(command) for command in re.findall(r"`([^`]+)`", body["detail"])
-    ]
-    assert body["detail"] == client_refusal("local_client.workspace_unbound").detail
+    offered = [shlex.split(command) for command in re.findall(r"`([^`]+)`", body["detail"])]
+    assert ["alphalattice", "--workspace", "<dir>", "session", "bind"] in offered
+    # The refused line itself, its workspace named: the exact next command.
+    assert ["alphalattice", "--workspace", "<dir>", "task", "list"] in offered, body["detail"]
+    assert body["detail"].startswith(client_refusal("local_client.workspace_unbound").detail)
     assert body["next_action"] == client_refusal("local_client.workspace_unbound").next_action
     code, body = run("--workspace", str(workspace), "session", "bind", session=None)
     assert (code, body["failure_code"]) == (1, "local_client.session_unnamed")
@@ -777,7 +778,7 @@ def test_a_workspace_left_out_is_the_bound_sessions_and_any_other_is_refused_in_
     code, body = run("task", "list", session=other)
     assert (code, body["failure_code"]) == (1, "local_client.workspace_unbound")
     assert "alphalattice --workspace <dir>" in body["detail"]
-    assert body["detail"] == client_refusal("local_client.workspace_unbound").detail
+    assert body["detail"].startswith(client_refusal("local_client.workspace_unbound").detail)
     assert body["next_action"] == client_refusal("local_client.workspace_unbound").next_action
     code, body = run("--workspace", str(workspace), "session", "bind", session=other)
     assert (code, body["data"]["status"]) == (0, "BOUND")

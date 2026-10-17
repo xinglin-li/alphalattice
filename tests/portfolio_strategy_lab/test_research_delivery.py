@@ -547,6 +547,11 @@ def test_every_book_selector_refusal_has_door_words_and_owner_context(code) -> N
             for package in packages
         }
         assert all(package in answer["detail"] for package in packages)
+    # A selector that gave an installed package's hash is told so, with the id to give.
+    hashed = {"INSTALLED_A": SimpleNamespace(package_hash="a" * 64), "INSTALLED_B": None}
+    answer = explain(code.replace("NOT_AN_INSTALLED_PACKAGE", "a" * 64), installed_packages=hashed)
+    if code.startswith("local_application."):
+        assert list(answer["next_requests"]) == ["controls:INSTALLED_A"], answer
 
 
 def test_an_invalid_document_in_a_delivery_export_is_the_products_fault() -> None:

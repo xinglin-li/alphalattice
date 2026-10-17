@@ -428,7 +428,8 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "parent")
     unbound = run("doctor")[1]  # configured, not yet bound: the declaration read is Claude's
-    assert "project_declaration" not in unbound.get("missing", []), unbound
+    assert unbound["attachment_preflight"]["host"] == "claude-code", unbound
+    assert unbound["attachment_preflight"]["missing"] == ["native_session_binding"], unbound
     code, bound = run(
         "bind", "--host", "claude-code", "--session-id", "parent", "--workspace", str(workspace)
     )
