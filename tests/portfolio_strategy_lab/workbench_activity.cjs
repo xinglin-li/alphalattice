@@ -355,6 +355,12 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
   Object.assign(c,{t:words631.t,codeWords:words631.codeWords,notify:(key,vars)=>toasts.push(words631.t(key,vars))});
   for(const lang of ['en','zh']) {
     words631.I18N.set(lang);
+    pages=[page('RESET','delivery-'+lang,[item(1,'ProductOperationObserved',{operation:'EXPERIMENT_DELIVERY_EXPORT',phase:'RETURNED',operation_ref:'delivery',status:'RESEARCH_DELIVERY_EXPORTED',subject:{export_hash:'e'.repeat(64)}})])];
+    await A.refresh();
+    assert.equal(A.facts(A.groups()[0]).operation,'EXPERIMENT_DELIVERY_EXPORT');
+    const label=words631.t('Delivery export');
+    assert.ok(A.section().includes(label));
+    if(lang==='zh')assert.notEqual(label,'Delivery export');
     for(const state of codes631.lifecycles) {
       const task='follow-'+lang+'-'+state,before=toasts.length;
       knownTasks=[ended(task,state)];A.setFollowing(task);await settled();

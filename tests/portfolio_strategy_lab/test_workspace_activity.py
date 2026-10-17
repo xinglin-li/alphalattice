@@ -518,10 +518,19 @@ def test_full_external_document_fits_ledger_and_preserves_old_retries(live, char
 def test_every_operation_in_the_vocabulary_is_classified_once() -> None:
     """A new operation must be placed deliberately: recorded activity or a read."""
 
+    from alphalattice.interface.local_application.activity import OBSERVED_READ_OPERATIONS
     from alphalattice.interface.local_application.operations import OPERATIONS
 
     vocabulary = frozenset(OPERATIONS)
-    parts = (READ_OPERATIONS, OBSERVED_OPERATIONS, RECORDS_ITSELF)
+    assert (
+        READ_OPERATIONS & OBSERVED_OPERATIONS
+        == OBSERVED_READ_OPERATIONS
+        == {"EXPERIMENT_DELIVERY_EXPORT"}
+    )
+    assert not opens_goal(
+        "EXPERIMENT_DELIVERY_EXPORT", RequestProvenance(vendor="codex", session="session")
+    )
+    parts = (READ_OPERATIONS - OBSERVED_READ_OPERATIONS, OBSERVED_OPERATIONS, RECORDS_ITSELF)
     assert sum(len(part) for part in parts) == len(frozenset().union(*parts))
     assert vocabulary == frozenset().union(*parts)
     assert {"PLAN", "RUN", "EXPERIMENT_PLAN", "EXPERIMENT_RUN", "CANCEL"} <= OBSERVED_OPERATIONS

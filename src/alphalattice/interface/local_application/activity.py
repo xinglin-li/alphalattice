@@ -40,7 +40,10 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.interface.local_application.web import LocalWebError
 
-OBSERVED_OPERATIONS: frozenset[str] = frozenset(
+OBSERVED_READ_OPERATIONS: frozenset[str] = frozenset({"EXPERIMENT_DELIVERY_EXPORT"})
+"""Reads whose successful delivery must be recorded without changing their read semantics."""
+
+OBSERVED_OPERATIONS: frozenset[str] = OBSERVED_READ_OPERATIONS | frozenset(
     {
         "AGENT_ANSWER_SUBMIT",
         "AGENT_BUNDLE_PREPARE",
@@ -145,7 +148,9 @@ and a usage reading files its readings, so the observer records no operation bes
 (V266)."""
 
 
-OPENS_NO_GOAL: frozenset[str] = RECORDS_ITSELF | {"USAGE_READING_SET", "COMMITTEE_SUBMIT"}
+OPENS_NO_GOAL: frozenset[str] = (
+    RECORDS_ITSELF | OBSERVED_READ_OPERATIONS | {"USAGE_READING_SET", "COMMITTEE_SUBMIT"}
+)
 """Research that never opens a goal of its own: a record of itself, the usage switch, and a
 committee message, which counts toward its floor's goal or is refused."""
 
@@ -724,6 +729,7 @@ __all__ = [
     "ACTIVITY_REFUSAL_DAYS",
     "FAILURE_DETAIL_WITHHELD",
     "OBSERVED_OPERATIONS",
+    "OBSERVED_READ_OPERATIONS",
     "READ_OPERATIONS",
     "RECORDS_ITSELF",
     "RETURNED_REFERENCE_FIELDS",

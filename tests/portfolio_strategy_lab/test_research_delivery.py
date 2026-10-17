@@ -143,7 +143,11 @@ def _reports():
     )
 
 
-def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(monkeypatch):
+def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(monkeypatch, live):
+    """A sealed delivery crosses the served Host once with its exact retained references."""
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from tests.portfolio_strategy_lab.local_web_support import _json
+
     primary, other, reports = _reports()
     counts = Counter()
 
@@ -174,6 +178,9 @@ def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(m
         caller="EXTERNAL_AUTOMATION",
     )
     assert reports == before
+    assert export["export_hash"] == canonical_hash(
+        {k: v for k, v in export.items() if k != "export_hash"}
+    )
     assert export["sections"]["portfolio"]["value"] == reports[primary]
     assert (
         export["sections"]["comparison"]["value"]["disposition"]
@@ -195,6 +202,29 @@ def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(m
         ).to_operation_request()
         == document.to_operation_request()
     )
+    assert live.operations is not None
+    monkeypatch.setattr(live.operations.experiments, "readback", read)
+    served = _json(
+        live,
+        "/api/research/delivery",
+        method="POST",
+        payload=document.model_dump(mode="json", exclude_none=True),
+    )
+    rows = [
+        i
+        for i in _json(live, "/api/activity")["items"]
+        if i["payload"].get("operation") == document.operation
+        and i["payload"].get("phase") == "RETURNED"
+    ]
+    assert len(rows) == 1
+    assert rows[0]["payload"]["subject"] == {
+        "task_id": str(primary),
+        "experiment_receipt_hash": "f" * 64,
+        "portfolio_session": "2024-08-12",
+        "left_task_id": str(other),
+        "right_task_id": str(primary),
+        "export_hash": served["export_hash"],
+    }
     reports[other]["portfolio_source"]["input_binding_hash"] = "0" * 64
     partial = export_research_delivery(
         request=document.to_operation_request(),

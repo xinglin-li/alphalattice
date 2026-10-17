@@ -19,7 +19,23 @@ Give your agent this repository's link and one intent:
 
 > Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your built-in browser so I can follow it.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/committee-codex-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/committee-codex-light.png">
+  <img src="docs/images/committee-codex-light.png" alt="A Codex session's summary of a reviewed first use beside the Workbench's committee floor: specialists' replies, a CRO challenge, the PM's ruling and the verdict." width="1280">
+</picture>
+
+*A first use in Codex: the agent's summary beside the committee's discussion in the Workbench, open in Codex's built-in browser.*
+
 ## Two ways to use AlphaLattice
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/first-use-codex-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/first-use-codex-light.png">
+  <img src="docs/images/first-use-codex-light.png" alt="A first use started from one sentence: the agent opens the goal, gives the Workbench link, asks the network question and continues after the person's yes; the Workbench shows the goal's timeline." width="1280">
+</picture>
+
+*One sentence starts a first use. The agent opens the Workbench beside the conversation and asks its one network question; the goal's timeline records each step taken for you.*
 
 1. **First use, in a new folder.** Send your Claude Code or Codex agent the
    intent above, or `Positions for <date>, reviewed.` The agent prepares data
@@ -45,8 +61,6 @@ Give your agent this repository's link and one intent:
    and your standing network yes to update data and produce that session's reviewed
    research positions, following your daily committee setting. It asks nothing
    further unless a decision belongs to you.
-
-<!-- Hero image reserved: committee discussion from the final acceptance run. -->
 
 [Getting started](docs/public-source/getting-started.md) covers installation,
 first use and the decisions that remain yours.
