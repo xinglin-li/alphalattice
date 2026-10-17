@@ -51,6 +51,7 @@ from alphalattice.control.product_host.composition.committee_words import (
     COMPLETE_FIRST_USE,
     COMPLETE_HOW,
     DAILY_ASK,
+    DAILY_ASK_HOW,
     DAILY_WORDS,
     LEAD_PUBLISHED,
     MEMBER_COMMANDS,
@@ -404,21 +405,17 @@ def daily_asked(
     first = _first_use_update(goals, task)
     if first is None:
         return _complete(_date_goal(goals), answer, "COMPLETE_THE_GOAL", COMPLETE_DATE)
+    # The question waits for the person; the goal's completion never waits for it.
+    done = _complete(first, answer, "COMPLETE_THE_FIRST_USE_GOAL", COMPLETE_FIRST_USE)
     if committee_daily(workspace) is not None:
-        return _complete(first, answer, "COMPLETE_THE_FIRST_USE_GOAL", COMPLETE_FIRST_USE)
+        return done
     relay = (
         f'{COMMAND} committee daily --enabled true --person-said "<their words>" '
         f'--asked "{DAILY_ASK}"'
     )
-    return answer | {
-        "next_action": answer.get("next_action") or "ASK_THE_PERSON_ONCE",
-        "ask_now": [
-            "Ask the person once, in these words. On their yes, run the command after the "
-            "question once, their words verbatim in place of `<their words>`; on a no, the same "
-            "with `--enabled false`:",
-            DAILY_ASK,
-            relay,
-        ],
+    return done | {
+        "next_action": done.get("next_action") or "ASK_THE_PERSON_ONCE",
+        "ask_now": [DAILY_ASK_HOW, DAILY_ASK, relay],
     }
 
 

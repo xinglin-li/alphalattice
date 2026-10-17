@@ -180,3 +180,11 @@ ROUTE_END: Final = (
     "again until the floor settles or closes. The lead starts you as a general subagent."
 )
 """A member route's last step: the route is its only final action."""
+
+DAILY_ASK_HOW: Final = (
+    "Ask the person once, in these words, and go on: the goal's completion does not wait for "
+    "their answer, which may come at any later time, and the setting stays as it is until then. "
+    "On their yes, run the command after the question once, their words verbatim in place of "
+    "`<their words>`; on a no, the same with `--enabled false`:"
+)
+"""How the first use's report asks the daily question: it never holds the goal's completion."""

@@ -248,11 +248,12 @@ alphalattice request --from "<out>/committee/floor.json" --action report
 ```
 
 The first use's report asks the person once (`ask_now`), in its words, whether each
-daily update also convenes the committee: ask it, then relay their answer with the
-command it offers. Unanswered, it is off; one sentence from them changes it later
-(`committee daily --enabled true|false`, relayed). That answer is the road's last step: its
-next action, COMPLETE_THE_FIRST_USE_GOAL, offers the goal's read, which writes the
-completion to fill; submit it as the goals procedure says, sending each attach it offers.
+daily update also convenes the committee, and its next action, COMPLETE_THE_FIRST_USE_GOAL,
+offers the goal's read beside the question: ask it, then complete the goal at once, as the
+goals procedure says, sending each attach it offers. Never wait for their answer: it may come
+at any later time, and until it does the setting stays off. Relay it when it comes with the
+command offered; one sentence from them changes it later (`committee daily --enabled
+true|false`, relayed).
 
 ## Run an installed strategy forward
 

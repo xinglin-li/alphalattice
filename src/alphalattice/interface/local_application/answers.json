@@ -1143,13 +1143,13 @@
     "name": "next_action",
     "kind": "string",
     "required": false,
-    "meaning": "On the first use's own report, while the daily committee setting stands unanswered: `ASK_THE_PERSON_ONCE`; once it is answered, `COMPLETE_THE_FIRST_USE_GOAL`. On a later date's report, `COMPLETE_THE_GOAL` while the Session's goal stands open: give the person the report, then complete the goal."
+    "meaning": "On the first use's own report, `COMPLETE_THE_FIRST_USE_GOAL` while its goal stands open, whether or not the daily committee question is answered (`ASK_THE_PERSON_ONCE` once the goal is closed and the question still stands). On a later date's report, `COMPLETE_THE_GOAL` while the Session's goal stands open: give the person the report, then complete the goal."
    },
    {
     "name": "ask_now",
     "kind": "array",
     "required": false,
-    "meaning": "With `ASK_THE_PERSON_ONCE`: how to ask, the one question whether each daily update also convenes the committee, and the command that relays the person's answer."
+    "meaning": "On the first use's report while the daily committee setting stands unanswered: how to ask, the one question whether each daily update also convenes the committee, and the command that relays the person's answer. It never holds the goal's completion; the setting stays off until they answer."
    },
    {
     "name": "detail",

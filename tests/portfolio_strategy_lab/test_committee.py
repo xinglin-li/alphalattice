@@ -1005,7 +1005,11 @@ def test_the_daily_committee_is_the_persons_and_the_first_use_asks_it_once(
     assert committee.daily_asked(tmp_path, goals, TASK, {}) == {}  # not the first use's date
     store.attribute(first.goal_id, {"operation": "RESEARCH_UPDATE_RUN", "task_id": TASK})
     asked = committee.daily_asked(tmp_path, goals, TASK, {"status": "EXPORTED"})
-    assert asked["next_action"] == "ASK_THE_PERSON_ONCE" and committee.DAILY_ASK in asked["ask_now"]
+    assert committee.DAILY_ASK in asked["ask_now"]
+    # regression (fresh-folder acceptance): a lead held the goal open for this answer; the
+    # question waits for the person, and the goal's completion goes on beside it.
+    assert asked["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL", asked
+    assert asked["next_requests"]["goal"] == {"operation": "GOAL_SHOW", "goal_id": str(UUID(int=7))}
     assert "committee daily --enabled true" in asked["ask_now"][-1]
     request = Request(operation="COMMITTEE_DAILY_SET", committee_daily_enabled=True)
 

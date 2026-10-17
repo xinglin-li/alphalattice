@@ -34,8 +34,11 @@ Give your agent this repository's link and one intent:
    and recorded in activity, including automated updates.
 
    At the first-use report, the agent also asks whether daily updates should
-   convene the investment committee. Without that setting, later updates get the
-   portfolio manager's view on the reviewed positions.
+   convene the investment committee. Decide it in the conversation, then or at any
+   later time, and change it the same way, for example "Stop convening the
+   committee on daily updates." Until you say yes, later updates get the portfolio
+   manager's view on the reviewed positions. The first use does not wait for this
+   answer.
 
 2. **Daily update, in a new session in the same folder.** Say
    `Positions for <next session>, reviewed.` The agent uses the installed strategy
