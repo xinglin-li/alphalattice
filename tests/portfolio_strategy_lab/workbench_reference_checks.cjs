@@ -29,6 +29,7 @@ const meanings={
   'live-feature-research.js:held:PASSED':'formula contract admission',
   'live-goals.js:GOAL_STATES:COMPLETE':'record completion',
   'live-goals.js:RANK:COMPLETE':'listing order',
+  'live-goals.js:checkLine:COMPLETE':'accepted goal outcome, separate from reference integrity',
   'live-goals.js:passComplete:COMPLETE':'owner pass ended',
   'live-review.js:CELL_STATE:COMPLETE':'planned delivery',
   'live-review.js:contWords:COMPLETE':'continuation completion',

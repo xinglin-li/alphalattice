@@ -139,7 +139,7 @@ run('workbench_routes', async () => {
   // The row is produced by each collection, its declared handler runs, and the resulting page is read through LiveViews.
   await check('offered Goal row',async()=>{
     const g={goal_id:ID,goal_hash:H,title:'Routing Goal',objective:'Read one exact fixture',kind:'RESEARCH',state:'OPEN',revision:1,reference_count:0,recorded_at:new Date().toISOString()};
-    const c=makeContext({hash:'#page=goals',body:endpoint=>endpoint==='/api/goals'?{goals:[g]}:goalBody()});c.probe.readRoute();await c.probe.LiveGoals.ensure();offered(c.probe.LiveViews.page(),'goal-open',H);resetHistory(c);await press(c,'goal-open',H);await c.probe.LiveGoals.ensure();assert.equal(c.records.pushes.length,1);assert.equal(q(c).get('goal'),H);nonempty(c.probe.LiveViews.page(),'offered Goal');counts.offered_rows++;
+    const c=makeContext({hash:'#page=goals',body:endpoint=>endpoint==='/api/goals'?{goals:[g]}:goalBody()});c.probe.readRoute();await c.probe.LiveGoals.ensure();offered(c.probe.LiveViews.page(),'goal-open',ID);resetHistory(c);await press(c,'goal-open',ID);await c.probe.LiveGoals.ensure();assert.equal(c.records.pushes.length,1);assert.equal(q(c).get('goal'),ID);assert.ok(c.records.requests.includes('/api/goals/narrative?goal_id='+ID));assert.ok(String(c.probe.LiveGoals.factsSections()[0].body).includes(H));nonempty(c.probe.LiveViews.page(),'offered Goal');counts.offered_rows++;
   });
   await check('offered Model row',async()=>{
     const model={model_id:'fixture-model',state:'INSTALLED',contract:{findings:[]},identity:{moves:[]}};
