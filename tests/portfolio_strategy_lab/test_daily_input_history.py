@@ -1,12 +1,14 @@
 """A new Task reuses only a freshly proved, immutable workspace prefix."""
 
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from alphalattice.control.product_host.composition.strategy_score_inputs import (
+    PER_LISTING_EXTENSIONS,
     build_workspace_score_inputs,
     prepare_workspace_component_inputs,
     workspace_observation_history_columns,
@@ -15,8 +17,15 @@ from alphalattice.control.product_host.composition.strategy_score_inputs import 
 from alphalattice.control.product_host.composition.strategy_scoring import (
     workspace_observation_history_reuse,
 )
+from alphalattice.foundation.feature_engine.producers.factors.catalog import (
+    default_extension_kernel_registry,
+)
+from alphalattice.foundation.feature_engine.producers.factors.session_liquidity import (
+    session_liquidity_factor_specs,
+)
 from alphalattice.foundation.feature_engine.producers.factors.session_observation import (
     SESSION_OBSERVATION_FACTOR_IDS,
+    session_observation_factor_specs,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
@@ -49,6 +58,7 @@ def _publish(store, prepared, reuse=None):
         columns=workspace_observation_history_columns(prepared),
         reuse=reuse,
         capacity=lambda count: None,
+        proofs=(prepared.axes_proof, prepared.listing_digests, prepared.listing_closed),
     )
 
 
@@ -75,6 +85,9 @@ def _same_preparation(left, right):
             assert expected[key].tobytes() == actual[key].tobytes()
     assert left.raw_simple.tobytes() == right.raw_simple.tobytes()
     assert left.actions == right.actions
+    # The next head's proof, closed years carried or read, is a cold capture's.
+    for name in ("dependency_prefix_hash", "axes_proof", "listing_digests", "listing_closed"):
+        assert getattr(left, name) == getattr(right, name)
 
 
 @pytest.mark.parametrize("with_formulas", [False, True])
@@ -125,42 +138,114 @@ def test_a_fresh_owner_appends_the_same_history_and_publishes_the_same_observati
         ) == fresh.publish_frozen_observations(reused, disposition="RECORDED_INPUT_QA")
 
 
-@pytest.mark.parametrize("correction", ["bar", "feature", "sector"])
-def test_an_old_value_correction_rebuilds_the_history_even_without_a_revision(
-    daily_workspace, correction
+@pytest.mark.parametrize(
+    "correction",
+    ["bar", "feature", "two", "action", "closed_year", "sector", "cross_sectional"],
+)
+def test_an_old_value_correction_rebuilds_what_it_touched_even_without_a_revision(
+    daily_workspace, correction, monkeypatch
 ):
+    """A corrected bar, Feature, action or closed-year bar rebuilds its own listings alone, with
+    Features and formula columns kept; a Sector change moves every listing's axes, and a
+    cross-sectional kernel keeps the capture cold, whole."""
+    from alphalattice.control.product_host.composition import strategy_score_inputs
+
+    if correction == "cross_sectional":  # a kept kernel no longer proved per listing
+        monkeypatch.setattr(strategy_score_inputs, "PER_LISTING_EXTENSIONS", frozenset())
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
-    previous = _publish(store, _capture(daily_workspace, FIRST))
+    previous = _publish(store, _capture(daily_workspace, FIRST, WIDE))
     history = store.load_workspace_observation_history("1" * 64)
     assert history is not None
     market = MarketDataRepository(daily_workspace)
-    listing = previous.ordered_listing_ids[0]
+    ids = previous.ordered_listing_ids
+    closed = max(day for day in previous.formation_sessions if day.year < FIRST.year)
     old_identity = workspace_score_source_identity(daily_workspace)
     with market.database.connect(read_only=False) as connection:
-        if correction == "bar":
+        bar = (
+            "UPDATE raw_daily_bar_current SET open = open + 0.01 "
+            "WHERE listing_id = ? AND session_date = ?"
+        )
+        values = (
+            "UPDATE feature_daily_current SET dist_52w_high = dist_52w_high + 0.01, "
+            "mom_252_21 = mom_252_21 + 0.01 WHERE listing_id = ? AND session_date = ?"
+        )
+        touched = {
+            "bar": [(bar, ids[1], FIRST)],
+            "cross_sectional": [(bar, ids[1], FIRST)],
+            "feature": [(values, ids[1], FIRST)],
+            "two": [(bar, ids[1], FIRST), (values, ids[2], FIRST)],
+            "closed_year": [(bar, ids[1], closed)],
+        }.get(correction, [])
+        for statement, listing, day in touched:
+            connection.execute(statement, [listing, day])
+        if correction == "action":  # a dividend found late, inside the kept history
             connection.execute(
-                "UPDATE raw_daily_bar_current SET open = open + 0.01 "
-                "WHERE listing_id = ? AND session_date = ?",
-                [listing, FIRST],
+                "INSERT INTO corporate_action_current SELECT listing_id, provider, session_date, "
+                "'CASH_DIVIDEND', NULL, 0.25, false, 'fixture', repeat('a', 64), 'ACTIVE', ? "
+                "FROM raw_daily_bar_current WHERE listing_id = ? AND session_date = ?",
+                [OBSERVED_AT.replace(tzinfo=None), ids[3], previous.formation_sessions[-2]],
             )
-        elif correction == "feature":
-            connection.execute(
-                "UPDATE feature_daily_current SET dist_52w_high = dist_52w_high + 0.01 "
-                "WHERE listing_id = ? AND session_date = ?",
-                [listing, FIRST],
-            )
-        else:
+        elif correction == "sector":
             connection.execute(
                 "UPDATE sector_classification_current SET sector_name = "
                 "CASE WHEN sector_name = 'Energy' THEN 'Technology' ELSE 'Energy' END "
                 "WHERE listing_id = ?",
-                [listing],
+                [ids[1]],
             )
-    assert workspace_score_source_identity(daily_workspace) == old_identity
-    actual = _capture(daily_workspace, LAST, history=history)
-    expected = _capture(daily_workspace, LAST)
+    # Each edit but the inserted action leaves the source identity as it was (no revision).
+    assert (workspace_score_source_identity(daily_workspace) == old_identity) != (
+        correction == "action"
+    )
+    actual = _capture(daily_workspace, LAST, WIDE, history=history)
+    expected = _capture(daily_workspace, LAST, WIDE)
     assert actual.reused_history_hash is None
+    restated = {
+        "bar": (ids[1],),
+        "feature": (ids[1],),
+        "two": (ids[1], ids[2]),
+        "action": (ids[3],),
+        "closed_year": (ids[1],),
+    }.get(correction, ())
+    assert actual.restated_listing_ids == restated
     _same_preparation(expected, actual)
+
+
+KERNELS = (*session_observation_factor_specs(), *session_liquidity_factor_specs())
+
+
+@pytest.mark.parametrize("spec", KERNELS, ids=lambda spec: spec.factor_id)
+def test_a_reviewed_per_listing_kernel_gives_a_listing_alone_its_full_frame_bytes(spec):
+    """The reviewed set is every kernel the capture computes, and each one computes a listing
+    subset exactly as within the whole frame; a new kernel fails here until reviewed."""
+    reviewed = {
+        *("at_own_high_share_63", "close_to_close", "gap", "gap_amplitude", "high_extension"),
+        *("intraday", "intraday_amplitude", "low_extension", "range_position", "session_span"),
+        *("return_run_length_21", "session_dollar_volume", "sessions_since_252_high"),
+        *(
+            "previous_close_excursion_intraday_adjusted_square",
+            "previous_close_excursion_intraday_cross",
+        ),
+        "previous_close_excursion_scaled_span_square",
+    }
+    assert {kernel.factor_id for kernel in KERNELS} == PER_LISTING_EXTENSIONS == reviewed
+    days, names = 300, ("A", "B", "C")
+    close = 100.0 + np.sin(np.arange(days * 3, dtype=np.float64) / 7.0).reshape(days, 3)
+    close[[60, 250], 1] = (200.0, 220.0)
+    frame = pd.DataFrame(
+        {
+            "session_date": np.repeat([date(2024, 1, 1) + timedelta(i) for i in range(days)], 3),
+            "listing_id": np.tile(names, days),
+            "open_split_adjusted": (close * 0.99).reshape(-1),
+            "high_split_adjusted": (close * 1.02).reshape(-1),
+            "low_split_adjusted": (close * 0.98).reshape(-1),
+            "close_split_adjusted": close.reshape(-1),
+            "close_raw": close.reshape(-1),
+            "volume_raw": np.tile((1000.0, 1500.0, 900.0), days),
+        }
+    )
+    compute = default_extension_kernel_registry().compute
+    whole, mask = compute(frame, spec), (frame["listing_id"] == "B").to_numpy()
+    assert compute(frame[mask], spec).to_numpy().tobytes() == whole[mask].to_numpy().tobytes()
 
 
 def test_a_future_action_is_checked_at_its_effective_cutoff_after_history_reload(daily_workspace):
@@ -307,3 +392,82 @@ def test_a_kept_history_is_refused_for_more_columns_or_another_implementation(da
     same = workspace_observation_history_selection(binding, implementation="a" * 64)
     assert same == workspace_observation_history_selection(binding, implementation="a" * 64)
     assert same != workspace_observation_history_selection(binding, implementation="b" * 64)
+
+
+def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_renew(monkeypatch):
+    """regression (the person's D2, 2026-10-15): a kept history held only that day's columns, so
+    the renewal day rebuilt ten years cold; every capture now keeps the training columns."""
+    from contextlib import nullcontext
+
+    from alphalattice.control.product_host.composition import strategy_scoring as scoring
+    from alphalattice.investment.alpha_research.scores.model_renewal import (
+        AdmittedRenewingInference as Renewing,
+    )
+
+    inference, captured = object.__new__(Renewing), {}
+    inference.authority = SimpleNamespace(
+        training_factor_ids=("amihud_21",), supports=lambda _: True, model_set=SimpleNamespace()
+    )
+    inference.authority.model_set.ordered_feature_ids = ()
+
+    def capture(_workspace, **kwargs):
+        captured.update(kwargs)
+        raise ValueError("causal execution split is invalid")  # the owner's own early return
+
+    monkeypatch.setattr(scoring, "prepare_workspace_component_inputs", capture)
+    owner = SimpleNamespace(
+        _authority=lambda _: inference,
+        store=SimpleNamespace(load_workspace_observation_history=lambda _: None),
+        session=SimpleNamespace(reads=nullcontext, workspace=None),
+        clock=lambda: OBSERVED_AT,
+    )
+    binding = SimpleNamespace(
+        strategy_package_id="p", component_id="c", source_kind="WORKSPACE_DATA_FEATURE"
+    )
+    binding.strategy_package_hash = "3" * 64
+    prepare = scoring.StrategyScoringApplication.prepare_inputs
+    assert prepare(owner, binding, through=LAST, expected_source_hash="4" * 64) is None
+    assert captured["training_factor_ids"] == ("amihud_21",)
+
+
+def test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm(daily_workspace):
+    """regression (FINAL-022's real D2, 2026-10-15): the provider restated every adjusted series
+    and the kept prefix went cold, though no captured value reads the reference's closes."""
+    store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
+    previous = _publish(store, _capture(daily_workspace, FIRST, WIDE[:1]))
+    market = MarketDataRepository(daily_workspace)
+    with market.database.transaction() as connection:
+        connection.execute(
+            "UPDATE provider_adjusted_close_current SET adjusted_close = adjusted_close * 1.001 "
+            "WHERE listing_id IN (SELECT listing_id FROM market_reference_current)"
+        )
+    history = store.load_workspace_observation_history("1" * 64)
+    appended = _capture(daily_workspace, LAST, WIDE[:1], history)
+    assert appended.reused_history_hash == previous.head_hash
+    _same_preparation(_capture(daily_workspace, LAST, WIDE[:1]), appended)
+
+
+def test_a_head_without_listing_proofs_keeps_its_seal_and_reuses_whole(daily_workspace):
+    """A head written without the optional proof parts is sealed as before (its JSON without
+    them), verifies on load and reuses whole when its prefix proof holds. A head from before the
+    proof's v3 kind never holds it, so the first update after upgrading is cold once."""
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+    store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
+    prepared = _capture(daily_workspace, FIRST, WIDE[:1])
+    head = store.publish_workspace_observation_history(
+        scope_hash="1" * 64,
+        selection_hash="2" * 64,
+        dependency_prefix_hash=prepared.dependency_prefix_hash,
+        formation_sessions=prepared.formation_sessions,
+        ordered_listing_ids=prepared.ordered_listing_ids,
+        stable_session_count=prepared.stable_session_count,
+        columns=workspace_observation_history_columns(prepared),
+        capacity=lambda count: None,
+    )
+    apart = {"head_hash", "axes_proof", "listing_digests", "listing_closed"}
+    assert head.head_hash == canonical_hash(head.model_dump(mode="json", exclude=apart))
+    history = store.load_workspace_observation_history("1" * 64)
+    assert history is not None and history[0] == head
+    appended = _capture(daily_workspace, LAST, WIDE[:1], history)
+    assert appended.reused_history_hash == head.head_hash and not appended.restated_listing_ids

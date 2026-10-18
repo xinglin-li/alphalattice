@@ -1,6 +1,6 @@
 {
  "local_web.assets_stale": {
-  "detail": "The Local Web's built files differ from this checkout's sources. Run `python scripts/build_local_web_ui.py --product`, then serve again.",
+  "detail": "The Local Web's built files differ from this checkout's sources. Run `uv run python scripts/build_local_web_ui.py --product`, then serve again.",
   "next_action": "BUILD_LOCAL_WEB_ASSETS_AND_SERVE_AGAIN"
  },
  "workspace_preparation.human_confirmation_required": {
@@ -28,7 +28,7 @@
   "next_action": "PREPARE_AND_ANALYSE_THE_EVIDENCE"
  },
  "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY": {
-  "detail": "No issuer registry and listing authority are admitted for this workspace, so a book's holdings cannot be named as issuers and no evidence is prepared; use the offered `alphalattice evidence install` setup in the running Host to install and admit them.",
+  "detail": "No issuer registry and listing authority are admitted for this workspace, so a book's holdings cannot be named as issuers and no evidence is prepared; send the offered `install` as it stands, once: the Host names its issuers by rule, the book's largest holdings by weight in this workspace's universe, at most eight issuers at three filings each (24 documents), within the default budget (3 per issuer, 600 documents and 3 GB overall), and the review then acquires the rest.",
   "next_action": "ADMIT_ISSUER_REGISTRY_AND_LISTING_AUTHORITY"
  },
  "REFUSED_NO_ADMITTED_EVIDENCE_RUNTIME": {
@@ -116,7 +116,7 @@
   "next_action": "TELL_YOUR_LEAD"
  },
  "local_client.request_invalid": {
-  "detail": "The request breaks the named field rules in `reasons`. Restore the missing field from the original offer, or read the offered valid values, change the named field and send it again. `schema_command` reads the field's valid form. Never select the latest plan in place of the original.",
+  "detail": "The request breaks the named field rules in `reasons`. Restore the missing field from the original offer, or read the offered valid values, change the named field and send it again. `schema_command` reads the field's valid form. Never select the latest plan in place of the original. A schema read grants no permission.",
   "next_action": "CORRECT_THE_REQUEST"
  },
  "native_bridge.accepted_answer_not_recorded": {
@@ -168,6 +168,7 @@
   "next_action": "CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN"
  },
  "alternative_evidence.book_sources_short": {
+  "stop_detail": "This book cannot be reviewed under the installed sources: every unit lacks enough issuers with documents for the installed package's floor. `coverage.units_short_of_sources` names the missing issuers. With the person's consent, official SEC acquisition reads every holding's filing index at one cutoff. One package covers one unit; units prepared under different packages cannot be reviewed together (`source_ways`).",
   "detail": "This book cannot be reviewed under the installed sources: none of its units holds a source document for enough of its issuers for the floor the installed Evidence package sets, so a preparation would fail every one, as `coverage.units_short_of_sources` names with the issuers without a source. It can be reviewed after the person consents to official SEC acquisition, which reads every holding's filing index at one cutoff; a package covers one unit, and units prepared under different packages cannot be reviewed together (`source_ways`).",
   "next_action": "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE"
  },
@@ -308,7 +309,7 @@
   "next_action": "CORRECT_THE_CONSENT_AND_SEND_AGAIN"
  },
  "evidence_review.consent_human_only": {
-  "detail": "Official SEC acquisition and the consent to it are the person's; a first use's agent takes them only within the default budget, under its goal. Otherwise ask the person in one line and, on a clear yes, send this again with `--person-said` and `--asked`.",
+  "detail": "Official SEC acquisition and the consent to it are the person's; a first use's agent takes them only within the default budget, under its goal (a shell holding none names it: --goal <goal_id>), and under the person's daily yes (their standing consent to SEC filings at the default budget) an agent sends only the install the Host offers, as it stands. With no such consent, or for any other install, ask the person in one line and, on a clear yes, send this again with `--person-said` and `--asked`.",
   "next_action": "ASK_THE_PERSON_FOR_SEC_SOURCE_CONSENT"
  },
  "evidence_review.source_admission_waits_for_evidence_task": {
@@ -332,12 +333,22 @@
   "next_action": "PREFLIGHT_AND_GIVE_EXPLICIT_SEC_CONSENT"
  },
  "evidence_review.materialization_has_no_admitted_documents": {
-  "detail": "None of the package's issuers holds a document at its cutoff, so there is nothing to install: {subject}. An issuer whose filing index at the cutoff shows nothing filed in the window has none to hold, and a package needs at least one document. `next_commands` holds the way on: after an official acquisition in which one failed, the same acquisition at that cutoff, which may obtain it, and its check; otherwise the setup's own check.",
+  "stop_detail": "None of the package's issuers holds a document at its cutoff; a package needs at least one. An empty filing index in the window means none to hold. A stopped install offers the next eight holdings by weight as `install`. Otherwise follow `next_commands`: if an official fetch failed, retry and check the same acquisition at that cutoff; otherwise run the setup's check. Details:{subject}",
+  "detail": "None of the package's issuers holds a document at its cutoff, so there is nothing to install: {subject}. An issuer whose filing index at the cutoff shows nothing filed in the window has none to hold, and a package needs at least one document. A stopped install offers the next eight holdings by weight ready as `install`; `next_commands` holds the way on otherwise: after an official acquisition in which one failed, the same acquisition at that cutoff, which may obtain it, and its check; otherwise the setup's own check.",
   "next_action": "ACQUIRE_AGAIN_AT_THE_CUTOFF_OR_NAME_ISSUERS_THAT_FILED"
  },
  "evidence_review.materialization_issuer_coverage_incomplete": {
+  "stop_detail": "Too few issuers hold documents at the cutoff for the package's floor. Empty filing indexes are excluded from the share; failed or unread acquisitions count against it. Follow `next_commands`: for official sources, retry the same acquisition at that cutoff and check it; quiet issuers remain excluded. For recorded imports, run the import's check. The package's floor is unchanged. Details:{subject}",
   "detail": "Too few of the package's issuers hold a document at its cutoff for its coverage floor: {subject}. An issuer whose filing index at the cutoff shows nothing filed in the window holds nothing to count and is left out of the share; one whose acquisition failed or left its filings unread counts against it. `next_commands` holds the way on: after an official acquisition, the same acquisition at that one cutoff, which fetches again what failed and leaves the quiet ones uncounted, and its check; after a recorded import, the import's own check. The floor stays the package's.",
   "next_action": "RUN_THE_OFFERED_WAY_AT_ONE_CUTOFF"
+ },
+ "evidence_review.rebind_takes_no_source": {
+  "detail": "A rebind re-seals the installed package over this workspace's universe and reads no source, so it takes neither --acquire-sec, --source-artifact-root nor --source-set-hash. Run the rebind without them, or an install that names one source.",
+  "next_action": "RUN_THE_REBIND_WITHOUT_A_SOURCE"
+ },
+ "evidence_review.choose_sec_acquisition_or_source_artifacts": {
+  "detail": "A setup reads exactly one source: --acquire-sec for an official SEC acquisition, or --source-artifact-root with --source-set-hash for a recorded import. Name one of them.",
+  "next_action": "NAME_ONE_SOURCE"
  },
  "evidence_review.preflight_requires_a_source": {
   "detail": "A preflight checks a source before it is installed -- an official acquisition's setup, or a recorded import's records -- and a rebind reads no source, so it has none. Run the rebind without --preflight: it seals a package beside the installed one and binds it only with --install.",
@@ -416,7 +427,7 @@
   "next_action": "OPEN_A_GOAL_OF_ANOTHER_KIND"
  },
  "goal.first_use_already_opened": {
-  "detail": "This workspace has had its first use: a first-use goal opens once, from the person's sentence, and the person decides each step after it. Open a goal of another kind for this work (`alphalattice goal schema` prints one to edit).",
+  "detail": "This workspace has had its first use, from another sentence or date: a first-use goal opens once, from the person's sentence, and the person decides each step after it; its own sentence and date continue it from any session (`alphalattice goal list` names it). Open a goal of another kind for this work (`alphalattice goal schema` prints one to edit).",
   "next_action": "OPEN_A_GOAL_OF_ANOTHER_KIND"
  },
  "goal.first_use_is_not_revised": {
@@ -636,7 +647,7 @@
   "next_action": "NAME_THE_UPDATES_OWN_TASK"
  },
  "product_host.evidence_task_adapter_absent": {
-  "detail": "This Host has no admitted evidence source package and retrieval runtime, so no evidence is prepared or read here; under the source consent already given, use the offered `alphalattice evidence install` setup to install them in the running Host.",
+  "detail": "This Host has no admitted evidence source package and retrieval runtime, so no evidence is prepared or read here; under the source consent already given, send the offered `install` as it stands, or read the offered `preview`, whose answer offers it, its issuers named by the Host's rule.",
   "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME"
  },
  "research_authoring.document_unparsable": {
@@ -823,6 +834,10 @@
   "detail": "`committee_agenda_limit` must be a strict integer from 1 through 24. Omit the field to use 12, or correct the workspace declaration and retry.",
   "next_action": "CORRECT_THE_WORKSPACE_DECLARATION"
  },
+ "research_workspace.configuration_changed_restart_required": {
+  "detail": "This workspace's configuration was changed outside this running Host, so it takes no more work rather than serve two configurations; nothing was changed. Tell the person in one line: the Host reads the new configuration once they restart it (`alphalattice host stop`, then start it again).",
+  "next_action": "TELL_THE_PERSON_THE_HOST_NEEDS_A_RESTART"
+ },
  "research_workspace.manifest_refused": {
   "detail": "The workspace's manifest does not read as its contract says (`{subject}`: each field refused and its rule), so nothing in it runs; restore the workspace from a backup that holds a readable manifest (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
@@ -914,6 +929,10 @@
  "storage.input_binding_missing": {
   "detail": "The retained input manifest at {subject}/manifest.json is missing, so storage cannot verify its retained references. Restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "storage.disk_space_insufficient": {
+  "detail": "The disk does not hold this write with its recovery headroom. Free disk space or move the workspace to a larger disk, then resume the stopped Task from its recovery view; its verified stages are kept.",
+  "next_action": "FREE_SYSTEM_RESOURCES_AND_READ_TASK_RECOVERY"
  },
  "storage.managed_capacity_exceeded": {
   "detail": "Managed storage exceeds the workspace cap. Raise the cap (`alphalattice storage set --cap-bytes <bytes>`) or preview a cleanup (`alphalattice storage plan`) for the person to confirm.",
@@ -1103,6 +1122,10 @@
   "detail": "Background wakes need a Codex thread and a runnable `codex queue`. Run `python -m alphalattice.interface.local_application.native_setup doctor`; ask once before installing the Codex CLI outside the lock, then the agent installs it and sends the same request again. Until it is available, wait inside this turn without `--notify`.",
   "next_action": "WAIT_IN_THE_TURN"
  },
+ "local_client.codex_unreachable": {
+   "detail": "The Host cannot reach Codex: Codex refused before reading its own sessions, as it does for a Host running inside an agent's sandbox, so no wake can be queued (`codex_reach.detail` holds what Codex said). Wait inside this turn with `activity wait --task <id>`; the Task's work is unchanged.",
+   "next_action": "WAIT_IN_THE_TURN"
+ },
  "alpha_modeling.lightgbm_thread_canary_mismatch": {
   "detail": "LightGBM on this machine grew other trees at the CPU budget's thread count than the sealed canary, so the study did not fit. Set the workspace's CPU budget to 1 (`alphalattice cpu-budget set --cores 1`) and run it again: on one thread it fits as the method was sealed.",
   "next_action": "SET_CPU_BUDGET_TO_ONE_AND_RUN_STUDY_AGAIN"
@@ -1188,8 +1211,16 @@
   "next_action": "READ_USAGE_WITH_SESSION_USAGE"
  },
  "native_bridge.files_unavailable": {
-  "detail": "The bridge cannot read or write the named local path category. For a binding, start the workspace Host in the configured project and use session bind. For configure or doctor, the person checks the named declarations from a shell that can access that project. Do not widen the agent sandbox.",
+  "detail": "The bridge cannot read or write the named local path category. A project binding that an agent sandbox denies is kept in the workspace's own folder instead and needs nothing more, so this is another path: for configure or doctor, the person checks the named declarations from a shell that can access that project. Do not widen the agent sandbox.",
   "next_action": "USE_THE_WORKSPACE_HOST_OR_CHECK_THE_NAMED_LOCAL_PATH"
+ },
+ "native_bridge.bound_in_workspace": {
+  "detail": "This Session is bound in the workspace's own folder, because the Host could not write the project's `.codex` folder (an agent sandbox protects it). Its Sessions row, usage and deliveries are recorded as usual; name `--workspace` on each command, since the project holds no binding to find it from.",
+  "next_action": "NAME_THE_WORKSPACE_ON_EACH_COMMAND"
+ },
+ "native_bridge.session_not_bound": {
+  "detail": "The Host could not bind this Session for the reason `cause` names, so its research is recorded but not its Sessions row, usage reading or deliveries. Ask the person to start the Host from a shell that can write the `path` this notice names (the project's binding or the workspace's own folder), then send the request again with `--workspace`.",
+  "next_action": "ASK_THE_PERSON_TO_SERVE_FROM_A_WRITABLE_SHELL"
  },
  "native_bridge.project_mismatch": {
   "detail": "The requested project differs from the configured project found above this served workspace. Start the Host for the workspace inside that project, then run session bind from that same project.",
@@ -1444,7 +1475,7 @@
   "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
  },
  "native_bridge.local_environment_missing": {
-  "detail": "The folder named for configure has no .venv of its own, so it is not a source checkout. Configure the checkout you work from, or a separate agent folder with the installed product; never a workspace or data folder. A configured project binds a workspace kept anywhere.",
+  "detail": "The folder named for configure has no .venv, so it is not a source checkout. In a checkout, run `uv sync --locked --all-extras`, then `uv run python -m alphalattice.interface.local_application.native_setup configure --host <codex-or-claude-code>` from its root. A separate agent folder uses the release wheel: configure it with the tool's interpreter beneath `uv tool dir`, and `--project <agent-folder>`. Never a workspace or data folder; a configured project binds a workspace kept anywhere.",
   "next_action": "CONFIGURE_A_CHECKOUT_OR_AN_INSTALLED_AGENT_FOLDER"
  },
  "execution.memory_insufficient": {
@@ -1499,8 +1530,16 @@
   "detail": "A book, score, calibration or update Task on the installed strategies is in progress, so nothing was installed. Wait for that Task ({subject}) to end, then install again.",
   "next_action": "WAIT_FOR_THE_TASK_THEN_INSTALL"
  },
+ "person_confirmation.not_the_persons_words": {
+  "detail": "These words say no person gave them, so they relay no decision and nothing was done. Ask the person in one line and relay their own words; without them, leave the decision undone and say so.",
+  "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
+ },
  "person_confirmation.decision_mismatch": {
   "detail": "The person's yes answers another request than this one, so nothing was done. Ask them about this decision in one line, and relay that yes with this request.",
+  "next_action": "ASK_THE_PERSON_ABOUT_THIS_DECISION"
+ },
+ "person_confirmation.beyond_its_question": {
+  "detail": "The daily network question's yes answers only turning the network on and SEC filings at the default budget, so nothing was done. Ask the person about this decision in its own line, and relay that yes with this request.",
   "next_action": "ASK_THE_PERSON_ABOUT_THIS_DECISION"
  },
  "person_confirmation.already_used": {
@@ -1520,7 +1559,7 @@
   "next_action": "ASK_THE_PERSON_AGAIN"
  },
  "research_update.refused": {
-  "detail": "The update could not be planned or admitted, and the strategy's activation stands. Plan it again from the offered `update` request, or with `alphalattice research-update plan --package <package>`, adding `--through <session>` for a named date's update.",
+  "detail": "The update could not be planned or admitted, and the strategy's activation stands. Plan it again from the offered `update` request, or with `alphalattice research-update plan --package <package>`, adding `--date <date>` for a named date's positions.",
   "next_action": "PLAN_THE_UPDATE_AGAIN"
  },
  "first_use.date_outside_calendar": {
@@ -1529,6 +1568,10 @@
  },
  "first_use.date_not_session": {
   "detail": "target_date is not a common XNYS/XNAS trading session. The nearest entry on or after it is {subject}; confirm that date with the person, then send the offered preparation command. No Goal was opened.",
+  "next_action": "PREPARE_THE_NEAREST_SESSION"
+ },
+ "first_use.date_before_history": {
+  "detail": "target_date's formation needs ten years of market history before it, which would start before the exchange calendars' first session. The earliest supported entry is {subject}; confirm that date with the person, then send the offered preparation command. No Goal was opened.",
   "next_action": "PREPARE_THE_NEAREST_SESSION"
  },
  "first_use.date_after_clock": {
@@ -1542,6 +1585,10 @@
  "data.current_universe_no_feature_ready_listings": {
   "detail": "The acquired source yielded no listing ready for Feature inputs. Read `issue list` for each failed listing and the provider cause. Retained source data is unchanged; follow the offered preparation recovery after correcting the source.",
   "next_action": "DATA_ISSUES"
+ },
+ "committee.daily_setting_human_only": {
+  "detail": "Whether each daily update convenes the investment committee is the person's decision: ask the person in one line and, on their answer, send this again with --person-said and --asked. Nothing was changed.",
+  "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
  },
  "committee.not_open": {
   "detail": "No committee is open on this update; open it with `alphalattice committee open --update <task>`.",
@@ -1559,6 +1606,10 @@
   "detail": "That channel is the committee's own; a client's event cannot take it.",
   "next_action": "DECLARE_ON_YOUR_OWN_CHANNEL"
  },
+ "research_delivery.export_failed": {
+  "detail": "The Host could not write this report, a fault in the product, not in your request; nothing changed. Send the same request once more; if it is refused the same way, report the problem with `alphalattice problem report --output <file>`.",
+  "next_action": "SEND_ONCE_MORE_THEN_REPORT_THE_PROBLEM"
+ },
  "research_delivery.subject_required": {
   "detail": "A delivery names its subject: a study's book (its Task, receipt and session) or a date's published positions (its update, publication and basis).",
   "next_action": "NAME_THE_DELIVERY_SUBJECT"
@@ -1568,7 +1619,8 @@
   "next_action": "SEND_THE_OFFERED_SELECTOR"
  },
  "committee.message_refused": {
-  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias; AGENDA, an unraised below-line point or more than one point raised by a PM reply. For review and committee members: MEMBER, a missing own session or bundle key; KEY, another member's key; ENDED, changed work after the thread ends. Read the floor with `alphalattice committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
+  "stop_detail": "Committee rules: ROLE/MEMBER/KEY, own role/session/key; STANCES/DEBATE/CLOSED/LATE, stage or time; ENDED, changed work after end; STANCE_IN, one stance; CAP, three challenges/replies; TARGET/REPLY_TO, valid alias/message; SHAPE, permitted fields; NUMBER, aliases only; AGENDA, raise one below-line point per PM reply first. Read `alphalattice committee show`, then correct the message and replace typed figures with floor aliases. Rule:{subject}",
+  "detail": "The committee's floor refused this by its rule {subject}: ROLE, a member who does not send it or a key not that member's own; STANCES, DEBATE or CLOSED, a stage that does not take it; STANCE_IN, one stance each; LATE, a specialist's stance after its window or its turn after the discussion window; CAP, three challenges or replies after the stance; TARGET, an alias the floor lacks; REPLY_TO, nothing it can answer; SHAPE, an outcome or reply its kind does not take; NUMBER, a digit typed outside an alias; AGENDA, an unraised below-line point or more than one point raised by a PM reply. For review and committee members: MEMBER, a missing own session or bundle key; KEY, another member's key; ENDED, changed work after the thread ends. Read the floor with `alphalattice committee show`. For NUMBER, resubmit the same message with each typed figure or reference replaced by its alias shown on the floor.",
   "next_action": "READ_THE_FLOOR"
  },
  "committee.session_required": {
@@ -1583,8 +1635,40 @@
   "detail": "The Task is {subject}, so it moves only on a request and a wake would never come. Read its way on with `alphalattice task show <task>` and follow the recovery it offers.",
   "next_action": "READ_THE_TASKS_WAY_ON"
  },
+ "research_update.date_not_session": {
+  "detail": "The named date is not a common XNYS/XNAS trading session, so no positions are entered on it. The nearest trade date on or after it is {subject}; confirm that date with the person, then send the offered plan.",
+  "next_action": "PLAN_THE_NEAREST_SESSION"
+ },
+ "research_update.date_and_through": {
+  "detail": "A plan names either the positions' trade date (`--date`) or the close it runs through (`--through`), not both: the trade date's positions are decided at the close before it. Send one of them.",
+  "next_action": "CORRECT_THE_REQUEST"
+ },
+ "research_update.date_before_history": {
+  "detail": "The named date's positions need ten years of market history before their formation, which would start before the exchange calendars' first session, so they cannot be planned. The earliest supported trade date is {subject}; confirm that date with the person, then send the offered plan.",
+  "next_action": "PLAN_THE_NEAREST_SESSION"
+ },
+ "research_update.date_after_clock": {
+  "detail": "The named date's positions are decided at a close after the Host's current exchange date, so they cannot be planned yet. The nearest trade date the Host's clock admits is {subject}; its close may still need to settle. Confirm that date with the person, then send the offered plan.",
+  "next_action": "PLAN_THE_NEAREST_SESSION"
+ },
+ "research_update.date_invalid": {
+  "detail": "The named date is not a calendar date, so no positions can be planned for it. Send the plan again with a real date in the form YYYY-MM-DD.",
+  "next_action": "CORRECT_THE_REQUEST"
+ },
+ "research_update.date_behind_update": {
+  "detail": "Another update for this book is still on its way, through the {subject} close, so it owns the plan and its positions are not the named date's. Follow its Task with the offered `task` request; once it ends, send the offered plan for the named date.",
+  "next_action": "FOLLOW_THE_UPDATE_THEN_PLAN_THE_DATE"
+ },
+ "research_update.date_before_update": {
+  "detail": "An update through the later {subject} close is already on its way for this book, so the named date needs no new plan: its positions stand in what the book publishes. Follow that update's Task with the offered `task` request, then read the book's latest update with the offered `update` request.",
+  "next_action": "FOLLOW_THE_UPDATE_THEN_READ"
+ },
+ "research_update.target_before_publication": {
+  "detail": "This book has already published a later update, so an earlier date's update cannot be planned after it; that date's positions are kept in the book's history. Read the latest update with the offered request.",
+  "next_action": "READ_THE_LATEST_UPDATE"
+ },
  "research_update.target_not_completed": {
-  "detail": "The update's session has not completed with its data yet: a date's positions wait for its formation close and the data settling after it. Under a first use the Host holds the update and runs it once at the time `held_until` names, so keep your goal wait running; otherwise plan it again after that time.",
+  "detail": "The update's session has not completed with its data yet: a date's positions wait for its formation close and the data settling after it. Under a first use the Host holds the update and runs it once at the time `held_until` names, so keep your goal wait running. Otherwise nothing runs until you plan again: send the offered plan after the time `information_available_at` names.",
   "next_action": "WAIT_FOR_THE_DATED_UPDATE"
  },
  "model_training.complete_model_history_unavailable": {

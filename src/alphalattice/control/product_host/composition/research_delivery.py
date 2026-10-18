@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
+from pydantic import ValidationError
 from pydantic_core import to_jsonable_python
 
 from alphalattice.control.product_host.publication.goals import GoalStore
@@ -303,13 +304,13 @@ def export_update_delivery(
             owner = goal_store.listing(
                 limit=1, cursor=None, task_id=request.update_task_id, records=records
             ).get("current_goal")
-            cases = goal_store.rule_cases(
-                str(request.update_task_id),
-                records.get(str(cast(dict[str, object], owner or {}).get("goal_id")), ()),
-            )
+            held = records.get(str(cast(dict[str, object], owner or {}).get("goal_id")), ())
+            task = str(request.update_task_id)
+            cases, audits = goal_store.rule_cases(task, held), goal_store.rule_audits(task, held)
+            kept = goal_store.rule_held(task, held)
         else:
-            cases = floor.rule_cases
-        data_decisions = read_data_decisions(case_tokens=cases)
+            cases, audits, kept = floor.rule_cases, floor.rule_audits, floor.rule_held
+        data_decisions = read_data_decisions(case_tokens=cases, audits=audits, held=kept)
     publication = readback.get("publication")
     subject = {
         "update_task_id": str(request.update_task_id),
@@ -362,7 +363,7 @@ def export_update_delivery(
                     "basis": request.position_basis,
                     **{
                         k: readback[k]
-                        for k in ("position_rows", "schedule", "date_risk")
+                        for k in ("position_rows", "exit_rows", "schedule", "date_risk")
                         if k in readback
                     },
                 },
@@ -383,3 +384,28 @@ def export_update_delivery(
     rendered = render_research_delivery(snapshot)
     body = {**snapshot, "html": rendered}
     return {**body, "export_hash": str(canonical_hash(body))}
+
+
+def refused_document(operation: str, error: ValidationError) -> dict[str, object]:
+    """The refusal for an invalid document in an EXPERIMENT operation.
+
+    Args:
+        operation: The refused operation.
+        error: Its validation error.
+
+    Returns:
+        In a delivery export, the product's fault: nothing changed, send once more, then report
+        it. Elsewhere, the declaration to correct and replan.
+    """
+    if operation == "EXPERIMENT_DELIVERY_EXPORT":
+        return {
+            "status": "REFUSED",
+            **located_failure(error, "research_delivery.export_failed"),
+            "next_action": "SEND_ONCE_MORE_THEN_REPORT_THE_PROBLEM",
+        }
+    return {
+        "status": "REFUSED",
+        **located_failure(error, "research_experiment.document_invalid"),
+        "next_action": "CORRECT_DECLARATION_AND_REPLAN",
+        "next_requests": {"inputs": {"operation": "RESEARCH_INPUTS"}},
+    }

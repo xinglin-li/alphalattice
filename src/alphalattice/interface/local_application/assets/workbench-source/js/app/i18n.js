@@ -18,6 +18,7 @@ const I18N = (() => {
 
   /* Structural templates: exact shapes only, never arbitrary substring replacement. */
   const TEMPLATES = [
+    [/^(\d{4}-\d{2}-\d{2}T[^ ]+) \(Host local: ([^)]+)\)$/, (m) => t('{utc} (Host local: {local})', {utc:m[1], local:m[2]})],
     [/^(PARTIAL|COMPLETE|UNAVAILABLE)\. In scope: (.*?); read: (.*?); nothing filed: (.*?); unread: (.*?)\. Each share uses the total ending weight of all book positions as its denominator\. When recorded, read \+ nothing filed \+ unread = the whole book; in scope contains read and nothing filed\. In a legacy dossier, read equals in scope; it does not prove reading\. Nothing filed is not unread and is not a finding of no risk\. Read coverage does not mean every source passage was read\. This review changes no weight and grants no activation\.$/, (m) => {
       const values=[t({PARTIAL:'Partial',COMPLETE:'Complete',UNAVAILABLE:'UNAVAILABLE'}[m[1]]),...m.slice(2).map(x=>t(x))];
       return t('{subject}. In scope: {subject}; read: {subject}; nothing filed: {subject}; unread: {subject}. Each share uses the total ending weight of all book positions as its denominator. When recorded, read + nothing filed + unread = the whole book; in scope contains read and nothing filed. In a legacy dossier, read equals in scope; it does not prove reading. Nothing filed is not unread and is not a finding of no risk. Read coverage does not mean every source passage was read. This review changes no weight and grants no activation.').replace(/\{subject\}/g,()=>values.shift());
@@ -42,6 +43,7 @@ const I18N = (() => {
     [/^([\s\S]+) The review published against it remains readable by its handle\.$/, (m) => said(m[1]) + ' ' + t("The review published against it remains readable by its handle.")],
     [/^([\s\S]+) (\d[\d,]*) of (\d[\d,]*) units have a current analysis; the review reads those exactly and names the rest as not reviewed\.$/, (m) => said(m[1]) + ' ' + t("{ready} of {total} units have a current analysis; the review reads those exactly and names the rest as not reviewed.", {ready: m[2], total: m[3]})],
     [/^([\s\S]+) (\d[\d,]*) of (\d[\d,]*) units have a current analysis; current coverage gaps remain named\.$/, (m) => said(m[1]) + ' ' + t("{ready} of {total} units have a current analysis; current coverage gaps remain named.", {ready: m[2], total: m[3]})],
+    [/^Correct the (\d+) named items; (\d+) rounds left\.$/, (m) => t('Correct the {n} named items; {left} rounds left.', {n: m[1], left: m[2]})],
     [/^Position basis: ([^;\n]+); decision formation: (\d{4}-\d{2}-\d{2})\.$/, (m) => t('Position basis: {basis}; decision formation: {date}.', {basis: lookup(m[1]), date: m[2]})],
     [/^(\d[\d,]*) of (\d[\d,]*) (unit|units) failed to prepare, each with its code and words\.(?: (\d[\d,]*) failed for too few source documents, which preparing again under the installed sources does not change; the ways on are the person's \(`source_ways`\)\.| (Under official acquisition, preparing again retries the filings that could not be obtained\.))?(?: (Preparing again retries the others and keeps every unit that completed\.))?$/, (m) => [t(m[3] === 'unit' ? '{failed} of {total} unit failed to prepare, each with its code and words.' : '{failed} of {total} units failed to prepare, each with its code and words.', {failed: m[1], total: m[2]}), m[4] ? t("{n} failed for too few source documents, which preparing again under the installed sources does not change; the ways on are the person's (`source_ways`).", {n: m[4]}) : '', m[5] ? t(m[5]) : '', m[6] ? t(m[6]) : ''].filter(Boolean).join(' ')],
     [/^([\s\S]+) The unit failed with `([^`\n]+)`: ([\s\S]+)$/, (m) => t('{words} The unit failed with `{code}`: {detail}', {words: said(m[1]), code: m[2], detail: said(m[3])})],
@@ -146,7 +148,8 @@ const I18N = (() => {
     }
     for (const [re, zh] of subjectTemplates()) {
       const m = s.match(re);
-      if (m) { let i = 0; return zh.replace(/\{subject\}/g, () => m[++i] ?? ''); }
+      // Each slot reads through the table in its turn, as the CLI fills it.
+      if (m) { let i = 0; return zh.replace(/\{subject\}/g, () => (m[++i] ?? '').split('; ').map(lookup).join('；')); }
     }
     return s;
   }

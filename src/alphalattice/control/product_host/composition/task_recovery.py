@@ -27,6 +27,7 @@ codes), and this view does not transplant one.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime
 from typing import Any, Literal
@@ -34,7 +35,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
-from alphalattice.control.guanyin.data.workspace_maintenance import maintenance_failure_detail
+from alphalattice.control.guanyin.data.workspace_maintenance import (
+    maintenance_failure_detail,
+    maintenance_words,
+)
 from alphalattice.control.guanyin.tasks.supervision import IncidentRecord
 from alphalattice.control.observation_runtime.guardian import (
     GuardianHealth,
@@ -62,6 +66,7 @@ from alphalattice.control.task_control.registry import (
     LEDGER_REBUILT_DETAIL,
     LEDGER_REBUILT_NEXT,
     TaskBoardSnapshot,
+    TaskNotFoundError,
     task_is_unrecoverable,
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReadout
@@ -79,6 +84,27 @@ Control timestamp (a stage boundary) and the runner's operational heartbeat for 
 execution, the latter through the read-only `TaskHeartbeatReader` over the runner's sidecar."""
 
 _TERMINAL = frozenset({TaskLifecycle.SUCCEEDED, TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED})
+CANCELLATION_REPLAN = (
+    "The cancellation stands. Verified stages and published results are kept. If a replan is "
+    "offered, it continues the work only when the person, or the lead that cancelled it, "
+    "wants to go on."
+)
+
+CANCELLATION_PENDING = (
+    "Cancellation is requested; the worker acknowledges it at its next safe checkpoint, "
+    "and until then the Task keeps running. Requested is not acknowledged."
+)
+
+
+def cancellation_pending(task_id: UUID) -> dict[str, object]:
+    """The pending cancellation's own read, before the worker acknowledges its checkpoint."""
+    return {
+        "detail": CANCELLATION_PENDING,
+        "next_action": "SEND_THE_OFFERED_REQUEST",
+        "next_requests": {"task": {"operation": "STATUS", "task_id": str(task_id)}},
+    }
+
+
 _DATA_KINDS = frozenset(
     {"workspace_preparation", "workspace_data_update", "research_input_capture"}
 )
@@ -330,14 +356,35 @@ def _with_hash(model, values: dict[str, object], field: str):  # type: ignore[no
     return model(**values, **{field: canonical_hash(identity)})
 
 
+def _owner_words(code: str) -> str | None:
+    """A stop code's words from its owners, the most actionable first, whatever the Task kind.
+
+    The door's words for a data or Feature code, then the Host's (`explain`), which name the way
+    on, then the maintenance guardian's, which name the stop: a stop reads its owner's words
+    wherever it stopped, never words for one kind and the governed fallback for another (V504:
+    RR5's book read the bare code).
+    """
+    worded = (
+        (
+            refusal_words(code, for_stop=True).get("detail")
+            if code.startswith(("data.", "feature."))
+            else None
+        )
+        or explain(code).get("detail")
+        or maintenance_words(code)
+        or refusal_words(code, for_stop=True).get("detail")
+    )
+    return worded if isinstance(worded, str) and worded else None
+
+
 def stop_detail(task_kind: str, code: str, source: str) -> str:
     """A bounded, user-safe explanation of one recorded stop code.
 
-    Task Control's own codes and this Host's worker codes are explained here; the
-    data Tasks' codes by the workspace-maintenance guardian that already owns
-    them. Anything else is stated as what it is: the owner's typed code, with no
-    retry implied. A code without installed words stays in the code field; it is never
-    substituted for the person's explanation.
+    Task Control's own codes and this Host's worker codes are explained here; every other
+    code by its owners' words whatever the Task kind (`_owner_words`). Anything else is
+    stated as what it is: the owner's typed code, with no retry implied. A code without
+    installed words stays in the code field; it is never substituted for the person's
+    explanation.
     """
     if code == "task_control.child_start_failed":
         return refusal_words(code)["detail"]
@@ -415,21 +462,109 @@ def stop_detail(task_kind: str, code: str, source: str) -> str:
             "This Host's command stopped outside Task Control with the recorded failure "
             "class; the Task's own lifecycle is the authority on what it may do next."
         )
-    if task_kind in _DATA_KINDS:
-        return (
-            (refusal_words(code).get("detail") if code.startswith(("data.", "feature.")) else None)
-            or maintenance_failure_detail(code)
-        )[:STOP_WORDS_BOUND]
-    # An owner that words its code says what holds and the way on, which a Task stopped on it
-    # reads here too, not only a refused request (V504: RR5's book read the bare code).
-    worded = explain(code).get("detail")
-    if isinstance(worded, str) and worded:
+    if (worded := _owner_words(code)) is not None:
         return worded[:STOP_WORDS_BOUND]
+    if task_kind in _DATA_KINDS:
+        return maintenance_failure_detail(code)[:STOP_WORDS_BOUND]
     return (
         "The Task stopped at a governed boundary whose reason has no installed explanation. "
         "Nothing was retried, and its verified stages are kept as recorded. Read its recovery "
         "view for the actions its owner permits."
     )[:STOP_WORDS_BOUND]
+
+
+_STOPPED = frozenset(
+    {TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED, TaskLifecycle.CANCELLED}
+)
+"""The lifecycles `task_attention` reads as a stop, and a successor chain passes through."""
+
+
+def _chain_end(
+    task: TaskRecord,
+    child: TaskRecord,
+    successors: Mapping[UUID, TaskRecord],
+    links: tuple[TaskRecoveryLink, ...],
+) -> TaskRecord:
+    """The Task a successor chain ends in, as a 0.1.3 workspace kept one.
+
+    A successor that stopped too but whose own exact successor succeeded, at any depth, ends
+    this stop as well; else `child`. One breadth-first walk over the links, each Task once.
+    """
+    if child.lifecycle not in _STOPPED:
+        return child
+    onward: dict[UUID, list[TaskRecoveryLink]] = {}
+    for link in sorted(links, key=lambda link: (link.recorded_at, str(link.successor_task_id))):
+        onward.setdefault(link.source_task_id, []).append(link)
+    seen, queue = {task.task_id, child.task_id}, deque([child])
+    while queue:
+        node = queue.popleft()
+        for link in onward.get(node.task_id, ()):
+            following = successors.get(link.successor_task_id) if link.successor_task_id else None
+            if (
+                following is None
+                or following.task_id in seen
+                or link.source_record_hash != node.record_hash
+                or following.task_kind != node.task_kind
+            ):
+                continue
+            if following.lifecycle is TaskLifecycle.SUCCEEDED:
+                return following
+            seen.add(following.task_id)
+            if following.lifecycle in _STOPPED:
+                queue.append(following)
+    return child
+
+
+def _ended(actions: Any, attention: TaskAttentionFact | None) -> Any:
+    """A stop its successor chain ended offers none of its own actions, each saying why."""
+    if attention is None or attention.resolution != "SUCCESSOR_SUCCEEDED":
+        return actions
+    why = f"Continued by Task {attention.successor_task_id}, which succeeded."
+    return type(actions)(a.model_copy(update={"available": False, "reason": why}) for a in actions)
+
+
+def finished_stop(lifecycle: TaskLifecycle, fact: Mapping[str, object]) -> bool:
+    """Whether the unfinished list leaves a stopped Task out.
+
+    One owing no recovery, or a stop its successor chain ended, is finished there; a stop an
+    incident resolved still waits for its decision.
+
+    Args:
+        lifecycle: The Task's lifecycle.
+        fact: Its attention, as its recovery view carries it.
+
+    Returns:
+        True when the list leaves it out.
+    """
+    return (lifecycle is TaskLifecycle.RECOVERY_REQUIRED and not fact["unresolved"]) or (
+        lifecycle is TaskLifecycle.BLOCKED and fact["resolution"] == "SUCCESSOR_SUCCEEDED"
+    )
+
+
+def resolved_read(body: dict[str, object], fact: TaskAttentionFact | None) -> None:
+    """Lead a read of a stop its successor chain ended to that chain's end.
+
+    Its history stays readable, and its only way on is the chain end's read: never its own
+    resume, replan, cancel or network offer.
+
+    Args:
+        body: A status or recovery read, rewritten in place.
+        fact: The stop's attention.
+    """
+    if fact is None or fact.resolution != "SUCCESSOR_SUCCEEDED":
+        return
+    for key in ("failure_code", "network_access"):
+        body.pop(key, None)
+    successor = fact.successor_task_id
+    # Only the fields each read already carries, so a typed read keeps its shape.
+    owned = {
+        "detail": f"Continued by Task {successor}, which succeeded.",
+        "next_action": "READ_THE_TASK_WITH_TASK_SHOW",
+        "resume_refusal": None,
+        "cancel_available": False,
+    }
+    body.update({key: value for key, value in owned.items() if key in body})
+    body["next_requests"] = {"successor": {"operation": "STATUS", "task_id": successor}}
 
 
 def task_attention(
@@ -443,11 +578,10 @@ def task_attention(
 ) -> TaskAttentionFact:
     """Project current stop attention from canonical Task, link and incident facts.
 
-    A confirmed successor link is evidence only for its exact source record hash.
-    A matching child must be a distinct canonical Task of the same kind in
-    ``SUCCEEDED``. A pending, failed, unreadable or invalid child keeps the source
-    stopped unless another exact-version confirmed child has succeeded or a
-    current-version resolved incident supplies independent resolution evidence.
+    A confirmed successor link is evidence only for its exact source record hash. A matching
+    child must be a distinct canonical Task of the same kind that ``SUCCEEDED``, or whose chain
+    did (`_chain_end`). A pending, failed, unreadable or invalid child keeps the source stopped
+    unless another exact-version child succeeded or a resolved incident gives independent evidence.
     A blocked request may also be superseded by a later successful admission with
     its exact Task kind and ResearchPlan.plan_hash. A changed plan stays distinct;
     it needs the owner's explicit recovery link. Successful unrelated Tasks are
@@ -458,22 +592,18 @@ def task_attention(
     proof of resolution and leave a stopped Task unresolved. An open incident for
     this Task's current execution takes precedence over a resolved incident.
     """
-    if task.lifecycle not in {
-        TaskLifecycle.BLOCKED,
-        TaskLifecycle.RECOVERY_REQUIRED,
-        TaskLifecycle.CANCELLED,
-    }:
+    if task.lifecycle not in _STOPPED:
         return TaskAttentionFact(
             unresolved=False,
             resolution="NOT_STOPPED",
             task_record_hash=task.record_hash,
         )
 
-    successor_records = successors or {}
+    successor_records, current_links_all = successors or {}, tuple(links)
     current_links = sorted(
         (
             link
-            for link in links
+            for link in current_links_all
             if link.source_task_id == task.task_id
             and link.source_record_hash == task.record_hash
             and link.successor_task_id is not None
@@ -494,14 +624,15 @@ def task_attention(
         )
         if canonical_child:
             assert child is not None
-            if child.lifecycle is TaskLifecycle.SUCCEEDED:
+            front = _chain_end(task, child, successor_records, current_links_all)
+            if front.lifecycle is TaskLifecycle.SUCCEEDED:
                 return TaskAttentionFact(
                     unresolved=False,
                     resolution="SUCCESSOR_SUCCEEDED",
                     task_record_hash=task.record_hash,
-                    successor_task_id=str(child.task_id),
-                    successor_task_hash=child.record_hash,
-                    successor_lifecycle=child.lifecycle.value,
+                    successor_task_id=str(front.task_id),
+                    successor_task_hash=front.record_hash,
+                    successor_lifecycle=front.lifecycle.value,
                 )
         if pending_successor is None:
             pending_successor = TaskAttentionFact(
@@ -772,11 +903,7 @@ def _actions(
             if lifecycle is TaskLifecycle.QUEUED
             else "Cancelled at once: this Task's execution cannot be recovered."
             if task_is_unrecoverable(task)
-            else (
-                "Cancellation is requested; the worker acknowledges it at its next safe "
-                "checkpoint, and until then the Task keeps running. Requested is not "
-                "acknowledged."
-            )
+            else CANCELLATION_PENDING
         ),
         reason=cancel_reason,
     )
@@ -1066,6 +1193,7 @@ def build_task_recovery_view(
         resume_refusal,
         replan_refusal,
     )
+    actions = _ended(actions, attention)
     health, incidents = _health_and_incidents(task, projection, liveness, stop, observed_at)
     values = {
         "task_id": str(task.task_id),
@@ -1128,9 +1256,18 @@ def way_on(
         stopped: Whether the Task stopped, so an offer it carries leads.
     """
     owned = way.get("next_requests") or {}
-    if offered or owned or subject:
-        body["next_requests"] = {**owned, **offered, **subject}
-    lead = way.get("next_action") or ("SEND_THE_OFFERED_REQUEST" if offered and stopped else None)
+    requests = {**owned, **offered, **subject}
+    if requests:
+        body["next_requests"] = requests
+    if "detail" in body and body.get("lifecycle") == "CANCELLED":
+        body["detail"] = CANCELLATION_REPLAN
+    lead = (
+        "REPORT_THE_STOP"
+        if body.get("lifecycle") == "CANCELLED"
+        else (
+            way.get("next_action") or ("SEND_THE_OFFERED_REQUEST" if offered and stopped else None)
+        )
+    )
     if lead:
         body["next_action"] = lead
 
@@ -1138,6 +1275,8 @@ def way_on(
 RecoverableKinds = Callable[[], frozenset[str]]
 
 __all__ = [
+    "CANCELLATION_PENDING",
+    "CANCELLATION_REPLAN",
     "STALE_HEARTBEAT_SECONDS",
     "LivenessFact",
     "PermittedAction",
@@ -1148,7 +1287,37 @@ __all__ = [
     "TaskRecoveryView",
     "WorkerStop",
     "build_task_recovery_view",
+    "cancellation_pending",
     "stop_detail",
     "task_attention",
+    "task_facts",
     "way_on",
 ]
+
+
+def task_facts(registry: Any, task_id: UUID) -> tuple[Any, ...] | None:
+    """A Task's kind, lifecycle, update clock and the successor that continued its stop.
+
+    Args:
+        registry: Task Control's registry.
+        task_id: The Task.
+
+    Returns:
+        The facts a goal reads, the last the successor that succeeded (read as
+        `task_attention` reads it) or none; nothing when the Task is absent.
+    """
+    try:
+        task = registry.task(task_id)
+    except TaskNotFoundError:
+        return None
+    facts = task.task_kind, task.lifecycle.value, task.updated_at
+    if task.lifecycle is not TaskLifecycle.BLOCKED:
+        return (*facts, None)
+    links = registry.recovery_links(task.task_id)
+    successors = {}
+    for link in links:
+        if link.successor_task_id is not None:
+            successors[link.successor_task_id] = registry.task(link.successor_task_id)
+    fact = task_attention(task, successors=successors, links=links)
+    ended = fact.resolution == "SUCCESSOR_SUCCEEDED" and fact.successor_task_id
+    return (*facts, UUID(fact.successor_task_id) if ended else None)

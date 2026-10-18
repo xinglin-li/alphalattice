@@ -20,6 +20,7 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
 from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
+from tests.workspace_maintenance.audit_workspace import audit_one
 
 Day = Callable[[list[date], date, int], tuple[str | None, str]]
 
@@ -50,12 +51,13 @@ def _audits(tmp_path: Path) -> tuple[MarketDataRepository, Day, str]:
             observed_at=NOW + timedelta(days=offset),
         )
         session = sessions[-1]
-        receipt, _ = market_data.complete_action_audit(
+        receipt, _ = audit_one(
+            market_data,
             manifest,
             listing_id="listing-aapl",
             provider="fixture",
-            observed_actions=(),
-            observed_adjusted_closes=tuple(
+            actions=(),
+            adjusted_closes=tuple(
                 ProviderAdjustedClosePoint("listing-aapl", "fixture", item, 100.0 + item.day)
                 for item in sessions
                 if item >= start

@@ -8,7 +8,7 @@ the pinned additions from `config/requirements-retrieval.lock`, so the default
 committed files in this tree. No parent project, lock, or interpreter is
 consulted; a missing lock is a stop.
 
-    .venv/Scripts/python.exe scripts/create_retrieval_environment.py --offline
+    uv run python scripts/create_retrieval_environment.py --offline
 
 Acceptance that needs a real model runs under the interpreter this prints. No
 interpreter is ever guessed: a caller either uses this path or does not. A setup
@@ -224,8 +224,6 @@ def _help_command(kind: str) -> list[str]:
     """The setup's own help, its only read-only way on, as the person runs it (V590)."""
     if kind == "gpu_environment":
         return [sys.executable, "scripts/create_gpu_environment.py", "--help"]
-    if (PLAYPEN / "pyproject.toml").is_file():
-        return [sys.executable, "scripts/create_retrieval_environment.py", "--help"]
     return [
         sys.executable,
         "-m",

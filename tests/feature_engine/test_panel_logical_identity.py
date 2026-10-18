@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
@@ -189,6 +190,33 @@ def test_current_pointer_compare_and_swap_is_fail_closed(tmp_path: Path) -> None
     assert store.current_marker() == first_marker
 
 
+def test_an_unchanged_chunk_is_taken_as_published(tmp_path: Path, monkeypatch) -> None:
+    """A chunk the current publication holds gives its year as published, equal to a build."""
+    reads: list[object] = []
+    read_table = pq.read_table
+    monkeypatch.setattr(
+        pq, "read_table", lambda *a, **k: reads.append(k.get("columns")) or read_table(*a, **k)
+    )
+    markers = []
+    for root, warm in (("cold", False), ("warm", True)):
+        resolver = ArtifactResolver(tmp_path / root)
+        kept = {"suffix": "kept", "values": (1.0, 2.0, 3.0, 4.0), "valid": (True,) * 4}
+        store = PanelLogicalArtifactStore(PanelClosureArtifactStore(resolver))
+        publisher = PanelLogicalIdentityPublisher(resolver=resolver, store=store)
+        if warm:
+            publisher.publish_snapshot(_publish_fixture(resolver, **kept), published_at=_now())
+        later = _publish_fixture(resolver, **kept, temporal_identity_hash="a" * 64)
+        markers.append(publisher.publish_snapshot(later, published_at=_now()))
+    cold, warm_marker = markers
+    for field in (
+        "logical_panel_hash",
+        "logical_semantic_index_hash",
+        "physical_materialization_hash",
+    ):
+        assert getattr(cold, field) == getattr(warm_marker, field), field
+    assert reads == [None, None, ["listing_id"]]  # cold, warm's first, then the reuse
+
+
 def _publish_fixture(
     resolver: ArtifactResolver,
     *,
@@ -199,6 +227,7 @@ def _publish_fixture(
     policy_hash: str = "4" * 64,
     catalog_hash: str = "3" * 64,
     include_legacy_extra_factor: bool = False,
+    temporal_identity_hash: str = "9" * 64,
 ) -> str:
     sessions = (date(2026, 1, 2), date(2026, 1, 5))
     listings = ("L01", "L02")
@@ -257,7 +286,7 @@ def _publish_fixture(
         "history_start": sessions[0].isoformat(),
         "as_of_session": sessions[-1].isoformat(),
         "knowledge_cutoff_at": _now().isoformat(),
-        "temporal_identity_hash": "9" * 64,
+        "temporal_identity_hash": temporal_identity_hash,
         "active_listing_count": 2,
         "listing_set_hash": canonical_hash(listings),
         "schema_hash": "7" * 64,

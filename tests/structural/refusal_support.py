@@ -67,16 +67,13 @@ def refusal_codes():
         and isinstance(item.value.value, str)
     }
     tree = ast.parse((SOURCE / "control/guanyin/data/workspace_maintenance.py").read_text("utf-8"))
-    owner = next(
-        n
-        for n in tree.body
-        if isinstance(n, ast.FunctionDef) and n.name == "maintenance_failure_detail"
-    )
     maintenance = next(
         {ast.literal_eval(key) for key in n.value.keys}
-        for n in owner.body
-        if isinstance(n, ast.Assign)
-        and any(isinstance(t, ast.Name) and t.id == "details" for t in n.targets)
+        for n in tree.body
+        if isinstance(n, ast.AnnAssign)
+        and isinstance(n.value, ast.Dict)
+        and isinstance(n.target, ast.Name)
+        and n.target.id == "_DETAILS"
     )
     maintenance_dict_keys = [
         key.value

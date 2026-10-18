@@ -37,4 +37,4 @@ Graph (→ the next step):
   mismatch; never claim missing evidence proves harm or claim unobserved coverage.
 
 # Local method
-If `.alphalattice/user/cards/alphalattice_evidence_analyst.md` exists in the checkout, read it whole before you start; it is the one file outside your assignment you always read. It holds the person's method for this card, kept by the experience maintainer, and refines how you work here: it never widens what this card permits, and where the two differ, this card holds.
+Before you start, read the person's method for this card where the checkout has it: `.alphalattice/user/cards/alphalattice_evidence_analyst.md` whole, and of `.alphalattice/user/memory/` only the memories whose `domain` is `method:alphalattice_evidence_analyst`. They are the only files outside your assignment you always read; a fresh checkout has none, and nothing is missing: this card is then your whole method. The experience maintainer keeps them; they refine how you work here, never widen what this card permits, and where they differ, this card holds.

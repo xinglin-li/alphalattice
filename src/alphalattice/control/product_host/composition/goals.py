@@ -1,12 +1,7 @@
-"""Goals: what an agent is asked to achieve, recorded by the Host and checked when submitted.
+"""The Host's revisioned Goal ledger and exact-read submission check (LAWS OP13).
 
-The Host keeps a goal's declaration and its revisions, its exact-read references and attributed
-statements, what the agent sessions bound to it did and said (their requests, and the Team
-events each session sent while it held the goal, among them assignments and their replies),
-and its submission, which it checks against that record and seals, or answers with each
-missing item and the request that supplies it
-(LAWS OP13). It runs no loop, judges no summary's truth and computes no number: "never a second
-research engine".
+Records declarations, attributed activity and submissions; never judges their truth or
+computes research.
 """
 
 from __future__ import annotations
@@ -17,6 +12,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, fields, replace
 from dataclasses import field as dataclass_field
 from datetime import date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from secrets import token_hex
 from typing import Any, Self
@@ -28,13 +24,34 @@ from alphalattice.control.data_platform.contracts import (
     DataRemediationActorSubmission,
     DataRemediationExecutionReceipt,
 )
-from alphalattice.control.data_platform.data_decision_rule import ESCALATE, DataDecisionRule
-from alphalattice.control.product_host.composition.goal_check import missing_items
+from alphalattice.control.data_platform.data_decision_rule import (
+    ESCALATE,
+    RULED_RUNS,
+    DataDecisionRule,
+    held_decisions,
+)
+from alphalattice.control.data_platform.data_decision_rule import audit as audit_rule
+from alphalattice.control.product_host.composition.first_use_road import (
+    daily_road,
+    first_use_command,
+    undated,
+)
+from alphalattice.control.product_host.composition.goal_check import (
+    missing_items,
+    offered_attach,
+    reference_request,
+    resubmit,
+    submission_grammar,
+)
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
-from alphalattice.control.product_host.publication.goals import GoalStore, sessions_of
+from alphalattice.control.product_host.publication.goals import (
+    EXPERIENCE_RECORD_WORDS,
+    GoalStore,
+    sessions_of,
+)
 from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputAgentCase
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
@@ -45,10 +62,10 @@ from alphalattice.interface.local_application.cli_contract import (
     refusal_words,
     shell,
 )
-from alphalattice.interface.local_application.cli_contract import (
-    entry as command_entry,
+from alphalattice.interface.local_application.failure_codes import (
+    located_failure,
+    public_failure,
 )
-from alphalattice.interface.local_application.failure_codes import located_failure, public_failure
 from alphalattice.interface.local_application.goals import (
     FIRST_USE_HOURS,
     Goal,
@@ -62,17 +79,22 @@ from alphalattice.interface.local_application.goals import (
     GoalStatement,
     GoalSubmission,
     GoalTaskFact,
+    relayed_decision,
     target_sessions,
 )
+from alphalattice.interface.local_application.native_bridge import joined_members
 from alphalattice.interface.local_application.operations import FIRST_USE_STEPS
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
-    decision_hash,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution import ActorKind
-from alphalattice.protocols.actor_execution.bundles import bundle_directory_key, bundle_slot
+from alphalattice.protocols.actor_execution.bundles import (
+    bundle_directory_key,
+    bundle_slot,
+    moment_text,
+)
 
 GOAL_NAMESPACE = UUID("8f1d6c63-3c3e-4f5f-9f0e-5c4b2a7e8d10")
 """A goal opened without an id is named from its declaration and who opened it, so a retried
@@ -82,8 +104,8 @@ _SOURCE_DATE_REFUSALS = (
     "data.current_universe_no_feature_ready_listings",
 )
 
-TaskFacts = Callable[[UUID], tuple[str, str, datetime | None] | None]
-"""A Task's kind, Task Control lifecycle and canonical update time, or nothing when absent."""
+TaskFacts = Callable[[UUID], tuple[Any, ...] | None]
+"""A Task's kind, lifecycle, update time and succeeded successor, or nothing when absent."""
 
 # Only exact read selections can be evidence. Plans, lists, newest-result defaults,
 # actor requests and current activation are deliberately not evidence references.
@@ -99,6 +121,7 @@ REFERENCE_OPERATIONS = {
     "REPORT": ("PORTFOLIO",),
     "COMPARE": ("PORTFOLIO",),
     "EVIDENCE_CRO_EXPORT": ("EVIDENCE_CRO",),
+    "RESEARCH_UPDATE_READBACK": ("PORTFOLIO",),
     # A formula factor's trial and its review packet, each read exactly (V371).
     "FEATURE_TRIAL_READBACK": ("DATA_FEATURES",),
     "FEATURE_REVIEW": ("DATA_FEATURES",),
@@ -237,9 +260,8 @@ def open_assignments(entries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
 def conversation_entries(entries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """The goal's conversation: what the product recorded of its Sessions' work, in time order.
 
-    Each request a bound agent Session sent under the goal (bundle preparations and answer
-    submissions among them) is a product fact; so is an accepted answer filed beside it.
-    Messages filed before FLOW-1 stay as they were recorded.
+    Each request a bound Session sent under the goal is a product fact, and so is an accepted
+    answer filed beside it; messages filed before FLOW-1 stay as recorded.
     """
     rows: list[dict[str, Any]] = []
     for number, entry in enumerate(entries):
@@ -269,10 +291,9 @@ def conversation_entries(entries: Sequence[Mapping[str, Any]]) -> list[dict[str,
 def session_usage(entries: Sequence[Mapping[str, object]]) -> list[dict[str, Any]]:
     """Each session's agents with their latest reading by model, without an unproved sum (AU).
 
-    A reading is the cumulative count from one participant's admitted session file; the
-    latest reading replaces the previous one for that participant and model. Parent and
-    child readings have no established disjointness, so they are never added. Where a reading
-    differs from the agent's role card, the bridge that read both says so (``pin_differs``).
+    A reading is one participant's cumulative count from its admitted session file, the latest
+    replacing the previous; parent and child readings are never added. One that differs from
+    its role card says so (``pin_differs``).
     """
     readings: dict[tuple[str, str, str, str], Mapping[str, object]] = {}
     for entry in entries:
@@ -323,16 +344,9 @@ def session_usage(entries: Sequence[Mapping[str, object]]) -> list[dict[str, Any
 class GoalReferenceReadScope:
     """One goal request's verified owner reads, never a cross-request cache.
 
-    A goal can retain two historical references that intentionally name the
-    same owner operation.  Reusing that one response within this request still
-    checks each reference's own sealed identity, so a stale reference remains
-    visible rather than being masked by a cache.
-
-    Entered as a context manager, the scope also bounds the Alpha owner's
-    verified chunk tables to this request: an Alpha task cited directly and
-    again through a saved comparison has its evidence graph read and hashed
-    once per request, while every reference still verifies its own identity
-    and the next request reads afresh.
+    References naming one owner operation reuse its response here, each checking its own
+    sealed identity. As a context manager it bounds the Alpha owner's verified chunk tables to
+    this request: a task cited twice is read once, the next request afresh.
     """
 
     _responses: dict[str, dict[str, Any]] = dataclass_field(default_factory=dict)
@@ -401,11 +415,9 @@ write without its hash applies to the goal's current revision."""
 def completion_template(goal: Goal) -> str:
     """The open goal's completion to fill: the Host's slots prefilled, the judgment left (V419).
 
-    A whole GOAL_SUBMIT request bound to the goal and its revision, so it completes this goal
-    whatever goal the session holds, and a later revision refuses it (V426). Each criterion and
-    deliverable slot by its id, with its words as a comment; the goal's references listed as the
-    evidence to cite. The judgment (the outcome, each criterion's answer, the summary) is a
-    placeholder the contract refuses until it is written, so it is never sent as it stands.
+    A GOAL_SUBMIT bound to the goal's revision (V426): each criterion and deliverable slot by
+    id, its words as a comment, the references to cite; the judgment is a placeholder the
+    contract refuses until written.
 
     Args:
         goal: The goal's head revision.
@@ -470,10 +482,7 @@ class GoalApplication:
         workspace: Path,
         preparation_completed: Callable[[], bool] = lambda: False,
     ) -> None:
-        """Bind the goal store, the clock, the owners' reader and Task Control's facts.
-
-        `workspace` is the one a goal's handoff names in its commands (V492).
-        """
+        """Bind the store, clock, owners' reader, Task facts; handoffs name `workspace` (V492)."""
         self.store, self.clock, self.read = store, clock, read
         self.admitted_at, self.task_facts = admitted_at, task_facts
         self.workspace, self.preparation_completed = workspace, preparation_completed
@@ -501,12 +510,9 @@ class GoalApplication:
         return None if session is None else self.store.bound(session)
 
     def first_use(self) -> Goal | None:
-        """The workspace's first-use goal, if one was ever opened (V452)."""
-        for goal_id in self.store.goal_ids():
-            head = self.store.head(goal_id)
-            if head is not None and head.declaration.kind == "FIRST_USE":
-                return head
-        return None
+        """The workspace's one first-use goal, if opened (V452); its sentence and date reuse it."""
+        heads = (self.store.head(goal_id) for goal_id in self.store.goal_ids())
+        return next((h for h in heads if h and h.declaration.kind == "FIRST_USE"), None)
 
     def network_delegation(
         self, subject: Goal | RequestProvenance | None, caller: str
@@ -614,16 +620,10 @@ class GoalApplication:
             "nearest_date_support": "QUALIFIED_LOCAL_INPUTS" if nearest else "UNAVAILABLE",
             "new_workspace": {
                 "choose": ["workspace", *([] if nearest else ["supported_date"])],
-                "command_template": self._first_use_command("<new-workspace>", objective, named),
+                "command_template": first_use_command("<new-workspace>", objective, named),
             },
             "next_requests": requests,
         }
-
-    @staticmethod
-    def _first_use_command(workspace: str | Path, objective: str, named: str) -> str:
-        """Quote first-use recovery through the shared CLI grammar."""
-        fields = ("first-use", "prepare", "--sentence", objective, "--date", named)
-        return join([*command_entry(workspace, fields, full=True)], shell())
 
     @staticmethod
     def delegation_ends(goal: Goal) -> datetime:
@@ -639,18 +639,20 @@ class GoalApplication:
         )
 
     def first_use_delegation(self, goal: Goal) -> dict[str, Any]:
-        """A first-use goal's delegation as its record and the person's page read it (U70)."""
+        """The delegation's authority and readable deadline."""
+        end = self.delegation_ends(goal)
         return {
             "steps": sorted(FIRST_USE_STEPS),
-            "ends_at": self.delegation_ends(goal).isoformat(),
+            "ends_at": end.isoformat(),
+            "ends_at_reading": moment_text(end),
             "active": self.first_use_open(goal),
         }
 
     def delegation(self, goal: Goal, operation: str, caller: str) -> str | None:
         """The person's delegation one of the goal's requests acts under, if any (V452, OP19).
 
-        A first-use goal, open and within its hours, delegates its steps (`FIRST_USE_STEPS`) to
-        the agent that runs it; every other step stays the person's, as does every step after.
+        An open first-use goal within its hours delegates its steps (`FIRST_USE_STEPS`) to its
+        agent; every other step, and every step after, stays the person's.
 
         Args:
             goal: The goal the request works for.
@@ -705,12 +707,10 @@ class GoalApplication:
                 continue
             entries = self.store.attributed(goal.goal_id)
             own = [e for e in entries if e.get("task_id") == str(task_id)]
-            if kind == "portfolio_public_watermark_advancement" and any(
-                e.get("operation") == "RESEARCH_UPDATE_RUN" for e in own
-            ):
-                found.append((goal, entries, "workspace-rule-goal"))
-            elif own and self.first_use_open(goal):
+            if own and self.first_use_open(goal):
                 found.append((goal, entries, "first-use-goal"))
+            elif kind in RULED_RUNS and any(e.get("operation") == RULED_RUNS[kind] for e in own):
+                found.append((goal, entries, "workspace-rule-goal"))
         return found[0] if len(found) == 1 else None
 
     def data_rule(self, task_id: UUID) -> Callable[..., Any] | None:
@@ -729,15 +729,18 @@ class GoalApplication:
         recorded = set(index)
         scope_evidence: Any = None
         scope: dict[str, Any] = {}
+        held: dict[Any, str] = {}
+
+        def live() -> Any:
+            head = self.store.head(goal.goal_id)
+            held = head is not None and (
+                self.first_use_open(head) if authority == "first-use-goal" else head.state == "OPEN"
+            )
+            return head if held else None
 
         def decide(case: Any, evidence: Any, _impact: Any, _budget: Any) -> Any:
-            nonlocal scope_evidence, scope
-            current = self.store.head(goal.goal_id)
-            if current is None or not (
-                self.first_use_open(current)
-                if authority == "first-use-goal"
-                else current.state == "OPEN"
-            ):
+            nonlocal scope_evidence, scope, held
+            if (current := live()) is None:
                 return rule.submission(case, ESCALATE, str(goal.goal_id), authority=authority)
             if evidence is not scope_evidence:
                 cases = tuple(
@@ -747,13 +750,24 @@ class GoalApplication:
                     )
                 )
                 scope_evidence = evidence
+                active = panel.active_listing_quarantines(
+                    case.manifest_revision, include_profile_history=True
+                )
+                held = held_decisions(
+                    panel.feature_input_decisions(), rule.rule_hash, {q.listing_id for q in active}
+                )
                 scope = rule.scope(
                     cases,
                     len({item.listing_id for item in evidence}),
-                    (e for e in entries if e.get("task_id") == str(task_id)),
+                    (
+                        e
+                        for e in self.store.attributed(goal.goal_id)
+                        if e.get("task_id") == str(task_id)
+                    ),
+                    held,
                 )
             available = case.case_token in scope["case_tokens"]
-            option = rule.decide(case, evidence, scope)
+            option, status = rule.ruling(case, evidence, scope, held)
             choice = (case.case_token, option, rule.rule_hash)
             if choice not in recorded:
                 self.store.attribute(
@@ -762,7 +776,7 @@ class GoalApplication:
                         "recorded_at": self.clock().isoformat(),
                         "operation": "DATA_ISSUE_CONFIRM",
                         "decided_by": "RULE",
-                        "status": "DECIDED_BY_RULE" if option != ESCALATE else "ESCALATED",
+                        "status": status,
                         "task_id": str(task_id),
                         "delegation": delegation,
                         "goal_hash": current.goal_hash,
@@ -775,7 +789,9 @@ class GoalApplication:
                             k: scope[k]
                             for k in ("case_count", "affected_listing_count", "population_count")
                         },
-                        "escalation_reason": "CASE_CATALOG_UNAVAILABLE"
+                        "escalation_reason": None
+                        if status != "ESCALATED"
+                        else "CASE_CATALOG_UNAVAILABLE"
                         if not available
                         else "RULE_BOUND_EXCEEDED"
                         if scope["capped"]
@@ -785,6 +801,17 @@ class GoalApplication:
                 recorded.add(choice)
             return rule.submission(case, option, str(goal.goal_id), authority=authority)
 
+        own = {"task_id": str(task_id), "delegation": delegation, "authority": authority}
+        decide.audit = partial(  # type: ignore[attr-defined]
+            audit_rule,
+            rule,
+            live,
+            partial(self.store.attributed, goal.goal_id),
+            lambda entry: self.store.attribute(
+                goal.goal_id, {"recorded_at": self.clock().isoformat(), **own, **entry}
+            ),
+            str(task_id),
+        )
         return decide
 
     def resume_decided(
@@ -937,8 +964,7 @@ class GoalApplication:
     def _own_preparation_stopped(self, goal: Goal) -> bool:
         """Whether a preparation this first use admitted is stopped, its data decisions owed.
 
-        The delegation decides only its own preparation's data issues: no other preparation's,
-        no standing grant, nothing once the goal ends (OP19).
+        The delegation decides only its own preparation's issues, and none once it ends (OP19).
         """
         for entry in self.store.attributed(goal.goal_id):
             task = entry.get("task_id")
@@ -973,11 +999,10 @@ class GoalApplication:
     ) -> dict[str, object] | None:
         """The person's yes an agent's request relays, held for it before it runs.
 
-        It answers only the decision it was bound to, from the agent session whose goal the
-        request works for, and once: the same words to the same question for the same decision
-        are refused while held or used, naming the nonce with which the person's next yes to it
-        is sent. The Host's clock dates it; `release_relay` gives back one whose decision was
-        refused.
+        It answers only its bound decision, from the session whose goal the request works for,
+        once: the same words to the same question are refused while held or used, naming the
+        nonce for the person's next yes. The Host's clock dates it; `release_relay` gives back
+        one whose decision was refused.
         """
         confirmation = request.person_confirmation
         if confirmation is None or caller == "HUMAN":
@@ -986,11 +1011,9 @@ class GoalApplication:
         held = None if session is None else self.store.bound(session)
         if goal is None or held is None or held.goal_id != goal.goal_id:
             raise ValueError("person_confirmation.session_required")
-        decision = decision_hash(
-            {field.name: getattr(request, field.name) for field in fields(request)}
+        decision = relayed_decision(
+            {field.name: getattr(request, field.name) for field in fields(request)}, confirmation
         )
-        if confirmation.decision_hash != decision:
-            raise ValueError("person_confirmation.decision_mismatch")
         if confirmation.nonce is not None:
             earlier = self.store.relay_nonce(confirmation.nonce)
             if earlier is None or earlier.get("decision_hash") != decision:
@@ -1146,9 +1169,8 @@ class GoalApplication:
     ) -> tuple[ExternalActivityEventDocument, Goal | None, GoalSession | None]:
         """The event with the goal its session holds, looked up once at its first receipt.
 
-        The session is the one the event declares (a native Team's, where the lead and its
-        children speak), else the request's own; a goal the request names must be open, as
-        for any request. The goal is the Host's word: one the producer wrote is replaced.
+        The session is the one the event declares (a native Team's), else the request's own; a
+        goal the request names must be open. The Host's goal replaces any the producer wrote.
         """
         subject = dict(document.subject)
         subject.pop("goal_id", None)
@@ -1240,7 +1262,7 @@ class GoalApplication:
 
     def record(self, goal: Goal, *, whole_conversation: bool = False) -> dict[str, Any]:
         """The Host's facts; a waiter reads every message, never only the shown tail."""
-        entries = self.store.attributed(goal.goal_id)
+        entries = joined_members(self.store.attributed(goal.goal_id))
         requests = [e for e in entries if "operation" in e]
         messages = conversation_entries(entries)
         tasks: list[GoalTaskFact] = []
@@ -1253,6 +1275,7 @@ class GoalApplication:
                         kind=facts[0],
                         state=facts[1],
                         updated_at=facts[2],
+                        continued_by=(*facts, None)[3],
                     )
                 )
         delegated = [
@@ -1266,6 +1289,7 @@ class GoalApplication:
                     "network_enabled",
                     "case_token",
                     "option_id",
+                    "symbols",
                     "delegation",
                     "agent_session",
                 )
@@ -1305,6 +1329,7 @@ class GoalApplication:
         if request.operation == "GOAL_SCHEMA":
             return {
                 "status": "AVAILABLE",
+                "grammar": submission_grammar(REFERENCE_OPERATIONS),
                 "schemas": {
                     name: model.model_json_schema()
                     for name, model in (
@@ -1315,8 +1340,7 @@ class GoalApplication:
                     )
                 },
                 "reference_operations": REFERENCE_OPERATIONS,
-                # The shortest declaration, valid as it stands, its words to replace, so
-                # `goal schema --save-declaration goal.yaml` writes one to edit (V378).
+                # The shortest valid declaration, for `--save-declaration` to edit (V378).
                 "template": GoalDeclaration.model_validate(_DECLARATION_TEMPLATE).model_dump(
                     mode="json", exclude_defaults=True
                 ),
@@ -1434,9 +1458,8 @@ class GoalApplication:
             ):
                 raise ValueError("goal.response_target_absent")
             with GoalReferenceReadScope() as scope:
-                # Re-read cited owners before accepting a statement. Text remains
-                # attributed interpretation, not a deterministic correctness or
-                # host-identity certificate.
+                # Re-read cited owners before accepting a statement; its text stays
+                # attributed interpretation, never a correctness certificate.
                 for ref in goal.references:
                     if ref.reference_id in statement.evidence:
                         self._verified(ref, caller, scope=scope)
@@ -1451,9 +1474,11 @@ class GoalApplication:
     ) -> dict[str, Any]:
         assert request.goal_declaration is not None
         declaration = GoalDeclaration.model_validate(request.goal_declaration)
-        research = declaration.research
-        if research and research.purpose == "CONTINUATION" and not declaration.parent_goal_id:
+        purpose = getattr(declaration.research, "purpose", None)
+        if purpose == "CONTINUATION" and not declaration.parent_goal_id:
             raise ValueError("goal.continuation_requires_parent_goal")
+        if (road := daily_road(self.workspace, declaration)) is not None:
+            return dict(road)  # a completed first use: its daily road, never a second one
         session = self._session(provenance)
         goal_id = request.goal_id or uuid5(
             GOAL_NAMESPACE,
@@ -1465,27 +1490,17 @@ class GoalApplication:
             ),
         )
         prior = self.store.head(goal_id)
-        if prior is None and declaration.kind == "FIRST_USE" and self.first_use() is not None:
-            # A workspace has one first use, opened from the person's sentence (V452).
-            raise ValueError("goal.first_use_already_opened")
+        if prior is None and declaration.kind == "FIRST_USE":
+            prior = self.first_use()
+            if prior and prior.declaration != declaration:
+                raise ValueError("goal.first_use_already_opened")
         if prior is not None:
             if prior.revision == 1 and prior.declaration == declaration:
                 answer = {"status": "REUSED_EXACT", **self._identity_of(prior)}
                 return {**answer, **self._bind(prior, session)}
             raise ValueError("goal.already_open_revise_it")
-        if declaration.kind == "FIRST_USE" and declaration.target_date is not None:
-            dated = target_sessions(declaration.target_date, self.clock(), for_preparation=True)
-            if code := dated.get("failure_code"):
-                return {
-                    "status": "REFUSED",
-                    "failure_code": code,
-                    "target_date": dated["target_date"],
-                    "nearest_date": dated["nearest_date"],
-                    "next_command": self._first_use_command(
-                        self.workspace, declaration.objective, str(dated["nearest_date"])
-                    ),
-                    **refusal_words(str(code) + ":" + str(dated["nearest_date"])),
-                }
+        if (dated := undated(self.workspace, declaration, self.clock())) is not None:
+            return dict(dated)
         if declaration.kind == "FIRST_USE" and self.preparation_completed():
             raise ValueError("goal.first_use_after_preparation")
         if (
@@ -1538,13 +1553,7 @@ class GoalApplication:
 
     @staticmethod
     def _reference_clash(goal: Goal, submission: GoalSubmission) -> dict[str, Any] | None:
-        """A submission declaring an id the goal holds, or one id twice, refused with its way on.
-
-        Each clashing entry is named by its field. An entry that only re-declares a reference the
-        goal holds (the same request) is dropped from the offered resubmission, its citations
-        kept; one naming another result under a held id is the agent's to rename (V385).
-        """
-
+        """Refuse clashing ids; identical held references keep a sendable retry (V385)."""
         held = {r.reference_id: r for r in goal.references}
         declared = [
             ("references", index, draft.reference_id)
@@ -1636,20 +1645,16 @@ class GoalApplication:
                 cited_known=frozenset(known | declared),
             )
         if missing:
+            offered = offered_attach(goal, missing, tasks, lambda r: self._resolve(r, caller))
             return {
                 "status": "INCOMPLETE",
                 **self._identity_of(goal),
                 "missing": missing,
                 "record": record,
                 "next_requests": {
-                    "resubmit": {
-                        "operation": "GOAL_SUBMIT",
-                        "goal_id": str(goal.goal_id),
-                        "goal_hash": goal.goal_hash,
-                        # Left open, the goal and its revision bound (V441).
-                        "goal_submission": None,
-                    },
+                    "resubmit": resubmit(goal, submission, missing, offered),
                     "show": {"operation": "GOAL_SHOW", "goal_id": str(goal.goal_id)},
+                    **offered,
                 },
                 "claim": "Nothing was sealed. Each item names what the record lacks; the "
                 "Host does not judge whether the summary is true.",
@@ -1790,13 +1795,25 @@ class GoalApplication:
         )
         value = Goal.seal(**fields)
         saved = self.store.publish(value, prior.goal_hash if prior else None)
-        return {
+        answer: dict[str, Any] = {
             "status": "GOAL_SAVED",
             **self._identity_of(saved),
             "task_id": None,
             "numerical_work": "NONE",
             "next_requests": self._next(saved),
         }
+        if request.operation == "GOAL_SUBMIT" and saved.completion is not None:
+            answer.update(
+                next_action="RECORD_THE_EXPERIENCE",
+                detail=EXPERIENCE_RECORD_WORDS.format(subject=saved.goal_id),
+            )
+            answer["next_requests"].update(
+                {
+                    f"task:{task.task_id}": {"operation": "STATUS", "task_id": str(task.task_id)}
+                    for task in saved.completion.tasks
+                }
+            )
+        return answer
 
     def _resolve(
         self,
@@ -1808,9 +1825,7 @@ class GoalApplication:
         operation = str(ref.request.get("operation", ""))
         if ref.stage not in REFERENCE_OPERATIONS.get(operation, ()):
             raise ValueError("goal.reference_operation_not_admitted")
-        request = PortfolioResearchRequestDocument.model_validate(
-            ref.request
-        ).to_operation_request()
+        request = reference_request(ref.request)
         if operation == "EXPERIMENT_CONTROLS" and not (
             request.input_binding_hash and request.research_input_id
         ):
@@ -1885,6 +1900,7 @@ class GoalApplication:
             ("receipt", "receipt_hash"),
             ("evidence", "evidence_hash"),
             ("admission", "admission_hash"),
+            ("publication", "content_hash"),
         ):
             if isinstance(body.get(key), dict) and field in body[key]:
                 identity[field] = body[key][field]
@@ -2071,7 +2087,7 @@ class GoalApplication:
         }
 
     def _saved(self, goal: Goal, *, whole_conversation: bool = False) -> dict[str, Any]:
-        """The saved revision's own facts, shared by the narrative and the verified readback."""
+        """The saved revision's own facts, for the narrative and the verified readback."""
         head = self.store.head(goal.goal_id)
         statement_context = {}
         ancestor = goal
@@ -2096,6 +2112,12 @@ class GoalApplication:
             "goal": goal.model_dump(mode="json"),
             "statement_context": statement_context,
             "head_hash": head.goal_hash if head else None,
+            "head": {
+                **self._identity_of(head),
+                "outcome": head.submission.outcome if head.submission else None,
+            }
+            if head
+            else None,
             "state": goal.state,
             "outcome": goal.outcome(),
             "open_choices": [
@@ -2120,12 +2142,9 @@ class GoalApplication:
     def narrative(self, goal: Goal) -> dict[str, Any]:
         """The saved revision as recorded, without re-verifying its evidence.
 
-        The revision's own content hash was checked when the store loaded it, so the
-        objective, statements and the references' recorded identities are
-        exact. Whether each referenced owner still returns that identity is a separate,
-        slower question: ``GOAL_SHOW`` checks every reference; ``GOAL_REFERENCE`` checks one.
-        Its conversation is complete, so
-        a waiter cannot lose a message when more than the shown window arrives between reads.
+        Its content hash was checked on load, so its recorded identities are exact;
+        ``GOAL_SHOW`` re-checks every reference and ``GOAL_REFERENCE`` one. Its conversation is
+        whole, so a waiter loses no message between reads.
         """
         return {
             "status": "GOAL_NARRATIVE",

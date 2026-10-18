@@ -51,6 +51,9 @@
 "actor_execution.answer_record_slot_invalid": {
 "owner": "actor_execution"
 },
+"actor_execution.encoding_damaged": {
+"owner": "actor_execution"
+},
 "actor_execution.specialist_answer_problems": {
 "owner": "actor_execution"
 },
@@ -5859,6 +5862,9 @@
 "first_use.date_after_clock": {
 "owner": "first_use"
 },
+"first_use.date_before_history": {
+"owner": "first_use"
+},
 "first_use.date_not_session": {
 "owner": "first_use"
 },
@@ -6114,6 +6120,9 @@
 "local_client.codex_queue_unavailable": {
 "owner": "local_client"
 },
+"local_client.codex_unreachable": {
+"owner": "local_client"
+},
 "local_client.connection_lost_task_may_still_run": {
 "owner": "local_client"
 },
@@ -6175,6 +6184,9 @@
 "owner": "local_client"
 },
 "local_client.first_use_date_outside_calendar": {
+"owner": "local_client"
+},
+"local_client.first_use_setup_missing": {
 "owner": "local_client"
 },
 "local_client.max_wait_invalid": {
@@ -6648,6 +6660,12 @@
 "native_bridge.files_unavailable": {
 "owner": "native_bridge"
 },
+"native_bridge.bound_in_workspace": {
+"owner": "native_bridge"
+},
+"native_bridge.session_not_bound": {
+"owner": "native_bridge"
+},
 "native_bridge.history_unavailable": {
 "owner": "native_bridge"
 },
@@ -6756,7 +6774,13 @@
 "person_confirmation.already_used": {
 "owner": "person_confirmation"
 },
+"person_confirmation.beyond_its_question": {
+"owner": "person_confirmation"
+},
 "person_confirmation.decision_mismatch": {
+"owner": "person_confirmation"
+},
+"person_confirmation.not_the_persons_words": {
 "owner": "person_confirmation"
 },
 "person_confirmation.refused": {
@@ -10524,6 +10548,9 @@
 "research_delivery.completed_portfolio_required": {
 "owner": "research_delivery"
 },
+"research_delivery.export_failed": {
+"owner": "research_delivery"
+},
 "research_delivery.factor_source_mismatch": {
 "owner": "research_delivery"
 },
@@ -11065,6 +11092,27 @@
 "owner": "research_update"
 },
 "research_update.strategy_package_required": {
+"owner": "research_update"
+},
+"research_update.date_and_through": {
+"owner": "research_update"
+},
+"research_update.date_behind_update": {
+"owner": "research_update"
+},
+"research_update.date_before_update": {
+"owner": "research_update"
+},
+"research_update.date_invalid": {
+"owner": "research_update"
+},
+"research_update.date_after_clock": {
+"owner": "research_update"
+},
+"research_update.date_before_history": {
+"owner": "research_update"
+},
+"research_update.date_not_session": {
 "owner": "research_update"
 },
 "research_update.target_before_publication": {

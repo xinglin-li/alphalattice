@@ -1,0 +1,32 @@
+{
+  "note": "What the product may leave on the person's machine, by process kind: how many processes, how much commit and CPU while it serves and idles, nothing left once stopped, no console window, and no file outside the workspace but the declared ones. The hygiene gate (tests/portfolio_strategy_lab/test_runtime_launchers.py) reads these budgets; a process kind the registry census lists takes its budget from here.",
+  "kinds": {
+    "host": {
+      "owner": "src/alphalattice/control/product_host/composition/web_launcher.py",
+      "idle_processes": 3,
+      "idle_processes_reason": "the Host's interpreter, its venv launcher and the hidden console a windowless process keeps",
+      "idle_commit_gib": 2.5,
+      "idle_cpu_percent": 2.0,
+      "stopped_within_seconds": 60
+    },
+    "kept_worker": {
+      "owner": "src/alphalattice/control/task_control/child.py",
+      "most": "RuntimeCapacityRequest.maximum_kept_workers spread workers and the Task's own",
+      "idle_retire": "KEPT_WORKER_IDLE_SECONDS",
+      "spread_commit_gib": 0.25
+    }
+  },
+  "console_windows": 0,
+  "declared_temporary_files": [
+    {
+      "pattern": "alphalattice-host-*.log",
+      "owner": "src/alphalattice/control/product_host/composition/web_launcher.py",
+      "reason": "a detached Host's log, which holds no launch key"
+    },
+    {
+      "pattern": "alphalattice-cli-launches",
+      "owner": "src/alphalattice/interface/local_application/cli_contract.py",
+      "reason": "the CLI's count of an agent session's launches"
+    }
+  ]
+}

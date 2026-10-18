@@ -27,6 +27,7 @@ from alphalattice.control.product_host.composition.committee import (
 from alphalattice.control.product_host.composition.committee_materials import (
     QUESTIONS,
     facts,
+    review_now,
     sufficiency,
     tension_points,
 )
@@ -197,6 +198,7 @@ COMPONENT, FACT, UNKNOWN_COMPONENT = (f"{k}{n}" for k, n in (("C", 1), ("S", 1),
         ("rounded", "figure_not_in_dossier"),
         ("numbered_name", None),
         ("proposed", "position_change_proposed"),
+        ("suggested", None),
         ("verbal", "position_change_proposed"),
         ("prohibited", None),
         ("rank_description", None),
@@ -235,7 +237,8 @@ def test_recorded_message_keeps_the_host_contract(change, reason):
             "exact": {"text": "Weight is 0.125."},
             "rounded": {"text": "Weight is 0.13."},
             "numbered_name": {"text": "Read H1."},
-            "proposed": {"text": "Reduce H1."},
+            "proposed": {"text": "Set the weight of H1 lower."},
+            "suggested": {"text": "Reduce H1; T1 could add to it."},
             "verbal": {"text": "H1 should be half of the book."},
             "prohibited": {"text": "Never reduce H1."},
             "rank_description": {"text": "Lower-middle of the book; only H1 differs."},
@@ -249,6 +252,28 @@ def test_recorded_message_keeps_the_host_contract(change, reason):
     assert reason is None or reason in {issue["reason"] for issue in result["reasons"]}
     if change == "entry_time":
         assert "figure_not_in_dossier" not in {issue["reason"] for issue in result["reasons"]}
+
+
+@pytest.mark.parametrize(
+    "outcome,named,reason",
+    [
+        ("PROCEED_WITH_NOTES", {}, None),
+        ("DECLINE", {}, "decline_without_hard_defect"),
+        # A holding's gap is a note and a suggestion, never a whole-book DECLINE (#7).
+        ("DECLINE", {"hard_defects": ["Key evidence on H1 is missing."]}, "decline_on_holdings"),
+        ("DECLINE", {"hard_defects": ["The book's Risk bound is breached."]}, None),
+        ("FOR_THE_PERSON", {}, "for_the_person_without_a_decision"),
+        ("FOR_THE_PERSON", {"person_decisions": ["M6"]}, None),
+    ],
+)
+def test_reservations_without_a_hard_defect_proceed_with_notes(outcome, named, reason):
+    """requirement (committee calibration): DECLINE only for a named hard defect and
+    FOR_THE_PERSON only for a named person decision; reservations alone proceed with notes."""
+    scenario, context, parts, answer = recorded("decision")
+    context.update(named)
+    answer["message"]["outcome"] = outcome
+    result = judged(scenario, context, parts, answer)
+    assert {issue["reason"] for issue in result["reasons"]} == ({reason} - {None})
 
 
 @pytest.mark.parametrize(
@@ -398,7 +423,7 @@ def fidelity_floor(role="CRO", point="T1", following=None):
     }
     evidence = {
         "raw_messages": deepcopy(messages),
-        "cro_view": ["Review now: REVIEWED."],
+        "cro_view": ["Review now: reviewed."],
         "review_standing": {"status": "REVIEWED", **selected},
         "home": {
             "goal": {"goal_id": closed["goal_id"], "declaration": {"objective": "Study H1."}},
@@ -539,27 +564,17 @@ def test_standing_message_mirror_agrees_with_the_floor_owner(change):
 @pytest.mark.parametrize(
     "broken",
     [
-        "clean",
-        "ruling",
-        "after",
-        "relay",
-        "hash",
-        "standing",
-        "cro",
-        "numbers",
-        "raw",
-        "missing_raw",
-        "missing_cro",
-        "alias_attribution",
-        "stale_status",
-        "closed_hash",
-        "home_question",
-        "home_goal",
+        *("clean", "ruling", "after", "relay", "home_question", "home_goal"),
+        *("hash", "standing", "cro", "stale_status", "closed_hash", "published", "route"),
+        *("numbers", "raw", "missing_raw", "missing_cro", "alias_attribution"),
     ],
 )
 def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
     """Rulings, person relays, review identity and raw number checks have independent evidence."""
     closed, report, evidence = fidelity_floor()
+    standing = evidence["review_standing"]
+    standing.update(published_at="2026-10-17T02:44:00+00:00", cro={"route": "ACCEPT_WITH_LIMITS"})
+    evidence["cro_view"] = [review_now({"review_standing": standing})]
     challenge = floor_message("M4", "CRO", "CHALLENGE", text="Check T1.")
     ruling = floor_message("M5", "PM", "RULING", reply_to="M4", text="Ask person.")
     ruling["outcome"] = "FOR_THE_PERSON"
@@ -601,7 +616,11 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
     elif broken == "standing":
         evidence["review_standing"]["review_publication_hash"] = "b" * 64
     elif broken == "cro":
-        evidence["cro_view"] = ["Review now: NOT_REVIEWED."]
+        evidence["cro_view"] = ["Review now: not reviewed."]
+    elif broken == "published":
+        standing["published_at"] = "2026-10-17T02:44:01+00:00"
+    elif broken == "route":
+        standing["cro"]["route"] = "MATERIAL_OBJECTION"
     elif broken == "numbers":
         evidence["raw_messages"][0]["text"] = "Weight 2%."
     elif broken == "raw":
@@ -612,7 +631,7 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
         )
         row["attribution"] = row["attribution_words"]["message"] = "M10"
     elif broken == "stale_status":
-        evidence["cro_view"] = ['{"old": "REVIEWED"}', "Review now: NOT_REVIEWED."]
+        evidence["cro_view"] = ['{"old": "REVIEWED"}', "Review now: not reviewed."]
     elif broken == "closed_hash":
         closed["delivery"] = {}
     elif broken == "home_question":
@@ -627,7 +646,73 @@ def test_report_fidelity_requires_the_floor_and_its_original_admissions(broken):
         assert "UNPROVED:raw_messages" in problems
     if broken == "missing_cro":
         assert "UNPROVED:cro_view" in problems
+    if broken in {"published", "route"}:
+        assert "report.cro_review_source_mismatch" in problems
     if broken == "closed_hash":
         assert "report.review_hash_mismatch" in problems
     if broken.startswith("home_"):
         assert "home." + broken.removeprefix("home_") + "_mismatch" in problems
+
+
+@pytest.mark.parametrize(
+    "broken,finding",
+    [
+        ("clean", None),
+        ("dropped", "report.suggestions_mismatch"),
+        ("after", "report.suggestions_after_verdict"),
+        ("unclosed", "report.no_number_line_missing"),
+    ],
+)
+def test_the_suggestions_lead_the_report_as_the_floor_holds_them(broken, finding):
+    """requirement (committee calibration): each standing OBJECT or SUPPORT on a point's holdings
+    leads the report, then the verdict, and the no-number line closes it."""
+    closed = {
+        "tension_points": [{"alias": "T1", "targets": ["H1", "H2"]}],
+        "messages": [
+            floor_message("M1", "CRO", "STANCE", text="Object T1.", positions={"T1": "OBJECT"}),
+            floor_message("M2", "PM", "VERDICT", text="Proceed."),
+        ],
+    }
+    suggestion = {
+        "attribution_words": {"message": "M1"},
+        "position": "OBJECT",
+        "holding_aliases": ["H1", "H2"],
+    }
+    rows = [
+        suggestion,
+        {"attribution_word": "Committee verdict: {outcome}", "text": "Proceed."},
+        {"attribution_word": "closing", "text": "It changed no number"},
+    ]
+    if broken == "dropped":
+        rows.pop(0)
+    if broken == "after":
+        rows.insert(1, rows.pop(0))
+    if broken == "unclosed":
+        rows.pop()
+    problems = report_fidelity(closed, {"commentary": rows})
+    found = {p for p in problems if p.startswith("report.suggestions") or "no_number" in p}
+    assert found == ({finding} - {None})
+
+
+def test_a_fact_that_contradicts_its_own_data_is_named():
+    """requirement (committee facts, 2026-10-16): a rank listed outside its class, moves that
+    moved nothing and a total that is not its parts are each named by the fact's alias."""
+    from alphalattice.control.product_host.composition import committee_materials
+    from devtools.evaluation.committee import fact_findings
+
+    rule = committee_materials._FACTS["rule"][2].format(
+        c="C3", n=3, top=35, out=70, kept="H1 36, H4 90", tranche="H3 71"
+    )
+    moves = committee_materials._FACTS["moves"][2].format(
+        c="C3", moved="H1 0.98>0.98, H2 0.96>0.96", unscored="none"
+    )
+    parts = dict(read="10.861%", days=30, nothing="88.628%", unread="0.511%", minimum="50.000%")
+    scope = committee_materials._FACTS["scope"][2].format(
+        together="100.000%", reviewed="100.000%", **parts
+    )
+    facts = [{"alias": f"S{n}", "text": t} for n, t in enumerate((rule, moves, scope), 5)]
+    assert fact_findings(facts) == [
+        "fact.rank_outside_its_class:S5",
+        "fact.moves_moved_nothing:S6",
+        "fact.total_not_its_parts:S7",
+    ]

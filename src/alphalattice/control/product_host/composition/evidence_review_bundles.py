@@ -12,7 +12,8 @@ import json
 import re
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
-from dataclasses import replace
+from dataclasses import fields, replace
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, get_args
 from uuid import UUID
@@ -29,6 +30,7 @@ from alphalattice.evidence.alternative_evidence.publication.contracts import (
     AlternativeEvidenceAnalysisPublication,
 )
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
+from alphalattice.interface.local_application.labels import label
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioEvidenceReviewError,
@@ -55,7 +57,7 @@ from alphalattice.protocols.actor_execution.bundles import (
     pack_sections,
 )
 
-from .evidence_review_application import BUNDLE_CATEGORY, ReviewOutcome
+from .evidence_review_application import BUNDLE_CATEGORY, ReviewOutcome, agent_answer_result
 
 if TYPE_CHECKING:
     from .evidence_review_application import EvidenceReviewApplication
@@ -124,6 +126,50 @@ _BUNDLE_REFUSALS = {
 }
 
 _BOUND_ERRORS = frozenset({"too_long", "string_too_long"})
+
+
+def bundle_book(submission: Mapping[str, Any]) -> dict[str, Any]:
+    """The book a bundle's submission names, by its selector's fields."""
+    names = {item.name for item in fields(BookSelector)}
+    return {
+        name: value for name, value in submission.items() if name in names and value is not None
+    }
+
+
+def bundle_refused(
+    host: Any, error: Exception, bundle: Any, thread: Any, request: Any, caller: str
+) -> dict[str, object]:
+    """A bound answer its owner refused: settled, or stale with its way on.
+
+    A stale bundle is refused in its member's words, or for the lead with the date's committee
+    where its review stands published (`committee.lead_way`). Any other error is raised.
+    """
+    from alphalattice.control.product_host.composition.committee import lead_way
+
+    code = str(error)
+    if code == "agent_bundle.answer_settled":
+        return agent_bundle_refusal(code, role=bundle.role)
+    if code not in STALE_BUNDLE_CODES:
+        raise error
+    refused = agent_bundle_refusal("agent_bundle.preparation_stale")
+    book = bundle_book(bundle.submission)
+    return lead_way(host, book, _lead(thread, request), caller, refused)
+
+
+def bundle_answered(
+    host: Any, bundle: Any, body: Mapping[str, object], thread: Any, request: Any, caller: str
+) -> dict[str, object]:
+    """The Host's verdict on a bundle's answer, a refusal to the lead with its way on."""
+    from alphalattice.control.product_host.composition.committee import lead_way
+
+    book = bundle_book(bundle.submission)  # none for a stage role's bundle
+    answered = agent_answer_result(bundle.role, body, book)
+    return lead_way(host, book, _lead(thread, request), caller, answered)
+
+
+def _lead(thread: Any, request: Any) -> bool:
+    """Whether a request is the lead's: keyless on a member's thread, its receipt read."""
+    return thread is not None and request.committee_key is None
 
 
 def agent_bundle_refusal(
@@ -328,7 +374,7 @@ class EvidenceReviewBundles:
         else:
             # The dossier as read now, and that time sealed with the bundle: its answer
             # meets this dossier, never one read on a later clock.
-            read_at = self.app.clock()
+            read_at = self._read_at(directory, chosen)
             dossier = self.app._resolve_review_dossier(chosen, read_at=read_at)
             if isinstance(dossier, ReviewOutcome):
                 return dossier
@@ -354,8 +400,13 @@ class EvidenceReviewBundles:
                         "book": {"operation": "EVIDENCE_CRO", **chosen.request_fields()},
                     },
                 )
+            subject = dossier.update_subject
+            installed = label(subject.strategy_package_id) if subject else None
             bundle = render_review_bundle(
-                dossier, task_procedure=procedure, last_review=self._last_review(chosen)
+                dossier,
+                task_procedure=procedure,
+                last_review=self._last_review(chosen),
+                strategy_title=installed.title if installed else None,
             )
             submission = self.app._review_submission(dossier, read_at=read_at)
         if route is not None:  # a review member's own submit, ending its README
@@ -472,6 +523,18 @@ class EvidenceReviewBundles:
             },
             allowed_references=allowed,
         )
+
+    def _read_at(self, directory: str, chosen: BookSelector) -> datetime:
+        """Continue the held CRO reading only for its own role, operation and selected book."""
+        held = self.agent_bundle(directory)
+        if (
+            held is not None
+            and held.role == "CRO"
+            and held.submission.get("operation") == "CRO_REVIEW_SUBMIT"
+            and all(held.submission.get(k) == v for k, v in chosen.request_fields().items())
+        ):
+            return datetime.fromisoformat(held.submission["review_read_at"])
+        return self.app.clock()
 
     def store_bundle(
         self,

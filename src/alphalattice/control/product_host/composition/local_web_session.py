@@ -57,7 +57,10 @@ from alphalattice.control.product_host.composition.local_web_connection import (
     publish_client_connection,
     remove_client_connection,
 )
-from alphalattice.control.product_host.composition.native_usage_reader import NativeUsageReader
+from alphalattice.control.product_host.composition.native_usage_reader import (
+    NativeUsageReader,
+    read_usage,
+)
 from alphalattice.control.product_host.composition.portfolio_application import (
     PLAN_FIELDS as PORTFOLIO_PLAN_FIELDS,
 )
@@ -165,6 +168,7 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
     admit_workspace_source,
 )
 from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
+from alphalattice.interface.local_application import native_setup
 from alphalattice.interface.local_application.activity import (
     READ_OPERATIONS,
     ActivityReadQuery,
@@ -173,8 +177,10 @@ from alphalattice.interface.local_application.activity import (
     returned_status,
 )
 from alphalattice.interface.local_application.cli_contract import (
+    REQUEST_PROVENANCE,
     RequestProvenance,
     agent_session,
+    refusal_words,
 )
 from alphalattice.interface.local_application.client import (
     LocalResearchConnection,
@@ -192,7 +198,10 @@ from alphalattice.interface.local_application.failure_codes import (
 )
 from alphalattice.interface.local_application.native_bridge import (
     HOSTS,
-    read_session_usage,
+    NativeBridgeError,
+    NativeResearchBinding,
+    autobind_root,
+    session_binding,
 )
 from alphalattice.interface.local_application.portfolio_research import (
     FinalizationStatusProjection,
@@ -718,10 +727,9 @@ class LocalPortfolioWebSession:
                 source_loader=self.data_source_loader,
             ),
         )
-        # The activity observer is composed after every owner it reads and
-        # before the socket opens, so the first request is already observed.
-        # Activity is optional infrastructure: a store that cannot open leaves
-        # the observer UNAVAILABLE on every read and the product usable.
+        # The activity observer is composed after every owner it reads and before the socket opens,
+        # so the first request is already observed. Activity is optional infrastructure: a store
+        # that cannot open leaves the observer UNAVAILABLE on every read and the product usable.
         activity = WorkspaceActivity(
             workspace=self.workspace,
             workspace_id=self.workspace_id,
@@ -889,7 +897,7 @@ class LocalPortfolioWebSession:
             finalization_store=finalization_store,
             authority=self.review_authority,
             official_source=(
-                partial(admit_workspace_source, self.workspace)
+                partial(admit_workspace_source, self.workspace, clock=self.clock)
                 if self._workspace_review_authority and self._official_source is None
                 else None
             ),
@@ -1870,9 +1878,8 @@ def build_local_web_application(
             HTTPStatus.OK,
             page.encode("utf-8"),
             "text/html; charset=utf-8",
-            # The sealed page styles itself inline, and the default policy
-            # forbids inline style. Naming its exact style by hash keeps the page
-            # byte-identical and the policy narrow.
+            # The sealed page styles itself inline, and the default policy forbids inline style.
+            # Naming its exact style by hash keeps the page byte-identical and the policy narrow.
             content_security_policy=report_policy(page),
         )
 
@@ -1969,48 +1976,32 @@ def build_local_web_application(
     return web
 
 
+def _native_session_refusal(code: str) -> dict[str, Any]:
+    return {"status": "REFUSED", "failure_code": code, **refusal_words(code)}
+
+
 def _native_session_routes(
     web: LocalWebApplication, operations: PortfolioResearchOperations
 ) -> None:
-    """Write native attachment metadata only in this served workspace's exact project."""
-    from alphalattice.interface.local_application import native_setup
-    from alphalattice.interface.local_application.cli_contract import (
-        REQUEST_PROVENANCE,
-        refusal_words,
-    )
-    from alphalattice.interface.local_application.failure_codes import owner_failure_code
-    from alphalattice.interface.local_application.native_bridge import (
-        NativeBridgeError,
-        NativeResearchBinding,
-    )
-    from alphalattice.interface.local_application.native_setup import (
-        NativeEventDeliveryRequest,
-        NativeSessionBindRequest,
-        bind_session,
-        files_unavailable,
-    )
-
+    """Register the served workspace's native binding and usage routes."""
     workspace = operations.workspace_session.workspace.resolve()
-
-    def refusal(code: str) -> dict[str, Any]:
-        return {"status": "REFUSED", "failure_code": code, **refusal_words(code)}
 
     @web.route("POST", "/api/client/session/bind", mutates=True, external_client=True)
     def bind(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
         try:
-            request = NativeSessionBindRequest.model_validate(payload)
+            request = native_setup.NativeSessionBindRequest.model_validate(payload)
         except ValidationError:
-            return refusal("native_bridge.request_invalid")
+            return _native_session_refusal("native_bridge.request_invalid")
         provenance = REQUEST_PROVENANCE.get()
         if provenance is None or provenance.vendor is None or provenance.session is None:
-            return refusal("local_client.session_unnamed")
+            return _native_session_refusal("local_client.session_unnamed")
         project: Path | None = None
         try:
             project = native_setup.admitted_session_project(
                 workspace, request.project, provenance.vendor
             )
             operations.native_projects.add(project)
-            return bind_session(
+            return native_setup.bind_session(
                 project,
                 host=provenance.vendor,
                 session_id=provenance.session,
@@ -2018,105 +2009,120 @@ def _native_session_routes(
                 usage=request.usage,
             )
         except NativeBridgeError as error:
-            return refusal(str(error))
+            return _native_session_refusal(str(error))
         except OSError as error:
             if owner_failure_code(error) is not None:
                 raise
-            return files_unavailable(error, project=project or workspace, workspace=workspace)
+            return native_setup.bound_in_workspace(error, project, workspace, request)
 
-    @web.route("POST", "/api/client/session/event", mutates=True, external_client=True)
-    def event(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
-        try:
-            request = NativeEventDeliveryRequest.model_validate(payload)
-        except ValidationError:
-            return refusal("native_bridge.request_invalid")
-        provenance = REQUEST_PROVENANCE.get()
-        if (
-            provenance is None
-            or provenance.vendor is None
-            or provenance.vendor not in HOSTS
-            or provenance.session is None
-        ):
-            return refusal("native_bridge.event_scope_invalid")
-        project: Path | None = None
-        try:
-            # The real caller selects an exact binding or its native-verified parent within
-            # this admitted project. The event body cannot select a Session or workspace.
+    web.route("POST", "/api/client/session/event", mutates=True, external_client=True)(
+        partial(_native_session_event, operations, workspace)
+    )
+
+
+def _native_session_event(
+    operations: PortfolioResearchOperations,
+    workspace: Path,
+    _query: Mapping[str, list[str]],
+    payload: dict[str, Any],
+) -> object:
+    """Deliver the caller's own usage through its exact binding and Goal authority."""
+    try:
+        request = native_setup.NativeEventDeliveryRequest.model_validate(payload)
+    except ValidationError:
+        return _native_session_refusal("native_bridge.request_invalid")
+    provenance = REQUEST_PROVENANCE.get()
+    if (
+        provenance is None
+        or provenance.vendor is None
+        or provenance.vendor not in HOSTS
+        or provenance.session is None
+    ):
+        return _native_session_refusal("native_bridge.event_scope_invalid")
+    project: Path | None = None
+    try:
+        # The caller's verified binding chooses the Session and workspace, never the body.
+        selected_project = request.project
+        # The Host's canonical workspace folder is already its binding owner;
+        # it is not a configured project, nor a caller-selected alternative.
+        if selected_project != autobind_root(workspace):
             selected_project = native_setup.admitted_session_project(
-                workspace, request.project, provenance.vendor
+                workspace, selected_project, provenance.vendor
             )
             operations.native_projects.add(selected_project)
-            project = selected_project
-            found = NativeResearchBinding.find(
-                selected_project, session=(provenance.vendor, provenance.session)
-            )
-            if found is None:
-                raise NativeBridgeError("native_bridge.not_bound")
-            bound_project, binding = found
-            if bound_project != selected_project:
-                raise NativeBridgeError("native_bridge.project_mismatch")
-            if binding.workspace.resolve() != workspace:
-                raise NativeBridgeError("native_bridge.workspace_mismatch")
-            parent_provenance = RequestProvenance(
-                vendor=binding.host,
-                session=binding.session_id,
-                goal_id=provenance.goal_id,
-            )
-            goal = operations.goals.attributed_goal(parent_provenance)
-            goal_id = None if goal is None else str(goal.goal_id)
+        project = selected_project
+        found = session_binding(
+            selected_project, workspace, (provenance.vendor, provenance.session)
+        )
+        if found is None:
+            raise NativeBridgeError("native_bridge.not_bound")
+        bound_project, binding = found
+        if bound_project != selected_project:
+            raise NativeBridgeError("native_bridge.project_mismatch")
+        if binding.workspace.resolve() != workspace:
+            raise NativeBridgeError("native_bridge.workspace_mismatch")
+        parent_provenance = RequestProvenance(
+            vendor=binding.host,
+            session=binding.session_id,
+            goal_id=provenance.goal_id,
+        )
+        goal = operations.goals.attributed_goal(parent_provenance)
+        goal_id = None if goal is None else str(goal.goal_id)
 
-            def publish(document: dict[str, Any]) -> dict[str, Any]:
-                with (
-                    operations.workspace_session.mutation_gate.hold(),
-                    operations.goals.store.lock,
-                ):
-                    current = operations.goals.attributed_goal(parent_provenance)
-                    current_id = None if current is None else str(current.goal_id)
-                    caller_goal = operations.goals.attributed_goal(provenance)
-                    if (
-                        current_id != goal_id
-                        or (goal_id is None and caller_goal is not None)
-                        or NativeResearchBinding.read(
-                            selected_project, session=(binding.host, binding.session_id)
-                        )
-                        != binding
-                    ):
-                        return refusal("native_bridge.event_scope_invalid")
-                    token = REQUEST_PROVENANCE.set(
-                        RequestProvenance(
-                            vendor=provenance.vendor,
-                            session=provenance.session,
-                            goal_id=goal_id,
-                            delegation=provenance.delegation,
-                        )
+        def publish(document: dict[str, Any]) -> dict[str, Any]:
+            with (
+                operations.workspace_session.mutation_gate.hold(),
+                operations.goals.store.lock,
+            ):
+                current = operations.goals.attributed_goal(parent_provenance)
+                current_id = None if current is None else str(current.goal_id)
+                caller_goal = operations.goals.attributed_goal(provenance)
+                if (
+                    current_id != goal_id
+                    or (goal_id is None and caller_goal is not None)
+                    or NativeResearchBinding.read(
+                        selected_project, session=(binding.host, binding.session_id)
                     )
-                    try:
-                        return operations.execute(
-                            PortfolioResearchRequestDocument(
-                                operation="EVENT_DECLARE", event=document
-                            ).to_operation_request(),
-                            caller="EXTERNAL_AUTOMATION",
-                        )
-                    finally:
-                        REQUEST_PROVENANCE.reset(token)
+                    != binding
+                ):
+                    return _native_session_refusal("native_bridge.event_scope_invalid")
+                token = REQUEST_PROVENANCE.set(
+                    RequestProvenance(
+                        vendor=provenance.vendor,
+                        session=provenance.session,
+                        goal_id=goal_id,
+                        delegation=provenance.delegation,
+                    )
+                )
+                try:
+                    return operations.execute(
+                        PortfolioResearchRequestDocument(
+                            operation="EVENT_DECLARE", event=document
+                        ).to_operation_request(),
+                        caller="EXTERNAL_AUTOMATION",
+                    )
+                finally:
+                    REQUEST_PROVENANCE.reset(token)
 
-            # A milestone's reading of the caller's own Session; no other event enters here.
-            if request.event != {"source": "native_usage_read"} or (
-                provenance.vendor,
-                provenance.session,
-            ) != (binding.host, binding.session_id):
-                return refusal("native_bridge.event_scope_invalid")
-            return read_session_usage(project, binding, publish=publish, goal_id=goal_id)
-        except NativeBridgeError as error:
-            return refusal(str(error))
-        except (KeyError, TypeError, ValueError) as error:
-            if owner_failure_code(error) is not None:
-                raise
-            return refusal("native_bridge.event_invalid")
-        except OSError as error:
-            if owner_failure_code(error) is not None:
-                raise
-            return files_unavailable(error, project=project or workspace, workspace=workspace)
+        # Only a milestone's read of the caller's own Session enters here.
+        if request.event != {"source": "native_usage_read"} or (
+            provenance.vendor,
+            provenance.session,
+        ) != (binding.host, binding.session_id):
+            return _native_session_refusal("native_bridge.event_scope_invalid")
+        return read_usage(operations, project, binding, publish, goal_id)
+    except NativeBridgeError as error:
+        return _native_session_refusal(str(error))
+    except (KeyError, TypeError, ValueError) as error:
+        if owner_failure_code(error) is not None:
+            raise
+        return _native_session_refusal("native_bridge.event_invalid")
+    except OSError as error:
+        if owner_failure_code(error) is not None:
+            raise
+        return native_setup.files_unavailable(
+            error, project=project or workspace, workspace=workspace
+        )
 
 
 def _activity_routes(web: LocalWebApplication, activity: WorkspaceActivity) -> None:

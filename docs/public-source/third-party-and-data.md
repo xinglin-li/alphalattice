@@ -55,4 +55,4 @@ Live admission requires source consent and workspace network authority. Otherwis
 
 ## Cost and scope
 
-Built-in acquisition and retrieval use no paid data feed or hosted model service. Product paths have no billing step. Access to Codex or Claude Code is separate. [Data and care](data-and-care.md) covers storage and recovery.
+Built-in acquisition and retrieval use no paid data feed or hosted model service. Product paths have no billing step. Access to Claude Code or Codex is separate. [Data and care](data-and-care.md) covers storage and recovery.

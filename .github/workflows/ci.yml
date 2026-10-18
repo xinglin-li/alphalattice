@@ -97,3 +97,65 @@ jobs:
         run: >-
           uv run python -m pytest tests/release/test_wheel_runtime.py -n auto
           --basetemp "${{ runner.temp }}/alphalattice-wheel-tests"
+
+  platforms:
+    name: Offline first use (${{ matrix.os }})
+    if: ${{ !github.event.repository.private }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Set isolated tool paths
+        run: |
+          temp="${RUNNER_TEMP//\\//}"
+          printf 'UV_TOOL_DIR=%s/uv-tools\nUV_TOOL_BIN_DIR=%s/uv-bin\n' "$temp" "$temp" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.11.28"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Install the locked environment
+        run: uv sync --locked --all-extras
+      - name: Build Local Web
+        run: uv run python scripts/build_local_web_ui.py --product
+      - name: Install OpenMP on macOS
+        if: runner.os == 'macOS'
+        run: brew install libomp
+      - name: Install the locked Workbench browser tooling
+        working-directory: third_party/playwright
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .browsers
+        run: |
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+          if [ "$RUNNER_OS" = Linux ]; then
+            npx --no-install playwright install --with-deps chromium
+          else
+            npx --no-install playwright install chromium
+          fi
+      - name: Run the offline first-use scenario
+        run: >-
+          uv run python -m pytest
+          tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on
+          -n 1 -m "not real_evidence"
+          --basetemp "${{ runner.temp }}/alphalattice-first-use"
+      - name: Build and install the wheel; smoke in fresh bash
+        if: runner.os != 'Windows'
+        run: |
+          uv build --wheel --out-dir "$RUNNER_TEMP/dist"
+          wheels=("$RUNNER_TEMP"/dist/alphalattice-*-py3-none-any.whl)
+          test "${#wheels[@]}" -eq 1
+          wheel="${wheels[0]}"
+          requirements="$RUNNER_TEMP/alphalattice-runtime-requirements.txt"
+          uv run python -c "import sys, zipfile, pathlib; pathlib.Path(sys.argv[2]).write_bytes(zipfile.ZipFile(sys.argv[1]).read('alphalattice/_runtime/config/release/runtime-requirements.txt'))" "$wheel" "$requirements"
+          uv tool install --python 3.12 "$wheel" --with-requirements "$requirements" --constraints "$requirements"
+          uv run python scripts/release/wheel_smoke.py --command "$UV_TOOL_BIN_DIR/alphalattice" --output "$RUNNER_TEMP/smoke-bash.json" --fresh-shell bash

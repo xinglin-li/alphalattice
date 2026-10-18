@@ -698,6 +698,46 @@ def test_a_metric_read_alone_carries_its_unit(tmp_path: Path, capsys: Any, fake_
     assert section("position.session") == {"section": "position.session", "value": "2024-01-03"}
 
 
+@pytest.mark.parametrize("existing", ["absent", "empty", "nonempty", "file", "same", "foreign"])
+def test_bundle_preparation_accepts_only_a_new_or_empty_directory(
+    tmp_path: Path, capsys: Any, fake_host: Any, existing: str
+) -> None:
+    """Bundle output continues its own files and refuses unrelated content without overwriting."""
+    folder = tmp_path / "bundle"
+    if existing in {"empty", "nonempty"}:
+        folder.mkdir()
+    if existing == "nonempty":
+        (folder / "kept").write_bytes(b"kept")
+    if existing == "file":
+        folder.write_bytes(b"kept")
+    fake_host.answer = {
+        "status": "AGENT_BUNDLE_READY",
+        "files": [{"name": "README.md", "text": "Read.\n"}],
+    }
+    line = [
+        *("--workspace", str(tmp_path), "--view", "full", "bundle", "prepare"),
+        *("--role", "ALPHA", "--task", str(uuid4()), "--dir", str(folder)),
+    ]
+    if existing in {"same", "foreign"}:
+        assert main(line, serve=lambda _: 99) == 0
+        capsys.readouterr()
+        fake_host.answer["files"][0]["text"] = "Other.\n" if existing == "foreign" else "Read.\n"
+    result = main(line, serve=lambda _: 99)
+    answer = json.loads(capsys.readouterr().out)
+    if existing in {"nonempty", "file"}:
+        assert result == 1 and answer["failure_code"] == "local_client.bundle_directory_exists"
+        assert "empty" in answer["detail"] and answer["next_action"]
+        assert fake_host.sent == []
+        assert (folder / "kept" if existing == "nonempty" else folder).read_bytes() == b"kept"
+    elif existing == "foreign":
+        assert result == 0
+        assert answer["local_failure"]["failure_code"] == "local_client.bundle_directory_exists"
+        assert (folder / "README.md").read_bytes() == b"Read.\n"
+    else:
+        assert result == 0 and answer["status"] == "AGENT_BUNDLE_READY", answer
+        assert (folder / "README.md").read_text("utf-8") == "Read.\n"
+
+
 def test_a_next_command_keeps_the_context_its_answer_came_in(
     tmp_path: Path, capsys: Any, fake_host: Any
 ) -> None:
@@ -800,6 +840,12 @@ def test_each_wait_takes_the_reread_its_compact_answer_offers() -> None:
     committee = ["committee", "wait", "--update", "u", "--role", "PM", "--key", "k"]
     for wait in (["activity", "wait"], committee):
         assert cli._parser().parse_args([*wait, "--section", "messages"]).section == "messages"
+    parser = cli._parser()
+    for word in committee[:2]:
+        sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+        parser = sub.choices[word]
+    seen = next(a for a in parser._actions if a.dest == "committee_seen")
+    assert "M7 is 7" in seen.help  # the number, not the id the floor shows (#5)
 
 
 def test_an_answer_carries_the_titles_of_the_installed_ids_it_names() -> None:
@@ -956,6 +1002,7 @@ def test_an_operation_only_a_person_completes_is_marked_so(
         "evidence_documents_per_issuer": "3",
         "evidence_setup": "--acquire-sec --entities AAPL --network-consent --install",
         "usage_reading_enabled": "false",
+        "committee_daily_enabled": "true",
         "input_pinned": "true",
         "task_id": str(uuid4()),
         "automation_enabled": "true",
@@ -1274,7 +1321,7 @@ def test_a_compact_answer_holds_its_next_requests_to_the_read(
     size, compact = answer()
     kept = compact["next_requests"]
     assert size <= client.COMPACT_ANSWER_BYTES, size
-    # The owner's first, in its order (the envelope prints its keys sorted).
+    # The owner's first, in its order.
     assert set(kept) == set(list(offered)[: len(kept)]) == set(compact["next_commands"])
     assert compact["next_left"] == {"count": 200 - len(kept), "list": "--list-next"}
 

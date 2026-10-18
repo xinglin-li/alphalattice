@@ -36,7 +36,7 @@ WAITS = frozenset({"ACTIVITY_WAIT", "WAKE_REGISTER"})
 DEPTH = 12
 _CHOICE = re.compile(r"<[^<>]+>")
 _OPERATOR_SWITCH = "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
-_ENDING = ("_CANCEL", "_ABANDON", "_STOP")
+_ENDING = ("CANCEL", "_ABANDON", "_STOP")
 
 
 def data_decision_findings(
@@ -88,6 +88,40 @@ def data_decision_findings(
     ]
 
 
+def evidence_reuse_findings(store: Path, before: frozenset[str]) -> list[dict[str, str]]:
+    """A later day reads no filing an earlier analysis read, nor scores a selection over one.
+
+    The filing is the unit of reuse (W3). `store` is the Evidence artifact root and `before`
+    the records it held before the day; the day's own records are the rest.
+    """
+
+    def load(record: str) -> dict[str, Any]:
+        return dict(json.loads((store / record).read_text(encoding="utf-8")))
+
+    def filings(document_set: str) -> set[tuple[str, str]]:
+        held = load(f"document-sets/{document_set}.json")["documents"]
+        return {(d["entity_id"], d["revision_label"]) for d in held}
+
+    def read(records: Any) -> set[tuple[str, str]]:
+        sets = [load(r)["document_set_hash"] for r in records if r.startswith("analysis-pub")]
+        return set().union(*map(filings, sets))
+
+    today = {p.relative_to(store).as_posix() for p in store.rglob("*.json")} - before
+    earlier = read(before)
+    receipts = [load(r) for r in today if r.startswith("retrieval-access-receipts/")]
+    failures = {
+        "daily.evidence_reread": bool(read(today) & earlier),
+        "daily.evidence_rescored": any(
+            r.get("reused_from_receipt_hash") is None and filings(r["document_set_hash"]) <= earlier
+            for r in receipts
+        ),
+    }
+    owner = "evidence/alternative_evidence/runtime/task_adapter.py"
+    return [
+        {"rule": rule, "loop_part": "reuse", "owner": owner} for rule, f in failures.items() if f
+    ]
+
+
 def daily_findings(feed: dict[str, Any], projection: dict[str, Any]) -> list[dict[str, str]]:
     """Today's rendered outcome, members and decisions preserve the previous sealed day."""
     from .session import session_findings
@@ -96,7 +130,15 @@ def daily_findings(feed: dict[str, Any], projection: dict[str, Any]) -> list[dic
     selected, value = home.get("selection") or {}, home.get("value") or {}
     sessions, previous = projection.get("session", {}), projection.get("previous") or {}
     shown = {m["id"]: m for s in sessions.get("sessions", []) for m in s.get("members", [])}
-    sealed = ("task_id", "publication", "review_selector", "position_rows", "schedule", "date_risk")
+    sealed = (
+        "task_id",
+        "publication",
+        "review_selector",
+        "position_rows",
+        "exit_rows",
+        "schedule",
+        "date_risk",
+    )
     failures = {
         "daily.home_stale": selected.get("task_id") != current["task_id"],
         "daily.home_publication": value.get("review_selector") != current["review_selector"],
@@ -301,11 +343,19 @@ class Explorer:
         kinds: set[str] | list[str] | None = None,
         fields: set[str] | None = None,
     ) -> dict[str, Any] | None:
-        """Probe offered-request mistakes through the same CLI, recording feedback defects."""
+        """Probe offered-request mistakes; cancelled writes are findings before any CLI call."""
         if self.mutation_seconds >= self.mutation_budget:
             return None
         started = time.monotonic()
         operation = str(request["operation"])
+        if self._cancelled_write(request, baseline) and (kinds is None or "duplicate" in kinds):
+            row, _ = self._mistake_answer(
+                request, baseline, "duplicate", "CANCELLED", where, baseline
+            )
+            row["reason"] = "automatic resend after CANCELLED"
+            self.mutation_checks.append(row)
+            self.findings.append({**row, "loop_part": "agent"})
+            return None
         required = self.request_fields.get(operation, {}).get("required", [])
         variants = [v for v in mutations(request, required) if v[1] != request]
         variants += [("misspell-flag", request, "--flie")]
@@ -337,6 +387,15 @@ class Explorer:
                 return corrected
         self.mutation_seconds += time.monotonic() - started
         return None
+
+    def _cancelled_write(self, request: dict[str, Any], answer: dict[str, Any] | None) -> bool:
+        """A duplicate write would contradict cancellation; reads and cancelling again do not."""
+        return (
+            answer is not None
+            and _state(answer) == "CANCELLED"
+            and request["operation"] not in self.read_operations
+            and request["operation"] != "CANCEL"
+        )
 
     def _mistake_answer(
         self,
@@ -447,6 +506,17 @@ class Explorer:
         baseline: dict[str, Any] | None = None,
     ) -> bool:
         """A recovery read exposes the same owner's original selector context."""
+        if request["operation"] == "OPERATION_LIST":
+            schema = _data(sent).get("operation_schema") or {}
+            return all(
+                (
+                    baseline is None,
+                    request.get("schema_operation") == original["operation"],
+                    schema.get("properties", {}).get("operation", {}).get("const")
+                    == original["operation"],
+                    set(original) <= set(schema.get("properties", {})),
+                )
+            )
         if not baseline and self._discovered_binding(original, request, sent):
             return True
         if self._recovery_source(original, request, sent):
@@ -710,21 +780,40 @@ class Explorer:
         return None
 
     def _horizon(self, path: tuple[str, ...], code: str, answer: dict[str, Any]) -> bool:
-        """A step limit, the walk's budget, or a way on that waits for its time."""
+        """A cancellation, step limit, the walk's budget, or a way on waiting for its time."""
+        lead = _data(answer).get("next_action") or answer.get("next_action")
+        if _state(answer) == "CANCELLED" and lead != "READ_THE_TASK_WITH_TASK_SHOW":
+            if lead not in (None, "REPORT_THE_STOP"):
+                self._problem(
+                    f"cancelled Task directs automatic continuation at {' > '.join(path)}",
+                    "feedback",
+                )
+            return True
         timed = "not_due" in code and "retry_after_at" in json.dumps(answer)
-        walked = sum("alphalattice.mutation" not in e.attributes for e in self.events)
         self.terminal_reached |= self.terminal(answer)
-        return self.terminal_reached or len(path) >= DEPTH or walked >= self.steps or timed
+        return self.terminal_reached or len(path) >= DEPTH or self._spent() or timed
+
+    def _spent(self) -> bool:
+        """Whether the walk's step budget is spent: every step but a mutation counts."""
+        return sum("alphalattice.mutation" not in e.attributes for e in self.events) >= self.steps
 
     def _settled(self, answer: dict[str, Any], where: str) -> dict[str, Any] | None:
-        """The answer once its admitted Task has ended or stopped; None past the time box."""
+        """The answer once its admitted Task has ended or stopped; None past the time box.
+
+        A wait that reaches its time box while the Task goes on is waited again, as an agent
+        does, until the walk's step budget is spent.
+        """
         task = _data(answer).get("task_id")
         if answer.get("outcome") != "PENDING" or not task or _state(answer) in STOPPED:
             return answer
         waited = ["activity", "wait", "--task", str(task), "--max-wait", str(self.time_box)]
-        ended = self._send(waited, where + " > wait")
-        pending = ended.get("outcome") == "PENDING" and not ended.get("failure_code")
-        return None if pending else ended
+        while True:
+            ended = self._send(waited, where + " > wait")
+            if ended.get("outcome") != "PENDING" or ended.get("failure_code"):
+                return ended
+            event = (_data(ended).get("wait_event") or {}).get("event")
+            if event != "MAX_WAIT_REACHED" or self._spent():
+                return None
 
     def _grade(self, answer: dict[str, Any], where: str, code: str) -> bool:
         """Grade one answer as an agent reads it; whether it is a stop."""
@@ -768,6 +857,7 @@ class Explorer:
         if (
             self.mutation_budget
             and sent.get("outcome") not in {"REFUSED", "FAILED"}
+            and not self._cancelled_write(step, sent)
             and not self.events[-1].attributes.get("alphalattice.retired_offer")
         ):
             self.inject(step, path, baseline=sent)

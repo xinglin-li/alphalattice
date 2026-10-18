@@ -18,6 +18,7 @@ const LiveGoals = (() => {
   const passComplete = (b) => Boolean(b) && b.evidence_verification === 'COMPLETE';
   const byId = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(value); // a goal named by its id (a Team link) opens its current revision
   const addressed = () => hashParams().get('goal') || hashParams().get('case') || '';
+  const writable = b => b.goal.state === 'OPEN' && b.goal.goal_hash === b.head_hash;
   const selected = () => pages.has(app.page) && Boolean(addressed());
   const listing = () => (app.page === 'goals' || app.page === 'cases') && !addressed();
   const fieldOf = (id, label, control) => html`<div class="field"><label for="${id}">${t(label)}</label>${control}</div>`;
@@ -98,7 +99,7 @@ const LiveGoals = (() => {
   const OUTCOMES = {ACHIEVED: 'Achieved', PARTLY_ACHIEVED: 'Partly achieved', NOT_ACHIEVED: 'Not achieved'};
   const outcomeWord = (outcome) => (outcome ? t(OUTCOMES[outcome] || '') || codeWords(outcome) : '');
   // U54: a listed goal's check, as the Team's outputs show it -- the Host's state, Complete once it found the record complete
-  const checkLine = (g) => { const [s, w] = GOAL_STATES[g.state] || ['metadata', '']; return stateLine(s, {word: t(w) || codeWords(g.state), next: ''}); };
+  const checkLine = (g) => { const [s, w] = GOAL_STATES[g.state] || ['metadata', '']; return stateLine(s, {word: html`${t(w) || codeWords(g.state)}${g.state === 'COMPLETE' && g.outcome ? html` · ${outcomeWord(g.outcome)}` : ''}`, next: ''}); };
   /* Goals as a lobby (F2, law 136): grouped by state -- the open ones open, the closed folded -- or by kind; one
    * line a row: the title, its kind, revision and references, the day. The owner's older pages are read from the foot. */
   const RANK = {OPEN: 0, COMPLETE: 1, ABANDONED: 2};
@@ -108,7 +109,7 @@ const LiveGoals = (() => {
   const sessionGroup = (g) => { const all = g.sessions || []; return all.length ? {key: all.map((x) => x.vendor + ':' + x.session_id).join(','), label: all.map(sessionWords).join(' · '), rank: all.length, open: true} : {key: '', label: t('No session yet'), rank: Infinity, open: false}; };
   function lobby(rows) {
     const kinds = [...new Set(rows.goals.map((g) => g.kind).filter(Boolean))];
-    const row = (g, d) => { const on = (k) => d.props[k] !== false; return objectRow({name: g.title, why: g.objective, ref: short(g.goal_hash, SHORT.hash), to: {action: 'goal-open', value: g.goal_hash}}, {key: g.goal_id, columns: ['kind', 'revision', 'references'], props: [on('kind') ? kindWord(g.kind) : '', on('revision') ? t('revision {n}', {n: g.revision}) : '', on('references') ? countText(g.reference_count, '{n} reference', '{n} references') : ''], time: when(g.recorded_at)}); };
+    const row = (g, d) => { const on = (k) => d.props[k] !== false; return objectRow({name: g.title, why: g.objective, ref: short(g.goal_hash, SHORT.hash), to: {action: 'goal-open', value: g.goal_id}}, {key: g.goal_id, columns: ['kind', 'revision', 'references'], props: [on('kind') ? kindWord(g.kind) : '', on('revision') ? t('revision {n}', {n: g.revision}) : '', on('references') ? countText(g.reference_count, '{n} reference', '{n} references') : ''], time: when(g.recorded_at)}); };
     const state = (g) => ({key: g.state, label: t((GOAL_STATES[g.state] || [])[1] || '') || codeWords(g.state), rank: RANK[g.state] ?? 9, open: g.state === 'OPEN'});
     return Lobby.render('goals', {items: rows.goals, row, axes: [{key: 'state', label: t('State'), group: state}, {key: 'kind', label: t('Kind'), group: (g) => ({key: g.kind, label: kindWord(g.kind), rank: kinds.indexOf(g.kind), open: true})}, {key: 'session', label: t('Agent session'), group: sessionGroup}, {key: 'time', label: t('Time'), group: (g) => timeGroup(g.recorded_at)}],
       words: (g) => [g.title, g.objective, g.goal_id, g.goal_hash].join(' '), placeholder: t('Title, objective or reference'),
@@ -129,15 +130,15 @@ const LiveGoals = (() => {
   /* The goal's head, the same on each folder: its title, its objective as the lede, its completion criteria, its
    * state and what is missing; the ways a person changes it in the tools. */
   function head(b) {
-    const g = b.goal, d = g.declaration, isOpen = g.state === 'OPEN', gaps = passComplete(b) ? (b.gaps || []) : [], firstUse = d.kind === 'FIRST_USE';
+    const g = b.goal, d = g.declaration, isOpen = writable(b), gaps = passComplete(b) ? (b.gaps || []) : [], firstUse = d.kind === 'FIRST_USE';
     const tools = [...(isOpen ? [...(firstUse ? [] : [{ic: 'edit', action: 'goal-edit', word: t('Revise goal'), why: t('A new revision is recorded')}]), {ic: 'plus', action: 'goal-attach', word: t('Attach exact evidence'), why: t('A saved owner read, verified before it is kept')}, ...(firstUse ? [] : [{ic: 'stop', action: 'goal-abandon', word: t('Abandon goal'), why: t('Closes it; a follow-up opens a new goal')}])] : []),
       {ic: 'file', action: 'goal-export', value: 'json', word: t('Export JSON'), why: t('The exact goal')}, {ic: 'file', action: 'goal-export', value: 'html', word: t('Export HTML'), why: t('The exact goal')}, {ic: 'file', action: 'goal-export', value: 'yaml', word: t('Export YAML'), why: t('Its declaration')}, {ic: 'history', action: 'goal-list', word: t('Goals'), why: t('Every saved goal')}];
     const primary = !passComplete(b) && !S.verifying ? btn(t('Check reference integrity'), 'goal-verify', '', 'button primary') : isOpen ? btn(t('Add a decision note'), 'goal-note', '', 'button primary') : '';
     const facts = [[t('Kind'), kindWord(d.kind)], [t('Revision'), html`${g.revision}${g.parent_hash ? html` · ${btn(t('previous'), 'goal-open', g.parent_hash, 'inline-link')}` : ''}`], [t('Criteria'), count(d.criteria.length)], [t('Evidence'), evidenceState(b)], ...(gaps.length ? [[t('Missing'), count(gaps.length)]] : []), [t('Recorded'), when(g.recorded_at)], [t('Revision recorded by'), actorWords(g.submitted_by)]];
     const criteria = kv(d.criteria.map((c) => [html`<span class="mono">${c.criterion_id}</span>`, html`<span class="owner-text">${c.text}</span>`]), 'kv-columns');
-    const historical = g.goal_hash !== b.head_hash ? noteLine(t('Historical revision'), t('This exact saved revision is open; revising needs the current one.'), 'warning', btn(t('Open current revision'), 'goal-open', b.head_hash, 'button compact')) : '';
+    const historical = g.goal_hash !== b.head_hash ? noteLine(t('Current goal'), b.head ? checkLine(b.head) : '', 'warning', btn(t('Open current revision'), 'goal-open', g.goal_id, 'button compact')) : '';
     const missing = gaps.length ? noteLine(t('Missing'), gaps.map((x) => x.stage ? codeWords(x.stage) : x.reference_id).join(' · '), 'warning') : '';
-    return html`${objectHead(d.title, html`<p class="lede owner-text">${d.objective}</p>${criteria}`, primary, checkLine(g), tools, {object: true, id: g.goal_hash, facts, scope: {name: d.title, href: routeUrl('goal', {goal: addressed()}), self: app.page === 'goal'}})}${historical}${missing}`;
+    return html`${objectHead(t(d.title), html`<p class="lede owner-text">${d.objective}</p>${criteria}`, primary, historical ? stateLine('metadata', {word: t('Historical revision'), next: ''}) : checkLine(b.head || g), tools, {object: true, id: g.goal_hash, facts, scope: {name: t(d.title), href: routeUrl('goal', {goal: addressed()}), self: app.page === 'goal'}})}${historical}${missing}`;
   }
   function page() {
     if (!selected() && !listing()) return null;
@@ -155,7 +156,10 @@ const LiveGoals = (() => {
    * as theirs (`record.delegated_steps`, the goal's ledger), the hours its delegation has left (`record.delegation`),
    * and one Stop that ends it -- the goal abandoned, the network it opened closed by the Host. */
   const STEP_WORDS = {WORKSPACE_PREPARE_CONFIRM: 'Confirmed the preparation', DATA_ISSUE_CONFIRM: 'Decided a data issue'};
-  const stepWords = (s) => (s.operation === 'NETWORK_ACCESS_SET' ? t(s.network_enabled ? 'Opened the network' : 'Closed the network') : STEP_WORDS[s.operation] ? t(STEP_WORDS[s.operation]) : codeWords(s.operation));
+  // The rule's full-history audit names its listings: approved, left past its bound, or not admitted by its update.
+  const AUDIT_WORDS = {DECIDED_BY_RULE: 'Approved a full-history audit of {names}', ESCALATED: "Left a full-history audit of {names} past the rule's bound", NOT_ADMITTED: 'Approved a full-history audit of {names}; its update did not admit it'};
+  const auditWords = (s) => t(AUDIT_WORDS[s.status] || AUDIT_WORDS.DECIDED_BY_RULE, {names: (s.symbols || []).join(', ')});
+  const stepWords = (s) => (s.operation === 'NETWORK_ACCESS_SET' ? t(s.network_enabled ? 'Opened the network' : 'Closed the network') : s.operation === 'FULL_HISTORY_AUDIT' ? auditWords(s) : STEP_WORDS[s.operation] ? t(STEP_WORDS[s.operation]) : codeWords(s.operation));
   function hoursLeft(delegation) {
     if (!delegation?.ends_at) return '';
     const left = Date.parse(delegation.ends_at) - Date.now();
@@ -164,18 +168,18 @@ const LiveGoals = (() => {
   function firstUse(b) {
     const g = b.goal, r = b.record || {}, steps = r.delegated_steps || [];
     if (g.declaration.kind !== 'FIRST_USE') return '';
-    const hours = g.state === 'OPEN' ? hoursLeft(r.delegation) : '';
+    const hours = writable(b) ? hoursLeft(r.delegation) : '';
     const rows = steps.map((s) => [stepWords(s), html`${when(s.recorded_at)}${s.status && s.operation !== 'NETWORK_ACCESS_SET' ? html` · ${codeWords(s.status)}` : ''}`]); // a network step's words say what it set
     return panel(html`${t('Your first use')}${hours ? html` · ${hours}` : ''}`, t('Opened from your sentence: the agent running it takes the first steps as yours, for its hours; Stop ends them.'),
-      steps.length ? kv(rows, 'kv-columns') : emptyState(t('No step taken for you yet.')), g.state === 'OPEN' ? btn(t('Stop'), 'goal-first-use-stop', '', 'button compact') : '', 'data-first-use');
+      steps.length ? kv(rows, 'kv-columns') : emptyState(t('No step taken for you yet.')), writable(b) ? btn(t('Stop'), 'goal-first-use-stop', '', 'button compact') : '', 'data-first-use');
   }
   // FLOW-1 request summaries are owner status codes; authored and accepted-answer text stays exact.
-  const messageSummary = (m) => m.input_channel === 'PRODUCT_OPERATION' ? coded(m.summary) : html`<span class="owner-text">${m.summary}</span>`;
+  const messageSummary = (m) => m.input_channel === 'PRODUCT_OPERATION' ? coded(m.summary) : m.input_channel === 'PRODUCT_REVIEW' ? said(m.summary) : html`<span class="owner-text">${m.summary}</span>`;
   /* The timeline: the Host's facts (registration, the revision, the Tasks and sessions it recorded), the agents'
    * messages as they arrived and the decision notes; the notes whole in their thread, the sessions' usage (U32). */
   function timeline(b) {
     const g = b.goal, r = b.record || {}, by = actorWords(g.submitted_by);
-    const said = (m) => [m.agent_id, m.role ? codeWords(m.role) : ''].filter(Boolean).join(' · ') || t('Agent');
+    const said = (m) => [m.agent_id, LiveTeam.roleName(m.role)].filter(Boolean).join(' · ') || t('Agent');
     const lines = [logLine({at: when(g.intent_registered_at || g.recorded_at), by, words: t('Goal registered')}), logLine({at: when(g.recorded_at), by, words: html`${t('Revision {n} recorded', {n: g.revision})}${g.change_reason ? html` · <span class="owner-text">${g.completion ? t(g.change_reason) : g.change_reason}</span>` : ''}`}),
       ...[...(r.conversation || [])].sort((a, c) => String(a.recorded_at).localeCompare(String(c.recorded_at))).map((m) => logLine({at: when(m.recorded_at), by: said(m), words: html`${codeWords(m.message_kind)}${m.summary ? html` · ${messageSummary(m)}` : ''}`, code: m.message_id})),
       ...g.references.map((x) => logLine({by, words: html`${t('Reference attached')} · ${x.label}`, code: x.reference_id})),
@@ -184,7 +188,7 @@ const LiveGoals = (() => {
       logLine({by: t('This page'), words: passComplete(b) ? html`${goalReferenceIntegrity(b).word}${goalReferenceIntegrity(b).limit ? html` · ${goalReferenceIntegrity(b).limit}` : ''}` : (b.references || []).length ? t(S.verifyError ? 'Verification failed; references shown as saved' : 'References shown as saved; none re-read at its owner') : t('Nothing to check yet')})];
     const tasks = (r.tasks || []).map((x) => objectRow({state: String(x.state).toLowerCase(), name: codeWords(x.kind), to: {action: 'task', value: x.task_id}}, {key: x.task_id, columns: ['id'], props: [html`<span class="mono">${short(x.task_id)}</span>`], time: x.updated_at ? hint(when(x.updated_at), `${t('Task record updated')} · ${whenText(x.updated_at)}`) : ''}));
     const facts = panel(t('Host facts'), t('What the Host recorded under this goal; an agent\'s words are its own.'), html`${kv([[t('Sessions'), (r.sessions || []).length ? (r.sessions || []).map((s) => html`${codeWords(s.vendor)} <span class="mono">${short(s.session_id)}</span>`).reduce((a, x, i) => html`${a}${i ? ' · ' : ''}${x}`, '') : t('none bound')], [t('Requests'), count(r.request_count ?? 0)], [t('Messages'), count(r.message_count ?? 0)]], 'kv-columns')}${tasks.length ? html`<div class="card-list lines slotted">${tasks}</div>` : ''}`);
-    const notes = panel(html`${t('Decision notes')} <span class="num">${count(g.statements.length)}</span>`, t('An attributed decision or conclusion with its evidence standing; a note is not product validation or scientific approval.'), g.statements.length ? html`<div class="case-thread">${g.statements.map((s) => statement(s, b.statement_context?.[s.statement_id]))}</div>` : emptyState(t('No decision note yet.'), g.state === 'OPEN' ? btn(t('Add a decision note'), 'goal-note', '', 'button primary') : ''), g.statements.length && g.state === 'OPEN' ? btn(t('Add a decision note'), 'goal-note', '', 'button compact') : '');
+    const notes = panel(html`${t('Decision notes')} <span class="num">${count(g.statements.length)}</span>`, t('An attributed decision or conclusion with its evidence standing; a note is not product validation or scientific approval.'), g.statements.length ? html`<div class="case-thread">${g.statements.map((s) => statement(s, b.statement_context?.[s.statement_id]))}</div>` : emptyState(t('No decision note yet.'), writable(b) ? btn(t('Add a decision note'), 'goal-note', '', 'button primary') : ''), g.statements.length && writable(b) ? btn(t('Add a decision note'), 'goal-note', '', 'button compact') : '');
     return html`${notes}${facts}${usage(r.session_usage || [])}${runLog({id: 'goalTimeline', title: t('Timeline'), lines, count: lines.length})}`;
   }
   /* U32: each session's models and tokens under this goal -- its totals by model, each participant's latest
@@ -216,7 +220,7 @@ const LiveGoals = (() => {
     const messageTime = (m) => acceptedClock(m) ? m.occurred_at : m.recorded_at;
     const row = (m) => {
       const accepted = m.message_kind === 'answer' && m.input_channel === 'PRODUCT_ACCEPTED_ANSWER';
-      return objectRow({name: m.summary ? messageSummary(m) : codeWords(m.message_kind), to: m.agent_session ? {page: 'team', extra: {team: m.agent_session, actor: '', event: m.observation_id || ''}} : null}, {key: m.message_id || m.observation_id, columns: ['kind', 'actor', 'recipient', 'submitter', 'reply'], props: [accepted ? hint(t('Accepted answer'), t('Accepted structured answer · product record, not a native spoken turn')) : codeWords(m.message_kind), nameOf(m.agent_id, m), m.recipient_id ? html`${t('to')} ${nameOf(m.recipient_id, m, true)}` : '', accepted ? html`${t('Submitted by')} ${nameOf(m.submitted_by, m)}` : '', m.reply_to ? html`${t('answers')} <span class="mono">${short(m.reply_to)}</span>` : ''], time: acceptedClock(m) ? hint(when(messageTime(m)), `${t(m.source_time_kind === 'PRODUCT_ACCEPTED_AT' ? 'Answer acceptance time' : 'Task admission time')} · ${t('Recorded')} ${whenText(m.recorded_at)}`) : when(messageTime(m))});
+      return objectRow({name: m.summary ? messageSummary(m) : codeWords(m.message_kind), to: m.agent_session ? {page: 'team', extra: {team: m.agent_session, actor: '', event: m.observation_id || ''}} : null}, {key: m.message_id || m.observation_id, columns: ['kind', 'actor', 'recipient', 'submitter', 'reply'], props: [accepted ? hint(t('Accepted answer'), t('Accepted structured answer · product record, not a native spoken turn')) : codeWords(m.message_kind), nameOf(m.agent_id, m), m.recipient_id ? html`${t('to')} ${m.recipient_role ? html`<span tabindex="0" data-tip="${m.recipient_id}">${LiveTeam.roleName(m.recipient_role)}</span>` : nameOf(m.recipient_id, m, true)}` : '', accepted ? html`${t('Submitted by')} ${nameOf(m.submitted_by, m)}` : '', m.reply_to ? html`${t('answers')} <span class="mono">${short(m.reply_to)}</span>` : ''], time: acceptedClock(m) ? hint(when(messageTime(m)), `${t(m.source_time_kind === 'PRODUCT_ACCEPTED_AT' ? 'Answer acceptance time' : 'Task admission time')} · ${t('Recorded')} ${whenText(m.recorded_at)}`) : when(messageTime(m))});
     };
     const foot = (r.message_count ?? messages.length) > messages.length ? html`<p class="caption">${t('The newest {n} of {m} messages; the Team session holds them all.', {n: count(messages.length), m: count(r.message_count)})}</p>` : '';
     return html`${openAssignments ? noteLine(t('Open assignments'), countText(openAssignments, '{n} assignment not closed', '{n} assignments not closed'), 'neutral') : ''}${Lobby.render('goal-conversation', {items: messages, row, axes: [{key: 'time', label: t('Time'), group: (m) => timeGroup(messageTime(m))}],
@@ -234,11 +238,11 @@ const LiveGoals = (() => {
       ...sub.findings.map((f) => [t('Finding'), html`<span class="owner-text">${f.text}</span>`]),
       ...sub.problems.map((p) => [t('Unresolved'), html`<span class="owner-text">${p.text}</span>${p.task_ids.length ? html` · ${p.task_ids.map((id) => btn(short(id), 'task', id, 'inline-link'))}` : ''}`]),
       ...sub.follow_ups.map((f) => [t('Follow-up'), html`<span class="owner-text">${f}</span>`]),
-      ...sub.files.map((f) => [t('File'), html`${f.name} <span class="sub-cell">${f.media_type}</span>`])], 'kv-columns')}`) : emptyState(t(g.state === 'OPEN' ? 'Not submitted yet: an agent submits it through the CLI.' : 'Closed without a submission.'), btn(t('Timeline'), 'go', 'goal', 'text-btn'), '', 'elsewhere');
+      ...sub.files.map((f) => [t('File'), html`${f.name} <span class="sub-cell">${f.media_type}</span>`])], 'kv-columns')}`) : emptyState(t(g.goal_hash !== b.head_hash ? 'No submission in this revision.' : g.state === 'OPEN' ? 'Not submitted yet: an agent submits it through the CLI.' : 'Closed without a submission.'), btn(t('Timeline'), 'go', 'goal', 'text-btn'), '', 'elsewhere');
     const completion = g.completion ? kv([[t('Checked'), when(g.completion.checked_at)], [t('Sessions'), count(g.completion.sessions.length)], [t('Tasks'), count(g.completion.tasks.length)], [t('Requests'), count(g.completion.request_count)]], 'kv-columns') : '';
     const refs = b.references || [];
     const verification = passComplete(b) || S.verifying ? '' : S.verifyError ? refusal({reason: S.verifyError}, 'warning', {state: 'failed', word: t('Reference integrity not verified'), action: btn(t('Check reference integrity'), 'goal-verify', '', 'button compact')}) : '';
-    const references = panel(html`${t('References')} <span class="num">${count(refs.length)}</span>`, t(!refs.length ? 'Nothing to check yet' : passComplete(b) ? 'Reference integrity only; not scientific approval.' : 'As recorded; not re-read at their owners yet.'), html`${verification}${refs.length ? html`<div class="card-list lines">${refs.map((r, i) => evidenceRow('reference', r, {to: {action: 'goal-evidence', value: r.reference.reference_id}, actions: r.reference.request.operation === 'EXPERIMENT_READBACK' && g.state === 'OPEN' ? btn(t('Continue as a new draft'), 'goal-continue', String(i), 'menu-row') : '', columns: ['summary'], props: [r.summary ? codeRef(t('Recorded evidence and limitations'), r.summary) : '']}))}</div>` : emptyState(t('No evidence attached yet'), g.state === 'OPEN' ? btn(t('Attach exact evidence'), 'goal-attach', '', 'button primary') : '')}`, refs.length && g.state === 'OPEN' ? btn(t('Attach exact evidence'), 'goal-attach', '', 'button compact') : '');
+    const references = panel(html`${t('References')} <span class="num">${count(refs.length)}</span>`, t(!refs.length ? 'Nothing to check yet' : passComplete(b) ? 'Reference integrity only; not scientific approval.' : 'As recorded; not re-read at their owners yet.'), html`${verification}${refs.length ? html`<div class="card-list lines">${refs.map((r, i) => evidenceRow('reference', r, {to: {action: 'goal-evidence', value: r.reference.reference_id}, actions: r.reference.request.operation === 'EXPERIMENT_READBACK' && writable(b) ? btn(t('Continue as a new draft'), 'goal-continue', String(i), 'menu-row') : '', columns: ['summary'], props: [r.summary ? codeRef(t('Recorded evidence and limitations'), r.summary) : '']}))}</div>` : emptyState(t('No evidence attached yet'), writable(b) ? btn(t('Attach exact evidence'), 'goal-attach', '', 'button primary') : '')}`, refs.length && writable(b) ? btn(t('Attach exact evidence'), 'goal-attach', '', 'button compact') : '');
     return html`${submission}${completion ? panel(t('Completion'), t('The Host\'s own facts when it sealed the goal.'), completion) : ''}${references}`;
   }
   function statement(s, context) { const body = html`${context?.design === 'PRIOR_DESIGN' ? noteLine(t('Earlier design'), html`<span class="owner-text">${context.objective}</span>`, 'warning') : ''}<p class="owner-text">${s.text}</p><p class="caption">${t('Evidence')}: ${s.evidence.length ? s.evidence.map((h) => citePill(h, false)) : ''}${s.responds_to ? html` · ${t('Response to')}: ${s.responds_to}` : ''}</p>`; return html`<article class="case-comment"><header><strong>${s.attribution}</strong>${stateLine(s.disposition === 'OPEN' ? 'review_pending' : s.disposition === 'SUPPORTS' ? 'verified' : s.disposition === 'REJECTED' || s.disposition === 'DOES_NOT_SUPPORT' ? 'blocked' : 'metadata', {word: codeWords(s.disposition), next: ''})}</header>${body}</article>`; }
@@ -329,12 +333,12 @@ const LiveGoals = (() => {
       if (!b) return;
       closeDialog(); S.body = null; S.rows = null;
       // the answer's `/goal ` prompt hands the goal to Claude or Codex; it is shown once, to copy
-      openDialog(t('Goal'), t('Goal opened'), html`<p>${t('Give this prompt to Claude or Codex; the agent takes the goal, works under it and submits it.')}</p><pre class="code-block code-document">${b.goal_prompt || ''}</pre>`, html`${btn(t('Copy prompt'), 'copy-text', b.goal_prompt || '', 'button')}${btn(t('Open the goal'), 'goal-open', b.goal_hash, 'button primary')}`);
+      openDialog(t('Goal'), t('Goal opened'), html`<p>${t('Give this prompt to Claude or Codex; the agent takes the goal, works under it and submits it.')}</p><pre class="code-block code-document">${b.goal_prompt || ''}</pre>`, html`${btn(t('Copy prompt'), 'copy-text', b.goal_prompt || '', 'button')}${btn(t('Open the goal'), 'goal-open', b.goal_id || b.goal_hash, 'button primary')}`);
       return;
     }
     const b = await saveRequest('/api/goals/revise', {goal_id: S.draft.id, goal_hash: S.draft.hash, goal_declaration: doc, change_reason: $('#goalReason').value});
     if (!b) return;
-    closeDialog(); S.body = null; open(b.goal_hash);
+    closeDialog(); S.body = null; open(b.goal_id || b.goal_hash);
   }
   function referenceChoices() {
     return Data.history().flatMap((row) => {
@@ -356,7 +360,7 @@ const LiveGoals = (() => {
     const chosen = Picker.value('goalExisting');
     const ref = chosen === 'custom' ? JSON.parse($('#goalReference').value) : S.references[Number(chosen)];
     const b = await Data.post('/api/goals/attach', {goal_hash: S.dialogHash, goal_reference: ref, change_reason: 'Explicit evidence association'});
-    closeDialog(); S.body = null; open(b.goal_hash);
+    closeDialog(); S.body = null; open(b.goal_id || b.goal_hash);
   }
   function note() {
     S.dialogHash = S.body.goal.goal_hash;
@@ -374,7 +378,7 @@ const LiveGoals = (() => {
       text: $('#goalNoteText').value, evidence: $$('[data-goal-reference]:checked').map((el) => el.dataset.goalReference),
       disposition: Picker.value('goalDisposition'), ...(Picker.value('goalResponse') ? {responds_to: Picker.value('goalResponse')} : {})};
     const b = await Data.post('/api/goals/note', {goal_hash: S.dialogHash, goal_statement: statement, change_reason: 'Explicit attributed decision note'});
-    closeDialog(); S.body = null; open(b.goal_hash);
+    closeDialog(); S.body = null; open(b.goal_id || b.goal_hash);
   }
   /* Abandoning closes the goal; a follow-up opens a new goal. Confirmed with its reason. */
   function abandon() {
@@ -383,7 +387,7 @@ const LiveGoals = (() => {
   }
   async function abandonCommit() {
     const b = await Data.post('/api/goals/abandon', {goal_id: S.dialogHash, change_reason: $('#goalAbandonReason').value || 'Abandoned by a person'});
-    closeDialog(); S.body = null; S.rows = null; open(b.goal_hash);
+    closeDialog(); S.body = null; S.rows = null; open(b.goal_id || b.goal_hash);
   }
   /* U70: Stop ends the first use -- its goal abandoned (the Host closes the network its delegation opened) -- confirmed once. */
   function stopFirstUse() {
@@ -392,7 +396,7 @@ const LiveGoals = (() => {
   }
   async function stopFirstUseCommit() {
     const b = await Data.post('/api/goals/abandon', {goal_id: S.dialogHash, change_reason: 'Stopped by the person in the Workbench'});
-    closeDialog(); S.body = null; S.rows = null; open(b.goal_hash);
+    closeDialog(); S.body = null; S.rows = null; open(b.goal_id || b.goal_hash);
   }
   /* V668 / PG2: all owner-declared reference kinds use the same sealed reference
    * reader. GOAL_REFERENCE reopens the exact request and checks its recorded identity;

@@ -26,111 +26,24 @@ from alphalattice.control.observation_runtime.contracts import (
     ObservationReadCursor,
     ObservationReadItem,
 )
+from alphalattice.interface.local_application.cli_contract import (
+    READ_OPERATIONS,
+    RequestProvenance,
+)
 from alphalattice.interface.local_application.failure_codes import (
     FAILURE_DETAIL_WITHHELD,
 )
+from alphalattice.interface.local_application.native_bridge import HOSTS
 from alphalattice.interface.local_application.portfolio_research import (
     OperationCaller,
     PortfolioResearchOperationRequest,
 )
 from alphalattice.interface.local_application.web import LocalWebError
 
-READ_OPERATIONS: frozenset[str] = frozenset(
-    {
-        "RESEARCH_STRATEGY_READBACK",
-        "FEATURE_CATALOG_CONTROLS",
-        "FEATURE_CATALOG_READBACK",
-        "FEATURE_CATALOG_BUILD_READBACK",
-        "FEATURE_TRIAL_READBACK",
-        "FEATURE_TRIALS",
-        "RESEARCH_STRATEGY_CONTROLS",
-        "GOAL_SCHEMA",
-        "GOAL_LIST",
-        "GOAL_SHOW",
-        "GOAL_NARRATIVE",
-        "GOAL_REFERENCE",
-        "GOAL_EXPORT",
-        "GOAL_CONTINUE",
-        "COMPARE",
-        "CONTROLS",
-        "CRO_REVIEW_DOSSIER",
-        "CRO_REVIEW_FINDING",
-        "DATA_ISSUES",
-        "DATA_UPDATE_READBACK",
-        "COMMITTEE_READ",
-        "EVIDENCE_CRO",
-        "EVIDENCE_CRO_EXPORT",
-        "EVIDENCE_DOCUMENTS",
-        "EVIDENCE_LEDGER",
-        "EVIDENCE_PACKET",
-        "EXPERIMENTS",
-        "EXPERIMENT_COMPARE",
-        "EXPERIMENT_ALPHA_COMPARE",
-        "EXPERIMENT_CONTROLS",
-        "EXPERIMENT_DECLARATION_CONVERT",
-        "EXPERIMENT_CURATION",
-        "EXPERIMENT_DELIVERY_EXPORT",
-        "EXPERIMENT_DRAFT",
-        "EXPERIMENT_EXPORT",
-        "EXPERIMENT_FOUNDATIONS",
-        "EXPERIMENT_FOUNDATION_DRAFT",
-        "EXPERIMENT_FOUNDATION_EXPORT",
-        "EXPERIMENT_FOUNDATION_READBACK",
-        "EXPERIMENT_FOUNDATION_SUMMARY",
-        "EXPERIMENT_PORTFOLIO_DRAFT",
-        "EXPERIMENT_PREVIEW_READBACK",
-        "EXPERIMENT_READBACK",
-        "EXPERIMENT_SUMMARY",
-        "EXPERIMENT_REPLAY",
-        "EXPERIMENT_RISK_EXPORT",
-        "EXPERIMENT_RISK_LINKS",
-        "EXPORT",
-        "FINALIZATION",
-        "PORTFOLIO_UPDATE_READBACK",
-        "PORTFOLIO_READBACK",
-        "REPORT",
-        "RESEARCH_HISTORY",
-        "RESEARCH_INPUTS",
-        "RESEARCH_INPUT_READBACK",
-        "MODEL_TRAINING_INPUT_READBACK",
-        "RESEARCH_UPDATE_AUTOMATION_READBACK",
-        "RESEARCH_UPDATE_READBACK",
-        "RESULTS",
-        "STATUS",
-        "STORAGE_CAP_SHOW",
-        "STORAGE_READBACK",
-        "TASK_RECOVERY",
-        "TASK_GUARDIAN",
-        "TASK_INCIDENTS",
-        "STRATEGY_CALIBRATION_READBACK",
-        "STRATEGY_SCORE_READBACK",
-        "TASKS",
-        "UPGRADE_OVERVIEW",
-        "NETWORK_ACCESS",
-        "EVIDENCE_CONSENT",
-        "USAGE_READING",
-        "PENDING_DECISIONS",
-        "WORKSPACE_PREPARE_READBACK",
-        "ACTIVITY_REFUSALS",
-        "ACTIVITY_LIST",
-        "ACTIVITY_RECENT",
-        "CPU_BUDGET_SHOW",
-        "WORKSPACE_BACKUPS",
-        "MODEL_EXTENSIONS",
-        "FEATURE_EXTENSIONS",
-        "FEATURE_REVIEW",
-        "OPERATION_LIST",
-        "WORKSPACE_SHOW",
-    }
-)
-"""Operations that change nothing and are never recorded as activity.
+OBSERVED_READ_OPERATIONS: frozenset[str] = frozenset({"EXPERIMENT_DELIVERY_EXPORT"})
+"""Reads whose successful delivery must be recorded without changing their read semantics."""
 
-The browser polls several of these every few seconds; recording them would fill
-the ledger with the observer's own reads. A refused read is still not activity:
-the caller already holds the refusal.
-"""
-
-OBSERVED_OPERATIONS: frozenset[str] = frozenset(
+OBSERVED_OPERATIONS: frozenset[str] = OBSERVED_READ_OPERATIONS | frozenset(
     {
         "AGENT_ANSWER_SUBMIT",
         "AGENT_BUNDLE_PREPARE",
@@ -201,6 +114,7 @@ OBSERVED_OPERATIONS: frozenset[str] = frozenset(
         "EVIDENCE_CONSENT_SET",
         "EVIDENCE_INSTALL",
         "USAGE_READING_SET",
+        "COMMITTEE_DAILY_SET",
         "CPU_BUDGET_SET",
         "HOST_STOP",
         "WORKSPACE_BACKUP",
@@ -222,10 +136,53 @@ on return, whatever their outcome. A preview with no Task is recorded as exactly
 that; nothing here admits work or invents a Task."""
 
 
+OPERATIONAL_OPERATIONS: frozenset[str] = frozenset({"CPU_BUDGET_SET", "HOST_STOP"})
+"""Observed operations that run the Host or the machine rather than research: recorded like the
+others, but never attributed to a goal and never opening one (a session's first research
+request opens it)."""
+
+
 RECORDS_ITSELF: frozenset[str] = frozenset({"EVENT_DECLARE", "SESSION_USAGE_READ"})
 """Operations whose own record is what they write: a declared event is its row in the feed,
 and a usage reading files its readings, so the observer records no operation beside them
 (V266)."""
+
+
+OPENS_NO_GOAL: frozenset[str] = (
+    RECORDS_ITSELF | OBSERVED_READ_OPERATIONS | {"USAGE_READING_SET", "COMMITTEE_SUBMIT"}
+)
+"""Research that never opens a goal of its own: a record of itself, the usage switch, and a
+committee message, which counts toward its floor's goal or is refused."""
+
+
+def opens_goal(
+    operation: str, provenance: RequestProvenance | None, *, member: bool = False
+) -> bool:
+    """Check whether the Host opens a goal for a request, the one place it is decided (AUTOBIND).
+
+    An identified Session's research request that names no goal, while its Session holds none,
+    opens one, unless it is a goal's own operation, in OPENS_NO_GOAL, or a member's own on an
+    open committee floor or review thread (`committee.member_goal`), which counts toward that
+    thread's goal instead.
+
+    Args:
+        operation: The owner's operation name.
+        provenance: Who sent it, and the goal it names, if any.
+        member: Whether it is a member's own request on an open thread.
+
+    Returns:
+        Whether a goal is opened for it before it runs.
+    """
+    return (
+        provenance is not None
+        and provenance.vendor in HOSTS
+        and bool(provenance.session)
+        and provenance.goal_id is None
+        and research_operation(operation)
+        and not operation.startswith("GOAL_")
+        and operation not in OPENS_NO_GOAL
+        and not member
+    )
 
 
 def observed_operation(operation: str) -> bool:
@@ -238,6 +195,18 @@ def observed_operation(operation: str) -> bool:
         Whether the operation belongs to the observed set.
     """
     return operation in OBSERVED_OPERATIONS
+
+
+def research_operation(operation: str) -> bool:
+    """Check whether this observed operation is research work, which a goal is attributed.
+
+    Args:
+        operation: The owner's operation name.
+
+    Returns:
+        Whether it is observed and not one of the Host's own operational commands.
+    """
+    return operation in OBSERVED_OPERATIONS and operation not in OPERATIONAL_OPERATIONS
 
 
 SUBJECT_FIELDS: tuple[str, ...] = (
@@ -273,6 +242,7 @@ SUBJECT_FIELDS: tuple[str, ...] = (
     "origin_task_id",
     "portfolio_session",
     "position_basis",
+    "positions_date",
     "prepared_input_hash",
     "preparation_plan_hash",
     "research_input_id",
@@ -380,6 +350,10 @@ def returned_subject(body: Mapping[str, Any]) -> dict[str, Any]:
         value = body.get(name)
         if isinstance(value, (str, int, bool)):
             subject[name] = value
+    use = body.get("network_use")
+    if isinstance(use, Mapping) and isinstance(use.get("under"), str):
+        # Whose setting let the admitted work reach the network (`disclosed`).
+        subject["network_used_under"] = use["under"]
     intent = body.get("execution_intent")
     if isinstance(intent, Mapping) and isinstance(intent.get("task_id"), str):
         subject["existing_task_id"] = intent["task_id"]
@@ -755,6 +729,7 @@ __all__ = [
     "ACTIVITY_REFUSAL_DAYS",
     "FAILURE_DETAIL_WITHHELD",
     "OBSERVED_OPERATIONS",
+    "OBSERVED_READ_OPERATIONS",
     "READ_OPERATIONS",
     "RECORDS_ITSELF",
     "RETURNED_REFERENCE_FIELDS",

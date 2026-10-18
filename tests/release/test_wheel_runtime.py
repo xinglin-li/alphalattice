@@ -21,7 +21,7 @@ from alphalattice.control.product_host.composition import (
     evidence_authority_setup,
     retrieval_pack_setup,
 )
-from alphalattice.interface.local_application import cli_contract, native_setup
+from alphalattice.interface.local_application import cli_contract, native_bridge, native_setup
 from alphalattice.kernel.shared_kernel import project_layout
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -149,7 +149,9 @@ def test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg() ->
     guide = (ROOT / owner).read_text(encoding="utf-8")
     assert guide.index("uv sync --locked") < guide.index("wheel")
     assert "function alphalattice" not in guide
-    assert "uv tool install" in guide and "--constraints" in guide
+    assert all(line in guide for line in native_bridge.TOOL_INSTALL)  # a first use offers it
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]["version"]
+    assert all(line.format(version=version) in guide for line in native_bridge.WHEEL_INSTALL)
     assert "uv tool dir --bin" in guide and "fresh shell" in guide
     assert "Activate.ps1" not in guide and "$ws" not in guide
     assert "uv run alphalattice" in guide

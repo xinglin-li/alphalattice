@@ -23,6 +23,7 @@ from alphalattice.control.workspace_runtime.content_store import (
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .contracts import (
+    HistoryProofParts,
     WorkspaceObservationHistoryHead,
     WorkspaceObservationHistoryMarker,
     WorkspaceObservationHistoryPart,
@@ -202,6 +203,7 @@ class _WorkspaceObservationHistoryStore:
         reuse: WorkspaceObservationHistoryHead | None,
         capacity: Callable[[int], None],
         loaded: tuple[WorkspaceObservationHistoryHead, _Columns] | None = None,
+        proofs: HistoryProofParts | None = None,
     ) -> WorkspaceObservationHistoryHead:
         """Admit every staging write and commit a marker after all exact parts and head.
 
@@ -307,8 +309,7 @@ class _WorkspaceObservationHistoryStore:
                 )
             )
             start = stop
-        head = seal_current_contract(
-            WorkspaceObservationHistoryHead,
+        head = WorkspaceObservationHistoryHead.sealed(
             {
                 "scope_hash": scope_hash,
                 "selection_hash": selection_hash,
@@ -320,7 +321,7 @@ class _WorkspaceObservationHistoryStore:
                 "predecessor_head_hash": current[0].head_hash if current is not None else None,
                 "parts": tuple(parts),
             },
-            "head_hash",
+            proofs,
         )
         # The reused parts were verified when this call read them; the new ones are read back.
         verified: dict[str, _PartColumns] = {}

@@ -18,10 +18,10 @@ import os
 import re
 import shlex
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
@@ -195,6 +195,22 @@ REQUEST_PROVENANCE: ContextVar[RequestProvenance | None] = ContextVar(
 """The provenance of the request the Host's boundary is running: set by `web.py` around one
 external request's handler, read where the Host records what that request did."""
 
+BINDING_NOTICE: ContextVar[dict[str, Any] | None] = ContextVar(
+    "alphalattice_binding_notice", default=None
+)
+"""How the Host bound this request's Session when not in its project: set by the binding owner
+(`native_setup`), reset with the provenance around one request by `web.py`, and carried on its
+answer as `session_binding`, never a silent failure (AUTOBIND)."""
+
+
+def with_binding_notice(answer: object) -> object:
+    """An answer with the binding notice its request left, if it left one."""
+    notice = BINDING_NOTICE.get()
+    if notice is None or not isinstance(answer, dict):
+        return answer
+    return {**answer, "session_binding": notice}
+
+
 ANSWER_LANGUAGE: ContextVar[Literal["en", "zh"]] = ContextVar(
     "alphalattice_answer_language", default="en"
 )
@@ -356,12 +372,16 @@ NETWORK_ACCESS_REFUSALS: Final = frozenset(
 """Permission refusals whose way on reads the effective network decision (OP5, TE12)."""
 
 
-def refusal_words(code: str, *, workspace: Path | None = None) -> dict[str, Any]:
+def refusal_words(
+    code: str, *, workspace: Path | None = None, now: datetime | None = None, for_stop: bool = False
+) -> dict[str, Any]:
     """A refusal code's words and next action, where the table words it (OP4, V449).
 
     Args:
         code: The refusal's code; what follows its first colon fills the words' `{subject}`.
         workspace: The actual control for network advice; absent context offers a read only.
+        now: The Host's clock, on which a workspace's control is read.
+        for_stop: Select an owner's bounded stop wording, where declared.
 
     Returns:
         Its ``detail`` and ``next_action``; empty for a code the table does not word.
@@ -371,7 +391,9 @@ def refusal_words(code: str, *, workspace: Path | None = None) -> dict[str, Any]
     if found is None:
         return {}
     words: dict[str, Any] = {
-        "detail": found["detail"].replace("{subject}", subject),
+        "detail": (
+            found.get("stop_detail", found["detail"]) if for_stop else found["detail"]
+        ).replace("{subject}", subject),
         "next_action": found["next_action"],
     }
     if base == "task_control.queue_full":
@@ -379,7 +401,7 @@ def refusal_words(code: str, *, workspace: Path | None = None) -> dict[str, Any]
     if base in NETWORK_ACCESS_REFUSALS:
         from alphalattice.control.workspace_runtime.network_access import network_access
 
-        access = network_access(workspace)
+        access = network_access(workspace, now=now)
         decision = access.body(for_refusal=True)
         prefix = (
             f"The research update needs {subject}. "
@@ -431,7 +453,47 @@ def refusal_code(body: Mapping[str, Any]) -> str | None:
     return None
 
 
-def worded_refusal(body: dict[str, Any], *, workspace: Path | None = None) -> dict[str, Any]:
+NETWORK_WORK: Final = frozenset(
+    {
+        "DATA_UPDATE_RUN",
+        "EVIDENCE_INSTALL",
+        "EVIDENCE_PREPARE",
+        "EVIDENCE_REFRESH",
+        "PORTFOLIO_UPDATE_RUN",
+        "RECOVER",
+        "RESEARCH_UPDATE_RUN",
+        "STRATEGY_ACTIVATE",
+        "WORKSPACE_PREPARE_CONFIRM",
+    }
+)
+"""The operations whose admitted Task may reach the network: market data, a preparation's
+downloads, SEC filings, and a recovery that resumes any of them."""
+
+
+def disclosed(
+    body: dict[str, object], operation: str, network: Callable[[], dict[str, Any]]
+) -> dict[str, object]:
+    """An owner's answer, with its `network_use` when it admitted network work.
+
+    While the network is on, `network_use` names whose setting allowed it and the one line said
+    for it, which `ask_now` carries as the guide's one-line words. The activity row records the
+    same use, so a Host-run update is disclosed too. `network` reads the control (workspace and
+    clock) only for an admitted network work.
+    """
+    from alphalattice.control.workspace_runtime.network_access import network_access
+
+    if operation not in NETWORK_WORK or "task_id" not in body or refused(body):
+        return body
+    access = network_access(**network())
+    if not access.allowed:
+        return body
+    use = access.use()
+    return {**body, "network_use": use, "ask_now": [use["words"]]}
+
+
+def worded_refusal(
+    body: dict[str, Any], *, workspace: Path | None = None, now: datetime | None = None
+) -> dict[str, Any]:
     """A refusal as it leaves the Host, with words and a way on (OP4, V449).
 
     Its owner's words and way on, and, where the owner gave none, its code's own.
@@ -439,6 +501,7 @@ def worded_refusal(body: dict[str, Any], *, workspace: Path | None = None) -> di
     Args:
         body: The owner's answer.
         workspace: The actual control whose effective network decision words a refusal.
+        now: The Host's clock, on which that control is read.
 
     Returns:
         The refusal with what it lacked filled from the table; any other answer as it is.
@@ -446,7 +509,7 @@ def worded_refusal(body: dict[str, Any], *, workspace: Path | None = None) -> di
     code = refusal_code(body) if refused(body) else None
     if code is None:
         return body
-    words = refusal_words(code, workspace=workspace)
+    words = refusal_words(code, workspace=workspace, now=now)
     if code.partition(":")[0] in NETWORK_ACCESS_REFUSALS:
         source_access = body.get("source_network_access")
         source_ways = body.get("source_ways")
@@ -630,6 +693,21 @@ _DAMAGED = ClientRefusal(
     "A stored object of this generation no longer matches its digest, so nothing of it "
     "is trusted; restore an earlier generation with --generation.",
 )
+_ANSWERS_MISSING: Final = ClientRefusal(
+    "INVALID_INPUT",
+    "GIVE_A_FOLDER_WITH_WRITTEN_ANSWERS",
+    "No answer.json was found in the folder or in the folders inside it; this command "
+    "sends the answers the specialists wrote into their bundles. If the review's "
+    "preparation wrote no Analyst bundle because no holding filed anything new "
+    "(NOTHING_NEW), there is nothing to send. Named with `--package`, this answer "
+    "offers that strategy's last published CRO review as `last_review`, with its own "
+    "date and its `review` read. If the CRO's basis changed, no new review could be "
+    "written today: convene the committee on the date's positions without one, say so, "
+    "and name that review with its own date, never as today's.",
+)
+"""`review continue` with no answer to send, the strategy it names after the colon."""
+
+
 _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
     *(
         (code, ClientRefusal("INVALID_INPUT", **refusal_words(code)))
@@ -874,8 +952,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "NO_HOST",
             _REOPEN,
-            "No Host serves this workspace, so nothing was sent. Start one with `serve`, or "
-            "open the Local Web.",
+            "No Host serves this workspace, so nothing was sent. Start one with "
+            "`serve --no-browser --detach`, which returns once it serves, or open the Local Web.",
         ),
     ),
     (
@@ -885,6 +963,15 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             _INSPECT,
             "The connection to the Host was lost while the request was in flight, so whether "
             "it ran is unknown. Inspect the same Task before sending work again.",
+        ),
+    ),
+    (
+        "local_client.connection_lost_read",
+        ClientRefusal(
+            "NO_HOST",
+            "SEND_THE_SAME_READ_AGAIN",
+            "The connection to the Host was lost while this read was in flight. A read changes "
+            "nothing, so send the same request again, which this answer offers.",
         ),
     ),
     (
@@ -1181,7 +1268,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "agent session one, so nothing was sent. Name it, as in alphalattice --workspace "
             "<dir> <object> <action> ...; or, inside an agent session, bind it once with "
             "`alphalattice --workspace <dir> session bind`, and its commands and its own "
-            "specialists' may leave it out.",
+            "specialists' may leave it out. A Session bound in the workspace's own folder (an "
+            "agent sandbox protects the project's `.codex`) names it on every line.",
         ),
     ),
     (
@@ -1218,7 +1306,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "already has another workspace or usage scope: run `alphalattice session unbind` "
             "inside this Session, then bind again. A new Session binds independently; "
             "`native_bridge.workspace_missing`, the workspace named is not a folder; "
-            "`native_bridge.files_unavailable`, the project's `.codex` folder cannot be written.",
+            "`native_bridge.files_unavailable`, a path other than the project's binding cannot be "
+            "written (a project binding the sandbox denies is kept in the workspace instead).",
         ),
     ),
     (
@@ -1266,26 +1355,19 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "INVALID_INPUT",
             "CHOOSE_UNUSED_OUTPUT_PATH",
-            "The --output path already exists, and an output never overwrites; choose an "
-            "unused path.",
+            "The output cannot replace this file; only a saved refusal without an admitted "
+            "Task can be replaced. Choose an unused writable path.",
         ),
     ),
-    (
-        "local_client.review_answers_missing",
-        ClientRefusal(
-            "INVALID_INPUT",
-            "GIVE_A_FOLDER_WITH_WRITTEN_ANSWERS",
-            "No answer.json was found in the folder or in the folders inside it; this command "
-            "sends the answers the specialists wrote into their bundles.",
-        ),
-    ),
+    ("local_client.review_answers_missing", _ANSWERS_MISSING),
+    ("local_client.review_answers_missing:", _ANSWERS_MISSING),
     (
         "local_client.cro_directory_required",
         ClientRefusal(
             "INVALID_INPUT",
             "GIVE_A_NEW_CRO_FOLDER",
             "The Analysts' answers are accepted and the CRO's bundle is offered; name a new "
-            "folder for it with --cro-dir and run the command again.",
+            "or empty folder for it with --cro-dir and run the command again.",
         ),
     ),
     (
@@ -1293,7 +1375,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "INVALID_INPUT",
             _BUNDLE,
-            "The bundle directory already exists; a bundle is written to a new one.",
+            "The directory contains unrelated or changed output. Choose a new or empty "
+            "directory, or continue this review's matching output. Existing files are kept.",
         ),
     ),
     (
@@ -1402,6 +1485,32 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ),
     ),
     (
+        "local_client.first_use_setup_missing",
+        ClientRefusal(
+            "REFUSED",
+            "RUN_THE_SETUP_COMMANDS_THEN_THIS_AGAIN",
+            "This checkout's first use lacks setup its agent fills, so nothing was opened: the "
+            "specialists' routes run the product's own command in fresh shells of their own, "
+            "and the Evidence review reads the retrieval environment. Run each item's `commands` "
+            "under "
+            "`missing`, disclosing them (ask the person once, in one line, for an item that is "
+            "theirs), then run the same command again.",
+        ),
+    ),
+    (
+        "local_client.first_use_completed",
+        ClientRefusal(
+            "REFUSED",
+            "PLAN_THE_DAILY_UPDATE",
+            "This project's first use is complete and its strategy runs forward in the "
+            "`workspace` named here, so a sentence for a later date is that workspace's daily "
+            "update, never a second first use; nothing was opened. Run `next_command`, or send "
+            "the offered `plan` in that same workspace: it plans the update for the sentence's "
+            "date. If the person asks for separate new research instead, ask them in one line "
+            "and, on their yes, run the same command again with --new-research.",
+        ),
+    ),
+    (
         "local_client.codex_notify_needs_task",
         ClientRefusal(
             "INVALID_INPUT",
@@ -1428,6 +1537,11 @@ _OTHER = ClientRefusal(
 )
 
 
+def task_exit_words(task: object, lifecycle: str) -> str:
+    """Name the review Task separately from the successful answer submission."""
+    return f"The review's Task {task} is {lifecycle}; your submission exits OK (exit 0). "
+
+
 def client_refusal(code: str) -> ClientRefusal:
     """The outcome, next action and words of a refusal the client raised itself."""
     if code in {"local_client.workspace_context_mismatch", "local_client.bundle_workspace_invalid"}:
@@ -1438,6 +1552,144 @@ def client_refusal(code: str) -> ClientRefusal:
         if code == prefix or (prefix.endswith(("_", ":", ".")) and code.startswith(prefix)):
             return refusal
     return _OTHER
+
+
+READ_OPERATIONS: frozenset[str] = frozenset(
+    {
+        "RESEARCH_STRATEGY_READBACK",
+        "FEATURE_CATALOG_CONTROLS",
+        "FEATURE_CATALOG_READBACK",
+        "FEATURE_CATALOG_BUILD_READBACK",
+        "FEATURE_TRIAL_READBACK",
+        "FEATURE_TRIALS",
+        "RESEARCH_STRATEGY_CONTROLS",
+        "GOAL_SCHEMA",
+        "GOAL_LIST",
+        "GOAL_SHOW",
+        "GOAL_NARRATIVE",
+        "GOAL_REFERENCE",
+        "GOAL_EXPORT",
+        "GOAL_CONTINUE",
+        "COMPARE",
+        "CONTROLS",
+        "CRO_REVIEW_DOSSIER",
+        "CRO_REVIEW_FINDING",
+        "DATA_ISSUES",
+        "DATA_UPDATE_READBACK",
+        "COMMITTEE_READ",
+        "EVIDENCE_CRO",
+        "EVIDENCE_CRO_EXPORT",
+        "EVIDENCE_DOCUMENTS",
+        "EVIDENCE_LEDGER",
+        "EVIDENCE_PACKET",
+        "EXPERIMENTS",
+        "EXPERIMENT_COMPARE",
+        "EXPERIMENT_ALPHA_COMPARE",
+        "EXPERIMENT_CONTROLS",
+        "EXPERIMENT_DECLARATION_CONVERT",
+        "EXPERIMENT_CURATION",
+        "EXPERIMENT_DELIVERY_EXPORT",
+        "EXPERIMENT_DRAFT",
+        "EXPERIMENT_EXPORT",
+        "EXPERIMENT_FOUNDATIONS",
+        "EXPERIMENT_FOUNDATION_DRAFT",
+        "EXPERIMENT_FOUNDATION_EXPORT",
+        "EXPERIMENT_FOUNDATION_READBACK",
+        "EXPERIMENT_FOUNDATION_SUMMARY",
+        "EXPERIMENT_PORTFOLIO_DRAFT",
+        "EXPERIMENT_PREVIEW_READBACK",
+        "EXPERIMENT_READBACK",
+        "EXPERIMENT_SUMMARY",
+        "EXPERIMENT_REPLAY",
+        "EXPERIMENT_RISK_EXPORT",
+        "EXPERIMENT_RISK_LINKS",
+        "EXPORT",
+        "FINALIZATION",
+        "PORTFOLIO_UPDATE_READBACK",
+        "PORTFOLIO_READBACK",
+        "REPORT",
+        "RESEARCH_HISTORY",
+        "RESEARCH_INPUTS",
+        "RESEARCH_INPUT_READBACK",
+        "MODEL_TRAINING_INPUT_READBACK",
+        "RESEARCH_UPDATE_AUTOMATION_READBACK",
+        "RESEARCH_UPDATE_READBACK",
+        "RESULTS",
+        "STATUS",
+        "STORAGE_CAP_SHOW",
+        "STORAGE_READBACK",
+        "TASK_RECOVERY",
+        "TASK_GUARDIAN",
+        "TASK_INCIDENTS",
+        "STRATEGY_CALIBRATION_READBACK",
+        "STRATEGY_SCORE_READBACK",
+        "TASKS",
+        "UPGRADE_OVERVIEW",
+        "NETWORK_ACCESS",
+        "EVIDENCE_CONSENT",
+        "USAGE_READING",
+        "PENDING_DECISIONS",
+        "WORKSPACE_PREPARE_READBACK",
+        "ACTIVITY_REFUSALS",
+        "ACTIVITY_LIST",
+        "ACTIVITY_RECENT",
+        "CPU_BUDGET_SHOW",
+        "WORKSPACE_BACKUPS",
+        "MODEL_EXTENSIONS",
+        "FEATURE_EXTENSIONS",
+        "FEATURE_REVIEW",
+        "OPERATION_LIST",
+        "WORKSPACE_SHOW",
+    }
+)
+"""Operations that change nothing and are never recorded as activity.
+
+The browser polls several of these every few seconds; recording them would fill
+the ledger with the observer's own reads. A refused read is still not activity:
+the caller already holds the refusal.
+"""
+
+
+def client_failure(
+    code: str,
+    document: Mapping[str, Any],
+    cause: BaseException | None,
+    request_timeout: float,
+    answered: bool,
+) -> tuple[ClientRefusal, dict[str, Any]]:
+    """A local refusal's words and, for a connection lost in flight, what it leaves known.
+
+    A read not yet answered changes nothing, so its exact request is offered again; any other
+    request, or a step after an answer, is inspected as its Task before work is sent again.
+    """
+    if code == "local_client.document_unreadable":
+        return client_refusal(code), {
+            "next_requests": {"schema": schema_request(document.get("operation"))}
+        }
+    if code.startswith("local_client.review_answers_missing:"):
+        # The named strategy's last published review, read with its own date.
+        package = code.partition(":")[2]
+        last = {"history_kind": "CRO_REVIEW", "history_limit": 1, "strategy_package_id": package}
+        return client_refusal(code), {
+            "next_requests": {"last_review": {"operation": "RESEARCH_HISTORY", **last}}
+        }
+    if code != "local_client.connection_lost_task_may_still_run":
+        return client_refusal(code), {}
+    read = not answered and document.get("operation") in READ_OPERATIONS
+    return client_refusal("local_client.connection_lost_read" if read else code), {
+        "transport_reason": "HTTP_WAIT_EXPIRED"
+        if isinstance(cause, TimeoutError)
+        else "CONNECTION_INTERRUPTED",
+        "request_timeout_seconds": request_timeout,
+        "operation_outcome": "UNKNOWN",
+        "guidance": (
+            "--request-timeout may increase this read's HTTP waiting."
+            if read
+            else "Inspect the same Task before resubmitting work. For a read-only "
+            "request, --request-timeout may increase HTTP waiting, not the Task budget."
+        ),
+        **({"next_requests": {"read": dict(document)}} if read else {}),
+    }
 
 
 def envelope(
@@ -1471,6 +1723,12 @@ def envelope(
         The answer with status, failure, next requests, and timing beside data.
     """
     owner = body or {}
+    if (
+        operation == "AGENT_ANSWER_SUBMIT"
+        and not refused(owner)
+        and owner.get("answer_status", owner.get("status")) in {"ACCEPTED", "DONE"}
+    ):
+        outcome = "OK"  # Submission succeeded; outcome_of still follows the review Task.
     refusal = owner.get("refused")
     titles: dict[str, str] = {}
     if body is not None:
@@ -1479,10 +1737,12 @@ def envelope(
         # What it installs, named by the label table beside the ids the answer keeps.
         titles = titles_in(body, chinese=ANSWER_LANGUAGE.get() == "zh")
     return {
+        "status": status or owner.get("status", owner.get("disposition")),
+        "next_action": owner.get("next_action"),
+        "task_id": owner.get("task_id") or owner.get("publication_task_id"),
         "schema_version": SCHEMA_VERSION,
         "operation": operation,
         "outcome": outcome,
-        "status": status or owner.get("status", owner.get("disposition")),
         "data": body if display is None else display,
         **({"titles": titles} if titles else {}),
         "failure_code": failure_code
@@ -1504,6 +1764,17 @@ def envelope(
             request or {},
         ),
     }
+
+
+def answer_json(
+    answer: Mapping[str, Any], *, default: Callable[[object], Any] | None = None
+) -> str:
+    """Keep all envelope metadata ahead of data without changing keys or values."""
+    leading = ("status", "next_action", "task_id", "operation", "outcome", "output_file")
+    fields = {**{name: answer[name] for name in leading if name in answer}, **answer}
+    if "data" in fields:
+        fields["data"] = fields.pop("data")
+    return json.dumps(fields, default=default)
 
 
 @functools.cache
@@ -2082,6 +2353,7 @@ __all__ = [
     "refused",
     "request_problem",
     "shell",
+    "task_exit_words",
     "worded",
     "worded_refusal",
 ]

@@ -940,7 +940,7 @@ def project_published_review(
         summary_parts = [*open_parts.get(issuer.entity_id, ())]
         if issuer.entity_id in carried:
             summary_parts.append((f"no new filing; read {carried[issuer.entity_id]}", ""))
-        summary_parts.append((summary, ""))
+        summary_parts.append((_holding_context(issuer.transition, summary), ""))
         rows.append(
             EvidenceCroIssuerRow(
                 entity_id=issuer.entity_id,
@@ -960,7 +960,7 @@ def project_published_review(
                         else f"no new filing; read {carried[issuer.entity_id]}: "
                     )
                 )
-                + summary,
+                + _holding_context(issuer.transition, summary),
                 findings_summary_parts=tuple(summary_parts),
             )
         )
@@ -1117,6 +1117,11 @@ def _scope_coverage(
     )
 
 
+def _holding_context(transition: str, summary: str) -> str:
+    """Keep a retained concern distinct from a currently held issuer."""
+    return "Not held in this book. " + summary if transition == "EXITED" else summary
+
+
 def _findings_summary(conclusion: str, *, findings: int, adverse: int) -> str:
     """One phrase for the issuer row, chosen by what the review actually did.
 
@@ -1237,8 +1242,8 @@ def _review_evidence_content(review: dict[str, Any], evidence: object) -> str:
         "<h3>Coverage limits</h3><ul>",
     ]
     for gap in (
-        *dossier["coverage"].get("unavailable_reasons", []),
-        *dossier["coverage"].get("missing_evidence", []),
+        *dossier.get("coverage", {}).get("unavailable_reasons", []),
+        *dossier.get("coverage", {}).get("missing_evidence", []),
         *dossier.get("limitations", []),
     ):
         pieces.append("<li>" + html.escape(str(gap)) + "</li>")
@@ -1413,9 +1418,9 @@ _ANSWERED_ROUTE_IN_WORDS = {
     "NO_MATERIAL_OBJECTION": "no major negative was found in the evidence read",
     "ACCEPT_WITH_LIMITS": "the reviewer named material risks that do not rise to an "
     "objection; they are listed with the limits of what was read",
-    "HUMAN_REVIEW_REQUIRED": "a high-severity risk on an exposed holding rests on contested "
+    "HUMAN_REVIEW_REQUIRED": "a high-severity risk on exposure or its change rests on contested "
     "or limited findings; a person should read it (advisory, not blocking)",
-    "MATERIAL_OBJECTION": "a supported high-severity risk on an exposed holding is a major "
+    "MATERIAL_OBJECTION": "a supported high-severity risk on exposure or its change is a major "
     "negative for the book; a human must weigh it and no weight changes here",
 }
 """The route in words for a review answered in the judgment-only format; a
@@ -1597,14 +1602,18 @@ def _conclusion_section(review: dict[str, Any]) -> str:
     return "".join(pieces)
 
 
-def _coverage_section(review: dict[str, Any]) -> str:
-    """Render the coverage section for every known held listing.
+def _coverage_facts(dossier: dict[str, Any]) -> str:
+    """Render only recorded coverage facts, including older partial exports."""
+    from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
+        PortfolioReviewDossier,
+    )
+    from alphalattice.oversight.chief_risk_officer.decision.views import (
+        coverage_words,
+        held_issuer_count,
+        review_cutoff_words,
+    )
 
-    Keep mapping and each completion stage separate from count and weight
-    coverage.
-    """
-    dossier = review["dossier"]
-    recommendation = review["recommendation"]
+    coverage = dossier.get("coverage", {})
     coverage_labels = {
         "mapping_coverage": "Whole-book mapped ending weight",
         "reviewed_ending_weight_coverage": "Whole-book reviewed ending weight",
@@ -1615,31 +1624,51 @@ def _coverage_section(review: dict[str, Any]) -> str:
         ),
         "unreached_ending_weight_coverage": "Whole-book ending weight not read",
     }
+    pieces = [
+        "<dl>"
+        + "".join(
+            f"<dt>{html.escape(coverage_labels.get(key, key.replace('_', ' ')))}</dt>"
+            f"<dd>{float(value):.3%}</dd>"
+            for key, value in coverage.items()
+            if key.endswith("coverage") and value is not None
+        )
+    ]
+    if "mapping_failure_count" in dossier:
+        pieces.append(
+            "<dt>Mapping failures</dt><dd>"
+            f"{html.escape(str(dossier['mapping_failure_count']))}</dd>"
+        )
+    if "issuers" in dossier:
+        pieces.append(
+            "<dt>Held issuers in scope</dt><dd>"
+            + str(held_issuer_count(float(v["ending_weight"]) for v in dossier["issuers"]))
+            + "</dd>"
+        )
+    pieces.append("</dl>")
+    required = {
+        key for key, field in PortfolioReviewDossier.model_fields.items() if field.is_required()
+    }
+    words: tuple[str, ...] = ()
+    if required <= dossier.keys():
+        view = PortfolioReviewDossier.model_validate(dossier)
+        words = (*coverage_words(view.coverage), *review_cutoff_words(view))
+    pieces.extend(f"<p>{html.escape(line)}</p>" for line in words)
+    return "".join(pieces)
+
+
+def _coverage_section(review: dict[str, Any]) -> str:
+    """Keep mapping and completion separate from issuer count and weight coverage."""
+    dossier = review["dossier"]
     dispositions = _dispositions_of(review)
     conclusions = {
-        str(item["entity_id"]): item for item in recommendation.get("issuer_conclusions", [])
+        str(item["entity_id"]): item
+        for item in review["recommendation"].get("issuer_conclusions", [])
     }
     findings_by_entity: dict[str, list[dict[str, Any]]] = {}
     for finding in dossier.get("findings", []):
         for entity in finding.get("affected_entities", []):
             findings_by_entity.setdefault(str(entity), []).append(finding)
-    pieces = ["<h3>2. Coverage and work state</h3>"]
-    pieces.append(
-        "<dl>"
-        + "".join(
-            f"<dt>{html.escape(coverage_labels.get(key, key.replace('_', ' ')))}</dt>"
-            f"<dd>{float(value):.3%}</dd>"
-            for key, value in dossier["coverage"].items()
-            if key.endswith("coverage")
-        )
-        + f"<dt>Reviewed issuers</dt><dd>{len(dossier.get('issuers', []))}</dd>"
-        + "<dt>Mapping failures</dt><dd>"
-        + html.escape(str(dossier.get("mapping_failure_count")))
-        + "</dd><dt>Held positions</dt><dd>"
-        + html.escape(str(dossier.get("held_count")))
-        + "</dd>"
-        + "</dl>"
-    )
+    pieces = ["<h3>2. Coverage and work state</h3>", _coverage_facts(dossier)]
     pieces.append(
         "<table><thead><tr><th>Issuer</th><th>Tickers</th><th>Ending weight</th>"
         "<th>Transition</th><th>Analysis state</th><th>Findings</th><th>Dispositions</th>"
@@ -1659,6 +1688,7 @@ def _coverage_section(review: dict[str, Any]) -> str:
             + f"{float(issuer.get('ending_weight', 0.0)):.3%}"
             + "</td><td>"
             + html.escape(str(issuer.get("transition")))
+            + html.escape(" " + _holding_context(str(issuer.get("transition")), ""))
             + "</td><td>"
             + html.escape(str(issuer.get("review_state", "UNSTATED")))
             + "</td><td>"
@@ -1692,8 +1722,8 @@ def _coverage_section(review: dict[str, Any]) -> str:
                 + ".</p>"
             )
     gaps = [
-        *dossier["coverage"].get("unavailable_reasons", []),
-        *dossier["coverage"].get("missing_evidence", []),
+        *dossier.get("coverage", {}).get("unavailable_reasons", []),
+        *dossier.get("coverage", {}).get("missing_evidence", []),
     ]
     if gaps:
         pieces.append(

@@ -6,7 +6,8 @@ The operator's ``ALPHALATTICE_NETWORK_DISABLED=1`` forces the process offline (p
 scenes rely on it); nothing else in the environment opens it. A person sets the control in
 Settings; ``=0`` opened it before the control had a page and is not read any more (V13).
 A first-use goal's agent sets it under the person's delegation (OP19): that setting carries its
-delegation and its end (``until``), and reads closed after it with no write (V452).
+delegation and its end (``until``), and reads closed after it with no write (V452). The person's
+own setting, theirs or their yes an agent relayed, always wins: a delegation never writes over it.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.kernel.shared_kernel.environment import (
@@ -28,6 +29,29 @@ from alphalattice.kernel.shared_kernel.environment import (
 NETWORK_SWITCH = OFFLINE_SWITCH
 CONTROL_PATH = Path("runtime") / "network-access.json"
 _SCHEMA = "network-access"
+_USE: Final = {
+    "PERSON": "AlphaLattice may use the network for this step: you turned it on in this "
+    "workspace's settings.",
+    "RELAYED_YES": "AlphaLattice may use the network for this step, under your yes for daily "
+    "updates; say stop to turn it off.",
+    "FIRST_USE_DELEGATION": "AlphaLattice may use the network for this step, under the first "
+    "use's delegation, which ends with its goal.",
+}
+_YES_SCOPE: Final = (
+    "this workspace's daily updates, and SEC filings at the default budget, until the person "
+    "says stop"
+)
+"""What the person's relayed daily yes answers, as the first use's daily question asks it."""
+_YES_UNRECORDED: Final = (
+    "relayed before the Host kept the person's words, the question and the time; ask the person "
+    "if they want it confirmed"
+)
+_DELEGATED_OPEN: Final = (
+    "The first use's delegation opened the network for its own steps; it closes when the goal "
+    "ends. That does not answer the daily question, which stays open until the person answers "
+    "it: ask it in the first use's `ask_now` words and, on their yes, run its offered commands "
+    "with their words (`--person-said`, `--asked`)."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +69,26 @@ class NetworkAccess:
     ]
     set_by: dict[str, str] | None = None
     """The delegation that set the control and its end, when a person's goal set it."""
+    persons: bool = False
+    """Whether the person's own setting is the control: theirs, or their yes an agent relayed."""
+    delegation_holds: bool = False
+    """Whether a first use's delegation holds the control open; the daily question outlives it."""
+
+    def use(self) -> dict[str, object]:
+        """Whose setting lets a step use the network, and the one line said each time it does.
+
+        Returns:
+            ``under``, ``words`` and, for a relayed yes, where it came from (``yes``).
+        """
+        under = (
+            "FIRST_USE_DELEGATION"
+            if self.set_by and "delegation" in self.set_by
+            else "RELAYED_YES"
+            if self.set_by
+            else "PERSON"
+        )
+        origin = {"yes": self.set_by} if under == "RELAYED_YES" else {}
+        return {"under": under, "words": _USE[under], **origin}
 
     def body(
         self, *, for_refusal: bool = False, delegation: str | None = None
@@ -70,10 +114,21 @@ class NetworkAccess:
                 "or captured sources may proceed. Follow the plan's next action; workspace "
                 "settings cannot lift the switch."
             ),
-            "WORKSPACE_CONTROL": "This workspace's network control decides.",
+            "WORKSPACE_CONTROL": (
+                "The person turned this workspace's network off, and only they turn it on. SEC "
+                "acquisition stops before its next request; a data update already fetching "
+                "finishes the stage it is in, and `task cancel <task-id>` stops it now."
+                if self.persons and not self.allowed
+                else "This workspace's network control decides."
+            ),
             "DEFAULT": "No workspace control is set, so the network stays off.",
         }
-        delegated = delegation is not None and self.decided_by in {"DEFAULT", "WORKSPACE_CONTROL"}
+        # After the person's own setting, their stop included, no delegation is offered.
+        delegated = (
+            delegation is not None
+            and self.decided_by in {"DEFAULT", "WORKSPACE_CONTROL"}
+            and not self.persons
+        )
         return {
             "status": "NETWORK_ACCESS",
             "network_allowed": self.allowed,
@@ -107,24 +162,26 @@ class NetworkAccess:
             else {},
             **({"set_by": self.set_by} if self.set_by else {}),
             **({"delegation": delegation} if delegated else {}),
+            **({"daily_question": _DELEGATED_OPEN} if self.delegation_holds else {}),
         }
 
 
-def _control(workspace: Path, now: datetime) -> tuple[bool | None, dict[str, str] | None]:
-    """The control's setting and, when a delegation set it, that delegation and its end."""
+def _control(workspace: Path, now: datetime) -> tuple[bool | None, dict[str, str] | None, bool]:
+    """The control's setting, the delegation that set it, and whether it is the person's own."""
     path = workspace / CONTROL_PATH
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return None, None
+        return None, None, False
     except (OSError, ValueError):
-        return False, None  # An unreadable control fails closed.
+        return False, None, False  # An unreadable control fails closed.
     # Anything but the two mappings the writer writes reads as closed (OP5, V271): a person's
     # (version 1), or a delegation's, open only until its end (version 2, OP19), or the
     # person's yes an agent relayed (version 3, OP23).
     keys = {1: {"schema", "version", "network_enabled"}}
     keys[2] = keys[1] | {"delegation", "until"}
     keys[3] = keys[1] | {"relayed_by"}
+    keys[4] = keys[3] | {"words", "asked", "at"}
     if (
         not isinstance(record, dict)
         or record.get("schema") != _SCHEMA
@@ -132,19 +189,52 @@ def _control(workspace: Path, now: datetime) -> tuple[bool | None, dict[str, str
         or set(record) != keys.get(record["version"])
         or not isinstance(record["network_enabled"], bool)
     ):
-        return False, None
+        return False, None, False
     if record["version"] == 1:
-        return bool(record["network_enabled"]), None
-    if record["version"] == 3:
-        return bool(record["network_enabled"]), {"relayed_by": str(record["relayed_by"])}
+        return bool(record["network_enabled"]), None, True
+    if record["version"] in {3, 4}:
+        try:
+            return bool(record["network_enabled"]), _yes_origin(record), True
+        except ValueError:
+            return False, None, False
     try:
         until = datetime.fromisoformat(str(record["until"]))
     except ValueError:
-        return False, None
+        return False, None, False
     if until.tzinfo is None or not isinstance(record["delegation"], str):
-        return False, None
+        return False, None, False
     set_by = {"delegation": record["delegation"], "until": until.isoformat()}
-    return bool(record["network_enabled"]) and now < until, set_by
+    return bool(record["network_enabled"]) and now < until, set_by, False
+
+
+def _yes_origin(record: Mapping[str, object]) -> dict[str, str]:
+    """Where a relayed yes came from; an older record says what it lacks.
+
+    Who relayed it, the person's words, the question, when (UTC beside the Host's local time)
+    and what it answers.
+    """
+    origin = {"relayed_by": str(record["relayed_by"])}
+    if record["version"] == 3:
+        return origin | {"origin": _YES_UNRECORDED}
+    at = datetime.fromisoformat(str(record["at"]))
+    return origin | {
+        "words": str(record["words"]),
+        "asked": str(record["asked"]),
+        "at": at.isoformat(),
+        "at_host_local": at.astimezone().isoformat(timespec="seconds"),
+        "scope": _YES_SCOPE,
+    }
+
+
+def persons_stop(workspace: Path | None, now: datetime) -> bool:
+    """Whether the person's own setting holds the control off: their stop.
+
+    No delegation lifts it, so its way on is their yes.
+    """
+    if workspace is None:
+        return False
+    control, _set_by, persons = _control(workspace, now)
+    return persons and control is False
 
 
 def network_access(
@@ -155,17 +245,22 @@ def network_access(
     """What decides network access for ``workspace``, the operator's offline switch first.
 
     Who set the workspace's control is named whatever decides, a hold or the switch included:
-    it is a fact about the control (OP19, U70).
+    it is a fact about the control (OP19, U70). A workspace's control is read on the caller's
+    clock, the Host's: a delegation's end is the Host's instant, so the machine's never decides.
     """
-    control, set_by = (
-        (None, None) if workspace is None else _control(workspace, now or datetime.now(UTC))
-    )
+    if workspace is None:
+        control, set_by, persons = None, None, False
+    elif now is None:
+        raise TypeError("network_access reads a workspace control on the caller's clock: pass now")
+    else:
+        control, set_by, persons = _control(workspace, now)
+    held = (set_by, persons, bool(control and set_by and "delegation" in set_by))
     if running_held_offline():
-        return NetworkAccess(False, "RUN_HELD_OFFLINE", set_by)
+        return NetworkAccess(False, "RUN_HELD_OFFLINE", *held)
     if offline(environment):
-        return NetworkAccess(False, "OPERATOR_OFFLINE_SWITCH", set_by)
+        return NetworkAccess(False, "OPERATOR_OFFLINE_SWITCH", *held)
     if control is not None:
-        return NetworkAccess(control, "WORKSPACE_CONTROL", set_by)
+        return NetworkAccess(control, "WORKSPACE_CONTROL", *held)
     return NetworkAccess(False, "DEFAULT")
 
 
@@ -175,7 +270,8 @@ def set_network_access(
     enabled: bool,
     delegation: str | None = None,
     until: datetime | None = None,
-    relayed_by: str | None = None,
+    relayed: tuple[str, str, str] | None = None,
+    now: datetime,
 ) -> NetworkAccess:
     """Atomically persist the typed workspace setting and read effective permission.
 
@@ -184,22 +280,29 @@ def set_network_access(
         enabled: Requested workspace network setting; offline holds still take precedence.
         delegation: The person's delegation that sets it (a first-use goal), with ``until``.
         until: When that delegation's setting ends; after it the control reads closed.
-        relayed_by: The agent session that relayed the person's yes, when one did.
+        relayed: The agent session that relayed the person's yes, their words and the question
+            asked, kept with the Host's time.
+        now: The Host's clock, on which ``until`` was computed and is read back.
 
     Returns:
-        Effective access after applying higher-priority run and operator offline holds.
+        Effective access after applying higher-priority run and operator offline holds; a
+        delegation's setting over the person's own is not written, and answers theirs.
     """
+    if delegation is not None and _control(workspace, now)[2]:
+        return network_access(workspace, now=now)
     record: dict[str, object] = {"schema": _SCHEMA, "version": 1, "network_enabled": enabled}
     if delegation is not None and until is not None:
         record.update(version=2, delegation=delegation, until=until.isoformat())
-    elif relayed_by is not None:
-        record.update(version=3, relayed_by=relayed_by)
+    elif relayed is not None:
+        by, words, asked = relayed
+        record.update(version=4, relayed_by=by, words=words, asked=asked)
+        record["at"] = now.astimezone(UTC).isoformat()
     path = workspace / CONTROL_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     staged = path.with_suffix(".json.tmp")
     staged.write_text(json.dumps(record), "utf-8")
     replace_shared_file(staged, path)  # every request reads the control (V477)
-    return network_access(workspace)
+    return network_access(workspace, now=now)
 
 
 __all__ = [
@@ -207,5 +310,6 @@ __all__ = [
     "NETWORK_SWITCH",
     "NetworkAccess",
     "network_access",
+    "persons_stop",
     "set_network_access",
 ]

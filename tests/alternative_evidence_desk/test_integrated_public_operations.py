@@ -72,8 +72,13 @@ def _book(entities: tuple[str, ...]) -> tuple[RecordedEvidenceDocument, ...]:
 
 
 def _authority(tmp_path: Path, report: Any) -> Any:
+    # These flows prepare the same corpus again at later cutoffs to prove its selection is reused.
     authority = build_authority(
-        tmp_path=tmp_path, report=report, extra_documents=_book, model_authority_admitted=False
+        tmp_path=tmp_path,
+        report=report,
+        extra_documents=_book,
+        model_authority_admitted=False,
+        replaceable=True,
     )
     return authority.__class__(
         **{

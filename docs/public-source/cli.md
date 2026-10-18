@@ -24,6 +24,7 @@ The envelope carries `operation`, `outcome`, `status`, `data`, `failure_code`,
 `detail`, `next_requests`, `next_commands`, `next_templates`, timing and context.
 When observed, `session_launches` counts this session's CLI launches, including
 help and schema reads. `data` contains the owner answer or its display projection.
+An admitted network step also carries `network_use`: `under` names whose setting allowed it and `words` is its disclosure. The same permission source is kept in activity, including automated updates.
 A refusal names the code, explanation and permitted continuation. Keep its
 references and follow that continuation.
 
@@ -35,18 +36,30 @@ references and follow that continuation.
 | `PENDING` | 3 | Follow admitted work or its decision. |
 | `NO_HOST` | 4 | Follow the named connection route; start a Host only if absent. |
 
+An accepted `bundle submit` exits `OK` (0). Its `task_lifecycle` and offered Task
+read report the review's continuing work; `--wait` can follow that Task.
+
 Declarations request installed owners. `@path` reads text, YAML or JSON according
 to the field's type; `@@` starts a literal `@`. Boolean values are `true` or
 `false`; repeated YAML keys and invalid Boolean values are refused. Existing
-output paths are refused. HTML is a report, not a continuation file.
+output paths are protected, except a saved JSON/YAML refusal without an admitted
+Task: a retry replaces it and prints `output_note`. HTML is a report, not a
+continuation file.
 
 ## Saved answers and live continuations
 
 `--output` saves the full owner answer as JSON or YAML in either view. Its fields
 are at the file's root: read `position`, not `data.position`.
+Compact output leads with `status`, `next_action` and `task_id`; the original
+fields remain in `data` and in the saved answer.
 `--save-declaration` writes an editable declaration. Compact view names omitted
 paths in `omitted_sections`; `--section <dotted-path>` selects one for display,
 while `--output` still saves the full answer. `--view full` displays everything.
+Long workflows announce request steps on stderr; Task waits report changes in
+`current_stage` without adding requests. Stdout remains one answer envelope.
+The compact update readback keeps the positive-position count, five largest
+holdings, dates and current review standing. Raw publications, history, HTML,
+labels and full position rows are named in `omitted_sections` for `--section`.
 
 Read a saved full answer locally, without a workspace, session or Host:
 
@@ -82,6 +95,22 @@ and `--from` retain whole references. Run returned PowerShell commands as printe
 including quoting and the call operator; requests with double quotes use JSON
 through stdin to `request --file -`.
 
+## Dates and network permission
+
+```powershell
+alphalattice research-update plan --package <package> --date <date> --output update-plan.json
+```
+
+`--date` names the entry session for the positions, not the formation session or the last downloaded date. A non-refused plan answer carries `positions_for.trade_date`, `positions_for.as_of_session`, `positions_for.as_of_close_at` and its `reading`: positions entered at that session's open are decided at the preceding session's close. Without `--date`, the plan uses the next session after the latest completed formation close. Invalid or unavailable dates return their own refusal and offered way on; `--date` and `--through` cannot be combined.
+
+`alphalattice network show` reads the effective control. `alphalattice network set --enabled true` and `alphalattice network set --enabled false` change it under the person's decision or a valid first-use delegation. A person's setting wins over a delegation; the operator's offline switch and a research run's offline hold win over either.
+
+For the one daily-network question, the agent relays the person's yes through `network set --enabled true` and `evidence-consent set --per-issuer 3`, using `--person-said` and `--asked` for their words and the question. This authorizes the stated daily updates and default SEC budget until the person says stop. `alphalattice evidence-consent show` reads the source budget; `alphalattice evidence-consent set --per-issuer 10` changes it with the required authority. Omitted `--documents` and `--bytes` retain the current total bounds; a wider budget needs the person's decision. See [network consent and revocation](privacy.md#workspace-network-and-consent).
+
+## The daily committee
+
+The first use's report asks the person once whether each daily update also convenes the investment committee. The agent relays their answer with `alphalattice committee daily --enabled true` or `alphalattice committee daily --enabled false`, using `--person-said` and `--asked`. Unanswered, the setting is off: a daily update's published review then answers `GIVE_THE_PM_VIEW`, so the agent gives the portfolio manager's view of the reviewed positions, and the committee for that date stays offered. `alphalattice workspace show` reads the setting as `committee_daily`.
+
 ## Waits, document limits and units
 
 `--wait` follows the named Task until completion, decision, deferral, incident or
@@ -97,7 +126,9 @@ and act on its completion notice. On Codex, they accept `--notify codex-queue` t
 return at the first running Task while the Host keeps its notification; a notice
 names the continuation when the Task ends, needs a decision or is deferred, and
 failures to queue it appear in Task activity. Under an active Codex goal, wait inside
-the turn instead: the goal's next turn starts before a queued notice is taken.
+the turn instead: the goal's next turn starts before a queued notice is taken. A
+registration answering `local_client.codex_unreachable` means the Host cannot reach
+Codex (it runs inside the agent's sandbox), so no notice will come: wait inside the turn.
 
 With `--wait --output`, admission is saved first and replaced by the final
 answer; save failure does not undo admission. Request documents are limited to

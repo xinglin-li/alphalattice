@@ -1,25 +1,9 @@
 """The production route: one sealed book, refreshed evidence, one review.
 
-This is the owner a non-test caller reaches. The operation owner asks it three
-questions -- what is the state, refresh the evidence, review with CRO -- for one
-selected book, and every answer is either a typed state or a real Task admitted
-through the one dispatcher.
-
-The order is the design:
-
-1. open the selected sealed book (a development result, a frozen candidate or
-   a validated handoff) and its report's own window-end book;
-2. project the book over the admitted listing/ticker authority, keeping every
-   row, and map it onto admitted issuers;
-3. derive the evidence-only obligation from the resulting scope;
-4. admit or reuse the separate Alternative Evidence Task;
-5. reopen an exact **non-expired** publication with the current reader;
-6. compile the dossier;
-7. resolve exact CRO reuse from the review key **before** any actor exists;
-8. otherwise admit the three-stage CRO Task;
-9. reopen the published recommendation for the interface.
-
-Nothing here adds a runner, a store, a report, a pointer or an Agent board.
+Open the selected sealed book with its admitted listing and issuer authority,
+derive and refresh Evidence, reopen a current publication, then compile the
+dossier. Resolve exact CRO reuse before creating actors; otherwise admit its
+three-stage Task. All Tasks use the existing dispatcher and retained authority.
 """
 
 from __future__ import annotations
@@ -41,14 +25,23 @@ from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
+    EVIDENCE_INSTALL_TASK_KIND,
     on_official_source,
 )
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     PACKAGE_RULE,
-    SHORT_SOURCE_ACTION,
-    _authored,
+    QUIET_INSTALL,
+    SOURCE_MISSING,
+    adapter_absent,
+    documents_absent,
     evidence_setup,
+    prerequisites_missing,
+    quiet_install,
+    short_source_action,
     source_ways,
+)
+from alphalattice.control.product_host.composition.evidence_source_ways import (
+    offered_installs as source_offered_installs,
 )
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import (
@@ -75,11 +68,11 @@ from alphalattice.evidence.alternative_evidence.analysis.packet import (
     AlternativeEvidencePacket,
     reading_remainders,
     routed_pending_work,
-    span_aliases,
 )
 from alphalattice.evidence.alternative_evidence.analysis.submissions import (
     accepted_analyst_answer,
-    screen_analyst_answer,
+    left_out_words,
+    screened_analysis,
 )
 from alphalattice.evidence.alternative_evidence.contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
@@ -138,7 +131,7 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
     evidence_source_consent,
     official_source_state,
 )
-from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.interface.local_application.cli_contract import refusal_words, task_exit_words
 from alphalattice.interface.local_application.dispatcher import (
     CommandAdmission,
     CommandSubmission,
@@ -171,7 +164,6 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     HybridIndexSpec,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.kernel.shared_kernel.sealing import validate_hash_compatible
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
@@ -239,7 +231,6 @@ from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task imp
 )
 from alphalattice.protocols.actor_execution import ActorKind, seal_actor_submission
 from alphalattice.protocols.actor_execution.answers import (
-    ANSWER_CORRECTION_BOUND,
     AgentAnswerRecord,
     AgentRun,
     AnswerProblem,
@@ -248,7 +239,7 @@ from alphalattice.protocols.actor_execution.answers import (
     answer_digest,
     answer_slot,
     answer_verdict,
-    correction_text,
+    answer_view,
     screen_specialist_answer,
 )
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
@@ -592,50 +583,6 @@ ANSWER_CATEGORY = "agent-answers"
 BUNDLE_CATEGORY = "agent-bundles"
 
 
-def _answer_view(
-    record: AgentAnswerRecord,
-    delivery: dict[str, object] | None = None,
-    *,
-    record_filed: bool = True,
-) -> dict[str, object]:
-    """What the agent that answered reads back: the verdict, the answer's
-    number, the corrections left and the items -- in plain words."""
-
-    problems = [value.model_dump(mode="json") for value in record.problems]
-    # After a correction the Host reads this many more answers to the bundle;
-    # after the last it keeps the acceptable part.
-    rounds_left = (
-        ANSWER_CORRECTION_BOUND - record.corrections_used + 1
-        if record.verdict is AnswerVerdict.CORRECT
-        else 0
-    )
-    view: dict[str, object] = {
-        "verdict": str(record.verdict),
-        "number": record.number,
-        "rounds_left": rounds_left,
-        "accepted_items": list(record.accepted_items),
-    }
-    stored = delivery.get("answer_record") if delivery is not None else None
-    if isinstance(stored, dict):
-        view["answer_reference"] = stored["record_hash"]
-        if stored.get("agent_run") is not None:
-            view["recorded_agent"] = stored["agent_run"]
-    elif record_filed:
-        view["answer_reference"] = record.record_hash
-        if record.agent_run is not None:
-            view["recorded_agent"] = record.agent_run.model_dump(mode="json")
-    if record.verdict is AnswerVerdict.CORRECT:
-        view["problems"] = problems
-        view["message"] = correction_text(
-            record.problems, accepted=record.accepted_items, rounds_left=rounds_left
-        )
-    elif record.verdict is AnswerVerdict.DONE:
-        view["dropped"] = problems
-    if delivery is not None:
-        view["accepted_delivery"] = delivery
-    return view
-
-
 def agent_answer_result(
     role: str, body: Mapping[str, object], book: Mapping[str, object] | None = None
 ) -> dict[str, object]:
@@ -678,11 +625,10 @@ def agent_answer_result(
             f"{len(dropped)}, listed under 'dropped'; no more answers are read for this bundle. "
         )
         task_clause = (
-            f"Task {task} is {lifecycle}. The outcome follows the Task state. "
-            if task and isinstance(lifecycle, str)
-            else ""
+            task_exit_words(task, lifecycle) if task and isinstance(lifecycle, str) else ""
         )
-        message = lead + task_clause + "Stop here and return the receipt to your lead."
+        said, left = left_out_words(answer)
+        message = lead + said + task_clause + "Stop here and return the receipt to your lead."
         return {
             "status": verdict,
             "answer_status": verdict,
@@ -718,6 +664,7 @@ def agent_answer_result(
                 "task_id": task,
                 "accepted_items": accepted,
                 "dropped_items": len(dropped),
+                **left,
             },
             "next_action": "RETURN_THE_RECEIPT_TO_YOUR_LEAD",
             # For the lead: the Task the answer started and the book it answered for, so the
@@ -753,7 +700,7 @@ def _answer_correction(code: str, record: AgentAnswerRecord) -> dict[str, object
         "status": "CORRECT",
         "failure_code": code,
         "task_id": None,
-        "answer": _answer_view(record),
+        "answer": answer_view(record),
         "next_action": "CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN",
     }
 
@@ -1263,7 +1210,7 @@ class EvidenceReviewApplication:
         """
         if self.official_source is None:
             return True
-        state = official_source_state(self.workspace)
+        state = official_source_state(self.workspace, now=self.clock())
         if state == self._source_state:
             return True
         if not self._source_turn.acquire(blocking=False):
@@ -1439,10 +1386,9 @@ class EvidenceReviewApplication:
             else self.evidence_policy
         )
         binding = adapter.run_binding_hash(prepare_only=prepare_only)
-        # The run this scope sealed at this cutoff under the same package and
-        # permissions is the coverage at this cutoff: a captured intent
-        # resolves to it after its own acquisition, or a later delta, has
-        # moved the counts a fresh packing would read.
+        # The run this scope sealed at this cutoff under the same package and permissions is the
+        # coverage at this cutoff: a captured intent resolves to it after its own acquisition, or a
+        # later delta, has moved the counts a fresh packing would read.
         for task in self._run_tasks(resolved.scope, evidence_as_of=evidence_as_of):
             sealed = adapter.run_of(task)
             if (
@@ -1475,6 +1421,7 @@ class EvidenceReviewApplication:
                     ordered_entity_ids=entities, evidence_as_of=evidence_as_of
                 ),
             )
+        self._unit_obligation_cache.clear()  # a fresh run outdates any view's units
         counted = self._source_counts(resolved.scope, evidence_as_of=evidence_as_of)
         run = project_coverage_run(
             scope=resolved.scope,
@@ -1503,7 +1450,8 @@ class EvidenceReviewApplication:
         """
         if self.network_access is None:
             return None
-        current = network_access(self.workspace)
+        now = self.clock()
+        current = network_access(self.workspace, now=now)
         if self.network_access.allowed and current.allowed:
             return None
         from alphalattice.control.product_host.composition.plain_refusals import refused
@@ -1511,7 +1459,12 @@ class EvidenceReviewApplication:
         words = refused("evidence_review.workspace_network_not_allowed")
         delegation = self.network_delegation(caller)
         ways = source_ways(
-            self.workspace, entities=None, book=None, for_refusal=True, delegation=delegation
+            self.workspace,
+            entities=None,
+            book=None,
+            for_refusal=True,
+            delegation=delegation,
+            now=now,
         )
         official = cast(dict[str, object], ways["official"])
         return ReviewOutcome(
@@ -1526,13 +1479,11 @@ class EvidenceReviewApplication:
         )
 
     def _source_counts(
-        self, scope: PortfolioIssuerScope, *, evidence_as_of: datetime
+        self, scope: PortfolioIssuerScope, *, evidence_as_of: datetime, carry: bool = True
     ) -> LogicalSourceCounts:
-        """Each issuer's logical source count at the cutoff, with its basis, the
-        issuers that filed nothing in the window and those whose every filing in
-        it was read earlier, from the adapter's source owners; the packing reads
-        the counts, the preview shows the bases. No inventory request, no
-        acquisition."""
+        """Each issuer's logical source count at the cutoff, with its basis, the issuers that
+        filed nothing and, with `carry`, those whose every filing was read earlier. No
+        inventory request, no acquisition."""
 
         adapter = self.evidence_task_adapter
         if adapter is None:
@@ -1545,6 +1496,7 @@ class EvidenceReviewApplication:
             evidence_classes=policy.evidence_classes,
             policy_budget=policy.source_policy.maximum_documents_per_issuer,
             window_days=policy.source_policy.sec_recent_8k_days,
+            carry=carry,
         )
 
     def _units(
@@ -1568,16 +1520,15 @@ class EvidenceReviewApplication:
             return coverage_units(scope.ordered_entity_ids, priority_rank=scope.priority_rank)
         sealed = self._sealed_run(scope, evidence_as_of=evidence_as_of)
         if sealed is not None:
-            # A run's own acquisition seals plans at its cutoff, and the
-            # count read "at or before the cutoff" would then move under
-            # the run: its units are re-derived from the run it sealed,
-            # never from the plans it left (seen on the book journey: the
-            # packet of a nine-unit run refused as another book's unit
-            # once its own plans packed the same cutoff into eight).
+            # A run's own acquisition seals plans at its cutoff, and the count read "at or before
+            # the cutoff" would then move under the run: its units are re-derived from the run it
+            # sealed, never from the plans it left (seen on the book journey: the packet of a
+            # nine-unit run refused as another book's unit once its own plans packed the same cutoff
+            # into eight).
             return tuple(unit.ordered_entity_ids for unit in sealed.units)
         if evidence_as_of is None:
             evidence_as_of = self.clock()
-        counted = self._source_counts(scope, evidence_as_of=evidence_as_of)
+        counted = self._source_counts(scope, evidence_as_of=evidence_as_of, carry=False)
         return coverage_units(
             scope.ordered_entity_ids,
             priority_rank=scope.priority_rank,
@@ -1732,11 +1683,10 @@ class EvidenceReviewApplication:
             answers[question.obligation.ordered_entity_ids] = _CurrentEvidenceSelection(
                 disposition=str(view.current_eligibility), question=question, evidence=view
             )
-        # Chosen from the records, newest first: every current analysis is
-        # asked its question, one that is not current only while a unit has no
-        # answer yet (X2) -- a question reads its request and its day's run.
-        # Only a record of the last TTL can be current; an older one is read
-        # only while a unit still waits, day by day (Z2).
+        # Chosen from the records, newest first: every current analysis is asked its question, one
+        # that is not current only while a unit has no answer yet (X2) -- a question reads its
+        # request and its day's run. Only a record of the last TTL can be current; an older one is
+        # read only while a unit still waits, day by day (Z2).
         records = sorted(
             analysis_records(self.artifacts, self._publication_days(), now - CURRENT_WITHIN),
             key=lambda value: value.published_at,
@@ -1783,9 +1733,8 @@ class EvidenceReviewApplication:
                 continue
             key = unit_of(publication.publication_hash)
             if key in waiting:
-                # The newest analysis that is not current, whatever the
-                # reason: its eligibility says whether it expired or was
-                # sealed under a superseded contract.
+                # The newest analysis that is not current, whatever the reason: its eligibility says
+                # whether it expired or was sealed under a superseded contract.
                 stale[key] = (questions[publication.publication_hash], publication)
                 waiting.discard(key)
         recorded = recorded_selections(self.artifacts, resolved.scope.scope_hash)
@@ -1794,10 +1743,9 @@ class EvidenceReviewApplication:
                 continue
             candidates = current[key]
             if len(candidates) > 1:
-                # A person may already have answered this for the unit. That
-                # answer is read here rather than at composition, so it
-                # survives a restart: the newest record among this unit's
-                # publications, and it must name one that is current.
+                # A person may already have answered this for the unit. That answer is read here
+                # rather than at composition, so it survives a restart: the newest record among this
+                # unit's publications, and it must name one that is current.
                 named = next(
                     (
                         value.analysis_publication_hash
@@ -1885,9 +1833,8 @@ class EvidenceReviewApplication:
         run = adapter.run_of(task)
         if run is None:
             return False
-        # The holdings that filed nothing in the window, and those whose every
-        # filing an earlier analysis read, are the run's too, named beside its
-        # units rather than packed into them.
+        # The holdings that filed nothing in the window, and those whose every filing an earlier
+        # analysis read, are the run's too, named beside its units rather than packed into them.
         packed = tuple(
             entity
             for entity in scope.ordered_entity_ids
@@ -2027,6 +1974,30 @@ class EvidenceReviewApplication:
             return "EXPLICIT_OLDER_CURRENT_SELECTION"
         return "EXPLICIT_CURRENT_SELECTION"
 
+    def offered_installs(self) -> list[list[str]]:
+        """Every exact install this book offers under the person's daily consent."""
+        book = self.default_selector(None)
+        quiet = [
+            task.input.payload["arguments"]
+            for task in self.session.task_control_registry.tasks()
+            if task.task_kind == EVIDENCE_INSTALL_TASK_KIND
+            and str(task.failure_code or "").startswith(QUIET_INSTALL)
+        ]
+        return source_offered_installs(self.workspace, self.opened(book), book, quiet)
+
+    def next_install(self, way: dict[str, Any], task_id: UUID, code: str) -> dict[str, Any]:
+        """A stopped install's way on, the next issuers where it found none filed."""
+        if not code.startswith(QUIET_INSTALL):
+            return way
+        book, task = self.default_selector(None), self.session.task_control_registry.task(task_id)
+        return quiet_install(way, self.workspace, self.opened(book), book, task.input)
+
+    def opened(self, book: BookSelector | None) -> SealedBook | None:
+        """The book as sealed, or None where none is named or it cannot be opened yet."""
+        with suppress(PortfolioEvidenceReviewError, TaskNotFoundError):
+            return None if book is None else self._open_book(self.inputs(), book)
+        return None
+
     def preview_evidence(
         self, selector: BookSelector | None = None, *, caller: str = "HUMAN"
     ) -> dict[str, object]:
@@ -2034,51 +2005,21 @@ class EvidenceReviewApplication:
         self.refresh_source()
         chosen = self._review_selector(selector)
         if isinstance(chosen, ReviewOutcome):
-            missing = chosen.disposition == "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY"
             book = self.default_selector(selector)
-            scope: dict[str, object] = {}
-            if missing and book is not None:
-                try:
-                    listings = book_listing_count(self._open_book(self.inputs(), book))
-                except (PortfolioEvidenceReviewError, TaskNotFoundError):
-                    pass
-                else:
-                    scope = {"acquisition_scope": self._acquisition_scope(listings)}
-            return {
-                "status": "EVIDENCE_PREREQUISITES_MISSING",
-                "failure_code": chosen.disposition,
-                "explanation": chosen.detail,
-                "next_action": "SELECT_A_BOOK_AND_ADMIT_ITS_LOCAL_EVIDENCE_PACKAGE",
-                "next_requests": {
-                    **(chosen.next_requests or {}),
-                    "workspace": {"operation": "WORKSPACE_SHOW"},
-                },
-                # The commands that complete the setup; the script's help where none applies
-                # (the page reads `setup` since U68, its fallback `setup_help`).
-                **(
-                    {"setup": evidence_setup(self.workspace, authored=_authored(book))}
-                    if missing
-                    else {
-                        "setup_help": (
-                            "scripts/materialize_evidence_cro_authority.py --help"
-                            if (resolve_playpen_root(Path(__file__)) / "pyproject.toml").is_file()
-                            else "python -m alphalattice.control.product_host.composition."
-                            "evidence_authority_setup --help"
-                        )
-                    }
-                ),
-                **scope,
-                "claim": "No Task, acquisition or model work performed.",
-            }
+            opened = self.opened(book) if chosen.disposition == SOURCE_MISSING else None
+            return prerequisites_missing(
+                self.workspace,
+                chosen.disposition,
+                chosen.detail,
+                next_requests=chosen.next_requests,
+                book=book,
+                opened=opened,
+                listings=None if opened is None else book_listing_count(opened),
+                scope=self._acquisition_scope,
+            )
         adapter = self.evidence_task_adapter
         if adapter is None or self.evidence_publications is None:
-            return {
-                "status": "EVIDENCE_PREREQUISITES_MISSING",
-                "failure_code": "product_host.evidence_task_adapter_absent",
-                "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME",
-                "setup": evidence_setup(self.workspace, authored=_authored(chosen)),
-                "claim": "Source and retrieval authority are the workspace's admitted packages.",
-            }
+            return adapter_absent(self.workspace, chosen, self.opened(chosen))
         if matter_selection_retired(self.evidence_policy.matter_selection):
             return {
                 "status": "EVIDENCE_PREREQUISITES_MISSING",
@@ -2100,10 +2041,7 @@ class EvidenceReviewApplication:
             for value in resources.recorded_documents
             if value.entity_id in scope.ordered_entity_ids
         )
-        # What this preview describes, captured so that submitting it later --
-        # after the clock has moved -- is the same preparation and not a new one
-        # as of the moment of submission. The packing is not part of it: the
-        # preparation reads each holding's filing index and packs from that.
+        # Fix this cutoff so later submission is the same preparation; packing reads filing indices.
         request = self.evidence_policy.run_request(run)
         selector_fields = chosen.request_fields()
         next_requests: dict[str, dict[str, str]] = {}
@@ -2155,10 +2093,10 @@ class EvidenceReviewApplication:
         )
         floor = resources.minimum_entity_coverage
         short = units_short_of_sources(inventory, self.evidence_policy.mode, floor=floor)
-        # A run no unit of which can prepare is not offered: each would fail as named, its ways
-        # on the person's (V541). Under official acquisition it reads the index.
+        # Offered if a unit can prepare or all holdings carry (W3), else its ways are the
+        # person's (V541); live reads the index.
         source_ready = (
-            len(short) < len(run.units)
+            len(short) < len(run.units) + len(run.carried) * (not run.units)
             if self.evidence_policy.mode is AlternativeEvidenceMode.RECORDED
             else resources.live_source is not None
         )
@@ -2189,6 +2127,7 @@ class EvidenceReviewApplication:
                     book=chosen,
                     refusal=self.source_refusal(),
                     delegation=self.network_delegation(caller),
+                    now=self.clock(),
                 ),
                 "acquisition_scope": self._acquisition_scope(len(scope.ordered_entity_ids)),
             }
@@ -2196,7 +2135,7 @@ class EvidenceReviewApplication:
                 # The book cannot be reviewed under these sources: said, with its ways on.
                 ways |= {
                     "failure_code": "alternative_evidence.book_sources_short",
-                    "next_action": SHORT_SOURCE_ACTION[bool(self.network_delegation(caller))],
+                    "next_action": short_source_action(ways),
                 }
         network_refusal = self._source_acquisition_refusal(
             evidence_as_of=run.evidence_as_of, caller=caller
@@ -2265,8 +2204,7 @@ class EvidenceReviewApplication:
             "preparation_binding_hash": intent,
             "preparation_binding": binding,
             "prepared_task_id": prepared_task_id,
-            # A one-unit book's check is the book's check; a wider book's are
-            # per unit, in `coverage.units`.
+            # A one-unit book's check is the book's; a wider book's are per unit (`coverage.units`).
             "source_check": units_body[0]["source_check"] if len(units_body) == 1 else None,
             "admission": self._admission_view(),
             "campaign": self._campaign_view(),
@@ -2336,13 +2274,11 @@ class EvidenceReviewApplication:
     ) -> ReviewOutcome:
         """`Refresh evidence`, all the way through: book, scope, request, Task.
 
-        A preparation names its cutoff. Given none, the cutoff is the moment of
-        submission and the request is new. Given the cutoff and binding a
-        preview handed out, the request is that captured intent: a completed
-        preparation for it is reused while its packet still reads, whatever
-        the clock says now; a binding that no longer describes this workspace
-        (scope, source package, policy or permission moved) is refused by the
-        part that moved.
+        A preparation names its cutoff. Given none, the cutoff is the moment of submission and the
+        request is new. Given the cutoff and binding a preview handed out, the request is that
+        captured intent: a completed preparation for it is reused while its packet still reads,
+        whatever the clock says now; a binding that no longer describes this workspace (scope,
+        source package, policy or permission moved) is refused by the part that moved.
         """
         if not self.refresh_source():
             return self._source_pending()
@@ -2424,17 +2360,14 @@ class EvidenceReviewApplication:
     ) -> ReviewOutcome | None:
         """The refresh already in flight for this exact run, when one is.
 
-        Two callers asking the same question -- a second click, a second
-        session submitting the same captured intent -- get the one Task that
-        is queued or running for it, not a second acquisition of the same
-        bodies behind it. The same question means the same Task input (run,
-        cutoff, resource binding, purpose). A request for another cutoff,
-        another package or another purpose -- or a single preparation queued
-        before every book was a run -- is another question: it is not
-        answered by the active Task, and the existing queue admits or refuses
-        it as busy. Decided last, after every reuse and refusal of the request
-        itself, so a completed preparation for the exact run is still
-        `REUSED_EXACT`.
+        Two callers asking the same question -- a second click, a second session submitting the same
+        captured intent -- get the one Task that is queued or running for it, not a second
+        acquisition of the same bodies behind it. The same question means the same Task input (run,
+        cutoff, resource binding, purpose). A request for another cutoff, another package or another
+        purpose -- or a single preparation queued before every book was a run -- is another
+        question: it is not answered by the active Task, and the existing queue admits or refuses it
+        as busy. Decided last, after every reuse and refusal of the request itself, so a completed
+        preparation for the exact run is still `REUSED_EXACT`.
         """
 
         active = self._active_refresh_task(scope=coverage.resolved.scope)
@@ -2493,10 +2426,10 @@ class EvidenceReviewApplication:
         ):
             return self._run_binding_refusal(preparation_binding_hash, run=run, preview=preview)
         if not run.units:
-            # Nothing is left to read: every holding's filings in the window were
-            # read earlier, or it filed nothing. The run is sealed where every run
-            # is -- the review reads it -- and nothing executes; the last review
-            # carries forward when nothing it read has changed (W3).
+            # Nothing is left to read: every holding's filings in the window were read earlier, or
+            # it filed nothing. The run is sealed where every run is -- the review reads it -- and
+            # nothing executes; the last review carries forward when nothing it read has changed
+            # (W3).
             adapter.admit_run(run)
             return self._nothing_new(run, selector=selector, dispatcher=dispatcher)
         deadline = run.units[0].request.acquisition_deadline
@@ -2616,9 +2549,9 @@ class EvidenceReviewApplication:
         except ValueError as error:
             if str(error) != "alternative_evidence.preparation_superseded":
                 raise
-            # Prepared under an acquisition, canonicalization, retrieval or
-            # allocation contract this workspace has since superseded: what it
-            # read stays readable as history, but no current plan continues it.
+            # Prepared under an acquisition, canonicalization, retrieval or allocation contract this
+            # workspace has since superseded: what it read stays readable as history, but no current
+            # plan continues it.
             return ReviewOutcome(
                 disposition="REFUSED_PREPARATION_SUPERSEDED",
                 detail="This packet was prepared under a contract this workspace has since "
@@ -2865,9 +2798,8 @@ class EvidenceReviewApplication:
         adapter = self.evidence_task_adapter
         assert adapter is not None
         entity_ids = packet.request.ordered_entity_ids
-        screened = screen_analyst_answer(
-            answer, entity_ids=entity_ids, aliases=span_aliases(packet.spans, entity_ids)
-        )
+        screened, unread, left = screened_analysis(answer, packet)
+        view_of = partial(answer_view, left_out=left)
         binding: dict[str, object] = {
             "role": "alternative_evidence.analyst",
             "task_id": str(task_id),
@@ -2886,7 +2818,7 @@ class EvidenceReviewApplication:
                 self._file_answer(record)
                 return _answer_correction("alternative_evidence.answer_problems", record)
             accepted = accepted_analyst_answer(screened, entity_ids=entity_ids)
-            dropped = screened.problems if record.verdict is AnswerVerdict.DONE else ()
+            dropped = (screened.problems if record.verdict is AnswerVerdict.DONE else ()) + unread
             submitted = SubmittedEvidenceAnalysis(
                 prepared_task_id=task_id,
                 prepared_unit_id=unit_id,
@@ -2949,7 +2881,7 @@ class EvidenceReviewApplication:
                     "analysis_publication_hash": publication.publication.publication_hash,
                     **({} if unit_id is None else {"evidence_unit_id": unit_id}),
                     "external_host_usage": "UNAVAILABLE",
-                    "answer": _answer_view(
+                    "answer": view_of(
                         record,
                         self.accepted_answer_delivery(
                             record, accepted.model_dump(mode="json"), task_id=published.task_id
@@ -2973,7 +2905,7 @@ class EvidenceReviewApplication:
             )
             outcome = replace(
                 _submitted(submission),
-                answer=_answer_view(record, delivery, record_filed=submission.admitted),
+                answer=view_of(record, delivery, record_filed=submission.admitted),
             )
             # The unit is the answer's own field, as a published answer says; a next request
             # is one the Host accepts (V449).
@@ -3373,10 +3305,9 @@ class EvidenceReviewApplication:
                 )
             except ValidationError as error:
                 return (_dossier_refused(chosen, error), cutoff)
-        # A book wider than one unit: every unit with a current analysis is
-        # read exactly; every unit without one is named, with its reason, and
-        # stays in the coverage denominator. Complete and partial are told
-        # apart by the coverage the dossier reports, never by rounding.
+        # A book wider than one unit: every unit with a current analysis is read exactly; every unit
+        # without one is named, with its reason, and stays in the coverage denominator. Complete and
+        # partial are told apart by the coverage the dossier reports, never by rounding.
         children = []
         unreviewed = []
         for unit_id, value in selections.items():
@@ -3691,7 +3622,7 @@ class EvidenceReviewApplication:
             )
             return replace(
                 outcome,
-                answer=_answer_view(
+                answer=answer_view(
                     record, delivery, record_filed=outcome.disposition == "ADMITTED"
                 ),
             )
@@ -3746,7 +3677,7 @@ class EvidenceReviewApplication:
                 "disposition": "ADMITTED" if newly_filed else "REUSED_EXACT",
                 "task_id": str(task_id),
                 "lifecycle": str(task.lifecycle),
-                "answer": _answer_view(
+                "answer": answer_view(
                     record,
                     self.accepted_answer_delivery(
                         record, contribution, task_id=task_id, newly_filed=newly_filed
@@ -4354,14 +4285,12 @@ class EvidenceReviewApplication:
     ) -> dict[str, object]:
         """Compare exact published review facts and report incomparable subjects explicitly.
 
-        What changed between two published reviews, as facts a reader can
-        trace: findings new, changed, no longer found or unchanged (matched on
-        issuer set, topic and the analyst's own words, never by handle, which
-        is per publication), dispositions that moved, coverage and issuer
-        position changes, and the sources each side stood on. Unavailable,
-        with the reason, when the two reviews are not comparable (another
-        book, another subject). Never a judgment: a finding that is no longer
-        found is reported as that, not as resolved.
+        What changed between two published reviews, as facts a reader can trace: findings new,
+        changed, no longer found or unchanged (matched on issuer set, topic and the analyst's own
+        words, never by handle, which is per publication), dispositions that moved, coverage and
+        issuer position changes, and the sources each side stood on. Unavailable, with the reason,
+        when the two reviews are not comparable (another book, another subject). Never a judgment: a
+        finding that is no longer found is reported as that, not as resolved.
         """
         current = self.review_publications.read(publication_hash)
         prior = self.review_publications.read(prior_publication_hash)
@@ -4699,11 +4628,7 @@ class EvidenceReviewApplication:
         """
         adapter = self.evidence_task_adapter
         if adapter is None:
-            return {
-                "status": "EVIDENCE_PREREQUISITES_MISSING",
-                "failure_code": "product_host.evidence_task_adapter_absent",
-                "next_action": "ADMIT_SOURCE_PACKAGE_AND_PINNED_RETRIEVAL_RUNTIME",
-            }
+            return documents_absent(self.default_selector(None))
         sources = adapter.runtime.local_sources
         rows = [
             {

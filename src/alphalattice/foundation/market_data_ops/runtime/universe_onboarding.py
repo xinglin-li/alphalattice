@@ -40,6 +40,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
     CurrentUniverseBootstrap,
     candidate_manifest_document,
 )
+from alphalattice.foundation.market_data_ops.storage.action_audit import ActionAuditObservation
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
     CurrentUniverseOnboardingListing,
@@ -982,17 +983,18 @@ class CurrentUniverseOnboarding:
         try:
             self.store.complete_action_audit(
                 self.acquisition_manifest,
-                listing_id=item.listing_id,
-                provider=self.provider.name,
-                observed_actions=tuple(action_by_key[key] for key in sorted(action_by_key)),
-                observed_adjusted_closes=tuple(
-                    adjusted_by_session[key] for key in sorted(adjusted_by_session)
+                ActionAuditObservation(
+                    listing_id=item.listing_id,
+                    provider=self.provider.name,
+                    actions=tuple(action_by_key[key] for key in sorted(action_by_key)),
+                    adjusted_closes=tuple(
+                        adjusted_by_session[key] for key in sorted(adjusted_by_session)
+                    ),
+                    history_start=bars[0].session_date,
+                    history_end=self.as_of_session,
+                    observed_at=observed_at,
                 ),
-                history_start=bars[0].session_date,
-                history_end=self.as_of_session,
-                requested_as_of=self.as_of_session,
-                observed_at=observed_at,
-            )
+            )[0]
         except ValueError:
             self._record_listing_failure(
                 item,
@@ -1352,15 +1354,16 @@ class CurrentUniverseOnboarding:
         def complete(actions, adjusted_closes):
             return self.store.complete_action_audit(
                 self.acquisition_manifest,
-                listing_id=item.listing_id,
-                provider=self.provider.name,
-                observed_actions=actions,
-                observed_adjusted_closes=adjusted_closes,
-                history_start=history_start,
-                history_end=self.as_of_session,
-                requested_as_of=self.as_of_session,
-                observed_at=observed_at,
-            )[0]
+                ActionAuditObservation(
+                    listing_id=item.listing_id,
+                    provider=self.provider.name,
+                    actions=actions,
+                    adjusted_closes=adjusted_closes,
+                    history_start=history_start,
+                    history_end=self.as_of_session,
+                    observed_at=observed_at,
+                ),
+            )[0][0]
 
         if evidence is not None:
             try:

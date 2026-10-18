@@ -15,23 +15,44 @@ const TeamMembers = (() => {
     if (!roles.length && pt.roles.has(HOST_ROLE)) return [];
     return (roles.length ? roles : [null]).map((role, i) => ({...pt, roles: new Set([...pt.roles].filter((r) => (aliases[r] || r) === role)), displayRole: role, sharedUsage: i > 0 && pt.usage.size > 0}));
   });
+  const unverifiedRows = (s, label) => {
+    const rows = [];
+    const unread = LiveActivity.nativeUsageState?.(s.id, s.host), unverified = (unread?.unverified || []).filter((id) => !s.participants.has(id));
+    if (unread?.unverified_count) rows.push(tr([t('Unverified participants'), t('{shown} of {total} shown', {shown: unverified.length, total: unread.unverified_count}), '', '', '', '', '']));
+    rows.push(...unverified.map((id) => tr([html`<span class="mono">${label(id)}</span>`, t('Participant not verified'), html`<span class="muted">${t(unread.unverified_detail || '')}</span>`, '', '', '', ''])));
+    return rows;
+  };
   const countOf = (s, aliases = {}) => rows(s, aliases).filter((pt) => !s.goalScope || [...pt.messages, ...pt.hooks].some((e) => e.subject.goal_id === s.goalScope && (!pt.displayRole || (aliases[e.role] || e.role) === pt.displayRole))).length;
   const activities = (pt, all, aliases = {}, kinds = {}) => {
     const mine = all.filter((e) => e.kind === 'message' && e.actor === pt.id && (!pt.displayRole || (aliases[e.role] || e.role) === pt.displayRole)), by = new Map();
     for (const e of mine) by.set(e.messageKind || '', (by.get(e.messageKind || '') || 0) + 1);
     return {mine, latest: mine.at(-1), made: [...by].map(([k, n]) => kinds[k] ? `${t(kinds[k][0])} × ${count(n)}` : countText(n, '{n} message', '{n} messages')).join(' · ')};
   };
+  /* A member's own Session -- its own participant, never a child, holds a committee or review role
+   * and sent that thread's message or answer -- reads as its part in that day's committee or
+   * review, in declared words, never a goal's stored text. A lead (research_lead) never does. */
+  const PARTS = [['COMMITTEE_SUBMIT', '{role}, committee of {date}', ['alphalattice_alpha', 'alphalattice_risk', 'alphalattice_cro']], ['AGENT_ANSWER_SUBMIT', '{role}, review of {date}', ['alphalattice_evidence_analyst', 'alphalattice_cro']]];
+  const memberTitle = (s, all, aliases) => {
+    const own = [...new Set([...s.participants.get(s.id)?.roles || []].map((r) => aliases[r] || r))], ops = new Set(s.facts.map((f) => f.item.payload?.operation));
+    const d = new Date(all.map((e) => e.at).filter(Boolean).sort()[0] || ''), date = [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+    const [, part, roles] = own.includes('research_lead') || isNaN(d) ? [] : PARTS.find(([op, , held]) => ops.has(op) && own.some((r) => held.includes(r))) || [];
+    return part ? t(part, {role: own.filter((r) => roles.includes(r)).map(LiveTeam.roleName).join('/'), date}) : '';
+  };
   function externalItems(X) {
     const merged = new Map(X.items);
-    for (const g of LiveActivity.retained()) for (const item of g.items) if (item.schema_kind === 'ExternalActivityObserved') merged.set(item.observation_id, item);
+    for (const g of LiveActivity.retained()) for (const item of g.items) if (item.schema_kind === 'ExternalActivityObserved' && !X.items.has(item.observation_id)) merged.set(item.observation_id, item); // the Team read's row is joined
     const usage = new Map(), usageKey = item => { const sub = item.payload?.subject || {}; return [sub.native_session_id, sub.native_agent_id, sub.model].join('|'); };
     for (const item of merged.values()) if (item.payload?.event_kind === 'NATIVE_AGENT_USAGE') { const key = usageKey(item), held = usage.get(key); if (!held || held.ordinal < item.ordinal) usage.set(key, item); }
     const items = [...merged.values()].filter(item => {
       if (item.payload?.event_kind !== 'NATIVE_AGENT_USAGE' || usage.get(usageKey(item)) === item) return true;
       X.items.delete(item.observation_id); return false;
     }).sort((a, b) => a.ordinal - b.ordinal);
-    if (items.length > X.keep) { for (const item of items.splice(0, items.length - X.keep)) X.items.delete(item.observation_id); }
-    return items;
+    if (items.length <= X.keep) return items;
+    // Each Session's latest usage is a snapshot, read apart from the window: a later lead's
+    // newer records push out only older records, never a past Session's usage.
+    const latest = new Set(usage.values()), drop = new Set(items.filter((item) => !latest.has(item)).slice(0, items.length - X.keep));
+    for (const item of drop) X.items.delete(item.observation_id);
+    return items.filter((item) => !drop.has(item));
   }
   function prune(sessions) {
     for (const s of sessions) {
@@ -53,5 +74,5 @@ const TeamMembers = (() => {
     const words = [t('{n} in', {n: count(o.input)}), t('{n} out', {n: count(o.output)})].join(' · ');
     return noteLine(countText(o.count, '{n} other thread of this native session', '{n} other threads of this native session'), words, 'neutral');
   };
-  return {unique, rows, countOf, activities, externalItems, prune, othersLine};
+  return {unique, rows, unverifiedRows, countOf, activities, memberTitle, externalItems, prune, othersLine};
 })();

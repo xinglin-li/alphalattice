@@ -14,9 +14,51 @@ from typing import Any, Final
 import numpy as np
 
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.protocols.actor_execution.bundles import moment_text as when
 
 AGENDA_LIMIT: Final = 12
 AGENDA_RANKING: Final = "Affected holding weight, then adverse count, then original alias."
+
+
+def holdings(readback: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The date's held and exited names by weight (H1 the largest).
+
+    Each carries its component scores at formation from the publication's sealed input.
+    """
+    from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
+        PortfolioUpdatePublication as Publication,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
+        portfolio_update_positions,
+    )
+
+    value = Publication.model_validate(readback["publication"])
+    history = tuple(Publication.model_validate(v) for v in readback.get("history", []))
+    positions = portfolio_update_positions(value, history)
+    previous = positions.preceding or positions.weights
+    book = None if value.pending_proposal is None else value.pending_proposal.input
+    components = getattr(book, "components", None) or (() if book is None else (book,))
+    names = [f"C{n}" for n in range(1, len(components) + 1)]  # a component's floor alias
+    scores: dict[str, dict[str, float]] = {}
+    for name, component in zip(names, components, strict=False):
+        for listing, score in zip(component.ordered_listing_ids, component.scores, strict=False):
+            if score >= 0:  # a name the component did not score reads -1
+                scores.setdefault(listing, {})[str(name)] = score
+    rows = [
+        {
+            "listing_id": listing,
+            "name": label,
+            "weight": weight,
+            "change": weight - previous[i],
+            "scores": scores.get(listing, {}),
+        }
+        for i, ((listing, label), weight) in enumerate(
+            zip(readback["listing_labels"].items(), positions.weights, strict=True)
+        )
+        if weight > 0 or previous[i] > 0
+    ]
+    rows.sort(key=lambda r: (-r["weight"], -abs(r["change"]), r["name"]))
+    return [{"alias": f"H{n}", **row} for n, row in enumerate(rows, 1)]
 
 
 def agenda(
@@ -91,19 +133,48 @@ QUESTIONS: Final = {
 _ASKED: Final = {q: words for qs in QUESTIONS.values() for q, words in qs.items()}
 
 _ABSENT: Final = (
-    ("PM.envelope", "PENDING: the replay baseline and live against expected need live sessions."),
-    ("ALPHA.clean", "UNAVAILABLE: data decisions on held names need the data platform's join."),
-    ("ALPHA.bet", "UNAVAILABLE: sector and style concentration are in no record yet."),
+    ("PM.envelope", "PENDING", "the replay baseline and live against expected need live sessions."),
+    ("ALPHA.clean", "UNAVAILABLE", "data decisions on held names need the data platform's join."),
+    ("ALPHA.bet", "UNAVAILABLE", "sector and style concentration are in no record yet."),
     (
         "ALPHA.strength",
-        "UNAVAILABLE: score dispersion needs raw pre-rank scores; hit rate PENDING.",
+        "UNAVAILABLE",
+        "score dispersion needs raw pre-rank scores; hit rate pending.",
     ),
-    ("RISK.volatility", "UNAVAILABLE: volatility history needs the date's Risk kept each session."),
-    ("RISK.correlation", "UNAVAILABLE: pairwise correlation and clusters are in no record."),
-    ("RISK.liquidity", "UNAVAILABLE: position against ADV needs a declared capital."),
-    ("CRO.process", "UNAVAILABLE: repairs and data decisions need the data platform's join."),
+    (
+        "RISK.volatility",
+        "UNAVAILABLE",
+        "volatility history needs the date's Risk kept each session.",
+    ),
+    ("RISK.correlation", "UNAVAILABLE", "pairwise correlation and clusters are in no record."),
+    ("RISK.liquidity", "UNAVAILABLE", "position against ADV needs a declared capital."),
+    ("CRO.process", "UNAVAILABLE", "repairs and data decisions need the data platform's join."),
 )
 """What no record holds yet, said as a fact: PENDING for live data, UNAVAILABLE otherwise."""
+
+_WORDS: Final = {
+    "PENDING": "pending",
+    "UNAVAILABLE": "not available",
+    "EVALUATED": "evaluated",
+    "NOT_EVALUATED": "not evaluated",
+    "NOT_EVALUATED_FOR_THIS_PROPOSAL": "not evaluated for this proposal",
+    "REVIEWED": "reviewed",
+    "NOT_REVIEWED": "not reviewed",
+    "NOT_REVIEWED_FOR_THIS_PROPOSAL": "not reviewed for this proposal",
+    "NO_MATERIAL_OBJECTION": "no material objection",
+    "ACCEPT_WITH_LIMITS": "accepted with limits",
+    "REQUEST_EVIDENCE_REFRESH": "evidence refresh requested",
+    "HUMAN_REVIEW_REQUIRED": "human review required",
+    "MATERIAL_OBJECTION": "material objection",
+}
+"""The floor's words for each status its facts and views name. The code stays in the records'
+fields: an absence's `state`, the review standing, the date's Risk."""
+
+
+def status_word(code: Any) -> str:
+    """A status in the floor's words; one no table names reads as its code."""
+    return _WORDS.get(str(code), str(code))
+
 
 _FACTS: Final = {
     "turnover": (
@@ -129,7 +200,9 @@ _FACTS: Final = {
     "rule": (
         "ALPHA.held",
         "publication",
-        "{c} holds {n}, top {top} by rank; kept by the exit line at {out}: {kept}.",
+        "{c} holds {n}, top {top} by rank; past the top {top}, inside the exit line at {out}: "
+        "{kept}; past the exit line at {out}, held by tranches formed on earlier sessions until "
+        "each rebalances: {tranche}.",
     ),
     "spread": (
         "ALPHA.cost",
@@ -159,21 +232,21 @@ _FACTS: Final = {
         "CRO.coverage",
         "evidence",
         "Of the book's ending weight: filings read {read}; checked with nothing filed in "
-        "{days} days {nothing}; not reached {unread}. Read and checked together {reviewed}, "
-        "against the minimum {minimum}.",
+        "{days} days {nothing}; not reached {unread}. Read and checked together {together}; "
+        "the review's in-scope weight {reviewed}, against the minimum {minimum}.",
     ),
     "scope_total": (
         "CRO.coverage",
         "evidence",
-        "Read and checked together {reviewed}, against the minimum {minimum}; the split by part "
-        "is not recorded for this review.",
+        "The review's in-scope weight {reviewed}, against the minimum {minimum}; the split by "
+        "part is not recorded for this review.",
     ),
     "review": ("CRO.coverage", "review_standing", "{now}"),
     "package": (
         "CRO.process",
         "publication",
         "Package hash {same} the installed book's; observed through {seen}; enters {entry} "
-        "from the {formation} close, target session {target}.",
+        "from the {formation} close; the update advanced its data through the {target} session.",
     ),
     "caps": (
         "CRO.rules",
@@ -214,8 +287,8 @@ def _view(readback: Mapping[str, Any], held: Sequence[Mapping[str, Any]]) -> dic
     except (KeyError, ValueError):
         return view
     events = {e.formation_session: e for v in (*earlier, value) for e in v.events}.values()
-    before = next((p.pending_proposal for p in reversed(earlier) if p.pending_proposal), None)
     proposal, package = value.pending_proposal, readback.get("strategy_package_id")
+    before = _previous_proposal(proposal, earlier)
     return view | {
         "value": value,
         "proposal": proposal,
@@ -224,6 +297,22 @@ def _view(readback: Mapping[str, Any], held: Sequence[Mapping[str, Any]]) -> dic
         "settled": sorted(e.turnover for e in events if e.phase == "ENTRY_SETTLED"),
         "missed": sum(e.missed_executions for e in events),
     }
+
+
+def _previous_proposal(proposal: Any, earlier: Sequence[Any]) -> Any:
+    """The latest earlier proposal formed on a session before this one's: a history can hold this
+    very publication, whose scores are today's, never the session before."""
+    formed = getattr(getattr(proposal, "schedule", None), "formation_session", None)
+    return next(
+        (
+            p.pending_proposal
+            for p in reversed(earlier)
+            if p.pending_proposal
+            and formed is not None
+            and p.pending_proposal.schedule.formation_session < formed
+        ),
+        None,
+    )
 
 
 def _components(readback: Mapping[str, Any], proposal: Any, before: Any) -> list[dict[str, Any]]:
@@ -275,17 +364,18 @@ def facts(
     said = [*_read(_pm_values, readback, view), *_read(_alpha_values, held, view)]
     said += _read(_risk_values, readback, held, view)
     said += _read(_cro_values, readback, evidence, held, view)
-    rows = [(*_FACTS[k][:2], _FACTS[k][2].format(**v)) for k, v in said if v is not None]
-    rows += [(q, "absence", text) for q, text in _ABSENT]
+    rows = [(*_FACTS[k][:2], _FACTS[k][2].format(**v), None) for k, v in said if v is not None]
+    rows += [(q, "absence", f"{status_word(c).capitalize()}: {text}", c) for q, c, text in _ABSENT]
+    clean = "no record that reads cleanly answers this"
     rows += [
-        (q, "absence", f"UNAVAILABLE: no record that reads cleanly answers this: {w}")
+        (q, "absence", f"{status_word('UNAVAILABLE').capitalize()}: {clean}: {w}", "UNAVAILABLE")
         for q, w in _ASKED.items()
         if all(r[0] != q for r in rows)
     ]
     rows.sort(key=lambda r: list(_ASKED).index(r[0]))
     return [
-        {"alias": f"S{n}", "question": q, "text": t, "source": s}
-        for n, (q, s, t) in enumerate(rows, 1)
+        {"alias": f"S{n}", "question": q, "text": t, "source": s} | ({"state": c} if c else {})
+        for n, (q, s, t, c) in enumerate(rows, 1)
     ]
 
 
@@ -359,16 +449,14 @@ def _component_values(
     )
     moved += f", and {ties} others moved equally" if ties else ""
     unscored = _listed(alias.get(k, k) for k in mine if k not in rank)
-    kept = _listed(
-        f"{alias.get(k, k)} {rank[k]}"
-        for k in sorted(mine, key=lambda k: (rank.get(k, 0), k))
-        if top < rank.get(k, 0)
-    )
+    past = sorted((k for k in mine if top < rank.get(k, 0)), key=lambda k: (rank[k], k))
+    kept = _listed(f"{alias.get(k, k)} {rank[k]}" for k in past if rank[k] <= out)
+    tranche = _listed(f"{alias.get(k, k)} {rank[k]}" for k in past if rank[k] > out)
     gap = [score.get(k) or 0.0 for k in moves] or [0.0]
     ranks = dict(c=name, top=sum(curve[:4]) / 4, bottom=sum(curve[-4:]) / 4)
     return [
         ("moves", dict(c=name, moved=moved, unscored=unscored)),
-        ("rule", dict(c=name, n=len(c["mine"]), top=top, out=out, kept=kept)),
+        ("rule", dict(c=name, n=len(c["mine"]), top=top, out=out, kept=kept, tranche=tranche)),
         ("spread", dict(c=name, spread=max(gap) - min(gap), cost=cost) if moves else None),
         ("curve", ranks if len(curve) > 7 else None),
     ]
@@ -445,6 +533,9 @@ def _coverage(scope: Mapping[str, Any], split: Mapping[str, Any]) -> Said:
     parts = {k: split.get(f"{f}_ending_weight") for k, f in _SPLIT}
     parts["days"] = split.get("nothing_filed_window_days")
     whole = total is not None and None not in parts.values()
+    if whole:  # the total is its named parts, in the parts' own form
+        read, nothing = (float(str(parts[k]).rstrip("%")) for k in ("read", "nothing"))
+        parts["together"] = f"{read + nothing:.3f}%"
     return [
         ("scope", {**total, **parts} if total and whole else None),
         ("scope_total", None if whole else total),
@@ -488,6 +579,40 @@ def card_holdings(
     return sorted({a for a_ in hit.values() for a in a_}, key=order.index), [
         e for e, a in hit.items() if not a
     ]
+
+
+def below_findings(
+    points: Sequence[Mapping[str, Any]],
+    below: Sequence[str],
+    evidence: Mapping[str, Any],
+    held: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Each HIGH issue card on a holding whose Evidence point sits below the agenda line.
+
+    No stance judges such a card, so the report carries it whole, as an appendix the person reads.
+
+    Args:
+        points: The floor's tension points.
+        below: The aliases of the points below the agenda line.
+        evidence: The Evidence projection, with its issue cards and issuer rows.
+        held: The floor's holdings.
+
+    Returns:
+        Each such card's handle, its below-line holdings and the CRO's inference.
+    """
+    adverse = {
+        t
+        for p in points
+        if p["alias"] in below and p["kind"] == "HELD_WITH_ADVERSE_EVIDENCE"
+        for t in p["targets"]
+    }
+    found = []
+    for card in evidence.get("issue_cards") or ():
+        hit = [h for h in card_holdings(card, evidence, held)[0] if h in adverse]
+        if card.get("severity_if_true") == "HIGH" and hit:
+            text = str(card.get("cro_inference") or "")
+            found.append({"handle": card.get("issue_handle"), "holdings": hit, "text": text})
+    return found
 
 
 def issue_lines(evidence: Mapping[str, Any], held: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -545,8 +670,8 @@ def _outliers(
         ),
         (
             "KEPT_BY_RULE",
-            "{holdings} sit among the five largest weights, kept by the exit line "
-            "rather than by score.",
+            "{holdings} sit among the five largest weights though past the top of that formation "
+            "session's ranking by score: the exit line or an earlier tranche holds them.",
             {"holdings": ", ".join(kept)},
             kept,
             bool(kept),
@@ -576,19 +701,22 @@ def review_now(readback: Mapping[str, Any]) -> str:
     route, published = (standing.get("cro") or {}).get("route"), standing.get("published_at")
     if standing.get("status"):
         return (
-            f"Review of this proposal now: {standing['status']}"
-            + (f", published {published}" if published else "")
-            + (f"; CRO route {route}" if route else "")
+            f"Review of this proposal now: {status_word(standing['status'])}"
+            + (f", published {when(published)}" if published else "")
+            + (f"; CRO route {status_word(route)}" if route else "")
             + "."
+            + "".join(f" {said}" for said in standing.get("cutoff_words") or ())
         )
-    return f"Review of this proposal at publication: {readback['publication'].get('cro_status')}."
+    sealed = status_word(readback["publication"].get("cro_status"))
+    return f"Review of this proposal at publication: {sealed}."
 
 
 def risk_view(risk: Mapping[str, Any] | None, held: Sequence[Mapping[str, Any]]) -> str:
     """The date's predicted risk as the Host renders it, report only; members type no digit."""
     if not risk or risk.get("risk_status") != "EVALUATED":
         reason = (risk or {}).get("reason") or "risk_research.date_risk_unavailable"
-        return f"Dated positions Risk assessment: NOT_EVALUATED; unavailable ({reason}); "
+        said = status_word("NOT_EVALUATED")
+        return f"Dated positions Risk assessment: {said}; unavailable ({reason}); "
     alias = {h["listing_id"]: h["alias"] for h in held}
     top = ", ".join(
         f"{alias.get(c['listing_id'], c['listing_id'])} {c['share']:.0%}"
@@ -596,7 +724,8 @@ def risk_view(risk: Mapping[str, Any] | None, held: Sequence[Mapping[str, Any]])
     )
     later = risk["sessions_before_the_positions"]
     return (
-        f"Dated positions Risk assessment: EVALUATED. Predicted risk at {risk['risk_as_of']}"
+        f"Dated positions Risk assessment: {status_word('EVALUATED')}. "
+        f"Predicted risk at {risk['risk_as_of']}"
         + (f", {later} sessions before them" if later else "")
         + f" (the installed recipe, report only): volatility {risk['volatility_per_session']:.2%} "
         f"a session, {risk['volatility_annualized']:.1%} a year; systematic share "

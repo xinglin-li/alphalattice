@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import pyarrow as pa
 import pytest
 
+from alphalattice.control.guanyin.data.workspace_maintenance import maintenance_words
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_workspace import (
     publish_research_workspace_manifest,
@@ -29,7 +30,10 @@ from alphalattice.foundation.feature_engine.contracts import (
     FeatureBuildStatus,
 )
 from alphalattice.foundation.feature_engine.runtime.service import FeatureFoundationService
-from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.foundation.market_data_ops.storage.duckdb import (
+    MarketDataRepository,
+    ProviderAdjustedSeriesRevision,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
@@ -862,6 +866,136 @@ def test_raw_move_review_reopens_and_resumes_the_same_data_task(qualified, tmp_p
         effect = _json(live, "/api/workspace/data-issues/confirm", method="POST", payload=choice)
         assert effect["status"] == "ALREADY_APPLIED"
         assert effect["receipt_hash"] == decision["receipt_hash"]
+
+
+@pytest.mark.parametrize("payers", [1, 2])
+def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
+    ten_sector, tmp_path, monkeypatch, capsys, payers
+):
+    """requirement (DATA-RULE-UPDATE): under the shipped rule a session's ordinary day needs no
+    person: its re-raised move holds the rule's decision and a payer's audit is approved; past
+    the audits' own bound (two payers of sixty names) the day stops for the person."""
+    from alphalattice.interface.local_application.cli import main as client_main
+
+    # One jump that persists (D2's APA): re-acquired a day later it is the same move.
+    workspace, boot = _quarantine_review_workspace(
+        ten_sector, tmp_path, monkeypatch, through=NOW + timedelta(days=1), anomaly="level_shift"
+    )
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "daily-lead")
+    from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
+    from alphalattice.foundation.market_data_ops.storage.duckdb import (
+        ActionAuditScopeInsufficient,
+    )
+    from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
+    from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
+
+    audit, paying = MarketDataRepository.complete_action_audit, TEN_SECTOR_SYMBOLS[1 : 1 + payers]
+
+    def dividend(self, manifest, *observations, **rest):  # type: ignore[no-untyped-def]
+        # Day 2 is the payers' ex-date: each provider back-adjusts the whole history, which a
+        # rolling audit cannot explain; a full-history audit does. A batch holding a payer
+        # refuses whole, and each listing then audits alone.
+        named = {item.listing_id: item.symbol for item in manifest.listings}
+        for item in observations:
+            rolling = (item.as_of - item.history_start).days < 400
+            if named.get(item.listing_id) in paying and item.as_of > NOW.date() and rolling:
+                raise ActionAuditScopeInsufficient("dividend back-adjustment")
+        return audit(self, manifest, *observations, **rest)
+
+    monkeypatch.setattr(MarketDataRepository, "complete_action_audit", dividend)
+
+    def cli(*arguments: str) -> dict:
+        line = ["--workspace", str(workspace), "--view", "full", *arguments]
+        code = client_main(line, serve=lambda _: pytest.fail("the Host is serving"))
+        answer = json.loads(capsys.readouterr().out)
+        assert code in {0, 3}, answer
+        return answer["data"]
+
+    def ruled_entries(live, operation):
+        goals = live.operations.goals.store
+        return [
+            e
+            for goal in goals.goal_ids()
+            for e in goals.attributed(goal)
+            if e.get("operation") == operation and e.get("decided_by") == "RULE"
+        ]
+
+    for at in (NOW, NOW + timedelta(days=1)):
+        with boot(at) as live:
+            admitted = cli("data-update", "run", "--plan", cli("data-update", "plan")["plan_hash"])
+            live.dispatcher.drain_for_tests(timeout=180)
+            status = _json(live, "/api/status?task_id=" + admitted["task_id"])
+            if at > NOW and payers > 1:
+                # Two audits of sixty names pass the audits' 2%: the refusal is recorded, and
+                # the stop is the person's confirm.
+                assert status["latest_failure_code"] == "data.full_history_audit_approval_required"
+                refused = ruled_entries(live, "FULL_HISTORY_AUDIT")
+                assert [(e["status"], len(e["listing_ids"])) for e in refused] == [
+                    ("ESCALATED", 2)
+                ], refused
+                return
+            assert status["lifecycle"] == "SUCCEEDED", status["latest_failure_code"]
+            assert (
+                len(live.session.task_control_registry.tasks()) == (at.date() - NOW.date()).days + 1
+            )
+            ruled = _json(live, "/api/workspace/data-issues")
+            assert ruled["issues"] == [], ruled["issues"]
+            disclosed = ruled["decided_by_rule"]
+            assert disclosed["rules"] == [
+                {"rule_hash": DataDecisionRule().rule_hash, "source": "SHIPPED_DEFAULT"}
+            ], disclosed
+            # The move folds into one row, held on day 2; the approved audit is beside it.
+            assert sorted(
+                (row["symbol"], row["option_id"], row.get("held", False))
+                for row in disclosed["decided"]
+            ) == [
+                (TEN_SECTOR_SYMBOLS[0], "retain_isolated_raw_move_with_caveat", at > NOW),
+                *[(paying[0], "full_history_audit", False)] * (at > NOW),
+            ], disclosed
+            assert disclosed["bounds"]["audits"]["count"] == (at > NOW), disclosed
+            assert disclosed["bounds"]["cases"]["held"] == (at > NOW), disclosed
+            # A held case counts toward no bound: day 1's decision counts, day 2's re-raise holds.
+            held, left = int(at > NOW), disclosed["effective_population"]
+            names = f"{left} of {disclosed['source_population']}"
+            en = (
+                "Data issues decided by the shipped default rule: 1 decided within 10 cases and 2% "
+                f"of names, {held} held from an earlier decision; full-history audits: {held} "
+                f"within 2% of names. {names} names remain in the research population."
+            )
+            zh = (
+                "由内置默认规则决定的数据问题：1 个在 10 个案例与 2% 名称的上限内决定，"  # noqa: RUF001
+                f"{held} 个沿用先前的决定；全历史审计：{held} 个，在 2% 名称的上限内。"  # noqa: RUF001
+                f"研究样本保留 {left}/{disclosed['source_population']} 个名称。"
+            )
+            page = read_in_chinese([disclosed["words"]], missing="Node is required", required=True)
+            language = ANSWER_LANGUAGE.set("zh")  # the CLI reads the same table
+            said = worded(en)
+            ANSWER_LANGUAGE.reset(language)
+            assert [disclosed["words"], page["read"][0], said] == [en, zh, zh], page
+            assert disclosed["bounds"]["cases"]["listings"] == 1, disclosed
+            ruled_cases, goals = (
+                ruled_entries(live, "DATA_ISSUE_CONFIRM"),
+                live.operations.goals.store,
+            )
+    # Day 2 re-raised the same move over a longer window, a new case that held the rule's
+    # decision on its anomaly and counted toward no bound.
+    assert [e["status"] for e in ruled_cases] == ["DECIDED_BY_RULE", "HELD_BY_RULE"], ruled_cases
+    assert ruled_cases[1]["case_count"] == 0, ruled_cases
+    # The rule approved the payer's full-history audit in line: its whole history was fetched.
+    payer_calls = [(a, b) for symbols, a, b in boot.provider.calls if paying[0] in symbols]
+    assert any((b - a).days > 400 for a, b in payer_calls[1:]), payer_calls
+    # A damaged Goal record is named beside the rule's decisions, never a crash of the read.
+    for goal in goals.goal_ids():
+        folder = workspace / "artifacts" / "product-host" / "goals" / "attribution" / str(goal)
+        (folder / "99999999.json").write_text("{", encoding="utf-8")
+    with boot(at) as live:
+        damaged = _json(live, "/api/workspace/data-issues")["decided_by_rule"]
+    assert {row["failure_code"] for row in damaged["unreadable_goals"]} == {
+        "goal.attribution_invalid"
+    }, damaged
+    assert [row["option_id"] for row in damaged["decided"]] == [
+        "retain_isolated_raw_move_with_caveat"
+    ], damaged
 
 
 def _quarantine_review_workspace(
@@ -1715,10 +1849,15 @@ def test_a_deferred_feature_build_is_built_again_once_its_retry_is_due(
         service.stop()
 
 
+RECONCILIATION = "workspace_maintenance.feature_source_reconciliation_failed"
+
+
+@pytest.mark.parametrize("stop", ["build", "reconciliation"])
 def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
-    qualified, tmp_path, monkeypatch
+    qualified, tmp_path, monkeypatch, stop
 ):
-    """A feature build that failed names its cause beside its code."""
+    """A feature build that failed names its cause beside its code, as does a source change it
+    cannot reconcile, with the listing and its words."""
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
@@ -1740,7 +1879,32 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
             failure_code="feature.materialization_failed",
         )
 
-    monkeypatch.setattr(FeatureFoundationService, "build", exhausted)
+    def unexplained(self, *_args, **_kwargs):  # a set change no session it lacked explains
+        return (
+            ProviderAdjustedSeriesRevision(
+                receipt_hash="1" * 64,
+                next_series_hash="1" * 64,
+                source_receipt_hash="1" * 64,
+                listing_id="listing-a",
+                provider="fixture",
+                prior_series_hash=None,
+                scope_start=date(2026, 7, 1),
+                scope_end=NOW.date(),
+                full_history=False,
+                changed_value_count=1,
+                changed_return_sessions=(date(2026, 7, 1),),
+                session_set_changed=True,
+                uniform_rescale=False,
+                observed_at=NOW,
+            ),
+        )
+
+    if stop == "build":
+        monkeypatch.setattr(FeatureFoundationService, "build", exhausted)
+    else:
+        monkeypatch.setattr(
+            MarketDataRepository, "provider_adjusted_semantic_deltas_since", unexplained
+        )
     service = LocalPortfolioWebSession(
         workspace=workspace,
         workspace_manifest=manifest,
@@ -1757,7 +1921,6 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
         service.dispatcher.drain_for_tests()
         status = _json(service, f"/api/status?task_id={sent['task_id']}")
         assert status["lifecycle"] == "BLOCKED", status
-        assert status["failure_code"] == "feature.materialization_failed"
         cause = {
             "exception_type": "MemoryError",
             "detail": "",
@@ -1766,6 +1929,19 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
             "first_session": "2026-09-01",
             "last_session": NOW.date().isoformat(),
         }
+        if stop == "reconciliation":
+            assert status["failure_code"] == RECONCILIATION
+            assert maintenance_words(RECONCILIATION) in json.dumps(status), status
+            cause = {
+                "exception_type": "ValueError",
+                "detail": "provider session-set change unexplained",
+                "step": "source_reconciliation",
+                "unit": "listing-a",
+                "first_session": None,
+                "last_session": None,
+            }
+        else:
+            assert status["failure_code"] == "feature.materialization_failed"
         assert status["failure_cause"] == cause
         assert _json(service, "/api/data-update")["failure_cause"] == cause
     finally:

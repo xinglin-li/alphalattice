@@ -22,9 +22,11 @@ STRICT_READERS = {
     ),
     COMPOSITION + "evidence_review_application.py": (
         "EvidenceReviewApplication",
-        "_run_tasks _active_refresh_task _completed_task "
+        "_run_tasks _active_refresh_task offered_installs _completed_task "
         "_accepted_answer_delivery recovery_commands",
     ),
+    # The same install sent again records itself as each blocked install's successor.
+    COMPOSITION + "evidence_authority_setup.py": ("EvidenceInstall", "_continue_blocked"),
     COMPOSITION + "feature_trials.py": ("FeatureTrials", "way_on"),
     COMPOSITION + "local_web_session.py": ("LocalPortfolioWebSession", "_recovery_commands"),
     COMPOSITION + "portfolio_research_operations.py": (

@@ -141,28 +141,33 @@ def test_the_official_source_is_admitted_only_by_consent_in_an_open_environment(
         closed.source.acquire_registry(captured_at=_NOW)  # type: ignore[union-attr]
     assert closed.source.network_call_count == 1  # type: ignore[union-attr]
 
-    set_network_access(tmp_path, enabled=True)
+    set_network_access(tmp_path, enabled=True, now=_NOW)
     # The product names itself by its own contact; the person names none.
     assert sec_user_agent({}) == "AlphaLattice alphalattice.project@gmail.com"
     assert sec_user_agent({"SEC_USER_AGENT": "QA qa@example.com"}) == "QA qa@example.com"
-    product = admit_official_source(network_consent=True, workspace_root=tmp_path, environment={})
+    product = admit_official_source(
+        network_consent=True, workspace_root=tmp_path, environment={}, now=_NOW
+    )
     assert product.transport_origin == "OFFICIAL_HTTP" and product.refusal_code is None
     product.source._transport.close()  # type: ignore[union-attr]
     # A build without its contact refuses as its own configuration; the person names none.
     with monkeypatch.context() as unconfigured:
         unconfigured.setattr(admission, "SEC_CONTACT", "absent-contact.json")
-        bare = admit_official_source(network_consent=True, workspace_root=tmp_path, environment={})
+        bare = admit_official_source(
+            network_consent=True, workspace_root=tmp_path, environment={}, now=_NOW
+        )
     assert bare.source is None and bare.refusal_code == "evidence_review.sec_contact_not_configured"
     # A consent record that does not read grants nothing, and says so.
     (tmp_path / admission.CONSENT).parent.mkdir(parents=True, exist_ok=True)
     (tmp_path / admission.CONSENT).write_text("{", encoding="utf-8")
     assert evidence_source_consent(tmp_path).actor == "UNREADABLE"
-    assert admit_workspace_source(tmp_path, {}).source is None
+    assert admit_workspace_source(tmp_path, {}, clock=lambda: _NOW).source is None
 
     official = admit_official_source(
         network_consent=True,
         workspace_root=tmp_path,
         environment={"SEC_USER_AGENT": "QA qa@example.com"},
+        now=_NOW,
     )
     assert official.admitted and official.transport_origin == "OFFICIAL_HTTP"
     assert official.network_access is not None and official.network_access.allowed
@@ -621,7 +626,7 @@ def test_the_running_host_admits_the_source_once_the_consent_and_the_network_all
     recorded = build_authority(tmp_path=tmp_path, report=report, model_authority_admitted=False)
     service = start_service(workspace, recorded, tmp_path, clock=lambda: _NOW)
     review = service.review
-    review.official_source = partial(admit_workspace_source, workspace, {})
+    review.official_source = partial(admit_workspace_source, workspace, {}, clock=review.clock)
     try:
         query = f"result_hash={service.result_hash()}"
         service.get("/api/evidence/preview?" + query)
@@ -631,7 +636,7 @@ def test_the_running_host_admits_the_source_once_the_consent_and_the_network_all
         denied = review.evidence_task_adapter.resources.live_source
         assert denied is not None and closed["network_access"]["network_allowed"] is False
         assert "with no restart" in closed["source_ways"]["official"]["before"]
-        set_network_access(workspace, enabled=True)
+        set_network_access(workspace, enabled=True, now=_NOW)
         opened = service.get("/api/evidence/preview?" + query)
         assert opened["status"] == "EVIDENCE_PREPARATION_READY"
         assert review.evidence_policy.mode is AlternativeEvidenceMode.LIVE_OFFICIAL
@@ -647,7 +652,7 @@ def test_the_running_host_admits_the_source_once_the_consent_and_the_network_all
         assert bare["source_refusal"] == "evidence_review.sec_contact_not_configured"
     finally:
         service.session.stop()
-    admitted = admit_workspace_source(workspace, {}).campaign_ledger
+    admitted = admit_workspace_source(workspace, {}, clock=lambda: _NOW).campaign_ledger
     assert admitted is not None and admitted.held, "the campaign was released at stop"
     admitted.close()
 
@@ -659,11 +664,12 @@ def test_a_real_source_reads_the_closed_control_before_any_new_acquisition(
     the workspace closes; its controlled HTTP transport is never called."""
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
     workspace, report = build_workspace(tmp_path)
-    set_network_access(workspace, enabled=True)
+    set_network_access(workspace, enabled=True, now=_NOW)
     admission = admit_official_source(
         network_consent=True,
         workspace_root=workspace,
         environment={"SEC_USER_AGENT": "QA qa@example.com"},
+        now=_NOW,
     )
     assert admission.source is not None and admission.network_access is not None
     assert admission.transport_origin == "OFFICIAL_HTTP" and admission.network_access.allowed
@@ -672,7 +678,27 @@ def test_a_real_source_reads_the_closed_control_before_any_new_acquisition(
 
     def controlled(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(503)
+        return httpx.Response(503 if "tickers" not in request.url.path else 200, content=b"{}")
+
+    # A source a running Task holds asks the control before each request (the review of
+    # a36e210c4: a stop reached only the next admission).
+    client, mock = httpx.Client, httpx.MockTransport(controlled)
+    with monkeypatch.context() as patched:
+        patched.setattr(httpx, "Client", lambda **options: client(**options | {"transport": mock}))
+        held = admit_official_source(
+            network_consent=True,
+            workspace_root=workspace,
+            environment={"SEC_USER_AGENT": "QA qa@example.com"},
+            now=_NOW,
+        )
+    assert held.source is not None
+    set_network_access(workspace, enabled=False, now=_NOW)
+    with pytest.raises(ValueError, match=r"alternative_evidence\.network_disabled"):
+        held.source._transport.get(  # type: ignore[attr-defined]
+            "https://www.sec.gov/files/company_tickers.json", maximum_bytes=2
+        )
+    held.source.close()
+    set_network_access(workspace, enabled=True, now=_NOW)
 
     with HttpxSecOfficialTransport(
         user_agent="QA qa@example.com", transport=httpx.MockTransport(controlled)
@@ -687,7 +713,7 @@ def test_a_real_source_reads_the_closed_control_before_any_new_acquisition(
             query = f"result_hash={service.result_hash()}"
             ready = service.get("/api/evidence/preview?" + query)
             assert ready["status"] == "EVIDENCE_PREPARATION_READY"
-            set_network_access(workspace, enabled=False)
+            set_network_access(workspace, enabled=False, now=_NOW)
             closed = service.get("/api/evidence/preview?" + query)
             assert closed["status"] == "EVIDENCE_PREREQUISITES_MISSING"
             assert closed["network_access"]["network_allowed"] is False
@@ -1934,6 +1960,10 @@ def test_a_bundle_on_a_book_with_no_run_is_answered_as_it_was_read(tmp_path: Pat
         assert bundle is not None
         prepared_dossier_hash = bundle.submission["review_dossier_hash"]
         now[0] += timedelta(seconds=11)  # AX1f's two reads were 11 seconds apart
+        repeated = _operation(service, request)
+        assert repeated["status"] == "AGENT_BUNDLE_READY", repeated
+        assert repeated["files"] == prepared["files"]
+        assert EvidenceReviewBundles(review).agent_bundle(str(directory)) == bundle
         answered = _operation(
             service,
             {

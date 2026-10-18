@@ -149,8 +149,7 @@ const LiveReview = (() => {
   /* ---- drafts, kept under the exact workspace/book/prepared-Task(/unit) context and role ---- */
   const draftContext=(unit=S.packetUnit)=>workspaceId()+'|'+S.key+'|'+S.packetTask+(unit ? '|'+unit : '');
   /* The viewer store: contexts keyed by workspace, book and prepared Task, plus a legacy
-   * single-slot draft ({key, analyst, cro}) that named no workspace and is carried untouched
-   * until the reader recovers, exports or discards it. */
+   * single-slot draft ({key, analyst, cro}) that named no workspace and is carried untouched until the reader recovers, exports or discards it. */
   const isLegacy=(saved)=>Boolean(saved) && typeof saved==='object' && typeof saved.key==='string' && !saved.contexts;
   function draftStore() {
     const saved=readPreference('reviewDrafts');
@@ -210,8 +209,7 @@ const LiveReview = (() => {
     store.legacy=null;writeStore(store);S.legacy=legacyFor(draftStore());render();
   }
   /* The reader's decision on a draft kept for this Task with no unit named: recovered into this
-   * unit's empty fields (typed text is kept), exported, or discarded; it is never assigned to a
-   * unit by the page. */
+   * unit's empty fields (typed text is kept), exported, or discarded; it is never assigned to a unit by the page. */
   function settleUnitless(decision) {
     const store=draftStore(), found=unitlessFor(store); if(!found) return;
     if(decision==='export'){download(JSON.stringify({key:S.key+'|'+S.packetTask,analyst:found.analyst,cro:found.cro},null,2),'AlphaLattice-unsent-draft.json','application/json');return;}
@@ -339,8 +337,7 @@ const LiveReview = (() => {
   }
   /* The five steps. Each status comes from this exact book and evidence version: the owner's
    * projection, the packet or dossier the owner returned for it, the Tasks admitted for it from
-   * this page; unbound Tasks are discovery; a pinned, expired or ambiguous projection borrows
-   * no later work. */
+   * this page; unbound Tasks are discovery; a pinned, expired or ambiguous projection borrows no later work. */
   function stepRows() {
     const v=S.view, refusal=S.lastRefusal, b=boundFor(), published=historical() || v?.state==='REVIEW_PUBLISHED', blocked=blockedState();
     const day=(s)=>dayWord(s) || ''; // the rail says the day (the reader's, law 133); the facts say the time
@@ -468,7 +465,7 @@ const LiveReview = (() => {
     const c=v.scope_coverage,u=v.book?.update_subject,x=v.book?.experiment_subject,lines=[...gapLines(v.gaps || []),...(v.claim_limits || [])]; // the Report's words for the same lines: one way to say a gap
     return [{title:t('The review'),body:kv(rows)},...teamFacts(),
       ...(lines.length ? [{title:t('Limits'),body:html`${textCollection('overview-limits',lines,said)}`}] : []),
-      ...(u || x ? [{title:t('Provenance'),body:html`${u ? kv([[t('Position basis'),u.position_basis],[t('Observed through'),u.observed_through],[t('Entry session'),u.entry_session],[t('Update publication'),html`<span class="mono">${u.update_publication_hash}</span>`]]) : ''}${x ? kv([[t('Previous holdings session'),x.preceding_session || ''],[t('Research cutoff'),x.research_as_of_session || '']]) : ''}`}] : []),
+      ...(u || x ? [{title:t('Provenance'),body:html`${u ? kv([[t('Position basis'),codeWords(u.position_basis)],[t('Observed through'),u.observed_through],[t('Entry session'),u.entry_session],[t('Update publication'),html`<span class="mono">${u.update_publication_hash}</span>`]]) : ''}${x ? kv([[t('Previous holdings session'),x.preceding_session || ''],[t('Research cutoff'),x.research_as_of_session || '']]) : ''}`}] : []),
       ...(c?.unmapped?.length ? [{title:countText(c.unmapped_positions,'{n} position without admitted issuer mapping','{n} positions without admitted issuer mapping'),body:collectionTable('unmapped-positions',c.unmapped,[{label:t('Listing'),type:'text'},{label:t('Weight'),type:'num',cls:'col-tight'},{label:t('State'),type:'text'},{label:t('Reason'),type:'text',absorb:true}],r=>[r.ticker || r.listing_id,pctText(r.ending_weight),codeWords(r.status),r.reason])}] : [])];
   }
   /* Coverage and mapping as one bar each (round 77, the single visuals round 5 left): the words
@@ -1866,9 +1863,9 @@ const LiveReview = (() => {
     const d=deliveryOf();
     if(isUpdateBook() && d){
       const p=d.sections?.positions?.value || {},schedule=p.schedule || {},date=schedule.entry_session;
-      const rows=p.position_rows?.length ? collectionTable('delivery-positions',p.position_rows,[{label:t('Listing'),type:'text',absorb:true},{label:t('Weight'),unit:'%',type:'num'},{label:t('Change'),unit:'bps',type:'num'}],r=>[r.name || r.listing_id,num(pctText(r.weight).replace(/%$/,'') || null,'ratio',2),Number.isFinite(Number(r.change)) ? signed(r.change,'ratio',2) : t(r.change || '')]) : '';
+      const rows=ReviewPositions.render(p,collectionTable,pctText);
       const facts=factsRef(t('Facts'),kv([[t('Formation session'),schedule.formation_session || ''],[t('Entry session'),date || ''],[t('Holding end'),schedule.holding_end_session || ''],[t('Position basis'),codeWords(p.basis)],[t('Update publication'),hashCell(d.selection?.update_publication_hash)],[t('Review section'),t(SECTION_WORDS[d.sections?.evidence_cro?.status] || '')],[t('Export hash'),hashCell(d.export_hash)]]));
-      return html`${stateLine('recorded',{word:codeWords(d.status),next:''})}${panel(date ? t('Positions for {date}',{date}) : t('Positions'),'',html`${p.position_rows?.[0]?.basis ? html`<p class="caption">${said(p.position_rows[0].basis)}</p>` : ''}${rows}${facts}`,'','data-report-section="positions"')}${panel(t('Commentary'),'',html`${(d.commentary || []).map(c=>html`<article><h3>${c.attribution_word ? t(c.attribution_word,Object.fromEntries(Object.entries(c.attribution_words || {}).map(([k,v])=>[k,declaredCodeWord(v) ? codeWords(v) : v]))) : c.attribution}</h3><p class="owner-text">${c.question ?? (c.text_word ? t(c.text_word) : c.text)}</p>${c.question != null ? html`<p class="caption">${t(c.relay_word || '')}</p><p class="owner-text">${c.answer ?? t('Not yet given')}</p>` : ''}</article>`)}${factsRef(t('Facts'),kv([[t('Attribution'),codeWords(d.commentary_provenance?.attribution)]]))}`,'','data-report-section="commentary"')}<p class="caption">${said(d.claim)}</p>`;
+      return html`${stateLine('recorded',{word:codeWords(d.status),next:''})}${panel(date ? t('Positions for {date}',{date}) : t('Positions'),'',html`${rows}${facts}`,'','data-report-section="positions"')}${panel(t('Commentary'),'',html`${(d.commentary || []).map(c=>html`<article><h3>${c.attribution_word ? t(c.attribution_word,Object.fromEntries(Object.entries(c.attribution_words || {}).map(([k,v])=>[k,declaredCodeWord(v) ? codeWords(v) : v]))) : c.attribution}</h3><p class="owner-text">${c.question ?? (c.text_word ? t(c.text_word) : c.text)}</p>${c.question != null ? html`<p class="caption">${t(c.relay_word || '')}</p><p class="owner-text">${c.answer ?? t('Not yet given')}</p>` : ''}</article>`)}${factsRef(t('Facts'),kv([[t('Attribution'),codeWords(d.commentary_provenance?.attribution)]]))}`,'','data-report-section="commentary"')}<p class="caption">${said(d.claim)}</p>`;
     }
     if(!isExperimentBook()) return html`<p>${t('This book is an installed result; its review is exported through the review owner (the ··· menu). A joined delivery is composed for an authored Portfolio book from the Lab.')}</p>`;
     if(!d) return emptyState(html`${t('No delivery composed yet')}${infoMark(t('No delivery composed yet; composing joins this exact book with its sources and the sections you select.'))}`,isExperimentBook() ? '' : typedBtn(t('Compose the delivery'),'review-deliver','','button primary',ready() ? '' : t('Busy'))); // round 90: the head's primary is the one action; round 93: one sentence
@@ -2565,8 +2562,7 @@ const LiveReview = (() => {
   /* Books (N2, law 123; F1, law 136): the Evidence Home as a lobby -- every saved book one row,
    * grouped by its state (the books at work open, the published folded) or by its time; one line:
    * its reference (what tells two alike apart), its name (law 134), its facts, its day; the row
-   * opens its overview (the next step is the book's page's). A book whose state is not read yet groups apart; grouped by state a row keeps its
-   * mark and the head says the word (not twice). */
+   * opens its overview (the next step is the book's page's). A book whose state is not read yet groups apart; grouped by state a row keeps its mark and the head says the word (not twice). */
   function booksPage() {
     const known=new Map(Data.history().filter(r=>r.raw?.book).map(r=>[key(r.raw.book),r]));
     const items=books().map(v=>{const r=known.get(key(v.selector)),summary=r?.raw?.book_summary;return {v,r,state:summary?.state==='NOT_READ' ? 'metadata' : null,word:t('Not read yet'),kind:v.selector.experiment_task_id ? 'authored' : 'installed'};});
@@ -2596,7 +2592,7 @@ const LiveReview = (() => {
     // B1 (the book plan's items 5 and 7): the book's identity and its evidence's days on every tab -- as-of, expiry and, once a review is published, its completeness and day; the publication is the chooser at the line's end
     const reviewed=withBook && Boolean(v) && (reviewPublished() || historical());
     const update=b?.update_subject;
-    const headFacts=withBook ? [[t(update ? 'Formation session' : 'trading|Session'),session()],[t('Book'),b?.authority ? codeWords(b.authority) : ''],...(update ? [[t('Observed through'),update.observed_through],[t('Entry session'),update.entry_session]] : []),...study,[t('Holdings'),b?.held_count==null? '' :count(b.held_count)],[t('As-of'),v?.evidence_as_of ? dayWord(v.evidence_as_of) : ''],[t('Expires'),v?.evidence_expires_at ? dayWord(v.evidence_expires_at) : ''],...(reviewed ? [[t('Completeness'),v.review_state ? codeWords(v.review_state) : ''],[t('Published'),publishedAt() || '']] : [])] : [];
+    const headFacts=withBook ? [[t(update ? 'Formation session' : 'trading|Session'),session()],[t('Book'),b?.authority ? codeWords(b.authority) : ''],...(update ? [[t('Observed through'),update.observed_through],[t('Entry session'),update.entry_session]] : []),...study,[t('Book holdings'),b?.held_count==null? '' :count(b.held_count)],[t('As-of'),v?.evidence_as_of ? dayWord(v.evidence_as_of) : ''],[t('Expires'),v?.evidence_expires_at ? dayWord(v.evidence_expires_at) : ''],...(reviewed ? [[t('Completeness'),v.review_state ? codeWords(v.review_state) : ''],[t('Published'),publishedAt() || '']] : [])] : [];
     const tools=app.page==='handoff' ? handoffTools() : app.page==='report' ? [...(S.exportDoc ? [{ic:'file',action:'review-export',value:'json',word:t('Export review JSON'),why:t('The owner\'s exact export')},{ic:'file',action:'review-export',value:'html',word:t('Export review HTML'),why:t('The owner\'s exact export')}] : []),...(deliveryOf() ? [{ic:'file',action:'review-delivery-export',value:'html',word:t('Export delivery HTML'),why:t('The composed delivery')},{ic:'file',action:'review-delivery-export',value:'json',word:t('Export delivery JSON'),why:t('The composed delivery')}] : [])] : [];
     // the lane in transition (the same book's next reading, or its report, is on its way and what is painted is the previous one): dimmed after 300 ms and not interactive, never collapsed
     const transition=(S.status==='refreshing' && !viewShown()) || (app.page==='report' && Boolean(S.exportDoc) && S.exportDoc.hash!==(S.pin || workingPublication()));

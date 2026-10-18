@@ -1092,40 +1092,36 @@ class AlternativeEvidenceDocumentTaskAdapter:
         evidence_classes: tuple[AlternativeEvidenceClass, ...],
         policy_budget: int,
         window_days: int,
+        carry: bool = True,
     ) -> LogicalSourceCounts:
         """Count each issuer's logical sources at the requested cutoff.
 
         Each count reflects the issuer's selection under the policy budget,
         decided before units are packed. Return its basis and issuers with no
-        filings in the window. In recorded mode, count the library's cutoff-valid
-        documents; a library says nothing of what was filed, so no issuer is
-        named as filing nothing. In live mode the issuer's filing index read
-        at this cutoff (`read_inventory`) when there is one: exact, and an
-        empty plan is an issuer that filed nothing. What a current analysis at
+        filings in the window. In recorded mode, the library counts what no current analysis
+        read, all of it without `carry` (`RecordedEvidenceSource.logical_counts`). In live mode the
+        issuer's filing index read at this cutoff (`read_inventory`) when there is one:
+        exact, and an empty plan is an issuer that filed nothing. What a current analysis at
         or before the cutoff read in the window is not counted: it is named as
         read earlier, and an issuer with nothing else in the window is carried
         (W3). Else its latest sealed selection plan at or before the cutoff, or
         the policy budget named as the reservation of an issuer never read --
         no request is made here.
         """
+        if mode is AlternativeEvidenceMode.RECORDED:
+            return RecordedEvidenceSource.logical_counts(
+                entities=entities,
+                documents=self.resources.recorded_documents,
+                evidence_as_of=evidence_as_of,
+                evidence_classes=frozenset(evidence_classes),
+                policy_budget=policy_budget,
+                read_by=lambda entity: self.runtime.sealed_readings.read_by(
+                    entity, evidence_as_of=evidence_as_of, window_days=window_days
+                ),
+                carry=carry,
+            )
         counts: dict[str, int] = {}
         basis: dict[str, str] = {}
-        if mode is AlternativeEvidenceMode.RECORDED:
-            classes = frozenset(evidence_classes)
-            for entity in entities:
-                selected, deferred = RecordedEvidenceSource.logical_selection(
-                    entity_id=entity,
-                    documents=self.resources.recorded_documents,
-                    evidence_as_of=evidence_as_of,
-                    evidence_classes=classes,
-                    policy_budget=policy_budget,
-                )
-                counts[entity] = len(selected)
-                basis[entity] = (
-                    f"recorded library: {len(selected)} cutoff-valid document(s) selected"
-                    + (f", {len(deferred)} beyond the policy budget" if deferred else "")
-                )
-            return LogicalSourceCounts(counts=counts, basis=basis)
         nothing: set[str] = set()
         carried: set[str] = set()
         read_filings: list[AlternativeEvidenceReadFiling] = []

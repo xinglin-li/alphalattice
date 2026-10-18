@@ -11,7 +11,7 @@ Positions to hold come only from an activated installed strategy's forward updat
 
 1. **"Build me a reviewed book from public data."** For the first use, its answers lead to the whole-support book as the numerical check, activation with the date's update in the same act, then Evidence and CRO review of that date's published positions, the committee and its report; only that forward update yields positions. Training prepares the light lifecycle by default (one seed of each model vintage, as `model_lifecycle` in its answers says); tell the person, and when they ask for the full one plan it by name: `training plan --input <input-id> --component <component-id> --lifecycle FULL`, then `alphalattice study controls --input <input-id> --component <component-id> --lifecycle FULL`.
 2. **"Try a short-term reversal factor and show me a book."** Development research: Factor → curation → Alpha → `alphalattice book draft` → book study. It yields a backtest and no positions; forward positions need strategy authoring, installation, review and activation, a new decision for the person.
-3. **"What should my active strategy hold next?"** `alphalattice strategy-book controls --package <package>`: if `ACTIVE` and inside its horizon, its offered update yields the positions; if `INACTIVE`, activation comes first; past the horizon, a newer book.
+3. **"What should my active strategy hold next?"** `alphalattice strategy-book controls --package <package>`: if `ACTIVE` and inside its horizon, its offered update yields the positions; if `INACTIVE`, activation comes first; past the horizon, a newer book. For a named date's positions, `alphalattice research-update plan --package <package> --date <date>`: the trade date they are entered on, decided at the close before it, as `positions_for` reads back.
 
 ## Review budget
 
@@ -43,7 +43,7 @@ Read `alphalattice research-update show` for the Task the run returned. Each dec
 - `CONDITIONAL_ESTIMATE` (`status` `PROPOSAL_PUBLISHED`): weights marked at the formation close for a conditional entry at the next open, not an execution target.
 - `OBSERVED_RESEARCH_ENTRY`: the entry settled on that open's daily bar, with cost lanes of 5 and 10 basis points a side; no venue fill is verified.
 
-Quote the publication's `claim` with its `risk_status` and `cro_status`. They are the publication's own, sealed when it published, and stay `NOT_EVALUATED` / `NOT_REVIEWED`; a later Evidence and CRO review of that publication is a separate record with its own standing and date, and you cite both. The readback's `date_risk` is the positions' predicted Risk under the installed recipe, report only. It stands at the positions' formation session, or, where the later returns are missing, at the first session after the book's Risk surface ends (`risk_as_of`, `sessions_before_the_positions`); `covered_weight` is the share of the book it covers. Say its date and coverage, and a `NOT_EVALUATED` with its reason, as they are. Before activation, the controls answer's `activation.review_holdings` are the book's last sealed holdings (`BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS`); read its `review_standing` separately. The product computes no preview, so run no update and build no book to make one. Activation is reversible and deactivation keeps history.
+Explain the publication's `claim` as research positions, not trade advice, with its `risk_status` and `cro_status`; keep its stored code when citing the record. They are the publication's own, sealed when it published, and stay `NOT_EVALUATED` / `NOT_REVIEWED`; a later Evidence and CRO review of that publication is a separate record with its own standing and date, and you cite both. The readback's `date_risk` is the positions' predicted Risk under the installed recipe, report only. It stands at the positions' formation session, or, where the later returns are missing, at the first session after the book's Risk surface ends (`risk_as_of`, `sessions_before_the_positions`); `covered_weight` is the share of the book it covers. Say its date and coverage, and a `NOT_EVALUATED` with its reason, as they are. Before activation, the controls answer's `activation.review_holdings` are the book's last sealed holdings (`BOOK_LAST_HOLDINGS_NOT_NEXT_POSITIONS`); read its `review_standing` separately. The product computes no preview, so run no update and build no book to make one. Activation is reversible and deactivation keeps history.
 
 ## Where the first reviewed positions stand
 
@@ -54,12 +54,18 @@ Quote the publication's `claim` with its `risk_status` and `cro_status`. They ar
 | Activated, its update held | The activation answer's `update.plan.held_until` and `reading` | Tell the person the time in one line; keep `alphalattice activity wait --goal <goal-id>` running, which wakes when the held update ends |
 | Positions published | `alphalattice research-update show --task <task>`: formation, entry, basis, `claim` | Read them out with their dates; they are research positions |
 | Their review prepared | `alphalattice strategy-book review --update <task> --package <package> --dir "<out>/review"` | Start one Evidence Analyst per bundle |
-| CRO review published | `alphalattice review continue --dir "<out>/review"` after the CRO | Cite the review beside the publication's own status |
+| CRO review published | `alphalattice review continue --dir "<out>/review"` after the CRO | Cite the review beside the publication's own status, then follow its offered `committee` (`CONVENE_THE_COMMITTEE`), or its `committee_report` once the floor has closed; on a daily date with the person's daily committee setting off, `GIVE_THE_PM_VIEW`: your view as PM from the Host's materials, the committee offered in one line; the update's read, or your earlier bundle refused as stale or ambiguous after a second preparation, offers the same |
 | Delivered | The goal's record | State coverage, expiry and Risk limits, then complete the goal |
 
 Read the agenda points before speaking: below the agenda line, no stance is required; the PM may raise one listed point through the positions of a REPLY to a revealed message.
 
-The committee's PM may approve with PROCEED, approve with conditions with PROCEED_WITH_NOTES,
-or decline endorsement of action with DECLINE. FOR_THE_PERSON remains available. A decline
-closes the discussion and retains the research record and positions. The report labels the
-PM's last ruling as its final view, keeping earlier standing views under their own labels.
+The committee is a showcase of its members' discussion, never a gate, and its verdict is that
+discussion's record, not an approval or advice. The PM's default is PROCEED_WITH_NOTES, with
+members' reservations carried as notes. DECLINE endorsement of action only for a named hard
+defect (a data error, a Risk bound breached, key evidence missing), naming it; a decline closes
+the discussion and retains the research record and positions. FOR_THE_PERSON only for a named
+decision of the person; PROCEED when nothing needs noting. Members may suggest avoiding, reducing
+or adding specific holdings, with reasons from the materials. The report leads with those
+suggestions, then the verdict; it labels the PM's last ruling as its final view, keeping earlier
+standing views under their own labels, and ends with one line that also ends your reply: the
+committee changed no number; whether to act on its suggestions is the person's decision.

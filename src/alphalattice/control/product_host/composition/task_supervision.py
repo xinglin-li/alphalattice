@@ -421,9 +421,17 @@ def register_wake(
     from alphalattice.interface.local_application.cli_contract import STOPPED_STATES
 
     task_id, thread, read = wake
-    if observer is None or not observer.wake_readiness(codex_path)["present"]:
+    ready = {} if observer is None else observer.wake_readiness(codex_path)
+    if not ready.get("present"):
+        # A Host that finds Codex but cannot open its store (an agent's sandbox) says so.
+        unreachable = ready.get("reason") == "CODEX_UNREACHABLE"
         return {
-            **refused("local_client.codex_queue_unavailable"),
+            **refused(
+                "local_client.codex_unreachable"
+                if unreachable
+                else "local_client.codex_queue_unavailable"
+            ),
+            **({"codex_reach": {"detail": ready.get("detail")}} if unreachable else {}),
             "next_action": "WAIT_IN_THE_TURN",
             "next_requests": {"read": {"operation": "STATUS", "task_id": str(task_id)}},
         }

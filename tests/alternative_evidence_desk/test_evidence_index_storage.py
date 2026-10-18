@@ -99,7 +99,11 @@ def _authority(workspace: Path, report: Any) -> EvidenceReviewAuthority:
         evidence_runtime=runtime,
         evidence_resources=AlternativeEvidenceDocumentTaskResources(
             recorded_registry=_registry(),
-            recorded_documents=_documents(entities),
+            # Each preparation here reads the same corpus again to account its indexes: a
+            # library its owner may replace is read again, never carried (immutable_source).
+            recorded_documents=tuple(
+                d.model_copy(update={"immutable_source": False}) for d in _documents(entities)
+            ),
             analysis_actor=_CitingActor(topics=ISSUER_TOPICS),
         ),
         evidence_policy=AdmittedEvidencePolicy(),

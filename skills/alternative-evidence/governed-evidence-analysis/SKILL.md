@@ -25,8 +25,9 @@ What to report
    - or a development that removes or settles such a concern.
 3. Not a finding: routine operations and results, boilerplate risk factors,
    forward-looking caveats, and standing disclosures that did not change.
-4. At most three findings an issuer, the most material first. An issuer with
-   nothing material needs no finding; an empty list is an answer. It says the
+4. The most material first. The Host reads three findings an issuer and counts
+   the rest in your receipt and the CRO's bundle: list every material item, never
+   leave one out silently. An issuer with nothing material needs no finding; an empty list is an answer. It says the
    excerpts establish nothing material, never that evidence the packet lacks
    was clear: the Host's coverage reports what was missing.
 

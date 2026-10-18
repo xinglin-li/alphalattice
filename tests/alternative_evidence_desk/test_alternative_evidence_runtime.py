@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import tempfile
 import time
 from collections.abc import Iterator
@@ -572,6 +573,33 @@ def test_auto_reads_the_load_on_the_processors_it_may_use(monkeypatch: pytest.Mo
     assert (machine.processors, machine.busy_processors) == (4, 0.5)
     cores, reason = execution.budget_cores(execution.CpuBudget(), machine)
     assert cores == 3 and reason.startswith("auto: 3 of 4")
+
+
+@pytest.mark.parametrize("system", ["darwin", "linux", "win32"])
+def test_memory_is_read_by_each_platforms_own_measure(monkeypatch, system) -> None:
+    """requirement: macOS (no SC_AVPHYS_PAGES, no affinity) and Linux read total and available
+    memory, page cache counted free; Windows keeps its own status whatever psutil says."""
+    from alphalattice.control.observation_runtime.telemetry import process_metrics
+
+    gib = 2**30
+    memory = SimpleNamespace(total=16 * gib + 1, available=9 * gib)
+    monkeypatch.setattr(process_metrics.psutil, "virtual_memory", lambda: memory)
+    if system == "win32":
+        if sys.platform != "win32":
+            pytest.skip("Windows reads its own memory status")
+        assert process_metrics.runtime_machine_capacity().total_memory_bytes != memory.total
+        return
+    pages = {"SC_PAGE_SIZE": 4096, "SC_PHYS_PAGES": memory.total // 4096}
+    if system == "linux":  # free pages alone: 1 GiB, the page cache not counted
+        pages["SC_AVPHYS_PAGES"] = gib // 4096
+    machine = SimpleNamespace(name="posix", cpu_count=lambda: 4, sysconf=pages.__getitem__)
+    if system == "linux":
+        machine.sched_getaffinity = lambda _pid: {0, 1, 2, 3}
+    monkeypatch.setattr(process_metrics, "os", machine)
+    monkeypatch.setattr(process_metrics, "sys", SimpleNamespace(platform=system))
+    capacity = process_metrics.runtime_machine_capacity()
+    assert (capacity.total_memory_bytes, capacity.available_memory_bytes) == (memory.total, 9 * gib)
+    assert capacity.allowed_logical_processor_ids == (0, 1, 2, 3)
 
 
 def _enter(writer: object, entered: list[str]) -> None:

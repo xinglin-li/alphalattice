@@ -23,17 +23,25 @@ from the workspace's consent and network control (`alphalattice evidence-consent
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
+import secrets
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
 from pathlib import Path
 from typing import Any
 
-from alphalattice.control.product_host.composition.local_web_session import (
-    LocalPortfolioWebSession,
-)
+from alphalattice.interface.local_application.web import LAUNCH_KEY_VARIABLE, OPEN_THE_WORKBENCH
+
+# The Host's session (and the numerical libraries it brings) is imported in `main`, never here:
+# a Host run as `-m` this module has each spawned worker re-import it first, before the worker
+# sets its numerical libraries to one thread (child._worker_started), and a library loaded then
+# keeps a thread and its buffers for every processor (about 1.8 GB of commit a worker).
 
 STOPPING: dict[str, object] = {
     "status": "HOST_STOPPING",
@@ -127,6 +135,156 @@ def _wait_for_stop_on_stdin() -> None:
             return
 
 
+READY_SECONDS = 300
+"""How long a detached launch waits for its Host to report it serves."""
+HANDED_KEY = "key=<from the launcher>"
+"""What a detached Host prints in place of the launch key its launcher made and holds."""
+
+
+def _refusal(failure_code: str, detail: str, next_action: str) -> int:
+    """Print a launch's refusal as an answer: its code, its words and its way on."""
+    answer = {
+        "status": "REFUSED",
+        "failure_code": failure_code,
+        "detail": detail,
+        "next_action": next_action,
+    }
+    print(json.dumps(answer), flush=True)
+    return 2
+
+
+def _spawn_detached(command: list[str], log: Any, key: str) -> tuple[subprocess.Popen[bytes], bool]:
+    """Start the Host apart from this process: its own process group (session), no console
+    window and no standard input, and out of this process's Job where the Job allows it (a
+    Codex turn ends its shell's children, by its tree or its Job).
+
+    Returns:
+        The Host's process, and whether a Job still holds it (one that allows no breakaway).
+    """
+    # The new interpreter imports this same source, as `entry.serve` gives its child.
+    source = str(Path(__file__).resolve().parents[4])
+    inherited = os.environ.get("PYTHONPATH")
+    environment = {
+        **os.environ,
+        "PYTHONPATH": source + os.pathsep + inherited if inherited else source,
+        LAUNCH_KEY_VARIABLE: key,
+    }
+    common: dict[str, Any] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": log,
+        "stderr": log,
+        "env": environment,
+    }
+    if sys.platform != "win32":
+        return subprocess.Popen(command, start_new_session=True, **common), False
+    # No console window: the Host's workers start in its hidden console, never in new windows.
+    flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+    try:
+        breakaway = flags | subprocess.CREATE_BREAKAWAY_FROM_JOB
+        return subprocess.Popen(command, creationflags=breakaway, **common), False
+    except PermissionError:
+        # A Job that allows no breakaway holds this launch, and now the Host: apart from the
+        # tree, not from that Job. (Any-Job checks mislead: a venv's launcher runs its Python in
+        # a Job of its own.)
+        return subprocess.Popen(command, creationflags=flags, **common), True
+
+
+def _detach(arguments: argparse.Namespace) -> int:
+    """Start a detached Host and return once it serves, as a daemon's start does.
+
+    This launch makes the Host's launch key and hands it over in the environment; the Host
+    prints its launch line without it to its log, and this launch relays the line with it, so
+    the key never reaches disk. It waits `READY_SECONDS` at most and ties nothing to this
+    shell: `alphalattice host stop` stops the Host. The log sits in the temporary directory,
+    since a new workspace must be empty until the Host initializes it.
+    """
+    if arguments.stop_on_stdin:
+        return _refusal(
+            "local_web.detach_with_stop_on_stdin",
+            "A detached Host has no standard input to stop on; `alphalattice host stop` stops "
+            "it. Drop --stop-on-stdin, or --detach for an attached Host.",
+            "DROP_ONE_OF_DETACH_AND_STOP_ON_STDIN",
+        )
+    descriptor, name = tempfile.mkstemp(prefix="alphalattice-host-", suffix=".log")
+    os.close(descriptor)
+    log_path, key = Path(name), secrets.token_urlsafe(32)
+    command = [
+        sys.executable,
+        "-m",
+        "alphalattice.control.product_host.composition.web_launcher",
+        "--workspace",
+        str(arguments.workspace),
+        "--port",
+        str(arguments.port),
+        *(["--no-browser"] if arguments.no_browser else []),
+    ]
+    with log_path.open("wb") as log:
+        host, held = _spawn_detached(command, log, key)
+    deadline = time.monotonic() + READY_SECONDS
+    while time.monotonic() < deadline:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+        launch = next(
+            (line for line in text.splitlines() if line.startswith("Portfolio Research")), None
+        )
+        if launch is not None and "Loopback only." in text:
+            return _served(
+                arguments, launch.replace(HANDED_KEY, f"key={key}"), host, held, log_path
+            )
+        if host.poll() is not None:
+            return _exited(host, text, log_path)
+        time.sleep(0.2)
+    return _refusal(
+        "local_web.detached_host_not_ready",
+        f"The detached Host (process {host.pid}) has not reported serving after "
+        f"{READY_SECONDS} s; it may still be starting. Read its log, {log_path}, or stop it "
+        "with `alphalattice host stop`.",
+        "READ_THE_HOST_LOG_OR_STOP_IT",
+    )
+
+
+def _served(
+    arguments: argparse.Namespace,
+    launch: str,
+    host: subprocess.Popen[bytes],
+    held: bool,
+    log_path: Path,
+) -> int:
+    """Relay a detached Host's launch line, say how it lives, and name the next step."""
+    print(launch)
+    lives = (
+        "started it, but a Job that allows no breakaway still holds it: it ends when that Job "
+        "ends. Serve it from a shell outside the Job to outlive it"
+        if held
+        else "started it and outlives it"
+    )
+    print(
+        f"Loopback only. This Host (process {host.pid}) runs apart from the shell that {lives}; "
+        f"`alphalattice host stop` stops it. Log: {log_path}",
+        flush=True,
+    )
+    if arguments.no_browser:
+        print(OPEN_THE_WORKBENCH, flush=True)
+    return 0
+
+
+def _exited(host: subprocess.Popen[bytes], text: str, log_path: Path) -> int:
+    """A detached Host that ended before it served: a second writer, or its log's reason."""
+    if "workspace_runtime.writer_already_owned" in text:
+        log_path.unlink(missing_ok=True)
+        return _refusal(
+            "local_web.host_already_serving",
+            "A Host already serves this workspace, so no second one started. Reuse it, or "
+            "stop it with `alphalattice host stop` before serving again.",
+            "REUSE_THE_SERVING_HOST",
+        )
+    return _refusal(
+        "local_web.detached_host_exited",
+        f"The detached Host exited (code {host.returncode}) before it served; its log, which "
+        f"holds no launch key, says why: {log_path}",
+        "READ_THE_HOST_LOG",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the declared command and return its exit status."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -144,7 +302,20 @@ def main(argv: list[str] | None = None) -> int:
         help="For an attached host: stop on a 'stop' line or EOF; join Tasks before exit. With "
         "no standard input held open, nothing ties it and it serves until its process ends.",
     )
+    parser.add_argument(
+        "--detach",
+        action="store_true",
+        help="Start the Host as its own process, apart from this shell and its Job, and return "
+        "once it serves; `alphalattice host stop` stops it.",
+    )
     arguments = parser.parse_args(argv)
+    if arguments.detach:
+        return _detach(arguments)
+    handed = LAUNCH_KEY_VARIABLE in os.environ
+
+    from alphalattice.control.product_host.composition.local_web_session import (
+        LocalPortfolioWebSession,
+    )
 
     session = LocalPortfolioWebSession.from_workspace(
         arguments.workspace,
@@ -172,7 +343,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if session.operations is not None:
             session.operations.stop_host = stopping
-        print(f"Portfolio Research workspace: {url}")
+        # A detached launch holds the key it handed over and prints it itself (never on disk).
+        shown = re.sub(r"key=[^&#]+", HANDED_KEY, url) if handed else url
+        print(f"Portfolio Research workspace: {shown}")
         print(
             "Loopback only. Send 'stop' or close stdin, or run `alphalattice host stop`, to stop."
             if tied
@@ -182,7 +355,9 @@ def main(argv: list[str] | None = None) -> int:
             else "Loopback only. Ctrl-C or `alphalattice host stop` to stop.",
             flush=True,
         )
-        if not arguments.no_browser:
+        if arguments.no_browser:
+            print(OPEN_THE_WORKBENCH, flush=True)
+        else:
             webbrowser.open(url)
         if tied:
             # Either way of stopping ends the wait: the input's own, or `host stop`.
@@ -202,4 +377,4 @@ def main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     raise SystemExit(main())
 
-__all__ = ["LocalPortfolioWebSession", "main"]
+__all__ = ["main"]

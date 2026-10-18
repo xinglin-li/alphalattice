@@ -10,6 +10,11 @@ It includes the following third-party material, each under its own license:
   geist-mono-latin.woff2), Copyright 2024 The Geist Project Authors
   (https://github.com/vercel/geist-font.git), licensed under the SIL Open Font License,
   Version 1.1, whose text is src/alphalattice/interface/local_application/assets/fonts/OFL.txt.
+- The cl100k_base token encoding
+  (src/alphalattice/protocols/actor_execution/cl100k_base.tiktoken.gz): the cl100k_base rank file
+  published by OpenAI for tiktoken (https://github.com/openai/tiktoken, MIT License), fetched from
+  its published location and shipped gzipped unmodified, checked by its SHA-256, so counting needs
+  no download; the same file is redistributed under the MIT License by tiktoken-rs.
 
 The software the product installs and the model packs it downloads are not part of this
 distribution and keep their own licenses: the Python packages pinned in uv.lock, the optional

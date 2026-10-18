@@ -21,6 +21,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.cli import main
+from alphalattice.interface.local_application.client import short_references
 from alphalattice.investment.portfolio_strategy_lab.application.task import (
     PORTFOLIO_PUBLIC_TASK_KIND,
     portfolio_research_task_input,
@@ -39,7 +40,9 @@ from u0_probe import _copy
 
 @pytest.mark.parametrize("status", ("BLOCKED", "DEFERRED", "PROPOSAL_PUBLISHED"))
 @pytest.mark.parametrize("broken", (False, True))
-def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status, broken):
+def test_prior_positions_keep_the_updates_own_next_requests(
+    monkeypatch, status, broken, fake_host, tmp_path, capsys
+):
     """adding the previous publication's review must keep the stop's way on."""
     from alphalattice.control.product_host.composition import portfolio_research_operations as ops
 
@@ -103,6 +106,27 @@ def test_prior_positions_keep_the_updates_own_next_requests(monkeypatch, status,
         assert answer["review_standing"] == standing
         assert answer["next_requests"]["published_review"] == later
     assert selectors[0].request_fields() == answer["review_selector"]
+    if status == "PROPOSAL_PUBLISHED" and not broken:
+        fake_host.answer = {**answer, "html": "<p>held positions</p>"}
+        subject = ["research-update", "show", "--task", answer["task_id"]]
+        line = ["--workspace", str(tmp_path), *subject]
+        assert main(line, serve=lambda _: 99) == 0
+        shown = json.loads(capsys.readouterr().out)
+        assert shown["data"].get("_omitted_keys", 0) > 0
+        for part in ("publication", "history", "html", "listing_labels", "position_rows"):
+            assert part in shown["omitted_sections"] and part not in shown["data"]
+        assert shown["data"]["summary"]["positions_count"] == 1
+        assert shown["data"]["summary"]["top_holdings"] == answer["position_rows"]
+        assert shown["data"]["summary"]["position_basis"] == "CONDITIONAL_ESTIMATE"
+        assert shown["data"]["schedule"] == answer["schedule"]
+        assert shown["data"]["review_standing"] == short_references(standing)
+        assert main(["--view", "full", *line], serve=lambda _: 99) == 0
+        full = json.loads(capsys.readouterr().out)
+        assert all(full["data"][key] == value for key, value in fake_host.answer.items())
+        fake_host.answer.update(status="BLOCKED", failure_code="data.truth_review_required")
+        assert main(line, serve=lambda _: 99) == 2
+        stopped = json.loads(capsys.readouterr().out)
+        assert set(shown["omitted_sections"]) <= set(stopped["omitted_sections"])
 
 
 @pytest.mark.real_evidence

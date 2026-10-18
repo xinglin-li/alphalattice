@@ -11,13 +11,19 @@ import re
 import shutil
 import sys
 import tomllib
+from collections import Counter
+from collections.abc import Callable
+from contextlib import suppress
+from ctypes.util import find_library
 from datetime import UTC, datetime
+from functools import cache, partial
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from alphalattice.interface.local_application.cli_contract import BINDING_NOTICE
 from alphalattice.interface.local_application.failure_codes import safe_failure_code, setup_failure
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_DIRECTORY,
@@ -28,13 +34,19 @@ from alphalattice.interface.local_application.native_bridge import (
     PROJECT_DECLARATION_SCHEMA,
     SPAWN_HOPS,
     USAGE_READINGS,
+    WORKBENCH_BUILD,
     NativeBridgeError,
     NativeResearchBinding,
+    agent_setup,
     attachment_preflight,
+    autobind_root,
+    binding_notice,
     clear_usage_checkpoints,
     codex_queue_readiness,
     command_readiness,
     declares_product,
+    fresh_path,
+    session_binding,
     session_project,
 )
 from alphalattice.interface.local_application.native_usage import codex_thread_spawn
@@ -55,7 +67,7 @@ ROOT = Path.cwd() if INSTALLED else RESOURCE_ROOT
 
 def _installed_leg() -> dict[str, Any]:
     """Compare the active distribution with this checkout, naming unproved PATH ownership."""
-    command = shutil.which("alphalattice")
+    command = shutil.which("alphalattice", path=fresh_path())
     expected = None
     if (RESOURCE_ROOT / "pyproject.toml").is_file():
         expected = tomllib.loads((RESOURCE_ROOT / "pyproject.toml").read_text("utf-8"))["project"][
@@ -84,6 +96,13 @@ def _installed_leg() -> dict[str, Any]:
         }
     except importlib.metadata.PackageNotFoundError:
         return {"present": False, "command": command, "reason": "DISTRIBUTION_MISSING"}
+
+
+def _workbench_current() -> bool:
+    """Whether serve would take this checkout's built Workbench (`workbench_current`)."""
+    from alphalattice.interface.local_application import workbench_assets
+
+    return workbench_assets.workbench_current()
 
 
 def _host_facts(binding: NativeResearchBinding | None) -> dict[str, Any]:
@@ -121,7 +140,14 @@ HOST_DEPENDENCIES = {
     "installed_leg": (
         "Resolve the clean alphalattice command",
         "Run uv sync --locked and the documented tool install; disclose it. "
-        "Check an unproved PATH owner first.",
+        "Check an unproved PATH owner first. A first use opens nothing until a fresh shell "
+        "runs `alphalattice`; off PATH, `uv tool update-shell` and a restart are the person's.",
+        "AGENT",
+    ),
+    "workbench_build": (
+        "Serve the Workbench",
+        f"Run the documented Workbench build (`{WORKBENCH_BUILD}`) from the checkout root, "
+        "disclosing it; serve refuses until the built files match the sources.",
         "AGENT",
     ),
     "retrieval_runtime": (
@@ -156,9 +182,15 @@ HOST_DEPENDENCIES = {
         "the network. A closed network remains a valid offline setting.",
         "PERSON",
     ),
+    "system_libraries": (
+        "Load the system libraries locked packages need",
+        "Ask once to install the packages its facts name (`install`), outside the lock, then "
+        "run doctor again; never install them unasked.",
+        "PERSON",
+    ),
     "user_layer": (
         "Local user tuning",
-        "Use maintenance Skill; disclose the optional layer.",
+        "Use maintenance Skill; disclose the optional layer. Over a bound or due, review it.",
         "AGENT",
     ),
     "user_backup": (
@@ -170,15 +202,230 @@ HOST_DEPENDENCIES = {
 }
 
 
+SYSTEM_LIBRARIES: dict[str, dict[str, Any]] = {
+    # The libraries a locked package loads that no lock can ship: the person installs them once.
+    "darwin": {
+        "install": "brew install",
+        "libraries": (
+            {
+                "package": "libomp",
+                "without_it": "LightGBM cannot load, so no model trains or scores",
+                "names": ("omp",),
+                "paths": (
+                    "/opt/homebrew/opt/libomp/lib/libomp.dylib",
+                    "/usr/local/opt/libomp/lib/libomp.dylib",
+                ),
+            },
+        ),
+    },
+    "linux": {
+        "install": "sudo apt install",
+        "libraries": (
+            {
+                "package": "libatomic1",
+                "without_it": "the locked Node cannot start, so the Workbench cannot be built",
+                "names": ("atomic",),
+                "paths": (),
+            },
+            {
+                "package": "libgomp1",
+                "without_it": "LightGBM cannot load, so no model trains or scores",
+                "names": ("gomp",),
+                "paths": (),
+            },
+        ),
+    },
+}
+
+
+def _system_library() -> dict[str, Any]:
+    """This OS's libraries that the lock cannot ship, found or not; nothing is installed here."""
+    need = next((v for k, v in SYSTEM_LIBRARIES.items() if sys.platform.startswith(k)), None)
+    if need is None:
+        return {"present": True, "needed": False}
+    found, missing = {}, []
+    for library in need["libraries"]:
+        path = next((p for p in library["paths"] if Path(p).is_file()), None) or next(
+            filter(None, map(find_library, library["names"])), None
+        )
+        if path:
+            found[library["package"]] = path
+        else:
+            missing.append({key: library[key] for key in ("package", "without_it")})
+    install = " ".join([need["install"], *(m["package"] for m in missing)])
+    return {"present": not missing, "found": found, "missing": missing, "install": install}
+
+
+USER_LAYER_BOUNDS: Final = {
+    "long_term": {"index_lines": 50, "memories": 60},
+    "short_term": {"workspace_notes": 20},
+}
+"""The user layer's two tiers and their bounds, as the maintenance Skill states them."""
+MEMORY_DOMAINS: Final = ("operating", "person", "method", "strategy", "state")
+"""A memory's `domain` (as `method:<card>`, `strategy:<package>`), each with its review moment."""
+REVIEW_DAYS: Final = 30
+"""A method memory verified longer ago than this is due for review."""
+REVIEW_FIRST: Final = (
+    "The person's user layer needs review first ({subject}): start alphalattice_maintainer in "
+    "CLEAN mode, re-verifying, revising, merging or deleting each item by the maintenance Skill's "
+    "rules within its bounds; then record."
+)
+_ID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+type _Fields = dict[str, str]
+type _Layer = tuple[dict[str, tuple[_Fields, str]], _Fields, dict[str, _Fields]]
+
+
+def user_layer(project: Path, workspace: Path | None = None, host: Any = None) -> dict[str, Any]:
+    """The person's layer in two tiers and five domains against its bounds, and what is due.
+
+    Each long-term item is due at its domain's moment (`_stale`); a `state` memory and the
+    workspace's notes once they name a Goal or Task the Host does not show open.
+
+    Args:
+        project: The agent project holding `.alphalattice/user/`.
+        workspace: The served workspace whose `agent-notes/` count, when known.
+        host: Its Host client, read for the open Goals and Tasks and each package's hash; None
+            checks neither.
+
+    Returns:
+        Counts by tier and domain, `over`, `due` with reasons, and the review's `next_action`
+        and `items`.
+    """
+    user = project / ".alphalattice/user"
+    index, layer = user / "memory/MEMORY.md", _tiers(user, workspace)
+    memories, notes, additions = layer
+    domains = {name: front.get("domain", "") for name, (front, _) in memories.items()}
+    short = {name: memories[name][1] for name, domain in domains.items() if domain == "state"}
+    lines = len(index.read_text("utf-8").splitlines()) if index.is_file() else 0
+    counts = {
+        "long_term": {"index_lines": lines, "memories": len(memories) - len(short)},
+        "short_term": {"state_memories": len(short), "workspace_notes": len(notes)},
+        "domains": dict(Counter(domain.partition(":")[0] or "none" for domain in domains.values())),
+    }
+    counts["long_term"]["additions"] = len(additions)
+    over = [k for tier, b in USER_LAYER_BOUNDS.items() for k in b if counts[tier][k] > b[k]]
+    due = _due(layer, short, host)
+    items = ", ".join([*over, *(item["path"] for item in due)])
+    review = {"next_action": "REVIEW_THE_USER_LAYER", "items": items} if items else {}
+    facts = {"counts": counts, "bounds": USER_LAYER_BOUNDS, "over": over, "due": due}
+    return {"exists": user.is_dir(), **facts, **review}
+
+
+def _due(layer: _Layer, short: _Fields, host: Any) -> list[dict[str, str]]:
+    """Each item due and why: long-term at its domain's moment (`_stale`), short-term once it
+    names a Goal or Task the Host does not show open."""
+    memories, notes, additions = layer
+    version, open_ids = package_versions(["alphalattice"])[0][1], _open_ids(host)
+    package = None if host is None else cache(partial(_package_hash, host))
+    reasons = {n: _stale(f, version, package) for n, (f, _) in memories.items() if n not in short}
+    for name, front in additions.items():
+        reasons[name] = _stale({"domain": "operating", **front}, version, package)
+    for name, text in (short | notes).items():
+        closed = [i for i in _ID.findall(text) if open_ids is not None and i not in open_ids]
+        reasons[name] = f"points_to_closed:{closed[0]}" if closed else None
+    return [{"path": name, "reason": why} for name, why in sorted(reasons.items()) if why]
+
+
+def _tiers(user: Path, workspace: Path | None) -> _Layer:
+    """The memories, the workspace's notes and the additions, each read once."""
+    index = user / "memory/MEMORY.md"
+    found = {f"memory/{p.name}": _read(p) for p in (user / "memory").glob("*.md") if p != index}
+    memories = {name: (front, text) for name, (front, text) in found.items() if front is not None}
+    listed = (workspace / "agent-notes").glob("*.md") if workspace else ()
+    notes = {f"agent-notes/{p.name}": p.read_text("utf-8") for p in listed if p.name != "INDEX.md"}
+    added = (user / "guide.md", *user.glob("cards/*.md"), *user.glob("skills/*.md"))
+    additions = {p.relative_to(user).as_posix(): _read(p)[0] or {} for p in added if p.is_file()}
+    return memories, notes, additions
+
+
+def record_offer(answer: dict[str, Any], workspace: Path) -> None:
+    """A sealing answer's record offer lists what the person's layer needs reviewed first.
+
+    Args:
+        answer: The sealing answer, its detail changed in place; otherwise it stands.
+        workspace: Its workspace, whose notes count; the person's layer is the nearest up from
+            here.
+    """
+    from alphalattice.interface.local_application.cli_contract import worded
+
+    here = Path.cwd()
+    project = next((p for p in (here, *here.parents) if (p / ".alphalattice/user").is_dir()), here)
+    if items := user_layer(project, workspace, _client(workspace)).get("items"):
+        review = str(worded(REVIEW_FIRST)).replace("{subject}", items)
+        answer["detail"] = f"{review} {answer.get('detail', '')}".rstrip()
+
+
+def _client(workspace: Path | None) -> Any:
+    """The workspace's Host client; None with no Host serving it."""
+    from alphalattice.interface.local_application import client
+
+    with suppress(client.LocalResearchClientError, OSError):
+        return client.LocalResearchClient(workspace) if workspace else None
+    return None
+
+
+def _open_ids(host: Any) -> frozenset[str] | None:
+    """The Goals and Tasks the Host shows open; None with no Host to ask."""
+    from alphalattice.interface.local_application.client import LocalResearchClientError
+
+    with suppress(LocalResearchClientError, OSError, KeyError, TypeError, AttributeError):
+        goals = host.request({"operation": "GOAL_LIST", "history_limit": 50})["goals"]
+        tasks = host.request({"operation": "TASKS"})["tasks"]
+        shown = {str(row["goal_id"]) for row in goals if row.get("state") == "OPEN"}
+        return frozenset(shown | {str(row["task_id"]) for row in tasks})
+    return None
+
+
+def _package_hash(host: Any, package: str) -> str | None:
+    """An installed package's hash, as its controls read it; None when none is installed."""
+    from alphalattice.interface.local_application.client import LocalResearchClientError
+
+    with suppress(LocalResearchClientError, OSError, KeyError, TypeError):
+        return str(
+            host.request({"operation": "CONTROLS", "strategy_package_id": package})["package_hash"]
+        )
+    return None
+
+
+def _read(path: Path) -> tuple[_Fields | None, str]:
+    """A file's frontmatter fields (None without them) and its text, read once."""
+    text = path.read_text("utf-8", errors="replace")
+    head, closed, _ = text.removeprefix("---\n").partition("\n---")
+    if not text.startswith("---\n") or not closed:
+        return None, text
+    pairs = (line.partition(":") for line in head.splitlines())
+    return {key.strip(): value.strip() for key, _, value in pairs}, text
+
+
+def _stale(front: _Fields, version: str, package: Callable[[str], str | None] | None) -> str | None:
+    """Why a long-term item is due, at its domain's moment: an operating or person one at another
+    version, a method one also past `REVIEW_DAYS`, a strategy one once its package's hash moved;
+    one with no domain or no `verified: <YYYY-MM-DD> at <version or hash>` line, always."""
+    kind, _, subject = front.get("domain", "").partition(":")
+    when, _, at = front.get("verified", "").partition(" at ")
+    if kind not in MEMORY_DOMAINS:
+        return "unclassified"
+    try:
+        day = datetime.strptime(when.strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return "unverified"
+    if kind == "strategy":
+        return "package_changed" if package is not None and package(subject) != at.strip() else None
+    if at.strip() != version:
+        return "verified_at_another_version"
+    old = kind == "method" and (datetime.now(UTC).date() - day).days > REVIEW_DAYS
+    return "verified_over_30_days" if old else None
+
+
 def host_readiness(
     project: Path, host: str, binding: NativeResearchBinding | None
 ) -> list[dict[str, Any]]:
     """One advisory dependency list: the measured facts, what they enable and who fills them."""
-    from alphalattice.interface.local_application.retrieval_environment import interpreter_path
     from alphalattice.kernel.knowledge.model_store import default_store_root, recipe_readiness
 
     facts = _host_facts(binding)
-    retrieval = command_readiness([str(interpreter_path()), "-c", "import fastembed, onnxruntime"])
+    # What the agent fills is read from the first use's own source, so the two never disagree.
+    fillable = {key: dict(item) for key, item in agent_setup().items()}
     packs = recipe_readiness(default_store_root(), "hybrid-v2-minilm")
     queue = (
         {"present": True, "scope": "HOST_FEATURE"}
@@ -201,6 +448,7 @@ def host_readiness(
             and capacity["free_disk_bytes"] >= headroom
         )
     )
+    served = binding.workspace if binding else None
     user = project / ".alphalattice/user"
     backups = sorted(path.name for path in (user / "backups").glob("*") if path.is_dir())
     python_version = str(recorded_environment()["python"])
@@ -211,10 +459,15 @@ def host_readiness(
             {"version": python_version, "interpreter": sys.executable},
         ),
         ("uv", (uv := command_readiness([os.environ.get("UV", "uv"), "--version"]))["present"], uv),
-        ("installed_leg", (installed := _installed_leg())["present"], installed),
+        (
+            "installed_leg",
+            (tool := fillable["installed_leg"]).pop("present"),
+            {**{k: v for k, v in _installed_leg().items() if k != "present"}, **tool},
+        ),
+        ("workbench_build", _workbench_current(), {"command": WORKBENCH_BUILD}),
         (
             "retrieval_runtime",
-            retrieval["present"] and packs["ready"],
+            (retrieval := fillable["retrieval_runtime"]).pop("present"),
             {**retrieval, "packs": packs},
         ),
         (
@@ -245,7 +498,12 @@ def host_readiness(
                 "operator_offline": offline(),
             },
         ),
-        ("user_layer", user.is_dir(), {"path": str(user)}),
+        ("system_libraries", (system := _system_library())["present"], system),
+        (
+            "user_layer",
+            "items" not in (layer := user_layer(project, served, _client(served))),
+            {"path": str(user), **layer},
+        ),
         ("user_backup", bool(backups), {"latest": backups[-1] if backups else None}),
     )
     guidance = dict(HOST_DEPENDENCIES)
@@ -261,7 +519,8 @@ def host_readiness(
             "present": present,
             "what_it_enables": guidance[key][0],
             "how_to_fill": guidance[key][1],
-            "who_decides": guidance[key][2],
+            # Who fills an item matters only while it is missing.
+            **({} if present is True else {"who_decides": guidance[key][2]}),
             "facts": {"scope": "LOCAL_PROCESS", **measured},
         }
         for key, present, measured in specifications
@@ -339,10 +598,10 @@ def problem_report(
     session = agent_session(os.environ)
     binding = None
     try:
-        found = NativeResearchBinding.find(project, session=session)
+        found = session_binding(project, workspace, session)
         if found is not None and Path(found[1].workspace).resolve() == workspace.resolve():
             project, binding = found
-    except NativeBridgeError:
+    except (NativeBridgeError, OSError):
         pass  # A broken binding must not prevent reporting it; doctor states its readiness.
     host = session[0] if session else getattr(binding, "host", None)
     doctor = _report_readiness(project, host or "codex", binding)
@@ -865,15 +1124,6 @@ def bind_session(
     }
 
 
-AUTOBIND_ROOT = Path("runtime") / "native-sessions"
-"""Where the Host keeps the bindings it makes itself, inside the workspace (AUTOBIND)."""
-
-
-def autobind_root(workspace: Path) -> Path:
-    """The workspace's own binding folder, read like a project's."""
-    return workspace / AUTOBIND_ROOT
-
-
 def autobind_session(
     workspace: Path, host: str, session_id: str, *, project: Path | None = None
 ) -> tuple[Path, str]:
@@ -903,11 +1153,125 @@ def autobind_session(
                 break
             lead = spawn.parent_thread_id
     if project is not None:
-        bind_session(project, host=host, session_id=lead, workspace=workspace)
-        return project, lead
+        try:
+            bind_session(project, host=host, session_id=lead, workspace=workspace)
+            return project, lead
+        except OSError as error:
+            if not _sandboxed_binding(error, project):
+                raise
     root = autobind_root(workspace)
     bind_session(root, host=host, session_id=lead, workspace=workspace, roles=tuple(_roles(host)))
+    if project is not None:  # kept here because the agent's sandbox refused the project
+        _IN_WORKSPACE.add((host, session_id, workspace.resolve()))
+        BINDING_NOTICE.set(binding_notice("BOUND_IN_WORKSPACE"))
     return root, lead
+
+
+_IN_WORKSPACE: set[tuple[str, str, Path]] = set()
+"""Sessions this process found bound in the workspace's own folder beside a configured project;
+each of their answers repeats the notice, so a later answer never drops it."""
+_REMINDED: set[tuple[str, str, Path]] = set()
+
+
+def _sandboxed_binding(error: OSError, project: Path) -> bool:
+    """Whether a permission refusal names the project's own binding.
+
+    That is its first file, the Sessions' slot folder or a slot file.
+    An agent sandbox (Codex's workspace-write protects a project's top-level `.codex`) refuses
+    them while the workspace's own folder stays writable.
+    """
+    if not isinstance(error, PermissionError) or not isinstance(error.filename, str):
+        return False
+    path = Path(error.filename).absolute()
+    folder = project / ".codex"
+    return path == folder / BINDING_NAME or path.is_relative_to(folder / BINDING_DIRECTORY)
+
+
+def unbound(error: Exception) -> None:
+    """Disclose, on this request's answer, a Session the Host could not bind.
+
+    A binding made whose recording failed after it keeps its notice and adds the cause.
+    """
+    cause = (
+        str(error)
+        if isinstance(error, NativeBridgeError)
+        else f"native_bridge.files_unavailable:{type(error).__name__}"
+        if isinstance(error, OSError)
+        else type(error).__name__
+    )
+    cause = safe_failure_code(cause) or cause
+    held = BINDING_NOTICE.get()
+    status = (
+        "BOUND_IN_WORKSPACE" if held and held["status"] == "BOUND_IN_WORKSPACE" else "NOT_BOUND"
+    )
+    named = Path(error.filename) if isinstance(error, OSError) and error.filename else None
+    BINDING_NOTICE.set({**binding_notice(status, cause), **({"path": str(named)} if named else {})})
+
+
+def remind_binding(host: str, session_id: str, workspace: Path) -> None:
+    """Repeat, on this answer, the notice of a Session bound in the workspace's own folder.
+
+    Only beside a configured project; checked once per Session in this process.
+    """
+    key = (host, session_id, workspace.resolve())
+    if key not in _REMINDED:
+        _REMINDED.add(key)
+        with suppress(NativeBridgeError, OSError):
+            project = session_project(key[2], host)
+            if session_binding(project, None, (host, session_id)) is None and session_binding(
+                None, key[2], (host, session_id)
+            ):
+                _IN_WORKSPACE.add(key)
+    if key in _IN_WORKSPACE and BINDING_NOTICE.get() is None:
+        BINDING_NOTICE.set(binding_notice("BOUND_IN_WORKSPACE"))
+
+
+def bound_in_workspace(
+    error: OSError, project: Path | None, workspace: Path, request: NativeSessionBindRequest
+) -> dict[str, Any]:
+    """Keep an explicit bind the agent's sandbox denies in the project in the workspace instead.
+
+    Every Host reader reads the workspace's own folder, and the answer says so in its own
+    words; any other path, or a refusal of the workspace write, stays refused.
+
+    Args:
+        error: The refused write.
+        project: The admitted project, if one was admitted before the refusal.
+        workspace: The served workspace.
+        request: The bind request, whose provenance names its host and Session.
+
+    Returns:
+        The workspace binding with its `session_binding` notice, or the refusal.
+    """
+    from alphalattice.interface.local_application.cli_contract import (
+        REQUEST_PROVENANCE,
+        refusal_words,
+    )
+
+    project = project or workspace
+    if not _sandboxed_binding(error, project):
+        return files_unavailable(error, project=project, workspace=workspace)
+    session = REQUEST_PROVENANCE.get()
+    assert session is not None and session.vendor is not None and session.session is not None
+    host, roles, root = session.vendor, tuple(_roles(session.vendor)), autobind_root(workspace)
+    try:
+        bound = bind_session(
+            root,
+            host=host,
+            session_id=session.session,
+            workspace=workspace,
+            usage=request.usage,
+            roles=roles,
+        )
+    except NativeBridgeError as refused:
+        code = str(refused)
+        return {"status": "REFUSED", "failure_code": code, **refusal_words(code)}
+    except OSError as refused:
+        return files_unavailable(refused, project=project, workspace=workspace)
+    _IN_WORKSPACE.add((host, session.session, workspace.resolve()))
+    notice = binding_notice("BOUND_IN_WORKSPACE")
+    words = {k: notice[k] for k in ("detail", "next_action")}
+    return {**bound, **words, "session_binding": notice}
 
 
 def _configuration(host: str = "codex") -> None:
@@ -1079,8 +1443,11 @@ def main() -> int:
             if session is not None and args.host is not None and args.host != session[0]:
                 raise NativeBridgeError("native_bridge.session_mismatch")
             binding = NativeResearchBinding.read(ROOT, session=session)
-            host = args.host or (binding.host if binding is not None else "codex")
-            preflight = attachment_preflight(ROOT, binding)
+            # An unbound session's declaration is its own host's, as the first use reads it.
+            host = args.host or (
+                binding.host if binding is not None else session[0] if session else "codex"
+            )
+            preflight = attachment_preflight(ROOT, binding, host)
             result = {
                 **preflight,
                 "session_bound": binding is not None,

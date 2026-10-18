@@ -115,7 +115,7 @@ def test_every_documented_command_line_parses(
 ) -> None:
     """Every documented invocation parses through the CLI command grammar."""
     repository = SCRIPT.parents[1]
-    roots = [repository / "AGENTS.md", repository / "README.md"]
+    roots = [repository / name for name in ("AGENTS.md", "README.md", "README.zh-CN.md")]
     roots.extend(
         repository / name
         for name in (
@@ -242,7 +242,11 @@ def test_every_documented_command_line_parses(
     }
     commands, covered = ([], set())
     for path in paths:
-        for number, command in examples(path.read_text(encoding="utf-8")):
+        text = path.read_text(encoding="utf-8")
+        # Every OS's command: `uv run python` for the checkout, `bin/python` beside `Scripts`.
+        assert ".venv/Scripts" not in text, path
+        assert "Scripts/python.exe" not in text or "bin/python" in text, path
+        for number, command in examples(text):
             if command in grammar:
                 continue
             covered.add(path)

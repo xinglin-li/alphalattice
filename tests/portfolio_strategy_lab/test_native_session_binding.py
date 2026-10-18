@@ -124,6 +124,19 @@ def _project(live, host: str) -> Path:
     return project
 
 
+def _research(live: LocalPortfolioWebSession, folder: Path) -> list[str]:
+    """A research command: a book run on an empty spec (an operational one opens no goal)."""
+    (folder / "spec.yaml").write_text("{}", encoding="utf-8")
+    return [
+        "--workspace",
+        str(live.workspace),
+        "strategy-book",
+        "run",
+        "--file",
+        str(folder / "spec.yaml"),
+    ]
+
+
 def _session(monkeypatch, host: str, session: str | None = "fixture-parent") -> None:
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
@@ -256,24 +269,57 @@ def test_host_bind_refuses_unadmitted_paths_and_session_fields(live, monkeypatch
     assert not (project / ".codex" / BINDING_NAME).exists()
 
 
-def test_native_binding_write_failure_names_only_its_safe_path(live, monkeypatch):
+@pytest.mark.parametrize("held", [False, True])
+def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
+    live, monkeypatch, capsys, tmp_path, held
+):
+    """regression (Codex workspace-write, AX of 2026-10-15): its sandbox denies the project's
+    `.codex`, its first file or a slot beside another Session's, and the Session ran unbound and
+    unsaid; it binds in the workspace, and every answer says so."""
+    from alphalattice.interface.local_application.native_setup import autobind_root
+
     project = _project(live, "codex")
-    _session(monkeypatch, "codex")
+    if held:  # another Session already holds the project's first binding file
+        bind_session(project, host="codex", session_id="holder", workspace=live.workspace)
+    _session(monkeypatch, "codex", "sandboxed")
     binding_path = project / ".codex" / BINDING_NAME
-    opening = Path.open
+    opening, denied = Path.open, [project / ".codex"]
 
     def unavailable(path, mode="r", *args, **kwargs):
-        if path == binding_path and "x" in mode:
+        if any(path.is_relative_to(place) for place in denied) and "x" in mode:
             raise PermissionError(13, "secret fixture exception text", str(path))
         return opening(path, mode, *args, **kwargs)
 
     monkeypatch.setattr(Path, "open", unavailable)
+    for _ in range(2):  # the first answer binds, and a later one still says how
+        cli.main(_research(live, tmp_path), serve=lambda _: 99)
+        notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
+        assert notice["status"] == "BOUND_IN_WORKSPACE", notice
+        assert notice["next_action"] == "NAME_THE_WORKSPACE_ON_EACH_COMMAND"
+    root = autobind_root(live.workspace)
+    assert NativeResearchBinding.read(root, session=("codex", "sandboxed")) is not None
+    _usage_files(tmp_path, monkeypatch, "sandboxed")
+    reading = LocalResearchClient(live.workspace).publish_native_event(
+        root, {"source": "native_usage_read"}
+    )
+    assert reading["status"] == "DELIVERED"
+    assert (
+        cli.main(["--workspace", str(live.workspace), "session", "unbind"], serve=lambda _: 99) == 0
+    )
+    assert json.loads(capsys.readouterr().out)["status"] == "DETACHED"
+    _session(monkeypatch, "codex", "explicit")  # an explicit bind takes the same way
     answer = LocalResearchClient(live.workspace).bind_native_session(project)
-    assert answer["failure_code"] == "native_bridge.files_unavailable:PermissionError"
-    assert answer["path_category"] == "PROJECT_BINDING"
-    assert answer["path"] == str(binding_path)
+    assert answer["next_action"] == answer["session_binding"]["next_action"], answer
     assert "secret fixture exception text" not in json.dumps(answer)
-    assert answer["next_action"] == "USE_THE_WORKSPACE_HOST_OR_CHECK_THE_NAMED_LOCAL_PATH"
+    assert binding_path.exists() == held
+    _session(monkeypatch, "codex", "nowhere")  # neither folder writable: said, never silent
+    denied.append(root / ".codex")
+    cli.main(_research(live, tmp_path), serve=lambda _: 99)  # its exit follows the first Task
+    notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
+    assert (notice["status"], notice["next_action"]) == (
+        "NOT_BOUND",
+        "ASK_THE_PERSON_TO_SERVE_FROM_A_WRITABLE_SHELL",
+    )
     outside = PermissionError(13, "secret", str(project.parent / "outside-private-file"))
     assert "path" not in files_unavailable(outside, project=project)
 
@@ -604,18 +650,40 @@ def test_a_session_that_opens_a_goal_here_is_bound_without_a_separate_step(
     )
     assert again["status"] == "GOAL_SAVED", again
     assert binding.record_path(project).read_bytes() == record
+    # Each Session's first answer offers the Workbench once, a link opened once; never again.
+    offered = opened["workbench"]
+    assert offered["next_action"] == "OPEN_THE_WORKBENCH" and "workbench" not in again
+    assert offered["launch_url"].startswith(live.url.rstrip("/") + "/launch?key=")
+    assert [_launch_status(offered["launch_url"]) for _ in "ab"] == [303, 403]
+    _session(monkeypatch, host, "fixture-other")
+    other = client.request({"operation": "GOAL_LIST"})
+    assert other["workbench"]["launch_url"] != offered["launch_url"]
+    assert "workbench" not in client.request({"operation": "GOAL_LIST"})
+
+
+def _launch_status(url: str) -> int:
+    """The status a browser gets opening a launch link, without following its redirect."""
+    from http.client import HTTPConnection
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    connection = HTTPConnection(parts.hostname, parts.port, timeout=10)
+    connection.request("GET", f"{parts.path}?{parts.query}", headers={"Host": parts.netloc})
+    status = connection.getresponse().status
+    connection.close()
+    return status
 
 
 @pytest.mark.parametrize("host", ("codex", "claude-code"))
 def test_one_research_command_binds_the_session_and_opens_its_goal(
-    live: LocalPortfolioWebSession, monkeypatch, capsys, host
+    live: LocalPortfolioWebSession, monkeypatch, capsys, host, tmp_path
 ) -> None:
     """One research command binds the session and opens its goal."""
     from alphalattice.interface.local_application.native_setup import autobind_root
 
     _session(monkeypatch, host, "fixture-lead")
-    line = ["--workspace", str(live.workspace), "cpu-budget", "set", "--queue", "2"]
-    assert cli.main(line, serve=lambda _: 99) == 0
+    line = _research(live, tmp_path)
+    assert cli.main(line, serve=lambda _: 99) == 3  # admitted, its Task pending
     capsys.readouterr()
     root = autobind_root(live.workspace)
     binding = NativeResearchBinding.read(root, session=(host, "fixture-lead"))
@@ -638,21 +706,22 @@ def test_one_research_command_binds_the_session_and_opens_its_goal(
         row for row in record["conversation"] if row.get("input_channel") == "PRODUCT_OPERATION"
     ]
     # The Conversation shows the binding, then the request, both the Session's.
-    assert [row["message_kind"] for row in requests] == ["session_bound", "CPU_BUDGET_SET"]
+    assert [row["message_kind"] for row in requests] == ["session_bound", "RUN"]
     assert requests[1]["agent_session"] == "fixture-lead"
     assert bound[0]["payload"]["subject"]["goal_id"] == goals[0]["goal_id"]
     # The fact names the goal the Session holds, as its Sessions row reads it (STOPS-1).
     held = client.request({"operation": "GOAL_SHOW", "goal_id": goals[0]["goal_id"]})
     assert bound[0]["payload"]["subject"]["reference"] == f"case:{held['goal']['goal_hash']}"
     record_bytes = binding.record_path(root).read_bytes()
-    assert cli.main(line, serve=lambda _: 99) == 0
+    live.dispatcher.drain_for_tests()  # type: ignore[union-attr]  # the admitted Task has ended
+    assert cli.main(line, serve=lambda _: 99) == 0  # the same plan answers its admitted Task
     capsys.readouterr()
     assert len(client.request({"operation": "GOAL_LIST"})["goals"]) == 1
     assert binding.record_path(root).read_bytes() == record_bytes
 
 
 def test_a_session_bound_by_a_read_names_the_goal_its_first_request_opens(
-    live: LocalPortfolioWebSession, monkeypatch, capsys
+    live: LocalPortfolioWebSession, monkeypatch, capsys, tmp_path
 ) -> None:
     """regression (STOPS-1, the Tech Lead's live check of 2026-10-08): a Session bound by its
     first read held no goal, and when its next request opened one its Sessions row still read
@@ -661,8 +730,7 @@ def test_a_session_bound_by_a_read_names_the_goal_its_first_request_opens(
     assert (
         cli.main(["--workspace", str(live.workspace), "workspace", "show"], serve=lambda _: 99) == 0
     )
-    line = ["--workspace", str(live.workspace), "cpu-budget", "set", "--queue", "2"]
-    assert cli.main(line, serve=lambda _: 99) == 0
+    assert cli.main(_research(live, tmp_path), serve=lambda _: 99) == 3  # admitted
     capsys.readouterr()
     client = LocalResearchClient(live.workspace)
     [goal] = client.request({"operation": "GOAL_LIST"})["goals"]
@@ -694,10 +762,11 @@ def test_a_workspace_left_out_is_the_bound_sessions_and_any_other_is_refused_in_
     lead, other = str(uuid4()), str(uuid4())
     code, body = run("task", "list", session=lead)
     assert (code, body["failure_code"]) == (1, "local_client.workspace_unbound")
-    assert ["alphalattice", "--workspace", "<dir>", "session", "bind"] in [
-        shlex.split(command) for command in re.findall(r"`([^`]+)`", body["detail"])
-    ]
-    assert body["detail"] == client_refusal("local_client.workspace_unbound").detail
+    offered = [shlex.split(command) for command in re.findall(r"`([^`]+)`", body["detail"])]
+    assert ["alphalattice", "--workspace", "<dir>", "session", "bind"] in offered
+    # The refused line itself, its workspace named: the exact next command.
+    assert ["alphalattice", "--workspace", "<dir>", "task", "list"] in offered, body["detail"]
+    assert body["detail"].startswith(client_refusal("local_client.workspace_unbound").detail)
     assert body["next_action"] == client_refusal("local_client.workspace_unbound").next_action
     code, body = run("--workspace", str(workspace), "session", "bind", session=None)
     assert (code, body["failure_code"]) == (1, "local_client.session_unnamed")
@@ -709,7 +778,7 @@ def test_a_workspace_left_out_is_the_bound_sessions_and_any_other_is_refused_in_
     code, body = run("task", "list", session=other)
     assert (code, body["failure_code"]) == (1, "local_client.workspace_unbound")
     assert "alphalattice --workspace <dir>" in body["detail"]
-    assert body["detail"] == client_refusal("local_client.workspace_unbound").detail
+    assert body["detail"].startswith(client_refusal("local_client.workspace_unbound").detail)
     assert body["next_action"] == client_refusal("local_client.workspace_unbound").next_action
     code, body = run("--workspace", str(workspace), "session", "bind", session=other)
     assert (code, body["data"]["status"]) == (0, "BOUND")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,6 +13,18 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ProviderAdjustedSeriesRevision,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+
+def set_change_explained(
+    changed: Iterable[date], through: date, held: Callable[[date], bool] = lambda _: True
+) -> bool:
+    """Whether a session outside a listing's own history explains its session-set change.
+
+    A changed session on or before ``through`` that the listing ``held`` is a value revision of
+    its history (a late dividend back-adjusts it); one after ``through``, or one it did not
+    hold, changed the set. A change no such session explains is not admitted.
+    """
+    return any(day > through or not held(day) for day in changed)
 
 
 class AdjustedReturnSemanticDelta(BaseModel):

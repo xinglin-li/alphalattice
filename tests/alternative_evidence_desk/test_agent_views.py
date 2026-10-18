@@ -27,12 +27,16 @@ from alphalattice.evidence.alternative_evidence.analysis.views import (
     excerpt_groups,
     render_analyst_bundle,
 )
+from alphalattice.evidence.alternative_evidence.contracts import seal_contract
 from alphalattice.oversight.chief_risk_officer.decision.views import (
     MAXIMUM_COVERAGE_LINES,
     MAXIMUM_UNREPORTED_NAMES,
     render_review_bundle,
 )
-from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import ExposureBand
+from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
+    POSITION_EPSILON,
+    ExposureBand,
+)
 from alphalattice.protocols.actor_execution.bundles import (
     BUNDLE_FILE_BYTES,
     BUNDLE_FILE_LINES,
@@ -115,6 +119,23 @@ def test_every_cro_coverage_preview_retains_its_complete_list(
         else:
             assert "\n".join(f"- {value}" for value in values) in index
         assert location_words not in index
+
+
+def test_an_excerpt_cut_inside_a_sentence_is_marked_where_it_is_cut(tmp_path: Path) -> None:
+    """An excerpt that starts or stops inside a sentence shows the cut; a whole one does not."""
+    packet = _packet(tmp_path)
+    base = packet.spans[0]
+    texts = ("The term is defined. It holds.", "which the Company calls the Adjusted Net")
+    spans = tuple(
+        base.model_copy(update={"span_handle": f"SPAN-CUT-{n}", "excerpt": text})
+        for n, text in enumerate(texts)
+    )
+    bundle = render_analyst_bundle(replace(packet, spans=spans), task_procedure="")
+    material = " ".join(
+        " ".join(text for name, text in bundle.files if name != "README.md").split()
+    )
+    assert "It holds. [" not in material
+    assert "[…] which" in material and "Adjusted Net […]" in material
 
 
 @pytest.mark.parametrize("extra", [0, 1], ids=["at-bound", "one-over"])
@@ -321,6 +342,43 @@ def test_the_analyst_bundle_is_clean_packed_and_merges_near_identical_excerpts(
     assert f"{merged} near-identical excerpt(s) shown by their differing words" in index
 
 
+def test_the_review_header_keeps_positions_date_apart_from_evidence_clock(host_local_clock):
+    """The dated book and the Evidence cutoff are separate facts in the agent's header."""
+    from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
+        PortfolioUpdateReviewSubject,
+    )
+
+    subject = PortfolioUpdateReviewSubject(
+        update_task_id="00000000-0000-4000-8000-000000000001",
+        update_publication_hash="a" * 64,
+        position_hash="b" * 64,
+        checkpoint_hash="c" * 64,
+        position_basis="OBSERVED_RESEARCH_ENTRY",
+        strategy_package_id="test",
+        observed_through="2026-10-16",
+        formation_session="2026-10-15",
+        entry_session="2026-10-16",
+    )
+    dossier = _dossier()
+    dossier = seal_contract(
+        type(dossier),
+        "dossier_hash",
+        **{
+            **{key: value for key, value in dossier if key != "dossier_hash"},
+            **dict.fromkeys(("report_hash", "result_hash", "candidate_hash", "handoff_hash")),
+            "book_authority": subject.book_authority,
+            "update_subject": subject,
+            "evidence_as_of": host_local_clock,
+            "evidence_expires_at": host_local_clock + timedelta(days=1),
+        },
+    )
+    before = dossier.model_dump(mode="json")
+    head = render_review_bundle(dossier, task_procedure="").text("README.md")
+    assert "Positions for 2026-10-16" in head
+    assert "2026-10-17 22:44" in head and host_local_clock.isoformat() in head
+    assert dossier.model_dump(mode="json") == before
+
+
 def test_the_review_bundle_states_the_holdings_once_and_packs_the_findings() -> None:
     """requirement (S2): the dossier's semantics as Markdown -- holdings in
     their own file once, findings under their aliases by issuer, a program
@@ -332,8 +390,20 @@ def test_the_review_bundle_states_the_holdings_once_and_packs_the_findings() -> 
     assert names == ["README.md", "holdings-01.md", "findings-01.md"]
     _within_bounds(bundle.files)
     assert bundle.text("holdings-01.md").count("| AAPL |") == 1
+    expected_held = sum(issuer.ending_weight > 0 for issuer in dossier.issuers)
+    count = re.search(r"## Holdings \((\d+) held", bundle.text("holdings-01.md"))
+    assert count and int(count[1]) == expected_held
+    exited = _issuer("EXIT").model_copy(
+        update={"ending_weight": POSITION_EPSILON / 2, "transition": "EXITED"}
+    )
+    scoped = render_review_bundle(_dossier(issuers=(*dossier.issuers, exited)), task_procedure="")
+    assert re.search(r"## Holdings \((\d+) held", scoped.text("holdings-01.md"))[1] == str(
+        expected_held
+    )
     assert "### F1 · OPERATIONS_SUPPLY · ADVERSE" in bundle.text("findings-01.md")
     assert '"findings": [' in bundle.text("README.md")
+    book = str(dossier.book_authority)  # the kind in words, its code beside them to copy
+    assert re.search(rf"^Book: [A-Z][a-z][a-z ]+ \(`{book}`\)\.", bundle.text("README.md"), re.M)
     # Written by the program (S6): when each finding's documents were filed,
     # and the issuers in scope no finding names.
     filed = (_NOW - timedelta(days=1)).date().isoformat()

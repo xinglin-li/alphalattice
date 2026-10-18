@@ -251,8 +251,8 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
         Path(bundle["answer_file"]).write_text(
             json.dumps({**answer, "read": read}), encoding="utf-8"
         )
-        # The answer's Task is pending until it runs, so the submit exits 3 (OP3, V580).
-        assert main(["--view", "full", *bundle["submit_arguments"]], serve=lambda _: 99) == 3
+        # The answer is accepted while its Task remains queued.
+        assert main(["--view", "full", *bundle["submit_arguments"]], serve=lambda _: 99) == 0
         verdict = json.loads(capsys.readouterr().out)["data"]
         assert verdict["status"] == "ACCEPTED" and verdict["agent_role"] == "ANALYST"
         assert verdict["task_lifecycle"] == "QUEUED"
@@ -552,7 +552,7 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
     with monkeypatch.context() as patch:
         patch.setattr(PortfolioReviewCommand, "execute", lambda *_: None)
         patch.setattr(service.review, "review_task_contract", counted_contract)
-        assert main(["--view", "full", *bundle["submit_arguments"]], serve=lambda _: 99) == 3
+        assert main(["--view", "full", *bundle["submit_arguments"]], serve=lambda _: 99) == 0
         first = json.loads(capsys.readouterr().out)["data"]
         second_submission = {**submission, "summary": "A second reading of the same findings."}
         second_document = {**document, "review_answer": second_submission}
@@ -747,6 +747,49 @@ def test_a_dropped_analyst_item_reaches_the_review_as_a_gap(service):
     files = render_review_bundle(dossier, task_procedure="").files
     bundle = "\n".join(text for _name, text in files)
     assert bundle.index(line) < bundle.index(dossier.coverage.missing_evidence[1])
+
+
+def test_findings_past_three_an_issuer_are_counted_in_the_receipt_and_the_cros_bundle(service):
+    """The Host reads three findings an issuer; the rest are left out by count, never silently."""
+    from alphalattice.control.product_host.composition.evidence_review_application import (
+        agent_answer_result,
+    )
+    from alphalattice.interface.local_application.client import LocalResearchClient
+    from alphalattice.oversight.chief_risk_officer.decision.views import render_review_bundle
+    from tests.alternative_evidence_desk.planted_corpus import _CitingActor
+
+    adapter = service.review.evidence_task_adapter
+    topics = adapter.resources.analysis_actor.topics
+    adapter.resources = replace(adapter.resources, analysis_actor=None)
+    service.review.model_authority_admitted = False
+    service.review.review_actor = None
+    client = LocalResearchClient(service.session.workspace)
+    selected = {"result_hash": service.result_hash()}
+    preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
+    prepared = client.request(preview["next_requests"]["prepare"])
+    service.drain()
+    exported = client.request(_packet(service.evidence_cro()))
+    source = UUID(prepared["task_id"])
+    packet = adapter.prepared_packet(source, now=service.review.clock(), unit_id=ONE_UNIT)
+    answer = _CitingActor(topics=topics)(packet=packet).answer.model_dump(mode="json")
+    first = answer["findings"][0]
+    same = [f for f in answer["findings"] if f["issuer"] == first["issuer"]]
+    extra = [{**first, "summary": f"Another {n}."} for n in range(4 - len(same) + 1)]
+    written = {**answer, "findings": [*answer["findings"], *extra]}
+    left = len(same) + len(extra) - 3
+    document = {**exported["submission_template"], "analysis_answer": written}
+    done = client.request(document)
+    assert done["answer"]["verdict"] == "ACCEPTED", done
+    receipt = agent_answer_result("ANALYST", done)["receipt"]
+    assert done["answer"]["left_out"] == receipt["left_out"] == {first["issuer"]: left}
+    service.drain()
+    view = adapter.published_analysis(UUID(done["task_id"]), now=service.review.clock())
+    assert len(view.lineage.brief.findings) == len(written["findings"]) - left
+    line = next(v for v in view.lineage.cro_package.missing_evidence if first["issuer"] in v)
+    assert line.startswith("The Analyst's answer left out ") and f"{left} finding" in line
+    dossier = service.review._resolve_review_dossier(service.review._review_selector(None))
+    files = render_review_bundle(dossier, task_procedure="").files
+    assert line in "\n".join(text for _name, text in files)
 
 
 def test_external_review_expiry_before_publication_keeps_the_assessment_but_not_a_publication(
@@ -1899,7 +1942,8 @@ def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> N
             )
             assert admitted["status"] == admitted["answer_status"] == "ACCEPTED"
             assert (admitted["task_lifecycle"], outcome_of(admitted)) == (lifecycle, expected)
-            assert all(word in admitted["message"] for word in ("accepted", "t-1", lifecycle))
+            words = ("accepted", "t-1", lifecycle, "(exit 0)")  # an accepted answer
+            assert all(word in admitted["message"] for word in words)  # never reads as pending
             assert admitted["next_requests"]["task"] == {"operation": "STATUS", "task_id": "t-1"}
         reused = agent_answer_result(
             role,

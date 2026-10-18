@@ -87,6 +87,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
     FeatureStateRepository,
     PanelStateRepository,
 )
+from alphalattice.foundation.market_data_ops.returns.semantic_revisions import set_change_explained
 from alphalattice.foundation.market_data_ops.runtime.remediation import (
     PolicyDecision,
     RemediationAction,
@@ -196,6 +197,16 @@ def _raw_close_points(series: pa.Table) -> dict[str, RawCloseSeries]:
     }
 
 
+def _reconciliation_cause(error: ValueError) -> dict[str, object]:
+    """A source change the Feature rows cannot reconcile, naming its listing."""
+    return {
+        "exception_type": "ValueError",
+        "detail": str(error.args[0]),
+        "step": "source_reconciliation",
+        "unit": (*error.args, None)[1],
+    }
+
+
 def _feature_failure_cause(coverage_summary: Mapping[str, object]) -> dict[str, object] | None:
     """What a Feature build that failed saw, in the stage's words, or None (V444).
 
@@ -287,6 +298,10 @@ class WorkspaceMaintenanceRecords(Protocol):
         """Reads the full-history audits admitted onto a stopped cycle."""
         ...
 
+    def record_audit_supplement(self, cycle_id: str, **receipt: Any) -> None:
+        """Admits full-history audits onto the cycle that receipted them as required."""
+        ...
+
     def record_action_audit(self, receipt: ActionAuditChainReceipt) -> bool:
         """Appends an action audit to its listing's chain."""
         ...
@@ -364,6 +379,7 @@ class WorkspaceMaintenanceCoordinator:
         default=None, init=False, repr=False
     )
     _cycle_id: str | None = field(default=None, init=False, repr=False)
+    _verified: tuple[str, ...] = field(default=(), init=False, repr=False)
     clock: Callable[[], datetime] | None = None
 
     def __post_init__(self) -> None:
@@ -423,14 +439,10 @@ class WorkspaceMaintenanceCoordinator:
         maintenance_work_budget: int | None,
     ) -> WorkspaceMaintenanceOutcome:
         cycle = self.registry.admit(request, observed_at=now)
-        self._cycle_id = cycle.cycle_id
-        # A cycle that stopped inside quality governance -- waiting for a
-        # decision, pending review, refused while binding the evidence of the
-        # child the decision derived, or cancelled there -- resumes governance
-        # when it is run again. Market data is already current then, and
-        # without this the cycle would read an older admission for the same
-        # revision as clearance and build on the parent, silently dropping
-        # the decision.
+        self._cycle_id, self._verified = cycle.cycle_id, ()
+        # A cycle stopped inside quality governance (awaiting a decision, in review, refused
+        # binding the derived child's evidence, or cancelled) resumes governance when run again;
+        # else it would read an older admission as clearance and drop the decision.
         resuming_quality_deferred = (
             cycle.status
             in {
@@ -593,13 +605,9 @@ class WorkspaceMaintenanceCoordinator:
                         failure_code=outcome.failure_code,
                     )
             if request.candidate_recheck is not None:
-                # Due Feature/Sector work is executed whatever the raw retry
-                # admitted: a retry that admitted nothing leaves the parent as
-                # planned, one that admitted candidates activated a merged
-                # parent the recheck rides on. Resolved here, every cycle,
-                # from the stored request, so a cycle that stopped, was
-                # cancelled or was interrupted between the two finds the
-                # recheck still owed when it runs again.
+                # Due Feature/Sector work runs whatever the raw retry admitted (nothing leaves the
+                # parent as planned; candidates activated a merged parent). Resolved every cycle
+                # from the stored request, so an interrupted cycle still owes the recheck.
                 working = self._feature_recheck_working_manifest(request, prepared=working)
         except ValueError as error:
             if not str(error).startswith("workspace_maintenance.candidate_"):
@@ -719,11 +727,8 @@ class WorkspaceMaintenanceCoordinator:
         )
         maintenance_change_set = cycle.market_data_change_set or MarketDataChangeSet()
         retry_grants = self._elapsed_wait_retry_grants(now=now)
-        # Daily maintenance owns the currently admitted research membership.
-        # Acquisition candidates that previously failed quality cannot make an
-        # otherwise fresh workspace re-download the whole active universe on
-        # every launch; they return only through their governed requalification
-        # path or a newly approved candidate transition.
+        # Daily maintenance owns the admitted membership: candidates that failed quality never
+        # make a fresh workspace re-download the universe; they return by requalification only.
         candidate_raw_through = self.market_data.manifest_raw_through(self.manifest)
         candidate_adjusted_through = self.market_data.manifest_provider_adjusted_through(
             self.manifest
@@ -736,12 +741,9 @@ class WorkspaceMaintenanceCoordinator:
             or bool(authorized_full_listing_ids)
             or bool(required_full_listing_ids)
         )
-        # A Panel is unreadable by Factor and Risk without a Feature Input
-        # Gateway admission, so the absence of one is itself a reason to govern.
-        # Refresh alone is not enough: a freshly initialized workspace skips
-        # governance on its first cycle for want of an active Panel, and every
-        # later cycle finds market data already current, which would leave the
-        # admission permanently unreachable.
+        # Factor and Risk cannot read a Panel without a Gateway admission, so its absence is a
+        # reason to govern: a fresh workspace skips governance on its first cycle and later
+        # cycles find data current, which would leave the admission unreachable.
         needs_quality_admission = self.feature_input is not None and (
             self.panel_state.feature_input_quality_disclosure(
                 result_manifest_revision=self.manifest.revision_sha256
@@ -819,14 +821,8 @@ class WorkspaceMaintenanceCoordinator:
                 )
             )
             if approval_required:
-                return self._finish(
-                    cycle.cycle_id,
-                    phase=MaintenancePhase.MARKET_DATA,
-                    status=MaintenanceStatus.BLOCKED,
-                    observed_at=now,
-                    failure_code="data.full_history_audit_approval_required",
-                    change_set=maintenance_change_set,
-                    effect_receipts=(full_history_audit_requirement(request, approval_required),),
+                return self._audit_stop(
+                    cycle.cycle_id, request, approval_required, now, maintenance_change_set
                 )
             governance = (
                 self._govern_quality(
@@ -855,12 +851,9 @@ class WorkspaceMaintenanceCoordinator:
                 and not governance.result.agent_cases
                 and governance.result.deferred is None
             ):
-                # Failures-only governance found nothing to decide. Members
-                # still failed (every failure held by a standing quarantine):
-                # the day cannot complete, and the cause is the one the
-                # derived binding would have stopped by after the build.
-                # No member failed (the earlier cases were cleared by this
-                # evidence): the build proceeds.
+                # Failures-only governance found nothing to decide. Members still failed (each
+                # held by a standing quarantine): the day stops with the derived binding's cause.
+                # None failed (this evidence cleared them): the build proceeds.
                 guarded: tuple[MaintenanceStatus, datetime | None, str | None] | None = (
                     (MaintenanceStatus.BLOCKED, None, "data.listing_updates_incomplete")
                     if self._failed_members(maintenance.maintenance_id)
@@ -928,9 +921,8 @@ class WorkspaceMaintenanceCoordinator:
                     change_set=maintenance_change_set,
                 )
             active_panel = self.panel_state.active_feature_panel(request.market_profile_id)
-            # The disclosure is sealed into the Panel manifest at publication, so
-            # a Panel published before the admission still reads as unqualified.
-            # Republish from the existing Feature rows; no rebuild is required.
+            # The disclosure is sealed into the Panel at publication, so one published before the
+            # admission reads unqualified: republish from the Feature rows, no rebuild.
             # Only while the Panel still answers for the current manifest: an
             # admission that derives a new child revision leaves the Panel stale,
             # and rebuilding it against that revision belongs to the feature
@@ -951,17 +943,17 @@ class WorkspaceMaintenanceCoordinator:
                 maintenance_change_set = self._merge_change_sets(
                     maintenance_change_set,
                     self._unconsumed_feature_source_change_set(
-                        active_panel,
-                        through=request.target_market_session,
+                        active_panel, through=request.target_market_session
                     ),
                 )
-            except ValueError:
+            except ValueError as error:
                 return self._finish(
                     cycle.cycle_id,
                     phase=MaintenancePhase.MARKET_DATA,
                     status=MaintenanceStatus.BLOCKED,
                     observed_at=now,
                     failure_code=("workspace_maintenance.feature_source_reconciliation_failed"),
+                    failure_cause=_reconciliation_cause(error),
                     change_set=maintenance_change_set,
                 )
 
@@ -1167,13 +1159,9 @@ class WorkspaceMaintenanceCoordinator:
                     change_set=change_set,
                     effect_receipts=(published.manifest.snapshot_hash,),
                 )
-            # The Panel is published and there is no Feature work to do, which is
-            # also the state a Panel published before Gateway admission stays in
-            # forever: its semantic index was withheld on purpose, the admission
-            # has since arrived, and no other path ever revisits it. Completing
-            # the handoff here reads the immutable manifest and chunks that
-            # already exist -- no Feature value is recomputed, and nothing is
-            # republished -- and it is a no-op once the index resolves.
+            # A Panel published before Gateway admission withheld its semantic index and no other
+            # path revisits it: completing the handoff here reads the existing manifest and chunks
+            # (nothing recomputed or republished) and is a no-op once the index resolves.
             handed_off: str | None = None
             if self.snapshot_publisher is not None:
                 try:
@@ -1199,16 +1187,11 @@ class WorkspaceMaintenanceCoordinator:
             )
         if needs_feature_initialization and sector_available:
             # U0's baseline qualification answers from computed base values.
-            # When an earlier build of this first use (one refused at its
-            # Panel, or one over a membership governance then replaced) has
-            # already materialized every candidate's as-of row, the judgement
-            # is made here, before a Panel is composed for a membership it
-            # would derive away from -- but an exclusion is taken from a row
-            # only when that row's materialization still applies to the
-            # current inputs (the qualification owner's proof); a row the
-            # source has moved under, or one that is not yet computed, leaves
-            # the judgement to the build, exactly as before. Nothing is
-            # published before the judgement on either path.
+            # When an earlier build of this first use (refused at its Panel, or over a membership
+            # governance replaced) materialized every candidate's as-of row, the judgement is made
+            # here, before a Panel is composed for a membership it would leave; an exclusion is
+            # taken from a row only while its materialization still applies to current inputs,
+            # else the build judges, as before. Nothing is published before the judgement.
             qualification = self._qualify_features_for_membership(
                 request=request, observed_at=now, only_when_materialized=True
             )
@@ -1517,25 +1500,18 @@ class WorkspaceMaintenanceCoordinator:
     ) -> tuple[MaintenanceStatus, str, Mapping[str, object] | None] | None:
         """Qualify U0 or new candidates from already-computed base values before entry.
 
-        Raw onboarding is only candidate preparation. The shipped base bundle
-        is the baseline contract; arbitrary installed research extensions do not
-        silently become extra Universe requirements. This admission does not
-        replace the Gateway's separate full-quality audit.
+        Raw onboarding only prepares candidates; the shipped base bundle is the contract, and
+        installed research extensions never become Universe requirements. The Gateway's
+        full-quality audit stays separate.
 
-        ``only_when_materialized`` answers ``None`` while any candidate's
-        as-of row is still pending -- not yet computed, or computed from
-        inputs that are no longer current (the qualification owner reports
-        such an exclusion as pending) -- leaving the judgement to the call
+        ``only_when_materialized`` answers ``None`` while a candidate's as-of row is pending
+        (not computed, or from inputs no longer current), leaving the judgement to the call
         after the build that computes it.
 
-        The assessment is made at the coordinator's clock now, the same
-        operational instant `_quality_evidence` and the Sector
-        exclusion take: the cycle's entry time predates a Feature build run
-        inside the cycle, whose Sector observation is stamped at the runner's
-        later clock, and a knowledge boundary sealed at the entry time refused
-        that observation as if it came from the future (2026-09-15, run 1). An
-        explicit `request.knowledge_cutoff_at` still binds and still refuses a
-        later observation; a source observed after this instant is still refused.
+        It is assessed at the coordinator's clock now, as `_quality_evidence` and the Sector
+        exclusion are: a boundary sealed at the cycle's entry refused the in-cycle build's later
+        Sector observation as future (2026-09-15, run 1). An explicit
+        `request.knowledge_cutoff_at` still binds and refuses a later observation.
         """
         observed_at = self._utc(self.clock() if self.clock is not None else observed_at)
         bootstrap = self.market_data.universe_bootstrap(request.market_profile_id)
@@ -1853,16 +1829,12 @@ class WorkspaceMaintenanceCoordinator:
                 reduced,
                 requested_as_of=request.target_market_session,
                 now=observed_at,
+                verified=frozenset(self._verified),
             )
         except ValueError:
-            # A member of the reduced child holds no reusable audit receipt
-            # for this session: the exclusion cannot bind its evidence and
-            # is not applied; a later run re-attempts it, as the governed
-            # child binding does (an escaped refusal used to interrupt the
-            # Task). The cycle stops by the cause the user can act on: the
-            # day's refresh failed for members of the reduction (a stale
-            # payload seals no audit), or the evidence is otherwise missing,
-            # expired or changed since the parent's audit.
+            # No reusable receipt for a member: the exclusion is not applied and a later run
+            # retries. The cycle stops by the cause the user can act on: the day's refresh failed
+            # for its members, or the evidence is missing, expired or changed since its audit.
             return self._refused_binding_cause(request, admitted_ids)
         if carried is None:
             # Through the activation coordinator, as every activation: its map and receipt,
@@ -1909,6 +1881,44 @@ class WorkspaceMaintenanceCoordinator:
             retry_after_at=cycle.retry_after_at,
             failure_code=cycle.failure_code,
         )
+
+    def _audit_stop(
+        self,
+        cycle_id: str,
+        request: WorkspaceMaintenanceRequest,
+        listing_ids: tuple[str, ...],
+        now: datetime,
+        change_set: MarketDataChangeSet | None,
+    ) -> WorkspaceMaintenanceOutcome:
+        """A full-history audit's stop, or within the workspace rule's bounds the same Task
+        rerun over those listings' history; the rule records its approval once admitted."""
+        needed = full_history_audit_requirement(request, listing_ids)
+
+        def stop(ruled: str | None) -> WorkspaceMaintenanceOutcome:
+            finished = self._finish(
+                cycle_id,
+                phase=MaintenancePhase.MARKET_DATA,
+                status=MaintenanceStatus.RUNNING if ruled else MaintenanceStatus.BLOCKED,
+                observed_at=now,
+                failure_code=None if ruled else "data.full_history_audit_approval_required",
+                change_set=change_set,
+                effect_receipts=(needed,),
+            )
+            if ruled:
+                self.registry.record_audit_supplement(
+                    cycle_id,
+                    listing_ids=listing_ids,
+                    requirement_receipt=needed,
+                    audit_plan_hash=ruled,
+                    observed_at=now,
+                )
+            return finished
+
+        audit = getattr(self.diagnose, "audit", None)
+        named = {item.listing_id: item.symbol for item in self.manifest.listings}
+        listings = {listing: named.get(listing, listing) for listing in listing_ids}
+        admitted = audit(listings, len(self.manifest.listings), stop) if audit else None
+        return stop(None) if admitted is None else admitted
 
     def _granted_full_audits(self, request: WorkspaceMaintenanceRequest) -> tuple[str, ...]:
         """The request's full-history audits and those admitted onto this cycle after a stop."""
@@ -2252,6 +2262,29 @@ class WorkspaceMaintenanceCoordinator:
             receipt_hashes=tuple(receipts),
         )
 
+    def _set_change_admitted(
+        self,
+        listing_id: str,
+        changed: frozenset[date],
+        through: date,
+        *,
+        verified: bool,
+        appended: bool,
+        prior: set[str],
+    ) -> bool:
+        """An append, or `set_change_explained` with member days held."""
+        if not verified or appended:
+            return verified
+        past = tuple(sorted(day for day in changed if day <= through))
+        if not past or len(past) < len(changed):
+            return bool(set_change_explained(changed, through))
+        held = self.market_data.membership_schedule(
+            self.manifest.profile.market_profile_id,
+            sessions=past,
+            fallback_listing_ids=tuple(sorted(prior)),
+        ).members
+        return bool(set_change_explained(changed, through, lambda day: listing_id in held(day)))
+
     @staticmethod
     def _merge_change_sets(
         prior: MarketDataChangeSet,
@@ -2429,38 +2462,15 @@ class WorkspaceMaintenanceCoordinator:
                 if changed_sessions:
                     raise ValueError("uniform provider rescale contains changed-return sessions")
                 continue
-            if revision.session_set_changed:
-                # Base preparation may already have consumed a tail while the
-                # Panel waits for membership admission. No remaining base append
-                # is then expected; the immutable Panel prefix is still owed it.
-                published_through = date.fromisoformat(str(active_panel["as_of_session"]))
-                prepared_unconsumed = (
-                    bool(changed_sessions) and min(changed_sessions) > published_through
-                )
-                if (
-                    revision.listing_id in verified_session_sets
-                    and changed_sessions
-                    and not append_sessions.get(revision.listing_id)
-                    and not prepared_unconsumed
-                ):
-                    # Re-entry can prepare its absent interval before the global
-                    # Panel cutoff. Those source rows were never Panel members;
-                    # this is lookback coverage, not a rewrite of consumed history.
-                    past = tuple(
-                        sorted(day for day in changed_sessions if day <= published_through)
-                    )
-                    membership = self.market_data.membership_schedule(
-                        self.manifest.profile.market_profile_id,
-                        sessions=past,
-                        fallback_listing_ids=tuple(sorted(prior_listing_ids)),
-                    )
-                    prepared_unconsumed = all(
-                        revision.listing_id not in membership.members(day) for day in past
-                    )
-                if revision.listing_id not in verified_session_sets or (
-                    not append_sessions.get(revision.listing_id) and not prepared_unconsumed
-                ):
-                    raise ValueError("provider session-set change is not a verified append")
+            if revision.session_set_changed and not self._set_change_admitted(
+                revision.listing_id,
+                changed_sessions,
+                date.fromisoformat(str(active_panel["as_of_session"])),
+                verified=revision.listing_id in verified_session_sets,
+                appended=bool(append_sessions.get(revision.listing_id)),
+                prior=prior_listing_ids,
+            ):
+                raise ValueError("provider session-set change unexplained", revision.listing_id)
             if not changed_sessions:
                 continue
             ensure(revision.listing_id)
@@ -2662,19 +2672,13 @@ class WorkspaceMaintenanceCoordinator:
                 for item in self.market_data.current_universe_maintenance_listings(maintenance_id)
             }
         )
-        # A listing's evidence declares the whole range it holds
-        # (``range_start`` is its first raw session), and two audits qualify
-        # that range: the full-history anchor of its audit chain (the newest
-        # full-history provider receipt, ``latest_action_audit_receipts``) and
-        # the link sealed for this session in the scope that maintenance ran
-        # (a rolling window on an ordinary day; the change document reports
-        # it, and without a change document the store holds it). The
-        # adjusted-close diagnostic is judged over both -- the anchor keeps a
-        # historical mismatch visible on a day whose window is clean, the
-        # link keeps a fresh one visible -- and both passes of governance
-        # (the maintenance cycle that raises a case, the continuation that
-        # applies the decision) read the same two receipts, so a listing's
-        # evidence identity does not move between them.
+        # A listing's evidence declares its whole range (``range_start``, its first raw session)
+        # and two audits qualify it: its chain's full-history anchor (the newest full-history
+        # receipt, ``latest_action_audit_receipts``) and the link sealed for this session in
+        # maintenance's scope (a rolling window on an ordinary day, from the change document or
+        # the store). The adjusted-close diagnostic is judged over both (the anchor keeps an old
+        # mismatch visible, the link a fresh one), and both governance passes read the same two
+        # receipts, so a listing's evidence identity does not move between them.
         listing_ids = tuple(listing.listing_id for listing in quality_manifest.listings)
         # One set-scoped read for the whole manifest, then one evaluation per
         # listing over its slice: the same rows, order and evidence identity
@@ -3443,11 +3447,10 @@ class WorkspaceMaintenanceCoordinator:
         if source_manifest.revision_sha256 == target_manifest.revision_sha256:
             return True
         try:
-            # Evidence readers join through the candidate membership rows. This
-            # registers the governed child without activating it; activation
-            # still follows successful action and Sector readback below.
+            # Registers the governed child for the evidence readers, without activating it. The
+            # receipts it binds were verified now: the cycle's Sector exclusion takes them as such.
             self.mutation_gate.run(self.market_data.bootstrap, target_manifest)
-            self.mutation_gate.run(
+            self._verified = self.mutation_gate.run(
                 self.market_data.bind_action_audit_receipts_to_manifest,
                 source_manifest,
                 target_manifest,

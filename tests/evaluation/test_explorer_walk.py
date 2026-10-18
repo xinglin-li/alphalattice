@@ -60,6 +60,59 @@ def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(tmp_path:
 
 
 @pytest.mark.parametrize(
+    "ending",
+    [
+        *("CANCEL", "WORKSPACE_PREPARE_CANCEL", "GOAL_ABANDON", "HOST_STOP"),
+        *("cancelled", "resend", "resolved"),
+    ],
+)
+def test_a_positive_walk_keeps_endings_and_cancelled_replans_optional(tmp_path, ending):
+    """Ending offers remain visible, but are not continuations of the requested work."""
+    cancelled = ending in {"cancelled", "resend", "resolved"}
+    offers = (
+        {"replan": {"operation": "MODEL_PLAN"}}
+        if cancelled
+        else {"cancel": {"operation": ending}, "task": {"operation": "STATUS"}}
+    )
+    if ending == "resolved":
+        offers = {"successor": {"operation": "STATUS"}}
+    start = {"outcome": "OK", "next_requests": offers}
+    if cancelled:
+        start.update(
+            data={"lifecycle": "CANCELLED"},
+            next_action=("SEND_THE_OFFERED_REQUEST" if ending == "resend" else "REPORT_THE_STOP"),
+        )
+
+    if ending == "resolved":
+        start["next_action"] = "READ_THE_TASK_WITH_TASK_SHOW"
+
+    def call(argv):
+        return start if argv == ["start"] else {"outcome": "OK", "data": {"lifecycle": "SUCCEEDED"}}
+
+    terminal = ending in {"cancelled", "resend"}
+    state = "CANCELLED" if terminal else "SUCCEEDED"
+    route = Scenario("w", "w", "2026-10-17T02:44:00Z", (), ((state,),), "agent", ())
+    grade, trace = Explorer(call, lambda _: {}, route, tmp_path).explore([["start"]])
+    assert grade["passed"] == (ending != "resend") and len(trace.events) == (1 if terminal else 2)
+    assert trace.events[0].attributes["alphalattice.offers"] == list(offers)
+    if ending == "resend":
+        assert grade["reasons"][0]["loop_part"] == "feedback"
+    if not terminal:
+        key = "successor" if ending == "resolved" else "task"
+        assert trace.events[-1].attributes["alphalattice.path"].endswith(" > " + key)
+
+
+def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: Path) -> None:
+    """regression (a merge set under load, 2026-10-15): one wait's time box ended the path."""
+    wait = {"task_id": "t", "lifecycle": "RUNNING", "wait_event": {"event": "MAX_WAIT_REACHED"}}
+    answers = [{"outcome": "OK", "data": {"lifecycle": "SUCCEEDED"}}]
+    answers += [{"outcome": "PENDING", "data": data} for data in (wait, {"task_id": "t"})]
+    route = Scenario("w", "w", "2026-10-15T16:00:00+00:00", (), (("SUCCEEDED",),), "agent", ())
+    grade, trace = Explorer(lambda _: answers.pop(), lambda _: {}, route, tmp_path, 1).explore([[]])
+    assert grade["passed"] and len(trace.events) == 3, grade
+
+
+@pytest.mark.parametrize(
     "recovery",
     [
         "filled",
@@ -92,6 +145,11 @@ def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(tmp_path:
         "packages-good",
         "packages-id",
         "packages-empty",
+        "schema-good",
+        "schema-operation",
+        "schema-fields",
+        "schema-empty",
+        "schema-duplicate",
     ],
 )
 def test_an_injected_refusal_recovers_only_the_original_bound_step(
@@ -106,9 +164,28 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
     required = "plan_hash" if recovery == "changed-hash" else "update_task_id"
     if recovery == "changed-hash":
         request = {"operation": "MODEL_RUN", "plan_hash": "a" * 64}
-    discovery = recovery.startswith(("activity-", "tasks-", "packages-"))
+    discovery = recovery.startswith(("activity-", "tasks-", "packages-", "schema-"))
     read_data = {}
-    if recovery.startswith("packages-"):
+    if recovery.startswith("schema-"):
+        required = "evidence_setup"
+        request = {"operation": "EVIDENCE_INSTALL", required: "task-1"}
+        read_data = (
+            {
+                "operation_schema": {
+                    "properties": {
+                        "operation": {
+                            "const": "TASKS"
+                            if recovery == "schema-operation"
+                            else request["operation"]
+                        },
+                        **({} if recovery == "schema-fields" else {required: {"type": "string"}}),
+                    }
+                }
+            }
+            if recovery != "schema-empty"
+            else {}
+        )
+    elif recovery.startswith("packages-"):
         required = "strategy_package_id"
         request = {"operation": "RESEARCH_UPDATE_PLAN", required: "installed"}
         read_data = {
@@ -159,10 +236,14 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         repaired = {
             "operation": "WORKSPACE_SHOW"
             if recovery.startswith("packages-")
+            else "OPERATION_LIST"
+            if recovery.startswith("schema-")
             else "ACTIVITY_LIST"
             if recovery.startswith("activity-")
             else "TASKS"
         }
+        if recovery.startswith("schema-"):
+            repaired["schema_operation"] = request["operation"]
     elif recovery in {"wrong-binding", "wrong-write"}:
         repaired["update_task_id"] = "task-2"
     elif recovery == "changed-hash":
@@ -175,7 +256,7 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         sent.append(document)
         if discovery and document == repaired:
             return {"operation": document["operation"], "outcome": "OK", "data": read_data}
-        if document.get(required) and argv[1] == "--file":
+        if document.get(required) and argv[1] == "--file" and recovery != "schema-duplicate":
             return {
                 "operation": document["operation"],
                 "outcome": "UNAVAILABLE" if recovery == "unavailable" else "OK",
@@ -219,7 +300,13 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         tmp_path,
         request_fields={request["operation"]: {"required": [required], "allowed": list(request)}},
         mutation_owners={request["operation"]: "committee.py", "COMMITTEE_READ": "committee.py"},
-        read_operations={"COMMITTEE_READ", "ACTIVITY_LIST", "TASKS", "WORKSPACE_SHOW"},
+        read_operations={
+            "COMMITTEE_READ",
+            "ACTIVITY_LIST",
+            "TASKS",
+            "WORKSPACE_SHOW",
+            "OPERATION_LIST",
+        },
         mutation_budget=120,
         mutation_kinds={"drop-field"} if recovery == "walk" else None,
     )
@@ -231,8 +318,17 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
             == 1
         )
     else:
-        explorer.inject(request, "committee", kinds={"drop-field"})
+        explorer.inject(
+            request,
+            "committee",
+            **(
+                {"baseline": {"outcome": "OK", "data": {"task_id": "held"}}}
+                if recovery == "schema-duplicate"
+                else {"kinds": {"drop-field"}}
+            ),
+        )
     clean = recovery in {
+        "schema-good",
         "filled",
         "located",
         "located-read",
@@ -249,10 +345,11 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         recovery not in {"generic", "generic-offer"}
     )
     assert explorer.mutation_checks[0]["words_state_rule"] == (
-        recovery in {"located", "located-read", "owned-read", "empty-read", "usage"} or discovery
+        (recovery in {"located", "located-read", "owned-read", "empty-read", "usage"} or discovery)
+        and recovery != "schema-duplicate"
     )
     assert explorer.mutation_checks[0]["owner"] == "committee.py"
-    assert required not in sent[0] and request[required] == (
+    assert (required in sent[0]) == (recovery == "schema-duplicate") and request[required] == (
         "installed"
         if recovery.startswith("packages-")
         else "a" * 64
@@ -332,17 +429,9 @@ def test_a_retired_recovery_offer_is_settled_only_by_its_completed_source(tmp_pa
 @pytest.mark.parametrize(
     "identity",
     [
-        "same",
-        "update-plan",
-        "different",
-        "missing",
-        "recovered-same",
-        "recovered-task",
-        "recovered-message",
-        "read-same",
-        "read-update",
-        "read-message",
-        "read-empty",
+        *("same", "update-plan", "different", "missing", "cancelled", "cancelled-read"),
+        *("recovered-same", "recovered-task", "recovered-message"),
+        *("read-same", "read-update", "read-message", "read-empty"),
     ],
 )
 def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
@@ -352,6 +441,10 @@ def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
     request = {"operation": "MODEL_RUN", "plan_hash": "a" * 64}
     key = "message_id" if identity == "recovered-message" else "task_id"
     baseline = {"operation": "MODEL_RUN", "outcome": "PENDING", "data": {key: "original"}}
+    if identity.startswith("cancelled"):
+        baseline["data"]["lifecycle"] = "CANCELLED"
+        if identity == "cancelled-read":
+            request["operation"] = "COMMITTEE_READ"
     if identity == "update-plan":
         request = {"operation": "RESEARCH_UPDATE_PLAN"}
         key = "update_plan_hash"
@@ -412,11 +505,13 @@ def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
         mutation_owners={"COMMITTEE_SUBMIT": "committee.py", "COMMITTEE_READ": "committee.py"},
     )
     explorer.inject(request, "model", baseline=baseline, kinds={"duplicate"})
-    if identity.startswith("read-"):
+    if identity == "cancelled":
+        assert sent == [] and explorer.findings[0]["loop_part"] == "agent"
+    elif identity.startswith("read-"):
         assert sent == [request, {"operation": "COMMITTEE_READ", "update_task_id": "task-1"}]
     else:
         assert sent == [request] * (2 if identity.startswith("recovered-") else 1)
     assert bool(explorer.findings) == (
-        identity not in {"same", "recovered-same", "read-same", "update-plan"}
+        identity not in {"same", "recovered-same", "read-same", "update-plan", "cancelled-read"}
     )
     assert len(explorer.mutation_checks) == 1

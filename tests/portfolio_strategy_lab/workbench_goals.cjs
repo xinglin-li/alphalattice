@@ -109,7 +109,8 @@ const c={URLSearchParams,app:{page:'goal'},render(){},closeDialog(){},openDialog
       verifications.push({hash,resolve:()=>resolve(verified(hash)),
         reject:()=>reject(Error('local_client.connection_lost_task_may_still_run'))});});
     throw Error('unexpected '+url);}}};
-c.goalReferenceIntegrity=library.words(require('path').dirname(require('node:path').join(_appDir,'live-goals.js'))).goalReferenceIntegrity;
+const sharedWords=library.words(require('path').dirname(require('node:path').join(_appDir,'live-goals.js')));
+c.goalReferenceIntegrity=sharedWords.goalReferenceIntegrity;c.MESSAGE_KINDS=sharedWords.MESSAGE_KINDS;
 library.context(c);
 vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(require('node:path').join(_appDir,'live-goals.js')),
   'team-members.js'),'utf8'),c);
@@ -355,6 +356,26 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
       words.t('No Team exchange under this goal yet.')),language+' no false old conversation');
     await folder('goal-results');assert.ok(shows('A synthetic attributed outcome.'));
     await folder('goal');assert.ok(shows(words.t('Goal registered')));
+    // a first use's title is the Host's own word, read in the person's language as Home reads it
+    const firstHash='first-use-'+language,first={...empty,goal_hash:firstHash,head_hash:firstHash,
+      goal:{...empty.goal,goal_hash:firstHash,declaration:{...empty.goal.declaration,kind:'FIRST_USE',title:'First use'}}};
+    c.Data.read=async()=>first;route=new URLSearchParams('page=goal&goal='+firstHash);await c.live.ensure();
+    assert.ok(shows('<h1>'+words.t('First use')+'</h1>'),language+' a first use is titled in its language');
+    // the Host's own review-thread words read in the person's language; an agent's stay its own
+    // a member's own session reads as its part in that day's committee, in the reader's language
+    const session=(op,...roles)=>({id:'m',facts:[{item:{payload:{operation:op}}}],participants:new Map([['m',{roles:new Set(roles)}],['child',{roles:new Set(['alphalattice_risk'])}]])});
+    const titled=(s)=>vm.runInContext('TeamMembers',c).memberTitle(s,[{at:'2026-09-10T12:00:00'}],{independent_cro:'alphalattice_cro'});
+    assert.equal(titled(session('COMMITTEE_SUBMIT','alphalattice_alpha')),words.t('{role}, committee of {date}',{role:words.t('Alpha Modeling'),date:'2026-09-10'}),language+' a member session names its part');
+    // its own role, de-aliased, never a child's; a lead's stage answer is no review part
+    assert.equal(titled(session('AGENT_ANSWER_SUBMIT','independent_cro','alphalattice_cro')),words.t('{role}, review of {date}',{role:'CRO',date:'2026-09-10'}));
+    assert.equal(titled(session('AGENT_ANSWER_SUBMIT','alphalattice_data')),'');
+    assert.equal(titled(session('COMMITTEE_SUBMIT','research_lead','alphalattice_alpha')),'');
+    c.said=words.said;c.LiveTeam.scene=teamScene;const reviewHash='review-thread-'+language,review={...empty,goal_hash:reviewHash,head_hash:reviewHash,
+      goal:{...empty.goal,goal_hash:reviewHash},record:{...record,message_count:1,conversation:[{...record.conversation[0],
+        message_id:'review-1',input_channel:'PRODUCT_REVIEW',message_kind:'acceptance',summary:'Accepted.'}]}};
+    c.Data.read=async()=>review;route=new URLSearchParams('page=goal-conversation&goal='+reviewHash);
+    c.app.page='goal-conversation';await c.live.ensure();
+    assert.ok(shows(words.t('Accepted.')),language+' a review thread reads in its language');
     c.LiveTeam.scene=teamScene;
     const boundHash='bound-answer-'+language,bound={...empty,goal_hash:boundHash,
       head_hash:boundHash,goal:{...empty.goal,goal_hash:boundHash},
@@ -405,14 +426,15 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
     notice:'',stale:false,error:''};
   let retained=[];
   c.LiveActivity={state:()=>feed,retained:()=>[{items:retained}]};
-  const liveHash='mutable-conversation';
+  const liveHash='mutable-conversation', liveId='00000000-0000-4000-8000-000000000019';
   let liveBody={...verified(liveHash),record:{...record,conversation:[],message_count:0,
     open_assignments:[]}};
+  liveBody.goal.goal_id=liveId;
   let liveReads=0,holdVerification=false,releaseVerification=null;
   const clone=value=>JSON.parse(JSON.stringify(value));
   c.Data.read=async(url)=>{
     liveReads++;
-    assert.equal(new URL('http://local'+url).searchParams.get('goal_hash'),liveHash);
+    assert.equal(new URL('http://local'+url).searchParams.get(route.get('goal')===liveId?'goal_id':'goal_hash'),route.get('goal'));
     const body=clone(liveBody);
     if(url.startsWith('/api/goals/narrative?'))return {...body,
       evidence_verification:'NOT_PERFORMED',
@@ -430,7 +452,7 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
     retained.push({ordinal,schema_kind:'ExternalActivityObserved',payload:{event_kind:'NATIVE_COORDINATION_MESSAGE',subject:{goal_id:liveBody.goal.goal_id}}});
     feed={...feed,cursor:feed.epoch+':'+ordinal};
   };
-  route=new URLSearchParams('page=goal-conversation&goal='+liveHash);c.app.page='goal-conversation';
+  route=new URLSearchParams('page=goal-conversation&goal='+liveId);c.app.page='goal-conversation';
   await c.live.ensure();assert.equal(liveReads,2);
   retained.push({ordinal:1,payload:{subject:{goal_id:'other-goal'}}},
     {ordinal:2,payload:{subject:{goal_id:null}}});feed={...feed,cursor:'goal-store-1:2'};
@@ -452,6 +474,7 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
   assert.equal(liveBody.goal.revision,1,'conversation freshness creates no Goal revision');
   await c.live.observe();assert.equal(liveReads,4,'an identical activity tick does not reread');
   // An arrival while strict verification is pending survives its older answer.
+  liveBody={...liveBody,head_hash:'revised-head',goal:{...liveBody.goal,goal_hash:'revised-head',revision:2}};
   appendBound(34,'Answer before slow verification');holdVerification=true;
   const advancing=c.live.observe();await tick();
   assert.ok(releaseVerification,'the controlled strict readback started');
@@ -461,6 +484,7 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
   assert.equal(liveReads,8,'the pending newer bound event gets its own complete owner pass');
   assert.ok(shows('Answer during slow verification','Reference integrity checked')&&
     hides('Checking reference integrity'));
+  assert.ok(shows('Revision: 2'));assert.equal(route.get('goal'),liveId);
   feed={...feed,epoch:'goal-store-2',cursor:'goal-store-2:1',disposition:'RESET'};
   retained=[{ordinal:1,payload:{subject:{goal_id:'other-goal'}}}];
   await c.live.observe();assert.equal(liveReads,10,'a changed store rereads the Goal owner');
@@ -489,6 +513,11 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
   await reload.live.ensure();
   assert.equal(liveReads,16,'a cold page reads the current owner record');
   assert.ok(String(reload.live.page()).includes('Recorded while away'));
+  liveBody={...liveBody,head_hash:'completed-head',head:{goal_hash:'completed-head',state:'COMPLETE',outcome:'ACHIEVED'},goal:{...liveBody.goal,goal_hash:liveHash,revision:1}};
+  route.set('goal',liveHash);c.live.leaveReads();await c.live.ensure();
+  assert.ok(shows('Historical revision','Record complete','Achieved'));
+  assert.ok(hides('data-state="pending">Open','data-action="goal-note"'));
+  assert.ok(shows('data-action="goal-open" data-value="'+liveId+'"'));
   delete c.LiveActivity;
   // the list: one row per goal, the composer's primary in the head
   route=new URLSearchParams('page=goals');c.app.page='goals';

@@ -46,6 +46,7 @@ from alphalattice.interface.local_application.activity import (
     READ_OPERATIONS,
     RECORDS_ITSELF,
     ActivityReadQuery,
+    opens_goal,
 )
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
@@ -54,7 +55,10 @@ from alphalattice.interface.local_application.cli_contract import (
 )
 from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.native_bridge import BINDING_NAME
-from alphalattice.interface.local_application.native_setup import declare_project
+from alphalattice.interface.local_application.native_bridge import (
+    CHILD_USAGE_BINDING_UNVERIFIED as UNVERIFIED,
+)
+from alphalattice.interface.local_application.native_setup import declare_project, unbind_session
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
@@ -140,27 +144,28 @@ def test_selected_session_product_facts_share_its_span_and_paging(live, tmp_path
         REQUEST_PROVENANCE.reset(token)
 
 
-def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
-    tmp_path, monkeypatch
-):
-    """One complete binding never erases another binding's pending usage progress."""
+def _two_bound(tmp_path, monkeypatch, receipts):
+    """Two Sessions bound to one workspace, each read from `receipts` in binding order."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     projects = [tmp_path / "a-project", usage_module.autobind_root(workspace)]
-    for project in projects:
-        (project / ".codex").mkdir(parents=True)
-        declare_project(project, "codex")
-        (project / ".codex" / BINDING_NAME).write_text(
-            json.dumps(
-                {
-                    "session_id": project.name,
-                    "host": "codex",
-                    "workspace": str(workspace),
-                    "roles": ["alphalattice_cro"],
-                }
-            ),
-            encoding="utf-8",
+
+    def bind(project, **changes):
+        document = (
+            dict(
+                session_id=project.name,
+                host="codex",
+                workspace=str(workspace),
+                roles=["alphalattice_cro"],
+            )
+            | changes
         )
+        declare_project(project, document["host"])
+        (project / ".codex").mkdir(exist_ok=True)
+        (project / ".codex" / BINDING_NAME).write_text(json.dumps(document), encoding="utf-8")
+
+    for project in projects:
+        bind(project)
     elapsed = [0.0]
     monkeypatch.setattr(usage_module, "monotonic", lambda: elapsed[0], raising=False)
     operations = SimpleNamespace(
@@ -169,9 +174,6 @@ def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
         native_projects=projects,
         goals=SimpleNamespace(attributed_goal=lambda _: None),
     )
-    progress = {"read_through": 4, "total_bytes": 12, "bytes_read": 4, "rescan": False}
-    pending = {"status": "PARTIAL", "reason": "native_bridge.usage_catching_up", **progress}
-    receipts = [pending, {"status": "DELIVERED"}]
 
     def read(project, binding, **kwargs):
         receipt = receipts[projects.index(project)]
@@ -180,23 +182,35 @@ def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
         return receipt
 
     monkeypatch.setattr(usage_module, "read_session_usage", read)
-    reader = NativeUsageReader(operations)
+    return workspace, projects, NativeUsageReader(operations), elapsed, bind
+
+
+def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
+    tmp_path, monkeypatch
+):
+    """One complete binding never erases another binding's pending usage progress."""
+    progress = {"read_through": 4, "total_bytes": 12, "bytes_read": 4, "rescan": False}
+    pending = {"status": "PARTIAL", "reason": "native_bridge.usage_catching_up", **progress}
+    receipts = [pending, {"status": "DELIVERED"}]
+    workspace, projects, reader, elapsed, bind = _two_bound(tmp_path, monkeypatch, receipts)
     assert [row["status"] for row in reader.read()["sessions"]] == ["PARTIAL", "DELIVERED"]
-    assert reader.state() == {
-        "status": "OBSERVING",
-        "reason": "native_bridge.usage_catching_up",
-        **progress,
+    healthy = dict(status="OBSERVING", reason=None)
+    expected_sessions = {
+        "codex:" + projects[0].name: healthy | dict(reason=pending["reason"], **progress),
+        "codex:" + projects[1].name: healthy,
     }
+    expected = dict(
+        status="OBSERVING", reason=pending["reason"], **progress, sessions=expected_sessions
+    )
+    assert reader.state() == expected
+    assert reader.state()["sessions"]["codex:" + projects[1].name] == healthy
     assert [row["status"] for row in reader.read()["sessions"]] == ["RECENT", "RECENT"]
-    assert reader.state() == {"status": "OBSERVING", "reason": pending["reason"], **progress}
+    assert reader.state() == expected
     receipts[:] = {"status": "DELIVERED"}, {"status": "DELIVERED"}
     elapsed[0] += 10
     assert [row["status"] for row in reader.read()["sessions"]] == ["DELIVERED", "DELIVERED"]
     for project in projects:
-        path = project / ".codex" / BINDING_NAME
-        binding = json.loads(path.read_text("utf-8"))
-        binding["session_id"] = "shared-session"
-        path.write_text(json.dumps(binding), encoding="utf-8")
+        bind(project, session_id="shared-session")
     receipts[:] = pending, pending
     elapsed[0] += 10
     reader.read()
@@ -205,21 +219,46 @@ def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
     assert [row["status"] for row in reader.read()["sessions"]] == ["DELIVERED", "RECENT"]
     assert reader.state()["reason"] is None
     for project in projects:
-        path = project / ".codex" / BINDING_NAME
-        binding = json.loads(path.read_text("utf-8"))
-        binding["session_id"] = project.name
-        path.write_text(json.dumps(binding), encoding="utf-8")
-    for first, second in (
-        (pending, {"status": "UNAVAILABLE", "reason": "activity.observer_failed"}),
-        (RuntimeError("unavailable"), {"status": "DELIVERED"}),
+        bind(project)
+    failed = dict(status="UNAVAILABLE", reason="activity.observer_failed")
+    lost = dict(status="UNAVAILABLE", reason="native_bridge.lead_usage_read_failed")
+    for first, second, first_own, second_own in (
+        (pending, failed, expected_sessions["codex:" + projects[0].name], failed),
+        (RuntimeError("unavailable"), {"status": "DELIVERED"}, lost, healthy),
     ):
         receipts[:] = first, second
         elapsed[0] += 10
         reader.read()
-        assert reader.state() == {
-            "status": "UNAVAILABLE",
-            "reason": second.get("reason", "native_bridge.lead_usage_read_failed"),
-        }
+        assert reader.state() == dict(
+            status="UNAVAILABLE",
+            reason=second.get("reason", lost["reason"]),
+            sessions={
+                "codex:" + projects[0].name: first_own,
+                "codex:" + projects[1].name: second_own,
+            },
+        )
+    for project, host in zip(projects, ("codex", "claude-code"), strict=True):
+        bind(project, session_id="collision", host=host)
+    receipts[:] = pending, {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}
+    reader.read()
+    assert reader.state()["sessions"] == {
+        "codex:collision": expected_sessions["codex:" + projects[0].name],
+        "claude-code:collision": {"status": "OFF", "reason": None},
+    }
+    assert reader.state()["status"] == "OBSERVING"
+
+    bind(projects[0], usage="OFF")
+    bind(projects[1])
+    reader.read()
+    assert set(reader.state()["sessions"]) == {"codex:" + projects[1].name}
+    for project in projects:
+        bind(project, usage="OFF")
+    reader.read()
+    assert reader.state() == {"status": "OFF", "reason": None, "sessions": {}}
+    for project in projects:
+        unbind_session(project, session_id=project.name, host="codex")
+    reader.read()
+    assert reader.state() == {"status": "NOT_BOUND", "reason": None, "sessions": {}}
     cache = workspace / "runtime/native-usage"
     cache.mkdir(parents=True)
     (cache / "orphan.lock").touch()
@@ -239,9 +278,24 @@ def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_pat
         else {}
     )
 
+    participants = [
+        dict(agent_id=f"unknown-{i}", status="UNAVAILABLE", reason=UNVERIFIED) for i in range(101)
+    ]
+    sample = usage_module.own_standing(
+        dict(status="PARTIAL", reason=UNVERIFIED, participants=participants)
+    )
+    assert sample == dict(
+        status="OBSERVING",
+        reason=None,
+        unverified=[f"unknown-{i}" for i in range(8)],
+        unverified_count=101,
+    )
+
     def usage_state():
         calls.append("read")
         return {
+            **sample,
+            "unverified": [p["agent_id"] for p in participants],
             "status": status,
             "reason": "activity.observer_failed",
             "session_id": "PRIVATE-NATIVE-SESSION",
@@ -264,7 +318,20 @@ def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_pat
         assert calls == ["read"]
         usage = state["native_usage"]
         assert usage["status"] == status and usage["reason"] == "activity.observer_failed"
-        assert set(usage) <= {"status", "reason", "detail", "next_action"} | progress.keys()
+        assert (
+            set(usage)
+            <= {
+                "status",
+                "reason",
+                "detail",
+                "next_action",
+                "unverified",
+                "unverified_count",
+                "unverified_detail",
+            }
+            | progress.keys()
+        )
+        assert usage["unverified"] == sample["unverified"] and usage["unverified_count"] == 101
         assert {key: usage.get(key) for key in progress} == progress
         words = refusal_words("activity.observer_failed")
         for field in ("detail", "next_action"):
@@ -451,10 +518,19 @@ def test_full_external_document_fits_ledger_and_preserves_old_retries(live, char
 def test_every_operation_in_the_vocabulary_is_classified_once() -> None:
     """A new operation must be placed deliberately: recorded activity or a read."""
 
+    from alphalattice.interface.local_application.activity import OBSERVED_READ_OPERATIONS
     from alphalattice.interface.local_application.operations import OPERATIONS
 
     vocabulary = frozenset(OPERATIONS)
-    parts = (READ_OPERATIONS, OBSERVED_OPERATIONS, RECORDS_ITSELF)
+    assert (
+        READ_OPERATIONS & OBSERVED_OPERATIONS
+        == OBSERVED_READ_OPERATIONS
+        == {"EXPERIMENT_DELIVERY_EXPORT"}
+    )
+    assert not opens_goal(
+        "EXPERIMENT_DELIVERY_EXPORT", RequestProvenance(vendor="codex", session="session")
+    )
+    parts = (READ_OPERATIONS - OBSERVED_READ_OPERATIONS, OBSERVED_OPERATIONS, RECORDS_ITSELF)
     assert sum(len(part) for part in parts) == len(frozenset().union(*parts))
     assert vocabulary == frozenset().union(*parts)
     assert {"PLAN", "RUN", "EXPERIMENT_PLAN", "EXPERIMENT_RUN", "CANCEL"} <= OBSERVED_OPERATIONS
@@ -1291,6 +1367,10 @@ def test_a_sessions_task_listing_reads_each_artifact_from_its_owner_a_page_at_a_
     service = live.service
     assert service is not None
     submitted: dict[str, list[str]] = {"c-54": [], "t-54": []}
+    budget = ("cpu-budget", "set", "--cores", "auto")  # operational, as `host stop` is
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "c-54")
+    assert _cli(live, *budget)[0] == 0  # opens no goal: the first research request does
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
     runs = (
         ("CLAUDE_CODE_SESSION_ID", "c-54", "{}"),
         ("CLAUDE_CODE_SESSION_ID", "c-54", "top_k: 30\n"),
@@ -1310,7 +1390,20 @@ def test_a_sessions_task_listing_reads_each_artifact_from_its_owner_a_page_at_a_
     assert [row["task_id"] for row in page["tasks"]] == submitted["c-54"][::-1]
     assert page["next_cursor"] is None
     # The session's first research request opened the goal its Tasks attach to (AUTOBIND).
-    assert len({row["submitted_by"]["goal_id"] for row in page["tasks"]}) == 1
+    opened = {row["submitted_by"]["goal_id"] for row in page["tasks"]}
+    assert len(opened) == 1
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "c-54")
+    assert _cli(live, *budget)[0] == 0  # nor is it attributed to the goal the session holds
+    goal = _cli(live, "goal", "show", *opened)[1]["data"]
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
+    assert goal["goal"]["declaration"]["title"] == "Session work: strategy-book run", goal
+    assert "CPU_BUDGET_SET" not in {row["message_kind"] for row in goal["record"]["conversation"]}
+    # One decision opens a goal: never a committee message, nor a member's request on a thread.
+    session = RequestProvenance(vendor="claude-code", session="s")
+    assert opens_goal("RESEARCH_UPDATE_PLAN", session) and not opens_goal(
+        "COMMITTEE_SUBMIT", session
+    )
+    assert not opens_goal("AGENT_ANSWER_SUBMIT", session, member=True)
     for row in page["tasks"]:
         assert row["submitted_by"]["goal_id"] is not None
         assert (row["submitted_by"]["vendor"], row["submitted_by"]["session"]) == (

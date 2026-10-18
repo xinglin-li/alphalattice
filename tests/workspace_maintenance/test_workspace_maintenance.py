@@ -98,6 +98,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
+from tests.workspace_maintenance.audit_workspace import audit_one
 from tests.workspace_maintenance.bounded_provider_support import RecordingBoundedProvider
 
 CASE_ROOT = Path(__file__).resolve().parent
@@ -1013,69 +1014,6 @@ def test_unconsumed_feature_source_change_set_survives_cycle_and_manifest_change
     assert "5" * 64 not in change.source_receipt_hashes
 
 
-@pytest.mark.parametrize(
-    ("source_verified", "historical_member"), [(False, False), (True, True), (True, False)]
-)
-def test_unconsumed_feature_source_change_set_rejects_unknown_session_change(
-    source_verified: bool, historical_member: bool
-) -> None:
-    manifest = acquisition_manifest()
-    revision = ProviderAdjustedSeriesRevision(
-        receipt_hash="1" * 64,
-        listing_id="listing-aapl",
-        provider="fixture",
-        prior_series_hash="a" * 64,
-        next_series_hash="b" * 64,
-        scope_start=date(2026, 7, 1),
-        scope_end=date(2026, 8, 3),
-        full_history=False,
-        changed_value_count=1,
-        changed_return_sessions=(date(2026, 7, 15),),
-        session_set_changed=True,
-        uniform_rescale=False,
-        source_receipt_hash="2" * 64,
-        observed_at=NOW,
-    )
-    store = SimpleNamespace(
-        load_universe_manifest_revision=lambda _revision: manifest,
-        feature_source_appends=lambda *_args, **_kwargs: (),
-        raw_bar_semantic_deltas_since=lambda *_args, **_kwargs: (),
-        provider_adjusted_semantic_deltas_since=(lambda *_args, **_kwargs: (revision,)),
-        verified_feature_source_session_sets=lambda *_args, **_kwargs: (
-            frozenset({"listing-aapl"}) if source_verified else frozenset()
-        ),
-        membership_schedule=lambda *_args, **_kwargs: SimpleNamespace(
-            members=lambda _day: ("listing-aapl",) if historical_member else ("listing-msft",)
-        ),
-        current_sector_state=lambda _manifest: None,
-    )
-    coordinator = object.__new__(WorkspaceMaintenanceCoordinator)
-    coordinator.market_data = store
-    coordinator.feature_state = store
-    coordinator.manifest = manifest
-    coordinator.feature_foundation = SimpleNamespace(
-        catalog=FeatureCatalog.load(), panel=SimpleNamespace(policy_hash="legacy")
-    )
-
-    def reconcile():
-        return coordinator._unconsumed_feature_source_change_set(
-            {
-                "manifest_revision": manifest.revision_sha256,
-                "sector_revision": "old-sector",
-                "as_of_session": date(2026, 7, 31),
-                "activated_at": NOW - timedelta(hours=1),
-            },
-            through=date(2026, 8, 3),
-        )
-
-    if source_verified and not historical_member:
-        changes = reconcile()
-        assert changes.listing_changes[0].adjusted_return_change_sessions == (date(2026, 7, 15),)
-    else:
-        with pytest.raises(ValueError, match="session-set change"):
-            reconcile()
-
-
 def test_feature_source_appends_require_raw_and_adjusted_authority(tmp_path: Path) -> None:
     manifest = build_quality_filtered_research_manifest(
         acquisition_manifest(),
@@ -1657,23 +1595,17 @@ def test_daily_transport_workers_fetch_only_and_main_thread_persists(
     manifest, market_data, _, _ = _maintenance_workspace(
         tmp_path, eligible_listing_ids=("listing-aapl", "listing-msft")
     )
-    initial = {
-        symbol: tuple(
-            {
-                "session_date": session.isoformat(),
-                "open": close,
-                "high": close + 1.0,
-                "low": close - 1.0,
-                "close": close,
-                "volume": 1_000_000,
-            }
-            for session, close in (
-                (date(2026, 7, 29), 100.0),
-                (date(2026, 7, 30), 101.0),
-            )
+    closes = {date(2026, 7, 29): 100.0, date(2026, 7, 30): 101.0, date(2026, 7, 31): 102.0}
+
+    def bars(start: date, end: date) -> tuple[dict[str, object], ...]:
+        return tuple(
+            {"session_date": day.isoformat(), "open": close, "high": close + 1.0}
+            | {"low": close - 1.0, "close": close, "volume": 1_000_000}
+            for day, close in closes.items()
+            if start <= day <= end
         )
-        for symbol in ("AAPL", "MSFT")
-    }
+
+    initial = {symbol: bars(date(2026, 7, 29), date(2026, 7, 30)) for symbol in ("AAPL", "MSFT")}
     market_data.apply_validated_batch(
         manifest,
         sanitize_payload(manifest, "fixture", initial, ("AAPL", "MSFT")),
@@ -1704,22 +1636,7 @@ def test_daily_transport_workers_fetch_only_and_main_thread_persists(
         def fetch_hydration(self, *, listing_id, provider_symbol, start, end):
             self.worker_ids.add(get_ident())
             self.barrier.wait(timeout=2.0)
-            rows = tuple(
-                {
-                    "session_date": session.isoformat(),
-                    "open": close,
-                    "high": close + 1.0,
-                    "low": close - 1.0,
-                    "close": close,
-                    "volume": 1_000_000,
-                }
-                for session, close in (
-                    (date(2026, 7, 29), 100.0),
-                    (date(2026, 7, 30), 101.0),
-                    (date(2026, 7, 31), 102.0),
-                )
-                if start <= session <= end
-            )
+            rows = bars(start, end)
             return HydrationEvidence(
                 daily_rows=rows,
                 actions=(),
@@ -1736,15 +1653,22 @@ def test_daily_transport_workers_fetch_only_and_main_thread_persists(
 
     provider = ConcurrentFixtureProvider()
     main_thread = get_ident()
-    outcome = CurrentUniverseMaintenance(
+    runner = CurrentUniverseMaintenance(
         store=market_data,
         manifest=manifest,
         provider=provider,
         as_of_session=date(2026, 7, 31),
         max_workers=2,
         mutation_gate=WorkspaceMutationGate(),
-    ).run(observed_at=NOW)
+    )
+    outcome = runner.run(observed_at=NOW)
     assert outcome.status is CurrentUniverseMaintenanceStatus.COMPLETED
+    # An overlap re-sent unchanged, as a real provider does daily, changes only the new session.
+    documents = market_data.current_universe_maintenance_listings(runner.maintenance_id)
+    keys = ("new_sessions", "raw_correction_sessions", "adjusted_return_change_sessions")
+    assert {tuple(tuple(row.change_document[key]) for key in keys) for row in documents} == {
+        (("2026-07-31",), (), ("2026-07-31",))
+    }
     assert len(provider.worker_ids) == 2
     assert main_thread not in provider.worker_ids
     assert all(
@@ -2711,12 +2635,13 @@ def test_rolling_provider_receipt_cannot_be_laundered_into_full_audit_anchor(
         ingestion_id="initial",
         observed_at=NOW,
     )
-    rolling_receipt, _counts = market_data.complete_action_audit(
+    rolling_receipt, _counts = audit_one(
+        market_data,
         manifest,
         listing_id="listing-aapl",
         provider="fixture",
-        observed_actions=(),
-        observed_adjusted_closes=tuple(
+        actions=(),
+        adjusted_closes=tuple(
             ProviderAdjustedClosePoint(
                 listing_id="listing-aapl",
                 provider="fixture",
@@ -2845,12 +2770,13 @@ def test_a_batched_action_audit_keeps_every_per_event_outcome(tmp_path: Path) ->
         )
 
     def audit(actions, *, seconds: int):
-        return market_data.complete_action_audit(
+        return audit_one(
+            market_data,
             manifest,
             listing_id="listing-aapl",
             provider="fixture",
-            observed_actions=actions,
-            observed_adjusted_closes=adjusted,
+            actions=actions,
+            adjusted_closes=adjusted,
             history_start=sessions[0],
             history_end=sessions[-1],
             requested_as_of=sessions[-1],
@@ -2881,76 +2807,6 @@ def test_a_batched_action_audit_keeps_every_per_event_outcome(tmp_path: Path) ->
     _receipt, counts = audit((*second, first[2]), seconds=3)
     assert counts == {"inserted": 0, "corrected": 1, "retracted": 0}
     assert set(market_data.actions("listing-aapl")) == {*second, first[2]}
-
-
-def test_rolling_action_audit_ignores_actions_outside_declared_scope(tmp_path: Path) -> None:
-    manifest, market_data, _, _ = _maintenance_workspace(tmp_path)
-    sessions = (
-        date(2026, 7, 1),
-        date(2026, 7, 2),
-        date(2026, 7, 29),
-        date(2026, 7, 30),
-    )
-    rows = tuple(
-        {
-            "session_date": session.isoformat(),
-            "open": 100.0,
-            "high": 101.0,
-            "low": 99.0,
-            "close": 100.0,
-            "volume": 1_000_000,
-        }
-        for session in sessions
-    )
-    market_data.apply_validated_batch(
-        manifest,
-        sanitize_payload(manifest, "fixture", {"AAPL": rows}, ("AAPL",)),
-        ingestion_id="initial",
-        observed_at=NOW,
-    )
-    historical_dividend = CorporateActionEvent(
-        listing_id="listing-aapl",
-        provider="fixture",
-        effective_date=sessions[1],
-        action_kind="CASH_DIVIDEND",
-        cash_amount=1.0,
-    )
-    adjusted = tuple(
-        ProviderAdjustedClosePoint(
-            listing_id="listing-aapl",
-            provider="fixture",
-            session_date=session,
-            adjusted_close=100.0,
-        )
-        for session in sessions
-    )
-    market_data.complete_action_audit(
-        manifest,
-        listing_id="listing-aapl",
-        provider="fixture",
-        observed_actions=(historical_dividend,),
-        observed_adjusted_closes=adjusted,
-        history_start=sessions[0],
-        history_end=sessions[-1],
-        requested_as_of=sessions[-1],
-        observed_at=NOW,
-    )
-
-    receipt, counts = market_data.complete_action_audit(
-        manifest,
-        listing_id="listing-aapl",
-        provider="fixture",
-        observed_actions=(),
-        observed_adjusted_closes=adjusted[-2:],
-        history_start=sessions[-2],
-        history_end=sessions[-1],
-        requested_as_of=sessions[-1],
-        observed_at=NOW + timedelta(seconds=1),
-    )
-
-    assert receipt.history_start == sessions[-2]
-    assert counts == {"inserted": 0, "corrected": 0, "retracted": 0}
-    assert market_data.actions("listing-aapl") == (historical_dividend,)
 
 
 def test_rolling_action_ambiguity_uses_one_full_history_hydration(
@@ -3011,11 +2867,11 @@ def test_rolling_action_ambiguity_uses_one_full_history_hydration(
     original_audit = market_data.complete_action_audit
     audits: list[date] = []
 
-    def ambiguous_when_rolling(*args, **kwargs):
-        audits.append(kwargs["history_start"])
-        if kwargs["history_start"] != sessions[0]:
+    def ambiguous_when_rolling(manifest, *observations, **kwargs):
+        audits.extend(item.history_start for item in observations)
+        if any(item.history_start != sessions[0] for item in observations):
             raise ActionAuditScopeInsufficient("rolling session-set ambiguity")
-        return original_audit(*args, **kwargs)
+        return original_audit(manifest, *observations, **kwargs)
 
     monkeypatch.setattr(market_data, "complete_action_audit", ambiguous_when_rolling)
     provider = RecordingProvider()
@@ -3213,11 +3069,12 @@ def test_set_scoped_quality_evidence_reads_match_the_per_listing_readers(tmp_pat
                 reasons=() if eligible else ("QUALITY_FIXTURE",),
                 observed_at=evaluated_at,
             )
-    market_data.complete_action_audit(
+    audit_one(
+        market_data,
         manifest,
         listing_id="listing-aapl",
         provider="fixture",
-        observed_actions=(
+        actions=(
             CorporateActionEvent(
                 listing_id="listing-aapl",
                 provider="fixture",
@@ -3233,7 +3090,7 @@ def test_set_scoped_quality_evidence_reads_match_the_per_listing_readers(tmp_pat
                 cash_amount=1.0,
             ),
         ),
-        observed_adjusted_closes=tuple(
+        adjusted_closes=tuple(
             ProviderAdjustedClosePoint(
                 listing_id="listing-aapl",
                 provider="fixture",

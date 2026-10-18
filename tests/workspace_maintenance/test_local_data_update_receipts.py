@@ -5,11 +5,22 @@ from __future__ import annotations
 import shutil
 from dataclasses import asdict, replace
 from datetime import date, timedelta
+from functools import partial
+from pathlib import Path
 
 import pytest
 
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.maintenance.data_update import bind_existing_data_workspace
+from alphalattice.foundation.market_data_ops.sources.contracts import (
+    CorporateActionEvent,
+    ProviderAdjustedClosePoint,
+)
+from alphalattice.foundation.market_data_ops.sources.manifest import (
+    build_quality_filtered_research_manifest,
+)
+from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
+from alphalattice.foundation.market_data_ops.storage.action_audit import ActionAuditObservation
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from tests.portfolio_strategy_lab.local_web_support import (
     _resolved,
@@ -19,7 +30,8 @@ from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
     SYMBOLS,
 )
-from tests.workspace_maintenance.audit_workspace import build_audit_workspace
+from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
+from tests.workspace_maintenance.audit_workspace import audit_one, build_audit_workspace
 from tests.workspace_maintenance.data_update_support import _provider
 from tests.workspace_maintenance.local_data_provider import (
     NOW,
@@ -56,14 +68,13 @@ def test_action_audit_reuse_does_not_order_equal_time_revisions_by_hash(audit_so
         market.apply_validated_batch(manifest, batch, ingestion_id=label, observed_at=NOW)
 
     def audit():
-        return market.complete_action_audit(
+        return audit_one(
+            market,
             manifest,
             listing_id=listing.listing_id,
             provider="yfinance",
-            observed_actions=market.actions(listing.listing_id),
-            observed_adjusted_closes=market.provider_adjusted_closes(
-                listing.listing_id, through=AS_OF
-            ),
+            actions=market.actions(listing.listing_id),
+            adjusted_closes=market.provider_adjusted_closes(listing.listing_id, through=AS_OF),
             history_start=bars[0].session_date,
             history_end=AS_OF,
             requested_as_of=AS_OF,
@@ -160,14 +171,13 @@ def test_child_rebinding_replaces_a_stale_bound_receipt_and_then_costs_nothing(
         market.apply_validated_batch(parent, batch, ingestion_id=label, observed_at=NOW)
 
     def audit(now):
-        return market.complete_action_audit(
+        return audit_one(
+            market,
             parent,
             listing_id=listing.listing_id,
             provider="yfinance",
-            observed_actions=market.actions(listing.listing_id),
-            observed_adjusted_closes=market.provider_adjusted_closes(
-                listing.listing_id, through=AS_OF
-            ),
+            actions=market.actions(listing.listing_id),
+            adjusted_closes=market.provider_adjusted_closes(listing.listing_id, through=AS_OF),
             history_start=bars[0].session_date,
             history_end=AS_OF,
             requested_as_of=AS_OF,
@@ -288,12 +298,13 @@ def test_older_ancestor_receipt_that_proves_the_current_bytes_is_not_pruned_by_i
             for point in series_a
             if point.session_date >= start
         )
-        return market.complete_action_audit(
+        return audit_one(
+            market,
             parent,
             listing_id=listing.listing_id,
             provider="yfinance",
-            observed_actions=market.actions(listing.listing_id),
-            observed_adjusted_closes=points,
+            actions=market.actions(listing.listing_id),
+            adjusted_closes=points,
             history_start=start,
             history_end=AS_OF,
             requested_as_of=AS_OF,
@@ -415,12 +426,13 @@ def test_a_later_full_audit_over_the_same_range_does_not_supersede_an_older_vali
             for point in series_a
             if point.session_date >= start
         )
-        return market.complete_action_audit(
+        return audit_one(
+            market,
             parent,
             listing_id=listing.listing_id,
             provider="yfinance",
-            observed_actions=market.actions(listing.listing_id),
-            observed_adjusted_closes=points,
+            actions=market.actions(listing.listing_id),
+            adjusted_closes=points,
             history_start=start,
             history_end=AS_OF,
             requested_as_of=AS_OF,
@@ -548,16 +560,17 @@ def test_child_binding_carries_the_parent_receipt_in_its_recorded_scope(audit_so
         manifest, manifest_id=manifest.manifest_id + ":parent", revision_sha256="e" * 64
     )
     market.bootstrap(source)
-    rolling = market.complete_action_audit(
+    rolling = audit_one(
+        market,
         source,
         listing_id=listing.listing_id,
         provider="yfinance",
-        observed_actions=tuple(
+        actions=tuple(
             item
             for item in market.actions(listing.listing_id)
             if item.effective_date >= window_start
         ),
-        observed_adjusted_closes=tuple(
+        adjusted_closes=tuple(
             item
             for item in market.provider_adjusted_closes(listing.listing_id, through=AS_OF)
             if item.session_date >= window_start
@@ -599,7 +612,9 @@ def test_child_binding_carries_the_parent_receipt_in_its_recorded_scope(audit_so
         finally:
             connection.close()
 
-    market.bind_action_audit_receipts_to_manifest(source, child, requested_as_of=AS_OF, now=NOW)
+    hashes = market.bind_action_audit_receipts_to_manifest(
+        source, child, requested_as_of=AS_OF, now=NOW
+    )
     bound = receipts(child.revision_sha256)
     assert bound == [(window_start, AS_OF, rolling.raw_evidence_hash, rolling.observed_at)]
     # The child holds exactly what the parent holds, and the acquisition-budget
@@ -652,6 +667,17 @@ def test_child_binding_carries_the_parent_receipt_in_its_recorded_scope(audit_so
             source, drifted, requested_as_of=AS_OF, now=NOW
         )
     assert receipts(drifted.revision_sha256) == []
+    # Copies the cycle bound from bytes it had just verified bind onward with no second digest,
+    # past the drift a digest refuses: the cycle's Sector exclusion hands them over this way.
+    onward = replace(child, revision_sha256="d" * 64)
+    market.bootstrap(onward)
+    bind = partial(
+        market.bind_action_audit_receipts_to_manifest, child, onward, requested_as_of=AS_OF, now=NOW
+    )
+    with pytest.raises(ValueError, match="no reusable action-audit receipt"):
+        bind()
+    assert len(bind(verified=frozenset(hashes))) == 1
+    assert receipts(onward.revision_sha256) == bound
 
 
 def test_admission_diagnostic_covers_the_anchor_and_the_session_link(qualified, tmp_path):
@@ -683,12 +709,13 @@ def test_admission_diagnostic_covers_the_anchor_and_the_session_link(qualified, 
         else item
         for item in adjusted
     )
-    full = market.complete_action_audit(
+    full = audit_one(
+        market,
         manifest,
         listing_id=listing.listing_id,
         provider="yfinance",
-        observed_actions=market.actions(listing.listing_id),
-        observed_adjusted_closes=perturbed,
+        actions=market.actions(listing.listing_id),
+        adjusted_closes=perturbed,
         history_start=bars[0].session_date,
         history_end=AS_OF,
         requested_as_of=AS_OF,
@@ -697,18 +724,17 @@ def test_admission_diagnostic_covers_the_anchor_and_the_session_link(qualified, 
     assert full.max_adjusted_close_difference_bps > 5.0 and full.adjusted_close_mismatch_count
     # The next day's rolling link over the last twenty sessions is clean.
     window_start = bars[-20].session_date
-    link = market.complete_action_audit(
+    link = audit_one(
+        market,
         manifest,
         listing_id=listing.listing_id,
         provider="yfinance",
-        observed_actions=tuple(
+        actions=tuple(
             item
             for item in market.actions(listing.listing_id)
             if item.effective_date >= window_start
         ),
-        observed_adjusted_closes=tuple(
-            item for item in perturbed if item.session_date >= window_start
-        ),
+        adjusted_closes=tuple(item for item in perturbed if item.session_date >= window_start),
         history_start=window_start,
         history_end=AS_OF,
         requested_as_of=AS_OF,
@@ -848,3 +874,131 @@ def test_valuation_audit_permission_never_reenters_the_candidate_request(qualifi
         )
         == old
     )
+
+
+def test_rolling_action_audit_ignores_actions_outside_declared_scope(tmp_path: Path) -> None:
+    manifest = build_quality_filtered_research_manifest(
+        acquisition_manifest(), eligible_listing_ids=("listing-aapl",)
+    )
+    market_data = MarketDataRepository(tmp_path / "workspace")
+    market_data.bootstrap(manifest)
+    sessions = (
+        date(2026, 7, 1),
+        date(2026, 7, 2),
+        date(2026, 7, 29),
+        date(2026, 7, 30),
+    )
+    rows = tuple(
+        {
+            "session_date": session.isoformat(),
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 1_000_000,
+        }
+        for session in sessions
+    )
+    market_data.apply_validated_batch(
+        manifest,
+        sanitize_payload(manifest, "fixture", {"AAPL": rows}, ("AAPL",)),
+        ingestion_id="initial",
+        observed_at=NOW,
+    )
+    historical_dividend = CorporateActionEvent(
+        listing_id="listing-aapl",
+        provider="fixture",
+        effective_date=sessions[1],
+        action_kind="CASH_DIVIDEND",
+        cash_amount=1.0,
+    )
+    adjusted = tuple(
+        ProviderAdjustedClosePoint(
+            listing_id="listing-aapl",
+            provider="fixture",
+            session_date=session,
+            adjusted_close=100.0,
+        )
+        for session in sessions
+    )
+    audit_one(
+        market_data,
+        manifest,
+        listing_id="listing-aapl",
+        provider="fixture",
+        actions=(historical_dividend,),
+        adjusted_closes=adjusted,
+        history_start=sessions[0],
+        history_end=sessions[-1],
+        requested_as_of=sessions[-1],
+        observed_at=NOW,
+    )
+
+    receipt, counts = audit_one(
+        market_data,
+        manifest,
+        listing_id="listing-aapl",
+        provider="fixture",
+        actions=(),
+        adjusted_closes=adjusted[-2:],
+        history_start=sessions[-2],
+        history_end=sessions[-1],
+        requested_as_of=sessions[-1],
+        observed_at=NOW + timedelta(seconds=1),
+    )
+
+    assert receipt.history_start == sessions[-2]
+    assert counts == {"inserted": 0, "corrected": 0, "retracted": 0}
+    assert market_data.actions("listing-aapl") == (historical_dividend,)
+
+
+def test_a_batch_audit_writes_what_each_listing_writes_alone(audit_source, tmp_path):
+    """One call for two listings gives each its own receipt and rows; a refusal writes none."""
+    from alphalattice.foundation.market_data_ops.storage.duckdb import (
+        ActionAuditScopeInsufficient,
+    )
+
+    manifest, listings = audit_source[1], audit_source[1].listings[:2]
+
+    def store(name):
+        shutil.copytree(audit_source[0], tmp_path / name)
+        return MarketDataRepository(tmp_path / name)
+
+    def observed(market, listing, drop=0):
+        bars = market.raw_bars(listing.listing_id, through=AS_OF)
+        return ActionAuditObservation(
+            listing_id=listing.listing_id,
+            provider="yfinance",
+            actions=market.actions(listing.listing_id),
+            adjusted_closes=market.provider_adjusted_closes(listing.listing_id, through=AS_OF)[
+                drop:
+            ],
+            history_start=bars[0].session_date,
+            history_end=AS_OF,
+            observed_at=NOW,
+        )
+
+    def tables(market):
+        connection = market._connect(read_only=True)
+        try:
+            names = connection.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'"
+            ).fetchall()
+            return {
+                name: sorted(map(repr, connection.execute(f'SELECT * FROM "{name}"').fetchall()))
+                for (name,) in names
+            }
+        finally:
+            connection.close()
+
+    batch, alone, refused = store("batch"), store("alone"), store("refused")
+    together = batch.complete_action_audit(manifest, *(observed(batch, item) for item in listings))
+    singly = [alone.complete_action_audit(manifest, observed(alone, item))[0] for item in listings]
+    assert together == tuple(singly)
+    assert tables(batch) == tables(alone)
+    before = tables(refused)
+    with pytest.raises(ActionAuditScopeInsufficient):
+        refused.complete_action_audit(
+            manifest, observed(refused, listings[0]), observed(refused, listings[1], drop=1)
+        )
+    assert tables(refused) == before

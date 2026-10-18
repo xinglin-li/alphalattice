@@ -747,7 +747,9 @@ class SealedReadings:
     The filing is the unit of reuse (W3).
 
     A filing is read when a publication under the current binding tuple holds
-    it in its document set and its issuer's checks executed. Such a filing is
+    it in its document set, its issuer's checks executed and its source is
+    declared immutable: a document its source may replace under the same
+    revision is read again (the review of a36e210c4). Such a filing is
     not read again while it stays in the window: the selection passes over it
     and its findings carry with the publication that read it. A publication
     under another tuple read under another policy and proves nothing here.
@@ -836,7 +838,9 @@ class SealedReadings:
         completion = brief.completion
         for document in documents.documents:
             state = None if completion is None else completion.state_of(document.entity_id)
-            if completion is not None and state not in EXECUTED_STATES:
+            if not document.immutable_source or (
+                completion is not None and state not in EXECUTED_STATES
+            ):
                 continue
             index.setdefault(document.entity_id, []).append(
                 _Reading(

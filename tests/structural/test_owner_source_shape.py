@@ -176,6 +176,11 @@ def test_every_specialist_bundle_slice_has_a_named_disposition() -> None:
         "packer": "protocols/actor_execution/bundles.py",
     }
     reviewed = {
+        (
+            "cro",
+            "render_review_bundle",
+            "index[1:1]",
+        ): "insert the reviewed installed package; no reading is cut",
         ("cro", "_finding_lines", "finding.affected_entities[1:]"): "first issuer is the heading",
         ("cro", "_index", "['F1', 'F2'][:max(1, min(2, len(dossier.findings)))]"): "answer example",
         ("cro", "_index", "coverage.unavailable_reasons[:MAXIMUM_COVERAGE_LINES]"): "coverage file",
@@ -193,6 +198,7 @@ def test_every_specialist_bundle_slice_has_a_named_disposition() -> None:
             "list(places.values())[:MAXIMUM_DIFFERENCE_PLACES]",
         ): "full excerpt below",
         ("analyst", "_shingles", "words[index:index + 3]"): "similarity computation",
+        ("analyst", "_marked_cuts", "text[:1]"): "first character, read to mark a cut",
         ("packer", "_fit", "word[:limit]"): "next piece below",
         ("packer", "_fit", "word[limit:]"): "remaining pieces below",
     }
@@ -707,10 +713,12 @@ def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_
     ], deferring
     plans = {
         "research update": (
-            # The plan's body; `plan` holds one request's completed scores around it.
+            # The plan's body; `plan` holds one request's completed scores around it. Exact
+            # reuse of the target's ended update comes first; no new plan reads data before
+            # the unfinished update is asked for.
             inspect.getsource(decision_advancement.DecisionAdvancementApplication._plan),
-            "TaskLifecycle.DEFERRED",
-            "workspace_score_source_identity(",
+            "self._in_flight(",
+            "self.data.plan(fresh=True)",
         ),
         "data update": (
             inspect.getsource(data_update.WorkspaceDataUpdateApplication.plan),
@@ -724,8 +732,8 @@ def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_
     assert "TaskLifecycle.DEFERRED" in waiting
     research_plan = plans["research update"][0]
     assert "self.data.plan(fresh=True)" in research_plan
-    start = research_plan.find("TaskLifecycle.DEFERRED")
-    waiting_pass = research_plan[start : research_plan.find("for task in tasks:", start)]
+    waiting_pass = inspect.getsource(decision_advancement.DecisionAdvancementApplication._in_flight)
+    assert "TaskLifecycle.DEFERRED" in waiting_pass, waiting_pass
     assert "prior.package_id == package_id" in waiting_pass, waiting_pass
     assert "target" not in waiting_pass, waiting_pass
     automation = research_update_automation.ResearchUpdateAutomation

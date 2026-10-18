@@ -6,8 +6,9 @@ or model-derived data-truth authority is granted by a confirmation.
 
 from __future__ import annotations
 
+import functools
 import json
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable, Sequence
 from datetime import UTC, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Final, Literal, cast
@@ -18,14 +19,18 @@ from alphalattice.control.data_platform.contracts import (
     DataRemediationExecutionSubmission,
 )
 from alphalattice.control.data_platform.data_decision_rule import (
+    AUDIT,
     QUARANTINE,
     RETAIN,
     DataDecisionRule,
+    rule_receipt,
 )
 from alphalattice.control.data_platform.delegation import DataIssueDelegation
 from alphalattice.control.guanyin.data.workspace_maintenance import maintenance_failure_detail
 from alphalattice.control.product_host.composition.plain_refusals import task_record_refusal
 from alphalattice.control.product_host.composition.research_workspace import (
+    RESEARCH_WORKSPACE_MANIFEST_NAME,
+    ResearchWorkspaceManifest,
     read_research_workspace_manifest,
 )
 from alphalattice.foundation.feature_engine.inputs.contracts import ListingQuarantine
@@ -159,9 +164,17 @@ def _choice_request(
     }
 
 
+RULE_WORDS: Final = (
+    "Data issues decided by {subject}: {subject} decided within {subject} cases and {subject} of "
+    "names, {subject} held from an earlier decision; full-history audits: {subject} within "
+    "{subject} of names. {subject} of {subject} names remain in the research population."
+)
+"""The rule's disclosure in one sentence, each slot filled in turn, so a reader's Chinese table
+words it as the page does; held cases count toward no bound and are named apart."""
 _RULE_CAVEATS: Final = {
     RETAIN: "An unexplained one-day move is kept as reported; it may be a data error.",
     QUARANTINE: "Set aside until its next recheck; the original inputs are kept.",
+    AUDIT: "Its provider back-adjusted its history; its whole history was audited before use.",
 }
 """What each choice of the Host's rule means for the research, said beside the listing."""
 
@@ -371,25 +384,38 @@ class WorkspaceDataIssueApplication:
         )
 
     @staticmethod
-    def _ruled_choice(saved):
+    def _ruled_choice(saved: Any) -> tuple[str, str] | None:
         """Disclose only an applied choice whose rule hash names its Host signer."""
-        receipt = saved.get("receipt")
-        if (
-            not receipt
-            or receipt["actor_submission"]["actor_kind"] != "HOST_FALLBACK"
-            or (saved.get("effect") or {}).get("failure_reasons")
-        ):
-            return None
-        option = receipt["submission"]["proposal"]["option_id"]
-        rule = receipt["submission"]["proposal"]["rationale"].partition("; rule:")[2]
-        if (
-            option not in _RULE_CAVEATS
-            or not rule
-            or receipt["actor_submission"].get("actor_id") != f"host-rule:{rule[:16]}"
-            or not saved.get("effect")
-        ):
-            return None
-        return option, rule
+        signed = rule_receipt(saved)
+        return signed if signed is not None and signed[0] in _RULE_CAVEATS else None
+
+    @staticmethod
+    def _rule_rows(
+        case: FeatureInputAgentCase,
+        choice: tuple[str, str],
+        symbols: dict[str, str],
+        active: set[str],
+        seen: dict[Any, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """One row per listing a ruled case names; the same anomaly re-raised over a longer
+        window (its signature, never its range) under the same rule folds into its row."""
+        moves = {item.listing_id: item.anomaly_signature_hash for item in case.evidence}
+        option, rows = choice[0], []
+        for listing in case.listing_ids:
+            if (key := (listing, *choice, moves.get(listing))) in seen:
+                seen[key]["_cases"].add(case.case_token)
+                continue
+            seen[key] = {
+                "_cases": {case.case_token},
+                "listing_id": listing,
+                "symbol": symbols.get(listing),
+                "option_id": option,
+                "caveat": _RULE_CAVEATS[option]
+                if option != QUARANTINE or listing in active
+                else "The earlier quarantine is no longer active; this listing was readmitted.",
+            }
+            rows.append(seen[key])
+        return rows
 
     def rule_decisions(
         self,
@@ -399,12 +425,16 @@ class WorkspaceDataIssueApplication:
         input_available: bool = True,
         choices=None,
         case_tokens: set[str] | None = None,
+        audits: Sequence[tuple[str, str]] | None = None,
+        held: Collection[str] | None = None,
     ) -> dict[str, Any] | None:
         """The data issues the Host's rule decided, in one line.
 
         Each listing with its choice and caveat, the population left after its quarantines, and
         the rule's identity; None when it decided none. Host-signed choices include first-use
-        preparation and dated books' workspace policy, among open and resolved cases.
+        preparation and dated books' workspace policy, among open and resolved cases. The same
+        move re-raised (history re-acquired, so a new case) folds into its one row. Each
+        full-history audit the rule approved is a row too, and the words name whose rule decided.
         """
         if not input_available:
             return None
@@ -422,7 +452,7 @@ class WorkspaceDataIssueApplication:
         }
         manifests = {manifest.revision_sha256: manifest}
         symbols = {item.listing_id: item.symbol for item in manifest.listings}
-        decided, rules, aside = [], set(), set()
+        decided, rules, aside, seen = [], set(), set(), dict[Any, dict[str, Any]]()
         for document, saved in choices:
             case = FeatureInputAgentCase.read_document(document)
             if case_tokens is not None and case.case_token not in case_tokens:
@@ -443,30 +473,152 @@ class WorkspaceDataIssueApplication:
                     item.listing_id: item.symbol
                     for item in manifests[case.manifest_revision].listings
                 }
-            decided += [
-                {
-                    "listing_id": listing,
-                    "symbol": symbols.get(listing),
-                    "option_id": option,
-                    "caveat": _RULE_CAVEATS[option]
-                    if option != QUARANTINE or listing in active
-                    else "The earlier quarantine is no longer active; this listing was readmitted.",
-                }
-                for listing in case.listing_ids
-            ]
-        if not decided:
+            decided += self._rule_rows(case, choice, symbols, active, seen)
+        configured = self._configured()
+        audit_rows, audit_rules, held, unreadable = self._audit_rows(
+            choices, (audits, held), symbols, configured
+        )
+        decided, rules = decided + audit_rows, rules | audit_rules
+        if not (decided or unreadable):
             return None
         names = {item.listing_id for item in manifest.listings}
         source, left = len(names | aside), len(names - aside)
+        whose, origins = self._rule_origins(rules, configured)
+        bounds = self._rule_bounds(decided, configured, held)
+        parts = (whose, *bounds["parts"], left, source)
         return {
-            "words": f"{len(decided)} data issue{'s' * (len(decided) > 1)} decided by rule; {left} "
-            f"of {source} names "
-            "remain in the research population.",
-            "decided": sorted(decided, key=lambda d: d["listing_id"]),
+            "words": functools.reduce(
+                lambda text, part: text.replace("{subject}", str(part), 1), parts, RULE_WORDS
+            ),
+            "bounds": bounds["kinds"],
+            "decided": sorted(decided, key=lambda d: (d["listing_id"], d["option_id"])),
             "source_population": source,
             "effective_population": left,
             "rule_hashes": sorted(rules),
+            "rules": origins,
+            # A Goal whose record cannot be read is named, never a crash of the data issues.
+            **({"unreadable_goals": unreadable} if unreadable else {}),
         }
+
+    def _audit_rows(
+        self,
+        choices: Any,
+        given: tuple[Sequence[tuple[str, str]] | None, Collection[str] | None],
+        symbols: dict[str, str],
+        configured: ResearchWorkspaceManifest | None,
+    ) -> tuple[list[dict[str, Any]], set[str], Collection[str], list[dict[str, str]]]:
+        """The rule's approved audits as disclosed rows, the rules that approved them, the cases
+        that held its decision, and any Goal whose record could not be read: as given (a dated
+        update's own Goal), else read from the Goals that hold the rule's decisions."""
+        audits, held, unreadable = (
+            self._rule_audits(choices, configured)
+            if given[0] is None
+            else (given[0], given[1] or (), [])
+        )
+        rows = [
+            {"listing_id": item, "symbol": symbols.get(item), "option_id": AUDIT}
+            | {"caveat": _RULE_CAVEATS[AUDIT]}
+            for item, _rule in audits
+        ]
+        return rows, {rule for _item, rule in audits}, held, unreadable
+
+    @staticmethod
+    def _rule_bounds(
+        decided: list[dict[str, Any]],
+        configured: ResearchWorkspaceManifest | None,
+        held_cases: Collection[str],
+    ) -> dict[str, Any]:
+        """Each kind's count against its own bound: data cases (a row reads held when a case
+        folded into it held the rule's decision, as its Goal recorded), and full-history audits."""
+        rule = (configured.data_decision_rule if configured else None) or DataDecisionRule()
+        folded: set[str] = set()
+        listings = 0  # a listing counts while one of its cases is decided, not held
+        for row in decided:
+            if "_cases" in row:
+                tokens = row.pop("_cases")
+                folded |= tokens
+                row["held"] = bool(tokens & set(held_cases))
+                listings += bool(tokens - set(held_cases))
+        audits = sum(row["option_id"] == AUDIT for row in decided)
+        held = len(folded & set(held_cases))
+        cases, share = len(folded) - held, f"{rule.max_population_share:.0%}"
+        return {
+            # A held case is the same decision again and counts toward no bound (OP19).
+            "parts": (cases, rule.max_cases, share, held, audits, share),
+            "kinds": {
+                "cases": {
+                    "count": cases,
+                    "listings": listings,
+                    "held": held,
+                    "max_cases": rule.max_cases,
+                    "max_population_share": rule.max_population_share,
+                },
+                "audits": {"count": audits, "max_population_share": rule.max_population_share},
+            },
+        }
+
+    def _configured(self) -> ResearchWorkspaceManifest | None:
+        """The research workspace's manifest; a data-only workspace has none, so its rule is the
+        shipped default and it holds no Goal."""
+        if not (self.session.workspace / RESEARCH_WORKSPACE_MANIFEST_NAME).exists():
+            return None
+        return read_research_workspace_manifest(self.session.workspace)
+
+    def _rule_origins(
+        self, rules: set[str], configured: ResearchWorkspaceManifest | None
+    ) -> tuple[str, list[dict[str, str]]]:
+        """Whose rule decided: this workspace's declared one, the shipped default, or earlier."""
+        declared = configured.data_decision_rule if configured else None
+        origin = {
+            DataDecisionRule().rule_hash: "SHIPPED_DEFAULT",
+            **({declared.rule_hash: "WORKSPACE"} if declared else {}),
+        }
+        sources = {origin.get(rule, "EARLIER") for rule in rules}
+        words = {
+            "WORKSPACE": "this workspace's rule",
+            "SHIPPED_DEFAULT": "the shipped default rule",
+        }
+        whose = (
+            words.get(next(iter(sources)), "an earlier rule")
+            if len(sources) == 1
+            else "several rules"
+        )
+        rows = [
+            {"rule_hash": rule, "source": origin.get(rule, "EARLIER")} for rule in sorted(rules)
+        ]
+        return whose, rows
+
+    def _rule_audits(
+        self, choices: Any, configured: ResearchWorkspaceManifest | None
+    ) -> tuple[tuple[tuple[str, str], ...], frozenset[str], list[dict[str, str]]]:
+        """The full-history audits the rule approved and the cases that held its decision, read
+        once from the Goals that hold its decisions: those its signed choices name, and the
+        open ones."""
+        from alphalattice.control.product_host.publication.goals import GoalStore
+
+        if configured is None:
+            return (), frozenset(), []
+        store = GoalStore(self.session.workspace / "artifacts", configured.workspace_id)
+        named = {
+            saved["receipt"]["submission"]["proposal"]["rationale"]
+            .partition(";")[0]
+            .partition(":")[2]
+            for _document, saved in choices
+            if self._ruled_choice(saved) is not None
+        }
+        pairs: set[tuple[str, str]] = set()
+        held: set[str] = set()
+        unreadable = []
+        for goal in store.goal_ids():
+            try:
+                if str(goal) in named or getattr(store.head(goal), "state", None) == "OPEN":
+                    entries = store.attributed(goal)
+                    pairs |= set(store.rule_audits(None, entries))
+                    held |= store.rule_held(None, entries)
+            except ValueError as error:
+                failure = public_failure(error, "goal.attribution_invalid")
+                unreadable.append({"goal_id": str(goal), "failure_code": failure})
+        return tuple(sorted(pairs)), frozenset(held), unreadable
 
     def _escalation(
         self,

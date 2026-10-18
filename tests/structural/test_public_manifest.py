@@ -30,6 +30,7 @@ from release.public_manifest import (
         ("LICENSE", "PUBLIC", "PUBLIC_LEGAL"),
         ("NOTICE", "PUBLIC", "PUBLIC_LEGAL"),
         ("README.md", "PUBLIC", "PUBLIC_DOC"),
+        ("README.zh-CN.md", "PUBLIC", "PUBLIC_DOC"),
         ("CONTRIBUTING.md", "PUBLIC", "PUBLIC_DOC"),
         ("CLA.md", "PUBLIC", "PUBLIC_DOC"),
         ("GOVERNANCE.md", "PUBLIC", "PUBLIC_DOC"),

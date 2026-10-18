@@ -13,16 +13,23 @@ or internal code reaches the view.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
+from typing import Final
+from zoneinfo import ZoneInfo
 
+from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
+    BOOK_NAMES,
+    POSITION_EPSILON,
+)
 from alphalattice.protocols.actor_execution.bundles import (
     AgentBundle,
     BundleBlock,
     BundleFile,
     BundleSection,
     compose_bundle,
+    moment_text,
     pack_sections,
     wrap_text,
 )
@@ -34,6 +41,7 @@ from .portfolio_review import (
     PortfolioReviewCoverage,
     PortfolioReviewDossier,
     PortfolioReviewDossierFinding,
+    PortfolioReviewDossierIssuer,
     finding_aliases,
     finding_sources,
     open_issue_aliases,
@@ -67,6 +75,7 @@ def render_review_bundle(
     *,
     task_procedure: str,
     last_review: EarlierReview | None = None,
+    strategy_title: str | None = None,
 ) -> AgentBundle:
     """Render the whole view: an index, the holdings file and the findings files.
 
@@ -83,7 +92,12 @@ def render_review_bundle(
         for handle, (_publication, _bare, found) in finding_sources(dossier).items()
         if found < cutoff
     }
-    holdings = pack_sections([_holdings(dossier)], stem="holdings")
+    held = tuple(v for v in dossier.issuers if v.ending_weight > POSITION_EPSILON)
+    exited = tuple(v for v in dossier.issuers if v.ending_weight <= POSITION_EPSILON)
+    holdings = pack_sections(
+        [_holdings(dossier, held), *([_holdings(dossier, exited, held=False)] if exited else [])],
+        stem="holdings",
+    )
     by_issuer: dict[str, list[PortfolioReviewDossierFinding]] = {}
     for finding in dossier.findings:
         by_issuer.setdefault(finding.affected_entities[0], []).append(finding)
@@ -94,7 +108,8 @@ def render_review_bundle(
             continue
         name = _name(issuer.entity_id, issuer.tickers)
         heading = (
-            f"## {name} -- weight {_percent(issuer.ending_weight)}, exposure {issuer.exposure_band}"
+            f"## {name} -- {'held' if issuer.ending_weight > POSITION_EPSILON else 'not held'}, "
+            f"weight {_percent(issuer.ending_weight)}, exposure {issuer.exposure_band}"
         )
         blocks = tuple(
             BundleBlock(
@@ -111,8 +126,13 @@ def render_review_bundle(
         sections.append(BundleSection(key=issuer.entity_id, heading=heading, blocks=blocks))
     findings = pack_sections(sections, stem="findings")
     coverage = _coverage_overflow(dossier)
+    index = _index(dossier, task_procedure, last_review, coverage)
+    if dossier.update_subject is not None:
+        package = dossier.update_subject.strategy_package_id
+        name = strategy_title + " " if strategy_title else ""
+        index[1:1] = ["", f"Reviewed installed package: {name}`{package}`."]
     return compose_bundle(
-        _index(dossier, task_procedure, last_review, coverage),
+        index,
         (*holdings, *findings, *coverage),
     )
 
@@ -151,16 +171,28 @@ def _coverage_overflow(dossier: PortfolioReviewDossier) -> tuple[BundleFile, ...
     return pack_sections(sections, stem="coverage")
 
 
-def _holdings(dossier: PortfolioReviewDossier) -> BundleSection:
+def held_issuer_count(weights: Iterable[float]) -> int:
+    """Count positive-weight issuer rows, never the book's listing-position total."""
+    return sum(weight > POSITION_EPSILON for weight in weights)
+
+
+def _holdings(
+    dossier: PortfolioReviewDossier,
+    issuers: Sequence[PortfolioReviewDossierIssuer],
+    *,
+    held: bool = True,
+) -> BundleSection:
     rows = [
         "| issuer | weight | change | transition | rank | exposure |",
         "| --- | --- | --- | --- | --- | --- |",
     ]
     blocks = []
-    ranked = sorted(dossier.issuers, key=lambda value: value.weight_rank)
+    ranked = sorted(issuers, key=lambda value: value.weight_rank)
     for index, issuer in enumerate(ranked):
         if index and index % HOLDINGS_ROWS_PER_BLOCK == 0:
-            blocks.append(BundleBlock(tuple(rows), {"holdings": len(rows) - 2}))
+            blocks.append(
+                BundleBlock(tuple(rows), {"holdings" if held else "exits": len(rows) - 2})
+            )
             rows = [
                 "| issuer | weight | change | transition | rank | exposure |",
                 "| --- | --- | --- | --- | --- | --- |",
@@ -170,12 +202,16 @@ def _holdings(dossier: PortfolioReviewDossier) -> BundleSection:
             f"{_points(issuer.signed_change)} | {issuer.transition} | {issuer.weight_rank} | "
             f"{issuer.exposure_band} |"
         )
-    blocks.append(BundleBlock(tuple(rows), {"holdings": len(rows) - 2}))
+    blocks.append(BundleBlock(tuple(rows), {"holdings" if held else "exits": len(rows) - 2}))
+    count = held_issuer_count(v.ending_weight for v in ranked)
     return BundleSection(
-        key="the book's holdings",
+        key="the book's holdings" if held else "exits",
         heading=(
-            f"## Holdings ({dossier.held_count} held; effective number of positions "
+            f"## Holdings ({count} held issuers in this "
+            "dossier; effective number of listing positions "
             f"{dossier.window_end_effective_n:.1f})"
+            if held
+            else "## Exits (not held)"
         ),
         blocks=tuple(blocks),
     )
@@ -216,6 +252,23 @@ def _finding_lines(
     return tuple(lines)
 
 
+def _book_header(dossier: PortfolioReviewDossier) -> list[str]:
+    """Keep the positions' research date distinct from the Evidence and expiry instants."""
+    session = (
+        dossier.update_subject.entry_session
+        if dossier.update_subject
+        else dossier.experiment_subject.portfolio_session
+        if dossier.experiment_subject
+        else None
+    )
+    return [
+        f"Book: {BOOK_NAMES[dossier.book_authority]} (`{dossier.book_authority}`).",
+        *([f"Positions for {session}."] if session else []),
+        f"Evidence cutoff: {moment_text(dossier.evidence_as_of)}; "
+        f"expires {moment_text(dossier.evidence_expires_at)}.",
+    ]
+
+
 def _index(
     dossier: PortfolioReviewDossier,
     task_procedure: str,
@@ -239,9 +292,7 @@ def _index(
     lines = [
         "# Portfolio evidence review: the CRO's bundle",
         "",
-        f"Book: {dossier.book_authority}. Evidence as of "
-        f"{dossier.evidence_as_of.date().isoformat()}; it expires "
-        f"{dossier.evidence_expires_at.date().isoformat()}.",
+        *_book_header(dossier),
         f"{len(dossier.issuers)} issuer(s) in scope; {len(dossier.findings)} finding(s) from the "
         "Alternative Evidence Analyst, each named by an alias (F1, F2, ...).",
         "",
@@ -288,8 +339,8 @@ def _index(
             "## The book's last review",
             "",
             *wrap_text(
-                f"Published {last_review.published_on.isoformat()}, on evidence as of "
-                f"{last_review.evidence_as_of.isoformat()}; it reads back exactly as it was "
+                f"Published {moment_text(last_review.published_on)}, on evidence as of "
+                f"{moment_text(last_review.evidence_as_of)}; it reads back exactly as it was "
                 f"sealed, under {policy}."
             ),
         ]
@@ -335,7 +386,7 @@ def _index(
         "",
         "## Coverage (written by the program)",
         "",
-        *(f"- {sentence}" for sentence in coverage_words(coverage)),
+        *(f"- {said}" for said in (*coverage_words(coverage), *review_cutoff_words(dossier))),
     ]
     if dossier.mapping_failure_count:
         lines.append(
@@ -392,6 +443,31 @@ REVIEW_STATE_WORDS: dict[str, str] = {
 """Each issuer `review_state` in words, so a quiet holding never reads as an unread one."""
 
 
+CUTOFF_WORDS: Final = (
+    "Evidence was read through {subject}, after these positions were decided (the {subject} "
+    "close); filings after that close may inform this review but never the positions."
+)
+"""A dated review's Evidence read on a session after its positions' formation, named."""
+
+
+def cutoff_words(evidence_as_of: datetime, formation_session: str | None) -> tuple[str, ...]:
+    """The review's Evidence cutoff beside its positions' decision, when it is a later session.
+
+    Args:
+        evidence_as_of: The review's Evidence cutoff.
+        formation_session: The positions' formation session, for a dated update's review.
+
+    Returns:
+        The one sentence naming both, or nothing on the formation's own session or for a book
+        with no dated positions.
+    """
+    read = evidence_as_of.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+    if formation_session is None or read <= formation_session:
+        return ()
+    said = f"{evidence_as_of.astimezone(UTC):%Y-%m-%d %H:%M} UTC"
+    return (CUTOFF_WORDS.replace("{subject}", said, 1).replace("{subject}", formation_session),)
+
+
 def coverage_words(coverage: PortfolioReviewCoverage) -> tuple[str, ...]:
     """The dossier's coverage in words: read, quiet and unreached kept apart (FLOW-3).
 
@@ -409,9 +485,13 @@ def coverage_words(coverage: PortfolioReviewCoverage) -> tuple[str, ...]:
             f"{coverage.nothing_filed_window_days} days carry "
             f"{_percent(coverage.nothing_filed_ending_weight_coverage)} of the ending weight: "
             "they were checked and nothing was there to read, so they are not unread, and that "
-            "is not a finding of no risk. Only "
-            f"{_percent(coverage.unreached_ending_weight_coverage or 0.0)} of the ending weight "
-            "was not read."
+            "is not a finding of no risk."
+        )
+    if coverage.unreached_ending_weight_coverage is not None:
+        words.append(
+            f"Unread ending weight: {_percent(coverage.unreached_ending_weight_coverage)}; "
+            "holdings checked with no filing are excluded. Issuer reading coverage and "
+            "topic-route gaps are separate measures; recorded gaps remain limitations."
         )
     return tuple(words)
 
@@ -425,4 +505,25 @@ def _points(value: float) -> str:
     return "0.00 pp" if points == 0 else f"{points:+.2f} pp"
 
 
-__all__ = ["REVIEW_STATE_WORDS", "coverage_words", "render_review_bundle"]
+def review_cutoff_words(dossier: PortfolioReviewDossier) -> tuple[str, ...]:
+    """A review dossier's `cutoff_words`, its update's formation beside its Evidence cutoff.
+
+    Args:
+        dossier: The review's sealed dossier.
+
+    Returns:
+        The sentence, or nothing.
+    """
+    subject = dossier.update_subject
+    return cutoff_words(dossier.evidence_as_of, subject.formation_session if subject else None)
+
+
+__all__ = [
+    "CUTOFF_WORDS",
+    "REVIEW_STATE_WORDS",
+    "coverage_words",
+    "cutoff_words",
+    "held_issuer_count",
+    "render_review_bundle",
+    "review_cutoff_words",
+]

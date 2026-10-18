@@ -46,6 +46,9 @@ from alphalattice.interface.local_application.portfolio_research import Committe
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
+from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
+    ADVANCEMENT_TASK_KIND,
+)
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     PortfolioUpdatePublication,
     advance_decision_state,
@@ -54,7 +57,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSurfaceError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
-from devtools.evaluation.committee import thread_findings
+from devtools.evaluation.committee import fact_findings, thread_findings
 from tests.portfolio_strategy_lab.local_web_support import run_node
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     HASH,
@@ -285,11 +288,17 @@ def test_a_populated_floor_bounds_stances_and_discloses_every_other_point(tmp_pa
     """A ranked agenda bounds judgments without hiding any exception or preventing PM discussion."""
     store, now = _floor(tmp_path, readback)
     task = str(UUID(int=12))
+    names = list(readback["listing_labels"].values())
     evidence = {
         "evidence_as_of": "2026-09-09",
         "issuer_rows": [
-            {"tickers": [name], "adverse_issue_count": 1}
-            for name in readback["listing_labels"].values()
+            {"entity_id": name, "tickers": [name], "adverse_issue_count": 1} for name in names
+        ],
+        # Each holding's HIGH negative: a below-line one still reaches the report (#7).
+        "issue_cards": [
+            {"issue_handle": f"ISSUE-{n}", "affected_entities": [name], "severity_if_true": "HIGH"}
+            | {"cro_inference": f"{name} may default."}
+            for n, name in enumerate(names)
         ],
     }
     floor = committee.open_floor(
@@ -311,7 +320,8 @@ def test_a_populated_floor_bounds_stances_and_discloses_every_other_point(tmp_pa
     message = {
         "kind": "STANCE",
         "text": "H1 has a recorded exception.",
-        "positions": {a: "OBJECT" for a in [*agenda["aliases"], first]},
+        # A holding's own objection is kept beside the agenda (the second fresh-folder run).
+        "positions": {a: "OBJECT" for a in [*agenda["aliases"], first, "H1"]},
         "targets": [agenda["aliases"][0], first],
     }
     request = Request(
@@ -337,7 +347,6 @@ def test_a_populated_floor_bounds_stances_and_discloses_every_other_point(tmp_pa
     for fields in (
         {"targets": [first]},
         {"text": f"Discuss {first}."},
-        {"positions": {"H1": "OBJECT"}},
         {"positions": {floor.opened["facts"][0]["alias"]: "OBJECT"}},
     ):
         given = replace(
@@ -354,14 +363,31 @@ def test_a_populated_floor_bounds_stances_and_discloses_every_other_point(tmp_pa
             assert "corrected" not in refused["next_requests"]
             assert refused["author_revision_fields"] == ["committee_message.text"]
             assert set(refused["next_requests"]) == {"floor", "schema"}
+    # regression (a fresh-folder first use): a point typed by its kind, or a holding by its name,
+    # is offered the same message with their aliases, not a bare TARGET refusal.
+    point, holding = floor.opened["tension_points"][0], floor.opened["holdings"][0]
+    typed = CommitteeMessage(
+        kind="STANCE", text="H1.", positions={point["kind"]: "OBJECT"}, targets=[holding["name"]]
+    )
+    refused = send(replace(request, committee_message=typed))
+    assert refused["failure_code"] == "committee.message_refused:TARGET"
+    fixed = refused["next_requests"]["corrected"]["committee_message"]
+    kinds = [p["alias"] for p in floor.opened["tension_points"] if p["kind"] == point["kind"]]
+    assert fixed["positions"] == dict.fromkeys(kinds, "OBJECT")
+    assert fixed["targets"] == [holding["alias"]] and fixed["text"] == typed.text
+    roled = CommitteeMessage(kind="STANCE", text="H1.", targets=["CRO"])  # a role is no target
+    roled_fix = send(replace(request, committee_message=roled))["next_requests"]["corrected"]
+    assert roled_fix["committee_message"]["targets"] == []
     refused = send(request)
     assert refused["failure_code"] == "committee.message_refused:AGENDA"
     assert refused["agenda_size"] == 12
     corrected = Request(**refused["next_requests"]["corrected"])
-    assert set(corrected.committee_message.positions) == set(agenda["aliases"])
+    assert set(corrected.committee_message.positions) == {*agenda["aliases"], "H1"}
     assert corrected.committee_message.targets == (agenda["aliases"][0],)
     assert corrected.committee_message.text == message["text"]
     assert send(corrected)["status"] == "COMMITTEE_MESSAGE_ACCEPTED"
+    pm = replace(corrected, committee_role="PM", committee_key=floor.key("PM"))
+    assert send(pm)["status"] == "COMMITTEE_MESSAGE_ACCEPTED"  # the reveal waits for the PM
     now[0] += timedelta(minutes=11)
     assert send(corrected)["status"] == "COMMITTEE_MESSAGE_ACCEPTED"
 
@@ -386,8 +412,8 @@ def test_a_populated_floor_bounds_stances_and_discloses_every_other_point(tmp_pa
     challenge = message_request("ALPHA", kind="CHALLENGE", targets=[agenda["aliases"][0]])
     assert send(challenge)["status"] == "COMMITTEE_MESSAGE_ACCEPTED"
     for kind, fields in (
-        ("RULING", {"reply_to": "M2", "outcome": "FOR_THE_PERSON"}),
-        ("PERSON_ANSWER", {"reply_to": "M3"}),
+        ("RULING", {"reply_to": "M3", "outcome": "FOR_THE_PERSON"}),
+        ("PERSON_ANSWER", {"reply_to": "M4"}),
     ):
         refused = send(message_request("PM", kind=kind, targets=[first], **fields))
         assert refused["failure_code"] == "committee.message_refused:AGENDA"
@@ -417,6 +443,10 @@ def test_a_populated_floor_bounds_stances_and_discloses_every_other_point(tmp_pa
     assert {r["point"] for r in rows if "point" in r} == {
         p["alias"] for p in view["tension_points"]
     }
+    adverse = [p for p in view["tension_points"] if p["kind"] == "HELD_WITH_ADVERSE_EVIDENCE"]
+    below = {t for p in adverse if p["alias"] in agenda["below"] for t in p["targets"]}
+    found = [r for r in rows if "finding_holdings" in r]
+    assert {h for r in found for h in r["finding_holdings"]} == below and found[0]["text"]
 
 
 def test_a_small_floor_and_its_report_stay_exact_under_the_agenda_rule(
@@ -514,6 +544,19 @@ def test_the_stances_stay_blind_until_all_four_are_in(
     assert "(N" in revealed["messages"][0]["text"]  # the Host renders H1 with its name
 
 
+def test_the_committee_windows_name_the_hosts_local_moments(tmp_path, readback, host_local_clock):
+    """The answer and member header carry local window readings beside unchanged UTC."""
+    store, now = _floor(tmp_path, readback)
+    floor = committee.floor_of(store, TASK)
+    floor.opened["stances_close_at"] = host_local_clock.isoformat()
+    floor.opened["closes_at"] = (host_local_clock + timedelta(minutes=10)).isoformat()
+    answer = committee.state(floor, "PM", 0, now[0])
+    assert "2026-10-17 22:44" in answer["stances_close_at_reading"]
+    assert "2026-10-17 22:54" in answer["closes_at_reading"]
+    header = "\n".join(committee.role_lines("ALPHA", readback, {}, floor, now[0]))
+    assert answer["closes_at"] in header and "2026-10-17 22:54" in header
+
+
 def test_a_member_speaks_only_with_its_own_key(tmp_path: Path, readback: dict[str, Any]) -> None:
     """requirement (the committee): the Host mints each member's key from a seed no goal record
     holds, so neither a specialist nor injected text speaks as the PM."""
@@ -546,8 +589,16 @@ def test_the_floor_answers_a_member_only_with_its_own_key(
             file_floor=lambda: None,
         )
 
-    assert ask("COMMITTEE_OPEN")["pm_key"] == floor.key("PM")  # again, after a lost context
-    assert "pm_key" not in ask("COMMITTEE_OPEN", session="s-2")
+    opened = ask("COMMITTEE_OPEN")
+    assert opened["pm_key"] == floor.key("PM")  # again, after a lost context
+    # The PM's own route rides with its key: its submit, the members started together.
+    route = " ".join(opened["pm_route"])
+    assert f"--role PM --key {floor.key('PM')}" in route and "VERDICT" in route
+    assert "schema show COMMITTEE_SUBMIT" in route and "together" in route
+    assert committee.ALIAS_RULE in route  # the PM names by alias as its members do (#6)
+    other = ask("COMMITTEE_OPEN", session="s-2")  # whose route it is, and the floor's read
+    assert not {"pm_key", "pm_route"} & set(other) and other["detail"] == committee.OPENER_WORDS
+    assert other["next_requests"]["read"] == {"operation": "COMMITTEE_READ", "update_task_id": TASK}
     plain, typed = (CommitteeMessage(kind="STANCE", text=t) for t in ("Hold H1.", "Hold 5%."))
     sent = [(floor.key("CRO"), plain), (floor.key("PM"), typed)]  # a submit needs its key field
     codes = [
@@ -562,6 +613,7 @@ def test_the_floor_answers_a_member_only_with_its_own_key(
         codes[1]["detail"].split()
     )
     assert codes[1]["next_action"] == "READ_THE_FLOOR"
+    assert {"H1", "T1"} <= set(codes[1]["aliases"])  # NUMBER lists what may be named (#6)
     stance = ask(
         "COMMITTEE_SUBMIT",
         committee_role="PM",
@@ -611,6 +663,7 @@ def test_a_review_member_answers_its_own_bundle_on_its_thread(
     member, other = (("ANALYST", reference, {"findings": f}) for f in ([], [{}]))
     refused = [committee.admit(store, member, k) for k in (None, "0" * 32)]
     assert [isinstance(r, dict) and r["rule"] for r in refused] == ["MEMBER", "KEY"]
+    assert "--key" in refused[0]["detail"]  # the flag a keyless submit lacks (fresh-folder run)
     correct = {"status": "CORRECT", "problems": [{}], "rounds_left": 2}
     for sent, body, k in (
         (other, correct, key),
@@ -638,6 +691,7 @@ def test_a_review_member_answers_its_own_bundle_on_its_thread(
         ("ANALYST", "ANSWER", "M3"),
         ("HOST", "ACCEPTANCE", "M4"),
     ]
+    assert thread.messages[0]["text"] == "Analyst bundle issued."  # words, no code or Task id
     assert thread_findings(thread.messages, "ANALYST") == []
     forged = [{**m, "role": "PM"} if m["kind"] == "ANSWER" else m for m in thread.messages[:3]]
     assert thread_findings(forged, "ANALYST") == ["thread.author:M2", "thread.open"]
@@ -687,6 +741,40 @@ def test_a_specialist_speaks_three_times_after_its_stance_and_only_the_pm_rules(
         _say(store, now, "PM", "RULING", reply_to=challenge, outcome="DECLINE")
 
 
+def test_the_floor_settles_once_every_member_has_spoken_or_passed_its_turn(
+    tmp_path: Path, readback: dict[str, Any]
+) -> None:
+    """requirement (PASS): after the reveal each specialist takes its turn or passes it; the floor
+    settles once all have and no challenge stands unruled, and the report reads a pass in words."""
+    store, now = _floor(tmp_path, readback)
+    _say(store, now, "PM", "STANCE")
+    with pytest.raises(ValueError, match=r"message_refused:STANCES"):
+        _say(store, now, "ALPHA", "PASS", text="Nothing to add.")
+    _stances(store, now)
+    with pytest.raises(ValueError, match=r"message_refused:TURN"):  # a pass names nothing
+        _say(store, now, "CRO", "PASS", text="Nothing to add.", targets=("T1",))
+    passed = [_say(store, now, role, "PASS", text="Nothing to add.") for role in ("ALPHA", "CRO")]
+    assert _say(store, now, "ALPHA", "PASS", text="Nothing to add.") == passed[0]  # a replay
+    for kind, fields in (("PASS", {}), ("CHALLENGE", {"targets": ("T1",)})):
+        with pytest.raises(ValueError, match=r"message_refused:TURN"):  # its turn has ended
+            _say(store, now, "ALPHA", kind, text="Still nothing.", **fields)
+    assert not _read(store, now, "PM", 4)["settled"]  # RISK has not taken its turn
+    late = _say(store, now, "RISK", "CHALLENGE", targets=("T1",))
+    with pytest.raises(ValueError, match=r"message_refused:TURN"):  # it spoke its turn
+        _say(store, now, "RISK", "PASS", text="Nothing to add.")
+    assert not _read(store, now, "PM", 4)["settled"]  # its challenge stands unruled
+    with pytest.raises(ValueError, match=r"message_refused:ROLE"):
+        _say(store, now, "PM", "PASS", text="Nothing to add.")
+    _say(store, now, "PM", "RULING", reply_to=late, outcome="REJECT")
+    assert _read(store, now, "PM", 4)["settled"]
+    _say(store, now, "PM", "VERDICT", outcome="PROCEED")
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    rows = committee.commentary(floor, now[0]) or []
+    passed = [r for r in rows if r["attribution_word"] == "{member} passed its discussion turn"]
+    assert {r["attribution_words"]["member"] for r in passed} == {"ALPHA", "CRO"}
+
+
 @pytest.mark.parametrize("outcome", ["PROCEED_WITH_NOTES", "DECLINE"])
 def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
     tmp_path: Path, readback: dict[str, Any], outcome: str
@@ -710,6 +798,7 @@ def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
     rows = committee.commentary(floor, now[0]) or []
     held = floor.opened["holdings"]
     holding = committee.render("H1", held)
+    assert rows.pop(0)["attribution_word"] == committee.NO_SUGGESTION  # no OBJECT or SUPPORT
     assert rows[0]["attribution_word"] == "Committee verdict: {outcome}"
     assert rows[0]["attribution_words"] == {"outcome": outcome}
     assert rows[1]["attribution_word"] == "CRO dissent stands on {targets}"
@@ -748,8 +837,222 @@ def test_the_verdict_closes_the_floor_and_the_cros_dissent_stands_in_its_words(
     assert page["person_items"][0]["relay_word"] == committee.RELAY_WORD
 
 
-def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
+def test_the_pm_keeps_its_stance_and_its_verdict_when_a_member_falls_silent(
     tmp_path: Path, readback: dict[str, Any]
+) -> None:
+    """requirement (COMMITTEE-PM-ORDER, the person's demo): the reveal waits for the PM's stance;
+    a challenge the PM has read stays its to rule; once the discussion window passes, a silent
+    member has passed (silent) and the PM's verdict closes the floor, the challenge unruled."""
+    store, now = _floor(tmp_path, readback)
+    for role in committee.ROLES[1:]:
+        _say(store, now, role, "STANCE", positions={"H1": "OBJECT"} if role == "CRO" else {})
+    now[0] += timedelta(minutes=committee.STANCE_MINUTES + 1)  # the PM held its stance
+    assert _read(store, now, "PM", 0)["stage"] == "STANCES"
+    _say(store, now, "PM", "STANCE")
+    assert _read(store, now, "PM", 0)["stage"] == "DEBATE"
+    _say(store, now, "RISK", "PASS", text="Nothing to add.")
+    challenge = _say(store, now, "ALPHA", "CHALLENGE", targets=("T1",))
+    seen = int(challenge[1:])
+    assert _read(store, now, "PM", seen)["for_you"] == [challenge]  # still the PM's to rule
+    with pytest.raises(ValueError, match=r"message_refused"):  # inside the discussion window
+        _say(store, now, "PM", "VERDICT", outcome="PROCEED")
+
+    def cro_read() -> dict[str, Any]:
+        key = committee.floor_of(store, TASK).key("CRO")  # type: ignore[union-attr]
+        read = Request(
+            operation="COMMITTEE_READ",
+            update_task_id=UUID(TASK),
+            committee_role="CRO",
+            committee_key=key,
+        )
+        session = RequestProvenance(session="child-cro")
+        return committee.operate(
+            store, read, now[0], provenance=session, dated=lambda: None, file_floor=lambda: None
+        )
+
+    opened = cro_read()  # a wait leads with where the floor stands and whom it waits on (#5)
+    assert (opened["floor_status"], opened["waiting_on"]) == ("OPEN", ["CRO", "PM"]), opened
+    turn = opened["next_requests"]  # its turn, inside the window: speak or pass, alike
+    assert "pass" in turn and turn["challenge"]["committee_message"]["targets"] == ["H1"], turn
+    # regression (the first daily, #12): the turn says when its window closes, and reads as a turn
+    assert (
+        opened["discussion_closes_at"] in opened["detail"]
+        and opened["members"]["CRO"] == "TURN_OPEN"
+        and opened["members"]["PM"] == "IN"  # the PM has no turn to pass (fresh-folder run)
+    )
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    pm = {**turn["pass"], "committee_role": "PM", "committee_key": floor.key("PM")}
+    opener = RequestProvenance(session=floor.opened["session"][1])
+    passed = committee.operate(
+        store, Request(**pm), now[0], provenance=opener, dated=lambda: None, file_floor=lambda: None
+    )
+    assert passed["rule"] == "ROLE" and passed["may_send"] == [
+        "REPLY",
+        "RULING",
+        "VERDICT",
+        "PERSON_ANSWER",
+    ]
+    assert all(kind in passed["detail"].rpartition(":")[2] for kind in passed["may_send"])
+    now[0] += timedelta(minutes=committee.DISCUSSION_MINUTES + 1)
+    assert _read(store, now, "PM", seen)["settled"]
+    expired = cro_read()  # regression (pre-release review): no turn offered past its window
+    assert (expired["floor_status"], expired["waiting_on"]) == ("WINDOW_PASSED", ["PM"])
+    assert "next_action" not in expired and "pass" not in expired["next_requests"], expired
+    with pytest.raises(ValueError, match=r"message_refused:LATE"):  # its silence passed its turn
+        _say(store, now, "CRO", "CHALLENGE", targets=("T1",))
+    late = Request(**turn["pass"])  # a late turn is refused in its own words, with its way on
+    session = RequestProvenance(session="child-cro")
+    refused = committee.operate(
+        store, late, now[0], provenance=session, dated=lambda: None, file_floor=lambda: None
+    )
+    assert refused["rule"] == "LATE" and refused["detail"], refused
+    _say(store, now, "PM", "VERDICT", outcome="PROCEED_WITH_NOTES")
+    closed = _read(store, now, None, 0)
+    assert closed["verdict"]["outcome"] == "PROCEED_WITH_NOTES"
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None and floor.opened["discussion_minutes"] == committee.DISCUSSION_MINUTES
+    rows = committee.commentary(floor, now[0]) or []
+    words = {r["attribution_word"]: r["attribution_words"] for r in rows}
+    assert words[committee.PASSED_SILENT]["member"] == "CRO"
+    assert words["Challenge stood unruled on {targets}"]["message"] == challenge
+
+
+def test_the_report_leads_with_each_members_suggestions_on_holdings(
+    tmp_path: Path, readback: dict[str, Any]
+) -> None:
+    """requirement (committee calibration): a standing OBJECT or SUPPORT on a point leads the
+    report as a suggestion on its holdings, by member and message; the person decides last."""
+    store, now = _floor(tmp_path, readback)
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    point = floor.opened["tension_points"][0]
+    objection = _say(store, now, "CRO", "STANCE", positions={point["alias"]: "OBJECT"})
+    support = _say(store, now, "ALPHA", "STANCE", positions={point["alias"]: "SUPPORT"})
+    # regression (fresh-checkout first use): RISK objected to a point while its own words set
+    # one of the point's holdings apart; the report gave RISK all three.
+    multi = next(p for p in floor.opened["tension_points"] if len(p["targets"]) > 1)
+    *reduced, apart = multi["targets"]
+    words = (
+        f"{multi['alias']}: I OBJECT; reduce {', '.join(reduced)}. {apart} is lighter, so RESERVE."
+    )
+    risk = _say(store, now, "RISK", "STANCE", positions={multi["alias"]: "OBJECT"}, text=words)
+    _say(store, now, "PM", "STANCE")
+    _say(store, now, "RISK", "PASS", text="Nothing to add.")  # Alpha keeps its turn
+    # regression (the second fresh-folder run): an adopted challenge on a holding is a
+    # suggestion to avoid or reduce it, never erased by its adoption.
+    held = floor.opened["holdings"][0]["alias"]
+    adopted = _say(store, now, "CRO", "CHALLENGE", targets=(held,), text=f"{held} lacks Evidence.")
+    _say(store, now, "PM", "RULING", reply_to=adopted, outcome="ADOPT")
+    _say(store, now, "PM", "VERDICT", outcome="PROCEED_WITH_NOTES")
+    rows = committee.commentary(committee.floor_of(store, TASK), now[0]) or []
+    led = [
+        (r["position"], r["attribution_words"]["message"], r["holding_aliases"]) for r in rows[:4]
+    ]
+    assert led == [
+        ("OBJECT", objection, point["targets"]),
+        ("OBJECT", risk, reduced),
+        ("OBJECT", adopted, [held]),
+        ("SUPPORT", support, point["targets"]),
+    ]
+    assert rows[4]["attribution_word"] == "Committee verdict: {outcome}"
+    assert rows[-1]["text"] == committee.NO_NUMBER
+    later = committee.commentary(committee.floor_of(store, TASK), now[0] + timedelta(days=1))
+    assert later == rows  # a closed floor's report never moves with the clock
+
+
+def test_a_floor_whose_pm_never_takes_its_stance_closes_at_its_time_box(
+    tmp_path: Path, readback: dict[str, Any]
+) -> None:
+    """A reveal that waits for the PM never hangs: the time box closes it, and its words say so."""
+    store, now = _floor(tmp_path, readback)
+    for role in committee.ROLES[1:]:
+        _say(store, now, role, "STANCE")
+    now[0] += timedelta(minutes=committee.FLOOR_MINUTES)
+    closed = _read(store, now, None, 0)
+    assert closed["stage"] == "CLOSED" and closed["verdict"]["outcome"] == "FOR_THE_PERSON"
+    assert closed["verdict"]["text"] == committee.NO_PM_STANCE
+
+
+def test_a_long_message_files_within_its_rows_bound_and_names_the_cut(
+    tmp_path: Path, readback: dict[str, Any]
+) -> None:
+    """requirement (REPORT-SUMMARY-BOUND): a message at its own bound, its aliases rendered wider,
+    still files as a conversation row within the row's bound; the cut is named and points to the
+    whole message on the floor, so the report always exports."""
+    from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
+
+    store, now = _floor(tmp_path, readback)
+    long = _say(store, now, "PM", "STANCE", text=" ".join(["H1"] * 1333))
+    for role in committee.ROLES[1:]:
+        _say(store, now, role, "STANCE")
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    rows = committee.unfiled(floor, now[0])
+    documents = [ExternalActivityEventDocument.model_validate(row) for row in rows]
+    cut = next(d for d in documents if d.subject["message_id"] == long).summary
+    assert f"the whole message is {long}" in cut and f"committee show --update {TASK}" in cut
+
+
+def test_the_daily_committee_is_the_persons_and_the_first_use_asks_it_once(
+    tmp_path: Path, readback: dict[str, Any]
+) -> None:
+    """requirement (COMMITTEE-DAILY-SETTING): the first use's report asks the one question until
+    it is answered; only the person's relayed answer sets it, recorded with its relay."""
+    store, now = _floor(tmp_path, readback)
+    first = store.head(UUID(int=7))
+    goals = SimpleNamespace(store=store, first_use=lambda: first, attributed_goal=lambda _: None)
+    assert committee.daily_asked(tmp_path, goals, TASK, {}) == {}  # not the first use's date
+    store.attribute(first.goal_id, {"operation": "RESEARCH_UPDATE_RUN", "task_id": TASK})
+    asked = committee.daily_asked(tmp_path, goals, TASK, {"status": "EXPORTED"})
+    assert committee.DAILY_ASK in asked["ask_now"]
+    # regression (fresh-folder acceptance): a lead held the goal open for this answer; the
+    # question waits for the person, and the goal's completion goes on beside it.
+    assert asked["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL", asked
+    assert asked["next_requests"]["goal"] == {"operation": "GOAL_SHOW", "goal_id": str(UUID(int=7))}
+    assert "committee daily --enabled true" in asked["ask_now"][-1]
+    request = Request(operation="COMMITTEE_DAILY_SET", committee_daily_enabled=True)
+
+    def setting(caller: str) -> dict[str, object]:
+        relay = RequestProvenance(vendor="claude-code", session="s-1", relayed=True)
+        return committee.operate(
+            store,
+            request,
+            now[0],
+            provenance=relay,
+            dated=lambda: None,
+            file_floor=lambda: None,
+            caller=caller,
+            workspace=tmp_path,
+        )
+
+    assert "human" in str(setting("EXTERNAL_AUTOMATION")["failure_code"])
+    assert committee.committee_daily(tmp_path) is None  # unanswered, so off
+    # regression (the second fresh-folder run): the road's last answer offers its goal's completion.
+    declared = {"title": "First use", "objective": "Positions.", "kind": "FIRST_USE"}
+    declared["criteria"] = [{"criterion_id": "positions", "text": "The positions stand."}]
+    app = GoalApplication(
+        store, lambda: now[0], lambda *_: {}, lambda _: now[0], {}.get, workspace=tmp_path
+    )
+    opened = Request(
+        operation="GOAL_OPEN", goal_id=UUID(int=8), goal_declaration=declared, change_reason="Said"
+    )
+    app.operate(opened, "EXTERNAL_AUTOMATION")
+    answered = setting("HUMAN")
+    assert answered["committee_daily"] == "ON"
+    assert answered["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL"
+    assert answered["next_requests"]["goal"] == {
+        "operation": "GOAL_SHOW",
+        "goal_id": str(UUID(int=8)),
+    }
+    record = json.loads((tmp_path / committee.DAILY_PATH).read_text("utf-8"))
+    assert record["relayed_by"] == "claude-code:s-1"
+    answered = committee.daily_asked(tmp_path, goals, TASK, {"status": "EXPORTED"})
+    assert answered["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL"  # asked, so the road ends
+
+
+def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
+    tmp_path: Path, readback: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Time boxes reveal stances, then leave unruled points for the person."""
     store, now = _floor(tmp_path, readback)
@@ -757,11 +1060,77 @@ def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
     now[0] += timedelta(minutes=11)
     state = _read(store, now, None, 0)
     assert state["stage"] == "DEBATE" and state["members"]["ALPHA"] == "NOT_ADDRESSED"
+    # A research update's published review offers the floor opened on its publication, as it
+    # stands: open, then its report; another kind of update has none to open.
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    selector = dict(floor.opened["selector"])
+
+    first: list[Any] = [None]  # the workspace's first-use goal, once one is opened
+
+    def offered(read: dict[str, Any], kind: str = ADVANCEMENT_TASK_KIND) -> dict[str, Any]:
+        review: dict[str, Any] = {"state": "REVIEW_PUBLISHED", "next_requests": {}}
+        tasks = SimpleNamespace(task=lambda _: SimpleNamespace(task_kind=kind))
+        host = SimpleNamespace(
+            goals=SimpleNamespace(
+                store=store,
+                clock=lambda: now[0],
+                first_use=lambda: first[0],
+                attributed_goal=lambda _: store.head(UUID(int=7)),  # the Session's own goal
+            ),
+            workspace_session=SimpleNamespace(task_control_registry=tasks, workspace=tmp_path),
+        )
+        book = SimpleNamespace(request_fields=lambda: read)
+        return committee.offer(host, review, book, "EXTERNAL_AUTOMATION")
+
+    opened = offered(selector)
+    assert opened["next_requests"]["committee"]["operation"] == "COMMITTEE_OPEN"
+    assert offered(selector, kind="portfolio_update")["next_requests"] == {}
+    with pytest.raises(ValueError, match=r"message_refused:TURN"):  # no stance to pass from
+        _say(store, now, "ALPHA", "PASS", text="Nothing to add.")
     assert {p["state"] for p in state["tension_points"]} == {"OPEN"}
     now[0] += timedelta(minutes=30)
     closed = _read(store, now, None, 0)
     assert closed["stage"] == "CLOSED" and closed["verdict"]["outcome"] == "FOR_THE_PERSON"
     assert (closed["members"]["PM"], closed["members"]["ALPHA"]) == ("IN", "NOT_ADDRESSED")
+    ended, earlier = offered(selector), offered({**selector, "update_publication_hash": "e" * 64})
+    assert ended["next_requests"] == {"committee_report": closed["delivery"]}
+    assert [opened["next_action"], ended["next_action"], earlier["next_action"]] == [
+        "CONVENE_THE_COMMITTEE",
+        "REPORT_THE_COMMITTEE",
+        "GIVE_THE_PM_VIEW",  # no floor on this publication, a daily date, the setting unanswered
+    ]
+    # requirement (COMMITTEE-DAILY-SETTING): off, the PM's view with the committee offered; the
+    # person's yes, or the first use's own date, convenes it.
+    assert earlier["next_requests"]["committee"] == opened["next_requests"]["committee"]
+    other = {**selector, "update_publication_hash": "e" * 64}
+    committee.set_daily(tmp_path, enabled=True, relayed_by="claude-code:s-1")
+    assert offered(other)["next_action"] == "CONVENE_THE_COMMITTEE"
+    committee.set_daily(tmp_path, enabled=False, relayed_by="claude-code:s-1")
+    viewed = offered(other)
+    assert viewed["next_action"] == "GIVE_THE_PM_VIEW"
+    # regression (the first daily): a date's road ends at the PM's view or the committee's report,
+    # and each offers the Session's open goal's completion, as the first use's last answer does.
+    read = {"operation": "GOAL_SHOW", "goal_id": str(UUID(int=7))}
+    assert viewed["next_requests"]["goal"] == read
+    goals = SimpleNamespace(
+        store=store, first_use=lambda: None, attributed_goal=lambda _: store.head(UUID(int=7))
+    )
+    reported = committee.daily_asked(tmp_path, goals, TASK, {"status": "EXPORTED"})
+    assert (
+        reported["next_action"] == "COMPLETE_THE_GOAL" and reported["next_requests"]["goal"] == read
+    )
+    first[0] = SimpleNamespace(goal_id=UUID(int=7))
+    store.attribute(UUID(int=7), {"operation": "RESEARCH_UPDATE_RUN", "task_id": TASK})
+    assert offered(other)["next_action"] == "CONVENE_THE_COMMITTEE"
+
+    def unreadable(*_: Any) -> None:
+        raise ValueError("goal.attribution_invalid")
+
+    with monkeypatch.context() as patched:  # a corrupt goal record
+        patched.setattr(committee, "thread_of", unreadable)
+        named = offered(selector)
+    assert named["next_requests"] == {} and named["committee_unreadable"]
     assert {p["state"] for p in closed["tension_points"]} == {"NOT_ADDRESSED"}
     with pytest.raises(ValueError, match=r"message_refused:CLOSED"):
         _say(store, now, "ALPHA", "STANCE")
@@ -769,9 +1138,103 @@ def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
     assert floor is not None
     rows = committee.commentary(floor, now[0])
     assert rows and [r["text_word"] for r in rows if "text_word" in r] == [
+        committee.NO_SUGGESTION + ".",
         closed["verdict"]["text"],
         *["Not addressed."] * 3,
+        committee.NO_NUMBER,
     ]
+
+
+def test_only_the_leads_superseded_refusal_is_offered_its_published_committee(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lead's stale or ambiguous refusal on its Task's reviewed publication offers the
+    committee, its code kept; a member's, a transient, another publication's do not."""
+    from alphalattice.control.product_host.composition.evidence_review_delivery import (
+        EvidenceReviewDelivery,
+    )
+
+    book = {"update_task_id": TASK, "update_publication_hash": "p" * 64}
+    book["position_basis"] = "CONDITIONAL_ESTIMATE"
+    standing: list[Any] = [{"status": "REVIEWED"}]
+
+    def read(_delivery: Any, _selector: Any) -> Any:
+        if isinstance(standing[0], Exception):
+            raise standing[0]
+        return standing[0]
+
+    monkeypatch.setattr(EvidenceReviewDelivery, "review_standing", read)
+    tasks = SimpleNamespace(task=lambda _: SimpleNamespace(task_kind=ADVANCEMENT_TASK_KIND))
+    host = SimpleNamespace(
+        review=None,
+        research_updates=SimpleNamespace(publication_task={"p" * 64: UUID(TASK)}.get),
+        goals=SimpleNamespace(
+            store=GoalStore(tmp_path, "workspace"), clock=lambda: NOW, first_use=lambda: None
+        ),
+        workspace_session=SimpleNamespace(task_control_registry=tasks, workspace=tmp_path),
+    )
+    committee.set_daily(tmp_path, enabled=True, relayed_by=None)  # the person's daily yes
+
+    def way(code: str, lead: bool = True, **fields: Any) -> dict[str, Any]:
+        refused = {"status": "REFUSED", "failure_code": code, "message": "Tell your lead."}
+        refused["next_action"] = "TELL_YOUR_LEAD"
+        return committee.lead_way(host, {**book, **fields}, lead, "EXTERNAL_AUTOMATION", refused)
+
+    offered = way("agent_bundle.preparation_stale")
+    assert (offered["failure_code"], offered["message"], offered["next_action"]) == (
+        "agent_bundle.preparation_stale",
+        committee.LEAD_PUBLISHED,
+        "CONVENE_THE_COMMITTEE",
+    )
+    assert offered["next_requests"]["committee"]["update_task_id"] == TASK
+    kept = [
+        way("EVIDENCE_REFRESH_IN_PROGRESS"),  # transient: its own words and way
+        way("REFUSED_EVIDENCE_SELECTION_AMBIGUOUS", lead=False),  # a member, or no thread
+        way("agent_bundle.preparation_stale", update_publication_hash="q" * 64),
+    ]
+    standing[0] = {"status": "NOT_REVIEWED"}
+    kept.append(way("REFUSED_EVIDENCE_SELECTION_AMBIGUOUS"))
+    standing[0] = OSError("store unreadable")
+    kept.append(way("agent_bundle.preparation_stale"))
+    assert [k["next_action"] for k in kept] == ["TELL_YOUR_LEAD"] * 5
+    previous = {"review_selector": book, "review_standing": {"status": "REVIEWED"}}
+    previous |= {"publication_is_previous": True, "next_requests": {}}
+    assert committee.update_offer(host, dict(previous), "EXTERNAL_AUTOMATION") == previous
+
+
+def test_a_members_request_counts_toward_its_floors_open_goal_and_never_overrides_a_named_one(
+    tmp_path: Path, readback: dict[str, Any]
+) -> None:
+    """requirement (the second member review, 2026-10-15): only while the floor's goal is open."""
+    store, now = _floor(tmp_path, readback)
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    fields = ("committee_key", "committee_role", "agent_role", "task_id", "update_task_id")
+    risk = {"operation": "COMMITTEE_SUBMIT", "update_task_id": TASK, "committee_role": "RISK"}
+    prepare = {"operation": "AGENT_BUNDLE_PREPARE", "agent_role": "RISK", "task_id": TASK}
+
+    def join(request: dict[str, Any], held: Any = None, named: str | None = None) -> tuple:
+        asked = SimpleNamespace(**{**dict.fromkeys(fields), "bundle_directory": None, **request})
+        member, goal = committee.member_goal(
+            store, asked, held, SimpleNamespace(goal_id=named), now[0]
+        )
+        return member, getattr(goal, "goal_id", goal)
+
+    seven = UUID(int=7)
+    assert join(risk | {"committee_key": floor.key("RISK")}, "mine") == (True, seven)
+    assert join(risk | {"committee_key": floor.key("PM")}, "mine") == (True, "mine")
+    assert join(risk | {"committee_role": "PM", "committee_key": floor.key("PM")}, "mine") == (
+        False,
+        "mine",
+    )
+    assert join(risk | {"committee_key": floor.key("RISK")}, "named", "x") == (False, "named")
+    assert join(prepare) == (True, seven) and join(prepare, "mine") == (False, "mine")
+    now[0] += timedelta(days=30)  # the floor's time box has closed it
+    assert join(prepare) == (False, None)
+    head = store.head(seven)
+    assert head is not None
+    store.head = lambda _goal: head.model_copy(update={"state": "COMPLETE"})  # type: ignore[method-assign]
+    assert join(risk | {"committee_key": floor.key("RISK")}, "mine") == (False, "mine")
 
 
 def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
@@ -873,11 +1336,16 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     assert floor is not None
     cro = committee.role_lines("CRO", readback, EVIDENCE, floor, NOW) or []
     assert any("No Evidence stands" in line for line in cro)
-    standing = {"status": "REVIEWED", "published_at": "2026-09-11", "cro": {"route": "R"}}
+    absent = [f for f in floor.opened["facts"] if f["source"] == "absence"]  # words; code apart
+    assert absent and all(f["state"] in {"PENDING", "UNAVAILABLE"} for f in absent)
+    assert not any(f["state"] in f["text"] for f in absent)
+    at, route = "2026-09-10T23:56:21.531000+00:00", "ACCEPT_WITH_LIMITS"
+    standing = {"status": "REVIEWED", "published_at": at, "cro": {"route": route}}
     reviewed = committee.role_lines(
         "CRO", {**readback, "review_standing": standing}, {}, floor, NOW
     )
-    assert any("now: REVIEWED" in line for line in reviewed or [])  # never the sealed status
+    said = next(line for line in reviewed or [] if "now: reviewed" in line)
+    assert at in said and f"CRO route {committee.status_word(route)}" in said
     way = committee.route("CRO", floor, NOW) or ()
     assert f"--role CRO --key {floor.key('CRO')}" in way[1] and "only final action" in way[-1]
     assert committee.route("CRO", None, NOW) is None  # no floor: the answer file stands
@@ -918,8 +1386,9 @@ def test_the_risk_member_reads_the_dates_predicted_risk(tmp_path: Path, readback
     }
     view = committee.role_lines("RISK", record, EVIDENCE, None, NOW)
     assert view is not None and all(f in view[1] for f in ("1.10%", "17.5%", "H1 21%"))
-    assert "Dated" in view[1] and "EVALUATED" in view[1].split("Historical")[0]
-    assert "NOT_EVALUATED_FOR_THIS_PROPOSAL" in view[1].split("Historical")[1]
+    assert "Dated" in view[1] and "evaluated." in view[1].split("Historical")[0]
+    linked = committee.status_word("NOT_EVALUATED_FOR_THIS_PROPOSAL")
+    assert linked in view[1].split("Historical")[1] and linked.islower()  # words, not its code
     kinds = [(p["kind"], p["targets"]) for p in committee.tension_points(held, EVIDENCE, risk)]
     assert ("TOP_RISK_CONTRIBUTORS", ["H1"]) in kinds
     manifest = ResearchWorkspaceManifest.create(
@@ -996,3 +1465,31 @@ def test_a_dates_delivery_carries_the_closed_floor_as_its_commentary(
     assert (
         worded(said[0]["attribution_word"]).format(outcome=worded("Proceed")) in delivered["html"]
     )
+
+
+def test_each_committee_fact_holds_to_its_own_data() -> None:
+    """regression (the final confirmation's Run A and the demo, 2026-10-16): the held fact listed
+    tranche-held ranks as kept by the exit line, the moves read today's scores as the session
+    before, and the coverage total was not its named parts."""
+    rank = {"a": 36, "b": 70, "c": 71, "d": 90}
+    c = {"alias": "C3", "mine": set(rank), "score": {}, "was": {}, "rank": rank, "curve": []}
+    alias = {k: f"H{i}" for i, k in enumerate(rank, 1)}
+    said = dict(committee_materials._component_values(c, alias, 35, 70, [], 0.0))
+    assert (said["rule"]["kept"], said["rule"]["tranche"]) == ("H1 36, H2 70", "H3 71, H4 90")
+    today, before = (
+        SimpleNamespace(schedule=SimpleNamespace(formation_session=d))
+        for d in ("2026-09-10", "2026-09-09")
+    )
+    history = [SimpleNamespace(pending_proposal=p) for p in (before, today)]
+    assert committee_materials._previous_proposal(today, history) is before
+    split = {"nothing_filed_window_days": 30} | {
+        f"{part}_ending_weight": value
+        for part, value in (("reviewed", "10.861%"), ("nothing_filed", "88.628%"))
+    }
+    split["unreached_ending_weight"] = "0.511%"
+    scope = {"whole_book_reviewed_weight": "100.000%", "minimum_required_weight": "50.000%"}
+    coverage = dict(committee_materials._coverage(scope, split))
+    assert coverage["scope"]["together"] == "99.489%"
+    shown = [(k, v) for k, v in [*said.items(), *coverage.items()] if v]
+    facts = [{"alias": k, "text": committee_materials._FACTS[k][2].format(**v)} for k, v in shown]
+    assert fact_findings(facts) == []

@@ -62,6 +62,7 @@ from alphalattice.control.observation_runtime.policy import (
     PRODUCT_OPERATION_SCHEMA,
     default_observation_policies,
 )
+from alphalattice.control.product_host.composition.native_usage_reader import UNVERIFIED_LIMIT
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     ArtifactReference,
     PortfolioResearchOperations,
@@ -96,6 +97,13 @@ from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     safe_failure_code,
 )
+from alphalattice.interface.local_application.native_bridge import (
+    CHILD_USAGE_BINDING_UNVERIFIED as UNVERIFIED,
+)
+from alphalattice.interface.local_application.native_bridge import (
+    HOSTS,
+    joined_members,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     OperationCaller,
     PortfolioResearchOperationRequest,
@@ -111,6 +119,7 @@ EXTERNAL_SOURCE_KIND = "EXTERNAL_CLIENT"
 _ENUM_TOKEN = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _CLASS_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,79}")
 _REFERENCE_VALUE = re.compile(r"^[A-Za-z0-9_.:,\-/]{1,128}$")
+_SESSION_ID = re.compile(r"^[A-Za-z0-9_.\-]{1,128}$")
 
 
 def safe_enum_token(value: object) -> str | None:
@@ -158,6 +167,26 @@ ArtifactResolver = Callable[[str, UUID], ArtifactReference | None]
 """Given a command kind and a Task, open the owner's published result and answer
 with its reference, or `None` when that kind publishes nothing this observer
 names. Opening is the verification: an index entry alone must not answer."""
+
+
+def _joined(
+    records: list[dict[str, Any]], snapshots: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Both reads with each member's submits under that member, as its session file proves."""
+    both = records + snapshots
+    subjects = joined_members(
+        [(item.get("payload") or {}).get("subject") or {} for item in both],
+        agent="native_agent_id",
+        session="native_session_id",
+        members=True,
+    )
+    both = [
+        {**item, "payload": {**item["payload"], "subject": subject}}
+        if item.get("payload")
+        else item
+        for item, subject in zip(both, subjects, strict=True)
+    ]
+    return both[: len(records)], both[len(records) :]
 
 
 @dataclass
@@ -890,6 +919,10 @@ class WorkspaceActivity:
             else None
         )
         records = [] if page is None else [activity_item(item) for item in page.items]
+        snapshot_items = (
+            [] if snapshots is None else [activity_item(item) for item in snapshots.items]
+        )
+        records, snapshot_items = _joined(records, snapshot_items)
         by_kind: dict[str, list[dict[str, Any]]] = {
             EXTERNAL_ACTIVITY_SCHEMA: [],
             PRODUCT_OPERATION_SCHEMA: [],
@@ -897,9 +930,6 @@ class WorkspaceActivity:
         for item in records:
             by_kind[item["schema_kind"]].append(item)
         items, product_items = by_kind[EXTERNAL_ACTIVITY_SCHEMA], by_kind[PRODUCT_OPERATION_SCHEMA]
-        snapshot_items = (
-            [] if snapshots is None else [activity_item(item) for item in snapshots.items]
-        )
         return {
             "workspace_id": self.workspace_id,
             "disposition": "UNAVAILABLE" if page is None else page.disposition,
@@ -1122,10 +1152,10 @@ class WorkspaceActivity:
         return tasks
 
     def wake_readiness(self, path: str | None = None) -> dict[str, object]:
-        """Share successful queue probes; retry a supplied path after failure."""
+        """Share successful reach probes; retry a supplied path after failure."""
         from alphalattice.interface.local_application.native_bridge import (
             codex_command,
-            codex_queue_readiness,
+            codex_queue_reach,
         )
 
         with self._lock:
@@ -1135,7 +1165,7 @@ class WorkspaceActivity:
                 or self._wake_capability.get("command") != command
                 or (path and not self._wake_capability.get("present"))
             ):
-                self._wake_capability = codex_queue_readiness(path)
+                self._wake_capability = codex_queue_reach(path)
             return {**self._wake_capability, "command_source": source}
 
     def observer_state(self) -> dict[str, object]:
@@ -1181,30 +1211,20 @@ class WorkspaceActivity:
         if self.native_usage_state is not None:
             try:
                 usage = self.native_usage_state()
-                usage_status = safe_enum_token(usage.get("status"))
-                if usage_status not in {"NOT_BOUND", "OFF", "OBSERVING", "STOPPED", "UNAVAILABLE"}:
-                    usage_status = "UNAVAILABLE"
-                state["native_usage"] = {
-                    "status": usage_status,
-                    "reason": _persisted_code(usage.get("reason")),
-                    **{
-                        key: value
-                        for key in ("read_through", "total_bytes", "bytes_read")
-                        if type(value := usage.get(key)) is int and value >= 0
-                    },
-                    **({"rescan": usage["rescan"]} if type(usage.get("rescan")) is bool else {}),
-                }
+                state["native_usage"] = _usage_view(usage)
+                sessions = usage.get("sessions")
+                if isinstance(sessions, dict):  # each Session's own, for its own page
+                    cast(dict[str, object], state["native_usage"])["sessions"] = {
+                        sid: _usage_view(own)
+                        for sid, own in sessions.items()
+                        if isinstance(sid, str)
+                        and (":" not in sid or sid.split(":", 1)[0] in HOSTS)
+                        and _SESSION_ID.fullmatch(sid.rsplit(":", 1)[-1])
+                        and isinstance(own, dict)
+                    }
             except Exception:
-                state["native_usage"] = {
-                    "status": "UNAVAILABLE",
-                    "reason": "activity.observer_failed",
-                }
-            usage_state = cast(dict[str, object], state["native_usage"])
-            reason = usage_state.get("reason")
-            if isinstance(reason, str):
-                words = refusal_words(reason)
-                usage_state.update(
-                    {key: words[key] for key in ("detail", "next_action") if key in words}
+                state["native_usage"] = _usage_view(
+                    {"status": "UNAVAILABLE", "reason": "activity.observer_failed"}
                 )
         return state
 
@@ -1326,7 +1346,7 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
     line in its queue, not that the model read it: Codex takes its queue while the thread is idle,
     and an active goal's next turn starts first.
     """
-    from alphalattice.interface.local_application.native_bridge import codex_command
+    from alphalattice.interface.local_application.native_bridge import codex_command, first_line
 
     codex, source = codex_command(path)
     result: dict[str, Any] = {
@@ -1344,8 +1364,8 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
             capture_output=True,
             timeout=60,
         )
-    except subprocess.CalledProcessError:
-        return {**result, "failure": "CODEX_QUEUE_FAILED"}
+    except subprocess.CalledProcessError as error:
+        return {**result, "failure": "CODEX_QUEUE_FAILED", "detail": first_line(error.stderr)}
     except subprocess.TimeoutExpired:
         return {**result, "failure": "CODEX_QUEUE_TIMED_OUT"}
     except OSError:
@@ -1353,6 +1373,42 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
     # `delivered` is the stored spelling of queued: it and WAKE_DELIVERED and task.wake_delivered
     # sit in people's activity ledgers, so they stay, and every word a reader sees says queued.
     return {**result, "delivered": True}
+
+
+def _usage_view(usage: dict[str, Any]) -> dict[str, object]:
+    """A usage standing as a page shows it: owner status, safe reason and its words, progress.
+
+    A Session's unverified children are named by their safe ids, each its own row.
+    """
+    status = safe_enum_token(usage.get("status"))
+    view: dict[str, object] = {
+        "status": status
+        if status in {"NOT_BOUND", "OFF", "OBSERVING", "STOPPED", "UNAVAILABLE"}
+        else "UNAVAILABLE",
+        "reason": _persisted_code(usage.get("reason")),
+        **{
+            key: value
+            for key in ("read_through", "total_bytes", "bytes_read")
+            if type(value := usage.get(key)) is int and value >= 0
+        },
+        **({"rescan": usage["rescan"]} if type(usage.get("rescan")) is bool else {}),
+    }
+    if isinstance(reason := view["reason"], str):
+        words = refusal_words(reason)
+        view.update({key: words[key] for key in ("detail", "next_action") if key in words})
+    unverified = usage.get("unverified")
+    if isinstance(unverified, list) and unverified:
+        view["unverified"] = [
+            i
+            for i in unverified[:UNVERIFIED_LIMIT]
+            if isinstance(i, str) and _SESSION_ID.fullmatch(i)
+        ]
+        count = usage.get("unverified_count")
+        view["unverified_count"] = (
+            count if type(count) is int and count >= len(unverified) else len(unverified)
+        )
+        view["unverified_detail"] = refusal_words(UNVERIFIED).get("detail")
+    return view
 
 
 def _persisted_code(value: object) -> str | None:

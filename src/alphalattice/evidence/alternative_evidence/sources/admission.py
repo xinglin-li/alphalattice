@@ -10,14 +10,18 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 from importlib import resources
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
-from alphalattice.control.workspace_runtime.network_access import NetworkAccess, network_access
+from alphalattice.control.workspace_runtime.network_access import (
+    NetworkAccess,
+    network_access,
+    set_network_access,
+)
 from alphalattice.evidence.alternative_evidence.contracts import (
     DEFAULT_SOURCE_DOCUMENT_BYTES,
     AlternativeEvidenceAdmission,
@@ -232,6 +236,25 @@ class DeniedSecOfficialTransport:
         return None
 
 
+class HeldOfficialTransport(HttpxSecOfficialTransport):
+    """The official client as a running Task holds it, at the product's request rate.
+
+    Each request first reads the workspace's network control, so the person's stop reaches the
+    Task before its next request, not only the next admission.
+    """
+
+    def __init__(self, admitted: Callable[[], bool], **client: Any) -> None:
+        """Hold the client, at the product's rate (`sec_request_rate`), and the control's reader."""
+        super().__init__(**{"requests_per_second": sec_request_rate(), **client})
+        self._admitted = admitted
+
+    def get(self, url: str, *, maximum_bytes: int) -> SecOfficialResponse:
+        """Refuse by name once the control is closed (`alternative_evidence.network_disabled`)."""
+        if not self._admitted():
+            raise ValueError("alternative_evidence.network_disabled")
+        return super().get(url, maximum_bytes=maximum_bytes)
+
+
 @dataclass(frozen=True, slots=True)
 class OfficialSourceAdmission:
     """An official SEC source admitted for this process's live acquisitions.
@@ -300,30 +323,28 @@ def admit_official_source(
     maximum_body_resources: int | None = None,
     campaign_id: str | None = None,
     workspace_root: Path | None = None,
+    now: datetime | None = None,
 ) -> OfficialSourceAdmission:
     """Compose the official source, or say by name why not.
 
-    Offline is the default: without the operator's explicit consent nothing
-    is composed; with it, the official client needs network access (the
-    workspace's network control, `network_access`: the operator's
-    `ALPHALATTICE_NETWORK_DISABLED=1` keeps the process offline whatever the
-    workspace says) and the product's SEC contact (`sec_user_agent`). With consent and the network
-    still disabled the live branch is composed over a denied transport
-    (`DENIED`): the workspace's live preparations read back, no request
-    leaves the process, and a source check is refused by name. An injected
-    transport is admitted under the consent alone -- it is the caller's
-    controlled responses, not the network -- and is recorded as injected. A
-    declared per-document cap is validated by the source policy contract,
-    which admits nothing above its maximum. A declared acquisition window
-    and campaign budget (total attempts, total decoded bytes, distinct body
-    resources) are the admission's operational choices, enforced by the
-    transport and the source before each request. A `campaign_id` names a
-    durable campaign under the workspace (`campaign_ledger_path`): the first
-    admission writes its totals -- every budget bound and the document cap
-    are then required -- and a later admission with the same id and totals
-    resumes it with only what remains; the same id with other totals is
-    refused as another campaign, and a campaign needs the official client
-    (an injected transport spends none of it).
+    Offline is the default: without the operator's explicit consent nothing is composed; with it,
+    the official client needs network access (the workspace's network control, `network_access`: the
+    operator's `ALPHALATTICE_NETWORK_DISABLED=1` keeps the process offline whatever the workspace
+    says) and the product's SEC contact (`sec_user_agent`). With consent and the network still
+    disabled the live branch is composed over a denied transport (`DENIED`): the workspace's live
+    preparations read back, no request leaves the process, and a source check is refused by name. An
+    injected transport is admitted under the consent alone -- it is the caller's controlled
+    responses, not the network -- and is recorded as injected. A declared per-document cap is
+    validated by the source policy contract, which admits nothing above its maximum. A declared
+    acquisition window and campaign budget (total attempts, total decoded bytes, distinct body
+    resources) are the admission's operational choices, enforced by the transport and the source
+    before each request. A `campaign_id` names a durable campaign under the workspace
+    (`campaign_ledger_path`): the first admission writes its totals -- every budget bound and the
+    document cap are then required -- and a later admission with the same id and totals resumes it
+    with only what remains; the same id with other totals is refused as another campaign, and a
+    campaign needs the official client (an injected transport spends none of it). A workspace's
+    network control is read on `now`, the caller's clock: the Host's, since a delegation's end is
+    the Host's instant.
     """
     if maximum_document_bytes is not None:
         AlternativeEvidenceSourcePolicy(maximum_document_bytes=maximum_document_bytes)
@@ -391,7 +412,7 @@ def admit_official_source(
         )
     values = dict(os.environ if environment is None else environment)
     # The workspace's typed network control decides, the operator's offline switch first.
-    access = network_access(workspace_root, values)
+    access = network_access(workspace_root, values, now=now)
     if not access.allowed:
         return OfficialSourceAdmission(
             source=SecEdgarSource(
@@ -424,9 +445,9 @@ def admit_official_source(
         declared["campaign_ledger"] = ledger
     return OfficialSourceAdmission(
         source=SecEdgarSource(
-            HttpxSecOfficialTransport(
+            HeldOfficialTransport(
+                lambda: network_access(workspace_root, values, now=now).allowed,
                 user_agent=user_agent,
-                requests_per_second=sec_request_rate(),
                 maximum_total_attempts=maximum_total_attempts,
                 maximum_total_response_bytes=maximum_total_response_bytes,
                 ledger=ledger,
@@ -442,15 +463,51 @@ def admit_official_source(
     )
 
 
-NOT_GRANTED = frozenset({"DEFAULT", "UNREADABLE"})
-"""The consent actors that grant no acquisition: none recorded, or a record that does not read."""
+REVOKED = "REVOKED"
+"""The person's stop: it grants nothing, and no first use's delegation grants again over it."""
+
+NOT_GRANTED = frozenset({"DEFAULT", "UNREADABLE", REVOKED})
+"""The consent actors that grant no acquisition: none recorded, a record that does not read, or
+the person's stop."""
+
+
+def delegated_consent(
+    current: EvidenceSourceConsent, wanted: EvidenceSourceConsent
+) -> EvidenceSourceConsent | None:
+    """What a first use's delegation records: the default budget, never over the person's own.
+
+    The person's record always wins: one that covers `wanted` answers as it stands, unwritten;
+    one it would raise, or their stop, is beyond the delegation (None).
+    """
+    if current.actor == REVOKED or not wanted.within(DEFAULT_SOURCE_CONSENT):
+        return None
+    if current.actor in NOT_GRANTED or current.actor == wanted.actor:
+        return wanted
+    return current if wanted.within(current) else None
+
+
+def set_workspace_network(
+    workspace: Path, *, enabled: bool, now: datetime, **setting: Any
+) -> NetworkAccess:
+    """Set the workspace's network control (`set_network_access`).
+
+    The person's stop revokes SEC consent with it, so the network's next opening acquires nothing
+    until they grant it again.
+    """
+    # The network closes first: a consent write that fails never leaves it open.
+    access = set_network_access(workspace, enabled=enabled, now=now, **setting)
+    if not enabled and setting.get("delegation") is None:
+        stop = replace(DEFAULT_SOURCE_CONSENT, actor=REVOKED, granted_at=now.isoformat())
+        record_evidence_source_consent(workspace, stop)
+    return access
+
 
 CONSENT_ATTEMPTS_PER_DOCUMENT = 4
 """Requests a consented document may take: its filing index, its body and their retries."""
 
 
 def official_source_state(
-    workspace: Path, environment: Mapping[str, str] | None = None
+    workspace: Path, environment: Mapping[str, str] | None = None, *, now: datetime
 ) -> tuple[object, ...]:
     """What the workspace's admission of the official source depends on, read cheaply.
 
@@ -458,13 +515,16 @@ def official_source_state(
     """
     return (
         evidence_source_consent(workspace).body(),
-        network_access(workspace, environment).allowed,
+        network_access(workspace, environment, now=now).allowed,
         sec_user_agent(environment),
     )
 
 
 def admit_workspace_source(
-    workspace: Path, environment: Mapping[str, str] | None = None
+    workspace: Path,
+    environment: Mapping[str, str] | None = None,
+    *,
+    clock: Callable[[], datetime],
 ) -> OfficialSourceAdmission:
     """The official source as the workspace admits it now, with no Host restart.
 
@@ -475,7 +535,7 @@ def admit_workspace_source(
     consent = evidence_source_consent(workspace)
     if consent.actor in NOT_GRANTED:
         return admit_official_source(
-            network_consent=False, workspace_root=workspace, environment=environment
+            network_consent=False, workspace_root=workspace, environment=environment, now=clock()
         )
     return admit_official_source(
         network_consent=True,
@@ -486,6 +546,7 @@ def admit_workspace_source(
         maximum_total_response_bytes=consent.total_bytes,
         maximum_body_resources=consent.total_documents,
         campaign_id=consent.campaign_id,
+        now=clock(),
     )
 
 
@@ -505,6 +566,13 @@ def acquisition_scope(
     documents = min(issuers * consent.documents_per_issuer, consent.total_documents)
     requests = 1 + issuers + REQUESTS_PER_DOCUMENT * documents
     return {
+        "estimate_basis": "COLD_FULL_ACQUISITION_UPPER_BOUND",
+        "estimate_detail": (
+            "Cold/full source acquisition scope upper bound before reuse. Held sources and "
+            "retrieval packs may be reused, reducing new work. Seconds use the configured SEC "
+            "request rate, exclude retries and processing, and are not total or remaining "
+            "Task time."
+        ),
         "issuers": issuers,
         "units": -(-issuers // issuers_per_unit),
         "documents_per_issuer": consent.documents_per_issuer,

@@ -20,6 +20,9 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
 )
 from alphalattice.foundation.market_data_ops.sources.sanitization import SanitizedBatch
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.foundation.market_data_ops.storage.source_prefix import (
+    market_data_source_prefix_proofs,
+)
 
 DAYS = (date(2026, 8, 3), date(2026, 8, 4), date(2026, 8, 5))
 NOW = datetime(2026, 8, 7, 22, tzinfo=UTC)
@@ -76,9 +79,9 @@ def market_source(tmp_path):
 
 
 def _proof(market, *, listing_ids=SCOPE, start=DAYS[0], through=DAYS[1], connection=None):
-    return market.market_data_source_prefix_proof(
-        listing_ids=listing_ids, start=start, through=through, _connection=connection
-    )
+    return market_data_source_prefix_proofs(
+        market, listing_ids=listing_ids, start=start, through=through, _connection=connection
+    )[0]
 
 
 @pytest.mark.parametrize(

@@ -7,17 +7,21 @@ only resolves their axes and delegates; it publishes no Foundation or book.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from itertools import groupby
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
 
-from alphalattice.control.data_platform.maintenance.contracts import WorkspaceInputStatus
+from alphalattice.control.data_platform.maintenance.contracts import (
+    WorkspaceDataUpdateBinding,
+    WorkspaceInputStatus,
+)
 from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
     read_workspace_inputs,
@@ -27,6 +31,7 @@ from alphalattice.foundation.causal_outcomes.execution.compile import (
     _action_dividends,
     causal_execution_simple_return,
 )
+from alphalattice.foundation.causal_outcomes.execution.contracts import CausalExecutionSchedulePoint
 from alphalattice.foundation.causal_outcomes.execution.methods import (
     ONE_SESSION_RECIPE_ID,
     ExecutionOutcomeSessionAxis,
@@ -48,12 +53,21 @@ from alphalattice.foundation.feature_engine.producers.factors.session_observatio
     append_session_observation_values,
     session_observation_factor_specs,
 )
+from alphalattice.foundation.feature_engine.storage.listing_proofs import (
+    feature_source_listing_proofs,
+)
 from alphalattice.foundation.feature_engine.storage.repositories import (
     FeatureStateRepository,
     PanelStateRepository,
 )
-from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
+from alphalattice.foundation.market_data_ops.sources.contracts import (
+    CorporateActionEvent,
+    RawDailyBar,
+)
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.foundation.market_data_ops.storage.source_prefix import (
+    market_data_source_prefix_proofs,
+)
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     BoolArray,
     FloatArray,
@@ -72,6 +86,7 @@ from alphalattice.investment.alpha_research.targets.component_training import (
 )
 from alphalattice.investment.sector_research.inputs.surface import compile_sector_context_arrays
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.quant.factor_contracts import FactorSpec
 from alphalattice.kernel.quant.sector_history import sector_ids, sector_subset
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span
@@ -101,6 +116,10 @@ class PreparedWorkspaceComponentInputs:
     dependency_prefix_hash: str | None = None
     stable_session_count: int = 0
     reused_history_hash: str | None = None
+    axes_proof: str | None = None
+    listing_digests: tuple[str, ...] = ()
+    listing_closed: tuple[str, ...] = ()
+    restated_listing_ids: tuple[str, ...] = ()
 
 
 def _market_source_proof(market: MarketDataRepository) -> tuple[tuple[str, str | None], ...]:
@@ -129,6 +148,45 @@ def _immutable_arrays(values: Mapping[str, FloatArray]) -> Mapping[str, FloatArr
     )
 
 
+class _PrefixProof(NamedTuple):
+    """A prefix's proof whole, by its shared axes alone, and each listing's market part, read
+    only when asked for (a whole match never asks)."""
+
+    whole: str
+    axes: str
+    market: Callable[[], Mapping[str, str]]
+
+    @classmethod
+    def of(
+        cls, axes: str, data: str, features: str | None, market: Callable[[], Mapping[str, str]]
+    ) -> _PrefixProof:
+        """The proof from its axes, the scope's market and Feature proofs and each listing's."""
+        parts = {"kind": "WorkspaceObservationPrefixProof.v3", "axes": axes, "data": data}
+        return cls(str(canonical_hash({**parts, "features": features})), axes, market)
+
+    def listings(self, feature: Mapping[str, str]) -> dict[str, str]:
+        """Each listing's proof: its market part and its own Feature values."""
+        return {
+            name: str(canonical_hash((value, feature.get(name))))
+            for name, value in self.market().items()
+        }
+
+
+_KERNEL_IDS = sorted(
+    spec.factor_id
+    for spec in (*session_observation_factor_specs(), *session_liquidity_factor_specs())
+)
+PER_LISTING_REVIEWED = "27d51f63ffd56539840ed4f2a67620a82a7cd1eccfa2aa2435ffebaf0459a701"
+"""The digest of the extension kernel ids reviewed to compute one listing at a time (each gives a
+listing subset its full frame's bytes; the test names them)."""
+PER_LISTING_EXTENSIONS = (
+    frozenset(_KERNEL_IDS) if canonical_hash(_KERNEL_IDS) == PER_LISTING_REVIEWED else frozenset()
+)
+"""The reviewed per-listing kernels; none while a kernel is added or changed unreviewed. Only
+with every kept extension among them may a restated listing rebuild alone; any other kernel, a
+cross-sectional one, keeps the whole capture cold."""
+
+
 def _workspace_history_prefix_proof(
     market: MarketDataRepository,
     feature: FeatureStateRepository,
@@ -140,19 +198,24 @@ def _workspace_history_prefix_proof(
     factor_ids: tuple[str, ...],
     extension_factor_ids: tuple[str, ...],
     feature_prefix_proof: str | None = None,
-) -> str:
-    """Bind actual source values and the dependency axes of a completed prefix.
+) -> _PrefixProof:
+    """Bind actual source values and the dependency axes of a completed prefix, whole, by its
+    axes alone, and for each listing (its raw bars, actions and stored Feature values).
 
     Daily source identities and the observation instant are provenance. The
     old completed clocks and actual membership, exclusions, Sector and source
-    values must still agree before an immutable preparation can be reused.
+    values must still agree before an immutable preparation can be reused. The
+    market reference's adjusted closes are not among them: no captured value reads
+    them (training reads them live), and a provider restating them daily kept every
+    real day cold.
     """
     readiness = market.readiness.load("us-current-index-research")
     if readiness is None or readiness.active_manifest_id is None:
         raise ValueError("strategy_score.workspace_not_qualified")
     manifest = market.load_universe_manifest(readiness.active_manifest_id)
     with market.database.read_transaction() as connection:
-        data = market.market_data_source_prefix_proof(
+        data, market_listing = market_data_source_prefix_proofs(
+            market,
             listing_ids=listings,
             start=sessions[0],
             through=sessions[-1],
@@ -195,28 +258,14 @@ def _workspace_history_prefix_proof(
         sessions=sessions,
         listing_ids=listings,
     )
-    reference = feature.market_reference("SPY")
-    reference_values = None
-    if reference is not None:
-        reference_values = (
-            str(reference["listing_id"]),
-            tuple(
-                (p.provider, p.session_date, p.adjusted_close)
-                for p in market.provider_adjusted_closes(
-                    str(reference["listing_id"]), start=sessions[0], through=sessions[-1]
-                )
-            ),
-        )
     registry = default_extension_kernel_registry()
     bundle = desktop_core_feature_bundle()
-    return str(
+    axes = str(
         canonical_hash(
             {
-                "kind": "WorkspaceObservationPrefixProof.v1",
+                "kind": "WorkspaceObservationPrefixAxes.v1",
                 "sessions": sessions,
                 "listings": listings,
-                "data": data,
-                "features": features,
                 "calendar": calendar.to_pylist(),
                 "membership": membership,
                 "admitted_listings": schedule.admitted_listing_ids,
@@ -232,7 +281,6 @@ def _workspace_history_prefix_proof(
                 ),
                 "sector_map": dict(history),
                 "sector_history": history.lineage_payload(),
-                "reference": reference_values,
                 "execution_method": build_installed_execution_outcome_method_catalog()
                 .resolve(ONE_SESSION_RECIPE_ID)
                 .recipe_hash,
@@ -247,6 +295,7 @@ def _workspace_history_prefix_proof(
             }
         )
     )
+    return _PrefixProof.of(axes, data, features, market_listing)
 
 
 def workspace_observation_history_columns(
@@ -418,6 +467,271 @@ def read_workspace_component_inputs(
     return source, training
 
 
+def _restated(
+    head: WorkspaceObservationHistoryHead,
+    proof: _PrefixProof,
+    listings: tuple[str, ...],
+    feature: Mapping[str, str],
+) -> tuple[int, ...]:
+    """The listings whose own proof moved while the shared axes held: only they rebuild (a
+    corrected action, a restated history)."""
+    if head.axes_proof != proof.axes or len(head.listing_digests) != len(listings):
+        return ()
+    digests, current = head.listing_digests, proof.listings(feature)
+    return tuple(c for c, name in enumerate(listings) if digests[c] != current[name])
+
+
+def _reads(
+    listings: tuple[str, ...], first: date, rebuilt: list[str], since: date
+) -> tuple[tuple[tuple[str, ...], date], ...]:
+    """Each read's listings and first session, as the cold path reads them: the kept listings
+    from ``first``, the rebuilt ones from ``since``; each listing once, no empty read."""
+    kept = tuple(name for name in listings if name not in set(rebuilt))
+    return tuple((ids, start) for ids, start in ((kept, first), (tuple(rebuilt), since)) if ids)
+
+
+def _bars(
+    market: MarketDataRepository,
+    reads: tuple[tuple[tuple[str, ...], date], ...],
+    through: date,
+    connection: Any,
+) -> dict[str, tuple[RawDailyBar, ...]]:
+    """Each read's raw bars (`_reads`), every listing once."""
+    return {
+        listing: bars
+        for ids, start in reads
+        for listing, bars in market.raw_bars_by_listing(
+            ids, start=start, through=through, _connection=connection
+        ).items()
+    }
+
+
+def _rows_since(
+    feature: FeatureStateRepository,
+    catalog: str,
+    reads: tuple[tuple[tuple[str, ...], date], ...],
+    end: date,
+    factor_ids: tuple[str, ...],
+    connection: object = None,
+) -> list[dict[str, Any]]:
+    """Stored Feature rows of each read (`_reads`)."""
+    extra = {} if connection is None else {"_connection": connection}
+    return [
+        row
+        for ids, start in reads
+        for row in feature.feature_rows(
+            listing_ids=ids,
+            catalog_hash=catalog,
+            start=start,
+            end=end,
+            factor_ids=factor_ids,
+            **extra,
+        )
+    ]
+
+
+def _rebuild_listings(
+    values: FloatArray, frame: pd.DataFrame, spec: FactorSpec, rebuilt: list[str]
+) -> FloatArray:
+    """The values with the rebuilt listings' rows computed from their first session, as a cold
+    capture computes them; the kernel groups its rows by listing (`PER_LISTING_EXTENSIONS`)."""
+    if not rebuilt:
+        return values
+    mask = frame["listing_id"].isin(rebuilt).to_numpy()
+    flat = values.reshape(-1).copy()
+    flat[mask] = append_session_observation_values(
+        frame[mask], spec, previous=None, compute=default_extension_kernel_registry().compute
+    ).to_numpy(dtype=np.float64)
+    return flat.reshape(values.shape)
+
+
+def _kept_columns(columns: Mapping[str, FloatArray], kept: set[str]) -> Mapping[str, FloatArray]:
+    """The kept history's columns, refused unless they are exactly the capture's."""
+    expected = {
+        *("ohlcv::" + name for name in ("open", "high", "low", "close", "volume")),
+        "observations::dist_52w_high",
+        "observations::dist_52w_low",
+        "observations::close_to_close",
+        "raw_simple",
+        *("formula::" + name for name in kept),
+    }
+    if set(columns) != expected:
+        raise ValueError("strategy_score.prepared_input_axis_invalid")
+    return columns
+
+
+class _Reuse(NamedTuple):
+    """A capture's reuse of its kept history: the kept columns (whole, or all but the restated
+    listings), the restated listing columns, and the current prefix's proof."""
+
+    restored: Mapping[str, FloatArray] | None
+    restated: tuple[int, ...]
+    proved: _PrefixProof
+    digests: tuple[str, ...]
+    closed: tuple[str, ...]
+
+    def parts(self) -> dict[str, Any]:
+        """The capture's fields the next head seals: the current prefix's proof parts."""
+        return {
+            "dependency_prefix_hash": self.proved.whole,
+            "axes_proof": self.proved.axes,
+            "listing_digests": self.digests,
+            "listing_closed": self.closed,
+        }
+
+
+def _kept_candidate(
+    history: tuple[WorkspaceObservationHistoryHead, Mapping[str, FloatArray]] | None,
+    listings: tuple[str, ...],
+    sessions: tuple[date, ...],
+    points: tuple[CausalExecutionSchedulePoint, ...],
+) -> tuple[date, ...] | None:
+    """The kept history's sessions when it is a prefix of today's axes, else None."""
+    if history is None:
+        return None
+    head = history[0]
+    kept: tuple[date, ...] = head.formation_sessions
+    if (
+        head.ordered_listing_ids == listings
+        and len(kept) <= len(sessions)
+        and kept == sessions[: len(kept)]
+        and head.stable_session_count
+        == sum(point.holding_end_session <= kept[-1] for point in points)
+    ):
+        return kept
+    return None
+
+
+def _carried_closed(
+    head: WorkspaceObservationHistoryHead, listings: tuple[str, ...], end: date
+) -> tuple[str, ...]:
+    """The head's closed-year digests in sorted listing order, when they still answer for
+    today's cutoff year (its prefix proved whole); else none, and they are read."""
+    if len(head.listing_closed) != len(listings) or head.formation_sessions[-1].year != end.year:
+        return ()
+    closed_of = dict(zip(listings, head.listing_closed, strict=True))
+    return tuple(closed_of[name] for name in sorted(listings))
+
+
+def _kept_history_reuse(
+    market: MarketDataRepository,
+    feature: FeatureStateRepository,
+    binding: WorkspaceDataUpdateBinding,
+    history: tuple[WorkspaceObservationHistoryHead, Mapping[str, FloatArray]] | None,
+    *,
+    sessions: tuple[date, ...],
+    listings: tuple[str, ...],
+    points: tuple[CausalExecutionSchedulePoint, ...],
+    observed_at: datetime,
+    kept: set[str],
+    selections: tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...]],
+) -> _Reuse:
+    """Prove the kept history's prefix against the current sources and decide its reuse.
+
+    The immutable child proves its own bytes. Reuse also needs the source owner to prove the
+    *current* old values, not a revision or last date: whole when the prefix proof holds,
+    listing by listing when only listings moved beside the same axes.
+    """
+    kept_stored, selected_stored, kept_extensions, selected_extensions = selections
+    restored: Mapping[str, FloatArray] | None = None
+    restated: tuple[int, ...] = ()
+    candidate_sessions = _kept_candidate(history, listings, sessions, points)
+    same_columns = kept_stored == selected_stored and kept_extensions == selected_extensions
+    ends = (
+        (candidate_sessions[-1], sessions[-1])
+        if candidate_sessions is not None and same_columns
+        else (sessions[-1],)
+    )
+    with (
+        market.database.read_transaction() as connection,
+        span("verify", "feature_prefix_proofs"),
+    ):
+        catalog, start = binding.feature_catalog_hash, sessions[0]
+        feature_proofs = feature.feature_source_prefix_proofs(
+            listing_ids=listings,
+            catalog_hash=catalog,
+            start=start,
+            ends=ends,
+            factor_ids=selected_stored,
+            _connection=connection,
+        )
+        # A wider kept history's prefix is proved over its own Features, apart.
+        kept_proof = (
+            feature_proofs[0]
+            if candidate_sessions is None or same_columns
+            else feature.feature_source_prefix_proofs(
+                listing_ids=listings,
+                catalog_hash=catalog,
+                start=start,
+                ends=(candidate_sessions[-1],),
+                factor_ids=kept_stored,
+                _connection=connection,
+            )[0]
+        )
+    kept_prefix, whole = None, False
+    listing_ends: tuple[date, ...] = (sessions[-1],)
+    carried: tuple[str, ...] = ()
+    if history is not None and candidate_sessions is not None:
+        head, columns = history
+        kept_prefix = _workspace_history_prefix_proof(
+            market,
+            feature,
+            sessions=candidate_sessions,
+            listings=listings,
+            observed_at=observed_at,
+            catalog_hash=catalog,
+            factor_ids=kept_stored,
+            extension_factor_ids=kept_extensions,
+            feature_prefix_proof=kept_proof,
+        )
+        whole = kept_prefix.whole == head.dependency_prefix_hash
+        if whole and same_columns:
+            # The prefix held, its closed years with it: carry their digests, read the open year.
+            carried = _carried_closed(head, listings, sessions[-1])
+        elif not whole and same_columns and set(kept_extensions) <= PER_LISTING_EXTENSIONS:
+            # Each listing's own values at the kept cutoff, so a restated listing rebuilds
+            # alone; a cross-sectional kernel keeps the capture cold (no kept proofs read).
+            listing_ends = (candidate_sessions[-1], sessions[-1])
+    with span("verify", "feature_listing_proofs"):
+        listing_proofs, closed = feature_source_listing_proofs(
+            feature,
+            listing_ids=listings,
+            catalog_hash=catalog,
+            start=start,
+            ends=listing_ends,
+            factor_ids=selected_stored,
+            closed=carried,
+        )
+    if history is not None and kept_prefix is not None:
+        head, columns = history
+        restated = (
+            _restated(head, kept_prefix, listings, listing_proofs[0]) if listing_ends[1:] else ()
+        )
+        if whole or restated:
+            restored = _kept_columns(columns, kept)
+    with span("verify", "history_prefix_proof"):
+        proved = _workspace_history_prefix_proof(
+            market,
+            feature,
+            sessions=sessions,
+            listings=listings,
+            observed_at=observed_at,
+            catalog_hash=catalog,
+            factor_ids=selected_stored,
+            extension_factor_ids=selected_extensions,
+            feature_prefix_proof=feature_proofs[-1],
+        )
+    current = proved.listings(listing_proofs[-1])
+    closed_of = dict(zip(sorted(listings), closed, strict=True))
+    return _Reuse(
+        restored,
+        restated,
+        proved,
+        tuple(current[name] for name in listings),
+        tuple(closed_of[name] for name in listings),
+    )
+
+
 def _read_workspace_component_inputs(
     workspace: Path,
     *,
@@ -535,107 +849,47 @@ def _read_workspace_component_inputs(
             kept_extensions = tuple(sorted({"close_to_close", *(kept & extension.keys())}))
         else:
             history = None
-    dependency_prefix_hash = None
+    proof_parts: dict[str, Any] = {}
     restored: Mapping[str, FloatArray] | None = None
+    restated: tuple[int, ...] = ()
     reused_count = return_start = 0
     if capture:
-        # The immutable child proves its own bytes. Reuse also needs the source
-        # owner to prove the *current* old values, not a revision or last date.
-        candidate_sessions = None
-        if history is not None:
-            head, columns = history
-            if (
-                head.ordered_listing_ids == listings
-                and len(head.formation_sessions) <= len(sessions)
-                and head.formation_sessions == sessions[: len(head.formation_sessions)]
-                and head.stable_session_count
-                == sum(point.holding_end_session <= head.formation_sessions[-1] for point in points)
-            ):
-                candidate_sessions = head.formation_sessions
-        with (
-            market.database.read_transaction() as connection,
-            span("verify", "feature_prefix_proofs"),
-        ):
-            feature_proofs = feature.feature_source_prefix_proofs(
-                listing_ids=listings,
-                catalog_hash=binding.feature_catalog_hash,
-                start=sessions[0],
-                ends=(candidate_sessions[-1], sessions[-1])
-                if candidate_sessions is not None and kept_stored == selected_stored
-                else (sessions[-1],),
-                factor_ids=selected_stored,
-                _connection=connection,
-            )
-            # A wider kept history's prefix is proved over its own Features, apart.
-            kept_proof = (
-                feature_proofs[0]
-                if candidate_sessions is None or kept_stored == selected_stored
-                else feature.feature_source_prefix_proofs(
-                    listing_ids=listings,
-                    catalog_hash=binding.feature_catalog_hash,
-                    start=sessions[0],
-                    ends=(candidate_sessions[-1],),
-                    factor_ids=kept_stored,
-                    _connection=connection,
-                )[0]
-            )
-        if history is not None and candidate_sessions is not None:
-            head, columns = history
-            if (
-                _workspace_history_prefix_proof(
-                    market,
-                    feature,
-                    sessions=candidate_sessions,
-                    listings=listings,
-                    observed_at=observed_at,
-                    catalog_hash=binding.feature_catalog_hash,
-                    factor_ids=kept_stored,
-                    extension_factor_ids=kept_extensions,
-                    feature_prefix_proof=kept_proof,
-                )
-                == head.dependency_prefix_hash
-            ):
-                expected_columns = {
-                    *("ohlcv::" + name for name in ohlcv),
-                    "observations::dist_52w_high",
-                    "observations::dist_52w_low",
-                    "observations::close_to_close",
-                    "raw_simple",
-                    *("formula::" + name for name in kept),
-                }
-                if set(columns) != expected_columns:
-                    raise ValueError("strategy_score.prepared_input_axis_invalid")
-                restored = columns
-                reused_count = len(head.formation_sessions)
-                return_start = head.stable_session_count
-                for name in ohlcv:
-                    ohlcv[name][:reused_count] = columns["ohlcv::" + name]
-                raw_simple[:reused_count] = columns["raw_simple"]
-        with span("verify", "history_prefix_proof"):
-            dependency_prefix_hash = _workspace_history_prefix_proof(
-                market,
-                feature,
-                sessions=sessions,
-                listings=listings,
-                observed_at=observed_at,
-                catalog_hash=binding.feature_catalog_hash,
-                factor_ids=selected_stored,
-                extension_factor_ids=selected_extensions,
-                feature_prefix_proof=feature_proofs[-1],
-            )
+        reuse = _kept_history_reuse(
+            market,
+            feature,
+            binding,
+            history,
+            sessions=sessions,
+            listings=listings,
+            points=points,
+            observed_at=observed_at,
+            kept=kept,
+            selections=(kept_stored, selected_stored, kept_extensions, selected_extensions),
+        )
+        restored, restated = reuse.restored, reuse.restated
+        if restored is not None and history is not None:
+            reused_count = len(history[0].formation_sessions)
+            return_start = history[0].stable_session_count
+            for name in ohlcv:
+                ohlcv[name][:reused_count] = restored["ohlcv::" + name]
+            raw_simple[:reused_count] = restored["raw_simple"]
+        proof_parts = reuse.parts()
+    rebuilt = [listings[column] for column in restated]
     actions: list[tuple[CorporateActionEvent, ...]] = []
     if prepared is None:
         with market._connect(read_only=True) as connection, connection.snapshot():
             with span("materialize", "ohlcv_returns"):
                 # Every listing's bars and actions in one read each, as each listing's own
                 # reads answer them (two queries a listing and component were most of this).
-                bars_by_listing = market.raw_bars_by_listing(
-                    listings,
-                    start=sessions[return_start],
-                    through=formation,
-                    _connection=connection,
+                bars_by_listing = _bars(
+                    market,
+                    _reads(listings, sessions[return_start], rebuilt, sessions[0]),
+                    formation,
+                    connection,
                 )
                 actions_by_listing = market.actions_by_listing(listings, _connection=connection)
+                for values in (*ohlcv.values(), raw_simple):
+                    values[:, restated] = np.nan
                 for column, listing in enumerate(listings):
                     bars = bars_by_listing[listing]
                     by_session = {bar.session_date: bar for bar in bars}
@@ -654,7 +908,7 @@ def _read_workspace_component_inputs(
                                 ohlcv[name][positions[bar.session_date], column] = (
                                     np.nan if value is None else float(value)
                                 )
-                    for row in range(return_start, len(sessions)):
+                    for row in range(0 if column in restated else return_start, len(sessions)):
                         session = sessions[row]
                         point = by_formation.get(session)
                         if point is None:
@@ -671,13 +925,14 @@ def _read_workspace_component_inputs(
                         )
                         raw_simple[row, column] = np.nan if value is None else value
             with span("read", "feature_rows"):
-                observations = feature.feature_rows(
-                    listing_ids=listings,
-                    catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
-                    start=sessions[reused_count] if reused_count < len(sessions) else formation,
-                    end=formation,
-                    factor_ids=("dist_52w_high", "dist_52w_low"),
-                    _connection=connection,
+                first = sessions[reused_count] if reused_count < len(sessions) else formation
+                observations = _rows_since(
+                    feature,
+                    binding.feature_catalog_hash,
+                    _reads(listings, first, rebuilt, sessions[0]),
+                    formation,
+                    ("dist_52w_high", "dist_52w_low"),
+                    connection,
                 )
         observed: dict[str, FloatArray] = {
             name: np.full(shape, np.nan, dtype=np.float64)
@@ -686,6 +941,7 @@ def _read_workspace_component_inputs(
         if restored is not None:
             for name in observed:
                 observed[name][:reused_count] = restored["observations::" + name]
+                observed[name][:, restated] = np.nan
     else:
         if sessions != prepared.formation_sessions[: len(sessions)] or not set(listings) <= set(
             prepared.ordered_listing_ids
@@ -757,7 +1013,7 @@ def _read_workspace_component_inputs(
             if value.factor_id == "close_to_close"
         )
         with span("features", "close_to_close"):
-            observed["close_to_close"] = (
+            observed["close_to_close"] = _rebuild_listings(
                 append_session_observation_values(
                     observation_frame,
                     observation_spec,
@@ -769,7 +1025,10 @@ def _read_workspace_component_inputs(
                     compute=default_extension_kernel_registry().compute,
                 )
                 .to_numpy(dtype=np.float64)
-                .reshape(shape)
+                .reshape(shape),
+                observation_frame,
+                observation_spec,
+                rebuilt,
             )
     formula_values: dict[str, FloatArray] = {}
     if formula_ids:
@@ -793,26 +1052,28 @@ def _read_workspace_component_inputs(
             formula_values = {name: bounded(prepared.formula_values[name]) for name in selected}
         else:
             with span("read", "formula_rows"):
-                rows = feature.feature_rows(
-                    listing_ids=listings,
-                    catalog_hash=installed_data_update_binding(workspace).feature_catalog_hash,
-                    start=sessions[reused_count] if reused_count < len(sessions) else formation,
-                    end=formation,
-                    factor_ids=stored,
+                first = sessions[reused_count] if reused_count < len(sessions) else formation
+                stored_rows = _rows_since(
+                    feature,
+                    binding.feature_catalog_hash,
+                    _reads(listings, first, rebuilt, sessions[0]),
+                    formation,
+                    stored,
                 )
             formula_values = {name: np.full(shape, np.nan, dtype=np.float64) for name in stored}
             if restored is not None:
                 for name in stored:
                     formula_values[name][:reused_count] = restored["formula::" + name]
-            for item in rows:
-                if item["session_date"] in positions:
+                    formula_values[name][:, restated] = np.nan
+            for stored_row in stored_rows:
+                if stored_row["session_date"] in positions:
                     row, column = (
-                        positions[item["session_date"]],
-                        listing_positions[item["listing_id"]],
+                        positions[stored_row["session_date"]],
+                        listing_positions[stored_row["listing_id"]],
                     )
                     for name in stored:
                         formula_values[name][row, column] = (
-                            np.nan if item[name] is None else item[name]
+                            np.nan if stored_row[name] is None else stored_row[name]
                         )
             frame = pd.DataFrame(
                 {
@@ -830,7 +1091,7 @@ def _read_workspace_component_inputs(
             with span("features", "extension_formulas"):
                 for name in formula_ids:
                     if name in extension:
-                        formula_values[name] = (
+                        formula_values[name] = _rebuild_listings(
                             append_session_observation_values(
                                 frame,
                                 extension[name],
@@ -842,7 +1103,10 @@ def _read_workspace_component_inputs(
                                 compute=default_extension_kernel_registry().compute,
                             )
                             .to_numpy(dtype=np.float64)
-                            .reshape(shape)
+                            .reshape(shape),
+                            frame,
+                            extension[name],
+                            rebuilt,
                         )
     # The Sector each session reads, the store's history over these names (V346).
     sector_history = feature.sector_history(manifest, listing_ids=listings)
@@ -869,11 +1133,12 @@ def _read_workspace_component_inputs(
             formula_values=_immutable_arrays(formula_values),
             raw_simple=_immutable_arrays({"returns": raw_simple})["returns"],
             actions=tuple(actions),
-            dependency_prefix_hash=dependency_prefix_hash,
             stable_session_count=len(points),
             reused_history_hash=(
-                history[0].head_hash if restored is not None and history else None
+                history[0].head_hash if restored is not None and history and not restated else None
             ),
+            restated_listing_ids=tuple(rebuilt),
+            **proof_parts,
         )
         if (
             workspace_score_source_identity(workspace) != expected_source_hash

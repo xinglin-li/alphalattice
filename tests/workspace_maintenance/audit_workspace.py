@@ -13,6 +13,7 @@ from pathlib import Path
 
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
+from alphalattice.foundation.market_data_ops.storage.action_audit import ActionAuditObservation
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from tests.researcher_methodology_surface.real_workspace import (
@@ -52,12 +53,13 @@ def build_audit_workspace(root: Path) -> tuple[Path, UniverseManifest]:
         observed_at=OBSERVED_AT,
     )
     for listing in manifest.listings:
-        market.complete_action_audit(
+        audit_one(
+            market,
             manifest,
             listing_id=listing.listing_id,
             provider=provider.name,
-            observed_actions=(),
-            observed_adjusted_closes=provider.fetch_adjusted_close_history(
+            actions=(),
+            adjusted_closes=provider.fetch_adjusted_close_history(
                 listing_id=listing.listing_id,
                 provider_symbol=listing.provider_symbol,
                 start=start,
@@ -69,3 +71,9 @@ def build_audit_workspace(root: Path) -> tuple[Path, UniverseManifest]:
             observed_at=OBSERVED_AT,
         )
     return root, manifest
+
+
+def audit_one(store, manifest, *, _connection=None, **observation):  # type: ignore[no-untyped-def]
+    """One observation's receipt and counts: the store's batch audit of that one alone."""
+    audit = ActionAuditObservation(**observation)
+    return store.complete_action_audit(manifest, audit, _connection=_connection)[0]

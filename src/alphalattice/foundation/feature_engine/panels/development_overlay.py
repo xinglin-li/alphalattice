@@ -8,7 +8,6 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Any, Literal, Self, cast
 
 import numpy as np
@@ -19,6 +18,7 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.content_store import staging_directory
 from alphalattice.foundation.feature_engine.catalog.research_values import ResearchFormulaValues
 from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
@@ -816,7 +816,7 @@ class DevelopmentFeatureOverlayService:
             content_hash=admission.admission_hash,
             payload=admission.model_dump(mode="json"),
         )
-        with TemporaryDirectory(dir=target, prefix=".publish-") as temporary:
+        with staging_directory(target, ".publish-") as temporary:
             for name, data in (("values.parquet", content), ("manifest.json", encoded)):
                 destination = target / name
                 if destination.exists():

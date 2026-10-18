@@ -33,6 +33,7 @@ from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+from alphalattice.control.product_host.composition.committee import MEMBER_COMMANDS  # noqa: E402
 from alphalattice.interface.local_application.failure_codes import setup_failure  # noqa: E402
 
 CARDS = ROOT / ".codex" / "agents"
@@ -50,14 +51,17 @@ CLAUDE_TOOLS = {
     # workspace, as its Codex card's workspace-write sandbox allows (V384).
     "workspace-write": "Read, Grep, Glob, Edit, Write, Bash",
 }
+COMMAND = " ".join(command_prefix())  # the routes' own prefix: one pattern, one owner
 BUNDLE_TOOLS = (
-    "Read, Write, Bash(alphalattice bundle submit:*), Bash(alphalattice session unbind:*), "
-    "Bash(alphalattice --workspace * session bind:*)"
+    f"Read, Write, Bash({COMMAND} bundle submit:*), Bash({COMMAND} session unbind:*), "
+    f"Bash({COMMAND} --workspace * session bind:*)"
 )
 """The two evidence specialists read their bundle whole, write their own answer file and run its
 route's one submit with their key: no Grep or Glob (none of 27 measured runs used either), and
 Bash scoped to that one command. The Host admits only what the key covers, whatever shell the
 member holds; the Codex card's sandbox cannot scope it, so there the limit is its instruction."""
+COMMITTEE_TOOLS = "".join(f", Bash({COMMAND} {verb}:*)" for verb in MEMBER_COMMANDS)
+"""The CRO also sits on the committee: its route's own commands, from their one owner."""
 HOOK_MATCHER = "^alphalattice_.*$"
 HOOK_EVENTS = ("SubagentStart", "SubagentStop")
 
@@ -388,8 +392,9 @@ SKILL_COMMANDS: tuple[RoleCommand, ...] = (
     ),
     RoleCommand(
         'review continue --dir "<out>/analysts" --cro-dir "<out>/cro"',
-        "Submits the answers in the folder, follows them, then writes the CRO's bundle or, "
-        "with --package, reads the review and the activation offer.",
+        "Submits the answers in the folder, follows them, then writes the CRO's bundle or, after "
+        "the CRO, offers a dated review's committee (its report once closed) and, with --package, "
+        "the activation offer.",
         ("--cro-dir",),
     ),
     RoleCommand(
@@ -404,7 +409,8 @@ SKILL_COMMANDS: tuple[RoleCommand, ...] = (
     ),
     RoleCommand(
         "committee wait --update <task> --role PM --key <key>",
-        "Waits, as one member, for what the floor addresses to it, or its close.",
+        "Waits, as one member, for what the floor addresses to it, the settled debate, or its "
+        "close.",
         ("--role",),
     ),
     RoleCommand(
@@ -414,8 +420,11 @@ SKILL_COMMANDS: tuple[RoleCommand, ...] = (
         ("--update",),
     ),
     RoleCommand(
-        'research-update plan --package <package> --output "<out>/research-update-plan.json"',
-        "Plans the strategy's next sessions and offers `run`.",
+        "research-update plan --package <package> --date <date> --output "
+        '"<out>/research-update-plan.json"',
+        "Plans the update for a date's positions, entered on that trade date and decided at the "
+        "close before it; without `--date`, the next session's. Offers `run`.",
+        ("--date",),
     ),
     RoleCommand(
         'research-update run --from "<out>/research-update-plan.json" --wait',
@@ -737,10 +746,12 @@ STAGE_BOUNDARIES = "\n".join(
 
 LOCAL_METHOD = (
     "# Local method\n"
-    "If `.alphalattice/user/cards/{card}.md` exists in the checkout, read it whole before you "
-    "start; it is the one file outside your assignment you always read. It holds the person's "
-    "method for this card, kept by the experience maintainer, and refines how you work here: it "
-    "never widens what this card permits, and where the two differ, this card holds."
+    "Before you start, read the person's method for this card where the checkout has it: "
+    "`.alphalattice/user/cards/{card}.md` whole, and of `.alphalattice/user/memory/` only the "
+    "memories whose `domain` is `method:{card}`. They are the only files outside your assignment "
+    "you always read; a fresh checkout has none, and nothing is missing: this card is then your "
+    "whole method. The experience maintainer keeps them; they refine how you work here, never "
+    "widen what this card permits, and where they differ, this card holds."
 )
 """Every card's last paragraph: where the person's own method for it lives (the user layer)."""
 
@@ -815,7 +826,8 @@ def agent_markdown(card: dict[str, str]) -> str:
         f"model: {CLAUDE_MODEL}",
         f"effort: {CLAUDE_EFFORT}",
         "tools: "
-        + (BUNDLE_TOOLS if card["name"] in BUNDLE_ROLES else CLAUDE_TOOLS[card["sandbox_mode"]]),
+        + (BUNDLE_TOOLS if card["name"] in BUNDLE_ROLES else CLAUDE_TOOLS[card["sandbox_mode"]])
+        + COMMITTEE_TOOLS * (card["name"] == "alphalattice_cro"),
         "---",
         f"<!-- Derived from .codex/agents/{card['name']}.toml"
         " by scripts/materialize_claude_host.py; edit the TOML, then rerun the script. -->",

@@ -514,26 +514,14 @@ class DecisionAdvancementApplication:
             raise ValueError("research_update.target_not_completed")
         if target not in {p.formation_session for p in planned_local_qa_schedule(target, target)}:
             raise ValueError("research_update.target_not_session")
-        # Pending requests and exact results keep their original identity despite
-        # changed preparation timestamps or the branch they themselves published.
+        # Exact results come first, then pending requests; both keep their original identity
+        # despite changed preparation timestamps or the branch they themselves published.
         tasks = [
             task
             for task in reversed(self.session.task_control_registry.tasks())
             if task.input.input_schema_id == SCHEMA
             and task.lifecycle is not TaskLifecycle.CANCELLED
         ]
-        # An unfinished update owns its plan; a later date waits for it to end.
-        for task in tasks:
-            if task.lifecycle in (
-                TaskLifecycle.QUEUED,
-                TaskLifecycle.RUNNING,
-                TaskLifecycle.RECOVERY_REQUIRED,
-                TaskLifecycle.DEFERRED,
-            ):
-                prior = self._plan_of(task, current=False)
-                if prior.package_id == package_id:
-                    self._require(prior)
-                    return self._plan_body(prior, False)
         for task in tasks:
             prior = self._plan_of(task, current=False)
             if prior.package_id == package_id and prior.target == target:
@@ -552,6 +540,9 @@ class DecisionAdvancementApplication:
                     continue
                 if self.reusable(prior):
                     return self._plan_body(prior, True)
+        owned = self._in_flight(tasks, package_id)
+        if owned is not None:
+            return owned
         history = self.updates.history(checkpoint.content_hash)
         previous = history[-1] if history else None
         book = checkpoint.initial_book if previous is None else previous.book
@@ -712,6 +703,23 @@ class DecisionAdvancementApplication:
         )
         self._save("decision-programs", plan)
         return self._plan_body(plan, False)
+
+    def _in_flight(self, tasks: list[TaskRecord], package_id: str) -> dict[str, object] | None:
+        """The unfinished update that owns the package's plan, named by its Task; a later date
+        waits for it to end."""
+        for task in tasks:
+            if task.lifecycle in (
+                TaskLifecycle.QUEUED,
+                TaskLifecycle.RUNNING,
+                TaskLifecycle.RECOVERY_REQUIRED,
+                TaskLifecycle.DEFERRED,
+            ):
+                prior = self._plan_of(task, current=False)
+                if prior.package_id == package_id:
+                    self._require(prior)
+                    owner = {"task_id": str(task.task_id), "lifecycle": task.lifecycle.value}
+                    return {**self._plan_body(prior, False), "in_flight": owner}
+        return None
 
     def _plan_body(self, plan: DecisionAdvancementPlan, cached: bool) -> dict[str, object]:
         checkpoint = self.updates.store.load_decision_checkpoint(plan.checkpoint_hash)

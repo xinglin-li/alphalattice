@@ -145,7 +145,8 @@ def test_the_report_has_seven_sections_and_compares_a_selected_prior_review(
     tmp_path: Path,
 ) -> None:
     workspace, report = build_workspace(tmp_path)
-    authority = build_authority(tmp_path=tmp_path, report=report)
+    # The second review reads the same corpus again at a later cutoff to change its findings.
+    authority = build_authority(tmp_path=tmp_path, report=report, replaceable=True)
     service = start_service(workspace, authority, tmp_path)
     try:
         selected = {"result_hash": service.result_hash()}

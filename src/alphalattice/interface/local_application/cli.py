@@ -57,6 +57,7 @@ from alphalattice.interface.local_application.cli_contract import (
     WORKSPACE_FROM,
     Outcome,
     agent_session,
+    answer_json,
     client_refusal,
     command_table,
     count_launch,
@@ -220,7 +221,7 @@ class _Parser(argparse.ArgumentParser):
         # What the parser found, its usage and the help that answers it, in the envelope where
         # an agent reads (the review's F5); stderr keeps argparse's own lines.
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation=None,
                     outcome=refusal.outcome,
@@ -238,7 +239,6 @@ class _Parser(argparse.ArgumentParser):
                         **repair,
                     },
                 ),
-                sort_keys=True,
             )
         )
         raise SystemExit(EXIT_CODES[refusal.outcome])
@@ -381,6 +381,30 @@ def _section(child: argparse.ArgumentParser, *, wanted: bool = True) -> None:
     )
 
 
+def _first_use_options(child: argparse.ArgumentParser) -> None:
+    """`first-use prepare`'s own options: the person's sentence and date, and their yes."""
+    child.add_argument(
+        "--sentence",
+        dest="objective",
+        required=True,
+        help="The person's exact sentence, the first use's objective; the same sentence "
+        "and date again reuse its goal.",
+    )
+    child.add_argument(
+        "--date",
+        dest="target_date",
+        required=True,
+        help="The date the sentence names for the positions (YYYY-MM-DD), as you read it; "
+        "they are entered on the first session on or after it, decided at the close before.",
+    )
+    child.add_argument(
+        "--new-research",
+        action="store_true",
+        help="Only on the person's yes to separate new research: open a first use even "
+        "where the project's first use is complete (its daily road is offered otherwise).",
+    )
+
+
 def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> None:
     child.add_argument(
         "--output",
@@ -454,23 +478,10 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             dest="committee_seen",
             type=int,
             default=0,
-            help="The last floor message this member has seen, by number (its answer's `seen`).",
+            help="The last floor message seen, by number: the answer's `seen` (M7 is 7).",
         )
     elif (noun, verb) == ("first-use", "prepare"):
-        child.add_argument(
-            "--sentence",
-            dest="objective",
-            required=True,
-            help="The person's exact sentence, the first use's objective; the same sentence "
-            "and date again reuse its goal.",
-        )
-        child.add_argument(
-            "--date",
-            dest="target_date",
-            required=True,
-            help="The date the sentence names for the positions (YYYY-MM-DD), as you read it; "
-            "they are entered on the first session on or after it, decided at the close before.",
-        )
+        _first_use_options(child)
     elif (noun, verb) == ("strategy-book", "review"):
         child.add_argument(
             "--package",
@@ -483,7 +494,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             dest="bundle_root",
             type=Path,
             required=True,
-            help="A folder for the Analyst bundles; each unit's is a new folder inside it.",
+            help="A new/empty folder or this review's own output, one subfolder per unit.",
         )
         child.add_argument(
             "--update",
@@ -505,7 +516,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             "--cro-dir",
             dest="cro_root",
             type=Path,
-            help="A new folder for the CRO's bundle, needed after the Analysts' answers.",
+            help="A new/empty folder or this CRO bundle's own earlier output.",
         )
         child.add_argument(
             "--package",
@@ -603,6 +614,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
     )
     start = nouns.add_parser("serve", description="Start the Local Web Host on this workspace.")
     start.add_argument("--stop-on-stdin", action="store_true")
+    start.add_argument("--detach", action="store_true")
     start.add_argument("--no-browser", action="store_true")
     start.add_argument("--port", type=int, default=0)
     whole = nouns.add_parser(
@@ -662,8 +674,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
                 ),
             ]
         )
-        # One line per action: what it does, then its contract, so one object's help shows
-        # every action's use (V377, the review's F3).
+        # One line per action, what it does then its contract: help shows each use (V377, F3).
         child = by_noun[noun].add_parser(
             verb,
             help=f"{purpose}{' (the person decides it)' if person else ''}  {line}".strip(),
@@ -1043,7 +1054,7 @@ def _restore(
     elapsed = time.perf_counter() - started
     if answer is not None:
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation="WORKSPACE_RESTORE",
                     outcome="OK",
@@ -1051,7 +1062,6 @@ def _restore(
                     elapsed_seconds=elapsed,
                     **_saved(args, answer),
                 ),
-                sort_keys=True,
             )
         )
         return 0
@@ -1063,7 +1073,7 @@ def _restore(
         "next_action": refusal.next_action,
     }
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="WORKSPACE_RESTORE",
                 outcome=refusal.outcome,
@@ -1075,24 +1085,20 @@ def _restore(
                 next_action=refusal.next_action,
                 **_saved(args, refused_body),
             ),
-            sort_keys=True,
         )
     )
     return EXIT_CODES[refusal.outcome]
 
 
 def _saved(args: argparse.Namespace, body: dict[str, Any]) -> dict[str, Any]:
-    """Save a command's own answer where `--output` names, as every command does (V349).
-
-    The owner's exact answer, a refusal included, through the one no-overwrite writer, so an
-    agent that asked for a file finds one; a write that fails is named in the envelope.
-    """
+    """Save the exact owner answer; only a saved refusal permits replacement on retry."""
     output = getattr(args, "output", None)
     if output is None:
         return {}
     try:
+        replace = client.output_replacement(output)
         raw = json.dumps(body, sort_keys=True).encode("utf-8")
-        client._save_output(output, body, raw, getattr(args, "format", "json"))
+        client._save_output(output, body, raw, getattr(args, "format", "json"), replace=replace)
     except client.LocalResearchClientError as error:
         code = public_failure(error, "local_client.output_write_refused")
         refusal = client_refusal(code)
@@ -1103,7 +1109,7 @@ def _saved(args: argparse.Namespace, body: dict[str, Any]) -> dict[str, Any]:
                 "next_action": refusal.next_action,
             }
         }
-    return {"output_file": str(output.resolve())}
+    return client.output_fields(output, replaced=replace)
 
 
 def _sandbox(
@@ -1127,7 +1133,7 @@ def _sandbox(
     elapsed = time.perf_counter() - started
     if answer is not None:
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation="MODEL_SANDBOX",
                     outcome="OK",
@@ -1135,7 +1141,6 @@ def _sandbox(
                     elapsed_seconds=elapsed,
                     **_saved(args, answer),
                 ),
-                sort_keys=True,
             )
         )
         return 0
@@ -1147,7 +1152,7 @@ def _sandbox(
         "next_action": refusal.next_action,
     }
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="MODEL_SANDBOX",
                 outcome=refusal.outcome,
@@ -1159,7 +1164,6 @@ def _sandbox(
                 next_action=refusal.next_action,
                 **_saved(args, refused_body),
             ),
-            sort_keys=True,
         )
     )
     return EXIT_CODES[refusal.outcome]
@@ -1193,7 +1197,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
                 "next_action": refusal.next_action,
             }
             print(
-                json.dumps(
+                answer_json(
                     envelope(
                         operation=operation,
                         outcome=refusal.outcome,
@@ -1205,7 +1209,6 @@ def _model(args: argparse.Namespace, started: float) -> int:
                         next_action=refusal.next_action,
                         **_saved(args, refused_body),
                     ),
-                    sort_keys=True,
                 )
             )
             return EXIT_CODES[refusal.outcome]
@@ -1215,7 +1218,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
             "next": f'model scaffold --file "{written}"',
         }
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation=operation,
                     outcome="OK",
@@ -1223,7 +1226,6 @@ def _model(args: argparse.Namespace, started: float) -> int:
                     elapsed_seconds=time.perf_counter() - started,
                     **_saved(args, body),
                 ),
-                sort_keys=True,
             )
         )
         return EXIT_CODES["OK"]
@@ -1245,7 +1247,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
             "next_action": refusal.next_action,
         }
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation=operation,
                     outcome=refusal.outcome,
@@ -1257,7 +1259,6 @@ def _model(args: argparse.Namespace, started: float) -> int:
                     next_action=refusal.next_action,
                     **_saved(args, refused_body),
                 ),
-                sort_keys=True,
             )
         )
         return EXIT_CODES[refusal.outcome]
@@ -1266,7 +1267,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
     outcome: Outcome = found.outcome if found else "OK"
     extra: dict[str, Any] = {"next_action": found.next_action} if found else {}
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation=operation,
                 outcome=outcome,
@@ -1277,7 +1278,6 @@ def _model(args: argparse.Namespace, started: float) -> int:
                 **extra,
                 **_saved(args, answer),
             ),
-            sort_keys=True,
         )
     )
     return EXIT_CODES[outcome]
@@ -1314,7 +1314,7 @@ def _offline(args: argparse.Namespace, started: float) -> int:
         # The registry's nearest names, where argparse answered only READ_HELP (V111).
         refusal = client_refusal("local_client.operation_unknown")
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation="SCHEMA",
                     outcome=refusal.outcome,
@@ -1328,7 +1328,6 @@ def _offline(args: argparse.Namespace, started: float) -> int:
                         args.operation_name, known, n=3, cutoff=0.5
                     ),
                 ),
-                sort_keys=True,
             )
         )
         return EXIT_CODES[refusal.outcome]
@@ -1348,7 +1347,7 @@ def _offline(args: argparse.Namespace, started: float) -> int:
                 "next_action": refusal.next_action,
             }
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="SCHEMA",
                 outcome="OK",
@@ -1356,7 +1355,6 @@ def _offline(args: argparse.Namespace, started: float) -> int:
                 elapsed_seconds=time.perf_counter() - started,
                 **saved,
             ),
-            sort_keys=True,
         )
     )
     return 0
@@ -1406,7 +1404,7 @@ def main(
                 getattr(args, "workspace", None), directory, args.request_timeout
             )
         except client.LocalResearchClientError as error:
-            return _refused(error, started)
+            return _refused(error, started, line=arguments)
         bound_token = BOUND_WORKSPACE.set(bound)
         args.bound_workspace = bound
         chosen_token = WORKSPACE_FROM.set(chosen_by)
@@ -1596,11 +1594,10 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
     """Read a historical file before resolving any workspace, binding or Host.
 
     The existing answer-part owner selects the display; the full snapshot is saved
-    through the same format and no-overwrite owner as a live answer.
+    through the same format and refusal-retry owner as a live answer.
     """
     try:
-        if args.output is not None and args.output.exists():
-            raise client.LocalResearchClientError("local_client.output_exists_choose_another_path")
+        replace = client.output_replacement(args.output)
         body = client.saved_answer(
             args.saved_answer, section=args.section, list_sections=args.list_sections
         )
@@ -1612,8 +1609,9 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
                 full,
                 json.dumps(full, default=client._json_value).encode("utf-8"),
                 args.format,
+                replace=replace,
             )
-            saved["output_file"] = str(args.output.resolve())
+            saved = client.output_fields(args.output, replaced=replace)
         display = (
             {key: value for key, value in body.items() if key != "answer"}
             if args.section is not None or args.list_sections
@@ -1649,16 +1647,26 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
             **diagnostics,
         )
         exit_code = EXIT_CODES[refusal.outcome]
-    print(json.dumps(result, default=client._json_value, sort_keys=True))
+    print(answer_json(result, default=client._json_value))
     return exit_code
 
 
-def _refused(error: str | client.LocalResearchClientError, started: float) -> int:
-    """A refusal the client raised before sending anything, in the one envelope (V568)."""
+def _refused(
+    error: str | client.LocalResearchClientError, started: float, line: Sequence[str] = ()
+) -> int:
+    """A refusal the client raised before sending anything, in the one envelope (V568).
+
+    A line that named no workspace is shown again with one named, the exact next command.
+    """
     code = str(error)
     refusal = client_refusal(code)
     context = getattr(error, "binding_context", None)
     detail = str(worded(refusal.detail))
+    if line and code == "local_client.workspace_unbound":
+        again = join(["alphalattice", "--workspace", "<dir>", *line], shell())
+        detail += " " + str(worded("This line with its workspace named: {subject}.")).replace(
+            "{subject}", f"`{again}`"
+        )
     if context:
         detail += " " + str(
             worded("Selected workspace: {subject}; requested workspace: {subject}.")
@@ -1667,7 +1675,7 @@ def _refused(error: str | client.LocalResearchClientError, started: float) -> in
             "{subject}", context["requested_workspace"], 1
         )
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation=None,
                 outcome=refusal.outcome,
@@ -1683,7 +1691,6 @@ def _refused(error: str | client.LocalResearchClientError, started: float) -> in
                     else {}
                 ),
             ),
-            sort_keys=True,
         )
     )
     return EXIT_CODES[refusal.outcome]
@@ -1699,24 +1706,33 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
     person's from their own shell; never another project's."""
     from alphalattice.interface.local_application.native_bridge import (
         NativeBridgeError,
+        autobind_root,
         session_project,
     )
     from alphalattice.interface.local_application.native_setup import unbind_session
 
     session = agent_session(os.environ)
+    host, session_id = (None, None) if session is None else session
+    named = getattr(args, "workspace", None)
     try:
-        answer = unbind_session(
-            session_project(Path.cwd(), None if session is None else session[0]),
-            session_id=None if session is None else session[1],
-            host=None if session is None else session[0],
-        )
+        try:
+            answer = unbind_session(
+                session_project(Path.cwd(), host), session_id=session_id, host=host
+            )
+        except NativeBridgeError:
+            if named is None or session is None:
+                raise
+            answer = {"status": "NOT_BOUND"}
+        if answer.get("status") == "NOT_BOUND" and named is not None and session is not None:
+            # A sandboxed agent's binding the Host kept in the workspace's own folder.
+            answer = unbind_session(autobind_root(Path(named)), session_id=session_id, host=host)
     except NativeBridgeError as error:
         return _refused(f"local_client.session_unbind_refused:{error}", started)
     except OSError as error:
         code = f"native_bridge.files_unavailable:{type(error).__name__}"
         return _refused(f"local_client.session_unbind_refused:{code}", started)
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="SESSION_UNBIND",
                 outcome="OK",
@@ -1724,7 +1740,6 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
                 elapsed_seconds=time.perf_counter() - started,
                 **_saved(args, answer),
             ),
-            sort_keys=True,
         )
     )
     return 0
@@ -1745,7 +1760,7 @@ def _problem(args: argparse.Namespace, started: float) -> int:
     except NativeBridgeError as error:
         return _refused(str(error), started)
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="PROBLEM_REPORT",
                 outcome="OK",
@@ -1815,7 +1830,7 @@ def _bind(args: argparse.Namespace, started: float) -> int:
         }
     answer = bound
     print(
-        json.dumps(
+        answer_json(
             envelope(
                 operation="SESSION_BIND",
                 outcome=outcome,
@@ -1823,7 +1838,6 @@ def _bind(args: argparse.Namespace, started: float) -> int:
                 elapsed_seconds=time.perf_counter() - started,
                 **_saved(args, answer),
             ),
-            sort_keys=True,
         )
     )
     return EXIT_CODES[outcome]
@@ -1867,8 +1881,11 @@ def _command(
                 str(args.workspace),
                 "--port",
                 str(args.port),
-                *(["--no-browser"] if args.no_browser else []),
-                *(["--stop-on-stdin"] if args.stop_on_stdin else []),
+                *(
+                    "--" + switch.replace("_", "-")
+                    for switch in ("no_browser", "stop_on_stdin", "detach")
+                    if getattr(args, switch)
+                ),
             ]
         )
     common = {
@@ -1915,6 +1932,10 @@ def _command(
 
     def after(document: dict[str, Any], answer: dict[str, Any]) -> None:
         _read_lead(document, workspace=args.workspace, goal=args.goal, after=True, answer=answer)
+        if answer.get("next_action") == "RECORD_THE_EXPERIENCE":
+            from alphalattice.interface.local_application.native_setup import record_offer
+
+            record_offer(answer, Path(args.workspace))
 
     routed = args.routed_document
     if isinstance(routed, client.LocalResearchClientError):
@@ -1954,6 +1975,34 @@ def request_of(argv: Sequence[str]) -> dict[str, Any]:
     if args.noun in {"serve", "request"} or hasattr(args, "client_command"):
         raise ValueError("cli.not_an_operation_command")
     return _line_document(parser, args)()
+
+
+def _whole_request(
+    operation: str, field: str, value: object, fields: dict[str, Any]
+) -> tuple[dict[str, Any], object]:
+    """The line's fields and its document; a file holding the whole request for this operation
+    (`goal show --save-declaration`) gives its document and its other fields, each one the line
+    also gives saying the same.
+
+    Args:
+        operation: The line's operation.
+        field: The document field the file fills.
+        value: The file's document.
+        fields: The fields the line gives.
+
+    Returns:
+        The fields and the document to send.
+
+    Raises:
+        LocalResearchClientError: `local_client.field_given_twice:<fields>` for a contradiction.
+    """
+    if not (isinstance(value, dict) and value.get("operation") == operation and field in value):
+        return fields, value
+    whole = {k: v for k, v in value.items() if k != "operation"}
+    twice = sorted(k for k in set(whole) & set(fields) if str(whole[k]) != str(fields[k]))
+    if twice:
+        raise client.LocalResearchClientError("local_client.field_given_twice:" + ",".join(twice))
+    return {**whole, **fields}, whole[field]
 
 
 def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], dict[str, Any]]:
@@ -1997,6 +2046,7 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
         fields = {name: _value(name, text) for name, text in given.items()}
         if documents and args.primary_file is not None:
             field, value = client.document_field(documents, args.primary_file)
+            fields, value = _whole_request(operation, field, value, fields)
             fields[field] = value
         if args.choices is not None:
             # The choices fill the offered request's open root fields; a field given twice, by

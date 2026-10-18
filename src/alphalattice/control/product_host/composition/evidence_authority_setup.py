@@ -23,11 +23,15 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 from uuid import UUID
 
+from alphalattice.control.product_host.composition import portfolio_result_context
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
+)
+from alphalattice.control.product_host.composition.evidence_review_workspace import (
+    EVIDENCE_INSTALL_TASK_KIND as EVIDENCE_INSTALL_TASK_KIND,
 )
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     EvidenceReviewArtifactBinding,
@@ -39,9 +43,6 @@ from alphalattice.control.product_host.composition.evidence_review_workspace imp
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     PACKAGE_RULE,
     SETUP_OPTIONS,
-)
-from alphalattice.control.product_host.composition.portfolio_result_context import (
-    installed_authority,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceEvidenceReview,
@@ -101,9 +102,11 @@ from alphalattice.evidence.alternative_evidence.sources.acquisition import (
 from alphalattice.evidence.alternative_evidence.sources.admission import (
     DEFAULT_SOURCE_CONSENT,
     NOT_GRANTED,
+    REVOKED,
     EvidenceSourceConsent,
     OfficialSourceAdmission,
     admit_official_source,
+    evidence_source_consent,
     seal_live_setup_admission,
     sec_user_agent,
 )
@@ -117,10 +120,6 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
 from alphalattice.evidence.alternative_evidence.sources.recorded import (
     RecordedEvidenceDocument,
 )
-from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
-    PanelClosureArtifactStore,
-)
-from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
@@ -131,11 +130,6 @@ from alphalattice.interface.local_application.retrieval_environment import (
     fill_command,
     load,
 )
-from alphalattice.investment.portfolio_strategy_lab.application.resolution import (
-    _risk_surface,
-    _sector_map,
-)
-from alphalattice.investment.risk_research.surfaces.returns import RiskReturnArtifactStore
 from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid import (
     probe_hybrid_retrieval_capabilities,
@@ -158,6 +152,9 @@ from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts impo
 )
 
 if TYPE_CHECKING:
+    from alphalattice.control.product_host.composition.evidence_review_application import (
+        EvidenceReviewApplication,
+    )
     from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 
 PLAYPEN_ROOT = resolve_playpen_root(Path(__file__))
@@ -405,9 +402,17 @@ def _check(arguments: argparse.Namespace) -> None:
         raise ValueError("evidence_review.preflight_requires_a_source")
 
 
+class _HostParser(argparse.ArgumentParser):
+    """The Host's reading of a setup line: what the parser would print and exit on is raised."""
+
+    def error(self, message: str) -> NoReturn:
+        """Raise the parser's own words; the Host's stderr reaches no agent."""
+        raise ValueError(message)
+
+
 def setup_arguments(argv: Sequence[str], workspace: Path) -> argparse.Namespace:
     """The setup's command line as the running Host takes it, on the Host's own workspace."""
-    arguments = _parser().parse_args([*argv, "--workspace", str(workspace)])
+    arguments = _parser(_HostParser).parse_args([*argv, "--workspace", str(workspace)])
     _check(arguments)
     return arguments
 
@@ -415,7 +420,6 @@ def setup_arguments(argv: Sequence[str], workspace: Path) -> argparse.Namespace:
 _CARRIED_REFUSAL = frozenset({"failure_code", "location", "next_commands"})
 """What a blocked install keeps of its refusal beside the Task's code: its subject, its option and
 its way on."""
-EVIDENCE_INSTALL_TASK_KIND = "evidence_install"
 INSTALL_STAGES = ("environment", "model", "acquisition", "index", "publish")
 INSTALL_OUTPUTS = Path("runtime") / "evidence-install"
 """Each install Task's stage outputs, by Task id: what a later stage, or a recovery, reads."""
@@ -443,6 +447,9 @@ class EvidenceInstall:
         """Bind the install to the Host's session, its clock and how it serves a new package."""
         self.session, self.clock, self.installed = session, clock, installed
         self.official_source = official_source
+        self.publishing = False
+        """True from the publish stage's manifest write until the Host has served and held it: a
+        request in between reads the Host's own publication, never a configuration changed."""
 
     def admit(self, argv: Sequence[str]) -> CommandAdmission:
         """Admit one install of the setup's command line."""
@@ -474,7 +481,29 @@ class EvidenceInstall:
         record = self.session.task_control_registry.admit(
             input_envelope=envelope, goal=goal, plan=plan, observed_at=self.clock()
         ).record
+        self._continue_blocked(argv, record.task_id)
         return CommandAdmission(task_id=record.task_id, lifecycle=record.lifecycle.value)
+
+    def _continue_blocked(self, argv: Sequence[str], successor: UUID) -> None:
+        """The same install sent again continues each blocked one (a BLOCKED Task does not
+        resume), so the stop reads as resolved once its successor succeeds (`task_attention`)."""
+        registry = self.session.task_control_registry
+        request = {"operation": "EVIDENCE_INSTALL", "evidence_setup": shlex.join(argv)}
+        for blocked in registry.tasks():  # a control act reads complete authority
+            if (
+                blocked.task_kind != EVIDENCE_INSTALL_TASK_KIND
+                or blocked.lifecycle is not TaskLifecycle.BLOCKED
+                or blocked.input.payload.get("arguments") != list(argv)
+            ):
+                continue
+            for linked in (None, successor):  # its preview, then the confirmed successor
+                registry.record_recovery_link(
+                    source_task_id=blocked.task_id,
+                    source_record_hash=blocked.record_hash,
+                    admission_request=request,
+                    successor_task_id=linked,
+                    observed_at=self.clock(),
+                )
 
     def execute(self, task_id: UUID, *, expected_task_hash: str | None = None) -> None:
         """Run or recover an admitted install through Task Control's runner."""
@@ -503,6 +532,7 @@ class EvidenceInstall:
         stage, path = work_item.stage_id, self._path(task)
         held = self._outputs(task)
         arguments = setup_arguments(task.input.payload["arguments"], self.session.workspace)
+        self.publishing = stage == INSTALL_STAGES[-1]
         try:
             if stage == "environment" and not load():
                 raise ValueError("evidence_review.retrieval_environment_not_loaded")
@@ -524,10 +554,13 @@ class EvidenceInstall:
             )
             if held[stage].get("installed"):
                 self.installed()
+            self.publishing = False
         except AlternativeEvidenceTaskCancelled:
+            self.publishing = False
             return StageExecutionResult(StageDisposition.CANCELLED)
         except (ValueError, RuntimeError, OSError) as error:
-            refusal = setup_refusal(arguments, error)
+            self.publishing = False
+            refusal = setup_refusal(arguments, error, now=self.clock())
             code = str(refusal["failure_code"])
             cause = StageFailureCause(
                 exception_type=type(error).__name__,
@@ -669,7 +702,7 @@ class _Setup:
                 raise OptionRefused(
                     "evidence_review.research_input_selection_required", "research_input_id"
                 )
-            universe = _universe_listing_ids(workspace)
+            universe = portfolio_result_context.universe_listing_ids(workspace)
         recipe = arguments.recipe or RECIPE_MINILM_CPU
         if recipe not in SUPPORTED_RECIPES:
             raise ValueError("evidence_review.retrieval_recipe_unsupported")
@@ -731,7 +764,7 @@ class _Setup:
                     "maximum_documents_per_issuer",
                 )
             consent = bool(arguments.network_consent)
-            network_enabled = network_access(workspace).allowed
+            network_enabled = network_access(workspace, now=self.clock()).allowed
             user_agent = sec_user_agent()
             cutoff = _acquisition_cutoff(arguments, self.clock())
             scopes = _accession_scopes(arguments, requested)
@@ -1077,10 +1110,50 @@ _DELEGATED = frozenset(
 """The options a first use's agent may install with: its acquisition's own choices."""
 
 
+def install_refusal(
+    arguments: argparse.Namespace,
+    argv: Sequence[str],
+    caller: str,
+    delegated: bool,
+    workspace: Path,
+    review: EvidenceReviewApplication | None,
+) -> str | None:
+    """Why an install is not admitted, or None.
+
+    The person's own and their relayed yes are admitted; a first use's agent within its
+    delegation; and outside it, under the person's daily yes (their own standing consent to SEC
+    filings within the default budget), an agent only for an install the Host offers for the
+    review's book, sent as it stands (`offered_installs`). Anything else from an agent is the
+    person's, asked in one line.
+    """
+    current = evidence_source_consent(workspace)
+    if caller != "HUMAN":
+        daily = False
+        if current.actor == "HUMAN" and review is not None:
+            daily = list(argv) in review.offered_installs()
+        return None if daily else "evidence_review.consent_human_only"
+    try:
+        beyond = delegated and not within_delegation(arguments, current)
+    except ValueError:  # an option out of the budget's own range
+        beyond = True
+    return "evidence_review.consent_beyond_delegation" if beyond else None
+
+
+def offered_install(answer: dict[str, object], argv: list[str]) -> dict[str, object]:
+    """A preflight's answer, with the install of the same line offered ready as it stands."""
+    if answer.get("status") != "EVIDENCE_SOURCE_PREFLIGHT":
+        return answer
+    line = [value for value in argv if value not in {"--preflight", "--network-consent"}]
+    setup = shlex.join([*line, "--network-consent", "--install"])
+    install = {"operation": "EVIDENCE_INSTALL", "evidence_setup": setup}
+    return {**answer, "next_requests": {"install": install}}
+
+
 def within_delegation(arguments: argparse.Namespace, current: EvidenceSourceConsent) -> bool:
     """Whether a first use's agent may install with these options.
 
-    Only the acquisition's own choices, within the default budget and the person's own consent.
+    Only the acquisition's own choices, within the default budget and the person's own consent,
+    and never after the person's stop.
     """
     defaults = vars(_parser().parse_args(["--workspace", str(arguments.workspace)]))
     if any(vars(arguments)[name] != defaults[name] for name in defaults.keys() - _DELEGATED):
@@ -1092,10 +1165,14 @@ def within_delegation(arguments: argparse.Namespace, current: EvidenceSourceCons
         total_documents=documents,
         total_bytes=documents * (arguments.maximum_document_bytes or DEFAULT_SOURCE_DOCUMENT_BYTES),
     )
-    return wanted.within(DEFAULT_SOURCE_CONSENT) and (
-        current.actor in NOT_GRANTED
-        or current.actor.startswith("first-use-goal:")
-        or wanted.within(current)
+    return (
+        current.actor != REVOKED
+        and wanted.within(DEFAULT_SOURCE_CONSENT)
+        and (
+            current.actor in NOT_GRANTED
+            or current.actor.startswith("first-use-goal:")
+            or wanted.within(current)
+        )
     )
 
 
@@ -1395,13 +1472,17 @@ def _acquire_sec_sources(
         network_consent=bool(arguments.network_consent),
         workspace_root=workspace,
         maximum_document_bytes=arguments.maximum_document_bytes,
+        now=clock(),
     )
     source = official_source.source
     runtime = None
     try:
         if not official_source.network_consent:
             raise ValueError("evidence_review.explicit_sec_network_consent_required")
-        if official_source.transport_origin != "INJECTED" and not network_access(workspace).allowed:
+        if (
+            official_source.transport_origin != "INJECTED"
+            and not network_access(workspace, now=clock()).allowed
+        ):
             raise ValueError("evidence_review.workspace_network_not_allowed")
         if official_source.refusal_code or source is None:
             raise ValueError(
@@ -1494,47 +1575,41 @@ def _research_universe_listing_ids(workspace: Path, binding_hash: str) -> dict[s
     return {entry.symbol: entry.listing_id for entry in universe.listings}
 
 
-def _universe_listing_ids(workspace: Path) -> dict[str, str]:
-    """Ticker to listing id, read from the universe the product itself resolves.
-
-    The review joins the window-end book on `listing_id`, and that id is the
-    universe's, not a ticker. Sealing the authority with the ticker in both
-    fields therefore mapped nothing: every position landed in the mapping gaps
-    and the scope came out empty before a single document was read.
-
-    The mapping is taken from the same risk surface and sector map the
-    portfolio composition resolves, rather than restated here, because an
-    authority bound to a different universe revision than the book would fail
-    the same way and be much harder to see.
-    """
-    installed = installed_authority(workspace, read_research_workspace_manifest(workspace))
-    if installed is None:
-        artifact_root = workspace / "runtime" / "artifacts"
-        surface = _risk_surface(artifact_root)
-        classification = _sector_map(
-            artifact_root, manifest_revision=surface.epoch.universe_manifest_revision
-        )
-    else:
-        artifact_root, authority = installed
-        surface = RiskReturnArtifactStore(artifact_root).load_manifest(
-            authority.risk_return_surface_hash
-        )
-        classification = PanelClosureArtifactStore(ArtifactResolver(artifact_root)).load_model(
-            category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
-        )
-        if (
-            surface.surface_hash != authority.risk_return_surface_hash
-            or classification.manifest_revision != surface.epoch.universe_manifest_revision
-        ):
-            raise ValueError("portfolio_application.saved_source_binding_mismatch")
-    return {entry.provider_symbol: entry.listing_id for entry in classification.entries}
-
-
 DEFAULT_AUTHORITY_ID = "local-web-evidence-authority"
 
 
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def read_setup(
+    setup: str, workspace: Path
+) -> tuple[list[str], argparse.Namespace] | dict[str, Any]:
+    """An install request's setup line as the Host reads it, or its refusal in words.
+
+    An option's own refusal names the option (`setup_failure`), and a check of the line's sources
+    answers in its own words. A line the parser cannot read, or one naming neither --preflight
+    nor --install, is refused with the reason under `reasons`: an unquoted path with a space was
+    once refused with none, and the first use went on without Evidence.
+    """
+    from alphalattice.control.product_host.composition.plain_refusals import refused
+
+    try:
+        argv = shlex.split(setup, posix=True)
+        arguments = setup_arguments(argv, workspace)
+    except OptionRefused as error:
+        return setup_failure(error)
+    except (SystemExit, ValueError) as error:
+        why = str(error)
+    else:
+        if arguments.preflight or arguments.install:
+            return argv, arguments
+        why = "the setup names neither --preflight nor --install"
+    if why.startswith("evidence_review."):
+        return refused(why)  # A check of the line's sources, in its own words.
+    return {**refused("local_client.request_invalid"), "reasons": {"evidence_setup": why}}
+
+
+def _parser(
+    kind: type[argparse.ArgumentParser] = argparse.ArgumentParser,
+) -> argparse.ArgumentParser:
+    parser = kind(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument(
         "--rebind-installed",
@@ -1756,7 +1831,7 @@ _RUNTIME_REFUSALS = (
 
 
 def setup_refusal(
-    arguments: argparse.Namespace, error: Exception, *, script: bool = False
+    arguments: argparse.Namespace, error: Exception, *, now: datetime, script: bool = False
 ) -> dict[str, Any]:
     """A setup refusal whole.
 
@@ -1810,8 +1885,10 @@ def setup_refusal(
         arguments.acquire_sec
         and payload["failure_code"] == "evidence_review.workspace_network_not_allowed"
     ):
-        permission = network_access(arguments.workspace).body(for_refusal=True)
-        payload.update(refusal_words(payload["failure_code"], workspace=arguments.workspace))
+        permission = network_access(arguments.workspace, now=now).body(for_refusal=True)
+        payload.update(
+            refusal_words(payload["failure_code"], workspace=arguments.workspace, now=now)
+        )
         payload["network_access"] = permission
         payload["next_requests"] = {
             "network": {"operation": "NETWORK_ACCESS"},
@@ -1852,7 +1929,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = materialize(arguments)
     except Exception as error:
-        print(json.dumps(setup_refusal(arguments, error, script=True)))
+        print(json.dumps(setup_refusal(arguments, error, now=datetime.now(UTC), script=True)))
         return 2
     print(json.dumps(result, indent=2, default=str))
     return 0

@@ -80,7 +80,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): RESUMABLE,
     (
         "control/product_host/composition/decision_advancement.py",
-        "DecisionAdvancementApplication._plan",
+        "DecisionAdvancementApplication._in_flight",
         "DEFERRED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "a pending advancement of the strategy answers its own plan whatever target is asked, a "
     "deferred one too, whose run resumes it once due (V601, V604); a cancelling one is not pending",
@@ -153,11 +153,6 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): RESUMABLE,
     (
         "control/product_host/composition/portfolio_research_operations.py",
-        "PortfolioResearchOperations._stopped_answer",
-        "BLOCKED,RECOVERY_REQUIRED",
-    ): STOPPED,
-    (
-        "control/product_host/composition/portfolio_research_operations.py",
         "PortfolioResearchOperations._resume_refusal",
         "QUEUED,RECOVERY_REQUIRED",
     ): RESUMABLE,
@@ -209,14 +204,15 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): "waiting on someone or on time: the Guardian's TERMINAL_DEFERRED",
     (
         "control/product_host/composition/task_recovery.py",
-        "task_attention",
+        "_STOPPED",
         "BLOCKED,CANCELLED,RECOVERY_REQUIRED",
     ): "blocked or interrupted Tasks owe recovery attention until an exact-version successful "
     "successor or resolved incident proves resolution (P3a), and a ledger-rebuilt one, which "
     "cannot resume, closes as UNRECOVERABLE; a cancelled Task owes none but folds under an "
     "exact-version successor that succeeded (BADGE: unrecoverable stops close, resolved stops "
     "fold under their successor); deferral waits on time, and other states owe no stopped "
-    "attention; this owns the former pending_decisions._STOPPED classification",
+    "attention; a successor chain passes through any of these stops to its first success; "
+    "this owns the former pending_decisions._STOPPED classification",
     (
         "control/product_host/composition/task_supervision.py",
         "_FINISHED",

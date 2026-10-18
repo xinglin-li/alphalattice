@@ -114,6 +114,7 @@ def test_review_export_keeps_partial_coverage_unadjudicated_findings_and_exact_c
     }
     before = deepcopy(snapshot)
     rendered = render_review_export(snapshot, "<html><h1>Original book</h1></html>")
+    assert "Held issuers in scope" not in rendered
     assert "Original book" in rendered
     assert rendered.index("Linked recommendation review") < rendered.index("Original book")
     assert "Review completeness: PARTIAL" in rendered
@@ -128,6 +129,9 @@ def test_review_export_keeps_partial_coverage_unadjudicated_findings_and_exact_c
     assert "<script>" not in rendered and "&lt;script&gt;finding" in rendered
     assert "&lt;p&gt;source&lt;/p&gt;" in rendered
     assert "Most of the book has no admitted evidence" in rendered and snapshot == before
+    del snapshot["review"]["dossier"]["coverage"]
+    uncovered = render_review_export(snapshot, None)
+    assert not any(value in uncovered for value in ("2.000%", "100.000%", "0.000%"))
 
 
 def test_a_qualification_study_reports_its_conclusion_not_a_development_result():

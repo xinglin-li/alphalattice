@@ -20,12 +20,13 @@ from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
 import pytest
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.publication.goals import GoalStore, session_work_declaration
 from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
 from alphalattice.interface.local_application.cli_contract import RequestProvenance
+from alphalattice.interface.local_application.failure_codes import located_failure
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
@@ -58,7 +59,7 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 @pytest.fixture
 def goal_app(tmp_path):
     calls = []
-    tasks: dict[UUID, tuple[str, str, datetime | None]] = {}
+    tasks: dict[UUID, tuple[Any, ...]] = {}
     body = {
         "status": "EXPERIMENT_PUBLISHED",
         "task_id": str(UUID(int=2)),
@@ -377,6 +378,23 @@ def test_a_formula_factors_trial_and_packet_are_goal_evidence(goal_app):
     held = {ref.reference_id: ref.stage for ref in app.store.load(head["goal_hash"]).references}
     assert held == {"packet": "DATA_FEATURES", "trial": "DATA_FEATURES"}
 
+    # regression (the fresh-folder run): a read's field it does not take was refused with an
+    # empty path; it is located under the reference's request and names the fields it takes.
+    update = {"operation": "RESEARCH_UPDATE_READBACK", "update_task_id": str(UUID(int=4))}
+    reference = {"reference_id": "positions", "label": "Positions", "stage": "PORTFOLIO"}
+    attach = Request(
+        operation="GOAL_ATTACH",
+        goal_hash=head["goal_hash"],
+        change_reason="The positions",
+        goal_reference={**reference, "request": update},
+    )
+    with pytest.raises(ValidationError) as refused:
+        app.operate(attach, "EXTERNAL_AUTOMATION")
+    located = located_failure(refused.value, "goal.document_invalid")
+    assert located["fields"] == [["request", "update_task_id"]], located
+    assert located["allowed_fields"] == {"request": ["strategy_package_id", "task_id"]}
+    assert "task_id" in str(located["message"]).partition("update_task_id")[2]
+
 
 def test_goal_revision_reopen_narrative_no_work_and_tamper(goal_app):
     app, opened, calls, body, _tasks = goal_app
@@ -434,6 +452,8 @@ def test_goal_revision_reopen_narrative_no_work_and_tamper(goal_app):
     assert report["portfolio_deliveries"] == [] and "Readable title" in report["html"]
     shown = app.operate(Request(operation="GOAL_SHOW", goal_hash=old.goal_hash), "HUMAN")
     assert shown["goal"]["declaration"]["title"] == "A study"
+    assert shown["head"]["goal_hash"] == new.goal_hash
+    assert (shown["head"]["state"], shown["head"]["outcome"]) == ("OPEN", None)
     assert app.operate(Request(operation="GOAL_SHOW", goal_id=UUID(int=1)), "HUMAN")[
         "goal_hash"
     ] == (new.goal_hash)
@@ -1296,15 +1316,16 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
     app, opened, _calls, _body, tasks = goal_app
     attached = _attach(app, opened)
     goal = app.store.load(attached["goal_hash"])
-    done, running, stuck = UUID(int=11), UUID(int=12), UUID(int=13)
+    done, running, stuck, resent = UUID(int=11), UUID(int=12), UUID(int=13), UUID(int=14)
     tasks.update(
         {
             done: ("alpha_research.development", "SUCCEEDED", None),
             running: ("alpha_research.development", "RUNNING", None),
             stuck: ("alpha_research.development", "RECOVERY_REQUIRED", None),
+            resent: ("alpha_research.development", "BLOCKED", None, done),  # done continued it
         }
     )
-    for task in (done, running, stuck):
+    for task in (done, running, stuck, resent):
         app.attribute(
             goal,
             Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
@@ -1312,7 +1333,7 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
             SESSION,
         )
     shown = app.operate(Request(operation="GOAL_SHOW", goal_id=UUID(int=1)), "HUMAN")
-    assert shown["record"]["request_count"] == 3
+    assert shown["record"]["request_count"] == 4
     assert shown["record"]["sessions"] == [{"vendor": "claude-code", "session_id": SESSION.session}]
     listed = app.operate(Request(operation="GOAL_LIST"), "HUMAN")["goals"]
     assert listed[0]["sessions"] == shown["record"]["sessions"], "U23: a row names its sessions"
@@ -1379,7 +1400,12 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
     assert sealed["status"] == "COMPLETE" and sealed["outcome"] == "ACHIEVED"
     closed = app.store.head(UUID(int=1))
     assert closed.state == "COMPLETE" and closed.submission.files[0].text == "# Decision notes"
-    assert {t.task_id for t in closed.completion.tasks} == {done, running, stuck}
+    assert {(t.task_id, t.continued_by) for t in closed.completion.tasks} == {
+        (done, None),
+        (running, None),
+        (stuck, None),
+        (resent, done),
+    }
     assert closed.completion.sessions[0].session_id == SESSION.session
     # U54: a complete goal's row names its deliverables and when the Host checked it.
     (row,) = app.operate(Request(operation="GOAL_LIST", agent_session=SESSION.session), "HUMAN")[
@@ -1590,6 +1616,16 @@ def test_an_unmet_objective_completes_but_an_answer_that_contradicts_it_does_not
         "EXTERNAL_AUTOMATION",
     )
     assert [m["code"] for m in contradicted["missing"]] == ["goal.outcome_contradicts_criteria"]
+    # regression (the fresh-folder run): PARTLY_ACHIEVED beside its only criterion MET was sealed;
+    # the outcome is the criteria's, so the answer offers the same submission with it corrected.
+    partly = _submission(outcome="PARTLY_ACHIEVED")
+    request = Request(operation="GOAL_SUBMIT", goal_id=UUID(int=1), goal_submission=partly)
+    understated = app.operate(request, "EXTERNAL_AUTOMATION")
+    assert understated["missing"] == [
+        {"code": "goal.outcome_contradicts_criteria", "outcome": "ACHIEVED"}
+    ]
+    corrected = understated["next_requests"]["resubmit"]["goal_submission"]
+    assert corrected == {**partly, "outcome": "ACHIEVED"}
     unreasoned = app.operate(
         Request(
             operation="GOAL_SUBMIT",
@@ -1739,6 +1775,94 @@ def test_a_declared_event_reaches_its_goal_through_the_host(
     assert {row["payload"]["subject"]["goal_id"] for row in rows} == {goal_id}
 
 
+def test_only_a_sealing_answer_offers_experience_with_sendable_owner_reads(
+    live, tmp_path, monkeypatch
+):
+    """A served sealing answer offers experience recording once with exact owner reads."""
+    from alphalattice.interface.local_application.client import LocalResearchClient, compact_display
+    from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
+    from tests.workspace_task_runner.task_control_support import task_contract
+
+    client = LocalResearchClient(live.workspace)
+    opened = client.request(
+        {
+            "operation": "GOAL_OPEN",
+            "goal_declaration": {
+                "title": "Date records",
+                "objective": "Keep the date's records",
+                "kind": "DATA",
+                "criteria": [{"criterion_id": "done", "text": "Record the outcome"}],
+            },
+            "change_reason": "Register the question",
+        }
+    )
+    gid = opened["goal_id"]
+    registry = live.session.task_control_registry
+    envelope, task_goal, plan = task_contract(salt="experience-record")
+    task = registry.admit(
+        input_envelope=envelope, goal=task_goal, plan=plan, observed_at=NOW
+    ).record
+    registry.request_cancel(
+        task_id=task.task_id, expected_task_hash=task.record_hash, observed_at=NOW
+    )
+    goal = live.operations.goals.store.head(UUID(gid))
+    live.operations.goals.attribute(
+        goal,
+        Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+        {"task_id": str(task.task_id)},
+        SESSION,
+    )
+    submission = {
+        "outcome": "NOT_ACHIEVED",
+        "summary": "The record is kept",
+        "criteria": [{"criterion_id": "done", "answer": "MET"}],
+    }
+    request = {"operation": "GOAL_SUBMIT", "goal_id": gid, "goal_submission": submission}
+    incomplete = client.request(request)
+    assert incomplete["status"] == "INCOMPLETE" and "next_action" not in incomplete, incomplete
+    request["goal_submission"] = {
+        **submission,
+        "criteria": [{"criterion_id": "done", "answer": "NOT_ASSESSED", "note": "No result"}],
+    }
+    sealed = client.request(request)
+    assert sealed["status"] == "COMPLETE", sealed
+    assert sealed["next_action"] == "RECORD_THE_EXPERIENCE"
+    assert gid in sealed["detail"] and "alphalattice_maintainer" in sealed["detail"]
+    words = read_in_chinese([sealed["detail"]], missing="UI Node unavailable", required=True)
+    assert words["missing"] == [] and words["read"] != [sealed["detail"]]
+    # Over a bound (the workspace's notes), and with a note on the goal now sealed, the CLI's
+    # offer lists them to review first; else it stands.
+    from alphalattice.interface.local_application.native_setup import REVIEW_FIRST, record_offer
+
+    monkeypatch.chdir(tmp_path)
+    (notes := live.workspace / "agent-notes").mkdir()
+    for number in range(21):
+        (notes / f"note-{number}.md").write_text(f"On {gid}." * (number == 0), encoding="utf-8")
+    offered, kept = dict(sealed), dict(sealed)
+    record_offer(offered, live.workspace)
+    record_offer(kept, tmp_path / "absent")
+    review = REVIEW_FIRST.format(subject="workspace_notes, agent-notes/note-0.md")
+    assert (offered["detail"], kept) == (f"{review} {sealed['detail']}", sealed)
+    assert (
+        read_in_chinese([REVIEW_FIRST], missing="UI Node unavailable", required=True)["missing"]
+        == []
+    )
+    reads = sealed["next_requests"]
+    compact = compact_display(sealed)["data"]
+    assert compact["next_action"] == sealed["next_action"]
+    assert compact["detail"] == sealed["detail"]
+    assert compact["next_requests"] == reads
+    assert reads["show"] == {"operation": "GOAL_SHOW", "goal_id": gid}
+    task_reads = [r for r in reads.values() if r["operation"] == "STATUS"]
+    assert task_reads == [{"operation": "STATUS", "task_id": str(task.task_id)}]
+    assert client.request(task_reads[0]).get("failure_code") is None
+    shown = client.request(reads["show"])
+    assert shown["goal"]["state"] == "COMPLETE" and "next_action" not in shown
+    repeated = client.request(request)
+    assert repeated["status"] == "REFUSED"
+    assert repeated.get("next_action") != "RECORD_THE_EXPERIENCE"
+
+
 def test_the_workbench_reaches_what_the_ui_pass_reads(live, tmp_path: Path):
     """requirement (V321, UI-P D10): the goals a person keeps, the saved studies' sweep and
     Guanyin's incidents answer on the Local Web, each route its registered operation, a write
@@ -1824,17 +1948,19 @@ def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
     client.connection = SimpleNamespace(url=live.url)
     client.goal = None
     url = client.selected_url({"operation": "GOAL_SHOW", "goal_hash": saved["case_hash"]}, goal)
-    assert "/#" in url and saved["case_hash"] in url
+    assert parse_qs(urlsplit(url).fragment)["goal"] == [goal["goal_id"]]
     assert parse_qs(urlsplit(url).fragment)["follow"] == ["goal:" + goal["goal"]["goal_id"]]
     assert parse_qs(urlsplit(client.selected_url({}, {})).fragment)["follow"] == ["latest"]
     assert client.navigation({"operation": "GOAL_SHOW"}, goal)["kind"] == "goal"
 
 
-def test_an_open_goal_offers_its_completion_to_fill(goal_app):
+def test_an_open_goal_offers_its_completion_to_fill(goal_app, tmp_path):
     """An open goal offers its completion to fill."""
 
     import yaml
 
+    from alphalattice.interface.local_application import cli
+    from alphalattice.interface.local_application.client import LocalResearchClientError
     from alphalattice.interface.local_application.goals import GoalSubmission
 
     app, opened, *_ = goal_app
@@ -1878,6 +2004,13 @@ def test_an_open_goal_offers_its_completion_to_fill(goal_app):
     sealed = app.operate(written(current), "EXTERNAL_AUTOMATION", SESSION)
     assert sealed["goal_id"] == str(UUID(int=1)), sealed
     assert app.store.head(UUID(int=5)).state == "OPEN"
+    # regression (a fresh-folder first use): the saved completion, sent by the offered
+    # `goal submit`, reads as the request it is; a line naming another revision is refused.
+    (saved := tmp_path / "completion.yaml").write_text(yaml.safe_dump(current), "utf-8")
+    line = ["goal", "submit", current["goal_id"], "--revision", current["goal_hash"]]
+    assert cli.request_of([*line, "--file", str(saved)]) == current
+    with pytest.raises(LocalResearchClientError, match="field_given_twice:goal_hash"):
+        cli.request_of([*line[:-1], "f" * 64, "--file", str(saved)])
 
 
 def test_a_closed_goal_refuses_with_its_standing_and_the_follow_up_start() -> None:
@@ -2162,9 +2295,15 @@ def test_dated_goal_lookup_shares_records_and_bounds_rule_disclosure(goal_app):
                 "delegation": delegation,
             },
         )
+    # An audit the rule approved carries no case: case readers skip it, audit readers take it.
+    audit = {"operation": "FULL_HISTORY_AUDIT", "decided_by": "RULE", "status": "DECIDED_BY_RULE"}
+    app.store.attribute(
+        goal, {**audit, "task_id": task, "listing_ids": ["L1"], "rule_hash": "r", "audit_id": "x"}
+    )
     records = {}
     answer = app.store.listing(limit=1, cursor=None, task_id=task, records=records)
     assert answer["current_goal"]["goal_id"] == str(goal)
     assert app.store.rule_cases(task, records[str(goal)]) == frozenset(("a" * 64, "c" * 64))
+    assert app.store.rule_audits(task, records[str(goal)]) == (("L1", "r"),)
     absent = app.store.listing(limit=1, cursor=None, task_id=UUID(int=34), records={})
     assert absent["current_goal"] is None

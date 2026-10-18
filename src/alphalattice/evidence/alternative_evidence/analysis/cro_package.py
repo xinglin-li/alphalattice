@@ -56,6 +56,13 @@ def finding_structure(
     )
 
 
+def _dropped_line(problem: AnswerProblem) -> str:
+    """One item the Analyst's answer lost, or the findings an issuer it left out past the cap."""
+    if problem.item is None:
+        return f"The Analyst's answer left out {problem.text}"
+    return f"The Analyst's answer lost item {problem.item} after two corrections: {problem.text}"
+
+
 def compile_cro_alternative_evidence_package(
     *,
     request: AlternativeEvidenceRequest,
@@ -117,11 +124,7 @@ def compile_cro_alternative_evidence_package(
     missing = tuple(
         dict.fromkeys(
             (
-                *(
-                    f"The Analyst's answer lost item {value.item} after two corrections: "
-                    f"{value.text}"
-                    for value in dropped
-                ),
+                *(_dropped_line(value) for value in dropped),
                 *(
                     f"Rejected {value.semantic_handle}: {value.code}"
                     for value in document_set.rejections

@@ -29,6 +29,7 @@ from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
 from alphalattice.control.product_host.composition.task_recovery import (
+    CANCELLATION_REPLAN,
     TaskRecoveryView,
     build_task_recovery_view,
 )
@@ -449,9 +450,15 @@ def test_cancellation_requested_is_shown_apart_from_acknowledged(
         assert running["health"]["status"] == "HEALTHY"
         assert _actions(running)["CANCEL"]["available"] is True
         assert seen["cancel"]["cancel_requested"] is True
+        assert seen["cancel"]["next_action"] == "SEND_THE_OFFERED_REQUEST"
+        assert seen["cancel"]["next_requests"]["task"] == {
+            "operation": "STATUS",
+            "task_id": task_id,
+        }
         assert after["cancellation"] == "REQUESTED" and after["lifecycle"] == "CANCEL_REQUESTED"
         assert after["status"]["cancel_pending"] is True
         cancel = _actions(after)["CANCEL"]
+        assert seen["cancel"]["detail"] == cancel["expected_effect"]
         assert cancel["available"] is False and "not acknowledged" in cancel["reason"]
         assert "ACKNOWLEDGED" not in (after["cancellation"], after["stop"])
         final = _view(live, task_id)
@@ -467,7 +474,7 @@ def test_cancellation_requested_is_shown_apart_from_acknowledged(
 
 
 def test_a_queued_task_cancelled_before_execution_reads_cancelled_while_its_command_returns(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     """A queued task cancelled before execution reads cancelled while its command returns."""
 
@@ -498,6 +505,22 @@ def test_a_queued_task_cancelled_before_execution_reads_cancelled_while_its_comm
         final = _view(live, task_id)
         assert final["lifecycle"] == "CANCELLED" and final["operation_running"] is False
         assert _json(live, "/api/results")["results"] == []
+        from alphalattice.interface.local_application.cli import main
+
+        code = main(
+            [f"--workspace={live.workspace}", "--view=full", "activity", "wait", "--task", task_id],
+            serve=lambda _: 99,
+        )
+        waited = json.loads(capsys.readouterr().out)["data"]
+        assert code == 2 and waited["lifecycle"] == "CANCELLED"
+        cancelled = _json(live, "/api/cancel", method="POST", payload={"task_id": task_id})
+        for answer in (waited, _json(live, f"/api/status?task_id={task_id}"), cancelled):
+            assert (
+                answer["lifecycle"] == "CANCELLED"
+                and answer.get("next_action") == "REPORT_THE_STOP"
+                and answer["detail"] == CANCELLATION_REPLAN
+            ), answer
+            assert answer["next_requests"]["replan"] == final["next_requests"]["replan"]
     finally:
         live.stop()
 
@@ -1271,7 +1294,13 @@ def test_a_replan_preview_and_admission_link_a_distinct_successor_across_restart
         assert source_after_success["attention"]["unresolved"] is False
         assert source_after_success["attention"]["resolution"] == "SUCCESSOR_SUCCEEDED"
         assert source_after_success["attention"]["successor_task_id"] == successor_id
+        successor_read = {"successor": {"operation": "STATUS", "task_id": successor_id}}
+        assert source_after_success["next_requests"] == successor_read, source_after_success
         assert decision_for(source_id, live) is None
+        # Resolved, the stop leaves the unfinished list, and its read leads to its successor.
+        status = _json(live, f"/api/status?task_id={source_id}")
+        assert status["next_requests"]["successor"]["task_id"] == successor_id, status
+        assert source_id not in str(_json(live, "/api/tasks/guardian")["tasks"])
         links = live.session.task_control_registry.recovery_links(  # type: ignore[union-attr]
             UUID(source_id)
         )
@@ -1292,3 +1321,16 @@ def test_a_replan_preview_and_admission_link_a_distinct_successor_across_restart
     finally:
         resolver.release.set()
         live.stop()
+
+
+def test_every_declared_failure_keeps_its_owner_words_in_task_recovery():
+    """Any declared refusal keeps its explanation when read as a Task stop."""
+    from alphalattice.control.product_host.composition.task_recovery import stop_detail
+    from alphalattice.kernel.shared_kernel.project_layout import (
+        REFUSAL_WORDS_RESOURCE,
+        runtime_json,
+    )
+
+    unknown = stop_detail("evidence_install", "owner.future_stop", "TASK_CONTROL")
+    for code in runtime_json(REFUSAL_WORDS_RESOURCE):
+        assert stop_detail("evidence_install", code, "TASK_CONTROL") != unknown, code

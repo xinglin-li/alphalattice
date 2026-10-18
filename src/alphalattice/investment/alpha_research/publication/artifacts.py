@@ -63,6 +63,7 @@ from .contracts import (
     FrozenComponentScoreSnapshot,
     FrozenFeaturePreparation,
     FrozenScoreObservationSnapshot,
+    HistoryProofParts,
     SectorHistoryRecord,
     WorkspaceObservationHistoryHead,
     seal_current_contract,
@@ -130,6 +131,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         capacity: Callable[[int], None],
         loaded: tuple[WorkspaceObservationHistoryHead, Mapping[str, npt.NDArray[np.float64]]]
         | None = None,
+        proofs: HistoryProofParts | None = None,
     ) -> WorkspaceObservationHistoryHead:
         """Persist float64 Parquet segments and commit the stable slot's marker last.
 
@@ -152,6 +154,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             reuse=reuse,
             capacity=capacity,
             loaded=loaded,
+            proofs=proofs,
         )
         return cast(WorkspaceObservationHistoryHead, published)
 

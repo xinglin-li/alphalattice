@@ -23,6 +23,7 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import (
     CorruptedPayload,
     sanitize_payload,
 )
+from alphalattice.foundation.market_data_ops.storage.action_audit import ActionAuditObservation
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 
 DEFAULT_LIVE_SYMBOL_BUDGET = 5
@@ -170,29 +171,28 @@ class PreFactorDataOperations:
                 )
                 if reusable is not None:
                     continue
-                actions = self.provider.fetch_action_history(
-                    listing_id=listing.listing_id,
-                    provider_symbol=listing.provider_symbol,
-                    start=bars[0].session_date,
-                    end=effective_as_of,
-                )
-                adjusted_closes = self.provider.fetch_adjusted_close_history(
-                    listing_id=listing.listing_id,
-                    provider_symbol=listing.provider_symbol,
-                    start=bars[0].session_date,
-                    end=effective_as_of,
-                )
                 self.market_data.complete_action_audit(
                     self.manifest,
-                    listing_id=listing.listing_id,
-                    provider=self.provider.name,
-                    observed_actions=actions,
-                    observed_adjusted_closes=adjusted_closes,
-                    history_start=bars[0].session_date,
-                    history_end=effective_as_of,
-                    requested_as_of=effective_as_of,
-                    observed_at=now,
-                )
+                    ActionAuditObservation(
+                        listing_id=listing.listing_id,
+                        provider=self.provider.name,
+                        actions=self.provider.fetch_action_history(
+                            listing_id=listing.listing_id,
+                            provider_symbol=listing.provider_symbol,
+                            start=bars[0].session_date,
+                            end=effective_as_of,
+                        ),
+                        adjusted_closes=self.provider.fetch_adjusted_close_history(
+                            listing_id=listing.listing_id,
+                            provider_symbol=listing.provider_symbol,
+                            start=bars[0].session_date,
+                            end=effective_as_of,
+                        ),
+                        history_start=bars[0].session_date,
+                        history_end=effective_as_of,
+                        observed_at=now,
+                    ),
+                )[0]
             resolver = self.artifact_resolver or ArtifactResolver(self.snapshot_root)
             staged_snapshot_path = (
                 self.snapshot_root / ".staging" / f"{request.request_id}-{uuid4().hex}.parquet"

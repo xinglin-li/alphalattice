@@ -20,7 +20,6 @@ them.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from datetime import date, datetime
@@ -38,6 +37,7 @@ from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceAnalystAnswer,
     EvidenceTopic,
 )
+from alphalattice.interface.local_application.portfolio_export import PortfolioExportManifest
 from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
     WatermarkAdvancementProgram,
     WatermarkAdvancementReceipt,
@@ -75,6 +75,8 @@ from alphalattice.protocols.actor_execution.bundles import AgentRole
 
 class LocalApplicationError(ValueError):
     """Stable refusal for a Local Application Service boundary failure."""
+
+    allowed: list[str] | None = None  # the fields its operation takes
 
 
 class FactorCurationChoice(BaseModel):  # type: ignore[misc]
@@ -124,16 +126,16 @@ class CommitteeMessage(BaseModel):  # type: ignore[misc]
     """One message a committee member sends to its floor (`committee submit`)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    kind: Literal["STANCE", "CHALLENGE", "REPLY", "RULING", "VERDICT", "PERSON_ANSWER"]
-    """STANCE (the blind first round), CHALLENGE, REPLY; the PM's RULING, VERDICT and the
-    person's answer to an item the PM handed them (PERSON_ANSWER)."""
+    kind: Literal["STANCE", "CHALLENGE", "REPLY", "PASS", "RULING", "VERDICT", "PERSON_ANSWER"]
+    """STANCE (blind first round), CHALLENGE, REPLY, PASS (a yielded turn); the PM's RULING,
+    VERDICT, the person's answer to what the PM handed them (PERSON_ANSWER)."""
     text: str = Field(min_length=1, max_length=4000)
-    """Its words; a holding or tension point is named by its alias (H3, T2), never a number."""
+    """Its words; a holding or point goes by its alias (H3, T2), never a number."""
     targets: tuple[str, ...] = Field(default=(), max_length=16)
     """The tension points (T1), holdings (H3) or messages (M4) it is about."""
     reply_to: str | None = Field(default=None, pattern=r"^M[0-9]{1,4}$")
     """The message it answers, which a REPLY (any message), a RULING (a challenge not yet
-    ruled) and a PERSON_ANSWER (an item the PM handed the person) name, and no other kind."""
+    ruled) and a PERSON_ANSWER (an item the PM handed the person) name; no other kind."""
     positions: dict[str, Literal["SUPPORT", "OBJECT", "RESERVE"]] = Field(
         default_factory=dict, max_length=32
     )
@@ -144,7 +146,7 @@ class CommitteeMessage(BaseModel):  # type: ignore[misc]
     ) = None
     """Required of a RULING (ADOPT, REJECT, FOR_THE_PERSON) and the VERDICT (PROCEED,
     PROCEED_WITH_NOTES, DECLINE, FOR_THE_PERSON); other kinds take none. A wrong shape is
-    refused with its corrected message."""
+    refused with its correction."""
 
 
 type PortfolioResearchOperation = Literal[
@@ -316,6 +318,7 @@ type PortfolioResearchOperation = Literal[
     "STRATEGY_DEACTIVATE",
     "COMMITTEE_OPEN",
     "COMMITTEE_SUBMIT",
+    "COMMITTEE_DAILY_SET",
     "COMMITTEE_READ",
 ]
 
@@ -358,6 +361,7 @@ PERSON_ONLY: Final[frozenset[str]] = frozenset(
         "EVIDENCE_CONSENT_SET",
         "EVIDENCE_INSTALL",
         "USAGE_READING_SET",
+        "COMMITTEE_DAILY_SET",
         "STORAGE_CONFIRM",
         "STORAGE_PIN",
         "RESEARCH_INPUT_CONFIRM",
@@ -374,14 +378,9 @@ PERSON_ONLY: Final[frozenset[str]] = frozenset(
 )
 """The operations only a person decides.
 
-Each owner refuses every other caller, a client's and an Agent's included, unless the request
-relays the person's yes (`person_confirmation`, `PERSON_DECISIONS`): the network
-authority, the storage confirmation and pin, the research input's confirmation, the data
-issues' delegation and its revocation, the daily research
-update's automation (its owner refused every client while the CLI offered it), and a
-research strategy's activation and deactivation (LS1, OW12). The CLI
-marks each, so that an agent asks the person in one line before it sends one. A test holds this
-set to the owners' refusals.
+Each owner refuses every other caller, an Agent's included, unless the request relays the person's
+yes (`person_confirmation`, `PERSON_DECISIONS`) (LS1, OW12). The CLI marks each, so an agent asks
+the person in one line first; a test holds this set to the owners' refusals.
 
 Data change confirmation reads its plan kind: membership requires the person's approval,
 while an exactly scoped full-history audit also admits the installed agent. It is not
@@ -569,6 +568,8 @@ class PortfolioResearchOperationRequest:
     calibration_plan_hash: str | None = None
     prepared_input_hash: str | None = None
     observed_through: str | None = None
+    positions_date: str | None = None
+    """The trade date whose positions an update is planned for; its as-of is the close before."""
     formation_session: str | None = None
     automation_enabled: bool | None = None
     network_enabled: bool | None = None
@@ -577,6 +578,7 @@ class PortfolioResearchOperationRequest:
     evidence_total_bytes: int | None = None
     evidence_setup: str | None = None
     usage_reading_enabled: bool | None = None
+    committee_daily_enabled: bool | None = None
     automation_package_ids: tuple[str, ...] | None = None
     upgrade_set_hash: str | None = None
     """The installed identity set an upgrade overview showed, when acknowledging it."""
@@ -798,16 +800,12 @@ class PortfolioResearchOperationRequest:
             for field in fields(self)
             if field.name != "operation" and getattr(self, field.name) is not None
         }
-        missing = sorted(required - supplied)
-        if missing:
-            raise LocalApplicationError(
-                "portfolio_research.operation_field_required:" + ",".join(missing)
-            )
-        unexpected = sorted(supplied - allowed)
-        if unexpected:
-            raise LocalApplicationError(
-                "portfolio_research.operation_field_not_allowed:" + ",".join(unexpected)
-            )
+        for code, names in (("required", required - supplied), ("not_allowed", supplied - allowed)):
+            if names:
+                named = ",".join(sorted(names))
+                bad = LocalApplicationError(f"portfolio_research.operation_field_{code}:{named}")
+                bad.allowed = sorted(allowed)
+                raise bad
 
     @staticmethod
     def field_contract(
@@ -1154,7 +1152,7 @@ class PortfolioResearchOperationRequest:
             ),
             "RESEARCH_UPDATE_PLAN": (
                 frozenset({"strategy_package_id"}),
-                frozenset({"strategy_package_id", "observed_through"}),
+                frozenset({"strategy_package_id", "observed_through", "positions_date"}),
             ),
             "RESEARCH_UPDATE_RUN": (
                 frozenset({"update_plan_hash"}),
@@ -1187,10 +1185,8 @@ class PortfolioResearchOperationRequest:
                 frozenset({"task_id", "wake_thread", "wake_read"}),
                 frozenset({"task_id", "wake_thread", "wake_read", "wake_codex_path"}),
             ),
-            "USAGE_READING_SET": (
-                frozenset({"usage_reading_enabled"}),
-                frozenset({"usage_reading_enabled"}),
-            ),
+            "USAGE_READING_SET": (frozenset({"usage_reading_enabled"}),) * 2,
+            "COMMITTEE_DAILY_SET": (frozenset({"committee_daily_enabled"}),) * 2,
             # One of the three, which the owner holds to: a setting a request (V100).
             "CPU_BUDGET_SET": (
                 frozenset(),
@@ -1764,6 +1760,9 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """The prepared input a Portfolio update reads, by its hash."""
     observed_through: str | None = None
     """The last session the update observes, as YYYY-MM-DD."""
+    positions_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    """The trade date whose positions the update is for, as YYYY-MM-DD; decided at the close
+    before it."""
     formation_session: str | None = None
     """The session the scores are formed on, as YYYY-MM-DD."""
     automation_enabled: bool | None = Field(default=None, strict=True)
@@ -1782,6 +1781,8 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     usage_reading_enabled: bool | None = Field(default=None, strict=True)
     """true lets the Host read the bound agent Sessions' own files for usage; false reads
     nothing."""
+    committee_daily_enabled: bool | None = Field(default=None, strict=True)
+    """true: each daily update's review convenes the committee; false: the PM's view."""
     automation_package_ids: tuple[str, ...] | None = None
     """The strategy packages the automatic research update covers."""
     upgrade_set_hash: str | None = None
@@ -2125,58 +2126,6 @@ class FinalizationStatusProjection:
     released_result_hash: str | None = None
     released_report_hash: str | None = None
     closure: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class PortfolioExportManifest:
-    """One compact record of what was asked, what answered, and how to ask again.
-
-    The command needs the workspace's folder and the spec, saved from ``spec_document``, and
-    nothing else. The predecessor's root/hash argument list is deliberately not restored: a
-    hash on a command line is an identity being replayed as an authority, and the compiler
-    never saw it.
-    """
-
-    workspace_id: str
-    spec_hash: str
-    holdings_spec_hash: str
-    program_hash: str
-    numerical_input_assembly_hash: str | None
-    result_hash: str
-    execution_ledger_hash: str
-    economic_ledger_hash: str
-    report_hash: str
-    authorities_hash: str | None
-    originating_task_id: str | None
-    execution_mode: str
-    controls: tuple[tuple[str, str], ...]
-    command: str
-    spec_document: dict[str, object]
-
-    def as_json(self) -> str:
-        """Serialize the manifest with stable keys and readable indentation."""
-        return json.dumps(
-            {
-                "kind": "PortfolioExportManifest",
-                "workspace_id": self.workspace_id,
-                "spec_hash": self.spec_hash,
-                "holdings_spec_hash": self.holdings_spec_hash,
-                "program_hash": self.program_hash,
-                "numerical_input_assembly_hash": self.numerical_input_assembly_hash,
-                "result_hash": self.result_hash,
-                "execution_ledger_hash": self.execution_ledger_hash,
-                "economic_ledger_hash": self.economic_ledger_hash,
-                "report_hash": self.report_hash,
-                "authorities_hash": self.authorities_hash,
-                "originating_task_id": self.originating_task_id,
-                "execution_mode": self.execution_mode,
-                "controls": [list(pair) for pair in self.controls],
-                "command": self.command,
-                "spec": self.spec_document,
-            },
-            indent=2,
-            sort_keys=True,
-        )
 
 
 class PortfolioFreezePort(Protocol):

@@ -7,8 +7,10 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tomllib
 from dataclasses import asdict
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -16,7 +18,7 @@ from uuid import uuid4
 import pytest
 
 from alphalattice.interface.local_application import native_setup as setup
-from alphalattice.interface.local_application import retrieval_environment
+from alphalattice.interface.local_application import retrieval_environment, workbench_assets
 from alphalattice.interface.local_application.client import (
     LocalResearchClient,
     LocalResearchConnection,
@@ -27,6 +29,7 @@ from alphalattice.interface.local_application.native_bridge import (
     NativeResearchBinding,
     file_observation,
     observation_request,
+    session_setup,
 )
 from alphalattice.interface.local_application.native_setup import (
     PRODUCT_HOOK_MATCHER,
@@ -41,6 +44,7 @@ READINESS_KEYS = (
     "python",
     "uv",
     "installed_leg",
+    "workbench_build",
     "retrieval_runtime",
     "background_notices",
     "disk",
@@ -48,6 +52,7 @@ READINESS_KEYS = (
     "network",
     "user_layer",
     "user_backup",
+    "system_libraries",
 )
 
 
@@ -84,6 +89,10 @@ def test_complete_usage_snapshot_fits_public_event_subject_and_files_once(live, 
     document = observation_request(project, binding, event)
     subject = document["subject"]
     assert len(subject) == 15
+    # A member's own messages are its proof: they take its verification's key, never a 17th.
+    spoke = {**usage, "specialist_verified": True, "reference": "t M1", "first_at": "t0"}
+    member = observation_request(project, binding, {"source": "native_usage", "usage": spoke})
+    assert len(member["subject"]) == 16 and member["subject"]["reference"] == "t M1"
     assert "native_event_id" not in subject and "source_kind" not in subject
     assert subject["efforts"] == "medium,high"
     assert subject["pin_differs"] == "model,effort"
@@ -417,6 +426,11 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     }
     assert run("configure", "--host", "claude-code")[1]["status"] == "LOCAL_DECLARATIONS_VALIDATED"
     assert (project / ".claude/settings.json").read_bytes() == settings
+    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "parent")
+    unbound = run("doctor")[1]  # configured, not yet bound: the declaration read is Claude's
+    assert unbound["attachment_preflight"]["host"] == "claude-code", unbound
+    assert unbound["attachment_preflight"]["missing"] == ["native_session_binding"], unbound
     code, bound = run(
         "bind", "--host", "claude-code", "--session-id", "parent", "--workspace", str(workspace)
     )
@@ -435,7 +449,7 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     assert report["session_bound"] is True and report["session_id"] == "parent"
     assert report["usage_reading"] == "READ"
     notices = next(item for item in report["host_readiness"] if item["key"] == "background_notices")
-    assert notices["present"] is True and notices["who_decides"] == "AGENT"
+    assert notices["present"] is True and "who_decides" not in notices  # only a missing item's
     assert (project / ".codex" / BINDING_NAME).read_bytes() == binding_before_doctor
     assert not (project / ".codex/config.toml").exists()
     # The Codex host still reads its own file, and refuses without it.
@@ -455,10 +469,12 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
         lambda: {"python": "3.11.0" if missing == "python" else "3.12.0"},
     )
     monkeypatch.setattr(os, "cpu_count", lambda: 0 if missing == "cpu" else 4)
+    monkeypatch.setattr(workbench_assets, "workbench_current", lambda: missing != "workbench_build")
     monkeypatch.delenv("UV", raising=False)
 
-    def which(name):
-        return None if name == missing else str(python.parent / name)
+    def which(name, **_):  # no `alphalattice` resolves where the installed leg is missing
+        gone = name == missing or (missing == "installed_leg" and name == "alphalattice")
+        return None if gone else str(python.parent / name)
 
     monkeypatch.setattr(shutil, "which", which)
     distribution = SimpleNamespace(
@@ -466,26 +482,60 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
         read_text=lambda _: json.dumps({"url": tmp_path.as_uri()}),
     )
     monkeypatch.setattr(importlib.metadata, "distribution", lambda _: distribution)
-    monkeypatch.setattr(retrieval_environment, "interpreter_path", lambda: python)
+    monkeypatch.setattr(retrieval_environment, "load", lambda: missing != "retrieval_runtime")
     monkeypatch.setattr(model_store, "default_store_root", lambda: tmp_path / "packs")
     monkeypatch.setattr(model_store, "recipe_readiness", lambda *_: {"ready": True})
+    # Linux, here, without libgomp1: the locked Node finds libatomic, LightGBM finds no OpenMP.
+    linux = {sys.platform: setup.SYSTEM_LIBRARIES["linux"]}
+    monkeypatch.setattr(setup, "SYSTEM_LIBRARIES", linux if missing == "system_libraries" else {})
+    monkeypatch.setattr(setup, "find_library", lambda name: None if name == "gomp" else name)
 
     def run(argv, **_):
-        exit_code = int(missing == "retrieval_runtime" and "-c" in argv)
-        return subprocess.CompletedProcess(argv, exit_code)
+        return subprocess.CompletedProcess(argv, 0, stdout="")
 
     monkeypatch.setattr(subprocess, "run", run)
     user = tmp_path / ".alphalattice/user"
-    if missing != "user_layer":
-        user.mkdir(parents=True)
-        if missing != "user_backup":
-            (user / "backups/2026-10-09").mkdir(parents=True)
+    user.mkdir(parents=True)
+    if missing != "user_backup":
+        (user / "backups/2026-10-09").mkdir(parents=True)
+    opened, closed = (
+        "1" * 8 + "-1111-4111-8111-" + "1" * 12,
+        "2" * 8 + "-2222-4222-8222-" + "2" * 12,
+    )
+    if missing == "user_layer":  # over a bound (51 index lines); due and not due in each domain
+        version, today = setup.package_versions(["alphalattice"])[0][1], date.today().isoformat()
+        (user / "memory").mkdir()
+        (user / "cards").mkdir()
+        (user / "memory/MEMORY.md").write_text("- a\n" * 51, encoding="utf-8")
+        now, old, risk = (
+            f"{today} at {version}",
+            f"2020-01-02 at {version}",
+            "method:alphalattice_risk",
+        )
+        for name, front, text in (
+            ("memory/op.md", f"domain: operating\nverified: {now}", ""),
+            ("memory/op-before.md", f"domain: operating\nverified: {today} at 0.0.1", ""),
+            ("memory/person.md", f"domain: person\nverified: {now}", ""),
+            ("memory/risk.md", f"domain: {risk}\nverified: {now}", ""),
+            ("memory/risk-old.md", f"domain: {risk}\nverified: {old}", ""),
+            ("memory/book.md", f"domain: strategy:book\nverified: {today} at {'h' * 64}", ""),
+            ("memory/book-moved.md", f"domain: strategy:book\nverified: {today} at {'g' * 64}", ""),
+            ("memory/now.md", "domain: state", f"Goal {opened}."),
+            ("memory/done.md", "domain: state", f"Goal {closed}."),
+            ("memory/plain.md", f"type: correction\nverified: {now}", ""),
+            ("guide.md", f"verified: {now}", "A method."),
+        ):
+            (user / name).write_text(f"---\n{front}\n---\n{text}\n", encoding="utf-8")
+        (user / "cards/alphalattice_risk.md").write_text("A method.\n", encoding="utf-8")
     free = 0 if missing == "disk" else 2 * 1024**3
     capacity = {"measured_data_bytes": 1, "cap_bytes": 2, "free_disk_bytes": free}
     replies = {
         "STORAGE_CAP_SHOW": {"capacity": capacity, "recovery_headroom_bytes": 2 * 1024**3},
         "CPU_BUDGET_SHOW": {"status": "CPU_BUDGET", "cores": 4},
         "NETWORK_ACCESS": None if missing == "network" else {"network_allowed": False},
+        "GOAL_LIST": {"goals": [{"goal_id": opened, "state": "OPEN"}]},
+        "TASKS": {"tasks": []},
+        "CONTROLS": {"package_hash": "h" * 64},
     }
     client = LocalResearchClient
     monkeypatch.setattr(client, "request", lambda _self, request: replies[request["operation"]])
@@ -500,10 +550,44 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
     descriptor.write_text(connection.to_json(), encoding="utf-8")
     binding = NativeResearchBinding("parent", workspace, ("alphalattice_cro",))
     items = {item["key"]: item for item in setup.host_readiness(tmp_path, "codex", binding)}
+    gate = session_setup(tmp_path, None)  # a first use reads what the doctor reads
+    fillable = ("installed_leg", "retrieval_runtime")
+    assert [key in gate for key in fillable] == [items[key]["present"] is False for key in fillable]
     if missing is None:
         assert all(item["present"] is True for item in items.values())
     else:
         assert items[missing]["present"] is (None if missing == "network" else False)
+    if missing == "user_layer":
+        facts = items[missing]["facts"]
+        assert (facts["over"], facts["next_action"]) == (["index_lines"], "REVIEW_THE_USER_LAYER")
+        assert {item["path"]: item["reason"] for item in facts["due"]} == {
+            "cards/alphalattice_risk.md": "unverified",
+            "memory/book-moved.md": "package_changed",
+            "memory/done.md": f"points_to_closed:{closed}",
+            "memory/op-before.md": "verified_at_another_version",
+            "memory/plain.md": "unclassified",
+            "memory/risk-old.md": "verified_over_30_days",
+        }
+        assert facts["counts"]["short_term"]["state_memories"] == 2
+        assert facts["counts"]["domains"] == {
+            "operating": 2,
+            "person": 1,
+            "method": 2,
+            "strategy": 2,
+            "state": 2,
+            "none": 1,
+        }
+        absent = setup.user_layer(tmp_path / "absent", tmp_path / "absent")  # absent is fine
+        assert (absent["exists"], absent["over"], absent["due"]) == (False, [], [])
+        # The bounds' one declaration is what the maintenance Skill states.
+        skill = (ROOT / ".agents/skills/alphalattice-maintenance/SKILL.md").read_text("utf-8")
+        lasting, brief = setup.USER_LAYER_BOUNDS["long_term"], setup.USER_LAYER_BOUNDS["short_term"]
+        assert f"at most {lasting['index_lines']} lines" in skill
+        assert f"about {lasting['memories']} memories" in skill
+        assert f"{brief['workspace_notes']} in a workspace" in skill
+    if missing == "system_libraries":
+        assert items[missing]["facts"]["install"] == "sudo apt install libgomp1"
+        assert items[missing]["who_decides"] == "PERSON"
     assert all(item["what_it_enables"] and item["how_to_fill"] for item in items.values())
     assert items["network"]["facts"]["scope"] == "WORKSPACE_HOST"
 

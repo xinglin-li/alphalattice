@@ -143,7 +143,11 @@ def _reports():
     )
 
 
-def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(monkeypatch):
+def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(monkeypatch, live):
+    """A sealed delivery crosses the served Host once with its exact retained references."""
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from tests.portfolio_strategy_lab.local_web_support import _json
+
     primary, other, reports = _reports()
     counts = Counter()
 
@@ -174,6 +178,9 @@ def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(m
         caller="EXTERNAL_AUTOMATION",
     )
     assert reports == before
+    assert export["export_hash"] == canonical_hash(
+        {k: v for k, v in export.items() if k != "export_hash"}
+    )
     assert export["sections"]["portfolio"]["value"] == reports[primary]
     assert (
         export["sections"]["comparison"]["value"]["disposition"]
@@ -195,6 +202,29 @@ def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(m
         ).to_operation_request()
         == document.to_operation_request()
     )
+    assert live.operations is not None
+    monkeypatch.setattr(live.operations.experiments, "readback", read)
+    served = _json(
+        live,
+        "/api/research/delivery",
+        method="POST",
+        payload=document.model_dump(mode="json", exclude_none=True),
+    )
+    rows = [
+        i
+        for i in _json(live, "/api/activity")["items"]
+        if i["payload"].get("operation") == document.operation
+        and i["payload"].get("phase") == "RETURNED"
+    ]
+    assert len(rows) == 1
+    assert rows[0]["payload"]["subject"] == {
+        "task_id": str(primary),
+        "experiment_receipt_hash": "f" * 64,
+        "portfolio_session": "2024-08-12",
+        "left_task_id": str(other),
+        "right_task_id": str(primary),
+        "export_hash": served["export_hash"],
+    }
     reports[other]["portfolio_source"]["input_binding_hash"] = "0" * 64
     partial = export_research_delivery(
         request=document.to_operation_request(),
@@ -547,3 +577,25 @@ def test_every_book_selector_refusal_has_door_words_and_owner_context(code) -> N
             for package in packages
         }
         assert all(package in answer["detail"] for package in packages)
+    # A selector that gave an installed package's hash is told so, with the id to give.
+    hashed = {"INSTALLED_A": SimpleNamespace(package_hash="a" * 64), "INSTALLED_B": None}
+    answer = explain(code.replace("NOT_AN_INSTALLED_PACKAGE", "a" * 64), installed_packages=hashed)
+    if code.startswith("local_application."):
+        assert list(answer["next_requests"]) == ["controls:INSTALLED_A"], answer
+
+
+def test_an_invalid_document_in_a_delivery_export_is_the_products_fault() -> None:
+    """requirement (REPORT-SUMMARY-BOUND): an export refused for a document the Host wrote never
+    asks the agent to correct a declaration; elsewhere the declaration is still the agent's."""
+    from pydantic import TypeAdapter, ValidationError
+
+    from alphalattice.control.product_host.composition.research_delivery import refused_document
+
+    with pytest.raises(ValidationError) as caught:
+        TypeAdapter(int).validate_python("not a number")
+    export = refused_document("EXPERIMENT_DELIVERY_EXPORT", caught.value)
+    assert export["failure_code"] == "research_delivery.export_failed"
+    assert export["next_action"] == "SEND_ONCE_MORE_THEN_REPORT_THE_PROBLEM"
+    assert "next_requests" not in export
+    plan = refused_document("EXPERIMENT_PLAN", caught.value)
+    assert plan["next_action"] == "CORRECT_DECLARATION_AND_REPLAN"

@@ -12342,6 +12342,419 @@
    "successor": "4a0e342103ed22beb4790cb8e3b53a5de6ad66d34bcc5c2d2095cf97ce4893a8",
    "change": "first-use dated preparation review and reds",
    "reason": "Lead signature 2026-10-14 03:59: date preflight respects retained BLOCKED Task replan refusal before cutoff validation, restoring ordinary inputs_already_published. Available-at, stale comparison, arithmetic, recipe, source MAX and date bounds unchanged. Earlier signed 02:39 five-role/equal-values controls stand; unchanged served scenario red/green: inv-past-date-reds/035248-checks-71ed14c7. Branch-only 73cad entry replaced as instructed."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "4a0e342103ed22beb4790cb8e3b53a5de6ad66d34bcc5c2d2095cf97ce4893a8",
+   "successor": "58cddf2af45c9e46d1b319b9e74df7a0b113dae02a108b09411ed153ddd894be",
+   "change": "network control on the Host's clock",
+   "reason": "Lead signature 2026-10-14 17:09: source closure of the network_access signature change (readiness and preparation pass the Host clock to the network control); no value change. Red/green and readouts: ui-network-clock/161224-fix-cb0cc314."
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "aaa7167ebad7263378671ab1b682821ae28c1b51cf303afe58da22661c38acd7",
+   "successor": "7124cb9abf2eaa6e368d59e92411b6530bbfed59de32515074a5323f859cd917",
+   "change": "Recorded Evidence passes over documents a current analysis read (2026-10-15)",
+   "reason": "Recorded acquisition now honours the request's read filings, as live acquisition already did (W3). Only the recorded counts set them, from sealed readings, so every request sealed before this change carries none and selects exactly the same documents; live acquisition is unchanged. Analyses sealed under the predecessor stay current."
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "7124cb9abf2eaa6e368d59e92411b6530bbfed59de32515074a5323f859cd917",
+   "successor": "5bdc9f009204c57ef569d82c32df1df951ac63ca7eeeca2128c08e6c99b4f96d",
+   "change": "Recorded counts carry nothing in a scope's own view, and return their typed counts (2026-10-15)",
+   "reason": "The recorded library's counting now returns LogicalSourceCounts itself and takes carry, which every sealed path leaves on: a preparation's counts and selection are exactly those of the predecessor, so every request it seals selects the same documents. Only a scope's own view, which seals nothing, counts without passing over earlier readings, as live mode packs such a view from its plans. Analyses sealed under the predecessor stay current."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "58cddf2af45c9e46d1b319b9e74df7a0b113dae02a108b09411ed153ddd894be",
+   "successor": "527d1664c55bbb708ebacc201bddcb83b949b988432ab266aa90e51ac3d235bb",
+   "change": "workspace data rule: run scope, audit by rule",
+   "reason": "Lead signature 2026-10-15 01:47; review delta 03:25: data_decision_rule.py gains RULED_RUNS and audit() (the rule reaches a session's data update and approves a full-history audit within its bounds, counted with every approval for the Task and recorded ahead of its admission and marked when not admitted, a refusal recorded so its Task stays escalated; data cases and audits keep their own bounds, and a re-raised case with the same anomaly holds the rule's decision only while the rule would decide the same now, the newest decision on it winning); no value change. Equal-values control, both sides from a fresh golden: the two-day daily scenario on develop and the tip gives equal position and weight fields (about 55,000 per day, the audited day included), panel, feature-catalog, universe and returns hashes, and equal research-input files but the market store, whose rows are equal and whose bytes differ by its random seal epoch and an activation time. Branch-only successors 5857bd6a, fc13bd92, 5678913e and 2fb55a63 replaced. Readouts and comparison: flow-data-rule-update/001031-fix-5e6be89d and 032428-review-fix-5c23c014 and 045950-review2-fix-dee0813b 055349-held-bounds-f1c32cf3 and 064220-hold-review-d87dcc1d (paired by scenario variant)."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "e70d0158d34f7d06b2dd5b0352c87c1d16d2e209209e5ca4423a40eb4355a722",
+   "successor": "e74aba71bbc1c567e309025bfc3fe2fefd3d9a2c97b33a7f3ae54f5f8cf1fc32",
+   "change": "renewal-day capture keeps the training columns",
+   "reason": "A renewing component's score-input capture now keeps its training factor columns every day, so a model-renewal day extends the kept history prefix instead of rebuilding ten years cold; the capture's column set chooses what is held, never a value. Equal-values control on the first-use journey (offline replay, 466 names, 4 cores), both sides from the same book checkpoint at develop fc5f84a87: activation, the renewal forward update, daily and daily2 publish equal values in every public folder (results, reports, ledgers, decision updates, plans, observations, rolling heads), and the forward's new history tail part is byte-identical. Renewal update Task 361 s to 266 s, seal_inputs 192 s to 82 s, peak memory 15.0 to 6.4 GiB. Readouts and comparison: perf-warm-compute/121143-map-and-baseline-91d82dc6 (identity-before.json, identity-after.json, equal-journey-after.json)."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "601126983364bc0c3b74ac8a6e735d8a783e8683239ea657e1d1b4443354b588",
+   "successor": "978eed000d8a33f94780f505dbadcf4fa4cb582b28d5296642dd4c28f872e504",
+   "change": "renewal-day capture keeps the training columns",
+   "reason": "A renewing component's score-input capture now keeps its training factor columns every day, so a model-renewal day extends the kept history prefix instead of rebuilding ten years cold; the capture's column set chooses what is held, never a value. Equal-values control on the first-use journey (offline replay, 466 names, 4 cores), both sides from the same book checkpoint at develop fc5f84a87: activation, the renewal forward update, daily and daily2 publish equal values in every public folder (results, reports, ledgers, decision updates, plans, observations, rolling heads), and the forward's new history tail part is byte-identical. Renewal update Task 361 s to 266 s, seal_inputs 192 s to 82 s, peak memory 15.0 to 6.4 GiB. Readouts and comparison: perf-warm-compute/121143-map-and-baseline-91d82dc6 (identity-before.json, identity-after.json, equal-journey-after.json)."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "96eae0c7ab252f8ff00f9bf3072d80a7875ae862339f4f8f70d2f9dad479a5e0",
+   "successor": "91edeaa1d515c5d7065930681f6c89a7859da2e3b6cc88d873571e2b6b90872b",
+   "change": "renewal-day capture keeps the training columns",
+   "reason": "A renewing component's score-input capture now keeps its training factor columns every day, so a model-renewal day extends the kept history prefix instead of rebuilding ten years cold; the capture's column set chooses what is held, never a value. Equal-values control on the first-use journey (offline replay, 466 names, 4 cores), both sides from the same book checkpoint at develop fc5f84a87: activation, the renewal forward update, daily and daily2 publish equal values in every public folder (results, reports, ledgers, decision updates, plans, observations, rolling heads), and the forward's new history tail part is byte-identical. Renewal update Task 361 s to 266 s, seal_inputs 192 s to 82 s, peak memory 15.0 to 6.4 GiB. Readouts and comparison: perf-warm-compute/121143-map-and-baseline-91d82dc6 (identity-before.json, identity-after.json, equal-journey-after.json)."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "e74aba71bbc1c567e309025bfc3fe2fefd3d9a2c97b33a7f3ae54f5f8cf1fc32",
+   "successor": "705e57069027284047c0c051e9aac878761fd6652517fe13b304914eb21a7d7f",
+   "change": "kept history proof drops the reference closes",
+   "reason": "The kept score-input history's prefix proof no longer binds the market reference's provider-adjusted closes, which no captured value reads (the capture returns before the reference is read; training reads it live; reference eligibility is built from membership, exclusions and raw closes). Only the reuse key changed. A restated reference now keeps the history warm, and the reused capture is byte-equal to a cold one (test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm, red at develop). Signed by the Tech Lead, 2026-10-15. Readouts: perf-real-day-seal/190950-l1 (identity-before.json, identity-after.json)."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "c5c4de7c1eb74aef4d83749cb0d2d4d67102dcebd7eb466d6783ee12d0972766",
+   "successor": "60cc9fc6f208348952ae340d9f29d720e0d6d1613845265518ea5e61181035e8",
+   "change": "kept history proof drops the reference closes",
+   "reason": "The kept score-input history's prefix proof no longer binds the market reference's provider-adjusted closes, which no captured value reads (the capture returns before the reference is read; training reads it live; reference eligibility is built from membership, exclusions and raw closes). Only the reuse key changed. A restated reference now keeps the history warm, and the reused capture is byte-equal to a cold one (test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm, red at develop). Signed by the Tech Lead, 2026-10-15. Readouts: perf-real-day-seal/190950-l1 (identity-before.json, identity-after.json)."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "7dc615bf058fcb3a4a7db2b2dd4fcc82ab9c31a95a3f051b2dc22b56068d117b",
+   "successor": "5e0157b18281a65cd3f3036b8663c32f0b4697340e9e3eb1670ba59e9d75e7a8",
+   "change": "kept history proof drops the reference closes",
+   "reason": "The kept score-input history's prefix proof no longer binds the market reference's provider-adjusted closes, which no captured value reads (the capture returns before the reference is read; training reads it live; reference eligibility is built from membership, exclusions and raw closes). Only the reuse key changed. A restated reference now keeps the history warm, and the reused capture is byte-equal to a cold one (test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm, red at develop). Signed by the Tech Lead, 2026-10-15. Readouts: perf-real-day-seal/190950-l1 (identity-before.json, identity-after.json)."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "978eed000d8a33f94780f505dbadcf4fa4cb582b28d5296642dd4c28f872e504",
+   "successor": "45b8aecbab448e0723a50839dd3300b79a3a181095857a42dcff8ad47fdb4a45",
+   "change": "kept history proof drops the reference closes",
+   "reason": "The kept score-input history's prefix proof no longer binds the market reference's provider-adjusted closes, which no captured value reads (the capture returns before the reference is read; training reads it live; reference eligibility is built from membership, exclusions and raw closes). Only the reuse key changed. A restated reference now keeps the history warm, and the reused capture is byte-equal to a cold one (test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm, red at develop). Signed by the Tech Lead, 2026-10-15. Readouts: perf-real-day-seal/190950-l1 (identity-before.json, identity-after.json)."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "91edeaa1d515c5d7065930681f6c89a7859da2e3b6cc88d873571e2b6b90872b",
+   "successor": "e34b0a14862cb49d11fae9b4a8e15a5f19db1b8a48be821c0578c6c39a242a69",
+   "change": "kept history proof drops the reference closes",
+   "reason": "The kept score-input history's prefix proof no longer binds the market reference's provider-adjusted closes, which no captured value reads (the capture returns before the reference is read; training reads it live; reference eligibility is built from membership, exclusions and raw closes). Only the reuse key changed. A restated reference now keeps the history warm, and the reused capture is byte-equal to a cold one (test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm, red at develop). Signed by the Tech Lead, 2026-10-15. Readouts: perf-real-day-seal/190950-l1 (identity-before.json, identity-after.json)."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "527d1664c55bbb708ebacc201bddcb83b949b988432ab266aa90e51ac3d235bb",
+   "successor": "0498e015bc8132e7d5becfc66dfb508fafde0ebacc7c56477dbcdeb654db2d85",
+   "change": "feature closure digest keeps session marks; a late in-window dividend no longer refuses the daily, by one rule in both classifiers",
+   "reason": "Lead signature 2026-10-15 (UPDATE-INPUTS-REAL-DAY part 1): the feature closure digest keeps the running hash at session marks, so a transition after a restated listing re-frames only its own tail (byte-equal digest on FINAL-022 Run B's real closure); the maintenance reconciliation and the pre-research delta service classify a session-set change by one rule (semantic_revisions.set_change_explained): a held session is a value revision, a session after the target or one the listing lacked explains the change. Only changes the predecessor refused move; no other value changes. Branch-only successor 6dbe2e53 replaced after the Lead's review. Receipt: PERF's variant restating plant, develop a33dab0a5 against the tip, ALL EQUAL on every public folder over the restated day and the day after (perf-real-day-seal/192244-l2-journey-0ffd7b36, equal-flow-variant.json). Control: the full plant, which develop refuses, completes daily and daily2 on the tip (flow-update-inputs-real-day/191502-measure-b9b5775c, copies/qa/replay-full-plant)."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "884b1fe2d899d59750196239809d3651cc8699461eaeb22c6a903f2caa470697",
+   "successor": "e401ccb02400fdacdc8df940fd84fc95de425ad04d3012c908e530e12cba9764",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "a1be1e46062e899422e7d7d42339a5c707947be29e142fc55c1ee0f3794c26e1",
+   "successor": "04b59920ad7d006e4286db69da38e80474f3e9b82e0aa3ded0614cf625b2335e",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "705e57069027284047c0c051e9aac878761fd6652517fe13b304914eb21a7d7f",
+   "successor": "d8df2e44266c3dba60144b2df4da0bcd15a62c1e764e0c5df8f1a37cc60d140c",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "60cc9fc6f208348952ae340d9f29d720e0d6d1613845265518ea5e61181035e8",
+   "successor": "69603864fbc730a7cd28294305b984c8b41f44872ee8bcf244225d6d3d1cc2ca",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "5e0157b18281a65cd3f3036b8663c32f0b4697340e9e3eb1670ba59e9d75e7a8",
+   "successor": "61b64e88ec6fb5440fffee9b62ec92bb40c20ca7f5f11376a4b9120f4ffb4866",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "7fa71f995994ee254e05ccfb47946260c4b13e10fb94c11f8c2a48f22f3f9f36",
+   "successor": "17edfd79e0e373f65aa364a1cd0986f5baada074d55c8dfc0a45a7bdc74b3eb2",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "d72a611e4e3690d3aab43b4a884a832a8cf5eb9d1be99d7cd56ccb5fa196926b",
+   "successor": "6e5f843e5b6d708e1805d1fc55255b26d8173d65e53ed9d1b0a7d85fb25a2e71",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "714917dba8eb64efcf50c786d966e5443a4ab42952db0eaf0073e709b4df6891",
+   "successor": "2ab86eef6fc4e1372642054e5de4f98045b68ae1c4d90b3cd169dfe83b9be6d8",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "45b8aecbab448e0723a50839dd3300b79a3a181095857a42dcff8ad47fdb4a45",
+   "successor": "8fbf772a9b6e030819ccf6eae1efc8d0394e54126430bb35b86321cffe1b4aa0",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "e34b0a14862cb49d11fae9b4a8e15a5f19db1b8a48be821c0578c6c39a242a69",
+   "successor": "f37c0cee005d532de07fe0493550351d1162f594eeb4bfe45caff1199011c74f",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "3f963f183e69a8aedb0d6951e5383127495d170d17b1f8de023fa1152ab74076",
+   "successor": "cd0813bd9f4acfb9b414fe6fabfdae48cb834a5ff850a88838ef434aeb660151",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "3f963f183e69a8aedb0d6951e5383127495d170d17b1f8de023fa1152ab74076",
+   "successor": "cd0813bd9f4acfb9b414fe6fabfdae48cb834a5ff850a88838ef434aeb660151",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "23ebb11113e0cd0d0b74a8b3ab898c1f4a1e6ed987eae242fbeb0288c8d620dc",
+   "successor": "21ccda31b505edffe8bc5ca2f00b96ce3e5dbe19c7f5219fe4f1d522d035493e",
+   "change": "kept history restates per listing",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL L2): optional fields with unchanged default seals. The kept score-input history's head adds its prefix proof's axes, one digest per listing and one closed-years digest per listing, so a restated listing rebuilds alone and a quiet day's per-listing proof reads only the open year; a head without them keeps its seal and reuses whole. Values ALL EQUAL against develop on the journey's variant and full restatement plants (run 192244-l2-journey-0ffd7b36, equal-values-variant-tip2.json and equal-values-full-plant.json)."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "d8df2e44266c3dba60144b2df4da0bcd15a62c1e764e0c5df8f1a37cc60d140c",
+   "successor": "aa7ac1a9760a99a7d36e0d66355266375c8062925397a3c004285af4212aae7a",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "69603864fbc730a7cd28294305b984c8b41f44872ee8bcf244225d6d3d1cc2ca",
+   "successor": "e248f58e3e49239a2250c8e3261190a56787fa0e621554437cb331f606b623c9",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "61b64e88ec6fb5440fffee9b62ec92bb40c20ca7f5f11376a4b9120f4ffb4866",
+   "successor": "7bdc3861f92cf4ad2361c34d5c200ee3ae72ed8e3f9f24b31e02b273830e139c",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "6e5f843e5b6d708e1805d1fc55255b26d8173d65e53ed9d1b0a7d85fb25a2e71",
+   "successor": "a34e6bde65ae5ca75beb952d8f89a77b6ab2fdfc6aa01f9a1fcc212d8bb917c1",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "8fbf772a9b6e030819ccf6eae1efc8d0394e54126430bb35b86321cffe1b4aa0",
+   "successor": "25a77a787272e562037d1c628fb09fa49cb763a545e2221b78985ebdd3f22f31",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "f37c0cee005d532de07fe0493550351d1162f594eeb4bfe45caff1199011c74f",
+   "successor": "21570889465cc56ffe18cbb5d578cf54a1b685e136396722c90442d61c323733",
+   "change": "kept history review fixes",
+   "reason": "Lead signature 2026-10-16 (REAL-DAY-SEAL review): review fixes, no value change. The per-listing kernel set is gated by its reviewed ids' digest, per-listing market proofs are computed only when asked, and each listing's bars and Feature rows are read once. Values ALL EQUAL against develop with the update-stage fix on the journey's full restatement plant (run 192244-l2-journey-0ffd7b36, equal-values-full-plant-tip3.json)."
+  },
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "1e0a84f859aade29d3415002c27a851bfa63034cda358c4653261d80c036d301",
+   "successor": "3147420b8694e89ae0fc9fe60cf28eac07f83320832d8b97bdaebef3ac863242",
+   "change": "issue 9: the Host reads three findings an issuer and counts the rest",
+   "reason": "Lead-signed 2026-10-17: the Host now enforces the three-findings-per-issuer intake cap the Analyst README already stated, and counts what it leaves out, per issuer, in the analysis, the CRO bundle and the receipt; the publication change is the whole-answer drop's words only. Retrieval and canonicalization bindings and packets are unchanged. Earlier sealed analyses and publications keep their recorded policy and meaning, with no re-analysis on upgrade."
+  },
+  {
+   "role": "alternative_evidence.decision_policy",
+   "predecessor": "fd1161bf40ca1077ad8d9a5a1a18f7ec2990d7ed5cb60b6a9ccad3e8fef4993c",
+   "successor": "b6c20ccd60d75b42f42654664264f599c60062dadd60f0b196e641ebc211916b",
+   "change": "issue 9: the Host reads three findings an issuer and counts the rest",
+   "reason": "Lead-signed 2026-10-17: the Host now enforces the three-findings-per-issuer intake cap the Analyst README already stated, and counts what it leaves out, per issuer, in the analysis, the CRO bundle and the receipt; the publication change is the whole-answer drop's words only. Retrieval and canonicalization bindings and packets are unchanged. Earlier sealed analyses and publications keep their recorded policy and meaning, with no re-analysis on upgrade."
+  },
+  {
+   "role": "alternative_evidence.publication_binding",
+   "predecessor": "906d733cbae3d8904964959d1ebd72f8182f0d316f8e54aa19d69e28f575742a",
+   "successor": "d0095e24a209736d3c762e40e676b1f32469e2daba5e834bfb93f5710e8591a5",
+   "change": "issue 9: the Host reads three findings an issuer and counts the rest",
+   "reason": "Lead-signed 2026-10-17: the Host now enforces the three-findings-per-issuer intake cap the Analyst README already stated, and counts what it leaves out, per issuer, in the analysis, the CRO bundle and the receipt; the publication change is the whole-answer drop's words only. Retrieval and canonicalization bindings and packets are unchanged. Earlier sealed analyses and publications keep their recorded policy and meaning, with no re-analysis on upgrade."
+  },
+  {
+   "role": "chief_risk_officer.portfolio_review_policy",
+   "predecessor": "24148616e668d41a14b7a6faaab65d42e028f67340019c74efcdd5b3132bff19",
+   "successor": "2b9e6cd6e32568edb0bd5b39423fbef03c7a856bb09e4eb4ab33c43f9e012b39",
+   "change": "ISSUE-10-REVIEW-WORDS",
+   "reason": "Lead-signed 2026-10-17: the CRO policy change is wording only; identical AST once string literals are stripped, with no routing or threshold change. The other three move only through reporting.static in their closure: the same source weights and changes are formatted once and split into held and exit sections by the installed held bound. Publication arrays and computational owners are unchanged; JSON and HTML controls pass."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "04b59920ad7d006e4286db69da38e80474f3e9b82e0aa3ded0614cf625b2335e",
+   "successor": "28a62021ba840c7e1569c0c02ac21f1b96e10765d546f426dc35db8897487681",
+   "change": "ISSUE-10-REVIEW-WORDS",
+   "reason": "Lead-signed 2026-10-17: the CRO policy change is wording only; identical AST once string literals are stripped, with no routing or threshold change. The other three move only through reporting.static in their closure: the same source weights and changes are formatted once and split into held and exit sections by the installed held bound. Publication arrays and computational owners are unchanged; JSON and HTML controls pass."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "702c305586c9b767928b63c6e7c7e77b8277f4a6658a53632787bf0f2e1d73c6",
+   "successor": "682bdf015a2ddb1d8fde0a7bcdeb75ebe7f30b86145bf6bd301665fad906e295",
+   "change": "ISSUE-10-REVIEW-WORDS",
+   "reason": "Lead-signed 2026-10-17: the CRO policy change is wording only; identical AST once string literals are stripped, with no routing or threshold change. The other three move only through reporting.static in their closure: the same source weights and changes are formatted once and split into held and exit sections by the installed held bound. Publication arrays and computational owners are unchanged; JSON and HTML controls pass."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "e19974f50fe4315ae9f8a2b78bba15b199ee151d5428b835fc8d8872d73bf71e",
+   "successor": "dd5c85118ef5a06c80b431ac79bf708ba589f10e44817bc38dc7eb78c0db8af6",
+   "change": "ISSUE-10-REVIEW-WORDS",
+   "reason": "Lead-signed 2026-10-17: the CRO policy change is wording only; identical AST once string literals are stripped, with no routing or threshold change. The other three move only through reporting.static in their closure: the same source weights and changes are formatted once and split into held and exit sections by the installed held bound. Publication arrays and computational owners are unchanged; JSON and HTML controls pass."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "9f7abe0003b8147d9e45b6c945a36535eb2f94094f9d8cd4d13aaa64c705a0ce",
+   "successor": "ef67839edb0c8df3377fa9cfdbd94be10140ff0c242482a6ef5e9d19f11f6abb",
+   "change": "a Panel publication takes an unchanged chunk's year as the last publication published it",
+   "reason": "Equal chunk bytes (content and metadata hashes) give equal logical annual content and session semantics, so the publisher reuses the last publication's records for an unchanged year under the same logical algorithm and Panel mode, rechecking the axis and epochs; every published hash is equal to a fresh build (test_an_unchanged_chunk_is_taken_as_published) and the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "4f1b8fa2e7a17214bc09dd407ce4aaedff0a48b059f75519b172e0d92de4cb6f",
+   "successor": "4e5e2e2f89da5b4f82ff251193f910e7ab2784c19fbf376a7f76830ce627070c",
+   "change": "a Panel publication takes an unchanged chunk's year as the last publication published it",
+   "reason": "Equal chunk bytes (content and metadata hashes) give equal logical annual content and session semantics, so the publisher reuses the last publication's records for an unchanged year under the same logical algorithm and Panel mode, rechecking the axis and epochs; every published hash is equal to a fresh build (test_an_unchanged_chunk_is_taken_as_published) and the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "1a2e21e2fa8d0418dd01de5cf6fa0d8a7859d9966d91d1a49df0fe3a2004af38",
+   "successor": "a966cbfa67ee32b04389bf3e2002dbfe4052518d6698aa455f80a5b173fefcba",
+   "change": "a Panel publication takes an unchanged chunk's year as the last publication published it",
+   "reason": "Equal chunk bytes (content and metadata hashes) give equal logical annual content and session semantics, so the publisher reuses the last publication's records for an unchanged year under the same logical algorithm and Panel mode, rechecking the axis and epochs; every published hash is equal to a fresh build (test_an_unchanged_chunk_is_taken_as_published) and the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "1a2e21e2fa8d0418dd01de5cf6fa0d8a7859d9966d91d1a49df0fe3a2004af38",
+   "successor": "a966cbfa67ee32b04389bf3e2002dbfe4052518d6698aa455f80a5b173fefcba",
+   "change": "a Panel publication takes an unchanged chunk's year as the last publication published it",
+   "reason": "Equal chunk bytes (content and metadata hashes) give equal logical annual content and session semantics, so the publisher reuses the last publication's records for an unchanged year under the same logical algorithm and Panel mode, rechecking the axis and epochs; every published hash is equal to a fresh build (test_an_unchanged_chunk_is_taken_as_published) and the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "906d5bf51c48427fc879bc0ed3da0420b6b5ea3e85d8952f50cfb748a5e4cfd4",
+   "successor": "0d5b04974aa1b65d968db734bc6ff4f8a47227da4f78e04722fcd10e01a0e677",
+   "change": "a derived manifest's binding takes the receipts its cycle just bound from verified bytes without a second digest",
+   "reason": "The market-data store's receipt rebinding accepts an optional set of receipts its caller bound this cycle from bytes it had just verified, and answers the receipts it binds; the maintenance cycle hands the governed child's to its Sector exclusion. Every binding without that set is unchanged; the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "a34e6bde65ae5ca75beb952d8f89a77b6ab2fdfc6aa01f9a1fcc212d8bb917c1",
+   "successor": "b84f29a7d19b853cb6a28c24c513bf30a9581ee942e9d7c193443ae05b9f50ec",
+   "change": "a derived manifest's binding takes the receipts its cycle just bound from verified bytes without a second digest",
+   "reason": "The market-data store's receipt rebinding accepts an optional set of receipts its caller bound this cycle from bytes it had just verified, and answers the receipts it binds; the maintenance cycle hands the governed child's to its Sector exclusion. Every binding without that set is unchanged; the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "b9e74c96286f49e1df50f53cf8699e9d6096443e4e52b4ebbc429267d1d846c2",
+   "successor": "d42e4f1b7aeebd402886ef71e6ef6c082bf5941edc0d29e9a40d6bd51c538fe0",
+   "change": "a derived manifest's binding takes the receipts its cycle just bound from verified bytes without a second digest",
+   "reason": "The market-data store's receipt rebinding accepts an optional set of receipts its caller bound this cycle from bytes it had just verified, and answers the receipts it binds; the maintenance cycle hands the governed child's to its Sector exclusion. Every binding without that set is unchanged; the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "bbbf634a30d79b92288e8898ebd7f64f465c0035f2567bce192d061750de852a",
+   "successor": "601c0479575d509bfb0e1e9748fe817931185bd65317170c2f55dcf6e4fb5a1e",
+   "change": "a derived manifest's binding takes the receipts its cycle just bound from verified bytes without a second digest",
+   "reason": "The market-data store's receipt rebinding accepts an optional set of receipts its caller bound this cycle from bytes it had just verified, and answers the receipts it binds; the maintenance cycle hands the governed child's to its Sector exclusion. Every binding without that set is unchanged; the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "1688af4eac8285be270326191a867ddec3e8f1c06b7c4d68c9363bbc9d2da839",
+   "successor": "5e58fff36baf0a7ebc93f3811e63fa254148eb7fe09c947355e66d18e6cf4701",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "0d5b04974aa1b65d968db734bc6ff4f8a47227da4f78e04722fcd10e01a0e677",
+   "successor": "dadcd4fc9c13677d473e0d3e76dbb2bac17cc301d17cebd4be636d250edbd6b2",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "b84f29a7d19b853cb6a28c24c513bf30a9581ee942e9d7c193443ae05b9f50ec",
+   "successor": "bb07424489bedd1fc78e514aa6cfb602619cc5054e9e965691b5129e79eec1a9",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "d42e4f1b7aeebd402886ef71e6ef6c082bf5941edc0d29e9a40d6bd51c538fe0",
+   "successor": "28c086388e483c297e69fc8916522a8844ce14eaea67b01b485356913d7147e2",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "601c0479575d509bfb0e1e9748fe817931185bd65317170c2f55dcf6e4fb5a1e",
+   "successor": "d64c6a8dc6ebcdf2665162be60de68ea470580e8b8e5fed5bb2b449c93895ebd",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "4e5e2e2f89da5b4f82ff251193f910e7ab2784c19fbf376a7f76830ce627070c",
+   "successor": "7e14a8c358af50b6108d4bbd21ae8f3229ae156b4eb2a4566c75a1a87aec6496",
+   "change": "the action audit runs set-based across the listings a maintenance chunk completes, one receipt each as alone",
+   "reason": "complete_action_audits reads each table once for all observations and stages their receipts in one insert; the single-listing call is deleted and every caller passes one or more observations; the maintenance runner audits the fetches completed at once in one transaction and, on any exception, rolls back and applies each listing alone. Each receipt and row equals what that observation alone writes (test_a_batch_audit_writes_what_each_listing_writes_alone); the plant's two dailies are ALL EQUAL. No value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "5e58fff36baf0a7ebc93f3811e63fa254148eb7fe09c947355e66d18e6cf4701",
+   "successor": "af05626a6831cf9c0d5e0d0af22f6009967f49c266a3cb5408ca5642f99d10d6",
+   "change": "the set-based action audit keeps the store's one public audit method",
+   "reason": "complete_action_audits is renamed to the store's existing complete_action_audit, which takes one or more observations, so the store's public surface stays as it was; the maintenance runner's progress reads its counts once after a batch and publishes each listing's tick in turn. Only the name and the progress emission change; no value-deciding statement moved. No value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "dadcd4fc9c13677d473e0d3e76dbb2bac17cc301d17cebd4be636d250edbd6b2",
+   "successor": "57c20a0e2f6f1020b745cad5e59a67aa264c5ed7c7a692a3b42ab1f4dc82802c",
+   "change": "the set-based action audit keeps the store's one public audit method",
+   "reason": "complete_action_audits is renamed to the store's existing complete_action_audit, which takes one or more observations, so the store's public surface stays as it was; the maintenance runner's progress reads its counts once after a batch and publishes each listing's tick in turn. Only the name and the progress emission change; no value-deciding statement moved. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "bb07424489bedd1fc78e514aa6cfb602619cc5054e9e965691b5129e79eec1a9",
+   "successor": "f0c3627f745a24d9d890e9b41fac8530712601f44d2e93ea99c60874c4f259c7",
+   "change": "the set-based action audit keeps the store's one public audit method",
+   "reason": "complete_action_audits is renamed to the store's existing complete_action_audit, which takes one or more observations, so the store's public surface stays as it was; the maintenance runner's progress reads its counts once after a batch and publishes each listing's tick in turn. Only the name and the progress emission change; no value-deciding statement moved. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "28c086388e483c297e69fc8916522a8844ce14eaea67b01b485356913d7147e2",
+   "successor": "2e0dd1a990c79ad90b1148f25b7caa0b78364777c1460806b8d6cb146dd22b74",
+   "change": "the set-based action audit keeps the store's one public audit method",
+   "reason": "complete_action_audits is renamed to the store's existing complete_action_audit, which takes one or more observations, so the store's public surface stays as it was; the maintenance runner's progress reads its counts once after a batch and publishes each listing's tick in turn. Only the name and the progress emission change; no value-deciding statement moved. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "d64c6a8dc6ebcdf2665162be60de68ea470580e8b8e5fed5bb2b449c93895ebd",
+   "successor": "a7e231879770d0a90232d22b72679a3815d1fbf8cd6182f57915292a125f0173",
+   "change": "the set-based action audit keeps the store's one public audit method",
+   "reason": "complete_action_audits is renamed to the store's existing complete_action_audit, which takes one or more observations, so the store's public surface stays as it was; the maintenance runner's progress reads its counts once after a batch and publishes each listing's tick in turn. Only the name and the progress emission change; no value-deciding statement moved. No value changes."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "7e14a8c358af50b6108d4bbd21ae8f3229ae156b4eb2a4566c75a1a87aec6496",
+   "successor": "19df5284007339f5a19d91b557387edbc8a72b183b7c8d9325eddbb32a4ad817",
+   "change": "the set-based action audit keeps the store's one public audit method",
+   "reason": "complete_action_audits is renamed to the store's existing complete_action_audit, which takes one or more observations, so the store's public surface stays as it was; the maintenance runner's progress reads its counts once after a batch and publishes each listing's tick in turn. Only the name and the progress emission change; no value-deciding statement moved. No value changes."
   }
  ]
 }

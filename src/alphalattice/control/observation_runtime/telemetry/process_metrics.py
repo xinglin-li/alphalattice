@@ -22,7 +22,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Self, cast
+from typing import Any, Literal, Self
 
 import psutil  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -500,11 +500,14 @@ class RuntimeCapacityRequest(_CapacityContract):
         maximum_memory_fraction: Fractional memory ceiling used when no absolute reservation is
             supplied.
         reserved_logical_processors: Positive processor headroom kept outside the workload.
+        maximum_kept_workers: The most kept workers a Task's spread work starts, however many
+            cores its budget holds: each is a process the person sees for as long as it is kept.
     """
 
     maximum_memory_gib: float | None = Field(default=None, gt=0.0)
     maximum_memory_fraction: float = Field(default=0.60, gt=0.0, le=0.90)
     reserved_logical_processors: int = Field(default=1, ge=1)
+    maximum_kept_workers: int = Field(default=8, ge=1)
 
 
 class RuntimeParallelismRequest(_CapacityContract):
@@ -799,14 +802,13 @@ def _memory_capacity() -> tuple[int, int]:
     if os.name == "nt":
         status = _windows_memory_status()
         return int(status.total_physical), int(status.available_physical)
+    # No commit limit as on Windows: the memory a new process can take without swapping, the
+    # page cache counted free (Linux MemAvailable; macOS free and inactive pages), never free
+    # pages alone, and never a page count the platform lacks (macOS has no SC_AVPHYS_PAGES).
     try:
-        sysconf = cast(Any, getattr(os, "".join(("sys", "conf")), None))
-        if sysconf is None:
-            raise ProcessCapacityError("process_capacity.memory_snapshot_unavailable")
-        page = int(sysconf("SC_PAGE_SIZE"))
-        total = page * int(sysconf("SC_PHYS_PAGES"))
-        available = page * int(sysconf("SC_AVPHYS_PAGES"))
-    except (AttributeError, OSError, TypeError, ValueError) as error:
+        memory = psutil.virtual_memory()
+        total, available = int(memory.total), int(memory.available)
+    except (OSError, RuntimeError, AttributeError) as error:
         raise ProcessCapacityError("process_capacity.memory_snapshot_unavailable") from error
     return total, min(total, available)
 
@@ -838,11 +840,14 @@ def worker_processes(cores: int) -> int:
     writes what comes back, never fewer than one worker. Memory admits as many workers of this
     process's current size as fit in the share of available memory a runtime plan admits by
     default: a worker imports what its parent imported, so the parent's size is a cautious
-    measure of one.
+    measure of one. However many cores, no more than `maximum_kept_workers` (a 32-thread
+    machine kept 21 idle processes for the Host's life).
     """
     _total, available = _memory_capacity()
-    admitted = int(available * RuntimeCapacityRequest().maximum_memory_fraction)
-    return max(1, min(cores - 1, admitted // max(1, current_rss_bytes())))
+    request = RuntimeCapacityRequest()
+    admitted = int(available * request.maximum_memory_fraction)
+    fit = admitted // max(1, current_rss_bytes())
+    return max(1, min(cores - 1, request.maximum_kept_workers, fit))
 
 
 def resolve_runtime_capacity_plan(
@@ -1037,9 +1042,12 @@ def current_allowed_logical_processors() -> tuple[int, ...]:
         detected = os.cpu_count() or 1
         return tuple(index for index in range(detected) if mask & (1 << index))
     getter = getattr(os, "sched_getaffinity", None)
-    if not callable(getter):
-        raise ProcessCapacityError("process_capacity.logical_processor_bound_unenforceable")
-    return tuple(sorted(getter(0)))
+    if callable(getter):
+        return tuple(sorted(getter(0)))
+    if sys.platform == "darwin":
+        # macOS has no processor affinity that could have narrowed this process: all are its.
+        return tuple(range(os.cpu_count() or 1))
+    raise ProcessCapacityError("process_capacity.logical_processor_bound_unenforceable")
 
 
 def bind_process_logical_processors(

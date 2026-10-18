@@ -132,7 +132,7 @@ const LiveViews = (() => {
     if (typeof LiveTeam === 'undefined' || !LiveTeam.sessionsNaming) return [];
     const named = LiveTeam.sessionsNaming(...refs);
     if (!named.length) return [{icon: 'team', label: t('Team session'), value: t('none names this object')}];
-    return named.map((s) => ({icon: 'team', label: t(s.committee ? 'Committee' : 'Team session'), value: html`<span><span class="mono">${LiveTeam.sessionLabel(s.id)}</span>${(s.roles || []).length ? html` · ${s.roles.map(LiveTeam.roleName).join(', ')}` : ''}${s.committee ? html` · ${codeWords(s.committee.verdict?.outcome || s.committee.stage)}` : html` · ${countText(s.entries, '{n} exchange', '{n} exchanges')}`}</span>`, ...(s.committee ? {to: {page: 'team-committee', extra: {team: s.id, committee: s.committee.update_task_id}}} : {action: {name: 'team-open', value: s.id}}), note: s.question ? html`<span class="owner-text line-cut" data-tip="@overflow">${s.question}</span>` : ''}));
+    return named.map((s) => ({icon: 'team', label: t(s.committee ? 'Committee' : 'Team session'), value: html`<span><span class="mono">${LiveTeam.sessionLabel(s.id)}</span>${(s.roles || []).length ? html` · ${s.roles.map(LiveTeam.roleName).join(', ')}` : ''}${s.committee ? html` · ${codeWords(s.committee.verdict?.outcome || s.committee.stage)}` : html` · ${countText(s.entries, '{n} exchange', '{n} exchanges')}`}</span>`, ...(s.committee ? {to: {page: 'team-committee', extra: {team: s.id, committee: s.committee.update_task_id}}} : {action: {name: 'team-open', value: s.id}}), note: s.name ? html`<span class="owner-text line-cut" data-tip="@overflow">${s.name}</span>` : ''}));
   }
   /* The workspace chooser of the template: the workspace this service opened, and the two ways
    * to another one -- an empty folder the product is started on (its first page prepares it),
@@ -387,7 +387,7 @@ const LiveViews = (() => {
     const {selection:s,value:v,error}=reading, selector=v?.review_selector || s?.review_selector;
     if(!s)return [];
     const date=v?.schedule?.entry_session || s.positions_session, extra={review_selector:JSON.stringify(selector)};
-    const rows=[objectRow({lead:'portfolio',name:date ? t('Positions for {date}',{date}) : t('Positions not stated'),why:error ? t('Positions not read') : '',to:{page:'evidence',extra}}, {key:'positions:'+s.task_id+':'+selector.update_publication_hash,columns:['book'],props:[s.book_task_id ? link(t('Portfolio study'),'portfolio','text-btn',{book:s.book_task_id,session:date,performance:'forward'}) : '']})];
+    const rows=[objectRow({lead:'portfolio',name:date ? t('Positions for {date}',{date}) : t('Positions not stated'),why:error ? t('Positions not read') : '',to:{page:'evidence',extra}}, {key:'positions:'+s.task_id+':'+selector.update_publication_hash,columns:['book'],props:[s.book_task_id ? link(t('Portfolio study'),'portfolio','text-btn',{book:s.book_task_id,performance:'forward'}) : '']})];
     if(error)return [...rows,notRead(t('Positions not read'),error)];
     if(!v)return rows;
     const review=v.review_standing, publication=review?.review_publication_hash, committee=v.committee_context;
@@ -418,7 +418,7 @@ const LiveViews = (() => {
     const meta = html`<span>${icon('task')}${countText(openTaskCount(), '{n} Task needs a decision', '{n} Tasks need a decision')}</span><span>${icon('lock')}${t('Local workspace')}</span>`;
     const goal=Data.currentGoal(), title=goal?.question || t('Home'), date=goal?.target_date || goal?.declaration?.target_date;
     const facts=homeChips().filter(Boolean);
-    if(goal)facts.unshift([t('Current goal'),html`${btn(t(goal.title || goal.declaration?.title || 'Goal'),'goal-open',goal.goal_hash || goal.goal_id,'text-btn')}${date ? html` · ${date}` : ''}`]);
+    if(goal)facts.unshift([t('Current goal'),html`${btn(t(goal.title || goal.declaration?.title || 'Goal'),'goal-open',goal.goal_id || goal.goal_hash,'text-btn')}${date ? html` · ${date}` : ''}`]);
     return html`${objectHead(title, meta, html`${f.secondary}${f.primary}`, f.state, HOME_TOOLS(), {object:true,facts})}${unprepared || LiveWorkspace.selectedTask('welcome') ? html`<section class="first-use" aria-label="${t('First use')}">${LiveWorkspace.firstUse()}</section>` : ''}<section class="home-groups" aria-label="${t('Home')}">${homeGroups(unprepared)}</section>`;
   }
   function tasks() {

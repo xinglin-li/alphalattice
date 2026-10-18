@@ -12,8 +12,8 @@
 # product needs all of them; a narrower environment is a deliberate choice.
 [project]
 name = "alphalattice"
-version = "0.1.9"
-description = "A local quantitative research workstation for Codex and Claude Code."
+version = "0.2.0"
+description = "A local quantitative research workstation for Claude Code and Codex."
 authors = [{ name = "Xinglin Li", email = "xinglin789@outlook.com" }]
 readme = "README.md"
 license = "Apache-2.0"
@@ -49,7 +49,7 @@ build_py = "scripts.release.wheel_build.BuildPy"
 scripts = "scripts"
 
 [tool.setuptools.package-data]
-alphalattice = ["**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.md", "**/*.txt", "**/*.html", "**/*.css", "**/*.js", "**/*.woff2", "**/*.svg"]
+alphalattice = ["**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.md", "**/*.txt", "**/*.html", "**/*.css", "**/*.js", "**/*.woff2", "**/*.svg", "protocols/actor_execution/cl100k_base.tiktoken.gz"]
 
 [project.optional-dependencies]
 # Data Operations, Feature, Panel, and workspace storage.

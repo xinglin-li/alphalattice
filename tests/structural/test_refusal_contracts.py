@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from tests.structural.refusal_support import refusal_codes
+from tests.structural.refusal_support import door_words, refusal_codes
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 
@@ -51,6 +51,31 @@ def test_every_task_stop_sentence_fits_its_bound_and_reads_whole() -> None:
     assert long == {}, long
     data = refusal_codes()["maintenance_dict_keys"]
     assert data and all(len(maintenance_failure_detail(code)) <= STOP_WORDS_BOUND for code in data)
+    # One lookup whatever the Task kind: a code any owner words reads worded for every kind.
+    kinds = (
+        "workspace_data_update",
+        "portfolio_public_watermark_advancement",
+        "research_experiment",
+    )
+    generic = {stop_detail(kind, "no_owner.unworded", "TASK_CONTROL") for kind in kinds}
+    split = sorted(
+        code
+        for code in {*worded, *data}
+        if any(stop_detail(kind, code, "TASK_CONTROL") in generic for kind in kinds)
+    )
+    assert split == [], (len(split), split[:12])
+    # The most actionable words win: a code the Host words reads its words for every kind.
+    door = door_words()
+    lost = sorted(
+        code
+        for code in {*worded, *data}
+        if not code.startswith(("data.", "feature.")) or code not in door
+        if (words := explain(code).get("detail"))
+        and any(
+            stop_detail(kind, code, "TASK_CONTROL") != words[:STOP_WORDS_BOUND] for kind in kinds
+        )
+    )
+    assert lost == [], (len(lost), lost[:12])
 
 
 def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> None:
@@ -94,9 +119,15 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ),
         ("interface/local_application/cli.py", "<module>"): "`session bind`'s help",
         ("interface/local_application/cli.py", "_command"): "serve's arguments to its launcher",
+        ("control/product_host/composition/web_launcher.py", "_detach"): (
+            "a detached Host's arguments to its own launcher"
+        ),
         ("interface/local_application/cli.py", "_global_options"): "the option and its help",
         ("interface/local_application/cli.py", "_repair"): (
             "a malformed --workspace's repair, the unexpected case"
+        ),
+        ("interface/local_application/cli.py", "_refused"): (
+            "a line that named no workspace, offered back with one named"
         ),
         ("interface/local_application/cli_contract.py", "<module>"): (
             "the unbound refusals' way on and the binding's words"
@@ -166,6 +197,10 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         "native_bridge.workspace_mismatch": (
             "another workspace cannot borrow this Session's binding; rebinding names its new scope"
         ),
+        "native_bridge.bound_in_workspace": (
+            "a binding kept in the workspace's own folder is found from no project"
+        ),
+        "native_bridge.session_not_bound": "an unbound Session has no implicit workspace",
     }
     assert naming == set(full_form_refusals)
 

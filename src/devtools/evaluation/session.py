@@ -47,15 +47,36 @@ def _roles(subjects, shown, cells):
 
 
 def _recipient(subjects, shown):
+    """An issue names its recipient, and a protocol-addressed row names its recipient's role."""
     admitted = {i["observation_id"]: s for i, s in subjects}
+    words = shown["role_words"]
     for entry in shown["entries"]:
         issue = admitted.get(entry["id"], {})
         if (
             issue.get("message_kind") == "issue"
             and issue.get("recipient_id")
             and entry.get("recipient_label") == shown["unidentified"]
+        ) or (
+            issue.get("recipient_role")
+            and entry.get("recipient_label") != words.get(issue["recipient_role"])
         ):
             return {"session.recipient"}
+    return set()
+
+
+def _role_usage(subjects, shown):
+    """A member a usage reading verifies shows that role with its usage, on its own row."""
+    verified = {
+        s["native_agent_id"]: s["role"]
+        for _, s in subjects
+        if s.get("model")
+        and s.get("role")
+        and (s.get("specialist_verified") == "true" or s.get("reference"))
+    }
+    for member in shown["members"]:
+        role = verified.get(member["id"])
+        if role and (member.get("roles") != [role] or not member.get("usage_visible")):
+            return {"session.role_usage"}
     return set()
 
 
@@ -133,10 +154,22 @@ def _admitted_members(feed, shown, times):
             yield sub.get("agent_session")
 
 
+def _usage_snapshots(shown, latest, members):
+    """The retained window keeps each shown member's latest model snapshot."""
+    if "retained_usage_ids" not in shown:
+        return True
+    snapshots = {
+        record["_observation_id"]
+        for (actor, _), record in latest.items()
+        if actor in members and record.get("_observation_id")
+    }
+    return snapshots <= set(shown["retained_usage_ids"])
+
+
 def _usage(feed, shown, times):
     latest = {}
     records = [
-        item["payload"].get("subject", {})
+        dict(item["payload"].get("subject", {}), _observation_id=item["observation_id"])
         for item in feed["items"]
         if (item.get("payload") or {}).get("event_kind") == "NATIVE_AGENT_USAGE"
     ] + feed.get("native_usage", [])
@@ -144,6 +177,8 @@ def _usage(feed, shown, times):
         if record.get("native_session_id") == shown["id"] and record.get("model"):
             latest[record.get("native_agent_id"), record["model"]] = record
     members = {member["id"]: member for member in shown["members"]}
+    if not _usage_snapshots(shown, latest, members):
+        return {"session.usage"}
     admitted = set(_admitted_members(feed, shown, times))
     if {actor for actor, _model in latest if actor in admitted} - members.keys():
         return {"session.members_missing"}
@@ -253,10 +288,15 @@ def session_findings(feed, projection):
             and (feed.get("usage_readings", {}).get(sid) or {}).get("status") == "DELIVERED"
         ):
             rules.add("session.usage_catching_up")
+        if (
+            shown.get("usage_notice") == "UNAVAILABLE"
+            and (feed.get("usage_readings", {}).get(sid) or {}).get("status") == "DELIVERED"
+        ):
+            rules.add("session.usage_standing")
         rules |= _recipient(subjects[sid], shown) | _goal(
             subjects[sid], shown, feed.get("goals", {})
         )
-        rules |= _span(subjects[sid], shown, times[sid])
+        rules |= _span(subjects[sid], shown, times[sid]) | _role_usage(subjects[sid], shown)
         rules |= _usage(feed, shown, times[sid]) | _references(shown)
         rules |= _retained(subjects[sid], shown)
         rules |= _product_records(feed, shown)

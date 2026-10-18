@@ -43,10 +43,10 @@ def installer_universe(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     This module's one patch of the installer's universe: its real sources, a workspace's
     risk surface or a selected research input, are not built here (TE5).
     """
-    from scripts import materialize_evidence_cro_authority as setup
+    from alphalattice.control.product_host.composition import portfolio_result_context
 
     chosen: dict[str, str] = {}
-    monkeypatch.setattr(setup, "_universe_listing_ids", lambda _workspace: chosen)
+    monkeypatch.setattr(portfolio_result_context, "universe_listing_ids", lambda _workspace: chosen)
     return chosen
 
 
@@ -70,7 +70,7 @@ def _bound(tmp_path: Path) -> Any:
 
 
 def _install(
-    tmp_path: Path, *, served: list[bool], during: Any = None, runs: int = 1
+    tmp_path: Path, *, served: list[bool], during: Any = None, runs: int = 1, hold: Any = None
 ) -> tuple[Any, str, str]:
     """Run one install Task of an SEC acquisition in a workspace session `runs` times (a recovery
     after the first): its record, and the bound package's path before and after."""
@@ -86,7 +86,9 @@ def _install(
     binding = _bound(tmp_path)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         install = setup.EvidenceInstall(
-            session=session, clock=lambda: datetime.now(UTC), installed=lambda: served.append(True)
+            session=session,
+            clock=lambda: datetime.now(UTC),
+            installed=lambda: (hold and hold(install), served.append(True)),
         )
         admitted = install.admit(
             [
@@ -149,12 +151,49 @@ def test_the_running_host_installs_a_package_as_a_task_of_five_stages(tmp_path, 
     verify; it binds the package and asks the Host to serve it."""
     from alphalattice.control.workspace_runtime.network_access import set_network_access
 
-    set_network_access(tmp_path, enabled=True)
+    set_network_access(tmp_path, enabled=True, now=datetime.now(UTC))
     served: list[bool] = []
     task, before, after = _install(tmp_path, served=served)
     assert task.lifecycle.value == "SUCCEEDED", task.failure_code
     assert served == [True] and len(acquisition.calls) == 3
     assert after != before and after.startswith("authority/evidence-cro/")
+
+
+def test_a_request_while_the_install_publishes_needs_no_restart(tmp_path, acquisition):
+    """regression (the person's fresh-checkout first use, 2026-10-16): a wait arriving between the
+    install's manifest write and the Host holding it was refused as a restart. The Host's own
+    publication passes; a manifest changed outside the Host still refuses, with words."""
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
+    from alphalattice.control.product_host.composition.research_workspace import (
+        read_research_workspace_manifest,
+    )
+    from alphalattice.control.workspace_runtime.network_access import set_network_access
+    from alphalattice.interface.local_application.cli_contract import refusal_words
+
+    set_network_access(tmp_path, enabled=True, now=datetime.now(UTC))
+    before: list[Any] = []
+    owned = SimpleNamespace(has_tasks=lambda: True, owns_published_manifest=lambda _: False)
+
+    def refresh(install: Any) -> None:  # the request the Host answers in that window
+        host = SimpleNamespace(
+            workspace_session=SimpleNamespace(workspace=tmp_path),
+            _manifest_stamp=None,
+            preparation=owned,
+            model_training_inputs=SimpleNamespace(task_kind="t", **vars(owned)),
+            workspace_manifest=before[0],
+            evidence_install=install,
+        )
+        PortfolioResearchOperations._refresh_prepared_inputs(host)  # type: ignore[arg-type]
+
+    snapshot = lambda *_: before.append(read_research_workspace_manifest(tmp_path))  # noqa: E731
+    task, _, _ = _install(tmp_path, served=[], during=snapshot, hold=refresh)
+    assert task.lifecycle.value == "SUCCEEDED", task.failure_code
+    with pytest.raises(ValueError, match="configuration_changed_restart_required"):
+        refresh(SimpleNamespace(publishing=False))  # the same change, outside an install
+    words = refusal_words("research_workspace.configuration_changed_restart_required")
+    assert words["detail"] and words["next_action"] == "TELL_THE_PERSON_THE_HOST_NEEDS_A_RESTART"
 
 
 def test_a_recovered_install_runs_only_the_stage_it_stopped_in(tmp_path, acquisition, monkeypatch):
@@ -164,7 +203,7 @@ def test_a_recovered_install_runs_only_the_stage_it_stopped_in(tmp_path, acquisi
 
     from alphalattice.control.workspace_runtime.network_access import set_network_access
 
-    set_network_access(tmp_path, enabled=True)
+    set_network_access(tmp_path, enabled=True, now=datetime.now(UTC))
     whole = setup.canonicalize_source_documents
     stops = [KeyError("a process that stopped mid-stage")]
 
@@ -186,7 +225,7 @@ def test_a_cancelled_install_binds_nothing(tmp_path, acquisition, monkeypatch):
 
     from alphalattice.control.workspace_runtime.network_access import set_network_access
 
-    set_network_access(tmp_path, enabled=True)
+    set_network_access(tmp_path, enabled=True, now=datetime.now(UTC))
     whole = setup.canonicalize_source_documents
     asked: list[Any] = []
 
@@ -234,9 +273,12 @@ def test_an_installed_package_is_served_before_the_runtime_it_replaced_closes(tm
     assert order[:4] == ["review", "storage", "admission", "close"] and len(order) == 5
 
 
-def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(tmp_path, monkeypatch):
+def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
+    tmp_path, monkeypatch, acquisition
+):
     """requirement: a Host without the retrieval runtime blocks its install by name, the package
-    bound before stays bound, and the declared environment filled afterwards is read in place."""
+    bound before stays bound, and the declared environment filled afterwards is read in place;
+    the same request sent again continues the blocked Task, which then reads as resolved."""
     from alphalattice.interface.local_application import retrieval_environment
 
     environment, (major, minor) = tmp_path / "declared-retrieval", sys.version_info[:2]
@@ -262,6 +304,33 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(tmp_p
     config = f"version_info = {major}.{minor}\n"  # as uv writes it, with no patch number
     (environment / "pyvenv.cfg").write_text(config, encoding="utf-8")
     assert retrieval_environment.load() and str(site) == sys.path[-1]
+    # regression (the person's fresh-checkout first use, 2026-10-16): the blocked Task stayed
+    # under Blocked though the same install, sent again, succeeded.
+    from alphalattice.control.product_host.composition.application_session import (
+        WorkspaceApplicationSession,
+    )
+    from alphalattice.control.product_host.composition.task_recovery import (
+        resolved_read,
+        task_attention,
+    )
+    from alphalattice.control.workspace_runtime.network_access import set_network_access
+
+    set_network_access(tmp_path, enabled=True, now=datetime.now(UTC))
+    again, _, _ = _install(tmp_path, served=served)
+    assert again.lifecycle.value == "SUCCEEDED", again.failure_code
+    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        registry = session.task_control_registry
+        fact = task_attention(
+            registry.task(task.task_id),
+            successors={again.task_id: registry.task(again.task_id)},
+            links=registry.recovery_links(),
+        )
+    assert (fact.resolution, fact.successor_task_id) == ("SUCCESSOR_SUCCEEDED", str(again.task_id))
+    read: dict[str, object] = {"lifecycle": "BLOCKED", "next_requests": {}}
+    resolved_read(read, fact)  # what the Tasks page and a status read show for the stop
+    assert read["next_requests"] == {
+        "successor": {"operation": "STATUS", "task_id": str(again.task_id)}
+    }
 
 
 def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path, monkeypatch):
@@ -316,15 +385,21 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
     def load_sector(store, **options):
         assert store.root == root / "feature-panel/closure"
         assert options == dict(
-            category="sector-maps", content_hash=sector_hash, model=setup.SectorRevisionMap
+            category="sector-maps",
+            content_hash=sector_hash,
+            model=portfolio_result_context.SectorRevisionMap,
         )
         return classification
 
     monkeypatch.setattr(
         portfolio_result_context.PortfolioResearchArtifactStore, "load", load_authority
     )
-    monkeypatch.setattr(setup.RiskReturnArtifactStore, "load_manifest", load_risk)
-    monkeypatch.setattr(setup.PanelClosureArtifactStore, "load_model", load_sector)
+    monkeypatch.setattr(
+        portfolio_result_context.RiskReturnArtifactStore, "load_manifest", load_risk
+    )
+    monkeypatch.setattr(
+        portfolio_result_context.PanelClosureArtifactStore, "load_model", load_sector
+    )
     old_binding, _ = _package(tmp_path)
     original = ResearchWorkspaceManifest.create(
         workspace_id="source-setup",
@@ -408,7 +483,7 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
         with pytest.raises(RuntimeError, match="semantic_capability_not_ready") as raised:
             setup.materialize(args)
     # Its way on fills the runtime and reads the packs, never the same check again.
-    ways = setup.setup_refusal(args, raised.value)["next_commands"]
+    ways = setup.setup_refusal(args, raised.value, now=datetime.now(UTC))["next_commands"]
     assert set(ways) == {"environment", "packs"} and "--offline" in ways["environment"]
     assert transport.calls == []
     args.preflight = False
@@ -1250,3 +1325,30 @@ def test_research_workspace_identity_binds_the_optional_evidence_authority(
     )
     assert without.manifest_hash != with_authority.manifest_hash
     assert with_authority.evidence_review == binding
+
+
+def test_a_quiet_install_offers_the_next_eight_holdings_by_weight(tmp_path, installer_universe):
+    """requirement (a first-use run, 2026-10-15): the install is offered ready, the book's eight
+    largest holdings first; one whose issuers all filed nothing offers the next eight."""
+    from alphalattice.control.product_host.composition.evidence_source_ways import (
+        install_offer,
+        quiet_install,
+    )
+
+    held = [SimpleNamespace(listing_id=f"L{n:02}", ending_weight=1 - n / 50) for n in range(20)]
+    installer_universe.update({f"T{n:02}": f"L{n:02}" for n in range(20)})
+    book = SimpleNamespace(experiment_positions=held)
+    first = install_offer(tmp_path, book, authored=False)["install"]
+    issuers = first["evidence_setup"].split(" --")[1].split()[1:]
+    assert issuers == [f"T{n:02}" for n in range(8)], first
+    stopped = SimpleNamespace(payload={"arguments": first["evidence_setup"].split()})
+    way = {"next_requests": {"recovery": {"operation": "TASK_RECOVERY"}}}
+    after = quiet_install(way, tmp_path, book, None, stopped)
+    nxt = after["next_requests"]["install"]["evidence_setup"].split(" --")[1].split()[1:]
+    assert nxt == [f"T{n:02}" for n in range(8, 16)] and "recovery" in after["next_requests"]
+    # Where an acquisition holds the SEC registry, a ticker it does not name is not offered.
+    registries = tmp_path / "runtime/artifacts/alternative-evidence/registries"
+    registries.mkdir(parents=True)
+    known = [{"ticker": f"T{n:02}"} for n in range(20) if n != 1]
+    (registries / "r.json").write_text(json.dumps({"entries": known}), encoding="utf-8")
+    assert "T01" not in install_offer(tmp_path, book, authored=False)["install"]["evidence_setup"]

@@ -35,7 +35,7 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 )
 from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.registry import TaskQueueFull
-from alphalattice.interface.local_application import client
+from alphalattice.interface.local_application import client, native_bridge
 from alphalattice.interface.local_application.answers import continuation_problem
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
@@ -174,7 +174,7 @@ def test_assets_are_cached_by_content_hash_and_nothing_else_is(
     read_only_live.start()
     words = refusal_words("local_web.assets_stale")
     assert words["next_action"] == "BUILD_LOCAL_WEB_ASSETS_AND_SERVE_AGAIN"
-    assert "python scripts/build_local_web_ui.py --product" in words["detail"]
+    assert native_bridge.WORKBENCH_BUILD in words["detail"]  # the doctor's own command
 
 
 def test_no_asset_reaches_outside_the_machine(read_only_live: LocalPortfolioWebSession) -> None:

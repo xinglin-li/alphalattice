@@ -11,6 +11,10 @@ Read the Panel's temporal marks with evaluation and input history. Later data ne
 
 Use the saved full answer or `--view full`; `--output` retains fields compact display can omit.
 
+## Positions date and formation
+
+For an update, the date named with `research-update plan --package <package> --date <date>` is the entry session, when the positions are entered at the open. Their formation session is the preceding exchange session, whose close is their numerical information cutoff. A non-refused plan's `positions_for` gives `trade_date`, `as_of_session`, `as_of_close_at` and a plain `reading`; a date refusal names its own way on. The named date does not mean the last downloaded bar or the formation date. Evidence retains its separate source-availability statement.
+
 ## Membership and evaluation
 
 `t0_session` ends the first qualified Panel. Its initial cohort backfills earlier membership; observed entries and exits supply forward history. Pre-T0 coverage is approximate, not complete point-in-time membership. A cohort collected from surviving listings carries survivorship bias that later observations cannot repair.

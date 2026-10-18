@@ -35,7 +35,9 @@ from alphalattice.interface.local_application.cli_contract import (
     Outcome,
     agent_provenance_headers,
     agent_session,
+    answer_json,
     choices,
+    client_failure,
     client_refusal,
     command,
     command_table,
@@ -45,12 +47,18 @@ from alphalattice.interface.local_application.cli_contract import (
     named_read,
     offered_requests,
     outcome_of,
-    schema_request,
+    refused,
     shell,
     task_state,
     worded,
 )
-from alphalattice.interface.local_application.goals import target_sessions
+from alphalattice.interface.local_application.goals import (
+    DAILY_NETWORK_RELAY,
+    FIRST_USE_ASK_NOW,
+    NEW_RESEARCH_SCOPE,
+    WATCH_IN_WORKBENCH,
+    target_sessions,
+)
 
 CONNECTION_NAME = "local-research-connection.json"
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
@@ -443,14 +451,25 @@ class LocalResearchClient:
         return {**body, "result_hash": result_hash}, raw
 
     def selected_url(self, document: dict[str, Any], body: dict[str, Any]) -> str:
-        """Keep the exact answer's address and the Goal whose work the browser follows."""
-        selected = urlsplit(self._selected_url(document, body))
-        goal = body.get("attributed_goal_id") or self.goal
-        if goal is None and str(document.get("operation", "")).startswith("GOAL_"):
+        """Open the answer's object; prefer a Goal's head to a revision."""
+        owner_goal = None
+        if str(document.get("operation", "")).startswith("GOAL_"):
             named = body.get("goal")
-            goal = body.get("goal_id") or (
-                named.get("goal_id") if isinstance(named, Mapping) else None
+            owner_goal = (
+                body.get("goal_id")
+                or (named.get("goal_id") if isinstance(named, Mapping) else None)
+                or document.get("goal_id")
             )
+            target = owner_goal or body.get("goal_hash") or document.get("goal_hash")
+            url = (
+                self.connection.url.rstrip("/")
+                + "/#"
+                + urlencode({"page": "goal", "goal": target} if target else {"page": "goals"})
+            )
+        else:
+            url = self._selected_url(document, body)
+        selected = urlsplit(url)
+        goal = body.get("attributed_goal_id") or self.goal or owner_goal
         fragment = parse_qs(selected.fragment)
         fragment["follow"] = [f"goal:{goal}" if goal is not None else "latest"]
         return urlunsplit(selected._replace(fragment=urlencode(fragment, doseq=True)))
@@ -492,13 +511,6 @@ class LocalResearchClient:
                         "alpha_right_candidate": selection["right_candidate_id"],
                     }
                 )
-            )
-        if operation.startswith("GOAL_"):
-            goal_hash = body.get("goal_hash") or document.get("goal_hash")
-            return (
-                self.connection.url.rstrip("/")
-                + "/#"
-                + urlencode({"page": "goal", "goal": goal_hash} if goal_hash else {"page": "goals"})
             )
         activation = body.get("activation")
         if isinstance(activation, dict):
@@ -576,15 +588,7 @@ class LocalResearchClient:
         return self.connection.url + ("?" + urlencode(query) if query else "")
 
     def navigation(self, document: dict[str, Any], body: dict[str, Any]) -> dict[str, str]:
-        """Describe where a person can open this answer in Local Web.
-
-        Args:
-            document: The operation sent to the Host.
-            body: Its owner answer.
-
-        Returns:
-            A labelled URL and navigation kind, never product authority.
-        """
+        """The answer's labelled public address; navigation grants no authority."""
         url = self.selected_url(document, body)
         query = parse_qs(urlsplit(url).query)
         page = parse_qs(urlsplit(url).fragment).get("page", [""])[0]
@@ -592,7 +596,7 @@ class LocalResearchClient:
         if document.get("operation") == "EXPERIMENT_ALPHA_COMPARE":
             kind, label = "alpha_comparison", "Open this exact saved Alpha comparison"
         elif document.get("operation", "").startswith("GOAL_"):
-            kind, label = "goal", "Open Goals" if page == "goals" else "Open this goal revision"
+            kind, label = "goal", "Open Goals" if page == "goals" else "Open the goal"
         elif page == "portfolio":
             kind, label = "portfolio_book", "Open this book on Portfolio"
         elif entry.startswith("review:"):
@@ -643,22 +647,13 @@ def lead_readings(
     Returns:
         The Host's aggregate receipt; none when reading is off or this is not its lead.
     """
-    from alphalattice.interface.local_application.native_bridge import (
-        NativeBridgeError,
-        NativeResearchBinding,
-    )
+    from alphalattice.interface.local_application.native_bridge import session_binding
 
     session = agent_session(environ)
     if session is None:
         return []
-    try:
-        found = NativeResearchBinding.find(project, session=session)
-    except NativeBridgeError as error:
-        # This host has no lead in the nearest configured project. Optional readings
-        # skip it; public binding requests retain the strict project refusal.
-        if str(error) == "native_bridge.project_mismatch":
-            return []
-        raise
+    # The project's binding, else the one the Host kept in the workspace (sandboxed).
+    found = session_binding(project, workspace, session)
     if found is None:
         return []
     project, binding = found
@@ -766,9 +761,8 @@ def _listed(path: Path) -> list[Any]:
 
 
 def _response_document(path: Path) -> dict[str, Any]:
-    """Read a saved full or compact JSON/YAML answer.
-
-    Only a continued part must be whole (`_whole`); a local refusal keeps its own offer.
+    """Read saved JSON/YAML, full or compact.
+    Only continued parts must be whole; refusals retain offers.
     """
 
     import yaml
@@ -831,10 +825,9 @@ _BOOK_CONTEXT: Final = frozenset({"position_basis", "portfolio_session"})
 
 
 def _offered_book(offered: dict[str, dict[str, Any]], allowed: frozenset[str]) -> dict[str, Any]:
-    """The one book the answer's own requests select, as the operation takes it (V473).
-
-    A book's answer offers its Evidence and review bound to the book; an operation it does not
-    offer continues that book, never the workspace's default. Two books are refused by name.
+    """Use the answer's bound book (V473).
+    Offers bind Evidence/review; other operations inherit it, never the default.
+    Refuse two books.
     """
     books = {
         tuple(sorted((k, v) for k, v in request.items() if k in BOOK_SELECTORS | _BOOK_CONTEXT))
@@ -859,9 +852,8 @@ name: a published or prepared Task, a plan, a factor, a prepared unit (V449)."""
 
 
 def _located(answer: dict[str, Any], *keys: str) -> str:
-    """Read returned locators, not declarations of authority; the Host revalidates.
-
-    The answer's own first, then the read's request its CLI copy keeps (`named_read`, V454).
+    """Answer locators precede named_read's (V454).
+    The Host revalidates authority.
     """
     kept = answer.get("read_request")
     for source in (answer, kept if isinstance(kept, dict) else {}):
@@ -871,29 +863,59 @@ def _located(answer: dict[str, Any], *keys: str) -> str:
     raise LocalResearchClientError("local_client.response_reference_missing:" + ",".join(keys))
 
 
+def _bundle_output(directory: Path, expected: Mapping[str, str | None]) -> set[str]:
+    """Reuse matching output; refuse other files."""
+    try:
+        if not directory.exists():
+            return set()
+        if not directory.is_dir():
+            raise LocalResearchClientError("local_client.bundle_directory_exists")
+        kept = {path.name: path for path in directory.iterdir()}
+        if kept and BUNDLE_WORKSPACE in expected and BUNDLE_WORKSPACE not in kept:
+            raise LocalResearchClientError("local_client.bundle_directory_exists")
+        for name, path in kept.items():
+            if path.is_symlink() or path.is_junction():
+                raise LocalResearchClientError("local_client.bundle_directory_exists")
+            value = expected.get(name)
+            mutable = name in {"answer.json", "message.yaml"} and "README.md" in expected
+            valid = (
+                (path.is_file() if mutable else path.is_dir())
+                if value is None
+                else (path.is_file() and path.read_bytes() == value.encode("utf-8"))
+            )
+            if not (name in expected or mutable) or not valid:
+                raise LocalResearchClientError("local_client.bundle_directory_exists")
+        return set(kept)
+    except OSError as error:
+        raise LocalResearchClientError("local_client.bundle_write_refused") from error
+
+
 def _write_bundle(
     directory: Path, body: dict[str, Any], workspace: Path | None = None, *, prefix: tuple[str, ...]
 ) -> dict[str, Any]:
-    """Write a new bundle; return file sizes, answer path and the scoped submit command."""
+    """Write/continue a bundle; return sizes, answer and scoped submit."""
     files = body.get("files")
     if not isinstance(files, list) or not files:
         raise LocalResearchClientError("local_client.bundle_response_invalid")
-    listing: list[dict[str, object]] = []
+    output = {str(item.get("name", "")): item.get("text") for item in files}
+    if any(not n or Path(n).name != n or not isinstance(t, str) for n, t in output.items()):
+        raise LocalResearchClientError("local_client.bundle_response_invalid")
+    expected: dict[str, str] = {
+        **(
+            {BUNDLE_WORKSPACE: json.dumps({"workspace": str(workspace.resolve())}) + "\n"}
+            if workspace is not None
+            else {}
+        ),
+        **output,
+    }
     try:
-        directory.mkdir(parents=True, exist_ok=False)
-        if workspace is not None:
-            (directory / BUNDLE_WORKSPACE).write_bytes(
-                (json.dumps({"workspace": str(workspace.resolve())}) + "\n").encode()
-            )
-        for item in files:
-            name, text = str(item.get("name", "")), item.get("text")
-            if not name or Path(name).name != name or not isinstance(text, str):
-                raise LocalResearchClientError("local_client.bundle_response_invalid")
+        kept = _bundle_output(directory, expected)
+        directory.mkdir(parents=True, exist_ok=True)
+        for name, text in expected.items():
+            if name in kept:
+                continue
             with (directory / name).open("x", encoding="utf-8", newline="\n") as stream:
                 stream.write(text)
-            listing.append(
-                {"name": name, "lines": text.count("\n"), "bytes": len(text.encode("utf-8"))}
-            )
     except OSError as error:
         raise LocalResearchClientError("local_client.bundle_write_refused") from error
     answer = directory / "answer.json"
@@ -911,7 +933,10 @@ def _write_bundle(
     command = join([*prefix[:width], *arguments], shell())
     return {
         **{key: value for key, value in body.items() if key != "files"},
-        "files": listing,
+        "files": [
+            {"name": n, "lines": t.count("\n"), "bytes": len(t.encode("utf-8"))}
+            for n, t in output.items()
+        ],
         "answer_file": str(answer),
         "submit_arguments": arguments,
         **({} if command is None else {"submit_command": command}),
@@ -919,18 +944,15 @@ def _write_bundle(
 
 
 def _bundle_directory(document: dict[str, Any]) -> Path | None:
-    """Resolve the bundle directory named by a supported operation.
-
-    A bundle is prepared only into a directory that does not yet exist.
-    """
+    """Resolve output; preflight before contacting the Host."""
     operation, value = document.get("operation"), document.get("bundle_directory")
     if operation not in {"AGENT_BUNDLE_PREPARE", "AGENT_ANSWER_SUBMIT"} or not isinstance(
         value, str
     ):
         return None
     directory = Path(value).resolve()
-    if operation == "AGENT_BUNDLE_PREPARE" and directory.exists():
-        raise LocalResearchClientError("local_client.bundle_directory_exists")
+    if operation == "AGENT_BUNDLE_PREPARE" and not (directory / BUNDLE_WORKSPACE).is_file():
+        _bundle_output(directory, {})
     document["bundle_directory"] = str(directory)
     return directory
 
@@ -938,10 +960,8 @@ def _bundle_directory(document: dict[str, Any]) -> Path | None:
 def _request_fields(
     template: dict[str, Any], supplied: dict[str, Any], path: str = ""
 ) -> dict[str, Any]:
-    """Fill declared choices without silently replacing an owner's bound reference.
-
-    A field the owner wrote as None is a choice left to the reader (V136), filled like an
-    absent one.
+    """Fill choices without replacing bound references.
+    The owner's None or absent field is open (V136).
     """
     result = dict(template)
     for key, value in supplied.items():
@@ -980,9 +1000,8 @@ def _shown_as(left: str, right: str) -> bool:
 
 
 def _document_value(field: str, given: str) -> object:
-    """The document `--file` names: its text for a text field (a declaration kept as written),
-    the YAML or JSON it holds otherwise; `-` reads stdin, and a value that is JSON itself, as a
-    next command prints it, is the document."""
+    """Read --file: text fields keep text; others parse YAML/JSON.
+    `-` reads stdin; inline JSON is a document, as next_commands prints it."""
     if given.lstrip().startswith(("{", "[")):
         try:
             return json.loads(given)
@@ -995,17 +1014,11 @@ def _document_value(field: str, given: str) -> object:
 
 
 def document_field(documents: list[str], given: str) -> tuple[str, object]:
-    """Read the declaration into the selected operation's registered document field.
+    """Return a registered field and its declaration (V432).
 
-    A path fills the first field; an inline JSON value fills the first whose kind fits it,
-    so a printed `--file '{...}'` sends the request it came from (V432).
-
-    Args:
-        documents: The selected operation's document fields, in registry order.
-        given: A file path, stdin marker or inline JSON value.
-
-    Returns:
-        The request field and the document it reads.
+    `documents` follows registry order; `given` is a path, stdin or inline JSON.
+    Paths fill the first field; inline JSON fills the first matching kind.
+    Thus a printed --file JSON continues the request it came from.
     """
     value = _document_value(documents[0], given)
     if isinstance(value, dict | list):
@@ -1118,33 +1131,24 @@ def continuation(
 def continued(
     operation: str, bundle: dict[str, Any], given: dict[str, Any], allowed: frozenset[str]
 ) -> dict[str, Any]:
-    """Build an operation request from an answer and explicit fields.
+    """Continue the saved answer into an operation.
 
-    A draft's ``plan_request`` starts a plan with the references it binds kept (a field that
-    would replace one is refused); a declaration given replaces the draft's, and without one
-    the draft's own document is planned. A controls
-    answer starts one on its input, its template planned when no declaration is given (V355).
-    A next request for the operation starts it with its bound references kept (a field that
-    would replace one is refused, as ``request --from`` refuses it); a preview's ``replan`` is
-    one, and a declaration given replaces the one it offers, as it replaces a draft's (V148).
-    Otherwise the answer's locators fill the fields the operation takes. Its Task and its goal
-    are the request's target: one the answer does not name is refused, and a flag naming another
-    is refused, never preferred. Every other reference the operation takes (a hash or an id) is
-    filled from the answer under its own name or its `LOCATORS` alias, so a read reads again
-    from its own answer; a flag giving one wins over the answer's (V449).
-
-    Args:
-        operation: The operation the command sends.
-        bundle: The answer it continues.
-        given: The fields the command's flags give.
-        allowed: The fields the operation takes.
-
-    Returns:
-        The request.
-
-    Raises:
-        LocalResearchClientError: A target the answer does not name, a flag naming another,
-            a choice left open, or a part a compact view cut.
+    `given` flags may fill only `allowed` fields.
+    Draft plan_request keeps bound references.
+    Explicit declarations replace the draft's.
+    Otherwise plan the draft's own document.
+    Controls preserve their input (V355).
+    Their template supplies a missing declaration.
+    Next requests retain bound references (V148).
+    A preview's replan is such a request.
+    Explicit declarations replace its offered spec.
+    Other fields use their own names or LOCATORS.
+    Task and Goal are the answer's target.
+    Missing targets are refused.
+    Flags naming other targets are refused.
+    Other references may be overridden by flags (V449).
+    Thus saved reads keep their selection.
+    Missing references, open choices and truncated parts refuse.
     """
     offered = offered_requests(bundle)
     kept = bundle.get("read_request")
@@ -1285,14 +1289,39 @@ def continued(
     return request
 
 
+OUTPUT_REPLACED = "Replaced the saved refusal at --output; accepted work was not overwritten."
+
+
+def output_replacement(path: Path | None) -> bool:
+    """Permit an explicit retry over a complete refusal, never an admitted Task receipt."""
+    if path is None or not path.exists():
+        return False
+    if path.is_file() and not path.is_symlink() and not path.is_junction():
+        with suppress(LocalResearchClientError):
+            previous = _response_document(path)
+            held = any(previous.get(key) for key in ("admission", *LOCATORS["task_id"]))
+            if refused(previous) and not (task_state(previous) or held):
+                return True
+    raise LocalResearchClientError("local_client.output_exists_choose_another_path")
+
+
+def output_fields(path: Path | None, *, replaced: bool = False) -> dict[str, Any]:
+    """Report a completed output write and any refusal it replaced."""
+    return (
+        {
+            "output_file": str(path.resolve()),
+            **({"output_note": worded(OUTPUT_REPLACED)} if replaced else {}),
+        }
+        if path is not None
+        else {}
+    )
+
+
 def _save_output(
     path: Path, body: dict[str, Any], raw: bytes, format: str, *, replace: bool = False
 ) -> None:
-    """The whole answer in the format asked, which `--from` reads back; html is its report.
-
-    YAML is written in the declaration loader's dialect, so it reads back the same values
-    (V146); the editable declaration alone is `--save-declaration`'s (V130). ``replace`` is for the
-    admission this command saved before its wait, which the final answer takes over (V273).
+    """Save full JSON/YAML for --from, or HTML; declarations use --save-declaration.
+    Replacement is a refusal retry or the successor to this command's saved admission.
     """
     if format == "json":
         payload = body["json"].encode("utf-8") if isinstance(body.get("json"), str) else raw
@@ -1375,7 +1404,7 @@ def _save_declaration(path: Path, body: dict[str, Any]) -> None:
 
 def _write_new(path: Path, payload: bytes, *, replace: bool = False) -> None:
     """Write a file that does not exist yet; an existing one is never replaced, but for
-    ``replace``: the file this command wrote itself, swapped whole for its successor."""
+    ``replace``: a verified refusal retry or this command's own admission."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         if replace:
@@ -1413,19 +1442,16 @@ def reference_field(name: str | None) -> bool:
 
 
 def _issued_reference(name: str) -> bool:
-    """Whether a request field holds only values the Host issued: a hash, or a reference the
-    request contract types (a UUID, a hash, an issued entry id). Only there is a short value
-    read back as the whole one it begins, and refused when it begins none or several. An
-    authored id, a dated input or a criterion named by the person, is sent as written whatever
-    the ledger holds (V393, V544, V561)."""
+    """Whether a request field holds only Host-issued values (a hash, a typed UUID or entry
+    id): only there a short value reads back as the one whole value it begins. An authored id
+    is sent as written (V393, V544, V561)."""
     return name.endswith(("_hash", "_hashes")) or name in command_table()["references"]
 
 
 def _shortened(name: str | None) -> bool:
     """Whether the compact display shortens a field's whole hashes and ids: an issued reference,
-    or an answer's own id the request contract does not take, which a reader sends back through
-    the typed request field it selects. A request field the contract leaves untyped holds an
-    authored value, shown and sent as written (V561)."""
+    or an answer's own id the contract does not take (sent back through the typed field it
+    selects). An untyped request field holds an authored value, shown as written (V561)."""
     if name is None or not reference_field(name):
         return False
     return _issued_reference(name) or name not in command_table()["types"]
@@ -1531,10 +1557,9 @@ def _same(value: Any) -> Any:
 def _context(
     workspace: Path, goal: str | None, body: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """The context a command worked in, which every answer names, as the agent CLIs' JSON
-    output names its session (V401): the workspace and how it was chosen (`WORKSPACE_FROM`:
-    named, or the session's binding, V568), the goal the Host counted the request toward (the
-    one named, or the one the session took) and the agent session it came from."""
+    """The context every answer names, as agent CLIs name their session (V401): the workspace
+    and how it was chosen (`WORKSPACE_FROM`, V568), the goal the request counted toward and
+    the agent session it came from."""
     headers = agent_provenance_headers(os.environ)
     session = headers.get(AGENT_SESSION_HEADER)
     counted = (body or {}).get("attributed_goal_id")
@@ -1635,22 +1660,22 @@ def _listing_page(
 def compact_display(
     body: Any, *, budget: int = COMPACT_ANSWER_BYTES, section: str = "", whole: bool = False
 ) -> dict[str, Any]:
-    """Bound display work and size without inventing values or replacing a raw export.
+    """Project within budget without inventing values or changing the saved answer.
 
-    The display, its list of omissions included, prints within ``budget`` bytes (V402). Every
-    omitted subtree is marked and named in ``omitted_sections`` as ``--section`` reads it from
-    the answer's top (``section`` is the part this display shows): a key's value, or a list's
-    rest as a page (``items.3:``). ``whole`` shows the answer whole when it fits: a refusal,
-    whose fields say what to do next. A section's list shows as many leading items whole as
-    fit, the rest its next page. Counts describe representation size, not research coverage;
-    this view cannot be hashed as the original artifact.
+    Omissions name root --section paths, including list-tail pages (items.3:).
+    Sections keep the requested part; refusals stay whole when they fit.
+    Counts describe display size, never research coverage or an artifact identity.
     """
     trimmed: list[str] = []
-    if isinstance(body, dict) and "timing" in body and not section:
-        # A Task's stage timings: no agent's decision reads them, and they were half of a
-        # `task show` answer (V280). The full view and --output keep them.
-        body = {key: value for key, value in body.items() if key != "timing"}
-        trimmed.append("timing")
+    if isinstance(body, dict) and not section:
+        raw = {"timing"}
+        summary = body.get("summary")
+        if isinstance(summary, dict) and "positions_count" in summary:
+            raw |= {"publication", "history", "html", "listing_labels", "position_rows"}
+        trimmed = [key for key in body if key in raw]
+        body = {key: value for key, value in body.items() if key not in raw}
+        if trimmed and len(raw) > 1:
+            body["_omitted_keys"] = len(trimmed)
     if whole and _size(body) + _size(trimmed) + len(_FULL_RESPONSE) + 160 <= budget:
         return {
             "representation": _REPRESENTATION,
@@ -1669,13 +1694,11 @@ def compact_display(
     return shown
 
 
-def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict[str, Any]:
-    """One drawing of ``compact_display`` within ``budget`` bytes by its own tally."""
-    remaining = 300
-    spent = len(_REPRESENTATION) + len(_FULL_RESPONSE) + 120 + _size(omissions)
-    pending: deque[tuple[Any, str, int, Any, str | int]] = deque()
-    important = {
+_IMPORTANT: Final = frozenset(
+    {
         "status",
+        "session_binding",
+        "workbench",
         "answer_status",
         "task_lifecycle",
         "lifecycle",
@@ -1710,13 +1733,23 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
         "execution_numerical_call_count",
         "declaration_changes",
         # What the next step read from saved answers in AX's runs (AGENT-TIME R2): a book's
-        # activation, its dates within it, a curation's choices, an Evidence preview's sources
-        # and scope. A strategy's dates keep their one owner, so they are drawn as part of it.
+        # activation, its dates, a curation's choices, an Evidence preview's sources and
+        # scope. A strategy's dates keep one owner and are drawn with it.
         "activation",
         "choices",
         "source_inventory",
         "scope",
     }
+)
+"""The fields a compact view always keeps whole: an answer's state, its way on and its limits."""
+
+
+def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict[str, Any]:
+    """One drawing of ``compact_display`` within ``budget`` bytes by its own tally."""
+    remaining = 300
+    spent = len(_REPRESENTATION) + len(_FULL_RESPONSE) + 120 + _size(omissions)
+    pending: deque[tuple[Any, str, int, Any, str | int]] = deque()
+    important = _IMPORTANT
 
     def room() -> int:
         return budget - spent - len(pending) * _MARK_BYTES
@@ -1808,8 +1841,7 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
         pending.extend((value[key], part(path, key), depth + 1, shown, key) for key in keys[:count])
         if len(keys) > count:
             if path == section:
-                # The display's own top: each key left out is a part `--section` reads, named
-                # while the names fit; a deeper mapping is read whole by its own path.
+                # The display's top: a key left out is a `--section` part; a deeper one reads whole.
                 for key in keys[count:]:
                     if room() < _MARK_BYTES:
                         break
@@ -1941,8 +1973,7 @@ def saved_answer(
             body = load_safe_yaml_document(text)
         if not isinstance(body, dict):
             raise ValueError("not an owner answer")
-        # The full exporter writes a JSON tree, including quoted date strings. Reject
-        # aliases before serialization so a small YAML file cannot amplify its containers.
+        # Reject YAML aliases before the JSON export: a small file cannot amplify its containers.
         stack: list[Any] = [body]
         seen: set[int] = set()
         while stack:
@@ -2146,8 +2177,8 @@ def _kept_options(client: LocalResearchClient, view: str = "compact") -> tuple[s
 
 
 def _entry_of(client: LocalResearchClient) -> tuple[str, ...]:
-    """The entry a command this client prints starts with: the checkout's own, its workspace,
-    and the context this call kept (`_kept_options`)."""
+    """A printed command's entry: the checkout's own, its workspace and this call's kept
+    context (`_kept_options`)."""
     return entry(client.workspace, _kept_options(client))
 
 
@@ -2171,18 +2202,7 @@ def _follow(
     each_stage: bool = False,
     deadline: float | None = None,
 ) -> dict[str, Any]:
-    """Follow admitted work until it ends or needs a decision; never on a timer (WK).
-
-    A Task is followed through STATUS long polls, a feature trial through its readback. A
-    Host that stops or restarts is waited for: the connection is re-read and the follow goes
-    on, since the Task runs on under Task Control. Only ``max_wait``, the caller's own cap,
-    ends it early, answered as pending. ``each_stage`` also ends it when the Task verifies a
-    stage beyond those it held at the start (a coverage run's unit is one, V421). A state the
-    Task never leaves by itself ends it too (`WAIT_EXITS`): a decision, a recovery, or a deferral,
-    whose read names its retry time and the request that resumes it (V507). State changes go to
-    stderr; the final answer keeps the admission that started the work and names what happened
-    in ``wait_event``.
-    """
+    """Follow work across Host restarts, ending at an action, stage boundary or deadline."""
     if max_wait is not None and not max_wait > 0:
         raise LocalResearchClientError("local_client.max_wait_invalid")
     trial = body.get("feature_trial_id") if body.get("status") == "FEATURE_TRIAL" else None
@@ -2268,9 +2288,14 @@ def _follow(
                 current.get("total_stage_count"),
             )
         )
-        if state != last:
-            print(json.dumps({"follow": document, "state": state}), file=sys.stderr, flush=True)
-            last = state
+        stage = current.get("current_stage")
+        if (state, stage) != last:
+            print(
+                json.dumps({"follow": document, "state": state, "current_stage": stage}),
+                file=sys.stderr,
+                flush=True,
+            )
+            last = (state, stage)
         # A review to decide, a Task to recover or a deferral waits on a request, not on this
         # waiter (V507).
         if (exit_event := WAIT_EXITS.get(task_state(current) or "")) is not None:
@@ -2342,11 +2367,9 @@ def _goal_wake_refused(client: LocalResearchClient, goal_id: str) -> dict[str, A
 def _wait_for_goal(
     client: LocalResearchClient, goal_id: str, max_wait: float | None
 ) -> dict[str, Any]:
-    """Wait for the next Task of a goal to end or need a decision, the next message under it
-    for this waiter (an accepted answer wakes the lead it is filed for), or the goal to close.
-
-    The waiter is the agent session the command runs in; a message between two other agents
-    never wakes it (V503). A request's own Conversation row wakes no one: its Task does."""
+    """Wait for a goal's next Task to end or need a decision, its next message for this waiter
+    (the session running the command; an accepted answer wakes its lead, never a message
+    between two others, V503; a request's own row wakes no one, its Task does), or its close."""
     me = agent_provenance_headers(os.environ).get(AGENT_SESSION_HEADER)
     document = {"operation": "GOAL_NARRATIVE", "goal_id": goal_id}
     read = {"operation": "GOAL_SHOW", "goal_id": goal_id}
@@ -2457,6 +2480,11 @@ class _Chain:
     """The Codex thread and this verb's rerun, sent when its first running Task ends."""
 
     def send(self, step: str, document: dict[str, Any]) -> dict[str, Any]:
+        print(
+            json.dumps({"flow": self.name, "step": step, "operation": document["operation"]}),
+            file=sys.stderr,
+            flush=True,
+        )
         body = self.client.request(document)
         self.steps.append(
             {"step": step, "sent": document.get("operation"), "outcome": outcome_of(body)}
@@ -2471,8 +2499,7 @@ class _Chain:
         if outcome_of(body) != "PENDING":
             return None if outcome_of(body) == "OK" else self.stop(step, body)
         if self.wake is not None and body.get("task_id") and task_state(body) not in WAIT_EXITS:
-            # A Codex turn ends its children, so the Host holds the wake and this call returns;
-            # the wake re-runs the verb, which reuses each finished step and goes on.
+            # A Codex turn ends its children: the Host holds the wake; its re-run reuses each step.
             thread, read = self.wake
             registered = self.send(
                 step + "_wake",
@@ -2509,15 +2536,42 @@ class _Chain:
             (collection / BUNDLE_WORKSPACE).write_bytes(
                 (json.dumps({"workspace": str(self.client.workspace)}) + "\n").encode()
             )
+        keys = ("status", "index", "files", "answer_file", "submit_command", "submit_arguments")
         return {
-            "status": written.get("status"),
+            **{k: written.get(k) for k in keys},
             "bundle_directory": written.get("bundle_directory", str(target)),
-            "index": written.get("index"),
-            "files": written.get("files"),
-            "answer_file": written.get("answer_file"),
-            "submit_command": written.get("submit_command"),
-            "submit_arguments": written.get("submit_arguments"),
         }
+
+    def bundles(self, current: dict[str, Any], root: Path) -> list[dict[str, Any]] | dict[str, Any]:
+        """Validate and continue the prepared review's exact Analyst collection."""
+        requests = {
+            name: request
+            for name, request in offered_requests(current).items()
+            if name.startswith("analyst_bundle") and isinstance(request, dict)
+        }
+        expected: dict[str, str | None] = {
+            "analyst-"
+            + _UNIT_NAME.sub("-", n.removeprefix("analyst_bundle").lstrip("_") or "book"): None
+            for n in requests
+        }
+        expected[BUNDLE_WORKSPACE] = (
+            json.dumps({"workspace": str(self.client.workspace.resolve())}) + "\n"
+        )
+        if requests:
+            _bundle_output(root, expected)
+        bundles = []
+        for name, request in requests.items():
+            unit = name.removeprefix("analyst_bundle").lstrip("_") or "book"
+            written = self.bundle(
+                "analyst_bundle",
+                request,
+                root / ("analyst-" + _UNIT_NAME.sub("-", unit)),
+                collection=root,
+            )
+            if "answer_file" not in written:
+                return self.stop("analyst_bundle", written)
+            bundles.append({"unit": unit, **written})
+        return bundles
 
 
 def _chain(client: LocalResearchClient, args: argparse.Namespace, name: str) -> _Chain:
@@ -2563,10 +2617,7 @@ def _next_output(output: str | Path) -> Path:
 
 
 def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """Prepare Evidence and Analyst bundles for a book or dated positions (AGENT-TIME verb 2).
-
-    Follow offered steps in order to their first stop; no later work runs detached.
-    """
+    """Follow a book or date's Evidence offers to Analyst bundles, ending at the first stop."""
     package = str(args.strategy_package_id)
     root = Path(args.bundle_root).resolve()
     chain = _chain(client, args, "book_review")
@@ -2643,20 +2694,9 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         return ended
     # The run's own bundles at its cutoff: the same preparation asked again reuses it.
     current = chain.send("evidence_prepared", prepare) if pending else prepared
-    bundles: list[dict[str, Any]] = []
-    for name, request in offered_requests(current).items():
-        if not name.startswith("analyst_bundle") or not isinstance(request, dict):
-            continue
-        unit = name.removeprefix("analyst_bundle").lstrip("_") or "book"
-        written = chain.bundle(
-            "analyst_bundle",
-            request,
-            root / ("analyst-" + _UNIT_NAME.sub("-", unit)),
-            collection=root,
-        )
-        if "answer_file" not in written:
-            return chain.stop("analyst_bundle", written)
-        bundles.append({"unit": unit, **written})
+    bundles = chain.bundles(current, root)
+    if isinstance(bundles, dict):
+        return bundles
     review = chain.offered(readback, "review")
     return {
         "status": "BOOK_REVIEW_READY" if bundles else "EVIDENCE_PREPARED",
@@ -2681,30 +2721,62 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
     }
 
 
-def _answer_folders(root: Path) -> list[Path]:
-    """The bundles whose answers a `review continue` sends: the folder itself when it holds
-    one, else each folder inside it that does, in name order."""
+def _answer_folders(root: Path, package: str | None) -> list[Path]:
+    """The bundles whose answers `review continue` sends, in name order: the folder itself or
+    those inside it; none is refused, naming the strategy (`--package`) its offer reads."""
     if (root / "answer.json").is_file():
         return [root]
-    if not root.is_dir():
-        return []
-    return sorted(path for path in root.iterdir() if (path / "answer.json").is_file())
+    if folders := sorted(path for path in root.glob("*") if (path / "answer.json").is_file()):
+        return folders
+    raise LocalResearchClientError(
+        f"local_client.review_answers_missing:{package}"
+        if package
+        else "local_client.review_answers_missing"
+    )
+
+
+def _review_published(
+    chain: _Chain,
+    args: argparse.Namespace,
+    evidence: dict[str, Any],
+    receipts: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """A published review: Evidence's state, its committee as the floor stands (to convene,
+    or its report) and, given ``--package``, the activation offer."""
+    result: dict[str, Any] = {
+        "status": "REVIEW_PUBLISHED",
+        "receipts": receipts,
+        "evidence": {
+            key: evidence.get(key)
+            for key in ("state", "detail", "review", "coverage", "local_web_url")
+            if key in evidence
+        },
+        "steps": chain.steps,
+        "next_action": "REPORT_THE_REVIEW",
+    }
+    package = getattr(args, "strategy_package_id", None)
+    if package:
+        controls = chain.send(
+            "activation", {"operation": "CONTROLS", "strategy_package_id": str(package)}
+        )
+        activation = controls.get("activation")
+        result["activation"] = activation
+        offered = (activation or {}).get("next_requests") or {}
+        result["next_requests"] = {
+            name: value for name, value in offered.items() if isinstance(value, dict)
+        }
+        result["next_action"] = (
+            "OFFER_ACTIVATION" if "activate" in offered else result["next_action"]
+        )
+    if "next_action" in evidence:  # a dated review's committee as its floor stands
+        result["next_requests"] = {**evidence["next_requests"], **result.get("next_requests", {})}
+        result["next_action"] = evidence["next_action"]
+    return result
 
 
 def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """`review continue`: a book's review carried on from its specialists' written answers, in
-    one call (AGENT-TIME verb 3).
-
-    Every answer under ``--dir`` is submitted; one the Host asks to correct is named with its
-    problems and the call ends there, the accepted ones kept (the same answer sent again is the
-    one filed). Each accepted answer's publication is followed to its end. After the Analysts,
-    the book's Evidence offers its dossier and the dossier the CRO's bundle, written into
-    ``--cro-dir``. After the CRO, the answer is Evidence's state and, given ``--package``, that
-    strategy's activation offer with its last sealed book holdings.
-    """
-    folders = _answer_folders(Path(args.bundle_root).resolve())
-    if not folders:
-        raise LocalResearchClientError("local_client.review_answers_missing")
+    """Submit written answers to their first correction or publication, then follow its offer."""
+    folders = _answer_folders(Path(args.bundle_root).resolve(), args.strategy_package_id)
     chain = _chain(client, args, "review_continue")
     receipts: list[dict[str, Any]] = []
     corrections: list[dict[str, Any]] = []
@@ -2763,32 +2835,7 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
         return chain.stop("submit", published[-1])
     evidence = chain.send("evidence", book)
     if roles == {"CRO"}:
-        result: dict[str, Any] = {
-            "status": "REVIEW_PUBLISHED",
-            "receipts": receipts,
-            "evidence": {
-                key: evidence.get(key)
-                for key in ("state", "detail", "review", "coverage", "local_web_url")
-                if key in evidence
-            },
-            "steps": chain.steps,
-            "next_action": "REPORT_THE_REVIEW",
-        }
-        package = getattr(args, "strategy_package_id", None)
-        if package:
-            controls = chain.send(
-                "activation", {"operation": "CONTROLS", "strategy_package_id": str(package)}
-            )
-            activation = controls.get("activation")
-            result["activation"] = activation
-            offered = (activation or {}).get("next_requests") or {}
-            result["next_requests"] = {
-                name: value for name, value in offered.items() if isinstance(value, dict)
-            }
-            result["next_action"] = (
-                "OFFER_ACTIVATION" if "activate" in offered else result["next_action"]
-            )
-        return result
+        return _review_published(chain, args, evidence, receipts)
     dossier_request = chain.offered(evidence, "dossier")
     if dossier_request is None:
         return chain.stop("evidence", evidence)
@@ -2821,7 +2868,7 @@ def _continue_steps(client: LocalResearchClient, args: argparse.Namespace) -> di
 
 
 _FIRST_USE: Final = {"title": "First use", "kind": "FIRST_USE"}
-"""The first use's declaration beside the person's sentence and named date."""
+"""The first use's declaration, beside the sentence and named date."""
 
 _FIRST_USE_ROAD: Final = (
     (
@@ -2879,25 +2926,17 @@ _FIRST_USE_ROAD: Final = (
         "positions, their review and the committee's record.",
     ),
 )
-"""The whole first use in order: each step's command and what it leaves to the agent."""
-
-_FIRST_USE_ASK_NOW: Final = (
-    "Unless this workspace's Evidence is set up already, the review of the date's positions "
-    "acquires recent SEC filings within the default budget under the first use's delegation, "
-    "and downloads the retrieval model at the size its setup states. Say so in one line now, "
-    "and ask only if the person wants a wider budget, so the review never waits.",
-)
-"""What only the person decides that the first use will need, asked at its start."""
+"""The first use in order: each step's command and what it leaves the agent."""
 
 _NOT_RECORDED: Final = (
     "This workspace was prepared before, so its first use came then: this sentence is not "
     "recorded as a goal, and no step is delegated under it."
 )
-"""What a first use asked of an already prepared workspace says of its sentence."""
+"""What a first use of a prepared workspace says of its sentence."""
 
 
 def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """Prepare the person's first use under its Goal, keeping stops and the full road visible."""
+    """Prepare the person's first use under its Goal, with its stops and whole road."""
     chain = _chain(client, args, "first_use")
     try:
         named = target_sessions(date.fromisoformat(str(args.target_date)))
@@ -2915,7 +2954,14 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
             "next_action": refusal.next_action,
             chain.name: {"steps": chain.steps},
         }
-    answer, note = _prepared(chain, str(args.objective), named)
+    from alphalattice.interface.local_application.native_bridge import first_use_setup
+
+    setup, refused = first_use_setup(client.workspace)  # setup first
+    if refused:
+        return {**refused, chain.name: {"steps": chain.steps}}
+    answer, note = _prepared(chain, str(args.objective), named, args)
+    if answer.get("failure_code") == "local_client.first_use_completed":
+        return answer
     prefix = _entry_of(client)
     road = [
         {"step": step, "command": join([*prefix, *words], shell()), "does": does}
@@ -2924,29 +2970,36 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
     answer[chain.name] = {
         **answer.get(chain.name, {"steps": chain.steps}),
         "date": named,
-        "setup": _setup(),
+        "setup": setup,
         "road": road,
-        "ask_now": list(_FIRST_USE_ASK_NOW),
+        "ask_now": [
+            WATCH_IN_WORKBENCH.format(link=client.selected_url({"operation": "GOAL_SHOW"}, answer)),
+            *FIRST_USE_ASK_NOW,
+            *(join([*prefix, *w], shell()) for w in DAILY_NETWORK_RELAY),
+        ],
         **({"sentence": note} if note else {}),
     }
     if answer.get("status") == "ALREADY_PREPARED":
-        answer.update(next_action="BUILD_THE_STRATEGY", next_command=road[1]["command"])
+        # The road goes on.
+        intents = chain.send("workspace", {"operation": "WORKSPACE_SHOW"}).get("intents") or ()
+        forward: dict[str, Any] = next((i for i in intents if i["flow"] == "RUN_FORWARD"), {})
+        package = forward.get("strategy_package_id")
+        if package and forward.get("status") != "NO_BOOK_YET":
+            controls = join([*prefix, "strategy-book", "controls", "--package", package], shell())
+            answer.update(next_action="READ_THE_STRATEGY_BOOK_CONTROLS", next_command=controls)
+        else:
+            answer["next_action"] = "RUN_THE_BOOK" if package else "BUILD_THE_STRATEGY"
+            answer["next_command"] = road[2 if package else 1]["command"].replace(
+                "<package>", str(package)
+            )
     return answer
 
 
-def _setup() -> dict[str, Any]:
-    """Read this agent Session's setup (`session_setup`)."""
-    from alphalattice.interface.local_application.native_bridge import session_setup
-
-    return session_setup(Path.cwd(), agent_session(os.environ))
-
-
 def _prepared(
-    chain: _Chain, sentence: str, named: dict[str, object]
+    chain: _Chain, sentence: str, named: dict[str, object], args: argparse.Namespace
 ) -> tuple[dict[str, Any], str | None]:
-    """The first use's goal and its prepared data: the plan that says ALREADY_PREPARED, or the
-    first answer that stops on the way; beside it, what became of the sentence if it was not
-    recorded."""
+    """The first use's goal and data: the ALREADY_PREPARED plan or the first stop, beside the
+    sentence's note when it was not recorded."""
     criterion = (
         f"The positions for {named['entry_session']}, with their review, stand for the person."
     )
@@ -2955,6 +3008,7 @@ def _prepared(
         "objective": sentence,
         "target_date": named["named_date"],
         "criteria": [{"criterion_id": "positions", "text": criterion}],
+        **({"scope": NEW_RESEARCH_SCOPE} if getattr(args, "new_research", 0) else {}),
     }
     opened = chain.send("goal", {"operation": "GOAL_OPEN", "goal_declaration": declaration})
     note = None
@@ -3010,18 +3064,14 @@ once its window is known, and the plan."""
 
 
 def _build_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """`strategy build`: the research strategy's required studies run on their defaults, and the
-    strategy prepared and installed from them, in one call.
+    """`strategy build`: the strategy's required studies on their defaults, then the strategy
+    prepared and installed from them, in one call.
 
-    Each round reads the strategy controls and takes every step they offer in turn, each
-    started and followed to its end: training and the strategy's preparation are admitted
-    only beside no unfinished Task, and the Host runs one Task at a time. The rounds are the
-    missing components' training inputs, then each component's Alpha study, then, once a
-    calibrated study names its window, the Risk study, each planned from its own template. Then
-    the strategy's plan from the declaration the controls fill, its preparation and its
-    installation. Finished steps are reused. The first answer that stops it is the answer, the
-    studies started so far beside it; an agent that would choose a model, a window or a parent
-    sends the steps itself.
+    Each round reads the controls and takes every step offered, one Task at a time, each to its
+    end: missing training inputs, each component's Alpha study, then the Risk study once a
+    calibrated study names its window; then plan, preparation and installation. Finished steps
+    are reused; the first stop is the answer, with the studies started. An agent choosing a
+    model, a window or a parent sends the steps itself.
     """
     chain = _chain(client, args, "strategy_build")
     studies: list[dict[str, Any]] = []
@@ -3206,10 +3256,8 @@ def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, An
 
 
 def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """Wait for what the committee's floor addresses to this member (`for_you`): the revealed
-    stances, a challenge for the PM, a reply or ruling on its own message, or the close.
-
-    Each member moves itself; the lead relays nothing between them.
+    """Wait for what the floor addresses to this member (`for_you`): revealed stances, a
+    challenge for the PM, a reply or ruling on its message, the settled debate or the close.
     """
     document = {
         "operation": "COMMITTEE_READ",
@@ -3224,7 +3272,10 @@ def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> di
         client, read = _read_through_restarts(client, document, deadline)
         body = body if read is None else read
         if read is not None and (
-            outcome_of(body) != "OK" or body.get("for_you") or body.get("stage") == "CLOSED"
+            outcome_of(body) != "OK"
+            or body.get("for_you")
+            or body.get("settled")
+            or body.get("stage") == "CLOSED"
         ):
             return body
         if read is None or not _sleep_before_read(delay, deadline):
@@ -3285,19 +3336,18 @@ def run(
     before_send: Callable[[dict[str, Any]], None] | None = None,
     after_send: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
 ) -> int:
-    """One command over the running Host, printed as one envelope; returns its exit code.
+    """Print one Host command's envelope and return its exit code.
 
-    ``args.command`` is ``request`` (one operation document) or one of the client's own:
-    ``workspace``, ``operations``, ``activity``, ``event``, ``cpu-budget``; the other fields are
-    that command's. ``document_override`` is the request document, or the function that reads
-    it, so a document that cannot be read is refused in the same envelope. ``before_send`` sees
-    the request document before it goes: the CLI reads a session's lead there (V301), which the
-    native bridge delivers through this client, so the client never imports the bridge.
+    args.command selects request or a client verb; other fields belong to that command.
+    document_override may read lazily, so unreadable input gets the same envelope.
+    before_send sees the request and reads the session's lead (V301) before transport;
+    the bridge delivers through this client. after_send observes the returned answer.
     """
     started = time.perf_counter()
     body: dict[str, Any] | None = None
     raw_body: bytes | None = None
     saved_output: Path | None = None
+    replaced_output = False
     document: dict[str, Any] = (
         {"operation": getattr(args, "operation", None)}
         if callable(document_override)
@@ -3318,8 +3368,7 @@ def run(
         templates = _next_commands(
             body, client.workspace, listed=listed, left=True, options=options
         )
-        # `--list-next` shows every listed request as the answer's view, in the one envelope
-        # (V261); a `--section` asked for beside it is the view instead.
+        # A selected section precedes the next-request listing.
         listing = {"next_commands": commands, "next_templates": templates} if listed else None
         viewed = selected or listing
         compact = display_view == "compact"
@@ -3338,7 +3387,7 @@ def run(
             next_templates=templates,
             context=_context(client.workspace, client.goal, body),
             **navigation,
-            **({"output_file": str(saved_output.resolve())} if saved_output is not None else {}),
+            **output_fields(saved_output, replaced=replaced_output),
             **(
                 {"declaration_file": str(saved_declaration[0].resolve())}
                 if saved_declaration
@@ -3348,12 +3397,10 @@ def run(
         )
         if listing is not None and not selected:
             if compact:
-                # The listing is the data, its page measured with next_left's key (V411).
                 answer.update(dict.fromkeys((*_NEXT_KEYS, "next_left")))
             elif next_from:
                 answer["data"] = _listing_page(listing, next_from, None)[0]
         if compact:
-            # Its next requests too are held to the read, the rest counted (V411).
             _hold_next(answer, COMPACT_NEXT_BYTES)
         if compact and listing is not None and not selected:
             room = max(
@@ -3363,7 +3410,6 @@ def run(
             answer["data"], left = _listing_page(listing, next_from, room)
             answer["next_left"] = left
         if compact and (selected or not viewed):
-            # A compact answer is one read: its data keeps what the rest leaves (V402).
             room = max(
                 COMPACT_DATA_FLOOR_BYTES,
                 COMPACT_ANSWER_BYTES - _size(short_references({**answer, "data": None})),
@@ -3378,13 +3424,12 @@ def run(
                 cut = compact_display(selected["value"], budget=room, section=selected["section"])
                 answer.update({**cut, "data": {**selected, "value": cut["data"]}})
         print(
-            json.dumps(
+            answer_json(
                 (short_references if compact else _same)(answer),
                 default=_json_value,
-                sort_keys=True,
             )
         )
-        return EXIT_CODES[outcome]
+        return EXIT_CODES[answer["outcome"]]
 
     try:
         if not 0 < args.request_timeout <= 600:
@@ -3394,9 +3439,7 @@ def run(
         if sum(getattr(args, field, None) == Path("-") for field in ("file", "from_response")) > 1:
             raise LocalResearchClientError("local_client.document_multiple_stdin_sources")
         output = getattr(args, "output", None)
-        display_view = args.view or "compact"
-        if output is not None and output.exists():
-            raise LocalResearchClientError("local_client.output_exists_choose_another_path")
+        replaced_output = output_replacement(output)
         client = LocalResearchClient(
             args.workspace, timeout=args.request_timeout, goal=getattr(args, "goal", None)
         )
@@ -3426,20 +3469,19 @@ def run(
             if after_send is not None:
                 after_send(document, body)
             if (named := named_read(document, body)) is not body:
-                # The CLI's copy names what the read read, printed and saved, so `--from` reads
-                # it again; the Host's answer stays its owner's (OP15, V449).
+                # Save the full read's selectors for --from.
                 body, raw_body = named, None
             if document.get("operation") == "ACTIVITY_RECENT":
                 body = _with_read_commands(body, _entry_of(client))
             if args.wait:
                 if output is not None and args.format in {"json", "yaml"}:
-                    # The admission first, so an interrupt while waiting never loses the Task
-                    # it started; the final answer replaces it (V273, OP3).
+                    # Save admission before waiting; an interrupt must retain its Task.
                     _save_output(
                         output,
                         body,
                         raw_body or json.dumps(body, default=_json_value).encode("utf-8"),
                         args.format,
+                        replace=replaced_output,
                     )
                     saved_output = output
                 body = _follow(client, body, getattr(args, "max_wait", None))
@@ -3451,46 +3493,27 @@ def run(
             ):
                 body = _write_bundle(directory, body, client.workspace, prefix=_entry_of(client))
         if output is not None:
-            # The owner's exact answer, a refusal included, so a script reading --output
-            # never loses one and --from can continue a blocked owner's next requests.
-            # Every command shares the same no-overwrite writer. Preserve transport
-            # bytes when available; schema/activity/wait projections are full JSON,
-            # never the compact presentation that is printed below.
+            # Preserve the full owner's bytes, including refusals and their recovery offers.
             raw_body = raw_body or json.dumps(body, default=_json_value).encode("utf-8")
             _save_output(
                 output,
                 body,
                 raw_body,
                 getattr(args, "format", "json"),
-                replace=saved_output is not None,
+                replace=replaced_output or saved_output is not None,
             )
             saved_output = output
         if getattr(args, "declaration", None) is not None:
             _save_declaration(args.declaration, body)
             saved_declaration.append(args.declaration)
         if getattr(args, "section", None):
-            # Read before anything prints, so a path the answer lacks is reported beside the
-            # owner's outcome, the whole answer shown, as any local failure is (V129).
+            # Report an unavailable section beside the owner's outcome.
             selected.update(answer_part(body, str(args.section)))
         return answered(client, outcome_of(body))
     except LocalResearchClientError as error:
         code = str(error)
-        transport: dict[str, Any] = {}
-        if code == "local_client.connection_lost_task_may_still_run":
-            transport = {
-                "transport_reason": (
-                    "HTTP_WAIT_EXPIRED"
-                    if isinstance(error.__cause__, TimeoutError)
-                    else "CONNECTION_INTERRUPTED"
-                ),
-                "request_timeout_seconds": args.request_timeout,
-                "operation_outcome": "UNKNOWN",
-                "guidance": (
-                    "Inspect the same Task before resubmitting work. For a read-only "
-                    "request, --request-timeout may increase HTTP waiting, not the Task budget."
-                ),
-            }
-        refusal = client_refusal(code)
+        failed = (code, document, error.__cause__, args.request_timeout, body is not None)
+        refusal, transport = client_failure(*failed)
         if body is not None:
             # The owner answered before a local step failed (writing --output or a bundle,
             # following the Task): the operation's own outcome stands, and the local failure
@@ -3523,7 +3546,7 @@ def run(
                 },
             )
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation=document.get("operation") or args.command,
                     request=document,
@@ -3534,9 +3557,7 @@ def run(
                     failure_code=code,
                     detail=refusal.detail,
                     next_action=refusal.next_action,
-                    next_requests={"schema": schema_request(document.get("operation"))}
-                    if code == "local_client.document_unreadable"
-                    else None,
+                    next_requests=transport.pop("next_requests", None),
                     context=_context(args.workspace, getattr(args, "goal", None)),
                     **{
                         field: getattr(error, field)
@@ -3546,7 +3567,6 @@ def run(
                     **transport,
                 ),
                 default=_json_value,
-                sort_keys=True,
             )
         )
         return EXIT_CODES[refusal.outcome]
@@ -3555,7 +3575,7 @@ def run(
         code = "local_client.request_invalid"
         refusal = client_refusal(code)
         print(
-            json.dumps(
+            answer_json(
                 envelope(
                     operation=None,
                     outcome=refusal.outcome,
@@ -3566,7 +3586,6 @@ def run(
                     detail=refusal.detail,
                     next_action=refusal.next_action,
                 ),
-                sort_keys=True,
             )
         )
         return EXIT_CODES[refusal.outcome]

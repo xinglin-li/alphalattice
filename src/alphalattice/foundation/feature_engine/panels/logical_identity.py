@@ -14,6 +14,7 @@ from typing import TypeVar, cast
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
@@ -44,6 +45,7 @@ from alphalattice.foundation.feature_engine.panels.logical_contracts import (
     identity_payload,
 )
 from alphalattice.foundation.feature_engine.panels.logical_semantic_index import (
+    LOGICAL_SLICE_ALGORITHM_IDENTITY,
     FeaturePanelLogicalSemanticIndex,
     FeaturePanelLogicalSessionSemantic,
     build_logical_semantic_index,
@@ -65,6 +67,10 @@ _RESERVED_COLUMNS = frozenset(
         "materialization_receipt_hash",
     }
 )
+
+
+type _Year = tuple[PanelLogicalAnnualContent, tuple[FeaturePanelLogicalSessionSemantic, ...]]
+"""A published year's logical content and its sessions' semantics."""
 
 
 class PanelLogicalArtifactStore:
@@ -121,6 +127,14 @@ class PanelLogicalArtifactStore:
                 raise ValueError("feature_panel.logical_content_mismatch")
             return
         self._write_pointer(pointer, {"marker_hash": marker.marker_hash})
+
+    def latest_marker(self) -> PanelPublicationMarker | None:
+        """The marker published last, by its mapping pointer's write: the next one's predecessor."""
+        pointers = sorted(
+            (self._operational / "snapshot-mappings").glob("*.json"),
+            key=lambda path: path.stat().st_mtime_ns,
+        )
+        return self.marker_for_snapshot(pointers[-1].stem) if pointers else None
 
     def current_marker(self) -> PanelPublicationMarker | None:
         """Read the current operational logical publication marker."""
@@ -330,6 +344,7 @@ class PanelLogicalIdentityPublisher:
         # the manifest; its rows are then judged session by session against
         # them, and its listing axis is the union the rows hold.
         membership_epochs = _membership_epochs(summary)
+        published = self._published_years(dense=membership_epochs is None)
         axis: set[str] = set()
         ordered_chunks = sorted(
             chunks,
@@ -343,10 +358,8 @@ class PanelLogicalIdentityPublisher:
                 content_hash=str(raw_chunk["chunk_hash"]),
                 metadata_hash=str(raw_chunk["metadata_hash"]),
             )
-            table = pq.read_table(path).combine_chunks()
-            observed_factors = tuple(
-                name for name in table.column_names if name not in _RESERVED_COLUMNS
-            )
+            names = pq.read_schema(path).names
+            observed_factors = tuple(name for name in names if name not in _RESERVED_COLUMNS)
             # ``factor_catalog_summary`` is a user-safe projection.  Some legacy
             # quarantined snapshots contain additional physical factor columns
             # that were no longer active when the summary was rendered.  The
@@ -358,14 +371,14 @@ class PanelLogicalIdentityPublisher:
                 factor_ids = observed_factors
             elif observed_factors != factor_ids:
                 raise ValueError("feature_panel.logical_content_mismatch")
-            built = _build_annual_logical_content(
-                table=table,
-                year=int(raw_chunk["year"]),
+            annual_item, observed_listings, observed_sessions = _annual_content(
+                path,
+                int(raw_chunk["year"]),
+                published.get((str(raw_chunk["chunk_hash"]), str(raw_chunk["metadata_hash"]))),
                 factor_ids=factor_ids,
                 expected_listing_ids=listing_ids if membership_epochs is None else None,
                 membership_epochs=membership_epochs,
             )
-            annual_item, observed_listings, observed_sessions = built
             if listing_ids is None:
                 listing_ids = observed_listings
             axis.update(observed_listings)
@@ -439,6 +452,45 @@ class PanelLogicalIdentityPublisher:
             "physical_materialization_hash",
         )
         return logical_manifest, revision, semantic_index, physical
+
+    def _published_years(self, *, dense: bool) -> dict[tuple[str, str], _Year]:
+        """The latest publication's years by their chunk's content and metadata hashes.
+
+        Equal bytes give equal logical content, so an unchanged chunk's year is taken as published
+        when that publication used this algorithm and this Panel's mode (dense or per-session
+        membership), whose byte checks it then passed; `_annual_content` rechecks the rest.
+        """
+        marker = self._store.latest_marker()
+        if marker is None:
+            return {}
+        index = self.semantic_index(marker)
+        revision = self._store.load_model(
+            "revisions", marker.logical_panel_hash, PanelLogicalRevision
+        )
+        content = self._store.load_model(
+            "content-manifests", revision.logical_manifest_hash, PanelLogicalContentManifest
+        )
+        if (
+            index.slice_algorithm_identity != LOGICAL_SLICE_ALGORITHM_IDENTITY
+            or (content.membership_epochs is None) != dense
+        ):
+            return {}
+        physical = self._store.load_model(
+            "physical-materializations",
+            marker.physical_materialization_hash,
+            PanelPhysicalMaterializationManifest,
+        )
+        annual = {item.year: item for item in content.annual_content}
+        sessions: dict[int, list[FeaturePanelLogicalSessionSemantic]] = {}
+        for item in index.sessions:
+            sessions.setdefault(item.session_date.year, []).append(item)
+        return {
+            (chunk.legacy_chunk_hash, chunk.metadata_hash): (
+                annual[chunk.year],
+                tuple(sessions[chunk.year]),
+            )
+            for chunk in physical.physical_chunks
+        }
 
     def _build_derivation(
         self, *, manifest: Mapping[str, object], revision: PanelLogicalRevision
@@ -564,6 +616,58 @@ def _membership_epochs(
     return epochs
 
 
+def _annual_content(
+    path: Path,
+    year: int,
+    published: _Year | None,
+    *,
+    factor_ids: tuple[str, ...],
+    expected_listing_ids: tuple[str, ...] | None,
+    membership_epochs: tuple[PanelLogicalMembershipEpoch, ...] | None,
+) -> tuple[
+    PanelLogicalAnnualContent,
+    tuple[str, ...],
+    tuple[FeaturePanelLogicalSessionSemantic, ...],
+]:
+    """A chunk's year: as published for unchanged bytes, rechecked against this Panel, or built."""
+    if published is None or published[0].year != year:
+        return _build_annual_logical_content(
+            table=pq.read_table(path).combine_chunks(),
+            year=year,
+            factor_ids=factor_ids,
+            expected_listing_ids=expected_listing_ids,
+            membership_epochs=membership_epochs,
+        )
+    annual, sessions = published
+    column = pq.read_table(path, columns=["listing_id"])["listing_id"]
+    if membership_epochs is None:
+        listing_ids = tuple(
+            str(value) for value in column.slice(0, sessions[0].row_count).to_pylist()
+        )
+        if expected_listing_ids is not None and listing_ids != expected_listing_ids:
+            raise ValueError("feature_panel.logical_content_mismatch")
+        return annual, listing_ids, sessions
+    if any(
+        _member_count(membership_epochs, item.session_date) != item.row_count for item in sessions
+    ):
+        raise ValueError("feature_panel.logical_content_mismatch")
+    return annual, tuple(sorted({str(value) for value in pc.unique(column).to_pylist()})), sessions
+
+
+def _member_count(
+    membership_epochs: tuple[PanelLogicalMembershipEpoch, ...], session: date
+) -> int | None:
+    """The member count of the epoch holding `session`, or None."""
+    return next(
+        (
+            epoch.member_count
+            for epoch in membership_epochs
+            if epoch.first_session <= session <= epoch.last_session
+        ),
+        None,
+    )
+
+
 def _build_annual_logical_content(
     *,
     table: pa.Table,
@@ -605,14 +709,7 @@ def _build_annual_logical_content(
     else:
         for session, (block_start, block_stop) in zip(sessions, blocks, strict=True):
             block = listing_values[block_start:block_stop]
-            expected = next(
-                (
-                    epoch.member_count
-                    for epoch in membership_epochs
-                    if epoch.first_session <= session <= epoch.last_session
-                ),
-                None,
-            )
+            expected = _member_count(membership_epochs, session)
             if expected is None or len(block) != expected or block != tuple(sorted(set(block))):
                 raise ValueError("feature_panel.logical_content_mismatch")
         listing_ids = tuple(sorted(set(listing_values)))

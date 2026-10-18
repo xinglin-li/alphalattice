@@ -9,8 +9,9 @@ const vm = require('node:vm');
 // Create each harness context in one place; only an explicit app directory adds library defaults.
 library.context = function(c, appDir) {
   const context = vm.createContext(arguments.length === 1 ? c : library.into(c, appDir));
-  if (appDir && !vm.runInContext("typeof CommitteeAgenda !== 'undefined'", context))
-    vm.runInContext(fs.readFileSync(path.join(appDir, 'live-committee.js'), 'utf8'), context);
+  for (const [owner, file] of [['CommitteeAgenda','live-committee.js'],['ReviewPositions','review-positions.js']])
+    if (appDir && !vm.runInContext(`typeof ${owner} !== 'undefined'`, context))
+      vm.runInContext(fs.readFileSync(path.join(appDir, file), 'utf8'), context);
   return context;
 };
 // These pure renderers retain the formats their callers assert, including meaningful spaces.
@@ -201,7 +202,7 @@ library.words = (appDir, routeUrl = null) => {
   library.context(c);
   for (const name of ['html.js', '../data/zh.js', 'i18n.js', 'status.js', 'icons.js', 'components.js'])
     vm.runInContext(fs.readFileSync(path.join(appDir, name), 'utf8'), c);
-  return vm.runInContext('({I18N, t, said, html, link, coded, badge, countText, actorWords, ACTORS, codeWords, declaredCodeWord, stageOf, stageWord, stateLine, stateOf, signed, typedBtn, refCell, hashCell, locatorCell, codeCell, notRead, refusalParts, causeLine, evidenceRow, goalReferenceIntegrity, hint, objectRow, stat, figureTile, glyphWord, measureStrip, TONE, EVIDENCE, CODE_WORDS, STATES, STAGES})', c);
+  return vm.runInContext('({I18N, t, said, html, link, coded, badge, countText, actorWords, ACTORS, codeWords, declaredCodeWord, stageOf, stageWord, stateLine, stateOf, signed, typedBtn, refCell, hashCell, locatorCell, codeCell, notRead, refusalParts, causeLine, evidenceRow, goalReferenceIntegrity, hint, objectRow, stat, figureTile, glyphWord, measureStrip, TONE, EVIDENCE, CODE_WORDS, STATES, STAGES, MESSAGE_KINDS})', c);
 };
 // The handover's one-argument Node command also enumerates the public owners. Pytest
 // supplies this JSON directly so its eight harnesses need no extra interpreter process.

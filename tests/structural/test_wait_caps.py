@@ -113,6 +113,8 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
             ("interface/local_application/dispatcher.py", "close"),
             ("interface/local_application/web.py", "join_request_threads"),
             ("interface/local_application/web.py", "stop"),
+            # A detached launch's readiness wait: bounded, reread each pause, refused at its end.
+            ("control/product_host/composition/web_launcher.py", "_detach"),
             (
                 "control/product_host/composition/evidence_review_application.py",
                 "_refresh_coverage",

@@ -30,9 +30,11 @@ from alphalattice.interface.local_application.native_usage import (
     claude_children,
     claude_thread_spawn,
     codex_session_file,
+    member_claims,
     read_session,
     session_file,
 )
+from alphalattice.protocols.actor_execution.bundles import bundle_slot
 from devtools.evaluation.native_usage import STEPS, walk
 
 SECRET = "SECRET-TRANSCRIPT-TEXT"
@@ -159,6 +161,41 @@ def _lead_records():
         _assistant("msg_2", "claude-opus-5-5", output=7, at="2026-09-29T01:00:09Z"),
         _assistant("msg_3", "claude-opus-5-5", output=1, at="2026-09-29T01:00:10Z", usage={}),
     ]
+
+
+KEY, THREAD = "0123456789abcdef0123456789abcdef", "afc0f906-28c2-4c6d-9d0b-fd249bdf88d4"
+CLAIMS = [
+    (f"x committee submit --update {THREAD} --role ALPHA --key={KEY}", ("ALPHA", True)),
+    (f"x committee wait --update '{THREAD}' --role RISK --key \"{KEY}\"", ("RISK", False)),
+    (f'x bundle submit --dir "out/a 1" --key {KEY}', "out/a 1"),
+    (f"x bundle submit --dir /d/w/out --key {KEY}", "D:/w/out" if os.name == "nt" else "/d/w/out"),
+    (f"x --key {KEY}; x committee submit --update {THREAD} --role ALPHA --key {KEY[::-1]}", None),
+    (f"x committee submit --update {THREAD} --role ALPHA --key $key", None),
+]
+
+
+@pytest.mark.parametrize(("command", "claimed"), CLAIMS)
+def test_a_member_claim_keeps_only_its_keys_hash_its_thread_and_what_it_spoke(
+    tmp_path, command, claimed
+):
+    """One key per command, quoted or `=`, a relative or MSYS bundle path; never the key."""
+    claims: list[dict] = []
+    use = {"type": "tool_use", "id": "u1", "input": {"command": command}}
+    member_claims({"cwd": str(tmp_path), "message": {"content": [use]}}, claims)
+    said = '{"status": "COMMITTEE_MESSAGE_ACCEPTED", "message_id": "M3"}'
+    result = {"type": "tool_result", "tool_use_id": "u1", "content": said}
+    member_claims({"message": {"content": [result]}}, claims)
+    if claimed is None:
+        assert claims == []
+        return
+    (claim,) = claims
+    assert claim["key"] == sha256(KEY.encode()).hexdigest() and KEY not in json.dumps(claims)
+    if isinstance(claimed, str):
+        folder = Path(claimed) if Path(claimed).is_absolute() else tmp_path / claimed
+        assert (claim["reference"], claim["spoke"]) == (bundle_slot(str(folder)), ["M3"])
+    else:
+        assert (claim["thread"], claim["role"], claim["submit"]) == (THREAD, *claimed)
+        assert claim["spoke"] == (["M3"] if claimed[1] else [])
 
 
 def test_a_claude_session_counts_each_response_once_and_keeps_no_text(tmp_path):
@@ -708,10 +745,8 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
 
     def meta(thread, parent=lead, role="alphalattice_risk"):
         spawn = {"parent_thread_id": parent, "agent_role": role}
-        return {
-            "type": "session_meta",
-            "payload": {"id": thread, "source": {"subagent": {"thread_spawn": spawn}}},
-        }
+        source = {"subagent": {"thread_spawn": spawn}}
+        return {"type": "session_meta", "payload": {"id": thread, "source": source}}
 
     def usage(ident):
         counts = {
@@ -730,18 +765,34 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
         usage("r1"),
         activity(child, "started"),
         activity(child, "completed"),
-        activity(unknown, "started"),
+        activity(unknown, "future-kind"),
         activity(stray, "started"),
+        activity(unnamed, "interacted"),
         activity("not-a-thread", "started"),
         {"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "Other"}}},
     )
-    rollout(child, meta(child), turn, usage("c1"))
+    rollout(child, meta(child), turn, usage("c1"), activity(lead, "interacted"))
     rollout(unknown, meta(unknown, role=None), turn, usage("u1"))
     rollout(stray, meta(stray, str(uuid4())))
     rollout(unnamed, meta(unnamed), turn, usage("not-recorded"))
 
     reading = read_session(codex_session_file(lead), host=HOST_CODEX)
     assert reading.children == (child, unknown, stray)
+    checkpoint = {}
+    path = codex_session_file(child)
+    assert read_session(path, host=HOST_CODEX, checkpoint=checkpoint).children == ()
+    for children, expected_bytes in (([lead], path.stat().st_size), ([], 0)):
+        checkpoint.pop("child_discovery")
+        checkpoint["children"] = children
+        body = {k: v for k, v in checkpoint.items() if k != "digest"}
+        encoded = json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+        checkpoint["digest"] = sha256(encoded).hexdigest()
+        rebuilt = read_session(path, host=HOST_CODEX, checkpoint=checkpoint)
+        assert (
+            not rebuilt.rescan and rebuilt.children == () and rebuilt.bytes_read == expected_bytes
+        )
+        warm = read_session(path, host=HOST_CODEX, checkpoint=checkpoint)
+        assert not warm.rescan and warm.bytes_read == 0
     assert reading.incomplete == 0 and [r.response_id for r in reading.responses] == [
         sha256(b"r1").hexdigest()
     ]
@@ -778,12 +829,7 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
     assert filed[2]["subject"]["specialist_verified"] == "false"
     for number in range(65):
         extra = str(uuid4())
-        rollout(
-            extra,
-            meta(extra),
-            turn,
-            usage(f"many-{number}"),
-        )
+        rollout(extra, meta(extra), turn, usage(f"many-{number}"))
         with codex_session_file(lead).open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(activity(extra, "started")) + "\n")
     many = []

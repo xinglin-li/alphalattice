@@ -64,6 +64,8 @@ def test_each_role_card_becomes_one_subagent_with_its_sandbox_tools(materialize)
             "Bash(alphalattice session unbind:*)",
             "Bash(alphalattice --workspace * session bind:*)",
         }
+        if name == "alphalattice_cro":  # it also sits on the committee: that route's commands
+            routed |= {f"Bash(alphalattice committee {verb}:*)" for verb in ("submit", "wait")}
         assert tools == (routed if evidence else stage)
         assert (fields["model"], fields["effort"]) == ("haiku", "high")
         assert body.strip().endswith(card["developer_instructions"].strip())

@@ -23,6 +23,7 @@ import os
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Self
 
@@ -59,6 +60,24 @@ this index included. The Host keeps the list with the answer as provenance, read
 whatever it names (OP11), and keeps it out of what it submits."""
 
 _SENTENCE_END = re.compile(r"(?<=[.!?;:])\s+")
+
+MOMENT_READING = "{utc} (Host local: {local})"
+"""Display only: preserve the UTC instant and name the serving Host's local calendar/time."""
+
+
+def moment_text(value: object) -> str:
+    """Read an aware instant in both clocks; a date or an absent value stays as supplied."""
+    try:
+        at = datetime.fromisoformat(str(value))
+    except ValueError:
+        return str(value)
+    if at.tzinfo is None:
+        return str(value)
+    return MOMENT_READING.format(
+        utc=at.astimezone(UTC).isoformat(),
+        local=at.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z %z"),
+    )
+
 
 type AgentRole = Literal["ALPHA", "ANALYST", "CRO", "DATA", "FACTOR", "PORTFOLIO", "RISK"]
 

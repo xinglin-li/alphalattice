@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
 import shlex
 import time
 from datetime import UTC, datetime, timedelta
@@ -27,7 +28,12 @@ from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.interface.local_application import client as client_module
 from alphalattice.interface.local_application import retrieval_environment
 from alphalattice.interface.local_application.cli import main
-from alphalattice.interface.local_application.cli_contract import AGENT_HOST_WAITS, outcome_of
+from alphalattice.interface.local_application.cli_contract import (
+    AGENT_HOST_WAITS,
+    client_failure,
+    client_refusal,
+    outcome_of,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     LocalApplicationError,
     PortfolioResearchOperationRequest,
@@ -77,11 +83,16 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     task_id = str(uuid4())
     sent: list[dict[str, Any]] = []
+    running = dict(
+        status="RUNNING",
+        lifecycle="RUNNING",
+        task_id=task_id,
+        verified_stage_count=0,
+        total_stage_count=2,
+    )
     answers = iter(
-        [
-            {"status": "RUNNING", "lifecycle": "RUNNING", "task_id": task_id},
-            {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", "task_id": task_id},
-        ]
+        [{**running, "current_stage": stage} for stage in ("input", "input", "features")]
+        + [dict(running, status="SUCCEEDED", lifecycle="SUCCEEDED")]
     )
 
     class _Client:
@@ -96,11 +107,13 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
     final = client_module._follow(_Client(), admitted, 60)  # type: ignore[arg-type]
     assert final["lifecycle"] == "SUCCEEDED" and final["admission"] == admitted
     assert all(d["operation"] == "STATUS" and 0 < d["wait_seconds"] <= 20 for d in sent)
-    assert len(sent) == 2 and time.monotonic() - begun < 0.2
+    assert len(sent) == 4 and time.monotonic() - begun < 0.2
     # Its first line tells the agent this call is the wait, and its host's way to wait for it.
-    first = json.loads(capsys.readouterr().err.splitlines()[0])
+    first, *progress = map(json.loads, capsys.readouterr().err.splitlines())
     assert first["follow"]["operation"] == "STATUS" and "do not poll" in first["returns"]
     assert "run_in_background" in first["returns"]
+    assert [line["current_stage"] for line in progress] == ["input", "features", None]
+    assert [line["state"] for line in progress[:2]] == [["RUNNING", 0, 2]] * 2
     # On Codex it names both ways: the queued wake when idle, this one call under a goal.
     codex = AGENT_HOST_WAITS["codex"]
     assert "--notify codex-queue" in codex and "get_goal" in codex
@@ -989,6 +1002,15 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     answers offer, in their order, following each Task to its end, and returns every Analyst
     bundle written with its answer path and submit command; each step stays a command."""
     host = _ScriptedHost(tmp_path / "workspace")
+    (tmp_path / "analysts").mkdir()
+    marker = tmp_path / "analysts" / "kept"
+    marker.write_bytes(b"kept")
+    with pytest.raises(client_module.LocalResearchClientError, match="bundle_directory_exists"):
+        client_module._review_steps(host, _review_args(marker.parent))  # type: ignore[arg-type]
+    assert marker.read_bytes() == b"kept"
+    assert not any(d["operation"] == "AGENT_BUNDLE_PREPARE" for d in host.sent)
+    marker.unlink()
+    host = _ScriptedHost(tmp_path / "workspace")
     answer = client_module._review_steps(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
 
     assert answer["status"] == "BOOK_REVIEW_READY" and answer["next_action"] == "DISPATCH_ANALYSTS"
@@ -1027,6 +1049,16 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
         "t-book",
         "t-evidence",
     }
+    (folder / "answer.json").write_bytes(b"{}\n")
+    resume = _review_args(tmp_path / "analysts")
+    resume.evidence_as_of = host.prepared_request["evidence_as_of"]
+    resume.preparation_binding_hash = host.prepared_request["preparation_binding_hash"]
+    host.prerequisites = False
+    stopped = client_module._review_steps(host, _review_args(folder.parent))
+    assert stopped["book_review"]["stopped_at"] == "evidence_preview"
+    host.prerequisites = True
+    assert client_module._review_steps(host, resume)["analyst_bundles"] == answer["analyst_bundles"]
+    assert (folder / "answer.json").read_bytes() == b"{}\n"
 
 
 def test_a_book_review_stops_at_the_first_answer_that_needs_another_step(tmp_path: Path) -> None:
@@ -1046,6 +1078,15 @@ def test_a_review_of_a_dates_positions_binds_their_publication(
 ) -> None:
     """A date review's wake resumes its exact preparation despite an advancing preview clock."""
     host = _ScriptedHost(tmp_path / "workspace")
+    request = host.request
+
+    def with_progress(doc, timeout=None):
+        if doc["operation"] == "RESEARCH_UPDATE_READBACK":
+            progress = json.loads(capsys.readouterr().err.splitlines()[-1])
+            assert progress == dict(flow="book_review", step="update", operation=doc["operation"])
+        return request(doc, timeout)
+
+    host.request = with_progress
     monkeypatch.setenv("CODEX_THREAD_ID", str(uuid4()))
     monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
     monkeypatch.setattr(client_module, "LocalResearchClient", lambda *a, **k: host)
@@ -1077,8 +1118,10 @@ class _ReviewHost:
 
     BOOK: ClassVar[dict[str, str]] = {"result_hash": "b" * 64}
 
-    def __init__(self, workspace: Path, *, correct: str | None = None, places: int = 8) -> None:
-        self.workspace = workspace
+    def __init__(
+        self, workspace: Path, *, correct: str | None = None, places: int = 8, dated: bool = False
+    ) -> None:
+        self.workspace, self.dated, self.published = workspace, dated, False
         self.goal = None
         self.sent: list[dict[str, Any]] = []
         self.correct = correct
@@ -1101,6 +1144,7 @@ class _ReviewHost:
                     }
                 task = f"t-{folder.name}"
                 self.queued.add(task)
+                self.published = role == "CRO"
                 return {
                     "status": "ACCEPTED",
                     "agent_role": role,
@@ -1115,6 +1159,11 @@ class _ReviewHost:
             case "STATUS":
                 self.queued.discard(document["task_id"])
                 return {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", **document}
+            case "EVIDENCE_CRO" if self.dated and self.published:  # the owner's dated offer
+                floor = {"operation": "COMMITTEE_OPEN", "update_task_id": "u"}
+                offers = {"export": {"operation": "EVIDENCE_CRO_EXPORT"}, "committee": floor}
+                state = {"state": "REVIEW_PUBLISHED", "next_action": "CONVENE_THE_COMMITTEE"}
+                return {**state, "next_requests": offers}
             case "EVIDENCE_CRO":
                 return {
                     "state": "ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW",
@@ -1174,6 +1223,7 @@ def test_review_continue_submits_the_analysts_and_writes_the_cros_bundle(tmp_pat
     answer path and submit command."""
     host = _ReviewHost(tmp_path / "workspace", places=1)
     root = _answers(tmp_path / "analysts", "analyst-u1", "analyst-u2")
+    (tmp_path / "cro").mkdir()
     answer = client_module._continue_steps(  # type: ignore[arg-type]
         host, _continue_args(root, cro_root=tmp_path / "cro")
     )
@@ -1194,6 +1244,10 @@ def test_review_continue_submits_the_analysts_and_writes_the_cros_bundle(tmp_pat
     assert (tmp_path / "cro" / "README.md").read_text(encoding="utf-8") == "Read the dossier.\n"
     assert bundle["answer_file"] == str((tmp_path / "cro").resolve() / "answer.json")
     assert answer["dossier"] == {"coverage_words": "Every holding was read."}
+    (tmp_path / "cro" / "answer.json").write_bytes(b"{}\n")
+    repeated = client_module._continue_steps(host, _continue_args(root, cro_root=tmp_path / "cro"))
+    assert repeated["cro_bundle"] == bundle
+    assert (tmp_path / "cro" / "answer.json").read_bytes() == b"{}\n"
 
 
 def test_review_continue_names_each_correction_and_goes_no_further(tmp_path: Path) -> None:
@@ -1208,6 +1262,34 @@ def test_review_continue_names_each_correction_and_goes_no_further(tmp_path: Pat
     assert answer["corrections"][0]["problems"][0]["item"] == 1
     assert [r["task_id"] for r in answer["receipts"]] == ["t-analyst-u1"]
     assert not any(d["operation"] in {"STATUS", "EVIDENCE_CRO"} for d in host.sent)
+    # A folder with no answer, as a day with nothing new leaves it, offers the named strategy's
+    # last review (the review of a28b30c73: unscoped, it named another strategy's).
+    with pytest.raises(client_module.LocalResearchClientError) as missing:
+        client_module._continue_steps(host, _continue_args(tmp_path / "none"))  # type: ignore[arg-type]
+    refusal, unscoped = client_failure(str(missing.value), {}, None, 1.0, False)
+    assert "NOTHING_NEW" in refusal.detail and "--package" in refusal.detail and not unscoped
+    with pytest.raises(client_module.LocalResearchClientError) as named:
+        client_module._continue_steps(host, _continue_args(tmp_path / "none", package="pkg"))  # type: ignore[arg-type]
+    scoped, offered = client_failure(str(named.value), {}, None, 1.0, False)
+    last = offered["next_requests"]["last_review"]
+    assert scoped == refusal and last["strategy_package_id"] == "pkg"
+    assert last["history_kind"] == "CRO_REVIEW" and last["history_limit"] == 1
+
+
+def test_a_dated_review_goes_on_to_the_committee_its_evidence_offers(tmp_path: Path) -> None:
+    """requirement: a dated update's published review answers with the committee its Evidence
+    offers, ahead of an inactive strategy's activation."""
+    host = _ReviewHost(tmp_path / "workspace", dated=True)
+    args = _continue_args(_answers(tmp_path, "cro") / "cro", package="pkg")
+    answer = client_module._continue_steps(host, args)  # type: ignore[arg-type]
+
+    assert answer["status"] == "REVIEW_PUBLISHED", answer
+    assert answer["next_action"] == "CONVENE_THE_COMMITTEE"
+    assert answer["next_requests"]["committee"] == {
+        "operation": "COMMITTEE_OPEN",
+        "update_task_id": "u",
+    }
+    assert answer["next_requests"]["activate"] == {"operation": "STRATEGY_ACTIVATE"}
 
 
 def test_review_continue_publishes_the_cros_review_and_reads_the_activation_offer(
@@ -1231,10 +1313,14 @@ class _FirstUseHost:
     """A Host answering a first use's goal, data issues and preparation as their owners do;
     ``stopped`` holds the statuses of a stopped preparation's data issues."""
 
+    workbench = "http://127.0.0.1:1/#follow=latest"
+    selected_url = staticmethod(lambda _document, _body: _FirstUseHost.workbench)
+
     def __init__(self, workspace: Path, *, stopped: tuple[str, ...] = (), prepared: bool = False):
         self.workspace, self.goal, self.prepared = workspace, None, prepared
         self.stopped, self.resumes = list(stopped), 1
         self.sent: list[dict[str, Any]] = []
+        self.forward: dict[str, Any] = {"status": "NO_RESEARCH_STRATEGY_INSTALLED"}
         self.goals = GoalApplication(
             GoalStore(workspace / "artifacts", "client-goal"),
             lambda: datetime(2026, 10, 10, tzinfo=UTC),
@@ -1267,6 +1353,8 @@ class _FirstUseHost:
                     "issues": [{"status": status} for status in self.stopped],
                     "next_requests": {**offers, **confirm},
                 }
+            case "WORKSPACE_SHOW":
+                return {"intents": [{"flow": "RUN_FORWARD", **self.forward}]}
             case "WORKSPACE_PREPARE_PLAN" if self.prepared:
                 return {"status": "ALREADY_PREPARED", "inputs": [{"input_id": "in-1"}]}
             case "WORKSPACE_PREPARE_PLAN":
@@ -1298,6 +1386,7 @@ def _first_use(host: _FirstUseHost, named: str = "2026-10-12") -> dict[str, Any]
 
 def test_a_first_use_opens_its_goal_from_the_sentence_and_stops_at_its_data_issues(
     tmp_path: Path,
+    setup_done: dict[str, str],
 ) -> None:
     """requirement (fewer agent steps): one call opens the goal from the person's sentence and
     named date, prepares, and stops where the preparation needs data decisions."""
@@ -1324,7 +1413,11 @@ def test_a_first_use_opens_its_goal_from_the_sentence_and_stops_at_its_data_issu
     ],
 )
 def test_a_first_use_resumes_its_stopped_preparation_only_once_every_decision_is_confirmed(
-    tmp_path: Path, stopped: tuple[str, ...], resumes: int, resumed: bool
+    tmp_path: Path,
+    setup_done: dict[str, str],
+    stopped: tuple[str, ...],
+    resumes: int,
+    resumed: bool,
 ) -> None:
     """requirement (fewer agent steps): the same call again resumes the stopped preparation
     through its recovery link once every decision is confirmed; a refused or waiting decision,
@@ -1340,14 +1433,13 @@ def test_a_first_use_resumes_its_stopped_preparation_only_once_every_decision_is
 
 
 def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_record(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, setup_done: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """requirement (plan first): every answer echoes the date's sessions, names what this
     session's setup lacks, carries each later step's command and names an unrecorded sentence."""
     monkeypatch.chdir(tmp_path)  # a project with no declaration for this session's host
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.setenv("CODEX_THREAD_ID", "thread-1")
-    monkeypatch.setattr(retrieval_environment, "load", lambda: False)
     answer = _first_use(_FirstUseHost(tmp_path / "workspace", prepared=True))
 
     # Monday's positions are decided at Friday's close.
@@ -1361,22 +1453,70 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
     ]
     assert answer["next_action"] == "BUILD_THE_STRATEGY"
     assert answer["next_command"] == road[1]["command"]
-    asked = answer["first_use"]["ask_now"][0]
+    # regression (a fresh-folder first use): read again later, the road names the step the
+    # workspace reached, an installed package's book run or the book it already holds.
+    host = _FirstUseHost(tmp_path / "workspace", prepared=True)
+    for forward, action, words in (
+        ({"status": "NO_BOOK_YET"}, "RUN_THE_BOOK", "strategy-book run"),
+        ({"activation": {"status": "INACTIVE"}}, "READ_THE_STRATEGY_BOOK_CONTROLS", "controls"),
+    ):
+        host.forward = {"strategy_package_id": "PKG", **forward}
+        later = _first_use(host)
+        assert later["next_action"] == action, later
+        assert words in later["next_command"] and "PKG" in later["next_command"]
+    watch, asked = answer["first_use"]["ask_now"][:2]
+    assert watch.endswith(_FirstUseHost.workbench) and "Workbench" in watch
     assert "default budget" in asked and "retrieval model" in asked
     assert "SEC_USER_AGENT" not in asked
     assert "not recorded" in answer["first_use"]["sentence"]
     assert "project_declaration" in answer["first_use"]["setup"]["missing"]
-    runtime = answer["first_use"]["setup"]["retrieval_runtime"]
-    assert (
-        runtime["who_decides"] == "AGENT"
-        and "retrieval_environment --offline" in runtime["command"]
-    )
+
+
+def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """requirement (fail fast): with no `alphalattice` command and no retrieval runtime nothing
+    opens, each item named with its commands and words; uv's copy off PATH is the person's."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
+    monkeypatch.setattr(retrieval_environment, "load", lambda: False)
+    host, bare, held = _FirstUseHost(tmp_path / "w", prepared=True), tmp_path / "a", tmp_path / "b"
+    bare.mkdir()
+    venv = tmp_path / "venv"  # under `uv run`, whose own command no specialist's shell has
+    (venv / "Scripts").mkdir(parents=True)
+    for name in ("alphalattice", "alphalattice.cmd"):
+        (venv / "Scripts" / name).write_text("", encoding="utf-8")
+        (venv / "Scripts" / name).chmod(0o755)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(venv / "Scripts"), str(bare)]))
+    monkeypatch.setenv("VIRTUAL_ENV", str(venv))
+    monkeypatch.setenv("UV_RUN_RECURSION_DEPTH", "1")
+    refused, code = _first_use(host), "local_client.first_use_setup_missing"
+    words = client_refusal(code)
+    assert (refused["failure_code"], refused["next_action"]) == (code, words.next_action)
+    assert refused["detail"] == words.detail and host.goals.first_use() is None
+    tool, runtime = refused["missing"]["installed_leg"], refused["missing"]["retrieval_runtime"]
+    assert (tool["who_decides"], runtime["who_decides"]) == ("AGENT", "AGENT")
+    assert tool["commands"][-1].startswith("uv tool install") and "--bin" in tool["words"]
+    assert "retrieval_environment --offline" in runtime["commands"][0]
+    assert runtime["network_commands"] and host.sent == []
+    held.mkdir()  # uv holds the command where this PATH does not reach
+    for name, text in (("uv", f"#!/bin/sh\necho {held}\n"), ("uv.cmd", f"@echo {held}\n")):
+        (bare / name).write_text(text, encoding="utf-8")
+        (bare / name).chmod(0o755)
+        (held / name.replace("uv", "alphalattice")).write_text("", encoding="utf-8")
+        (held / name.replace("uv", "alphalattice")).chmod(0o755)
+    person = _first_use(host)["missing"]["installed_leg"]
+    assert (person["who_decides"], person["commands"]) == ("PERSON", ["uv tool update-shell"])
+    assert "restart" in person["words"]
 
 
 @pytest.mark.parametrize(
     ("named", "read"),
     [
         ("2026-09-07", "first_use.date_not_session"),
+        ("2025-01-01", "first_use.date_not_session"),  # a far-past first use (FAR-PAST)
+        ("2010-01-04", "first_use.date_before_history"),  # its history precedes the calendars
         ("2026-10-09", (True, "2026-10-09", "2026-10-08")),
         ("2026-13-01", "local_client.first_use_date_invalid"),
         ("0001-01-01", "local_client.first_use_date_outside_calendar"),
@@ -1384,7 +1524,7 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
     ],
 )
 def test_a_first_use_reads_the_named_date_by_the_exchange_calendars(
-    tmp_path: Path, named: str, read: object
+    tmp_path: Path, setup_done: dict[str, str], named: str, read: object
 ) -> None:
     """Preparation refuses non-session dates before opening a Goal and names its nearest entry."""
     host = _FirstUseHost(tmp_path / "workspace", prepared=True)
@@ -1394,10 +1534,13 @@ def test_a_first_use_reads_the_named_date_by_the_exchange_calendars(
         assert answer["failure_code"] == read and answer["detail"], answer
         assert all(d["operation"] == "GOAL_OPEN" for d in host.sent)
         assert host.goals.first_use() is None
+        nearest = {"2026-09-07": "2026-09-08", "2025-01-01": "2025-01-02"}.get(named)
         if read == "first_use.date_not_session":
-            assert answer["target_date"] == named and answer["nearest_date"] == "2026-09-08"
-            assert "2026-09-08" in answer["next_command"]
+            assert answer["target_date"] == named and answer["nearest_date"] == nearest
+            assert nearest in answer["next_command"]
             assert "Positions for Monday." in answer["next_command"]
+        if read == "first_use.date_before_history":  # the calendars' floor plus ten years
+            assert answer["nearest_date"] > "2016" and answer["nearest_date"] in answer["detail"]
         return
     date_ = answer["first_use"]["date"]
     assert (date_["named_is_session"], date_["entry_session"], date_["formation_session"]) == read

@@ -169,10 +169,11 @@
    "note": "level 1 with no peers: only code importing level 0 alone may move there (V213) The Host's research_authoring files are its composition (O3, 2026-09-29): the Desk handoffs, the drafts that compose the Host's input envelope with a Desk's installed domain, the authority resolver over the workspace, and the paired methodology's source resolver over five owners' stores; their one-owner helpers adapt an owner's store to the workspace or translate its refusal into the authoring vocabulary. The Desk computations they held moved: the execution-outcome selection to causal outcomes and the development Alpha mandate to Alpha. One component's lifecycle admission moved to Alpha's scores/lifecycle_preparation.py with MODEL_KERNEL's rotation for V365 and V366 (V325, 2026-10-01)."
   },
   "the agent seam": {
-   "covers": "an agent's submissions and their provenance",
+   "covers": "an agent's submissions, provenance and readable answer/bundle moments",
    "owner": "alphalattice.protocols.actor_execution",
    "defined_by": [
-    "alphalattice.protocols.actor_execution.contracts"
+    "alphalattice.protocols.actor_execution.contracts",
+    "alphalattice.protocols.actor_execution.bundles"
    ],
    "folds_in": [],
    "retiring": [],
@@ -218,6 +219,49 @@
    ],
    "folds_in": [],
    "note": "left the retired goal loop's package in GR4; a goal is the Host's ledger (GR1)"
+  },
+  "the committee": {
+   "covers": "the investment committee on a date's published positions: its floor, its report, and the person's daily committee setting, stored at runtime/committee-daily.json in the workspace",
+   "owner": "alphalattice.control.product_host.composition",
+   "defined_by": [
+    "alphalattice.control.product_host.composition.committee"
+   ],
+   "folds_in": []
+  },
+  "host setup": {
+   "covers": "what a checkout needs before research: the doctor's host readiness and a first use's setup gate, each item present or missing, who fills a missing one and its commands; the agent-fillable items come from one source both read",
+   "owner": "alphalattice.interface.local_application",
+   "defined_by": [
+    "alphalattice.interface.local_application.native_bridge",
+    "alphalattice.interface.local_application.native_setup"
+   ],
+   "folds_in": []
+  },
+  "agent memory": {
+   "covers": "the person's .alphalattice/user/ layer and a workspace's agent-notes: two tiers and five domains counted against their bounds (one declaration the maintenance Skill states), and the due-for-review list with each item's reason; the doctor's user_layer item and a sealing answer's record offer offer the review first",
+   "owner": "alphalattice.interface.local_application",
+   "defined_by": [
+    "alphalattice.interface.local_application.native_setup"
+   ],
+   "folds_in": []
+  },
+  "native session": {
+   "covers": "an agent Session bound to the workspace and its members: the binding, each member's usage read from the host's own session files, which role each member is by the key evidence its file holds, and the wake, and the Workbench launch each Session's first answer offers once",
+   "owner": "alphalattice.interface.local_application",
+   "defined_by": [
+    "alphalattice.interface.local_application.native_bridge",
+    "alphalattice.interface.local_application.native_usage"
+   ],
+   "folds_in": []
+  },
+  "the first use": {
+   "covers": "the project's one first use: its FIRST_USE goal opened from the person's sentence and date, its road, and, once it is complete with a strategy running forward, the daily road a later date's sentence takes in that workspace instead of a second first use",
+   "owner": "alphalattice.control.product_host.composition",
+   "defined_by": [
+    "alphalattice.control.product_host.composition.goals",
+    "alphalattice.control.product_host.composition.first_use_road"
+   ],
+   "folds_in": []
   }
  }
 }

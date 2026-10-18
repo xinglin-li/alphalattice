@@ -7,6 +7,8 @@ against that record, sealing it or naming each missing item.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
@@ -20,6 +22,10 @@ from pydantic import (
     model_validator,
 )
 
+from alphalattice.interface.local_application.portfolio_research import (
+    PersonConfirmation,
+    decision_hash,
+)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type ResearchStage = Literal[
@@ -31,6 +37,77 @@ _HASH = r"^[0-9a-f]{64}$"
 
 FIRST_USE_HOURS: Final = 24
 """How long a first-use goal's delegation lasts from its opening (V452)."""
+
+DAILY_NETWORK_ASK: Final = (
+    "May AlphaLattice keep this workspace's network on for your daily updates, to fetch new "
+    "market data and SEC filings within the default budget (3 per issuer, 600 documents and "
+    "3 GB overall), until you tell me to stop? Each use is recorded in the activity log and shown "
+    "in the Workbench."
+)
+"""The one line a first use asks at its start, word for word: the person's yes, relayed by
+`DAILY_NETWORK_RELAY`, is theirs until they say stop, which is relayed to `network set --enabled
+false`; the delegation ends with its goal and never answers it."""
+
+FIRST_USE_ASK_NOW: Final = (
+    "Unless this workspace's Evidence is set up already, the review of the date's positions "
+    "acquires recent SEC filings within the default budget under the first use's delegation, and "
+    "downloads the retrieval model at the size its setup states: say so in one line now. Then "
+    "ask the person once, in these words, and carry on. On their yes, run each command after the "
+    "question once, their words verbatim in place of `<their words>`; the delegation never "
+    "answers it:",
+    DAILY_NETWORK_ASK,
+)
+"""What a first use answers at its start: its delegated steps, said in one line, and the one
+question only the person answers; the client adds the relay's commands."""
+WATCH_IN_WORKBENCH: Final = "You can watch this run in the Workbench: {link}"
+"""The first line a first use asks the lead to relay, with its Workbench link."""
+
+_DAILY_REQUESTS: Final = (
+    (
+        ("network", "set", "--enabled", "true"),
+        {"operation": "NETWORK_ACCESS_SET", "network_enabled": True},
+    ),
+    (
+        ("evidence-consent", "set", "--per-issuer", "3"),
+        {"operation": "EVIDENCE_CONSENT_SET", "evidence_documents_per_issuer": 3},
+    ),
+)
+DAILY_NETWORK_DECISIONS: Final = frozenset(decision_hash(r) for _words, r in _DAILY_REQUESTS)
+"""The two requests a yes to `DAILY_NETWORK_ASK` answers, each once; the Host takes no other."""
+
+DAILY_NETWORK_RELAY: Final = tuple(
+    (*words, "--person-said", "<their words>", "--asked", DAILY_NETWORK_ASK)
+    for words, _request in _DAILY_REQUESTS
+)
+"""The same two requests as the commands that relay the person's yes, verbatim but its words."""
+
+
+NOT_A_PERSON: Final = re.compile(
+    r"\bno (?:person|human) is (?:here|present)\b|\b(?:person|human) is (?:not present|absent)\b"
+    r"|\bwithout (?:a|the) person\b|\banswered yes as authori[sz]ed\b|\boperator rule\b",
+    re.IGNORECASE,
+)
+"""Words that say no person gave them, as a run's operator rule wrote them: they relay nothing.
+Narrow on purpose: a person's own yes is never refused for its phrasing."""
+
+
+def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirmation) -> str:
+    """The decision a relayed yes answers: the one it was bound to.
+
+    For the daily question it is only one of its two (`DAILY_NETWORK_DECISIONS`).
+
+    Raises:
+        ValueError: `person_confirmation.not_the_persons_words`, `.decision_mismatch` or
+            `.beyond_its_question`.
+    """
+    if NOT_A_PERSON.search(confirmation.words):
+        raise ValueError("person_confirmation.not_the_persons_words")
+    decision = decision_hash(request)
+    if confirmation.decision_hash != decision:
+        raise ValueError("person_confirmation.decision_mismatch")
+    if confirmation.question == DAILY_NETWORK_ASK and decision not in DAILY_NETWORK_DECISIONS:
+        raise ValueError("person_confirmation.beyond_its_question")
+    return decision
 
 
 class GoalContract(BaseModel):  # type: ignore[misc]
@@ -134,12 +211,20 @@ def update_offers(update: object, named: date | None, task: object) -> dict[str,
     return {"update": {**update, "observed_through": formation}}
 
 
+NEW_RESEARCH_SCOPE: Final = (
+    "Separate new research at the person's yes, beside the project's completed first use."
+)
+"""A first use's scope where the person asked for separate research: the one way past the
+daily road a completed first use otherwise offers (`first-use prepare --new-research`)."""
+
+
 def target_sessions(
     named: date,
     now: datetime | None = None,
     here: tzinfo | None = None,
     *,
     for_preparation: bool = False,
+    held: bool = True,
 ) -> dict[str, object]:
     """The sessions a named date's positions stand on, and when their information is available.
 
@@ -152,6 +237,8 @@ def target_sessions(
         now: The clock the reading is told against; the current time when omitted.
         here: The reader's zone; the machine's when omitted.
         for_preparation: Check entry admission, using the Host's clock only when supplied.
+        held: Whether the Host holds the update until then (a first use) or nothing runs until
+            the plan is sent again (a daily plan).
 
     Returns:
         The named date, whether it is a session, the entry session (the first common XNYS/XNAS
@@ -200,9 +287,14 @@ def target_sessions(
             else {
                 "reading": f"The {point.entry_session} positions are decided at the "
                 f"{point.formation_session} close; its data is ready after about "
-                f"{exchange:%H:%M} ET{yours}. Preparing now: the Host finishes the update itself "
-                "then, and your goal wait wakes when it ends. If the Host is not running then, "
-                "serving it again runs the update at its start."
+                f"{exchange:%H:%M} ET{yours}. "
+                + (
+                    "Preparing now: the Host finishes the update itself then, and your goal wait "
+                    "wakes when it ends. If the Host is not running then, serving it again runs "
+                    "the update at its start."
+                    if held
+                    else "Nothing runs before then: send the offered plan again after that time."
+                )
             }
         ),
     }
@@ -212,6 +304,8 @@ def target_sessions(
         if clock_date is not None and point.formation_session > clock_date:
             code = "first_use.date_after_clock"
             nearest = target_sessions(clock_date + timedelta(days=1), now)["entry_session"]
+        elif (earliest := _earliest_entry(point.formation_session)) is not None:
+            code, nearest = "first_use.date_before_history", earliest
         elif point.entry_session != named:
             code, nearest = "first_use.date_not_session", point.entry_session.isoformat()
         if code is not None:
@@ -222,6 +316,28 @@ def target_sessions(
                 nearest_date=nearest,
             )
     return reading
+
+
+def _earliest_entry(formation: date) -> str | None:
+    """The first entry whose formation's ten-year history the calendars plan, when this
+    formation's history would start before their first session; else nothing."""
+    from importlib import import_module
+
+    from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
+        _ten_calendar_year_anniversary as history_start,
+    )
+    from alphalattice.kernel.data.calendar import SUPPORTED_CALENDARS
+
+    get_calendar = import_module("exchange_calendars").get_calendar  # their first sessions
+    floor = max(get_calendar(c).first_session.date() for c in SUPPORTED_CALENDARS)
+    if history_start(formation) >= floor:
+        return None
+    named = date(floor.year + 10, floor.month, min(floor.day, 28))
+    while True:
+        reading = target_sessions(named)
+        if history_start(date.fromisoformat(str(reading["formation_session"]))) >= floor:
+            return str(reading["entry_session"])
+        named += timedelta(days=1)
 
 
 class GoalReferenceRequest(GoalContract):
@@ -377,13 +493,17 @@ class GoalTaskFact(GoalContract):
     updated_at: datetime | None = Field(
         default=None, description="Task Control's canonical last-update time, when available."
     )
+    continued_by: UUID | None = Field(
+        default=None, description="The Task that continued this stop and succeeded, if one did."
+    )
 
     @model_serializer(mode="wrap")  # type: ignore[untyped-decorator]
     def _serialize_available_update(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
-        """Keep an absent clock absent, preserving the pre-field sealed Goal shape."""
+        """Keep an absent clock or continuation absent, preserving the sealed Goal shape."""
         serialized: dict[str, Any] = handler(self)
-        if self.updated_at is None:
-            serialized.pop("updated_at", None)
+        for field in ("updated_at", "continued_by"):
+            if getattr(self, field) is None:
+                serialized.pop(field, None)
         return serialized
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]

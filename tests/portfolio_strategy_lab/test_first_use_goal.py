@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -20,6 +21,10 @@ import pytest
 import alphalattice.interface.local_application.portfolio_research as research_requests
 from alphalattice.control.product_host.composition import (
     portfolio_research_operations as operations,
+)
+from alphalattice.control.product_host.composition.evidence_source_ways import (
+    short_source_action,
+    source_ways,
 )
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
@@ -41,7 +46,11 @@ from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
 )
-from alphalattice.interface.local_application.goals import FIRST_USE_HOURS, target_sessions
+from alphalattice.interface.local_application.goals import (
+    DAILY_NETWORK_ASK,
+    FIRST_USE_HOURS,
+    target_sessions,
+)
 from tests.portfolio_strategy_lab.local_web_support import _json, run_node
 from tests.researcher_methodology_surface.real_workspace import _source_loader_for
 from tests.workspace_maintenance.local_data_provider import recording_provider
@@ -89,7 +98,7 @@ def _code(answer: dict[str, Any]) -> str | None:
 
 def _network(live: Any) -> bool:
     """The workspace's own network control, read past the tests' offline switch."""
-    return network_access(live.workspace, environment={}).allowed
+    return network_access(live.workspace, environment={}, now=live.clock()).allowed
 
 
 def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them(
@@ -132,6 +141,8 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     again.write_text(json.dumps({**FIRST_USE, "objective": "Another sentence."}), encoding="utf-8")
     code, second = _cli(live, "goal", "open", "--file", str(again))
     assert code == 2 and second["failure_code"] == "goal.first_use_already_opened"
+    code, reused = _cli(live, "goal", "open", "--file", str(declaration), session=OTHER_SESSION)
+    assert reused["goal_id"] == opened["goal_id"], reused  # the same sentence, another session
     code, ended = _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")
     assert code == 0 and ended["state"] == "ABANDONED"
     assert not _network(live)
@@ -139,16 +150,38 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
 
 
-def test_sec_source_consent_is_the_persons_outside_a_first_use(live: Any) -> None:
-    """requirement: outside a first use only the person, or their relayed yes, gives SEC source
-    consent or installs, within the source policy's bounds; a malformed setup is refused."""
+def test_the_first_use_deadline_names_the_hosts_local_moment(live, monkeypatch, host_local_clock):
+    """The deadline is an instant in both clocks, never a bare UTC calendar day."""
+    app = live.operations.goals
+    monkeypatch.setattr(app, "clock", lambda: host_local_clock - timedelta(days=1))
+    app.operate(Request(operation="GOAL_OPEN", goal_declaration=FIRST_USE), "EXTERNAL_AUTOMATION")
+    goal = app.first_use()
+    answer = app.record(goal)["delegation"]
+    assert answer["ends_at"] == host_local_clock.isoformat()
+    assert "2026-10-17 22:44" in answer["ends_at_reading"]
+    assert "-0400" in answer["ends_at_reading"] and answer["ends_at"] in answer["ends_at_reading"]
+
+
+def test_sec_source_consent_is_the_persons_outside_a_first_use(
+    live: Any,
+) -> None:
+    """SEC consent is the person's; malformed setup and unoffered installs refuse."""
     code, refused = _cli(live, "evidence-consent", "set", "--per-issuer", "3")
     assert code == 2 and refused["failure_code"] == "evidence_review.consent_human_only"
     code, refused = _cli(live, "evidence", "install", INSTALL)
     assert code == 2 and refused["failure_code"] == "evidence_review.consent_human_only"
-    for malformed in ('--setup=--entities "AAPL', INSTALL.removesuffix(" --install")):
+    # Each names its reason in the parser's own words (an unquoted path with a space hid it).
+    for malformed, why in (
+        ('--setup=--entities "AAPL', "closing quotation"),
+        (INSTALL.removesuffix(" --install"), "--install"),
+        ("--setup=--source-artifact-root D:/a b --install", "unrecognized arguments: b"),
+    ):
         code, invalid = _cli(live, "evidence", "install", malformed)
         assert code == 2 and invalid["failure_code"] == "local_client.request_invalid", invalid
+        assert why in invalid["reasons"]["evidence_setup"], invalid
+    two = INSTALL.replace(" --network", " --source-artifact-root x --network")
+    code, both = _cli(live, "evidence", "install", two)
+    assert code == 2 and "--source-set-hash" in both["detail"], both
     code, admitted = _cli(live, "evidence", "install", INSTALL, *RELAY)
     assert code == 3 and admitted["status"] == "ADMITTED", admitted
     invalid = live.operations.execute(
@@ -159,6 +192,15 @@ def test_sec_source_consent_is_the_persons_outside_a_first_use(live: Any) -> Non
         Request(operation="EVIDENCE_CONSENT_SET", evidence_documents_per_issuer=5), caller="HUMAN"
     )
     assert given["consent"]["actor"] == "HUMAN" and given["consent"]["documents_per_issuer"] == 5
+    # Under the daily yes an agent sends only the Host's offered install, as it stands (the
+    # review of ce85582b9); its own issuers are the person's, and a wrong budget is a refusal.
+    code, own = _cli(live, "evidence", "install", INSTALL)
+    assert code == 2 and _code(own) == "evidence_review.consent_human_only", own
+    wide = INSTALL.replace(" --network", " --maximum-documents-per-issuer 50 --network")[8:]
+    answer = live.operations.execute(
+        Request(operation="EVIDENCE_INSTALL", evidence_setup=wide), caller="HUMAN"
+    )
+    assert answer["status"] in {"ADMITTED", "REFUSED"}, answer
 
 
 def test_a_first_use_gives_the_default_sec_budget_until_its_end(live: Any, tmp_path: Path) -> None:
@@ -211,12 +253,13 @@ def test_a_first_use_never_raises_the_persons_sec_consent(live: Any, tmp_path: P
     assert code == 0 and shown["consent"]["actor"] == "HUMAN"
 
 
+@pytest.mark.parametrize("relayed", [False, True])
 def test_a_first_use_ends_without_undoing_what_the_person_set_since(
-    live: Any, tmp_path: Path
+    live: Any, tmp_path: Path, relayed: bool
 ) -> None:
-    """regression (V460, an outside review at b39e55f2): the agent opened the network under the
-    first use, the person then opened it in Settings, and the goal's end closed it again. Its
-    end undoes only a setting its delegation still holds."""
+    """regression (V460 at b39e55f2; a daily update re-asked, 2026-10-15): the person opened the
+    network in Settings, or by a yes relayed during the first use, and the goal's end closed it.
+    Its end undoes only a setting its delegation still holds."""
 
     declaration = tmp_path / "first-use.json"
     declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
@@ -224,13 +267,107 @@ def test_a_first_use_ends_without_undoing_what_the_person_set_since(
     assert code == 0, opened
     code, _set = _cli(live, "network", "set", "--enabled", "true")
     assert code == 0 and _network(live)
-    person = live.operations.execute(
-        Request(operation="NETWORK_ACCESS_SET", network_enabled=True), caller="HUMAN"
-    )
-    assert "set_by" not in person
+    if relayed:
+        yes = ("--person-said", "Yes.", "--asked", "Daily network?")
+        code, person = _cli(live, "network", "set", "--enabled", "true", *yes)
+        assert code == 0 and person["set_by"]["relayed_by"] == f"claude-code:{SESSION}"
+    else:
+        person = live.operations.execute(
+            Request(operation="NETWORK_ACCESS_SET", network_enabled=True), caller="HUMAN"
+        )
+        assert "set_by" not in person
     code, ended = _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")
     assert code == 0 and ended["state"] == "ABANDONED"
     assert _network(live)
+
+
+@pytest.mark.parametrize("relayed", [False, True])
+def test_the_persons_own_record_wins_over_a_first_uses_delegation(
+    live: Any, tmp_path: Path, relayed: bool
+) -> None:
+    """regression (the review of a36e210c4): a delegated `network set` or consent overwrote the
+    person's own record, a reopen was offered and taken after their stop, and their stop left
+    SEC consent standing for the network's next opening."""
+
+    def person(line: tuple[str, ...], **request: Any) -> None:
+        if relayed:
+            code, answer = _cli(live, *line, "--person-said", "Yes.", "--asked", "May I?")
+            assert code == 0, answer
+        else:
+            live.operations.execute(Request(**request), caller="HUMAN")
+
+    declaration = tmp_path / "first-use.json"
+    declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
+    code, opened = _cli(live, "goal", "open", "--file", str(declaration))
+    assert code == 0, opened
+    consent, network_on = ("evidence-consent", "set", "--per-issuer", "3"), ("network", "set")
+    person(consent, operation="EVIDENCE_CONSENT_SET", evidence_documents_per_issuer=3)
+    person((*network_on, "--enabled", "true"), operation="NETWORK_ACCESS_SET", network_enabled=True)
+    _cli(live, *consent), _cli(live, *network_on, "--enabled", "true")
+    assert _cli(live, "evidence-consent", "show")[1]["consent"]["actor"] == "HUMAN"
+    assert "delegation" not in _cli(live, "network", "show")[1].get("set_by", {})
+    goal, delegation = (
+        RequestProvenance(goal_id=opened["goal_id"]),
+        f"first-use-goal:{opened['goal_id']}",
+    )
+    assert live.operations.goals.network_delegation(goal, "EXTERNAL_AUTOMATION") == delegation
+    stop = (*network_on, "--enabled", "false")
+    person(stop, operation="NETWORK_ACCESS_SET", network_enabled=False)
+    _cli(live, *network_on, "--enabled", "true")
+    shown = network_access(live.workspace, environment={}, now=live.clock()).body(
+        delegation=delegation
+    )
+    assert not _network(live) and shown["next_action"] == "ASK_A_PERSON_TO_ALLOW_NETWORK_ACCESS"
+    # The same day's Evidence review offers the person's one-line ask, never a delegated set
+    # (the review of a28b30c73: it still offered the default budget as the agent's to give).
+    ways = {
+        "source_ways": source_ways(
+            live.workspace, entities=None, book=None, delegation=delegation, now=live.clock()
+        )
+    }
+    assert "next_requests" not in ways["source_ways"], ways
+    assert short_source_action(ways) == "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE"
+    code, again = _cli(live, *consent)
+    assert code == 2 and again["failure_code"] == "evidence_review.consent_beyond_delegation"
+    assert _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")[0] == 0
+    assert not _network(live)
+    assert _cli(live, "evidence-consent", "show")[1]["consent"]["actor"] == "REVOKED"
+
+
+def test_the_daily_network_yes_answers_only_its_two_requests(live: Any) -> None:
+    """requirement (the review of a36e210c4): the daily question's yes is a typed Host decision,
+    the network on and SEC filings at the default budget, and answers nothing else."""
+
+    yes = ("--person-said", "Yes.", "--asked", DAILY_NETWORK_ASK)
+    for beyond in (
+        ("evidence-consent", "set", "--per-issuer", "10"),
+        ("network", "set", "--enabled", "false"),
+    ):
+        code, refused = _cli(live, *beyond, *yes)
+        assert code == 2 and _code(refused) == "person_confirmation.beyond_its_question", refused
+    assert _cli(live, "network", "set", "--enabled", "true", *yes)[0] == 0 and _network(live)
+    code, given = _cli(live, "evidence-consent", "set", "--per-issuer", "3", *yes)
+    assert code == 0 and given["consent"]["actor"] == "HUMAN", given
+
+
+def test_the_daily_yes_relayed_as_offered_outlives_the_first_use(
+    live: Any, monkeypatch: pytest.MonkeyPatch, setup_done: dict[str, str]
+) -> None:
+    """regression (a two-day run, 2026-10-15): the lead sent the daily question's requests
+    under the delegation, its goal's end closed the network, and day 2 asked again."""
+    monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
+    first = _cli(live, "first-use", "prepare", "--sentence", "A book.", "--date", "2026-10-09")[1]
+    _watch, _said, _asked, network_on, consent = first["first_use"]["ask_now"]
+    code, delegated = _cli(live, *shlex.split(network_on)[1:-4])
+    assert code == 0 and "daily_question" in delegated, delegated
+    for offered in (network_on, consent):
+        line = shlex.split(offered.replace("<their words>", "Yes, keep it on."))[1:]
+        assert _cli(live, *line)[0] == 0, line
+    goal = live.operations.goals.first_use()
+    assert _cli(live, "goal", "abandon", str(goal.goal_id), "--reason", "Done")[0] == 0
+    day_two = network_access(live.workspace, environment={}, now=live.clock() + timedelta(days=1))
+    assert day_two.allowed and day_two.persons
+    assert _cli(live, "evidence-consent", "show")[1]["consent"]["actor"] == "HUMAN"
 
 
 def test_a_persons_yes_relayed_whole_completes_their_decision_once(
@@ -240,10 +377,22 @@ def test_a_persons_yes_relayed_whole_completes_their_decision_once(
     session; the same command run again, or the yes carried to another decision, is refused,
     and their next yes goes with the nonce the refusal named."""
 
+    # regression (RELAY-ORIGIN, the final confirmation's day two): words that say no person gave
+    # them relay nothing, and nothing changes.
+    invented = "No person is present: a person-only question is answered yes as authorized."
+    operator = ("network", "set", "--enabled", "true", "--person-said", invented)
+    code, refused = _cli(live, *operator, "--asked", "Open it?")
+    assert code == 2 and _code(refused) == "person_confirmation.not_the_persons_words", refused
     line = ("network", "set", "--enabled", "true", "--person-said", "Yes.", "--asked", "Open it?")
     code, set_ = _cli(live, *line)
     assert code == 0 and _network(live), set_
-    assert _cli(live, "network", "show")[1]["set_by"] == {"relayed_by": f"claude-code:{SESSION}"}
+    origin = _cli(live, "network", "show")[1]["set_by"]  # who, what, asked how, when, for what
+    assert (origin["relayed_by"], origin["words"], origin["asked"]) == (
+        f"claude-code:{SESSION}",
+        "Yes.",
+        "Open it?",
+    )
+    assert origin["at"].endswith("+00:00") and origin["at_host_local"] and origin["scope"]
     code, again = _cli(live, *line)
     used = str(_code(again))
     assert code == 2 and used.startswith("person_confirmation.already_used:"), again
@@ -589,22 +738,29 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         return _cli(live, "request", "--file", str(path), session=session)
 
     with live:
-        code, budget = send({"operation": "CPU_BUDGET_SET", "cpu_budget": "4"})
+        code, budget = send(
+            {"operation": "CPU_BUDGET_SET", "cpu_budget": str(min(4, os.cpu_count() or 1))}
+        )
         assert code == 0 and _code(budget) is None, budget
         declaration = tmp_path / "first-use.json"
         declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
         code, opened = _cli(live, "goal", "open", "--file", str(declaration))
         assert code == 0, opened
         delegation = f"first-use-goal:{opened['goal_id']}"
+
+        def closed(workspace: Path, *, now: datetime) -> NetworkAccess:
+            assert now == OBSERVED_AT  # the Host's clock, never the machine's
+            return NetworkAccess(False, "DEFAULT")
+
         with monkeypatch.context() as patch:
             patch.setattr(live.operations.preparation, "provider", None)
             patch.setattr(
                 "alphalattice.control.product_host.data_preparation.application.network_access",
-                lambda _root: NetworkAccess(False, "DEFAULT"),
+                closed,
             )
             patch.setattr(
                 "alphalattice.control.product_host.composition.portfolio_research_operations.network_access",
-                lambda _root: NetworkAccess(False, "DEFAULT"),
+                closed,
             )
             code, preview = _cli(live, "preparation", "plan")
             code, hint = send({"operation": "NETWORK_ACCESS"})
@@ -869,16 +1025,24 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
 
 
 def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tmp_path):
-    """A workspace rule authorizes its dated Task, never a closed or unrelated Goal."""
-    from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
+    """A workspace rule authorizes its dated Task, never a closed or unrelated Goal; its audits
+    count against one bound with every approval for the Task and are recorded once admitted."""
+    from alphalattice.control.data_platform.data_decision_rule import (
+        FULL_HISTORY,
+        DataDecisionRule,
+    )
 
     now, task, goal_id = datetime(2026, 10, 2, tzinfo=UTC), UUID(int=8), UUID(int=7)
+    update, first_use = UUID(int=10), UUID(int=11)
     app = GoalApplication(
         GoalStore(tmp_path, "workspace"),
         lambda: now,
         lambda *_: {},
         lambda _: now,
-        {task: ("portfolio_public_watermark_advancement", "RUNNING", None)}.get,
+        {
+            task: ("portfolio_public_watermark_advancement", "RUNNING", None),
+            update: ("workspace_data_update", "RUNNING", None),
+        }.get,
         workspace=tmp_path,
     )
     app.operate(
@@ -895,8 +1059,71 @@ def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tm
     app.store.attribute(goal_id, {"task_id": str(task), "operation": "STATUS"})
     assert app.data_rule(task) is None
     app.store.attribute(goal_id, {"task_id": str(task), "operation": "RESEARCH_UPDATE_RUN"})
-    assert app.data_rule(task) is not None
+    decide = app.data_rule(task)
+    assert decide is not None
     assert app.data_rule(UUID(int=9)) is None
+    admitted: list[str] = []
+
+    def admit(rule_hash: str) -> str:
+        admitted.append(rule_hash)
+        return rule_hash
+
+    def refuse(_rule_hash: str) -> str:
+        raise ValueError("data.audit_requirement_unverified")
+
+    def audits(goal: UUID = goal_id) -> list[tuple[str, list[str]]]:
+        rows = app.store.attributed(goal)
+        return [(e["status"], e["listing_ids"]) for e in rows if e.get("operation") == FULL_HISTORY]
+
+    assert decide.audit({"L1": "AAA", "L2": "BBB"}, 100, admit)  # two of a hundred, within 2%
+    with pytest.raises(ValueError, match="audit_requirement_unverified"):
+        decide.audit({"L4": "DDD"}, 1000, refuse)  # written ahead, then marked not admitted
+    assert decide.audit({"L4": "DDD"}, 1000, admit)  # retried, it is approved and counts
+    assert decide.audit({"L1": "AAA"}, 100, admit) is None  # approved already: no second record
+    assert decide.audit({"L3": "CCC"}, 100, admit) is None  # past the bound: refused
+    assert decide.audit({"L9": "ZZZ"}, 10**6, admit) is None  # and the Task stays escalated
+    assert audits() == [
+        ("DECIDED_BY_RULE", ["L1", "L2"]),
+        ("DECIDED_BY_RULE", ["L4"]),
+        ("NOT_ADMITTED", ["L4"]),
+        ("DECIDED_BY_RULE", ["L4"]),
+        ("ESCALATED", ["L3"]),
+    ]
+    assert len(admitted) == 2
+    assert [
+        pair[0] for pair in app.store.rule_audits(str(task), app.store.attributed(goal_id))
+    ] == [
+        "L1",
+        "L2",
+        "L4",
+    ]
+    # Inside an open first use its delegation comes first, even for a data update's run, and its
+    # step names the audit's listings; a record that fails admits nothing.
+    app.operate(
+        Request(operation="GOAL_OPEN", goal_id=first_use, goal_declaration=FIRST_USE),
+        "EXTERNAL_AUTOMATION",
+    )
+    app.store.attribute(first_use, {"task_id": str(update), "operation": "DATA_UPDATE_RUN"})
+    first = app.data_rule(update)
+    attribute = app.store.attribute
+    app.store.attribute = lambda *_: (_ for _ in ()).throw(OSError("locked"))  # type: ignore[method-assign]
+    with pytest.raises(OSError):
+        first.audit({"L6": "FFF"}, 100, admit)
+    app.store.attribute = attribute  # type: ignore[method-assign]
+    assert len(admitted) == 2 and first.audit({"L5": "EEE"}, 470, admit)
+    # An ordinary ex-dividend day on 470 names: six more payers stay within the audits' own
+    # 2% bound; three after them make ten, past it, and are left to the person.
+    assert first.audit({f"P{n}": f"P{n}" for n in range(6)}, 470, admit)
+    assert first.audit({f"Q{n}": f"Q{n}" for n in range(3)}, 470, admit) is None
+    head = app.store.head(first_use)
+    steps = app.record(head)["delegated_steps"]
+    assert [(s["status"], s["symbols"]) for s in steps if s["operation"] == FULL_HISTORY] == [
+        ("DECIDED_BY_RULE", ["EEE"]),
+        ("DECIDED_BY_RULE", [f"P{n}" for n in range(6)]),
+        ("ESCALATED", ["Q0", "Q1", "Q2"]),
+    ]
+    owned = [e for e in app.store.attributed(first_use) if e.get("operation") == FULL_HISTORY]
+    assert {e["authority"] for e in owned} == {"first-use-goal"}
     publish_research_workspace_manifest(
         tmp_path,
         ResearchWorkspaceManifest.create(
@@ -915,3 +1142,4 @@ def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tm
         "EXTERNAL_AUTOMATION",
     )
     assert app.data_rule(task) is None
+    assert decide.audit(("L6",), 1000, admit) is None  # its Goal's authority has ended

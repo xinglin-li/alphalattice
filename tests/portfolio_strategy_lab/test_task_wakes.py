@@ -39,12 +39,21 @@ def codex(tmp_path, monkeypatch):
     recorder = folder / "recorder.py"
     recorder.write_text(
         "import json, os, sys\n"
-        "if sys.argv[1:] == ['queue', '--help']:\n"
+        "args = sys.argv[1:]\n"
+        "home = 'Error: failed to find Codex home: Could not find home directory'\n"
+        "boxed = os.environ.get('FAKE_CODEX_SANDBOXED')\n"
+        "reach = args[:2] == ['queue', '--thread'] and args[2] != os.environ['CODEX_THREAD_ID']\n"
+        "if args == ['queue', '--help'] or reach:\n"
         "    with open(os.environ['FAKE_CODEX_PROBES'], 'a') as out: out.write('probe\\n')\n"
-        "    sys.exit(int(os.environ.get('FAKE_CODEX_PROBE_EXIT', '0')))\n"
+        "    code = int(os.environ.get('FAKE_CODEX_PROBE_EXIT', '0'))\n"
+        "    if reach:\n"
+        "        known = f'Error: no rollout found for thread id {args[2]}'\n"
+        "        sys.exit(home if boxed else 'Error: probe failed' if code else known)\n"
+        "    sys.exit(code)\n"
         "with open(os.environ['FAKE_CODEX_CALLS'], 'a', encoding='utf-8') as out:\n"
-        "    out.write(json.dumps(sys.argv[1:]) + '\\n')\n"
-        "sys.exit(int(os.environ.get('FAKE_CODEX_EXIT', '0')))\n",
+        "    out.write(json.dumps(args) + '\\n')\n"
+        "code = int(os.environ.get('FAKE_CODEX_EXIT', '0'))\n"
+        "sys.exit(home if boxed else f'Error: queue refused ({code})' if code else 0)\n",
         encoding="utf-8",
     )
     if os.name == "nt":
@@ -266,6 +275,10 @@ def test_a_wake_the_host_cannot_send_is_named_in_the_tasks_activity_and_not_retr
         if salt == "missing":
             parked.rename(codex.command)
         assert (wake["state"], wake["result"]["failure"]) == ("UNDELIVERED", failure)
+        # Codex's own first line names why the queue failed.
+        assert wake["result"].get("detail") == (
+            "Error: queue refused (17)" if path == codex.folder else None
+        )
         live.activity.command_returned("factor_research", task.task_id, None)
         live.activity.drain_wakes()
         page = LocalResearchClient(live.workspace).activity(watch=(str(task.task_id),))
@@ -276,6 +289,30 @@ def test_a_wake_the_host_cannot_send_is_named_in_the_tasks_activity_and_not_retr
             for row in page["items"]
         )
     assert len(codex.calls()) == 1
+
+
+def test_a_host_that_cannot_reach_codex_refuses_the_wake_and_waits_in_the_turn(
+    live, codex, monkeypatch
+):
+    """A Host in an agent's sandbox cannot open Codex's home: no wake is held, the turn waits."""
+    monkeypatch.setenv("FAKE_CODEX_SANDBOXED", "1")
+    task = _task(live, "sandboxed")
+    client = LocalResearchClient(live.workspace)
+    answer = client.request(
+        {
+            "operation": "WAKE_REGISTER",
+            "task_id": str(task.task_id),
+            "wake_thread": THREAD,
+            "wake_read": "task show",
+        }
+    )
+    assert answer["failure_code"] == "local_client.codex_unreachable"
+    assert answer["next_action"] == "WAIT_IN_THE_TURN"
+    assert "activity wait --task" in answer["detail"]
+    assert answer["codex_reach"]["detail"].endswith("Could not find home directory")
+    assert client.request(answer["next_requests"]["read"])["task_id"] == str(task.task_id)
+    assert live.session.task_control_registry.wake_registrations(task.task_id) == ()
+    assert codex.calls() == []
 
 
 def test_a_missing_queue_refuses_before_the_host_holds_a_wake(live, codex, monkeypatch):
@@ -298,7 +335,7 @@ def test_a_missing_queue_refuses_before_the_host_holds_a_wake(live, codex, monke
     assert codex.calls() == []
     monkeypatch.setenv("FAKE_CODEX_PROBE_EXIT", "17")
     refused = client.request({**registration, "wake_codex_path": str(codex.command)})
-    assert refused["failure_code"] == "local_client.codex_queue_unavailable"
+    assert refused["failure_code"] == "local_client.codex_unreachable"
     assert live.session.task_control_registry.wake_registrations(task.task_id) == ()
     monkeypatch.delenv("FAKE_CODEX_PROBE_EXIT")
     # The same Host receives the fresh client's PATH; it never restarts.
@@ -379,7 +416,7 @@ _VERB_ARGUMENTS = {
 
 @pytest.mark.parametrize("verb", sorted(_VERB_ARGUMENTS))
 def test_an_agent_verb_registers_its_running_task_and_its_rerun_keeps_every_answer(
-    live, codex, tmp_path, monkeypatch, capsys, verb
+    live, codex, tmp_path, monkeypatch, capsys, verb, setup_done
 ) -> None:
     """An agent verb registers its running task and its rerun keeps every answer."""
     task = _task(live, "verb")
