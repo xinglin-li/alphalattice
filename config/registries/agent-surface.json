@@ -28075,6 +28075,12 @@
       "required": false,
       "type": "float"
     },
+    "option:first-use prepare/--new-research": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
     "option:first-use prepare/--notify": {
       "choices": [
         "codex-queue"

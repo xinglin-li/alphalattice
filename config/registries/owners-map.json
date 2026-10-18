@@ -237,12 +237,29 @@
    ],
    "folds_in": []
   },
+  "agent memory": {
+   "covers": "the person's .alphalattice/user/ layer and a workspace's agent-notes: two tiers and five domains counted against their bounds (one declaration the maintenance Skill states), and the due-for-review list with each item's reason; the doctor's user_layer item and a sealing answer's record offer offer the review first",
+   "owner": "alphalattice.interface.local_application",
+   "defined_by": [
+    "alphalattice.interface.local_application.native_setup"
+   ],
+   "folds_in": []
+  },
   "native session": {
    "covers": "an agent Session bound to the workspace and its members: the binding, each member's usage read from the host's own session files, which role each member is by the key evidence its file holds, and the wake, and the Workbench launch each Session's first answer offers once",
    "owner": "alphalattice.interface.local_application",
    "defined_by": [
     "alphalattice.interface.local_application.native_bridge",
     "alphalattice.interface.local_application.native_usage"
+   ],
+   "folds_in": []
+  },
+  "the first use": {
+   "covers": "the project's one first use: its FIRST_USE goal opened from the person's sentence and date, its road, and, once it is complete with a strategy running forward, the daily road a later date's sentence takes in that workspace instead of a second first use",
+   "owner": "alphalattice.control.product_host.composition",
+   "defined_by": [
+    "alphalattice.control.product_host.composition.goals",
+    "alphalattice.control.product_host.composition.first_use_road"
    ],
    "folds_in": []
   }

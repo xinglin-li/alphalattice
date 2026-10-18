@@ -381,6 +381,30 @@ def _section(child: argparse.ArgumentParser, *, wanted: bool = True) -> None:
     )
 
 
+def _first_use_options(child: argparse.ArgumentParser) -> None:
+    """`first-use prepare`'s own options: the person's sentence and date, and their yes."""
+    child.add_argument(
+        "--sentence",
+        dest="objective",
+        required=True,
+        help="The person's exact sentence, the first use's objective; the same sentence "
+        "and date again reuse its goal.",
+    )
+    child.add_argument(
+        "--date",
+        dest="target_date",
+        required=True,
+        help="The date the sentence names for the positions (YYYY-MM-DD), as you read it; "
+        "they are entered on the first session on or after it, decided at the close before.",
+    )
+    child.add_argument(
+        "--new-research",
+        action="store_true",
+        help="Only on the person's yes to separate new research: open a first use even "
+        "where the project's first use is complete (its daily road is offered otherwise).",
+    )
+
+
 def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> None:
     child.add_argument(
         "--output",
@@ -457,20 +481,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             help="The last floor message seen, by number: the answer's `seen` (M7 is 7).",
         )
     elif (noun, verb) == ("first-use", "prepare"):
-        child.add_argument(
-            "--sentence",
-            dest="objective",
-            required=True,
-            help="The person's exact sentence, the first use's objective; the same sentence "
-            "and date again reuse its goal.",
-        )
-        child.add_argument(
-            "--date",
-            dest="target_date",
-            required=True,
-            help="The date the sentence names for the positions (YYYY-MM-DD), as you read it; "
-            "they are entered on the first session on or after it, decided at the close before.",
-        )
+        _first_use_options(child)
     elif (noun, verb) == ("strategy-book", "review"):
         child.add_argument(
             "--package",
@@ -1921,6 +1932,10 @@ def _command(
 
     def after(document: dict[str, Any], answer: dict[str, Any]) -> None:
         _read_lead(document, workspace=args.workspace, goal=args.goal, after=True, answer=answer)
+        if answer.get("next_action") == "RECORD_THE_EXPERIENCE":
+            from alphalattice.interface.local_application.native_setup import record_offer
+
+            record_offer(answer, Path(args.workspace))
 
     routed = args.routed_document
     if isinstance(routed, client.LocalResearchClientError):

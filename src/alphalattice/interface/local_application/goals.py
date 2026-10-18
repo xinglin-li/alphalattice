@@ -211,6 +211,13 @@ def update_offers(update: object, named: date | None, task: object) -> dict[str,
     return {"update": {**update, "observed_through": formation}}
 
 
+NEW_RESEARCH_SCOPE: Final = (
+    "Separate new research at the person's yes, beside the project's completed first use."
+)
+"""A first use's scope where the person asked for separate research: the one way past the
+daily road a completed first use otherwise offers (`first-use prepare --new-research`)."""
+
+
 def target_sessions(
     named: date,
     now: datetime | None = None,

@@ -55,6 +55,7 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.goals import (
     DAILY_NETWORK_RELAY,
     FIRST_USE_ASK_NOW,
+    NEW_RESEARCH_SCOPE,
     WATCH_IN_WORKBENCH,
     target_sessions,
 )
@@ -450,14 +451,25 @@ class LocalResearchClient:
         return {**body, "result_hash": result_hash}, raw
 
     def selected_url(self, document: dict[str, Any], body: dict[str, Any]) -> str:
-        """Keep the exact answer's address and the Goal whose work the browser follows."""
-        selected = urlsplit(self._selected_url(document, body))
-        goal = body.get("attributed_goal_id") or self.goal
-        if goal is None and str(document.get("operation", "")).startswith("GOAL_"):
+        """Open the answer's object; prefer a Goal's head to a revision."""
+        owner_goal = None
+        if str(document.get("operation", "")).startswith("GOAL_"):
             named = body.get("goal")
-            goal = body.get("goal_id") or (
-                named.get("goal_id") if isinstance(named, Mapping) else None
+            owner_goal = (
+                body.get("goal_id")
+                or (named.get("goal_id") if isinstance(named, Mapping) else None)
+                or document.get("goal_id")
             )
+            target = owner_goal or body.get("goal_hash") or document.get("goal_hash")
+            url = (
+                self.connection.url.rstrip("/")
+                + "/#"
+                + urlencode({"page": "goal", "goal": target} if target else {"page": "goals"})
+            )
+        else:
+            url = self._selected_url(document, body)
+        selected = urlsplit(url)
+        goal = body.get("attributed_goal_id") or self.goal or owner_goal
         fragment = parse_qs(selected.fragment)
         fragment["follow"] = [f"goal:{goal}" if goal is not None else "latest"]
         return urlunsplit(selected._replace(fragment=urlencode(fragment, doseq=True)))
@@ -499,13 +511,6 @@ class LocalResearchClient:
                         "alpha_right_candidate": selection["right_candidate_id"],
                     }
                 )
-            )
-        if operation.startswith("GOAL_"):
-            goal_hash = body.get("goal_hash") or document.get("goal_hash")
-            return (
-                self.connection.url.rstrip("/")
-                + "/#"
-                + urlencode({"page": "goal", "goal": goal_hash} if goal_hash else {"page": "goals"})
             )
         activation = body.get("activation")
         if isinstance(activation, dict):
@@ -583,15 +588,7 @@ class LocalResearchClient:
         return self.connection.url + ("?" + urlencode(query) if query else "")
 
     def navigation(self, document: dict[str, Any], body: dict[str, Any]) -> dict[str, str]:
-        """Describe where a person can open this answer in Local Web.
-
-        Args:
-            document: The operation sent to the Host.
-            body: Its owner answer.
-
-        Returns:
-            A labelled URL and navigation kind, never product authority.
-        """
+        """The answer's labelled public address; navigation grants no authority."""
         url = self.selected_url(document, body)
         query = parse_qs(urlsplit(url).query)
         page = parse_qs(urlsplit(url).fragment).get("page", [""])[0]
@@ -599,7 +596,7 @@ class LocalResearchClient:
         if document.get("operation") == "EXPERIMENT_ALPHA_COMPARE":
             kind, label = "alpha_comparison", "Open this exact saved Alpha comparison"
         elif document.get("operation", "").startswith("GOAL_"):
-            kind, label = "goal", "Open Goals" if page == "goals" else "Open this goal revision"
+            kind, label = "goal", "Open Goals" if page == "goals" else "Open the goal"
         elif page == "portfolio":
             kind, label = "portfolio_book", "Open this book on Portfolio"
         elif entry.startswith("review:"):
@@ -1844,8 +1841,7 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
         pending.extend((value[key], part(path, key), depth + 1, shown, key) for key in keys[:count])
         if len(keys) > count:
             if path == section:
-                # The display's own top: each key left out is a part `--section` reads, named
-                # while the names fit; a deeper mapping is read whole by its own path.
+                # The display's top: a key left out is a `--section` part; a deeper one reads whole.
                 for key in keys[count:]:
                     if room() < _MARK_BYTES:
                         break
@@ -1977,8 +1973,7 @@ def saved_answer(
             body = load_safe_yaml_document(text)
         if not isinstance(body, dict):
             raise ValueError("not an owner answer")
-        # The full exporter writes a JSON tree, including quoted date strings. Reject
-        # aliases before serialization so a small YAML file cannot amplify its containers.
+        # Reject YAML aliases before the JSON export: a small file cannot amplify its containers.
         stack: list[Any] = [body]
         seen: set[int] = set()
         while stack:
@@ -2504,8 +2499,7 @@ class _Chain:
         if outcome_of(body) != "PENDING":
             return None if outcome_of(body) == "OK" else self.stop(step, body)
         if self.wake is not None and body.get("task_id") and task_state(body) not in WAIT_EXITS:
-            # A Codex turn ends its children, so the Host holds the wake and this call returns;
-            # the wake re-runs the verb, which reuses each finished step and goes on.
+            # A Codex turn ends its children: the Host holds the wake; its re-run reuses each step.
             thread, read = self.wake
             registered = self.send(
                 step + "_wake",
@@ -2962,10 +2956,12 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
         }
     from alphalattice.interface.local_application.native_bridge import first_use_setup
 
-    setup, refused = first_use_setup(client.workspace)  # fail fast: the agent's setup first
+    setup, refused = first_use_setup(client.workspace)  # setup first
     if refused:
         return {**refused, chain.name: {"steps": chain.steps}}
-    answer, note = _prepared(chain, str(args.objective), named)
+    answer, note = _prepared(chain, str(args.objective), named, args)
+    if answer.get("failure_code") == "local_client.first_use_completed":
+        return answer
     prefix = _entry_of(client)
     road = [
         {"step": step, "command": join([*prefix, *words], shell()), "does": does}
@@ -2984,7 +2980,7 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
         **({"sentence": note} if note else {}),
     }
     if answer.get("status") == "ALREADY_PREPARED":
-        # The road goes on where the workspace stands.
+        # The road goes on.
         intents = chain.send("workspace", {"operation": "WORKSPACE_SHOW"}).get("intents") or ()
         forward: dict[str, Any] = next((i for i in intents if i["flow"] == "RUN_FORWARD"), {})
         package = forward.get("strategy_package_id")
@@ -3000,7 +2996,7 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
 
 
 def _prepared(
-    chain: _Chain, sentence: str, named: dict[str, object]
+    chain: _Chain, sentence: str, named: dict[str, object], args: argparse.Namespace
 ) -> tuple[dict[str, Any], str | None]:
     """The first use's goal and data: the ALREADY_PREPARED plan or the first stop, beside the
     sentence's note when it was not recorded."""
@@ -3012,6 +3008,7 @@ def _prepared(
         "objective": sentence,
         "target_date": named["named_date"],
         "criteria": [{"criterion_id": "positions", "text": criterion}],
+        **({"scope": NEW_RESEARCH_SCOPE} if getattr(args, "new_research", 0) else {}),
     }
     opened = chain.send("goal", {"operation": "GOAL_OPEN", "goal_declaration": declaration})
     note = None

@@ -11,11 +11,14 @@ import re
 import shutil
 import sys
 import tomllib
+from collections import Counter
+from collections.abc import Callable
 from contextlib import suppress
 from ctypes.util import find_library
 from datetime import UTC, datetime
+from functools import cache, partial
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -187,7 +190,7 @@ HOST_DEPENDENCIES = {
     ),
     "user_layer": (
         "Local user tuning",
-        "Use maintenance Skill; disclose the optional layer.",
+        "Use maintenance Skill; disclose the optional layer. Over a bound or due, review it.",
         "AGENT",
     ),
     "user_backup": (
@@ -253,6 +256,167 @@ def _system_library() -> dict[str, Any]:
     return {"present": not missing, "found": found, "missing": missing, "install": install}
 
 
+USER_LAYER_BOUNDS: Final = {
+    "long_term": {"index_lines": 50, "memories": 60},
+    "short_term": {"workspace_notes": 20},
+}
+"""The user layer's two tiers and their bounds, as the maintenance Skill states them."""
+MEMORY_DOMAINS: Final = ("operating", "person", "method", "strategy", "state")
+"""A memory's `domain` (as `method:<card>`, `strategy:<package>`), each with its review moment."""
+REVIEW_DAYS: Final = 30
+"""A method memory verified longer ago than this is due for review."""
+REVIEW_FIRST: Final = (
+    "The person's user layer needs review first ({subject}): start alphalattice_maintainer in "
+    "CLEAN mode, re-verifying, revising, merging or deleting each item by the maintenance Skill's "
+    "rules within its bounds; then record."
+)
+_ID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+type _Fields = dict[str, str]
+type _Layer = tuple[dict[str, tuple[_Fields, str]], _Fields, dict[str, _Fields]]
+
+
+def user_layer(project: Path, workspace: Path | None = None, host: Any = None) -> dict[str, Any]:
+    """The person's layer in two tiers and five domains against its bounds, and what is due.
+
+    Each long-term item is due at its domain's moment (`_stale`); a `state` memory and the
+    workspace's notes once they name a Goal or Task the Host does not show open.
+
+    Args:
+        project: The agent project holding `.alphalattice/user/`.
+        workspace: The served workspace whose `agent-notes/` count, when known.
+        host: Its Host client, read for the open Goals and Tasks and each package's hash; None
+            checks neither.
+
+    Returns:
+        Counts by tier and domain, `over`, `due` with reasons, and the review's `next_action`
+        and `items`.
+    """
+    user = project / ".alphalattice/user"
+    index, layer = user / "memory/MEMORY.md", _tiers(user, workspace)
+    memories, notes, additions = layer
+    domains = {name: front.get("domain", "") for name, (front, _) in memories.items()}
+    short = {name: memories[name][1] for name, domain in domains.items() if domain == "state"}
+    lines = len(index.read_text("utf-8").splitlines()) if index.is_file() else 0
+    counts = {
+        "long_term": {"index_lines": lines, "memories": len(memories) - len(short)},
+        "short_term": {"state_memories": len(short), "workspace_notes": len(notes)},
+        "domains": dict(Counter(domain.partition(":")[0] or "none" for domain in domains.values())),
+    }
+    counts["long_term"]["additions"] = len(additions)
+    over = [k for tier, b in USER_LAYER_BOUNDS.items() for k in b if counts[tier][k] > b[k]]
+    due = _due(layer, short, host)
+    items = ", ".join([*over, *(item["path"] for item in due)])
+    review = {"next_action": "REVIEW_THE_USER_LAYER", "items": items} if items else {}
+    facts = {"counts": counts, "bounds": USER_LAYER_BOUNDS, "over": over, "due": due}
+    return {"exists": user.is_dir(), **facts, **review}
+
+
+def _due(layer: _Layer, short: _Fields, host: Any) -> list[dict[str, str]]:
+    """Each item due and why: long-term at its domain's moment (`_stale`), short-term once it
+    names a Goal or Task the Host does not show open."""
+    memories, notes, additions = layer
+    version, open_ids = package_versions(["alphalattice"])[0][1], _open_ids(host)
+    package = None if host is None else cache(partial(_package_hash, host))
+    reasons = {n: _stale(f, version, package) for n, (f, _) in memories.items() if n not in short}
+    for name, front in additions.items():
+        reasons[name] = _stale({"domain": "operating", **front}, version, package)
+    for name, text in (short | notes).items():
+        closed = [i for i in _ID.findall(text) if open_ids is not None and i not in open_ids]
+        reasons[name] = f"points_to_closed:{closed[0]}" if closed else None
+    return [{"path": name, "reason": why} for name, why in sorted(reasons.items()) if why]
+
+
+def _tiers(user: Path, workspace: Path | None) -> _Layer:
+    """The memories, the workspace's notes and the additions, each read once."""
+    index = user / "memory/MEMORY.md"
+    found = {f"memory/{p.name}": _read(p) for p in (user / "memory").glob("*.md") if p != index}
+    memories = {name: (front, text) for name, (front, text) in found.items() if front is not None}
+    listed = (workspace / "agent-notes").glob("*.md") if workspace else ()
+    notes = {f"agent-notes/{p.name}": p.read_text("utf-8") for p in listed if p.name != "INDEX.md"}
+    added = (user / "guide.md", *user.glob("cards/*.md"), *user.glob("skills/*.md"))
+    additions = {p.relative_to(user).as_posix(): _read(p)[0] or {} for p in added if p.is_file()}
+    return memories, notes, additions
+
+
+def record_offer(answer: dict[str, Any], workspace: Path) -> None:
+    """A sealing answer's record offer lists what the person's layer needs reviewed first.
+
+    Args:
+        answer: The sealing answer, its detail changed in place; otherwise it stands.
+        workspace: Its workspace, whose notes count; the person's layer is the nearest up from
+            here.
+    """
+    from alphalattice.interface.local_application.cli_contract import worded
+
+    here = Path.cwd()
+    project = next((p for p in (here, *here.parents) if (p / ".alphalattice/user").is_dir()), here)
+    if items := user_layer(project, workspace, _client(workspace)).get("items"):
+        review = str(worded(REVIEW_FIRST)).replace("{subject}", items)
+        answer["detail"] = f"{review} {answer.get('detail', '')}".rstrip()
+
+
+def _client(workspace: Path | None) -> Any:
+    """The workspace's Host client; None with no Host serving it."""
+    from alphalattice.interface.local_application import client
+
+    with suppress(client.LocalResearchClientError, OSError):
+        return client.LocalResearchClient(workspace) if workspace else None
+    return None
+
+
+def _open_ids(host: Any) -> frozenset[str] | None:
+    """The Goals and Tasks the Host shows open; None with no Host to ask."""
+    from alphalattice.interface.local_application.client import LocalResearchClientError
+
+    with suppress(LocalResearchClientError, OSError, KeyError, TypeError, AttributeError):
+        goals = host.request({"operation": "GOAL_LIST", "history_limit": 50})["goals"]
+        tasks = host.request({"operation": "TASKS"})["tasks"]
+        shown = {str(row["goal_id"]) for row in goals if row.get("state") == "OPEN"}
+        return frozenset(shown | {str(row["task_id"]) for row in tasks})
+    return None
+
+
+def _package_hash(host: Any, package: str) -> str | None:
+    """An installed package's hash, as its controls read it; None when none is installed."""
+    from alphalattice.interface.local_application.client import LocalResearchClientError
+
+    with suppress(LocalResearchClientError, OSError, KeyError, TypeError):
+        return str(
+            host.request({"operation": "CONTROLS", "strategy_package_id": package})["package_hash"]
+        )
+    return None
+
+
+def _read(path: Path) -> tuple[_Fields | None, str]:
+    """A file's frontmatter fields (None without them) and its text, read once."""
+    text = path.read_text("utf-8", errors="replace")
+    head, closed, _ = text.removeprefix("---\n").partition("\n---")
+    if not text.startswith("---\n") or not closed:
+        return None, text
+    pairs = (line.partition(":") for line in head.splitlines())
+    return {key.strip(): value.strip() for key, _, value in pairs}, text
+
+
+def _stale(front: _Fields, version: str, package: Callable[[str], str | None] | None) -> str | None:
+    """Why a long-term item is due, at its domain's moment: an operating or person one at another
+    version, a method one also past `REVIEW_DAYS`, a strategy one once its package's hash moved;
+    one with no domain or no `verified: <YYYY-MM-DD> at <version or hash>` line, always."""
+    kind, _, subject = front.get("domain", "").partition(":")
+    when, _, at = front.get("verified", "").partition(" at ")
+    if kind not in MEMORY_DOMAINS:
+        return "unclassified"
+    try:
+        day = datetime.strptime(when.strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return "unverified"
+    if kind == "strategy":
+        return "package_changed" if package is not None and package(subject) != at.strip() else None
+    if at.strip() != version:
+        return "verified_at_another_version"
+    old = kind == "method" and (datetime.now(UTC).date() - day).days > REVIEW_DAYS
+    return "verified_over_30_days" if old else None
+
+
 def host_readiness(
     project: Path, host: str, binding: NativeResearchBinding | None
 ) -> list[dict[str, Any]]:
@@ -284,6 +448,7 @@ def host_readiness(
             and capacity["free_disk_bytes"] >= headroom
         )
     )
+    served = binding.workspace if binding else None
     user = project / ".alphalattice/user"
     backups = sorted(path.name for path in (user / "backups").glob("*") if path.is_dir())
     python_version = str(recorded_environment()["python"])
@@ -334,7 +499,11 @@ def host_readiness(
             },
         ),
         ("system_libraries", (system := _system_library())["present"], system),
-        ("user_layer", user.is_dir(), {"path": str(user)}),
+        (
+            "user_layer",
+            "items" not in (layer := user_layer(project, served, _client(served))),
+            {"path": str(user), **layer},
+        ),
         ("user_backup", bool(backups), {"latest": backups[-1] if backups else None}),
     )
     guidance = dict(HOST_DEPENDENCIES)

@@ -311,6 +311,7 @@ RULES = [
         "kind": "PUBLIC",
         "patterns": [
             "README.md",
+            "README.zh-CN.md",
             "CONTRIBUTING.md",
             "CLA.md",
             "GOVERNANCE.md",

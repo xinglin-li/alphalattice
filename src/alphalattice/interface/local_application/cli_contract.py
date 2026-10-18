@@ -1498,6 +1498,19 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ),
     ),
     (
+        "local_client.first_use_completed",
+        ClientRefusal(
+            "REFUSED",
+            "PLAN_THE_DAILY_UPDATE",
+            "This project's first use is complete and its strategy runs forward in the "
+            "`workspace` named here, so a sentence for a later date is that workspace's daily "
+            "update, never a second first use; nothing was opened. Run `next_command`, or send "
+            "the offered `plan` in that same workspace: it plans the update for the sentence's "
+            "date. If the person asks for separate new research instead, ask them in one line "
+            "and, on their yes, run the same command again with --new-research.",
+        ),
+    ),
+    (
         "local_client.codex_notify_needs_task",
         ClientRefusal(
             "INVALID_INPUT",

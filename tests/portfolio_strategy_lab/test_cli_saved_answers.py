@@ -148,12 +148,12 @@ def test_every_exact_answer_link_preserves_its_selector_and_follow_scope() -> No
     client.goal = None
     assert parse_qs(
         urlsplit(client.selected_url({"operation": "GOAL_SHOW"}, {"goal_id": goal})).fragment
-    )["follow"] == [f"goal:{goal}"]
+    ) == {"page": ["goal"], "goal": [goal], "follow": [f"goal:{goal}"]}
     assert parse_qs(
         urlsplit(
             client.selected_url({"operation": "GOAL_NARRATIVE"}, {"goal": {"goal_id": goal}})
         ).fragment
-    )["follow"] == [f"goal:{goal}"]
+    ) == {"page": ["goal"], "goal": [goal], "follow": [f"goal:{goal}"]}
     for document in ({"operation": "REPORT"}, {"operation": "GOAL_NARRATIVE"}):
         answer = (
             {"goal": {"goal_id": goal}} if document["operation"] == "REPORT" else {"goal": goal}

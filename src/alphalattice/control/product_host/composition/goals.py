@@ -31,6 +31,11 @@ from alphalattice.control.data_platform.data_decision_rule import (
     held_decisions,
 )
 from alphalattice.control.data_platform.data_decision_rule import audit as audit_rule
+from alphalattice.control.product_host.composition.first_use_road import (
+    daily_road,
+    first_use_command,
+    undated,
+)
 from alphalattice.control.product_host.composition.goal_check import (
     missing_items,
     offered_attach,
@@ -56,9 +61,6 @@ from alphalattice.interface.local_application.cli_contract import (
     join,
     refusal_words,
     shell,
-)
-from alphalattice.interface.local_application.cli_contract import (
-    entry as command_entry,
 )
 from alphalattice.interface.local_application.failure_codes import (
     located_failure,
@@ -618,16 +620,10 @@ class GoalApplication:
             "nearest_date_support": "QUALIFIED_LOCAL_INPUTS" if nearest else "UNAVAILABLE",
             "new_workspace": {
                 "choose": ["workspace", *([] if nearest else ["supported_date"])],
-                "command_template": self._first_use_command("<new-workspace>", objective, named),
+                "command_template": first_use_command("<new-workspace>", objective, named),
             },
             "next_requests": requests,
         }
-
-    @staticmethod
-    def _first_use_command(workspace: str | Path, objective: str, named: str) -> str:
-        """Quote first-use recovery through the shared CLI grammar."""
-        fields = ("first-use", "prepare", "--sentence", objective, "--date", named)
-        return join([*command_entry(workspace, fields, full=True)], shell())
 
     @staticmethod
     def delegation_ends(goal: Goal) -> datetime:
@@ -1478,9 +1474,11 @@ class GoalApplication:
     ) -> dict[str, Any]:
         assert request.goal_declaration is not None
         declaration = GoalDeclaration.model_validate(request.goal_declaration)
-        research = declaration.research
-        if research and research.purpose == "CONTINUATION" and not declaration.parent_goal_id:
+        purpose = getattr(declaration.research, "purpose", None)
+        if purpose == "CONTINUATION" and not declaration.parent_goal_id:
             raise ValueError("goal.continuation_requires_parent_goal")
+        if (road := daily_road(self.workspace, declaration)) is not None:
+            return dict(road)  # a completed first use: its daily road, never a second one
         session = self._session(provenance)
         goal_id = request.goal_id or uuid5(
             GOAL_NAMESPACE,
@@ -1501,19 +1499,8 @@ class GoalApplication:
                 answer = {"status": "REUSED_EXACT", **self._identity_of(prior)}
                 return {**answer, **self._bind(prior, session)}
             raise ValueError("goal.already_open_revise_it")
-        if declaration.kind == "FIRST_USE" and declaration.target_date is not None:
-            dated = target_sessions(declaration.target_date, self.clock(), for_preparation=True)
-            if code := dated.get("failure_code"):
-                return {
-                    "status": "REFUSED",
-                    "failure_code": code,
-                    "target_date": dated["target_date"],
-                    "nearest_date": dated["nearest_date"],
-                    "next_command": self._first_use_command(
-                        self.workspace, declaration.objective, str(dated["nearest_date"])
-                    ),
-                    **refusal_words(str(code) + ":" + str(dated["nearest_date"])),
-                }
+        if (dated := undated(self.workspace, declaration, self.clock())) is not None:
+            return dict(dated)
         if declaration.kind == "FIRST_USE" and self.preparation_completed():
             raise ValueError("goal.first_use_after_preparation")
         if (
@@ -2125,6 +2112,12 @@ class GoalApplication:
             "goal": goal.model_dump(mode="json"),
             "statement_context": statement_context,
             "head_hash": head.goal_hash if head else None,
+            "head": {
+                **self._identity_of(head),
+                "outcome": head.submission.outcome if head.submission else None,
+            }
+            if head
+            else None,
             "state": goal.state,
             "outcome": goal.outcome(),
             "open_choices": [

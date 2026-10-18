@@ -84,6 +84,13 @@ on each command, with nothing to approve. Use the **alphalattice-research** Skil
 
 ## Run the first use from the person's sentence
 
+A project has one first use. A new session reads the project binding and `workspace show`
+first: once the first use is complete with its strategy running forward, a date's sentence is
+the daily road in that same workspace. `first-use prepare` refuses a second first use by name
+(`local_client.first_use_completed`), naming the workspace and offering its `research-update
+plan` for the date. Only when the person asks for separate new research, asked in one line,
+run it again with `--new-research`.
+
 Start it in the workspace you serve, with the person's exact sentence and the date it names
 for the positions (today's when it names none), as you read it:
 
@@ -257,7 +264,8 @@ true|false`, relayed).
 
 ## Run an installed strategy forward
 
-On every fresh session read `strategy-book controls --package <package>` for
+A new session runs forward in the workspace its project binding names, never a new one. On
+every fresh session read `strategy-book controls --package <package>` for
 `activation`, its book and horizon before a forward plan, and show the person
 the offer's `review_holdings`: the book's last sealed holdings, not next positions.
 Before activating, read `strategy_dates.information_cutoff` and the conditional

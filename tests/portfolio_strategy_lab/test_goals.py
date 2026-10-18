@@ -452,6 +452,8 @@ def test_goal_revision_reopen_narrative_no_work_and_tamper(goal_app):
     assert report["portfolio_deliveries"] == [] and "Readable title" in report["html"]
     shown = app.operate(Request(operation="GOAL_SHOW", goal_hash=old.goal_hash), "HUMAN")
     assert shown["goal"]["declaration"]["title"] == "A study"
+    assert shown["head"]["goal_hash"] == new.goal_hash
+    assert (shown["head"]["state"], shown["head"]["outcome"]) == ("OPEN", None)
     assert app.operate(Request(operation="GOAL_SHOW", goal_id=UUID(int=1)), "HUMAN")[
         "goal_hash"
     ] == (new.goal_hash)
@@ -1773,7 +1775,9 @@ def test_a_declared_event_reaches_its_goal_through_the_host(
     assert {row["payload"]["subject"]["goal_id"] for row in rows} == {goal_id}
 
 
-def test_only_a_sealing_answer_offers_experience_with_sendable_owner_reads(live):
+def test_only_a_sealing_answer_offers_experience_with_sendable_owner_reads(
+    live, tmp_path, monkeypatch
+):
     """A served sealing answer offers experience recording once with exact owner reads."""
     from alphalattice.interface.local_application.client import LocalResearchClient, compact_display
     from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
@@ -1826,6 +1830,23 @@ def test_only_a_sealing_answer_offers_experience_with_sendable_owner_reads(live)
     assert gid in sealed["detail"] and "alphalattice_maintainer" in sealed["detail"]
     words = read_in_chinese([sealed["detail"]], missing="UI Node unavailable", required=True)
     assert words["missing"] == [] and words["read"] != [sealed["detail"]]
+    # Over a bound (the workspace's notes), and with a note on the goal now sealed, the CLI's
+    # offer lists them to review first; else it stands.
+    from alphalattice.interface.local_application.native_setup import REVIEW_FIRST, record_offer
+
+    monkeypatch.chdir(tmp_path)
+    (notes := live.workspace / "agent-notes").mkdir()
+    for number in range(21):
+        (notes / f"note-{number}.md").write_text(f"On {gid}." * (number == 0), encoding="utf-8")
+    offered, kept = dict(sealed), dict(sealed)
+    record_offer(offered, live.workspace)
+    record_offer(kept, tmp_path / "absent")
+    review = REVIEW_FIRST.format(subject="workspace_notes, agent-notes/note-0.md")
+    assert (offered["detail"], kept) == (f"{review} {sealed['detail']}", sealed)
+    assert (
+        read_in_chinese([REVIEW_FIRST], missing="UI Node unavailable", required=True)["missing"]
+        == []
+    )
     reads = sealed["next_requests"]
     compact = compact_display(sealed)["data"]
     assert compact["next_action"] == sealed["next_action"]
@@ -1927,7 +1948,7 @@ def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
     client.connection = SimpleNamespace(url=live.url)
     client.goal = None
     url = client.selected_url({"operation": "GOAL_SHOW", "goal_hash": saved["case_hash"]}, goal)
-    assert "/#" in url and saved["case_hash"] in url
+    assert parse_qs(urlsplit(url).fragment)["goal"] == [goal["goal_id"]]
     assert parse_qs(urlsplit(url).fragment)["follow"] == ["goal:" + goal["goal"]["goal_id"]]
     assert parse_qs(urlsplit(client.selected_url({}, {})).fragment)["follow"] == ["latest"]
     assert client.navigation({"operation": "GOAL_SHOW"}, goal)["kind"] == "goal"

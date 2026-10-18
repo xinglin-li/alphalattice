@@ -746,12 +746,12 @@ STAGE_BOUNDARIES = "\n".join(
 
 LOCAL_METHOD = (
     "# Local method\n"
-    "Only if `.alphalattice/user/cards/{card}.md` exists in the checkout, read it whole before "
-    "you start; it is then the one file outside your assignment you always read. A fresh "
-    "checkout has none, and nothing is missing: this card is then your whole method. It holds "
-    "the person's method for this card, kept by the experience maintainer, and refines how you "
-    "work here: it "
-    "never widens what this card permits, and where the two differ, this card holds."
+    "Before you start, read the person's method for this card where the checkout has it: "
+    "`.alphalattice/user/cards/{card}.md` whole, and of `.alphalattice/user/memory/` only the "
+    "memories whose `domain` is `method:{card}`. They are the only files outside your assignment "
+    "you always read; a fresh checkout has none, and nothing is missing: this card is then your "
+    "whole method. The experience maintainer keeps them; they refine how you work here, never "
+    "widen what this card permits, and where they differ, this card holds."
 )
 """Every card's last paragraph: where the person's own method for it lives (the user layer)."""
 

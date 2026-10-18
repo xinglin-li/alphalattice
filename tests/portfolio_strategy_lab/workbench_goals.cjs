@@ -426,14 +426,15 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
     notice:'',stale:false,error:''};
   let retained=[];
   c.LiveActivity={state:()=>feed,retained:()=>[{items:retained}]};
-  const liveHash='mutable-conversation';
+  const liveHash='mutable-conversation', liveId='00000000-0000-4000-8000-000000000019';
   let liveBody={...verified(liveHash),record:{...record,conversation:[],message_count:0,
     open_assignments:[]}};
+  liveBody.goal.goal_id=liveId;
   let liveReads=0,holdVerification=false,releaseVerification=null;
   const clone=value=>JSON.parse(JSON.stringify(value));
   c.Data.read=async(url)=>{
     liveReads++;
-    assert.equal(new URL('http://local'+url).searchParams.get('goal_hash'),liveHash);
+    assert.equal(new URL('http://local'+url).searchParams.get(route.get('goal')===liveId?'goal_id':'goal_hash'),route.get('goal'));
     const body=clone(liveBody);
     if(url.startsWith('/api/goals/narrative?'))return {...body,
       evidence_verification:'NOT_PERFORMED',
@@ -451,7 +452,7 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
     retained.push({ordinal,schema_kind:'ExternalActivityObserved',payload:{event_kind:'NATIVE_COORDINATION_MESSAGE',subject:{goal_id:liveBody.goal.goal_id}}});
     feed={...feed,cursor:feed.epoch+':'+ordinal};
   };
-  route=new URLSearchParams('page=goal-conversation&goal='+liveHash);c.app.page='goal-conversation';
+  route=new URLSearchParams('page=goal-conversation&goal='+liveId);c.app.page='goal-conversation';
   await c.live.ensure();assert.equal(liveReads,2);
   retained.push({ordinal:1,payload:{subject:{goal_id:'other-goal'}}},
     {ordinal:2,payload:{subject:{goal_id:null}}});feed={...feed,cursor:'goal-store-1:2'};
@@ -473,6 +474,7 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
   assert.equal(liveBody.goal.revision,1,'conversation freshness creates no Goal revision');
   await c.live.observe();assert.equal(liveReads,4,'an identical activity tick does not reread');
   // An arrival while strict verification is pending survives its older answer.
+  liveBody={...liveBody,head_hash:'revised-head',goal:{...liveBody.goal,goal_hash:'revised-head',revision:2}};
   appendBound(34,'Answer before slow verification');holdVerification=true;
   const advancing=c.live.observe();await tick();
   assert.ok(releaseVerification,'the controlled strict readback started');
@@ -482,6 +484,7 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
   assert.equal(liveReads,8,'the pending newer bound event gets its own complete owner pass');
   assert.ok(shows('Answer during slow verification','Reference integrity checked')&&
     hides('Checking reference integrity'));
+  assert.ok(shows('Revision: 2'));assert.equal(route.get('goal'),liveId);
   feed={...feed,epoch:'goal-store-2',cursor:'goal-store-2:1',disposition:'RESET'};
   retained=[{ordinal:1,payload:{subject:{goal_id:'other-goal'}}}];
   await c.live.observe();assert.equal(liveReads,10,'a changed store rereads the Goal owner');
@@ -510,6 +513,11 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
   await reload.live.ensure();
   assert.equal(liveReads,16,'a cold page reads the current owner record');
   assert.ok(String(reload.live.page()).includes('Recorded while away'));
+  liveBody={...liveBody,head_hash:'completed-head',head:{goal_hash:'completed-head',state:'COMPLETE',outcome:'ACHIEVED'},goal:{...liveBody.goal,goal_hash:liveHash,revision:1}};
+  route.set('goal',liveHash);c.live.leaveReads();await c.live.ensure();
+  assert.ok(shows('Historical revision','Record complete','Achieved'));
+  assert.ok(hides('data-state="pending">Open','data-action="goal-note"'));
+  assert.ok(shows('data-action="goal-open" data-value="'+liveId+'"'));
   delete c.LiveActivity;
   // the list: one row per goal, the composer's primary in the head
   route=new URLSearchParams('page=goals');c.app.page='goals';

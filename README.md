@@ -1,5 +1,7 @@
 # AlphaLattice
 
+English | [简体中文](README.zh-CN.md)
+
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg)](docs/public-source/getting-started.md)
 [![uv](https://img.shields.io/badge/uv-locked-261230.svg)](docs/public-source/getting-started.md)
@@ -11,9 +13,17 @@ AlphaLattice to run quantitative studies, check source evidence and bring the
 results to a research committee. Follow the work and its results in your coding app's
 built-in browser.
 
-Numerical inputs are bounded by the date's cutoff, with a grader checking for
-look-ahead in verification runs. The committee can decline endorsement;
-AlphaLattice runs locally and is open source.
+Every numerical input is bounded by the date's information cutoff, and
+verification runs check for look-ahead. The committee can decline to endorse a
+result. AlphaLattice runs locally and is open source.
+
+It does not need the largest models. Claude Haiku 5.5 in Claude Code and GPT-6
+Luna in Codex, each at high reasoning effort, have led a first use and a daily
+update end to end in our fresh-folder runs. With a Claude or ChatGPT
+subscription, Claude Code and Codex draw on your plan rather than per-token API
+billing; check your provider's terms. To see what a run used, open a session's
+**Participants** in the Workbench (**Team**, then **Sessions**): it shows the
+models and tokens each member used.
 
 Give your agent this repository's link and one intent:
 
@@ -59,11 +69,36 @@ Give your agent this repository's link and one intent:
 2. **Daily update, in a new session in the same folder.** Say
    `Positions for <next session>, reviewed.` The agent uses the installed strategy
    and your standing network yes to update data and produce that session's reviewed
-   research positions, following your daily committee setting. It asks nothing
-   further unless a decision belongs to you.
+   research positions, following your daily committee setting. It works in your
+   first use's workspace, so a later date never starts a second first use, and it
+   asks you only about decisions that are yours.
 
-[Getting started](docs/public-source/getting-started.md) covers installation,
-first use and the decisions that remain yours.
+## Before you start
+
+- **Environment:** Windows is the supported platform. Setup uses Python 3.12, uv
+  and locked dependencies, with Claude Code or Codex. On Linux and macOS, CI checks
+  installation and an offline first use; other use there is not guaranteed. On
+  macOS, install the OpenMP runtime:
+
+  ```bash
+  brew install libomp
+  ```
+- **Time:** Data preparation, multi-year model fitting and validation, and
+  source review take time. One completed run using prepared public-source data
+  and retained filings, replayed offline with four CPU cores on a shared Windows
+  machine, took about **37 minutes** from the start of the first data preparation
+  Task to writing the delivery report. Installation and live downloads were outside
+  that interval. Data and model-pack downloads add time when needed, depending
+  on your connection. In fresh-folder acceptance runs, a first use including its
+  downloads took about an hour, and a daily update takes less. These are
+  observations, not runtime guarantees.
+- **Agent costs:** Your Claude Code or Codex access and usage costs are separate
+  from AlphaLattice, and the lead agent can be a lower-cost model such as Claude
+  Haiku 5.5 or GPT-6 Luna at high reasoning effort; check your provider's terms.
+
+See [Getting started](docs/public-source/getting-started.md) and the
+[setup procedure](.agents/skills/alphalattice-research/references/operating.md)
+for installation, downloads and the permissions each step needs.
 
 ## Why AlphaLattice
 
@@ -74,6 +109,11 @@ first use and the decisions that remain yours.
   review coverage for the reviewed portfolio.
 - **Disagreement you can read.** Objections, limits and the committee's final
   ruling remain in the record and report.
+- **An agent that learns from your corrections.** When a goal completes, the
+  agent offers to record what the work taught it. A correction you give is kept
+  in your own words, with why it matters and how to apply it. These notes live
+  in your own layer, `.alphalattice/user/`, which releases never overwrite. The
+  next session reads them before it starts.
 - **Factors and models you can extend.** Add factors and Alpha models through
   their registries and checked [extension paths](docs/public-source/extending.md).
 
@@ -97,8 +137,6 @@ with research positions for 2026-09-11.
 The report kept the reservations alongside the results: the review covered
 the filings accepted by its source checks and available at its cutoff, and
 members named limits in predictive support, liquidity and capacity evidence.
-
-<!-- Example report link reserved: use the same final acceptance run as the hero image. -->
 
 ### Historical research views
 
@@ -168,33 +206,6 @@ historical source availability alongside the performance.
   `--lang zh`, for example `alphalattice workspace show --lang zh`, with English
   fallback.
 
-## Before you start
-
-- **Environment:** Windows is the supported platform. Setup uses Python 3.12, uv
-  and locked dependencies, with Claude Code or Codex. On Linux and macOS, CI checks
-  installation and an offline first use; other use there is not guaranteed. On
-  macOS, install the OpenMP runtime:
-
-  ```bash
-  brew install libomp
-  ```
-
-  See [Getting started](docs/public-source/getting-started.md) for installation
-  and first-use instructions.
-- **Time:** Data preparation, multi-year model fitting and validation, and
-  source review take time. One completed run using prepared public-source data
-  and retained filings, replayed offline with four CPU cores on a shared Windows
-  machine, took about **37 minutes** from the start of the first data preparation
-  Task to writing the delivery report. Installation and live downloads were outside
-  that interval. Data and model-pack downloads add time when needed, depending
-  on your connection. This is an observation, not a runtime guarantee.
-- **Agent costs:** Your Claude Code or Codex access and usage costs are separate
-  from AlphaLattice; check your provider's terms.
-
-See [Getting started](docs/public-source/getting-started.md) and the
-[setup procedure](.agents/skills/alphalattice-research/references/operating.md)
-for installation, downloads and the permissions each step needs.
-
 ## Guides and care
 
 | Guide | What it explains |
@@ -214,6 +225,58 @@ Use [backup and restore](docs/public-source/data-and-care.md) into a new directo
 to preserve the saved records and their integrity checks. [Privacy](docs/public-source/privacy.md)
 explains recorded usage and its switch.
 
+## This release and where it is going
+
+**0.2.0, now.** One sentence to a dated, reviewed result: data, strategy, the
+date's research positions, Evidence from SEC filings, an investment committee and
+its report. The Workbench opens in your coding app's browser, daily updates continue
+in the same folder, and the agent records your corrections. The
+[release notes](docs/public-source/release-notes.md) list every change.
+
+Each minor version's scope is fixed in advance and released only after a run proves
+it; patches in between make the current version smoother. Each version builds on
+methods already proven elsewhere, adapted to AlphaLattice's own rules: dated
+inputs, sealed results and your authority.
+
+- **0.2.x patches: faster and steadier.** Checking that costs little: hash once,
+  verify at trust boundaries, in the manner of Git's index and Bazel's action cache.
+  A Task's process tree is held and ended as one (job objects, process groups). Cache
+  and temporary files carry declared cleanup ages, as in systemd-tmpfiles. One
+  registry covers every extensible kind, every refusal offers its way forward, and
+  agent memory is kept reviewed.
+- **0.3 Daily supervision: "watch my strategy; tell me only what matters."**
+  - Data-health tests in dbt's form, and factor monitors in Alphalens' terms: IC,
+    decay and turnover.
+  - Drift is flagged by CUSUM and EWMA control charts, so quiet days stay quiet.
+  - At most one digest a day.
+  - A forward record of positions as published, kept apart from the backtest on GIPS
+    principles.
+  - Agents' calls are scored by hit rate and the Brier score.
+  - The daily run is scheduled by the operating system's own scheduler.
+- **0.4 Agent research: "search for a better model, honestly."**
+  - Overfitting guards come before any automated search: every result reports its
+    trial count, with the deflated Sharpe ratio and the probability of backtest
+    overfitting, a locked holdout and purged, time-ordered validation.
+  - Then search with Optuna, models in scikit-learn's estimator form, and Features
+    named after the 101 Formulaic Alphas.
+- **0.5 Your own strategy: "use my tickers and schedule; add my risk model or data
+  source."** Extensions join by registry entry. Risk methods take the
+  `sklearn.covariance` form, and data sources an Airbyte-style connector contract:
+  spec, check, discover, read.
+- **Later, proposed:**
+  - macro data as it was known at the time (ALFRED vintages), and consented news;
+  - survivorship-free research on a CRSP-style data model;
+  - several strategies as one portfolio, by risk budgeting and hierarchical risk
+    parity;
+  - committee adjustments within your bounds, in Black-Litterman form, built only if
+    the forward record shows the committee adds value;
+  - a stable 1.0 that keeps every agent-facing surface working;
+  - intraday schedules.
+
+Previews of the next minor version land on the `next` branch first. Tell us what you
+need in an [issue](https://github.com/xinglin-li/alphalattice/issues): requests from
+people using AlphaLattice decide what comes after 0.5.
+
 ## Tell us where you got stuck
 
 [Open an issue](https://github.com/xinglin-li/alphalattice/issues) with the command
@@ -225,7 +288,7 @@ For a security vulnerability, report privately as described in [SECURITY](SECURI
 
 ## About
 
-Documentation updated: 2026-10-14.
+Documentation updated: 2026-10-17.
 
 The [design principles](docs/public-source/design-principles.md) explain how the
 agent, the software and the person share the work.
@@ -244,9 +307,9 @@ rebuilding once if it is missing or stale; a failed build fails the run.
 
 ## Development history
 
-AlphaLattice has been developed privately since 2026-08-06. Each public commit
-contains one shipped change exported from that development; releases publish
-the resulting versions.
+AlphaLattice has been developed privately since 2026-08-06. Public commits carry
+the shipped changes exported from that development; releases publish the
+resulting versions.
 
 ## Disclaimer
 

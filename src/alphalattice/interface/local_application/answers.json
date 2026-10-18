@@ -857,7 +857,7 @@
     "name": "next_action",
     "kind": "string",
     "required": false,
-    "meaning": "`RECORD_THE_EXPERIENCE` only on the answer that seals the goal: start the experience maintainer in RECORD mode using the offered readbacks."
+    "meaning": "`RECORD_THE_EXPERIENCE` only on the answer that seals the goal: start the experience maintainer in RECORD mode using the offered readbacks; while the person's user layer is over a bound or holds items due for review, the detail lists them first, to review before recording."
    },
    {
     "name": "detail",

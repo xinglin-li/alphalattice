@@ -115,7 +115,7 @@ def test_every_documented_command_line_parses(
 ) -> None:
     """Every documented invocation parses through the CLI command grammar."""
     repository = SCRIPT.parents[1]
-    roots = [repository / "AGENTS.md", repository / "README.md"]
+    roots = [repository / name for name in ("AGENTS.md", "README.md", "README.zh-CN.md")]
     roots.extend(
         repository / name
         for name in (
