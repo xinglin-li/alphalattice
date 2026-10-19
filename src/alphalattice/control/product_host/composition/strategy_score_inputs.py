@@ -513,21 +513,41 @@ def _rows_since(
     end: date,
     factor_ids: tuple[str, ...],
     connection: object = None,
-) -> list[dict[str, Any]]:
-    """Stored Feature rows of each read (`_reads`)."""
+) -> pd.DataFrame:
+    """Stored Feature rows of each read (`_reads`): their keys and values, one frame."""
     extra = {} if connection is None else {"_connection": connection}
-    return [
-        row
-        for ids, start in reads
-        for row in feature.feature_rows(
+    frames = [
+        feature.feature_rows(
             listing_ids=ids,
             catalog_hash=catalog,
             start=start,
             end=end,
             factor_ids=factor_ids,
+            include_lineage=False,
+            as_frame=True,
             **extra,
         )
+        for ids, start in reads
+        if ids
     ]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def _fill(
+    values: Mapping[str, FloatArray],
+    rows: pd.DataFrame,
+    positions: Mapping[date, int],
+    listings: Mapping[str, int],
+) -> None:
+    """Write each row's values at its session and listing, a missing value as NaN."""
+    if rows.empty:
+        return
+    at = rows["session_date"].map(positions)
+    kept = at.notna().to_numpy()
+    row: IntArray = at.to_numpy()[kept].astype(np.int64)
+    column: IntArray = rows["listing_id"].map(listings).to_numpy()[kept].astype(np.int64)
+    for name, target in values.items():
+        target[row, column] = rows[name].to_numpy(dtype=np.float64, na_value=np.nan)[kept]
 
 
 def _rebuild_listings(
@@ -990,12 +1010,8 @@ def _read_workspace_component_inputs(
         reference_eligible.setflags(write=False)
         nominal.setflags(write=False)
     if prepared is None:
-        for item in observations:
-            if item["session_date"] not in positions:
-                continue
-            row, column = positions[item["session_date"]], listing_positions[item["listing_id"]]
-            for name in observed:
-                observed[name][row, column] = np.nan if item[name] is None else item[name]
+        _fill(observed, observations, positions, listing_positions)
+        del observations
     # This formula's kernel is installed, although the ordinary stored catalog
     # need not materialize its column. Invoke its owner; do not invent an alias
     # or change the workspace's global Feature catalog.
@@ -1065,16 +1081,8 @@ def _read_workspace_component_inputs(
                 for name in stored:
                     formula_values[name][:reused_count] = restored["formula::" + name]
                     formula_values[name][:, restated] = np.nan
-            for stored_row in stored_rows:
-                if stored_row["session_date"] in positions:
-                    row, column = (
-                        positions[stored_row["session_date"]],
-                        listing_positions[stored_row["listing_id"]],
-                    )
-                    for name in stored:
-                        formula_values[name][row, column] = (
-                            np.nan if stored_row[name] is None else stored_row[name]
-                        )
+            _fill(formula_values, stored_rows, positions, listing_positions)
+            del stored_rows
             frame = pd.DataFrame(
                 {
                     "session_date": np.repeat(np.asarray(sessions, dtype=object), len(listings)),

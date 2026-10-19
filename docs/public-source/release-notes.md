@@ -401,7 +401,7 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 
 ## 0.2.1
 
-0.2.1 fixes what the first public runs met. A daily request in a new session could start a second first use. A lead cut short by a long command lost its place. Some refusals named the problem but not the way on. Contributions are open.
+0.2.1 fixes what the first public runs met. A daily update rewrote copies of the whole history, about 2 GB a day; it now writes the day's change. A daily request in a new session could start a second first use. A lead cut short by a long command lost its place. Some refusals named the problem but not the way on. Contributions are open.
 
 ### Added
 
@@ -409,6 +409,11 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 
 ### Changed
 
+- A daily update writes about its own day's change. On the replay it now writes about 37 MB, down from about 250 MB, so a year of daily updates adds about 10 GB.
+  - A year of the Feature Panel is stored in quarter parts, and a daily update rewrites only the open quarter.
+  - Frozen observation arrays are stored in 21-session blocks shared by content, and a daily update writes only the last block.
+  - A provider may resend a dividend payer's adjusted history that differs from the stored history only within the data rule's declared precision: 1e-6 relative by default, with unadjusted closes unchanged. That stored history now stands instead of being restated. Each listing kept this way is named in the Goal and the report, with its largest difference. A larger difference, or a corporate action recorded in the same update, still restates the history.
+- The first daily update after upgrading from 0.2.0 writes about 0.9 GB once: the frozen arrays as blocks, and the kept observation history. It also splits the current Panel year into quarters, about 40 MB. Every record sealed under 0.2.0 verifies unchanged, and published values are the same.
 - `serve --no-browser --detach` answers `STARTED` or `ALREADY_SERVING`, with the workspace and the Host's address. An answer that finds no Host names the workspace it checked.
 - Long commands print their Task id and the read that follows it before they block, and, with `--output`, the file they save. A caller cut short sends that read and reaches the same Task instead of sending the command again.
 - A publication's claim follows its timing. Positions published before their entry session opens are timely research. A replay, or a publication made after the observations it settles, is post-observed. Neither is trade advice. Publications stored before 0.2.1 keep their claim and read as before. Upgrading recomputes nothing extra on the first daily update; a Lab portfolio update that repeats an identical earlier request plans once afresh.
@@ -432,6 +437,8 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 
 ### Fixed
 
+- A daily update rewrote copies of the whole history. In a fresh folder on live data, that was about 2.1 GB a day. It now writes the day's change.
+- The goal link an agent offered could open a "historical revision" notice while the first use was still running. The link now opens the current revision. A link pinned to an older revision says a newer one exists and links to it.
 - A daily request in a new session could start a second first use in a new workspace, and ran a full preparation. Once a project's first use is complete, `serve` on a new workspace and `first-use prepare` refuse a second first use by name. Each names the existing workspace and offers its `research-update plan`. Separate new research, asked for in one line, still runs with `--new-research`.
 - A sealed goal showed finished assignments as open. Accepted submissions now read as complete, unanswered work is archived with the goal's seal, and work that is still open says why and what its specialist does next.
 

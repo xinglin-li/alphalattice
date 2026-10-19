@@ -13063,6 +13063,83 @@
    "successor": "87ba7781afde777456d4f9d4eb66fb280d90d3e2538946df6feeac42f575c664",
    "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
    "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "fbcad03bd0868febf32f5ab6123e404efe7dbc79ba328da3681f6fb6716e5332",
+   "successor": "e6a1c7824b51eecac6f5868ca968af111a5e3641d86f7f7d9751cb7bb437b86d",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "e91170ef514a4930489329a2a70c94f3a863254568e0fb70876db79a2c890ab1",
+   "successor": "035235ca7ee8f765ac433876d9ef78c55573d5064fde243df2b3ef5ee458fae3",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "88d5428bf4105761ae68fe4eb3b12826341929706cbeddceff55ad00cc4b2230",
+   "successor": "e55241c59b27a2bf81e870df575c400cd212fae8350b97d1237ba0993096c13d",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "a6dfc2bd31d17f9d2f07d676d87c4466785077e72c0f5ad27d122a97efdab77e",
+   "successor": "8a79aa82a5f5c98170e8d7709bedc02ce2b23acce89b3ff1502deeefaa1286e0",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "a21a07b7f795086d017c369d635e47f486a1a2c3f619582ca9111812f859d1b4",
+   "successor": "ac953e51b2965025cb8cb67a1499181cbba1ea1ceabc33fc5008e8ee757c9487",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "94650417f3b7a8973756e7453d746ac78d6fb18d461565ec4e14cff38f525485",
+   "successor": "a41dda05495988b82937326bbf0c9e10557cc5adba062e3a9483e74603705c17",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "b24957996fd8ad4a42a514800bf16fe283490b1fae316916360d872b311c51fc",
+   "successor": "de6f56e7a85b5eeaa6e329a30f6675379bba3e090fc24efcac918924b341a492",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "237dbdb8d6e33b5c9e657cca533821c908ac73721748405962b22736bd7f6bb3",
+   "successor": "8c6e1a321c8f384a9c86a5ee6e79c1bdb1125b2cf34facaf8a4a0c7da73a1a71",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "55f105a286ae20e359ea1c080782aafbc03918d6e71c75b96cc9dcb0b9a83f52",
+   "successor": "c239bbb226883fbc90c924a8b7694467891e8841e612f5bafe9044e98d814f88",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "55f105a286ae20e359ea1c080782aafbc03918d6e71c75b96cc9dcb0b9a83f52",
+   "successor": "c239bbb226883fbc90c924a8b7694467891e8841e612f5bafe9044e98d814f88",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "5d9e33e4206487f82d36771aadc4e7192baae701415fbbbb03b29b186b7622c2",
+   "successor": "1fa621396ab49f361a71c4e515491b0d6735495000cf6def86c97066b3d5d765",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
   }
  ]
 }

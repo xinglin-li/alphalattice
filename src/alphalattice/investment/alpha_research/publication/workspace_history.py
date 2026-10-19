@@ -47,6 +47,16 @@ def _part_category(column_names: tuple[str, ...], shape: tuple[int, int]) -> str
     return f"{_PARTS}/{layout}"
 
 
+def _held(values: npt.NDArray[Any]) -> npt.NDArray[Any]:
+    """A column as published: as given when immutable bytes back it, as one copy otherwise."""
+    root = values
+    while isinstance(root.base, np.ndarray):
+        root = root.base
+    if isinstance(root.base, bytes) and values.flags.c_contiguous and not values.flags.writeable:
+        return values
+    return np.frombuffer(values.tobytes(order="C"), dtype=np.float64).reshape(values.shape)
+
+
 @dataclass(frozen=True, slots=True)
 class WorkspaceObservationHistoryFile:
     """Exact file bytes for a retention root or an unrooted cleanup candidate."""
@@ -159,18 +169,33 @@ class _WorkspaceObservationHistoryStore:
         return columns
 
     def _columns(
-        self, head: WorkspaceObservationHistoryHead, verified: dict[str, _PartColumns]
+        self, head: WorkspaceObservationHistoryHead, seen: set[str] | None = None
     ) -> _Columns:
-        pieces = [self._part(head, part, verified) for part in head.parts]
+        """Each column whole, every part copied in as it is read and then let go.
+
+        One history and one part are held at once; `seen` collects the verified parts' keys.
+        """
         shape = (len(head.formation_sessions), len(head.ordered_listing_ids))
-        return MappingProxyType(
-            {
-                name: np.frombuffer(
-                    b"".join(part[name].tobytes(order="C") for part in pieces), dtype=np.float64
-                ).reshape(shape)
-                for name in head.column_names
-            }
-        )
+        columns: dict[str, npt.NDArray[np.float64]] = {
+            name: np.empty(shape, dtype=np.float64) for name in head.column_names
+        }
+        start = 0
+        for part in head.parts:
+            verified: dict[str, _PartColumns] = {}
+            piece = self._part(head, part, verified)
+            stop = start + part.stop - part.start
+            if stop > shape[0]:
+                raise self.error(_INVALID)
+            for name in head.column_names:
+                columns[name][start:stop] = piece[name].reshape(stop - start, shape[1])
+            start = stop
+            if seen is not None:
+                seen.update(verified)
+        if start != shape[0]:
+            raise self.error(_INVALID)
+        for values in columns.values():
+            values.setflags(write=False)
+        return MappingProxyType(columns)
 
     def load(self, scope_hash: str) -> tuple[WorkspaceObservationHistoryHead, _Columns] | None:
         """Absent initial marker is cold; all named current/previous artifacts fail closed."""
@@ -180,14 +205,17 @@ class _WorkspaceObservationHistoryStore:
         head = self._head(marker.current_head_hash)
         if head.scope_hash != scope_hash or head.predecessor_head_hash != marker.previous_head_hash:
             raise self.error(_INVALID)
-        verified: dict[str, _PartColumns] = {}
-        columns = self._columns(head, verified)
+        seen: set[str] = set()
+        columns = self._columns(head, seen)
         if marker.previous_head_hash is not None:
             previous = self._head(marker.previous_head_hash)
             if previous.scope_hash != scope_hash:
                 raise self.error(_INVALID)
-            for part in previous.parts:
-                self._part(previous, part, verified)
+            for part in previous.parts:  # a part the current head shares was verified above
+                shape = (part.stop - part.start, len(previous.ordered_listing_ids))
+                key = f"{_part_category(previous.column_names, shape)}/{part.content_hash}"
+                if key not in seen:
+                    self._part(previous, part, {})
         return head, columns
 
     def publish(
@@ -234,10 +262,7 @@ class _WorkspaceObservationHistoryStore:
             for value in columns.values()
         ):
             raise self.error(_INVALID)
-        held = {
-            name: np.frombuffer(columns[name].tobytes(order="C"), dtype=np.float64).reshape(shape)
-            for name in sorted(columns)
-        }
+        held = {name: _held(columns[name]) for name in sorted(columns)}
         marker = self._marker(scope_hash) if loaded is not None else None
         current = (
             loaded
@@ -256,7 +281,7 @@ class _WorkspaceObservationHistoryStore:
             if old != reuse:
                 raise self.error(_REUSE_INVALID)
             old_columns = (
-                current[1] if current is not None and old == current[0] else self._columns(old, {})
+                current[1] if current is not None and old == current[0] else self._columns(old)
             )
             if old.scope_hash == scope_hash and old.selection_hash == selection_hash:
                 common = min(old.stable_session_count, stable_session_count)
