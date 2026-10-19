@@ -2,6 +2,9 @@
  * English phrase is worded differently in another part of the product. Generated data; edit
  * translations here, never in the templates. */
 window.ALPHA_ZH = {
+  "A held source record is unreadable; restore its read access and retry `alphalattice backup run`.": "无法读取保留的源记录；请恢复其读取权限，再重试 `alphalattice backup run`。",
+  "A backup object is unreadable; restore its read access, then retry the backup or use a new empty directory for the restore.": "无法读取备份对象；请恢复其读取权限，再重试备份，或改用新的空目录进行恢复。",
+  "The lock filename must end in .lock; retry with a name ending in .lock.": "锁文件名必须以 .lock 结尾；请改用以 .lock 结尾的名称后重试。",
   "Open the current book and ask the person to Stop it, then read controls again before activation.": "请打开当前账簿，请本人停止策略，再重新读取控制项后决定是否启用。",
   "Open the offered book to check whether it is newer and reviewed; otherwise preview a new book from current data.": "请打开所提供的账簿，确认它是否更新且已经审阅；否则，请基于当前数据预览一本新账簿。",
   "A split for {subject} reaches issued positions. They stay published; this book stops. Read controls: build a newer reviewed book if absent; ask for Stop if active.": "提供方报告的拆股涉及 {subject}，覆盖已发布的持仓。持仓保持原样，此账簿停止继续。请读取控制项：若缺少更新且已审阅的账簿，先构建一本；若策略仍在启用，请先请本人停止。",

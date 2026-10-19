@@ -1007,6 +1007,18 @@
   "detail": "The Host cannot create or write the backup root, so no generation was made; the root is the application-data directory unless ALPHALATTICE_BACKUP_ROOT names another. Serve the Host with ALPHALATTICE_BACKUP_ROOT naming a directory it can write, outside the workspace, then back up again.",
   "next_action": "SERVE_WITH_A_WRITABLE_BACKUP_ROOT"
  },
+ "workspace_backup.source_unreadable": {
+  "detail": "A held source record is unreadable; restore its read access and retry `alphalattice backup run`.",
+  "next_action": "RESTORE_FILE_READ_ACCESS_AND_RETRY"
+ },
+ "workspace_backup.object_unreadable": {
+  "detail": "A backup object is unreadable; restore its read access, then retry the backup or use a new empty directory for the restore.",
+  "next_action": "RESTORE_FILE_READ_ACCESS_AND_RETRY"
+ },
+ "workspace_runtime.lock_path_invalid": {
+  "detail": "The lock filename must end in .lock; retry with a name ending in .lock.",
+  "next_action": "USE_A_LOCK_FILENAME"
+ },
  "workspace_data_update.archive_failed": {
   "detail": "The last data update's backup could not be taken, neither while the Host was idle after it nor again when this update started; nothing was changed. Read `alphalattice backup list`, whose last automatic attempt names the cause, resolve it, then run this update again. What the last update published stands.",
   "next_action": "READ_BACKUP_LIST_THEN_RUN_THE_UPDATE_AGAIN"

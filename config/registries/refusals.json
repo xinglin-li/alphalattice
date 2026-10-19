@@ -12882,6 +12882,12 @@
 "workspace_backup.root_unwritable": {
 "owner": "workspace_backup"
 },
+"workspace_backup.source_unreadable": {
+"owner": "workspace_backup"
+},
+"workspace_backup.object_unreadable": {
+"owner": "workspace_backup"
+},
 "workspace_backup.table_not_held": {
 "owner": "workspace_backup"
 },
@@ -13244,6 +13250,9 @@
 },
 "workspace_readiness.target_not_available_at_approval": {
 "owner": "workspace_readiness"
+},
+"workspace_runtime.lock_path_invalid": {
+"owner": "workspace_runtime"
 },
 "workspace_runtime.writer_already_owned": {
 "owner": "workspace_runtime"

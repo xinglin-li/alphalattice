@@ -5,6 +5,7 @@
  "nouns": {
   "workspace": {
    "covers": "paths, lock, persistence, databases, artifacts, checkpoints, writer lease, mutation gate",
+   "note": "WorkspaceLock owns LOCK_SUFFIX; the backup consumer omits these transient files and retains their durable ledgers.",
    "owner": "alphalattice.control.workspace_runtime",
    "defined_by": [
     "alphalattice.control.workspace_runtime.artifacts",
