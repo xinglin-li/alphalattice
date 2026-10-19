@@ -13252,6 +13252,111 @@
    "successor": "daa0c1698b48a3f54a949eedfb64b65274adf5c2c41a5370aa32cb97a3e3c61c",
    "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
    "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "1b1439ad950b9fd93c03cceb508261c854cc4a1c6e14e77ffe363ef4d8d23f45",
+   "successor": "30457cc904584f3ba69fb60f0f74fca60ae0a16519b7b3ef0488701cae27d204",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "2638eaa5a9c7aef67526c8bc3ecdc1041cbb2e12772787f87a72f8fcc965d0eb",
+   "successor": "c881276277250096b785cffca1e349c9aee69cfd4f251196bcac1555c7d590d1",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "19c6cb0036342174040a041cad314a8036e2d6fa3124003c2936e108bdcc7bba",
+   "successor": "637f91bb9539839dbca559c78515f34de2f46e597d4297ff933491bcb8634a58",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "d420c007cc97563e847f9f5c87bff8819b7e8555a71e0d8c39e8723ff98d143c",
+   "successor": "b109d409cba69415ba1546219af7fe2e9d8d7085101cc3558ef8b3692d31fdfb",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "32d6ee277ce07073a690e0e42f06ace2458f130b2a885f89f8629f89a251340a",
+   "successor": "067e7ebd345852799346c4cb685ab2cd89663d613efbb1887287b745018710c3",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "125a916a817715dec2f8b5a52ed1cfb402b7d25bd6b393152f0a9c3bd52caab2",
+   "successor": "7640282a8d80e95c0f0752802c36c59f427a3ac15d3282e8b1523ea50e084348",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "5e0a78ed4ab04fba103538e0538e06d8ab16e488a9bec1508c6505c1bf4f78c4",
+   "successor": "1f3a18d626dc02e046c5cdfcbabbb70ffd2c35cd3a2ebe0c2b8852abaa18aa3b",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "55f57ea312cad6c4f2981031f60c559e42d62885ebf5185bc565c4c722cd7a78",
+   "successor": "e13f1f2155f8bf15e39d8dcc16644e8725099668ac80916209804b38bbc32c95",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "f92c669fcf2b72f9e4d2c3dc8237f6b1214e827519f5f447db3a0ad7a3213796",
+   "successor": "422d90db8e7911e5aa76cbbeb648c566db26755410705f2e0551fc5d2b2a843a",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "497e7a0befe72827d39de166b174bf469e55d2984294d9ce0fc513501e7af860",
+   "successor": "5333c0a2002f8709b0dc8aab6871937f6dbf3ba1580b7f910d10d23b789d11c8",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "3c29366693ae721b68765fd27c6666a95f82595c9e28c1379ee8abd032768d78",
+   "successor": "a672ddb1e0b79e53749f67b9a416ffb3e692f0f1792c930466f5ab454762036d",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "3c29366693ae721b68765fd27c6666a95f82595c9e28c1379ee8abd032768d78",
+   "successor": "a672ddb1e0b79e53749f67b9a416ffb3e692f0f1792c930466f5ab454762036d",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "4038f7e723df3f293ec00000017deafde194332789455836249fcbecf03dacb7",
+   "successor": "e58218a13b4d9ba5361eb29f34ac740973c1b8f40760b7d393a14b49dbd30b29",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "daa0c1698b48a3f54a949eedfb64b65274adf5c2c41a5370aa32cb97a3e3c61c",
+   "successor": "97c73857b58546d49ca2257956bcfd056aa2001b98b0133f3d8220aa3657e614",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "87ba7781afde777456d4f9d4eb66fb280d90d3e2538946df6feeac42f575c664",
+   "successor": "0876f9769f4e929448bd4cd0745fb055f265f0a83caa3ff86a7c090271f49d4d",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   }
  ]
 }

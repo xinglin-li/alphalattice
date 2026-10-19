@@ -43,7 +43,6 @@ from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
 )
 from alphalattice.foundation.feature_engine.panels.feature_closure_coordinator import (
-    FeatureBaseClosureCoordinator,
     FeatureLayerClosures,
 )
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
@@ -258,93 +257,6 @@ class WorkspaceRuntime:
                 maintenance_registry=DuckDbWorkspaceMaintenanceRegistry(
                     database.path, gate=mutation_gate
                 ),
-                progress_publisher=progress_publisher,
-                closure_ledger=closure_ledger,
-                owns_writer_lease=owns_lease,
-            )
-        except Exception:
-            if owns_lease:
-                lease.close()
-            raise
-
-    @classmethod
-    def from_operations(
-        cls,
-        operations: PreFactorDataOperations,
-        *,
-        manifest: UniverseManifest,
-        application_controls: WorkspaceApplicationControls | None = None,
-    ) -> WorkspaceRuntime:
-        """Adopt an already-built deterministic owner during terminal migration."""
-        if operations.manifest.revision_sha256 != manifest.revision_sha256:
-            raise ValueError("WorkspaceRuntime manifest does not match Data Operations")
-        root = operations.market_data.workspace.resolve()
-        if application_controls is not None and application_controls.workspace.resolve() != root:
-            raise ValueError("WorkspaceRuntime application session workspace does not match")
-        owns_lease = application_controls is None
-        lease = (
-            WorkspaceWriterLease.acquire(root)
-            if application_controls is None
-            else application_controls.writer_lease
-        )
-        try:
-            database = operations.market_data.database
-            market_data = operations.market_data
-            feature_state = FeatureStateRepository(database, market_data=market_data)
-            panel_state = operations.panel_state
-            gate = (
-                WorkspaceMutationGate()
-                if application_controls is None
-                else application_controls.mutation_gate
-            )
-            progress_publisher = WorkspaceProgressPublisher(operations.snapshot_root)
-            resolver = operations.artifact_resolver or ArtifactResolver(operations.snapshot_root)
-            panel_artifacts = PanelArtifactCompositionOwner(resolver)
-            closure_ledger = FeatureClosureLedger(PanelClosureArtifactStore(resolver))
-            feature_persistence = FeatureBaseClosureCoordinator(
-                store=feature_state,
-                source=FeatureClosureSourceRepository(database.path),
-                ledger=closure_ledger,
-                factor_ids=FeatureCatalog.load().factor_ids,
-            )
-            sector_activation = SectorRevisionMapActivationCoordinator(
-                store=feature_state, mutation_gate=gate, ledger=closure_ledger
-            )
-            operations.artifact_resolver = resolver
-            feature_foundation = FeatureFoundationService(
-                market_data=market_data,
-                feature_state=feature_state,
-                panel_state=panel_state,
-                manifest=manifest,
-                provider=operations.provider,
-                mutation_gate=gate,
-                panel_artifacts=panel_artifacts,
-                feature_persistence=feature_persistence,
-                sector_activation=sector_activation,
-                progress_sink=progress_publisher.publish,
-                session_authority_resolver=resolve_trading_session_authority,
-            )
-            return cls(
-                database=database,
-                market_data=market_data,
-                feature_state=feature_state,
-                panel_state=panel_state,
-                manifest=manifest,
-                provider=operations.provider,
-                artifact_resolver=resolver,
-                mutation_gate=gate,
-                writer_lease=lease,
-                task_control_registry=(
-                    DuckDbTaskControlRegistry(
-                        resolve_task_control_database(database.workspace), gate=gate
-                    )
-                    if application_controls is None
-                    else application_controls.task_control_registry
-                ),
-                data_operations=operations,
-                feature_foundation=feature_foundation,
-                sector_activation=sector_activation,
-                maintenance_registry=DuckDbWorkspaceMaintenanceRegistry(database.path, gate=gate),
                 progress_publisher=progress_publisher,
                 closure_ledger=closure_ledger,
                 owns_writer_lease=owns_lease,
