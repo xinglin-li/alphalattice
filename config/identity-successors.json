@@ -13364,6 +13364,27 @@
    "successor": "3bece6af7c2c24693a70a9280e44d7fadeb8aacd0f8084327555f77bbd9a1482",
    "change": "NN07: the uncalled WorkspaceRuntime adoption factory removed (0.2.1)",
    "reason": "NN07 removed WorkspaceRuntime.from_operations, the terminal-migration adoption factory, with its unread import alias; git grep finds no caller, import, path, string or registry reader of it in src, scripts, tests, config or the Workbench JS, and the change is deletion only (88 lines, nothing added). The role's code closure moved only by this deletion; no value it computes changes. Merged into 0.2.1 because 0.2.1 already moves this role."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "c881276277250096b785cffca1e349c9aee69cfd4f251196bcac1555c7d590d1",
+   "successor": "2ddc1e80578d2c04fcbfa2e4e004d1e9ce883b30c933dd123279db749e837874",
+   "change": "LATE-SPLIT-WORDS: a late split's stop has words and its way on (0.2.1)",
+   "reason": "AX's LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (INV's review, 16:03; DOC's re-review PASS, 17:24), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "637f91bb9539839dbca559c78515f34de2f46e597d4297ff933491bcb8634a58",
+   "successor": "6a62f85bedf058828155609f0ce46e95e44a9808e6eefefc11f523535e2a6fdc",
+   "change": "LATE-SPLIT-WORDS: a late split's stop has words and its way on (0.2.1)",
+   "reason": "AX's LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (INV's review, 16:03; DOC's re-review PASS, 17:24), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "b109d409cba69415ba1546219af7fe2e9d8d7085101cc3558ef8b3692d31fdfb",
+   "successor": "a6b2173e1fe6a24349d66c2fada73795d29e7f766f9c09cce8ec54007ca6cf90",
+   "change": "LATE-SPLIT-WORDS: a late split's stop has words and its way on (0.2.1)",
+   "reason": "AX's LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (INV's review, 16:03; DOC's re-review PASS, 17:24), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
   }
  ]
 }
