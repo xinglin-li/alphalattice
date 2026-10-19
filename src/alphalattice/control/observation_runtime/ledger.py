@@ -712,58 +712,6 @@ class ObservationLedger:
 
         return self._read(operation)
 
-    def save_projection_checkpoint(
-        self, checkpoint: ObservationProjectionCheckpoint, *, observed_at: datetime
-    ) -> None:
-        """Persist a verified projection checkpoint without moving it backward.
-
-        Args:
-            checkpoint: Projection position and source cursors to save.
-            observed_at: Aware timestamp for this checkpoint write.
-
-        Raises:
-            ValueError: The clock, source row or progression is invalid.
-
-        """
-        if observed_at.tzinfo is None or observed_at.utcoffset() is None:
-            raise ValueError("observation checkpoint clock must be timezone-aware")
-        self.read(checkpoint.through_observation_id)
-
-        def operation(connection: Any) -> None:
-            existing = connection.execute(
-                """
-                SELECT checkpoint_json FROM observation_projection_checkpoint
-                WHERE projection_kind = ? AND projection_key = ?
-                """,
-                [checkpoint.projection_kind, checkpoint.projection_key],
-            ).fetchone()
-            if existing is not None:
-                current = ObservationProjectionCheckpoint.model_validate_json(str(existing[0]))
-                if current.checkpoint_hash == checkpoint.checkpoint_hash:
-                    return
-                if checkpoint.observation_count < current.observation_count:
-                    raise ValueError("observation.projection_checkpoint_mismatch")
-            connection.execute(
-                """
-                INSERT INTO observation_projection_checkpoint VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT (projection_kind, projection_key) DO UPDATE SET
-                    through_observation_id = excluded.through_observation_id,
-                    checkpoint_hash = excluded.checkpoint_hash,
-                    checkpoint_json = excluded.checkpoint_json,
-                    updated_at = excluded.updated_at
-                """,
-                [
-                    checkpoint.projection_kind,
-                    checkpoint.projection_key,
-                    checkpoint.through_observation_id,
-                    checkpoint.checkpoint_hash,
-                    checkpoint.model_dump_json(),
-                    _db_time(observed_at),
-                ],
-            )
-
-        self._write(operation)
-
     def load_projection_checkpoint(
         self, projection_kind: str, projection_key: str
     ) -> ObservationProjectionCheckpoint | None:
@@ -807,21 +755,6 @@ class ObservationLedger:
 
         return self._read(operation)
 
-    def _save_store_metadata(self, key: str, value: dict[str, Any]) -> None:
-        if not key:
-            raise ValueError("observation metadata key is required")
-
-        def operation(connection: Any) -> None:
-            connection.execute(
-                """
-                INSERT INTO observation_store_metadata VALUES (?, ?)
-                ON CONFLICT(metadata_key) DO UPDATE SET metadata_json = excluded.metadata_json
-                """,
-                [key, json.dumps(value, sort_keys=True, separators=(",", ":"))],
-            )
-
-        self._write(operation)
-
     def integrity_check(self) -> None:
         """Refuse a store whose SQLite quick check does not pass."""
 
@@ -839,26 +772,6 @@ class ObservationLedger:
         return sum(
             path.stat().st_size for path in _store_paths(self.database_path) if path.is_file()
         )
-
-    def _prepare_for_promotion(self) -> None:
-        def gated() -> None:
-            self._require_open()
-            try:
-                result = self._writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
-                if result is None or int(result[0]) != 0:
-                    self._raise_storage(
-                        "observation.storage_busy", "WAL promotion checkpoint was busy"
-                    )
-            except ObservationStorageError:
-                raise
-            except sqlite3.Error as exc:
-                raise _storage_error(
-                    exc,
-                    operation="promotion checkpoint",
-                    database_path=self.database_path,
-                ) from exc
-
-        self.gate.run(gated)
 
     def count_refusal(
         self,

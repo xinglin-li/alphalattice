@@ -13357,6 +13357,13 @@
    "successor": "0876f9769f4e929448bd4cd0745fb055f265f0a83caa3ff86a7c090271f49d4d",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
    "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "5333c0a2002f8709b0dc8aab6871937f6dbf3ba1580b7f910d10d23b789d11c8",
+   "successor": "3bece6af7c2c24693a70a9280e44d7fadeb8aacd0f8084327555f77bbd9a1482",
+   "change": "NN07: the uncalled WorkspaceRuntime adoption factory removed (0.2.1)",
+   "reason": "NN07 removed WorkspaceRuntime.from_operations, the terminal-migration adoption factory, with its unread import alias; git grep finds no caller, import, path, string or registry reader of it in src, scripts, tests, config or the Workbench JS, and the change is deletion only (88 lines, nothing added). The role's code closure moved only by this deletion; no value it computes changes. Merged into 0.2.1 because 0.2.1 already moves this role."
   }
  ]
 }
