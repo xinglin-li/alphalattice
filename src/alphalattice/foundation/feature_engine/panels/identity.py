@@ -16,7 +16,7 @@ no longer enter the hash.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import duckdb
 import pyarrow as pa
@@ -274,7 +274,12 @@ def panel_schema_hash(schema: pa.Schema) -> str:
 
 
 def panel_chunk_hash(
-    table: pa.Table, *, panel_binding_hash: str, year: int, schema: pa.Schema | None = None
+    table: pa.Table,
+    *,
+    panel_binding_hash: str,
+    year: int,
+    schema: pa.Schema | None = None,
+    part: int = 0,
 ) -> str:
     """Return the unchanged binding-aware annual chunk identity.
 
@@ -286,11 +291,15 @@ def panel_chunk_hash(
     (``canonical_hash_with_values``, byte for byte the canonical encoder's
     document over ``to_pylist()``) rather than from a Python list of every
     row's hash: a reader verifies this identity on every chunk of every read.
+
+    ``part`` names a sub-year part (a quarter) of the year; a whole-year chunk (``0``) keeps
+    the identity every annual chunk had, so no existing chunk's name moves.
     """
     return canonical_hash_with_values(
         {
             "panel_binding_hash": panel_binding_hash,
             "year": year,
+            **({"part": part} if part else {}),
             "row_count": table.num_rows,
             "schema_hash": panel_schema_hash(table.schema if schema is None else schema),
         },
@@ -326,3 +335,8 @@ __all__ = [
     "panel_rows_match_their_hashes",
     "panel_schema_hash",
 ]
+
+
+def panel_chunk_order(item: Mapping[str, object]) -> tuple[int, int]:
+    """A manifest chunk's place: its year, then its part (0 for a whole year)."""
+    return int(str(item["year"])), int(str(item.get("part") or 0))

@@ -261,6 +261,23 @@ class ExpectedPanelChunk(_Contract):
     # chunk's sessions was computed over, as the snapshot manifest recorded
     # it. Absent under the binding rule.
     cross_sections: tuple[PanelCrossSectionRecord, ...] | None = None
+    # The sub-year part (a quarter) the chunk holds; absent for a whole-year chunk, so every
+    # recipe written before sub-year parts re-derives its recorded hash unchanged.
+    part: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
+
+    @property
+    def span(self) -> tuple[int, int]:
+        """The chunk's (year, part): part 0 for a whole year."""
+        return self.year, self.part or 0
+
+    @property
+    def bounds(self) -> tuple[date, date]:
+        """The chunk's own sessions' range."""
+        return self.first_session, self.last_session
+
+    def holds(self, session: date) -> bool:
+        """Whether a session is one of the chunk's own: its year, or its part's range."""
+        return self.first_session <= session <= self.last_session
 
 
 class PanelPartitionOrigin(_Contract):
@@ -494,7 +511,7 @@ class PanelDerivationRecipe(_Contract):
             or not set(self.row_hash_factor_ids).issubset(self.factor_ids)
         ):
             raise ValueError("recipe row-hash factor axis is invalid")
-        years = tuple(item.year for item in self.expected_chunks)
+        years = tuple(item.span for item in self.expected_chunks)
         if years != tuple(sorted(set(years))):
             raise ValueError("recipe annual chunks must be sorted and unique")
         if self.row_identity_basis not in {None, PANEL_ROW_IDENTITY_BY_CROSS_SECTION}:

@@ -1423,17 +1423,18 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
     binding_two = str(manifest_two["panel_binding_hash"])
     assert binding_two != binding_one
     years = [int(chunk["year"]) for chunk in manifest_two["chunks"]]
-    assert len(whole_reads) == 1  # the current year; the years day one published are taken
+    # The current year's parts, read as its one year; the years day one published are taken.
+    assert len(whole_reads) == years.count(years[-1])
     assert second.coverage_summary["panel_partitions_reused"] == len(years) - 1
     assert second.coverage_summary["panel_partitions_written"] == 1
-    assert second.coverage_summary["panel_partitions_reused_years"] == years[:-1]
-    by_year_one = {int(chunk["year"]): chunk for chunk in manifest_one["chunks"]}
+    assert second.coverage_summary["panel_partitions_reused_years"] == sorted(set(years[:-1]))
+    by_year_one = {_span(chunk): chunk for chunk in manifest_one["chunks"]}
     for chunk in manifest_two["chunks"][:-1]:
-        assert chunk == by_year_one[int(chunk["year"])]
+        assert chunk == by_year_one[_span(chunk)]
         assert chunk["origin_binding_hash"] == binding_one
     current = manifest_two["chunks"][-1]
     assert current["origin_binding_hash"] == binding_two
-    assert current["chunk_hash"] != by_year_one[int(current["year"])]["chunk_hash"]
+    assert current["chunk_hash"] != by_year_one[_span(current)]["chunk_hash"]
     assert current["last_session"] == day_two.isoformat()
     origins_two = manifest_two["safe_summary"]["lineage"]["partition_origins"]
     assert set(origins_two) == {binding_one, binding_two}
@@ -1569,7 +1570,9 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
         root_manifest_uris=[manifest_two_uri]
     )
     assert reachability.unreferenced == (
-        workspace.resolver.feature_panel_chunk_uri(str(by_year_one[years[-1]]["chunk_hash"])),
+        workspace.resolver.feature_panel_chunk_uri(
+            str(by_year_one[_span(manifest_two["chunks"][-1])]["chunk_hash"])
+        ),
         workspace.resolver.feature_panel_manifest_uri(str(manifest_one["snapshot_hash"])),
     )
 
@@ -1595,7 +1598,7 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
         ),
         refresh_sector=False,
     )
-    assert third.coverage_summary["panel_partitions_reused_years"] == years[:-2]
+    assert third.coverage_summary["panel_partitions_reused_years"] == sorted(set(years[:-2]))
     assert third.coverage_summary["panel_partitions_written"] == 2
     assert str(manifest_three["panel_binding_hash"]) == binding_two
     origins_three = [chunk["origin_binding_hash"] for chunk in manifest_three["chunks"]]
@@ -2135,3 +2138,8 @@ def test_an_activation_holds_the_base_and_retires_rows_outside_its_layer(tmp_pat
         ).fetchone()[0]
     finally:
         connection.close()
+
+
+def _span(chunk: dict[str, object]) -> tuple[int, int]:
+    """A manifest chunk's partition: its year and its part (0 for a whole year)."""
+    return int(str(chunk["year"])), int(str(chunk.get("part") or 0))

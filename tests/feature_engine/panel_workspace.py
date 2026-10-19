@@ -111,6 +111,7 @@ def open_closure(
     feature_state: FeatureStateRepository,
     resolver: ArtifactResolver,
     manifest: UniverseManifest,
+    reopened: bool = False,
 ) -> tuple[FeatureClosureLedger, FeatureBaseClosureCoordinator]:
     """Open a real genesis closure and return the product persistence owner.
 
@@ -126,7 +127,7 @@ def open_closure(
     genesis = FeatureClosureGenesisService(
         panel_state=panel_state, source=source, ledger=ledger
     ).open_genesis(manifest=manifest, catalog=catalog)
-    if genesis.disposition != "GENESIS_READY":
+    if genesis.disposition != ("REUSED_EXACT" if reopened else "GENESIS_READY"):
         raise AssertionError(f"unexpected genesis disposition: {genesis.disposition}")
     return ledger, FeatureBaseClosureCoordinator(
         store=feature_state,
@@ -337,15 +338,17 @@ class PanelWorkspace:
 
 
 def panel_workspace(
-    root: Path, manifest: UniverseManifest, *, end: date, spy: str
+    root: Path, manifest: UniverseManifest, *, end: date, spy: str, seed: bool = True
 ) -> PanelWorkspace:
+    """The fixture workspace at ``root``: seeded through ``end``, or reopened as it stands."""
     provider = FixtureProvider(tuple(item.symbol for item in manifest.listings))
     market_data = MarketDataRepository(root / "workspace")
     feature_state = FeatureStateRepository(market_data.database, market_data=market_data)
     panel_state = PanelStateRepository(market_data.database, market_data=market_data)
-    seed_feature_input_fixture(
-        market_data, feature_state, manifest, provider, end=end, spy_revision=spy
-    )
+    if seed:
+        seed_feature_input_fixture(
+            market_data, feature_state, manifest, provider, end=end, spy_revision=spy
+        )
     gate = WorkspaceMutationGate()
     # The product layout: artifacts beside the database, which the residue
     # owner resolves from the workspace root.
@@ -356,6 +359,7 @@ def panel_workspace(
         feature_state=feature_state,
         resolver=resolver,
         manifest=manifest,
+        reopened=not seed,
     )
     service = FeatureFoundationService(
         market_data=market_data,

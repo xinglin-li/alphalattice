@@ -1699,6 +1699,7 @@ window.ALPHA_ZH = {
   "Outcome publication": "结果发布",
   "Panel authority cutover": "面板权威切换",
   "years": "个年度",
+  "parts": "个分段",
   "evidence batches": "个证据批次",
   "{label} finished · {n} / {total} {unit} · the next step has not reported yet": "{label} 已完成 · {n} / {total} {unit} · 下一步尚未报告",
   "{label} stopped · {code}": "{label} 已停止 · {code}",

@@ -1494,7 +1494,7 @@ class FeatureFoundationService:
                                 stage_id="panel_compute",
                                 completed=panel_chunk_completed,
                                 total=panel_chunk_total,
-                                unit_name="chunks",
+                                unit_name="parts",
                                 current_item=(
                                     f"{chunk_sessions[0].isoformat()}.."
                                     f"{chunk_sessions[-1].isoformat()}"
@@ -1645,7 +1645,7 @@ class FeatureFoundationService:
                 stage_id="panel_year_finalize",
                 completed=completed,
                 total=total,
-                unit_name="years",
+                unit_name="parts",
                 current_item=str(year),
                 status="SUCCEEDED" if completed == total else "RUNNING",
             ),

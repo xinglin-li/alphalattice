@@ -79,10 +79,14 @@ class FeaturePanelChunk:
     # every manifest under the binding rule and carried exactly as recorded
     # when an existing manifest is re-sourced.
     cross_sections: tuple[PanelCrossSectionRange, ...] = ()
+    # The sub-year part the chunk holds (1-4); 0, and absent from the payload, for a whole year.
+    part: int = 0
 
     def to_payload(self) -> dict[str, object]:
         """Serialize chunk sessions and include only recorded optional bindings."""
         payload = asdict(self)
+        if not self.part:
+            del payload["part"]
         payload["first_session"] = self.first_session.isoformat()
         payload["last_session"] = self.last_session.isoformat()
         if self.origin_binding_hash is None:
@@ -1025,6 +1029,7 @@ def _source_identity_from_composition(
                 else prepared.binding.panel_binding_hash
             ),
             cross_sections=item.cross_sections,
+            part=item.part,
         )
         for item in prepared.chunks
     ]
@@ -1051,6 +1056,7 @@ def _feature_panel_chunk(payload: object) -> FeaturePanelChunk:
             PanelCrossSectionRange.from_payload(cast(Mapping[str, object], item))
             for item in recorded
         ),
+        part=int(str(payload.get("part") or 0)),
     )
 
 

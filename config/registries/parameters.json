@@ -2688,6 +2688,14 @@
 "class": "METHOD",
 "count": 1
 },
+"src/alphalattice/foundation/feature_engine/panels/artifacts.py::PANEL_PARTS_PER_YEAR::4": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/foundation/feature_engine/panels/artifacts.py::_MONTHS::12": {
+"class": "METHOD",
+"count": 1
+},
 "src/alphalattice/foundation/feature_engine/panels/closure_artifacts.py::_validate_hash::64": {
 "class": "METHOD",
 "count": 1

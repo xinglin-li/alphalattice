@@ -24,7 +24,10 @@ from alphalattice.foundation.feature_engine.contracts import (
     canonical_hash,
 )
 from alphalattice.foundation.feature_engine.panels.artifacts import manifest_row_identity_basis
-from alphalattice.foundation.feature_engine.panels.identity import PANEL_IDENTITY_COLUMNS
+from alphalattice.foundation.feature_engine.panels.identity import (
+    PANEL_IDENTITY_COLUMNS,
+    panel_chunk_order,
+)
 
 
 @dataclass(frozen=True)
@@ -133,7 +136,7 @@ class PanelClosureSourceRepository:
             previous_members: tuple[str, ...] = ()
             for raw_chunk in sorted(
                 (item for item in chunks if isinstance(item, dict)),
-                key=lambda item: int(str(item["year"])),
+                key=panel_chunk_order,
             ):
                 chunk_path = self._resolver.resolve_feature_panel_chunk_ref(
                     uri=str(raw_chunk["uri"]),
