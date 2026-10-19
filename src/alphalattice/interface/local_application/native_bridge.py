@@ -16,6 +16,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
@@ -1612,11 +1613,13 @@ def agent_setup() -> dict[str, dict[str, Any]]:
 def attachment_preflight(
     project: Path, binding: NativeResearchBinding | None = None, host: str | None = None
 ) -> dict[str, Any]:
-    """Read the binding's readiness (for an unbound caller, its own host's) and the way forward."""
+    """Read the binding's readiness (an unbound caller's own host's) and the way forward."""
     result = readiness(project, binding, host)
+    missing = result.get("failure_code") == "native_bridge.project_declaration_missing"
     return {
         **result,
         **(refusal_words(result["failure_code"]) if result.get("failure_code") else {}),
+        **({"commands": declaration_setup(project, result["host"])} if missing else {}),
         **(
             {
                 "detail": "The Session binding is ready for research.",
@@ -1626,6 +1629,26 @@ def attachment_preflight(
             else {}
         ),
     }
+
+
+def declaration_setup(project: Path, host: str) -> list[str]:
+    """What a missing project declaration needs, in order and ready to run.
+
+    Args:
+        project: The agent project to configure.
+        host: The host whose declaration is missing.
+
+    Returns:
+        This host's configure of the project, with the product's own interpreter, then the bind
+        run from it.
+    """
+    checkout = resolve_playpen_root(Path(__file__))
+    python = checkout / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    python = python if (checkout / "pyproject.toml").is_file() else Path(sys.executable)
+    module = "alphalattice.interface.local_application.native_setup"
+    configure = [str(python), "-m", module, "--project", str(project), "configure", "--host", host]
+    bind = ["alphalattice", "--workspace", "<dir>", "session", "bind"]
+    return [join(configure, shell()), join(bind, shell())]
 
 
 AUTOBIND_ROOT = Path("runtime") / "native-sessions"

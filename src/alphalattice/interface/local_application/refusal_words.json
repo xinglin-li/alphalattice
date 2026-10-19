@@ -1339,7 +1339,7 @@
   "next_action": "READ_LOCAL_READINESS_AND_NAME_THE_WORKSPACE"
  },
  "native_bridge.project_declaration_missing": {
-  "detail": "No configured AlphaLattice project declares this host for this Session: neither the agent project this command runs from nor a folder above the workspace. Run native_research.py configure --host <host> in your agent project (the checkout, or the folder the installed product configured), then run session bind from it; the workspace may be kept anywhere. A workspace or data folder is never the agent project.",
+  "detail": "No configured AlphaLattice project declares this host for this Session: neither the agent project this command runs from nor a folder above the workspace. Run this answer's `commands` in order: this host's configure of your agent project (the checkout, or the folder the installed product configured), then `session bind` from it, naming your workspace, which may be kept anywhere. A workspace or data folder is never the agent project.",
   "next_action": "CONFIGURE_THE_AGENT_PROJECT_THEN_BIND_FROM_IT"
  },
  "goal.assignment_closure_invalid": {

@@ -141,6 +141,9 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ("interface/local_application/client.py", "_write_bundle"): (
             "where an entry's workspace ends, never printed"
         ),
+        ("interface/local_application/native_bridge.py", "declaration_setup"): (
+            "a missing declaration's bind, the step after its configure"
+        ),
         ("interface/local_application/native_setup.py", "main"): "the bridge setup's bind option",
         (
             "interface/local_application/portfolio_research.py",

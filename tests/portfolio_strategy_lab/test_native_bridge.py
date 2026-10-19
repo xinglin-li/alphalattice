@@ -353,6 +353,13 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
         (project / ".git").mkdir()
         (project / ".git/HEAD").write_text("ref: refs/heads/main\n", newline="\n")
     entry = _entry()
+    monkeypatch.setattr(entry.sys, "argv", ["native", "--project", str(project), "doctor"])
+    assert entry.main() == 2  # not yet configured: both steps offered, ready to run
+    preflight = json.loads(capsys.readouterr().out)["attachment_preflight"]
+    assert preflight["next_action"] == "CONFIGURE_THE_AGENT_PROJECT_THEN_BIND_FROM_IT"
+    configure, bind = preflight["commands"]
+    assert configure.endswith("configure --host codex") and str(project.resolve()) in configure
+    assert bind.endswith("session bind")
     for command, status, code in (
         ("configure", "LOCAL_DECLARATIONS_VALIDATED", 0),
         ("doctor", "REFUSED", 2),
