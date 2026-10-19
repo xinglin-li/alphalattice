@@ -154,8 +154,7 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
     'the timeline: '+String(c.live.page()).slice(0,2000));
   assert.ok(shows('Sessions and usage','gpt-6','10 in · 5 out · 2 cache read · 1 cache written',
       'differs from its card: effort'),'the sessions\u2019 models and tokens');
-  // the conversation: each exchange links to its session; the kinds a filter; the open
-  // assignments counted
+  // Conversation keeps the owner's open and closed assignment records.
   await folder('goal-conversation');
   // A reply alone does not close an assignment; the page names its retained closure state.
   assert.ok(shows('Read the Alpha study','data-tip="analyst">Unidentified',
@@ -204,6 +203,11 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
     summary:'Product accepted deliverable (ACCEPTED): retained finding.'};
   const acceptedBefore=JSON.stringify(accepted),readCount=reads.length;
   record.conversation.push(accepted);record.message_count++;
+  record.open_assignments=[];record.closed_assignments=[{bundle_reference:accepted.bundle_reference,state:'COMPLETED',receipt:{answer_reference:accepted.answer_reference}}];
+  assert.ok(shows('Closed assignments',accepted.answer_reference)&&hides('Open assignments'));
+  const retainedMessages=record.conversation;record.conversation=[];record.message_count=0;
+  assert.ok(shows('Closed assignments',accepted.answer_reference));
+  record.conversation=retainedMessages;record.message_count=retainedMessages.length;
   assert.ok(shows(accepted.summary,'Accepted answer','Alternative Analyst',
     'Submitted by <span tabindex="0" data-tip="pm">Main PM',
     'product record, not a native spoken turn','Task admission time',accepted.occurred_at,

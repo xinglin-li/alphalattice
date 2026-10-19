@@ -250,6 +250,7 @@ def render_goal(body: dict[str, Any]) -> str:
                 {
                     "Messages": record["message_count"],
                     "Open assignments": record["open_assignments"],
+                    "Closed assignments": record.get("closed_assignments", []),
                 }
             )
         )

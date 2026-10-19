@@ -1766,8 +1766,7 @@ function pctText(s, threshold = null) {
   return shown;
 }
 // a fraction of one (0.6 -> "60%")
-/* ---- reading helpers: an owner's code in words (the code itself stays on hover and in the
-   exports). Owner strings stay in the details; displayed meanings change no value. */
+/* Owner codes read in words; hover and exports keep exact codes. Wording changes no value. */
 const CODE_WORDS = {
   'alternative_evidence.scoped_refresh': 'Refresh Evidence',
   'evidence_review.retrieval_environment_not_loaded': 'Retrieval environment not loaded',
@@ -1801,6 +1800,7 @@ const CODE_WORDS = {
   "ACCEPTED": "Accepted",
   "ACTIVATED": "Activated",
   "ACTIVE": "Active",
+  "ARCHIVED": "Archived",
   "AGENT_BUNDLE_READY": "Ready",
   "ALL_SLEEVES": "All sleeves",
   "BOUND": "Bound",

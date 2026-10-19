@@ -255,7 +255,7 @@
     "name": "record",
     "kind": "object",
     "required": true,
-    "meaning": "The Host's own facts: the sessions and Tasks bound to the goal, request and event counts, the Team conversation, open assignments and usage."
+    "meaning": "The Host's own facts: bound sessions and Tasks, counts, conversation, assignments and usage. `open_assignments` explains missing acceptance and the next action; `closed_assignments` retains accepted-answer or goal-seal receipts."
    },
    {
     "name": "next_requests",
@@ -371,7 +371,7 @@
     "name": "record",
     "kind": "object",
     "required": true,
-    "meaning": "The Host's own facts: the sessions and Tasks bound to the goal, request and event counts, the Team conversation, open assignments and usage."
+    "meaning": "The Host's own facts: bound sessions and Tasks, counts, conversation, assignments and usage. `open_assignments` explains missing acceptance and the next action; `closed_assignments` retains accepted-answer or goal-seal receipts."
    },
    {
     "name": "next_requests",
@@ -787,6 +787,12 @@
  },
  "GOAL_SUBMIT": {
   "fields": [
+   {
+    "name": "open_assignments",
+    "kind": "array",
+    "required": false,
+    "meaning": "An empty list once the Goal seals; unanswered assignments are archived with the seal in the Goal record."
+   },
    {
     "name": "status",
     "kind": "string",
