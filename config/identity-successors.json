@@ -13140,6 +13140,76 @@
    "successor": "1fa621396ab49f361a71c4e515491b0d6735495000cf6def86c97066b3d5d765",
    "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
    "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "e6a1c7824b51eecac6f5868ca968af111a5e3641d86f7f7d9751cb7bb437b86d",
+   "successor": "1b1439ad950b9fd93c03cceb508261c854cc4a1c6e14e77ffe363ef4d8d23f45",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "035235ca7ee8f765ac433876d9ef78c55573d5064fde243df2b3ef5ee458fae3",
+   "successor": "6dbbf558fda8f08a762888c7f1b98c4987608a77fcc3629a05ce3bc227ad598a",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "8a79aa82a5f5c98170e8d7709bedc02ce2b23acce89b3ff1502deeefaa1286e0",
+   "successor": "32d6ee277ce07073a690e0e42f06ace2458f130b2a885f89f8629f89a251340a",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "ac953e51b2965025cb8cb67a1499181cbba1ea1ceabc33fc5008e8ee757c9487",
+   "successor": "125a916a817715dec2f8b5a52ed1cfb402b7d25bd6b393152f0a9c3bd52caab2",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "a41dda05495988b82937326bbf0c9e10557cc5adba062e3a9483e74603705c17",
+   "successor": "eeafe000460ef0c07c8210b5e1383044be90a8f0662af5e12a9c7036dc8d8f79",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "de6f56e7a85b5eeaa6e329a30f6675379bba3e090fc24efcac918924b341a492",
+   "successor": "d5dea5b744e1341f0523b5b9ce00bcd6fd35f931fe31b46e3c4a63aef2cbd5a8",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "8c6e1a321c8f384a9c86a5ee6e79c1bdb1125b2cf34facaf8a4a0c7da73a1a71",
+   "successor": "f92c669fcf2b72f9e4d2c3dc8237f6b1214e827519f5f447db3a0ad7a3213796",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "c239bbb226883fbc90c924a8b7694467891e8841e612f5bafe9044e98d814f88",
+   "successor": "3c29366693ae721b68765fd27c6666a95f82595c9e28c1379ee8abd032768d78",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "c239bbb226883fbc90c924a8b7694467891e8841e612f5bafe9044e98d814f88",
+   "successor": "3c29366693ae721b68765fd27c6666a95f82595c9e28c1379ee8abd032768d78",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "1fa621396ab49f361a71c4e515491b0d6735495000cf6def86c97066b3d5d765",
+   "successor": "4038f7e723df3f293ec00000017deafde194332789455836249fcbecf03dacb7",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
   }
  ]
 }

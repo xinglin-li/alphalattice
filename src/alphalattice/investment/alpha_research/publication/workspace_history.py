@@ -173,7 +173,8 @@ class _WorkspaceObservationHistoryStore:
     ) -> _Columns:
         """Each column whole, every part copied in as it is read and then let go.
 
-        One history and one part are held at once; `seen` collects the verified parts' keys.
+        One history and one part or column are held at once; `seen` collects the verified parts'
+        keys.
         """
         shape = (len(head.formation_sessions), len(head.ordered_listing_ids))
         columns: dict[str, npt.NDArray[np.float64]] = {
@@ -193,8 +194,8 @@ class _WorkspaceObservationHistoryStore:
                 seen.update(verified)
         if start != shape[0]:
             raise self.error(_INVALID)
-        for values in columns.values():
-            values.setflags(write=False)
+        for name in head.column_names:  # immutable bytes back each, one column copied at a time
+            columns[name] = np.frombuffer(columns[name].tobytes(), dtype=np.float64).reshape(shape)
         return MappingProxyType(columns)
 
     def load(self, scope_hash: str) -> tuple[WorkspaceObservationHistoryHead, _Columns] | None:
