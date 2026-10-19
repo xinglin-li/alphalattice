@@ -41,9 +41,8 @@ def holdings(readback: Mapping[str, Any]) -> list[dict[str, Any]]:
     names = [f"C{n}" for n in range(1, len(components) + 1)]  # a component's floor alias
     scores: dict[str, dict[str, float]] = {}
     for name, component in zip(names, components, strict=False):
-        for listing, score in zip(component.ordered_listing_ids, component.scores, strict=False):
-            if score >= 0:  # a name the component did not score reads -1
-                scores.setdefault(listing, {})[str(name)] = score
+        for listing, score in _scores(component).items():
+            scores.setdefault(listing, {})[str(name)] = score
     rows = [
         {
             "listing_id": listing,
@@ -195,7 +194,8 @@ _FACTS: Final = {
     "moves": (
         "ALPHA.clean",
         "publication",
-        "{c} score moves on the previous session: {moved}; unscored: {unscored}.",
+        "{c} score moves on the previous session: {moved}; excluded from score comparisons: "
+        "{unscored}.",
     ),
     "rule": (
         "ALPHA.held",
@@ -322,18 +322,25 @@ def _components(readback: Mapping[str, Any], proposal: Any, before: Any) -> list
     for n, part in enumerate(_parts(proposal.input)):
         mine = {axis[i] for s in sleeves[first : first + counts[n]] for i, w in enumerate(s) if w}
         first += counts[n]
-        ids, old = part.ordered_listing_ids, _parts(before.input)[n : n + 1] if before else ()
-        score = dict(zip(ids, part.scores, strict=True))
-        ok = [
-            k
-            for k, e in zip(ids, part.decision_eligible, strict=True)
-            if e and score[k] is not None
-        ]
-        rank = {k: r for r, k in enumerate(sorted(ok, key=lambda k: -score[k]), 1)}
-        was = dict(zip(old[0].ordered_listing_ids, old[0].scores, strict=True)) if old else {}
+        old = _parts(before.input)[n : n + 1] if before else ()
+        score = _scores(part)
+        rank = {k: r for r, k in enumerate(sorted(score, key=lambda k: -score[k]), 1)}
+        was = _scores(old[0]) if old else {}
         out.append({"alias": f"C{n + 1}", "mine": mine, "score": score, "rank": rank, "was": was})
+        out[-1]["excluded"] = set(old[0].ordered_listing_ids) - was.keys() if old else set()
         out[-1]["curve"] = [v for v in part.bucket_means if v is not None]
     return out
+
+
+def _scores(part: Any) -> dict[str, float]:
+    """Only decision-eligible, present scores support comparisons, including signed scores."""
+    return {
+        k: score
+        for k, score, eligible in zip(
+            part.ordered_listing_ids, part.scores, part.decision_eligible, strict=True
+        )
+        if eligible and score is not None
+    }
 
 
 def _parts(book_input: Any) -> tuple[Any, ...]:
@@ -448,16 +455,20 @@ def _component_values(
         abs(score[k] - was[k]) == abs(score[j] - was[j]) for k in jumps[3:] for j in jumps[2:3]
     )
     moved += f", and {ties} others moved equally" if ties else ""
-    unscored = _listed(alias.get(k, k) for k in mine if k not in rank)
+    unscored = _listed(
+        alias.get(k, k)
+        for k in sorted(set(mine) | set(moves))
+        if k not in rank or k in c.get("excluded", ())
+    )
     past = sorted((k for k in mine if top < rank.get(k, 0)), key=lambda k: (rank[k], k))
     kept = _listed(f"{alias.get(k, k)} {rank[k]}" for k in past if rank[k] <= out)
     tranche = _listed(f"{alias.get(k, k)} {rank[k]}" for k in past if rank[k] > out)
-    gap = [score.get(k) or 0.0 for k in moves] or [0.0]
+    gap = [score[k] for k in moves if k in score]
     ranks = dict(c=name, top=sum(curve[:4]) / 4, bottom=sum(curve[-4:]) / 4)
     return [
         ("moves", dict(c=name, moved=moved, unscored=unscored)),
         ("rule", dict(c=name, n=len(c["mine"]), top=top, out=out, kept=kept, tranche=tranche)),
-        ("spread", dict(c=name, spread=max(gap) - min(gap), cost=cost) if moves else None),
+        ("spread", dict(c=name, spread=max(gap) - min(gap), cost=cost) if gap else None),
         ("curve", ranks if len(curve) > 7 else None),
     ]
 

@@ -1813,7 +1813,7 @@ def role_lines(
     if role == "ALPHA":
         view = [
             f"{h['alias']} {h['name']}: weight {h['weight']:.2%}; component scores at formation "
-            "(0 to 1, higher ranks better): "
+            "(higher ranks better): "
             + (", ".join(f"{k} {v:.2f}" for k, v in sorted(h["scores"].items())) or "none")
             for h in held
         ]
