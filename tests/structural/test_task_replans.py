@@ -131,6 +131,7 @@ def test_every_composed_task_input_kind_reaches_recovery(plan_admission_check) -
             source = SimpleNamespace(
                 task_kind=declared.task_kind,
                 lifecycle=TaskLifecycle.BLOCKED,
+                failure_code=None,
                 task_id=UUID(int=83),
                 record_hash="a" * 64,
             )
@@ -216,7 +217,9 @@ def test_a_new_composed_owner_reaches_recovery_without_a_second_owner_list() -> 
         setattr(operations, item.name, None)
     declared = TaskReplan(task_kind="synthetic.future", preview="PLAN", admitting="RUN")
     request = {"operation": "PLAN", "spec": {"strategy_package_id": "synthetic-selected"}}
-    sentinel = SimpleNamespace(task_kind=declared.task_kind, lifecycle=TaskLifecycle.SUCCEEDED)
+    sentinel = SimpleNamespace(
+        task_kind=declared.task_kind, lifecycle=TaskLifecycle.SUCCEEDED, failure_code=None
+    )
     seen = []
 
     def bind(task):

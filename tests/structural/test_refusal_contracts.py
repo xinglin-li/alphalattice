@@ -49,6 +49,8 @@ def test_every_task_stop_sentence_fits_its_bound_and_reads_whole() -> None:
         assert stop_detail("research_experiment", code, "TASK_CONTROL") == worded[code], code
     long = {code: len(words) for code, words in worded.items() if len(words) > STOP_WORDS_BOUND}
     assert long == {}, long
+    code = "portfolio_update.revised_split_basis_requires_review:" + "x" * 140
+    assert stop_detail("research_experiment", code, "TASK_CONTROL") == explain(code)["detail"]
     data = refusal_codes()["maintenance_dict_keys"]
     assert data and all(len(maintenance_failure_detail(code)) <= STOP_WORDS_BOUND for code in data)
     # One lookup whatever the Task kind: a code any owner words reads worded for every kind.

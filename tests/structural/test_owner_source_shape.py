@@ -1247,8 +1247,14 @@ def test_the_workspace_runtime_composes_the_canonical_store() -> None:
         / "composition"
         / "workspace.py"
     ).read_text(encoding="utf-8")
-    assert "DuckDbTaskControlRegistry(database.path" not in source
-    assert source.count("resolve_task_control_database(database.workspace)") == 2
+    stores = [
+        ast.unparse(node.args[0])
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "DuckDbTaskControlRegistry"
+    ]
+    assert set(stores) == {"resolve_task_control_database(database.workspace)"}
 
 
 def test_no_production_site_spells_the_task_database_as_a_literal() -> None:

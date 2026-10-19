@@ -560,7 +560,7 @@
  },
  "portfolio_update.revised_split_basis_requires_review": {
   "stop_detail": "A split for {subject} reaches issued positions. They stay published; this book stops. Read controls: build a newer reviewed book if absent; ask for Stop if active.",
-  "detail": "The provider reported a split for {subject}. Its effective session is already covered by the issued positions. Issued positions stay as published and are never re-based silently, so this book cannot continue. Read `alphalattice strategy-book controls --package <package>`. If its activation offer names a newer reviewed book built from current data, ask the person in one line: Will you activate this newer reviewed book? Otherwise use the controls' PLAN preview to build and review a newer book from current data. If the package is still active, ask the person to Stop it before rereading controls and asking for activation; follow the offered book and prerequisites.",
+  "detail": "A split touches issued positions; they stay published. This book stops. Read `alphalattice strategy-book controls --package <package>`. If no newer reviewed book, build and review one from current data with PLAN preview. If active, ask the person to Stop; reread controls. When offered, ask the person: Activate this newer book? Follow prerequisites. Split: {subject}",
   "next_action": "ASK_A_PERSON_TO_ACTIVATE_A_NEWER_BOOK"
  },
  "portfolio_update.strategy_package_required": {
