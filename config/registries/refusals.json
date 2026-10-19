@@ -13122,6 +13122,9 @@
 "workspace_maintenance.membership_revision_mismatch": {
 "owner": "workspace_maintenance"
 },
+"workspace_maintenance.precision_kept_without_authority": {
+"owner": "workspace_maintenance"
+},
 "workspace_maintenance.semantic_index_handoff_failed": {
 "owner": "workspace_maintenance"
 },

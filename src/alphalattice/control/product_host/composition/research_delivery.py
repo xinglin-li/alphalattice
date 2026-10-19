@@ -309,7 +309,8 @@ def export_update_delivery(
             cases, audits = goal_store.rule_cases(task, held), goal_store.rule_audits(task, held)
             kept, stood = goal_store.rule_held(task, held), goal_store.rule_kept(task, held)
         else:
-            cases, audits, kept, stood = floor.rule_cases, floor.rule_audits, floor.rule_held, ()
+            cases, audits, kept = floor.rule_cases, floor.rule_audits, floor.rule_held
+            stood = floor.rule_kept
         data_decisions = read_data_decisions(
             case_tokens=cases, audits=audits, held=kept, kept=stood
         )

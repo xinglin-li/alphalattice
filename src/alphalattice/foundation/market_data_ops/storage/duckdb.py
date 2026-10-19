@@ -4695,7 +4695,7 @@ class MarketDataRepository(WorkspaceRepository):
         )
         connection.register(stage_name, stage)
         try:
-            if observed:  # nothing to write when every observed close stood
+            if observed:  # none to write when every close stood
                 connection.execute(
                     """
                     INSERT OR REPLACE INTO provider_adjusted_close_current
@@ -5362,7 +5362,7 @@ class MarketDataRepository(WorkspaceRepository):
                     earliest_session=earliest[listing],
                     source_receipt_hash=receipt.receipt_hash,
                     observed_at=item.observed_at,
-                    tolerance=item.adjusted_tolerance,
+                    tolerance=item.tolerance_after(count),
                 )
                 if revision.precision_kept is not None:
                     count = {**count, "precision_kept": revision.precision_kept}

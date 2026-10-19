@@ -444,12 +444,11 @@ class AlphaDevelopmentArtifactStore:
         with span("hash", "alpha_packed"):
             content_hash = sha256(payload).hexdigest()
         target = self._path(category, content_hash, "bin")
-        if target.exists():
-            if target.read_bytes() != payload:
-                raise ValueError("Alpha packed content identity was reused")
-        else:
+        if not target.exists():
             self._packed_capacity(len(payload))
             self._atomic_write(target, payload)
+        elif target.stat().st_size != len(payload):
+            raise ValueError("Alpha packed content identity was reused")
         return content_hash
 
     def import_packed(

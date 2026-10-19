@@ -4,10 +4,17 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from alphalattice.foundation.market_data_ops.sources.contracts import ProviderAdjustedClosePoint
+from alphalattice.foundation.market_data_ops.runtime.universe_maintenance import (
+    CurrentUniverseMaintenance,
+)
+from alphalattice.foundation.market_data_ops.sources.contracts import (
+    CorporateActionEvent,
+    ProviderAdjustedClosePoint,
+)
 from alphalattice.foundation.market_data_ops.sources.manifest import (
     build_quality_filtered_research_manifest,
 )
@@ -24,10 +31,15 @@ def _close(day: date) -> float:
     return 100.0 + day.day / 7.0
 
 
-@pytest.mark.parametrize(("scale", "stands"), [(1 + 5e-7, True), (1 + 2e-6, False)])
+@pytest.mark.parametrize(
+    ("scale", "dividend", "stands"),
+    [(1 + 5e-7, False, True), (1 + 2e-6, False, False), (1 + 5e-7, True, False)],
+)
 def test_a_resent_stored_close_within_the_precision_stands_and_past_it_restates(
-    tmp_path: Path, scale: float, stands: bool
+    tmp_path: Path, scale: float, dividend: bool, stands: bool
 ) -> None:
+    """requirement: within the rule's precision a re-sent stored close stands; past it, or once
+    the audit inserts or corrects an action for the listing, the series restates."""
     manifest = build_quality_filtered_research_manifest(
         acquisition_manifest(), eligible_listing_ids=("listing-aapl",)
     )
@@ -35,7 +47,7 @@ def test_a_resent_stored_close_within_the_precision_stands_and_past_it_restates(
     store.bootstrap(manifest)
     bar = {"open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 1_000_000}
 
-    def day(sessions: tuple[date, ...], adjusted: dict[date, float], offset: int):  # type: ignore[no-untyped-def]
+    def day(sessions: tuple[date, ...], adjusted: dict[date, float], offset: int, actions=()):  # type: ignore[no-untyped-def]
         store.apply_validated_batch(
             manifest,
             sanitize_payload(
@@ -52,7 +64,7 @@ def test_a_resent_stored_close_within_the_precision_stands_and_past_it_restates(
             manifest,
             listing_id="listing-aapl",
             provider="fixture",
-            actions=(),
+            actions=actions,
             adjusted_closes=tuple(
                 ProviderAdjustedClosePoint("listing-aapl", "fixture", item, value)
                 for item, value in adjusted.items()
@@ -68,7 +80,8 @@ def test_a_resent_stored_close_within_the_precision_stands_and_past_it_restates(
     # The next day re-sends the window re-rounded, as a provider re-adjusting does, and the new
     # session; the raw bars are bit-equal.
     resent = {item: _close(item) * scale for item in HISTORY[1:]} | {NEW: _close(NEW)}
-    receipt, counts = day((NEW,), resent, 1)
+    paid = CorporateActionEvent("listing-aapl", "fixture", HISTORY[2], "CASH_DIVIDEND", None, 0.5)
+    receipt, counts = day((NEW,), resent, 1, (paid,) if dividend else ())
     revision = store.provider_adjusted_revision(receipt.receipt_hash)
     assert revision is not None
     stored = {
@@ -83,3 +96,22 @@ def test_a_resent_stored_close_within_the_precision_stands_and_past_it_restates(
         assert "precision_kept" not in counts
         assert HISTORY[1] in revision.changed_return_sessions
         assert stored[HISTORY[2]] == _close(HISTORY[2]) * scale
+
+
+@pytest.mark.parametrize(
+    ("written", "tolerance"),
+    [
+        ({}, 1e-6),
+        ({"corrected": 1}, 0.0),
+        ({"action_inserted": 1}, 0.0),
+        ({"action_corrected": 2}, 0.0),
+    ],
+)
+def test_a_run_that_moved_a_bar_or_an_action_keeps_no_stored_close(written, tolerance) -> None:
+    """requirement: a fresh dividend or a corrected bar written this run is never kept."""
+    runner = SimpleNamespace(provider=SimpleNamespace(name="fixture"), as_of_session=NEW)
+    runner.adjusted_tolerance = 1e-6
+    hydration = SimpleNamespace(actions=(), adjusted_closes=())
+    item = SimpleNamespace(listing_id="listing-aapl")
+    observed = CurrentUniverseMaintenance._observation(runner, item, hydration, NEW, NOW, written)  # type: ignore[arg-type]
+    assert observed.adjusted_tolerance == tolerance

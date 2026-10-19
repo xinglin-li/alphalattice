@@ -14,9 +14,15 @@ from alphalattice.control.data_platform.data_decision_rule import (
     QUARANTINE,
     RETAIN,
     DataDecisionRule,
+    attach,
+    audit,
     held_decisions,
 )
+from alphalattice.control.product_host.composition.research_workspace import (
+    ResearchWorkspaceManifest,
+)
 from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputGateway
+from alphalattice.foundation.market_data_ops.runtime.remediation import canonical_hash
 from alphalattice.protocols.actor_execution import ActorKind
 from tests.feature_input_gateway.gateway_support import (
     NOW,
@@ -147,3 +153,59 @@ def test_the_case_count_and_listing_share_have_independent_bounds() -> None:
     assert rule.capped(11, 1000, affected_listings=1)
     assert rule.capped(1, 100, affected_listings=3)
     assert not rule.capped(1, 100, affected_listings=2)
+
+
+def test_a_rule_declared_before_the_precision_keeps_its_identity_decisions_and_stops() -> None:
+    """requirement: upgrading keeps a rule's identity, so its manifest loads, its held
+    decisions stay held and an escalated audit stop still stands; only a precision other than
+    the shipped one is a new rule."""
+    # The rule as the release before the precision recorded it: its fields, hashed.
+    declared = {"max_cases": 3, "max_population_share": 0.02, "version": "data-decision-rule/1"}
+    rule = DataDecisionRule(max_cases=3)
+    assert rule.rule_hash == canonical_hash(declared)
+    assert DataDecisionRule(max_cases=3, adjusted_precision=1e-5).rule_hash != rule.rule_hash
+    manifest = ResearchWorkspaceManifest.create(
+        workspace_id="w",
+        default_strategy_package_id=None,
+        default_score_source_mode=None,
+        strategy_artifacts=(),
+        data_decision_rule=rule,
+        strategy_installation="NOT_INSTALLED",
+    )
+    stored = manifest.model_dump(mode="json")
+    assert stored["data_decision_rule"] == declared
+    assert ResearchWorkspaceManifest.model_validate(stored) == manifest
+    # Its escalated audit stop, recorded under that hash, still stands: nothing is approved.
+    stop = {
+        "task_id": "t",
+        "operation": FULL_HISTORY,
+        "decided_by": "RULE",
+        "status": "ESCALATED",
+        "rule_hash": canonical_hash(declared),
+        "listing_ids": ["A1", "A2", "A3"],
+    }
+    written: list[dict] = []
+    assert (
+        audit(rule, lambda: object(), lambda: [stop], written.append, "t", {"A4": "D"}, 100, str)
+        is None
+    )
+    assert written == []
+
+
+def test_the_rule_keeps_stored_closes_only_while_its_goal_holds_and_records_each_keep() -> None:
+    """requirement: the precision applies only under the rule's live authority, and every
+    listing it kept is recorded on the goal that granted it; without that authority, none."""
+    goal = type("Goal", (), {"goal_hash": "g" * 64})()
+    holding: list[object] = [goal]
+    recorded: list[dict] = []
+
+    def decide(*_: object) -> None:
+        return None
+
+    attach(decide, DataDecisionRule(), lambda: holding[0], tuple, recorded.append, "t")
+    assert decide.precision() == 1e-6  # type: ignore[attr-defined]
+    listing = type("Listing", (), {"listing_id": "L1", "symbol": "AAA"})()
+    holding[0] = None  # the goal closes before the cycle records its change set
+    decide.kept([{"listing_id": "L1", "adjusted_precision_kept": 5e-7}], [listing])  # type: ignore[attr-defined]
+    assert [(r["listing_ids"], r["goal_hash"]) for r in recorded] == [(["L1"], "g" * 64)]
+    assert decide.precision() == 0.0  # type: ignore[attr-defined]

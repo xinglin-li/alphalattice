@@ -1133,7 +1133,8 @@ class CurrentUniverseMaintenance:
         write_counts: Mapping[str, int],
     ) -> ActionAuditObservation:
         """The listing's audit observation from `start`; the data rule's precision may keep
-        stored adjusted closes only while no raw bar moved."""
+        stored adjusted closes only while this run moved no raw bar and no action."""
+        moved = ("corrected", "action_inserted", "action_corrected")
         return ActionAuditObservation(
             listing_id=item.listing_id,
             provider=self.provider.name,
@@ -1142,9 +1143,9 @@ class CurrentUniverseMaintenance:
             history_start=start,
             history_end=self.as_of_session,
             observed_at=observed_at,
-            adjusted_tolerance=self.adjusted_tolerance
-            if not write_counts.get("corrected")
-            else 0.0,
+            adjusted_tolerance=0.0
+            if any(write_counts.get(key) for key in moved)
+            else self.adjusted_tolerance,
         )
 
     @staticmethod

@@ -44,7 +44,11 @@ class ActionAuditObservation:
     """The session the audit is for; None is its ``history_end``."""
     adjusted_tolerance: float = 0.0
     """The data rule's relative precision for stored adjusted closes observed again: within it
-    the stored value stands. Zero when the refresh corrected a raw bar."""
+    the stored value stands. Zero when the run moved a raw bar or an action."""
+
+    def tolerance_after(self, moved: Mapping[str, int]) -> float:
+        """The precision once the audit applied its actions: none if it moved one."""
+        return 0.0 if any(moved.values()) else self.adjusted_tolerance
 
     @property
     def as_of(self) -> date:

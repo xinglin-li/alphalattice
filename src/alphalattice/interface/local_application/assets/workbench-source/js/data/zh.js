@@ -105,6 +105,7 @@ window.ALPHA_ZH = {
   "Approved a full-history audit of {names}": "批准了对 {names} 的全历史审计",
   "Left a full-history audit of {names} past the rule's bound": "对 {names} 的全历史审计超出规则上限，留待决定",
   "Approved a full-history audit of {names}; its update did not admit it": "批准了对 {names} 的全历史审计；其更新未予接纳",
+  "Kept the stored adjusted closes of {names} within the rule's precision": "在规则精度内保留了 {names} 已存的复权收盘价",
   "Ruling": "裁定",
   "Person answer": "本人回答",
   "Verdict": "结论",

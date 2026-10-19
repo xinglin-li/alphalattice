@@ -2135,6 +2135,7 @@ class WorkspaceMaintenanceCoordinator:
         transport budget, the data rule's precision) builds a new runner.
         """
 
+        tolerance = getattr(self.diagnose, "precision", float)()
         key: tuple[object, ...] = (
             self.manifest.revision_sha256,
             request.target_market_session,
@@ -2144,7 +2145,7 @@ class WorkspaceMaintenanceCoordinator:
             transport_workers,
             history_start,
             tuple(sorted((retry_grants or {}).items())),
-            getattr(self.diagnose, "adjusted_tolerance", 0.0),
+            tolerance,
         )
         if self._maintenance_runner is not None and self._maintenance_runner[0] == key:
             return self._maintenance_runner[1]
@@ -2167,7 +2168,7 @@ class WorkspaceMaintenanceCoordinator:
             authorization_identity_listing_ids=frozenset(requested_full_listing_ids),
             retry_grants=dict(retry_grants or {}),
             max_workers=transport_workers,
-            adjusted_tolerance=getattr(self.diagnose, "adjusted_tolerance", 0.0),
+            adjusted_tolerance=tolerance,
             mutation_gate=self.mutation_gate,
             progress_sink=self.feature_foundation.progress_sink,
         )

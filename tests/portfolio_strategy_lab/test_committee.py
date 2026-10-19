@@ -17,6 +17,7 @@ from uuid import UUID, uuid4
 import numpy as np
 import pytest
 
+from alphalattice.control.data_platform.data_decision_rule import ADJUSTED_PRECISION
 from alphalattice.control.product_host.composition import committee, committee_materials
 from alphalattice.control.product_host.composition import portfolio_result_context as context
 from alphalattice.control.product_host.composition.goals import GoalApplication
@@ -1429,17 +1430,25 @@ def test_a_dates_delivery_carries_the_closed_floor_as_its_commentary(
     store, now = _floor(tmp_path, readback)
     _stances(store, now)
     _say(store, now, "PM", "VERDICT", outcome="PROCEED")
+    # Closes the rule's precision kept are disclosed from the floor as from the goal.
+    kept = {"operation": ADJUSTED_PRECISION, "decided_by": "RULE", "task_id": TASK}
+    kept |= {"listing_ids": ["L1"], "largest_relative_differences": [5e-7], "rule_hash": "r"}
+    store.attribute(UUID(int=7), kept)
     floor = committee.floor_of(store, TASK)
     assert floor is not None
     context = committee.context(floor, now[0])
     said = committee.commentary(floor, now[0])
     assert said is not None
+    decided: dict[str, Any] = {}
     delivered = export_update_delivery(
         request=request,
         readback={**readback, **facts, "committee_context": context},
         review=None,
         committee=said,
+        read_data_decisions=lambda **seen: decided.update(seen),
+        floor=floor,
     )
+    assert decided["kept"] == (("L1", "r", 5e-7),)
     assert delivered["committee_context"] == context
     with pytest.raises(AuthoringError, match=r"^research_delivery\.update_subject_mismatch$"):
         export_update_delivery(

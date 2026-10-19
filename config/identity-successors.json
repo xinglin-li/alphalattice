@@ -12916,6 +12916,97 @@
    "successor": "52bbd45bb6f8fbc5ed991b45ac8dee897a477ac68e357be5fa098986ea0dedc3",
    "change": "frozen observation arrays are kept in shared 21-session blocks",
    "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "6c3e6dad9c4d28dd0a833408284e61c524b1063b3a6ea95f2d62205d75088a6f",
+   "successor": "fbcad03bd0868febf32f5ab6123e404efe7dbc79ba328da3681f6fb6716e5332",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "47001509fee0cc17228631f0ac8f6efd35a5c73db0b6b95cd6bf52783caecc58",
+   "successor": "e91170ef514a4930489329a2a70c94f3a863254568e0fb70876db79a2c890ab1",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "427b2a9463138f90b032e3d39b703cd90a6945a9c26d9fe289cbc55100eb323e",
+   "successor": "a6dfc2bd31d17f9d2f07d676d87c4466785077e72c0f5ad27d122a97efdab77e",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "dcbb1089d5450d1694acd6c54e8cb9aa08a340a195c8bf268830f9a5219d1fa4",
+   "successor": "a21a07b7f795086d017c369d635e47f486a1a2c3f619582ca9111812f859d1b4",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "0874d563584bc5ae12e2f57727a0b5dcc4e7a2153de396c8990b2bd7f9f4ec4c",
+   "successor": "ad609fd531bcada6c9f95a545804a76b9c2c98f572a46ba874670f6805a2bb4f",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "666307b4bce82a7ef41dc3cc073fb312bc839ae395fd0a03903238f23011bd0d",
+   "successor": "94650417f3b7a8973756e7453d746ac78d6fb18d461565ec4e14cff38f525485",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "ecaf9db7f938387beebf7f81af47e15025303e7ac544dc17bb82119c90f37ca0",
+   "successor": "b24957996fd8ad4a42a514800bf16fe283490b1fae316916360d872b311c51fc",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "012a80ec4b4b2c4f2b73ab4d009686df75eac07765de46ad350b8493f02929cb",
+   "successor": "237dbdb8d6e33b5c9e657cca533821c908ac73721748405962b22736bd7f6bb3",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "36b8762de84c50dfe75d003e883a6dab9945681671a7f484670be872ee9d2bfa",
+   "successor": "497e7a0befe72827d39de166b174bf469e55d2984294d9ce0fc513501e7af860",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "e017b3ecc5e4f62a7f315d3877ce683f5bbee1d19d67c8d802d0f2b620da1808",
+   "successor": "55f105a286ae20e359ea1c080782aafbc03918d6e71c75b96cc9dcb0b9a83f52",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "e017b3ecc5e4f62a7f315d3877ce683f5bbee1d19d67c8d802d0f2b620da1808",
+   "successor": "55f105a286ae20e359ea1c080782aafbc03918d6e71c75b96cc9dcb0b9a83f52",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "c1d27f51a138f4c1b2a908260f7be5802421a1c22a1fbb076852be02922cd6a3",
+   "successor": "5d9e33e4206487f82d36771aadc4e7192baae701415fbbbb03b29b186b7622c2",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "90669a49c11d80502897d4ec85e4d2ee5b1154c917c11c521bc55892b2f82a37",
+   "successor": "f302c7410985087c7b518a616de6b3da8a685ef0d29359f44062e02dd8c97f0e",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
   }
  ]
 }

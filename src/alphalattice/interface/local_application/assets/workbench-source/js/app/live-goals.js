@@ -160,7 +160,9 @@ const LiveGoals = (() => {
   // The rule's full-history audit names its listings: approved, left past its bound, or not admitted by its update.
   const AUDIT_WORDS = {DECIDED_BY_RULE: 'Approved a full-history audit of {names}', ESCALATED: "Left a full-history audit of {names} past the rule's bound", NOT_ADMITTED: 'Approved a full-history audit of {names}; its update did not admit it'};
   const auditWords = (s) => t(AUDIT_WORDS[s.status] || AUDIT_WORDS.DECIDED_BY_RULE, {names: (s.symbols || []).join(', ')});
-  const stepWords = (s) => (s.operation === 'NETWORK_ACCESS_SET' ? t(s.network_enabled ? 'Opened the network' : 'Closed the network') : s.operation === 'FULL_HISTORY_AUDIT' ? auditWords(s) : STEP_WORDS[s.operation] ? t(STEP_WORDS[s.operation]) : codeWords(s.operation));
+  // The rule's precision kept stored adjusted closes the provider re-sent within it: the listings it kept.
+  const keptWords = (s) => t("Kept the stored adjusted closes of {names} within the rule's precision", {names: (s.symbols || []).join(', ')});
+  const stepWords = (s) => (s.operation === 'NETWORK_ACCESS_SET' ? t(s.network_enabled ? 'Opened the network' : 'Closed the network') : s.operation === 'FULL_HISTORY_AUDIT' ? auditWords(s) : s.operation === 'ADJUSTED_PRECISION_KEPT' ? keptWords(s) : STEP_WORDS[s.operation] ? t(STEP_WORDS[s.operation]) : codeWords(s.operation));
   function hoursLeft(delegation) {
     if (!delegation?.ends_at) return '';
     const left = Date.parse(delegation.ends_at) - Date.now();

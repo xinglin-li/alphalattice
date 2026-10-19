@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
-from dataclasses import asdict
 from functools import partial
 from typing import Any, Literal, cast
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, TypeAdapter
 from pydantic.dataclasses import dataclass
 
 from alphalattice.control.data_platform.contracts import (
@@ -21,6 +20,9 @@ from alphalattice.foundation.feature_engine.inputs.gateway import (
 from alphalattice.foundation.market_data_ops.runtime.remediation import canonical_hash
 from alphalattice.foundation.market_data_ops.sources.contracts import DataRemediationProposal
 from alphalattice.protocols.actor_execution.contracts import ActorKind
+
+SHIPPED_PRECISION = 1e-6
+"""The shipped `adjusted_precision`, outside a rule's identity: the release before it had none."""
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -47,13 +49,20 @@ class DataDecisionRule:
 
     max_cases: int = Field(default=10, ge=0, strict=True)
     max_population_share: float = Field(default=0.02, ge=0, le=1, allow_inf_nan=False, strict=True)
-    adjusted_precision: float = Field(default=1e-6, ge=0, le=1e-3, allow_inf_nan=False, strict=True)
+    adjusted_precision: float = Field(
+        default=SHIPPED_PRECISION,
+        ge=0,
+        le=1e-3,
+        allow_inf_nan=False,
+        strict=True,
+        exclude_if=lambda value: value == SHIPPED_PRECISION,
+    )
     version: Literal["data-decision-rule/1"] = "data-decision-rule/1"
 
     @property
     def rule_hash(self) -> str:
-        """The rule's identity: its declared fields."""
-        return str(canonical_hash(asdict(cast(Any, self))))
+        """The rule's identity: its declared fields but a shipped precision (old rules keep it)."""
+        return str(canonical_hash(_DECLARED.dump_python(self, mode="json")))
 
     def capped(self, cases: int, population: int, *, affected_listings: int) -> bool:
         """Count cases and distinct affected listings against the declared bounds."""
@@ -236,6 +245,8 @@ RULED_RUNS = {
 book's update and a data update, so the same evidence gets the same decision."""
 
 
+_DECLARED = TypeAdapter(DataDecisionRule)
+
 AUDIT = "full_history_audit"
 """A full-history audit the rule approved, as its disclosed row names it."""
 KEPT = "adjusted_precision_kept"
@@ -316,15 +327,27 @@ def attach(
     task: str,
 ) -> Callable[..., Any]:
     """Give a Task's decide its audits, its precision and its record of closes that stood."""
+    granted: list[Any] = []
     decide.audit = partial(audit, rule, live, entries, record, task)
-    decide.adjusted_tolerance = rule.adjusted_precision
-    decide.kept = partial(kept, rule, live, record)
+    decide.precision = partial(precision, rule, live, granted)
+    decide.kept = partial(kept, rule, granted, record)
     return cast(Callable[..., Any], decide)
+
+
+def precision(rule: DataDecisionRule, live: Callable[[], Any], granted: list[Any]) -> float:
+    """The precision a maintenance cycle may keep stored closes under.
+
+    The rule's while its Goal's authority holds, which then records the cycle's keeps; else
+    none, and the series restates.
+    """
+    goal = live()
+    granted[:] = [] if goal is None else [goal]
+    return 0.0 if goal is None else rule.adjusted_precision
 
 
 def kept(
     rule: DataDecisionRule,
-    live: Callable[[], Any],
+    granted: list[Any],
     record: Callable[[dict[str, Any]], None],
     documents: Iterable[Mapping[str, Any]],
     manifest_listings: Iterable[Any],
@@ -343,10 +366,11 @@ def kept(
         for item in documents
         if "adjusted_precision_kept" in item
     }
-    goal = live()
-    if goal is None or not listings:
+    if not listings:
         return
-    ordered = sorted(listings)
+    if not granted:  # a keep needs a precision, which only a live Goal grants
+        raise ValueError("workspace_maintenance.precision_kept_without_authority")
+    goal, ordered = granted[0], sorted(listings)
     record(
         {
             "operation": ADJUSTED_PRECISION,

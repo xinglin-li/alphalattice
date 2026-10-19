@@ -91,12 +91,6 @@ def _packed_block(arrays: Mapping[str, npt.NDArray[Any]]) -> bytes:
     return payload.getvalue()
 
 
-def _joined(blocks: list[npt.NDArray[Any]]) -> npt.NDArray[Any]:
-    joined = np.concatenate(blocks)
-    joined.setflags(write=False)
-    return joined
-
-
 class AlphaCurrentArtifactReadbackError(AlphaDevelopmentArtifactReadbackError):
     """A current Alpha publication chain is missing, stale, or tampered."""
 
@@ -368,16 +362,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             content_hash=content_hash,
             identity_field="snapshot_hash",
         )
-        parts = [
-            self._frozen_arrays_with_identity("frozen-observation-arrays", block)
-            for block in snapshot.array_files
-        ]
-        arrays = (
-            parts[0][0]
-            if len(parts) == 1
-            else {name: _joined([part[name] for part, _ in parts]) for name in parts[0][0]}
-        )
-        file_identity = tuple(item for _, identity in parts for item in identity)
+        arrays, file_identity = self._frozen_blocks(snapshot)
         identity = (
             "alpha-current",
             str(self.root),
@@ -389,6 +374,45 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             *file_identity,
         )
         return snapshot, arrays, identity
+
+    def _frozen_blocks(
+        self, snapshot: FrozenScoreObservationSnapshot
+    ) -> tuple[dict[str, npt.NDArray[Any]], tuple[object, ...]]:
+        """The snapshot's arrays, its blocks copied in turn into one array each: one block and
+        the whole are held at once, never every block and a joined copy."""
+        if len(snapshot.array_files) == 1:
+            single, identity = self._frozen_arrays_with_identity(
+                "frozen-observation-arrays", snapshot.array_files[0]
+            )
+            return single, tuple(identity)
+        arrays: dict[str, npt.NDArray[Any]] = {}
+        identities: list[object] = []
+        start, sessions = 0, len(snapshot.formation_sessions)
+        for block in snapshot.array_files:
+            part, identity = self._frozen_arrays_with_identity("frozen-observation-arrays", block)
+            identities.extend(identity)
+            end = start + len(next(iter(part.values())))
+            if (arrays and set(part) != set(arrays)) or end > sessions:
+                raise AlphaCurrentArtifactReadbackError(
+                    "alpha_research.frozen_observation_columns_invalid"
+                )
+            for name, values in part.items():
+                whole = arrays.setdefault(
+                    name, np.empty((sessions, *values.shape[1:]), values.dtype)
+                )
+                if values.dtype != whole.dtype or values.shape[1:] != whole.shape[1:]:
+                    raise AlphaCurrentArtifactReadbackError(
+                        "alpha_research.frozen_observation_dtype_invalid"
+                    )
+                whole[start:end] = values
+            start = end
+        if start != sessions:
+            raise AlphaCurrentArtifactReadbackError(
+                "alpha_research.frozen_observation_columns_invalid"
+            )
+        for whole in arrays.values():
+            whole.setflags(write=False)
+        return arrays, tuple(identities)
 
     @staticmethod
     def _frozen_observation_values(

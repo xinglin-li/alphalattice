@@ -142,6 +142,7 @@ class Floor:
     rule_cases: frozenset[str] = field(default=frozenset(), compare=False)
     rule_audits: tuple[tuple[str, str], ...] = field(default=(), compare=False)
     rule_held: frozenset[str] = field(default=frozenset(), compare=False)
+    rule_kept: tuple[tuple[str, str, float], ...] = field(default=(), compare=False)
 
     def key(self, role: str) -> str:
         """Derive the member's key on this floor from the seed the Host keeps outside records."""
@@ -612,6 +613,7 @@ def thread_of(store: GoalStore, thread: str) -> Floor | None:
         rule_cases=store.rule_cases(thread, entries),
         rule_audits=store.rule_audits(thread, entries),
         rule_held=store.rule_held(thread, entries),
+        rule_kept=store.rule_kept(thread, entries),
     )
 
 
