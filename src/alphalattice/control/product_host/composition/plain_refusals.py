@@ -451,17 +451,6 @@ def explain(
                 "names its units and their states."
             ),
         }
-    if base == "goal.closed_open_a_follow_up":
-        return {
-            "detail": (
-                "This goal is closed, complete or abandoned, and its record stays as it was "
-                "sealed; nothing was changed. Its show request reads its standing. Work that "
-                "goes on is a follow-up goal whose declaration names this one in "
-                "`parent_goal_id` (`goal schema --save-declaration` writes one to edit)."
-            ),
-            "next_action": "READ_THE_GOAL_OR_OPEN_A_FOLLOW_UP",
-            "next_requests": {"schema": {"operation": "GOAL_SCHEMA"}},
-        }
     if base == "goal.goal_id_required":
         return {
             "detail": (

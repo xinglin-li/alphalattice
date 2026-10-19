@@ -68,6 +68,7 @@ from alphalattice.control.product_host.composition.feature_trials import (
     FeatureTrials,
     trial_reads_once,
 )
+from alphalattice.control.product_host.composition.goal_check import goal_refusal
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.pending_decisions import (
     all_data_issues,
@@ -209,7 +210,10 @@ from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
     read_workspace_inputs,
 )
-from alphalattice.control.product_host.publication.goals import GoalStore, session_work_declaration
+from alphalattice.control.product_host.publication.goals import (
+    GoalStore,
+    session_work_declaration,
+)
 from alphalattice.control.product_host.research_authoring.feature_research import (
     ResearchFeatureDefinitions,
 )
@@ -842,10 +846,13 @@ class PortfolioResearchOperations:
             code = public_failure(error, "goal.refused")
             return worded_refusal(
                 {
-                    "status": "REFUSED",
-                    "failure_code": code,
                     "refused": code,
                     "next_action": "NAME_AN_OPEN_GOAL_OR_NONE",
+                    **goal_refusal(
+                        error,
+                        request,
+                        attributed_goal_id=provenance.goal_id if provenance else None,
+                    ),
                 }
             )
         try:
@@ -6298,45 +6305,6 @@ class PortfolioResearchOperations:
         if result.spec_hash != durable.spec.spec_hash:
             raise LocalApplicationError("local_application.result_task_spec_mismatch")
         return durable.spec
-
-
-def goal_refusal(error: Exception, request: PortfolioResearchOperationRequest) -> dict[str, object]:
-    """A goal operation's refusal, in words where the Host has them.
-
-    A closed goal names its standing, read by the goal the request named or the session's own
-    (V391), beside the follow-up's start; the refusal and the sealed record stay (V437).
-
-    Args:
-        error: What the goal owner raised.
-        request: The request it refused.
-
-    Returns:
-        The refusal, its words and the requests that go on from it.
-    """
-    failure = located_failure(error, "goal.refused")
-    code = str(failure["failure_code"])
-    answer: dict[str, object] = {"status": "REFUSED", **failure, **explain(code)}
-    if code.partition(":")[0] == "goal.closed_open_a_follow_up":
-        named = {
-            name: str(value)
-            for name, value in (("goal_id", request.goal_id), ("goal_hash", request.goal_hash))
-            if value is not None
-        }
-        offered = cast(dict[str, object], answer.get("next_requests") or {})
-        answer["next_requests"] = {"show": {"operation": "GOAL_SHOW", **named}, **offered}
-    elif code == "goal.reference_not_found" and request.goal_hash is not None:
-        answer["next_requests"] = {
-            "narrative": {"operation": "GOAL_NARRATIVE", "goal_hash": request.goal_hash}
-        }
-    elif code == "goal.revision_conflict_read_latest" and request.goal_id is not None:
-        # The goal's latest revision, by its id alone: the request's hash names the revision
-        # another session replaced, and the session's own goal may be another (V527).
-        offered = cast(dict[str, object], answer.get("next_requests") or {})
-        answer["next_requests"] = {
-            "show": {"operation": "GOAL_SHOW", "goal_id": str(request.goal_id)},
-            **offered,
-        }
-    return answer
 
 
 def reused_read(

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from pydantic import ValidationError
 
-from alphalattice.interface.local_application.failure_codes import within
+from alphalattice.control.product_host.composition.plain_refusals import explain
+from alphalattice.control.product_host.publication.goals import GoalRefusal
+from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.interface.local_application.failure_codes import located_failure, within
 from alphalattice.interface.local_application.goals import (
     Goal,
     GoalReferenceRequest,
@@ -263,3 +266,76 @@ def reference_request(document: dict[str, Any]) -> PortfolioResearchOperationReq
     except ValidationError as error:
         raise within(error, "request") from error
     return request
+
+
+def goal_refusal(
+    error: Exception,
+    request: PortfolioResearchOperationRequest,
+    *,
+    attributed_goal_id: str | None = None,
+) -> dict[str, object]:
+    """A Goal refusal with exact read and recovery forms, reusing its owner's snapshot."""
+    failure = located_failure(error, "goal.refused")
+    code = str(failure["failure_code"])
+    answer: dict[str, object] = {
+        "status": "REFUSED",
+        **failure,
+        **refusal_words(code),
+        **explain(code),
+    }
+    if code.partition(":")[0] == "goal.closed_open_a_follow_up":
+        named = {
+            name: str(value)
+            for name, value in (
+                ("goal_id", attributed_goal_id or request.goal_id),
+                ("goal_hash", request.goal_hash),
+            )
+            if value is not None
+        }
+        offered = cast(
+            dict[str, object],
+            answer.get("next_requests") or {"schema": {"operation": "GOAL_SCHEMA"}},
+        )
+        offers = {"show": {"operation": "GOAL_SHOW", **named}, **offered}
+        if attributed_goal_id is not None:
+            _required, allowed = request.field_contract(request.operation)
+            retry = PortfolioResearchRequestDocument.model_validate(
+                {
+                    "operation": request.operation,
+                    **{name: getattr(request, name) for name in allowed},
+                }
+            ).model_dump(mode="json", exclude_none=True, exclude_defaults=True)
+            offers["retry"] = retry
+        answer["next_requests"] = offers
+    elif code == "goal.conclusion_requires_evidence" and isinstance(error, GoalRefusal):
+        goal = error.goal
+        identity = {"goal_id": str(goal.goal_id), "goal_hash": goal.goal_hash}
+        answer["expected"] = {"attached_reference_ids": [r.reference_id for r in goal.references]}
+        answer["next_requests"] = {
+            "show": {"operation": "GOAL_SHOW", "goal_id": str(goal.goal_id)},
+            "schema": {"operation": "GOAL_SCHEMA"},
+            "attach": {
+                "operation": "GOAL_ATTACH",
+                **identity,
+                "goal_reference": None,
+                "change_reason": request.change_reason,
+            },
+            "note": {
+                "operation": "GOAL_NOTE",
+                **identity,
+                "change_reason": request.change_reason,
+                "goal_statement": {**(request.goal_statement or {}), "evidence": None},
+            },
+        }
+    elif code == "goal.reference_not_found" and request.goal_hash is not None:
+        answer["next_requests"] = {
+            "narrative": {"operation": "GOAL_NARRATIVE", "goal_hash": request.goal_hash}
+        }
+    elif code == "goal.revision_conflict_read_latest" and request.goal_id is not None:
+        # Read this Goal's head: its hash is a replaced revision, not the session's own Goal.
+        offered = cast(dict[str, object], answer.get("next_requests") or {})
+        answer["next_requests"] = {
+            "show": {"operation": "GOAL_SHOW", "goal_id": str(request.goal_id)},
+            **offered,
+        }
+    return answer

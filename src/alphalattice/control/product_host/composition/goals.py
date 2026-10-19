@@ -49,6 +49,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.publication.goals import (
     EXPERIENCE_RECORD_WORDS,
+    GoalRefusal,
     GoalStore,
     sessions_of,
 )
@@ -1392,7 +1393,7 @@ class GoalApplication:
             prior = self._selected(request)
             declaration = GoalDeclaration.model_validate(request.goal_declaration)
             if "FIRST_USE" in {prior.declaration.kind, declaration.kind}:
-                # A first use keeps its original sentence, kind and opening time (V452).
+                # A first use keeps its sentence, kind and opening time (V452).
                 raise ValueError("goal.first_use_is_not_revised")
             if prior.declaration.intent() != declaration.intent():
                 # The previous objective's pre-execution timing must not be attributed
@@ -1473,7 +1474,7 @@ class GoalApplication:
             statement = GoalStatement.model_validate(request.goal_statement)
             self._require_references(goal, statement.evidence)
             if statement.disposition in {"SUPPORTS", "DOES_NOT_SUPPORT"} and not statement.evidence:
-                raise ValueError("goal.conclusion_requires_evidence")
+                raise GoalRefusal("goal.conclusion_requires_evidence", goal)
             if statement.responds_to and not any(
                 s.statement_id == statement.responds_to for s in goal.statements
             ):

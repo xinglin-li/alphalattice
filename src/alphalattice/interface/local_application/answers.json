@@ -499,7 +499,13 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The requests that read the goal and, while it is open, take, submit or revise it, each ready to send."
+    "meaning": "The goal's continuation requests. A missing-evidence refusal offers the goal read and schemas, an attach form and the preserved note form; empty fields remain choices."
+   },
+   {
+    "name": "expected",
+    "kind": "object",
+    "required": false,
+    "meaning": "On a missing-evidence refusal, the ids of the references already attached to this exact revision; relevance remains the author's choice."
    }
   ]
  },

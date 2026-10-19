@@ -512,13 +512,28 @@ def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_ap
         "disposition": "INSUFFICIENT",
     }
     _calls.clear()
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        goal_refusal,
+    )
+    from alphalattice.interface.local_application.cli_contract import refusal_words
+
+    unsupported = Request(
+        operation="GOAL_NOTE",
+        goal_hash=attached["goal_hash"],
+        change_reason="File attributed review",
+        goal_statement={**note, "disposition": "SUPPORTS", "evidence": []},
+    )
+    with pytest.raises(ValueError, match=r"goal\.conclusion_requires_evidence") as stop:
+        app.operate(unsupported, "EXTERNAL_AUTOMATION")
+    refusal = goal_refusal(stop.value, unsupported)
+    assert refusal["detail"] == refusal_words("goal.conclusion_requires_evidence")["detail"]
+    assert refusal["next_action"] == "ATTACH_EVIDENCE_AND_CITE_IT"
+    assert refusal["expected"]["attached_reference_ids"] == ["alpha"]
+    retry = refusal["next_requests"]["note"]
+    assert retry["goal_statement"] == {**unsupported.goal_statement, "evidence": None}
+    retry["goal_statement"]["evidence"] = ["alpha"]
     accepted = app.operate(
-        Request(
-            operation="GOAL_NOTE",
-            goal_hash=attached["goal_hash"],
-            change_reason="File attributed review",
-            goal_statement=note,
-        ),
+        PortfolioResearchRequestDocument.model_validate(retry).to_operation_request(),
         "EXTERNAL_AUTOMATION",
     )
     assert app.store.load(accepted["goal_hash"]).statements[0].text == note["text"]
@@ -1744,6 +1759,18 @@ def test_a_session_takes_a_goal_and_its_requests_are_recorded_under_it(
     assert shown["data"]["record"]["request_count"] == 1
     code, named = _cli(live, "--goal", goal_id, "strategy-book", "preview", "--file", str(spec))
     assert code == 2 and named["data"]["failure_code"] == "goal.closed_open_a_follow_up"
+    from alphalattice.interface.local_application.cli import request_of
+    from alphalattice.interface.local_application.client import LocalResearchClient
+
+    offers = named["data"]["next_requests"]
+    assert offers["show"] == {"operation": "GOAL_SHOW", "goal_id": goal_id}
+    retry = offers["retry"]
+    assert retry == request_of(["strategy-book", "preview", "--file", str(spec)])
+    continued = LocalResearchClient(live.workspace).request(retry)
+    assert (continued["spec_hash"], continued["admission_hash"]) == (
+        _planned["data"]["spec_hash"],
+        _planned["data"]["admission_hash"],
+    )
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
     code, refused = _cli(live, "goal", "take", goal_id)
     assert code == 2 and refused["data"]["failure_code"] == "goal.closed_open_a_follow_up"

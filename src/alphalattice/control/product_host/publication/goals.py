@@ -32,6 +32,15 @@ EXPERIENCE_RECORD_WORDS = (
 )
 
 
+class GoalRefusal(ValueError):
+    """A Goal refusal carrying its already-read revision for an exact recovery offer."""
+
+    def __init__(self, code: str, goal: Goal) -> None:
+        """Keep the refusal's code and already-read revision for its recovery forms."""
+        super().__init__(code)
+        self.goal = goal
+
+
 def session_work_declaration(operation: str, vendor: str) -> dict[str, object]:
     """The Host's automatic declaration, also identifying exact historical declarations."""
     command = GRAMMAR[operation]
