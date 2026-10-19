@@ -65,6 +65,7 @@ from alphalattice.interface.local_application.cli_contract import (
     entry,
     envelope,
     flag,
+    host_checked,
     join,
     offered_requests,
     operation_schema,
@@ -1660,16 +1661,22 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
 
 
 def _refused(
-    error: str | client.LocalResearchClientError, started: float, line: Sequence[str] = ()
+    error: str | client.LocalResearchClientError,
+    started: float,
+    line: Sequence[str] = (),
+    workspace: Path | None = None,
 ) -> int:
     """A refusal the client raised before sending anything, in the one envelope (V568).
 
-    A line that named no workspace is shown again with one named, the exact next command.
+    A line that named no workspace is shown again with one named, the exact next command; a
+    no-Host one names the workspace it checked (`host_checked`).
     """
     code = str(error)
     refusal = client_refusal(code)
     context = getattr(error, "binding_context", None)
     detail = str(worded(refusal.detail))
+    if workspace is not None and refusal.outcome == "NO_HOST":
+        detail = host_checked(detail, workspace)
     if line and code == "local_client.workspace_unbound":
         again = join(["alphalattice", "--workspace", "<dir>", *line], shell())
         detail += " " + str(worded("This line with its workspace named: {subject}.")).replace(
@@ -1796,7 +1803,7 @@ def _bind(args: argparse.Namespace, started: float) -> int:
     try:
         transport = client.LocalResearchClient(Path(args.workspace), timeout=args.request_timeout)
     except client.LocalResearchClientError as error:
-        return _refused(str(error), started)
+        return _refused(str(error), started, workspace=Path(args.workspace))
     session = agent_session(os.environ)
     if session is None:
         return _refused("local_client.session_unnamed", started)
@@ -1807,7 +1814,7 @@ def _bind(args: argparse.Namespace, started: float) -> int:
     except NativeBridgeError as error:
         return _refused(f"local_client.session_bind_refused:{error}", started)
     except client.LocalResearchClientError as error:
-        return _refused(str(error), started)
+        return _refused(str(error), started, workspace=Path(args.workspace))
     except OSError as error:
         bound = files_unavailable(error, project=Path.cwd(), workspace=Path(args.workspace))
     outcome: Outcome = "REFUSED" if bound.get("status") == "REFUSED" else "OK"

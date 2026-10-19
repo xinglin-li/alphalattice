@@ -132,6 +132,9 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ("interface/local_application/cli_contract.py", "<module>"): (
             "the unbound refusals' way on and the binding's words"
         ),
+        ("interface/local_application/cli_contract.py", "host_checked"): (
+            "a no-Host answer's command that serves the workspace it checked"
+        ),
         ("interface/local_application/cli_contract.py", "entry"): (
             "the full form, for every workspace but the bound one"
         ),

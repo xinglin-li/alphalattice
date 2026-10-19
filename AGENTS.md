@@ -57,7 +57,8 @@ alphalattice --workspace "workspaces/my-research" serve --no-browser --stop-on-s
 
 Run it in the background on Claude Code. On Codex, where a turn ends its shell's
 children, start it with `serve --no-browser --detach` instead: it returns once the
-Host serves, and the Host outlives the turn. `alphalattice host stop` stops it after its workers
+Host serves, answering STARTED, or ALREADY_SERVING when a Host already serves that workspace
+(use that one), with the workspace and the Host's address, and the Host outlives the turn. `alphalattice host stop` stops it after its workers
 join; where your shell holds its standard input open, `stop` on it does the same,
 and a background shell that gives it none leaves it serving until then. Once it
 serves, its ready lines end with the next action, OPEN_THE_WORKBENCH. The rule: the

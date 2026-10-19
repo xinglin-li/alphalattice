@@ -1650,46 +1650,75 @@ the caller already holds the refusal.
 """
 
 
+CHECKED: Final = "The workspace checked is {subject}; serve it with {subject}."
+OTHER_BOUND: Final = (
+    "This Session is bound to another workspace, {subject}: name that one with --workspace to "
+    "use its Host."
+)
+
+
+def host_checked(detail: str, workspace: Path) -> str:
+    """A no-Host answer's words, naming the workspace it checked and how to serve it.
+
+    Args:
+        detail: The refusal's own words.
+        workspace: The workspace the client looked for a Host in.
+
+    Returns:
+        The words in the command's language, with the Session's bound workspace where another.
+    """
+    checked, bound = workspace.resolve(), BOUND_WORKSPACE.get()
+    serve = ["alphalattice", "--workspace", str(checked), "serve", "--no-browser", "--detach"]
+    words = str(worded(CHECKED)).replace("{subject}", str(checked), 1)
+    words = words.replace("{subject}", f"`{join(serve, shell())}`")
+    if bound not in {None, checked}:
+        words += " " + str(worded(OTHER_BOUND)).replace("{subject}", str(bound))
+    return f"{worded(detail)} {words}"
+
+
 def client_failure(
     code: str,
     document: Mapping[str, Any],
     cause: BaseException | None,
     request_timeout: float,
     answered: bool,
+    workspace: Path | None = None,
 ) -> tuple[ClientRefusal, dict[str, Any]]:
     """A local refusal's words and, for a connection lost in flight, what it leaves known.
 
     A read not yet answered changes nothing, so its exact request is offered again; any other
     request, or a step after an answer, is inspected as its Task before work is sent again.
+    A no-Host refusal names the workspace it checked (`host_checked`).
     """
+    known: dict[str, Any] = {}
     if code == "local_client.document_unreadable":
-        return client_refusal(code), {
-            "next_requests": {"schema": schema_request(document.get("operation"))}
-        }
-    if code.startswith("local_client.review_answers_missing:"):
+        known = {"next_requests": {"schema": schema_request(document.get("operation"))}}
+    elif code.startswith("local_client.review_answers_missing:"):
         # The named strategy's last published review, read with its own date.
         package = code.partition(":")[2]
         last = {"history_kind": "CRO_REVIEW", "history_limit": 1, "strategy_package_id": package}
-        return client_refusal(code), {
-            "next_requests": {"last_review": {"operation": "RESEARCH_HISTORY", **last}}
+        known = {"next_requests": {"last_review": {"operation": "RESEARCH_HISTORY", **last}}}
+    elif code == "local_client.connection_lost_task_may_still_run":
+        read = not answered and document.get("operation") in READ_OPERATIONS
+        code = "local_client.connection_lost_read" if read else code
+        known = {
+            "transport_reason": "HTTP_WAIT_EXPIRED"
+            if isinstance(cause, TimeoutError)
+            else "CONNECTION_INTERRUPTED",
+            "request_timeout_seconds": request_timeout,
+            "operation_outcome": "UNKNOWN",
+            "guidance": (
+                "--request-timeout may increase this read's HTTP waiting."
+                if read
+                else "Inspect the same Task before resubmitting work. For a read-only "
+                "request, --request-timeout may increase HTTP waiting, not the Task budget."
+            ),
+            **({"next_requests": {"read": dict(document)}} if read else {}),
         }
-    if code != "local_client.connection_lost_task_may_still_run":
-        return client_refusal(code), {}
-    read = not answered and document.get("operation") in READ_OPERATIONS
-    return client_refusal("local_client.connection_lost_read" if read else code), {
-        "transport_reason": "HTTP_WAIT_EXPIRED"
-        if isinstance(cause, TimeoutError)
-        else "CONNECTION_INTERRUPTED",
-        "request_timeout_seconds": request_timeout,
-        "operation_outcome": "UNKNOWN",
-        "guidance": (
-            "--request-timeout may increase this read's HTTP waiting."
-            if read
-            else "Inspect the same Task before resubmitting work. For a read-only "
-            "request, --request-timeout may increase HTTP waiting, not the Task budget."
-        ),
-        **({"next_requests": {"read": dict(document)}} if read else {}),
-    }
+    refusal = client_refusal(code)
+    if workspace is not None and refusal.outcome == "NO_HOST":
+        refusal = refusal._replace(detail=host_checked(refusal.detail, workspace))
+    return refusal, known
 
 
 def envelope(

@@ -7336,6 +7336,8 @@ window.ALPHA_ZH = {
   "The workspace's inputs have an unfinished transition or data decision. The current positions are kept. Follow the offered input owner's request, then plan this date again.": "工作区输入仍有未完成的变更或数据决策。当前仓位保留。按提供的输入所有者请求继续，之后重新规划该日期。",
 
   "This request names a bundle from another workspace, or this session's existing binding differs from the requested workspace. Nothing was submitted. Host locations and availability are shown in binding_context. Run the offered commands in this caller's session, then send the unchanged request again; never remove a parent's binding.": "此请求指定的任务包来自另一个工作空间，或本会话的现有绑定与请求指定的工作空间不同。尚未提交任何内容。绑定上下文列出了宿主地址和可用状态。请在当前调用者的会话中执行提供的命令，再原样重试请求；不要移除父会话的绑定。",
+  "The workspace checked is {subject}; serve it with {subject}.": "检查的工作区是 {subject}；用 {subject} 为它启动 Host。",
+  "This Session is bound to another workspace, {subject}: name that one with --workspace to use its Host.": "此会话绑定的是另一个工作区 {subject}：要使用它的 Host，请用 --workspace 指明那个工作区。",
   "This line with its workspace named: {subject}.": "写明工作区后，这一行为：{subject}。",
   "Selected workspace: {subject}; requested workspace: {subject}.": "选定工作空间：{subject}；请求指定的工作空间：{subject}。",
   "The bundle's workspace locator must be a JSON object containing one absolute workspace path. Ask the lead to prepare a fresh bundle in a new directory; do not guess a workspace or edit another session's binding.": "任务包的工作空间定位信息必须是只包含一个绝对工作空间路径的 JSON 对象。请让主代理在新目录中准备新的任务包；不要猜测工作空间，也不要修改其他会话的绑定。",

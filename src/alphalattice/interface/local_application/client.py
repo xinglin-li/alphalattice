@@ -3513,13 +3513,12 @@ def run(
     except LocalResearchClientError as error:
         code = str(error)
         failed = (code, document, error.__cause__, args.request_timeout, body is not None)
-        refusal, transport = client_failure(*failed)
+        refusal, transport = client_failure(*failed, workspace=Path(args.workspace))
         if body is not None:
-            # The owner answered before a local step failed (writing --output or a bundle,
-            # following the Task): the operation's own outcome stands, and the local failure
-            # is reported beside it, so an admitted operation never reads as refused and is
-            # never sent again (V129). A wait that lost its Host keeps the admission it has
-            # in --output, as the receipt of the work it started (V139).
+            # The owner answered before a local step (writing --output or a bundle, following
+            # the Task) failed: its outcome stands, the local failure is reported beside it,
+            # and an admitted operation never reads as refused or is sent again (V129). A wait
+            # that lost its Host keeps its admission in --output, its work's receipt (V139).
             wanted = getattr(args, "output", None)
             if wanted is not None and saved_output is None and not wanted.exists():
                 with suppress(LocalResearchClientError):

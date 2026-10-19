@@ -34,12 +34,14 @@ from alphalattice.interface.local_application.answers import answer_problem
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
+    BOUND_WORKSPACE,
     DECLARATION_OPERATION_EXCEPTIONS,
     MAXIMUM_REQUEST_BODY_BYTES,
     client_refusal,
     command_table,
     entry,
     envelope,
+    host_checked,
     refusal_words,
 )
 from alphalattice.interface.local_application.failure_codes import FAILURE_DETAIL_WITHHELD
@@ -370,6 +372,17 @@ def test_no_host_is_exit_four_in_its_own_words(
         "NO_HOST",
         "local_client.service_not_running",
     )
+    # It names the workspace it checked and how to serve it; and a Session bound to another
+    # workspace, that one too.
+    assert (
+        str(empty.resolve()) in body["detail"] and "serve --no-browser --detach" in body["detail"]
+    )
+    token = BOUND_WORKSPACE.set(live.workspace.resolve())
+    try:
+        both = host_checked("No Host.", empty)
+    finally:
+        BOUND_WORKSPACE.reset(token)
+    assert str(live.workspace.resolve()) in both and str(empty.resolve()) in both
 
     # A record left behind by a Host that stopped: nothing listens on its port.
     with socket.socket() as probe:
