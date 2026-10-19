@@ -343,6 +343,26 @@ class PortfolioSourceRevision(_Sealed):
     replay_status: Literal["NOT_ADOPTED_NOT_PERFORMED"] = "NOT_ADOPTED_NOT_PERFORMED"
 
 
+UpdateClaim = Literal["TIMELY_RESEARCH_NOT_TRADE_ADVICE", "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"]
+"""What a publication's positions are: research, never trade advice, timely or a replay."""
+
+
+def update_claim(
+    pending: PortfolioConditionalProposal | None, published_at: datetime
+) -> UpdateClaim:
+    """Positions published before their entry open are timely; any other is post-observed."""
+    if pending is not None and published_at < pending.schedule.entry_open_at:
+        return "TIMELY_RESEARCH_NOT_TRADE_ADVICE"
+    return "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"
+
+
+def planned_claim(target: date, data_through: date | None) -> UpdateClaim:
+    """A plan's claim: its entry, the session after `target`, is unobserved until data passes."""
+    if data_through is None or target >= data_through:
+        return "TIMELY_RESEARCH_NOT_TRADE_ADVICE"
+    return "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"
+
+
 class PortfolioUpdatePublication(_Sealed):
     """Bind a research positions publication to source and continuation authority.
 
@@ -363,7 +383,7 @@ class PortfolioUpdatePublication(_Sealed):
     events: tuple[PortfolioObservedSettlement, ...]
     source_snapshot_hash: str
     html_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    claim: Literal["POST_OBSERVED_QA_NOT_TIMELY_ADVICE"] = "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"
+    claim: UpdateClaim = "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"
     risk_status: Literal["NOT_EVALUATED_FOR_THIS_PROPOSAL"] = "NOT_EVALUATED_FOR_THIS_PROPOSAL"
     cro_status: Literal["NOT_REVIEWED_FOR_THIS_PROPOSAL"] = "NOT_REVIEWED_FOR_THIS_PROPOSAL"
     input_checkpoint_hash: str | None = Field(
@@ -1114,6 +1134,7 @@ def advance_decision_state(
         active_entry=active,
         events=tuple(events),
         source_snapshot_hash=observed.content_hash,
+        claim=update_claim(pending, published_at),
         revised_source_hash=revised_source_hash,
         source_revision=source_revision,
     )

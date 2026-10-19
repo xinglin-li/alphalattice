@@ -2131,15 +2131,15 @@ const CODE_WORDS = {
   market_reference_derived: 'Market reference derived', provider_daily_bars: 'Provider daily bars',
   sector_aggregate_derived: 'Sector aggregate derived', verified_panel_child: 'Verified panel child',
   'task_control.ledger_rebuilt': 'Task control ledger rebuilt', WORKSPACE_DEFAULT: 'Workspace default',
-  CLOSE_T: 'At the formation session\'s close', // the position clock's decision phase (portfolio_result_context)
-  POST_OBSERVED_QA_NOT_TIMELY_ADVICE: 'Research positions, not trade advice',
+  CLOSE_T: 'At the formation session\'s close', // decision phase (portfolio_result_context)
+  TIMELY_RESEARCH_NOT_TRADE_ADVICE: 'Timely research positions, not trade advice', POST_OBSERVED_QA_NOT_TIMELY_ADVICE: 'Research positions, not trade advice',
   'alternative_evidence.answer_problems': 'Returned by the evidence owner',
   'chief_risk_officer.answer_problems': 'Returned by the review owner',
-  'chief_risk_officer.portfolio-evidence-review': 'CRO portfolio evidence review', // the review route's policy (codeCell)
-  // an installed book's Risk role, as its strategy package declares it (the formula kept as written)
+  'chief_risk_officer.portfolio-evidence-review': 'CRO portfolio evidence review', // review policy (codeCell)
+  // an installed book's Risk role, as its package declares it (formula as written)
   REPORT_ONLY_DFD_PRIME_PLUS_E_NEVER_USED_FOR_WEIGHTS: 'Report only (DFD′ + E); never used for weights',
   POLICY_CONSUMED_RISK_ALLOCATION_PLUS_REPORT_ONLY_DFD_PRIME_PLUS_E: 'Risk allocation consumed by the policy; DFD′ + E report only',
-  // the owner's comparison (installed and authored): its disposition and its dimensions, in words
+  // the owner's comparison (installed and authored): disposition and dimensions
   DECLARED_PATH_COMPARISON_NO_SELECTION: 'Declared paths compared; nothing is selected', HOLDINGS: 'Holdings', CONCENTRATION: 'Concentration', COST: 'Cost', TURNOVER: 'Turnover', PERFORMANCE: 'Performance', LIMITATIONS: 'Limitations',
   DEVELOPMENT_EVIDENCE_ONLY: 'Development evidence only', DEVELOPMENT_EVIDENCE_ONLY_NEVER_PUBLISHED: 'Development evidence only · never published',
   NO_FOUNDATION_OR_STRATEGY_ACTIVATION: 'No Foundation or strategy is activated', NO_INDEPENDENT_SCIENTIFIC_VALIDATION: 'No independent scientific validation',
@@ -2149,7 +2149,7 @@ const CODE_WORDS = {
   NO_CAPACITY_OR_IMPACT_ESTIMATE: 'No capacity or impact estimate', NO_STRATEGY_ACTIVATION: 'No strategy is activated', NO_DATA_API_KEY: 'No data API key',
   DETERMINISTIC_LINEAR_METHOD_NOT_A_SEED_ENSEMBLE: 'Deterministic linear method · not a seed ensemble', DEVELOPMENT_EVALUATED: 'Development evaluated',
   POSITIVE_OOS_EVIDENCE: 'Positive out-of-sample evidence', MIXED_OOS_EVIDENCE: 'Mixed out-of-sample evidence', NO_DETECTABLE_EFFECT: 'No detectable effect', NEGATIVE_OOS_EVIDENCE: 'Negative out-of-sample evidence', INSUFFICIENT_EVIDENCE: 'Insufficient evidence',
-  // a factor's out-of-sample reason (oos_evidence.py): BY is the Benjamini–Yekutieli family, never the word "by"
+  // a factor's out-of-sample reason (oos_evidence.py): BY is Benjamini–Yekutieli, not "by"
   DIRECTIONALLY_POSITIVE_BY_CONFIRMED: 'Positive in direction · confirmed under Benjamini–Yekutieli FDR', DIRECTIONALLY_POSITIVE_NOT_BY_CONFIRMED: 'Positive in direction · not confirmed under Benjamini–Yekutieli FDR',
   DIRECTIONALLY_NEGATIVE_BY_CONFIRMED: 'Negative in direction · confirmed under Benjamini–Yekutieli FDR', NONPOSITIVE_DIRECTION_NOT_BY_CONFIRMED: 'Not positive in direction · not confirmed under Benjamini–Yekutieli FDR',
   MIXED_OOS_DIRECTION: 'Mixed direction out of sample', NONPOSITIVE_DIRECTION_NOT_HOLM_CONFIRMED: 'Not positive in direction · not confirmed under Holm',

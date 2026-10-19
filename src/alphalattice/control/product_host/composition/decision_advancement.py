@@ -128,6 +128,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     PortfolioDecisionCheckpoint,
     PortfolioUpdatePublication,
     advance_decision_state,
+    planned_claim,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
     recipe_hashes_match,
@@ -783,7 +784,7 @@ class DecisionAdvancementApplication:
                 if lifecycles
                 else "Frozen scores → component sizing → book → report. Zero fits."
             ),
-            "limitation": "POST_OBSERVED_QA_NOT_TIMELY_ADVICE",
+            "limitation": planned_claim(plan.target, plan.data_plan.before.data_through),
             # The plan's way on: its run, which reuses an identical update already made or in
             # flight (V470).
             "next_requests": {
@@ -1918,7 +1919,7 @@ class DecisionAdvancementApplication:
             "score_artifact_prediction_calls": (
                 sum(v.prediction_calls for v in scores) if scores is not None else None
             ),
-            "claim": "POST_OBSERVED_QA_NOT_TIMELY_ADVICE",
+            "claim": value.claim,
         }
         if completed:
             assert scores is not None

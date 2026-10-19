@@ -601,7 +601,7 @@ const Portfolio = (() => {
     ],'performance-tabs');
     const noForwardObservations=forward && Data.series().length===0;
     if (forward) {
-      const claim = proof.claim === 'POST_OBSERVED_QA_NOT_TIMELY_ADVICE' ? codeWords(proof.claim) : '';
+      const claim = ['TIMELY_RESEARCH_NOT_TRADE_ADVICE', 'POST_OBSERVED_QA_NOT_TIMELY_ADVICE'].includes(proof.claim) ? codeWords(proof.claim) : '';
       const execution = proof.execution_basis === 'DAILY_BAR_QA_NOT_VERIFIED_VENUE_EXECUTION' ? t('Daily bar QA returns; not verified venue execution.') : '';
       const dates = proof.observed_through && proof.published_at
         ? t('Observed through {date}; published {published}', {date:proof.observed_through,published:proof.published_at})

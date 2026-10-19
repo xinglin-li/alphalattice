@@ -12755,6 +12755,48 @@
    "successor": "19df5284007339f5a19d91b557387edbc8a72b183b7c8d9325eddbb32a4ad817",
    "change": "the set-based action audit keeps the store's one public audit method",
    "reason": "complete_action_audits is renamed to the store's existing complete_action_audit, which takes one or more observations, so the store's public surface stays as it was; the maintenance runner's progress reads its counts once after a batch and publishes each listing's tick in turn. Only the name and the progress emission change; no value-deciding statement moved. No value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "af05626a6831cf9c0d5e0d0af22f6009967f49c266a3cb5408ca5642f99d10d6",
+   "successor": "d2280284802443d1745e7e5531a5b7b9ef3ba5f206c67708a0eb73b99755c995",
+   "change": "a publication's claim follows its timing: timely research before its entry, post-observed for a replay",
+   "reason": "update_claim selects TIMELY_RESEARCH_NOT_TRADE_ADVICE for positions published before their pending entry's open and keeps POST_OBSERVED_QA_NOT_TIMELY_ADVICE otherwise; a plan's limitation and the update readback follow it. The literal diff changes only the claim's selection; positions and numbers are equal (the test publishes one update before and at its entry open with an identical proposal), and a replay keeps the old value and hash. No position changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "57c20a0e2f6f1020b745cad5e59a67aa264c5ed7c7a692a3b42ab1f4dc82802c",
+   "successor": "3a40c10ee580dcdf6cb63aef876ef6be865a5fbefca28fbde49f4d47ec62d56c",
+   "change": "a publication's claim follows its timing: timely research before its entry, post-observed for a replay",
+   "reason": "update_claim selects TIMELY_RESEARCH_NOT_TRADE_ADVICE for positions published before their pending entry's open and keeps POST_OBSERVED_QA_NOT_TIMELY_ADVICE otherwise; a plan's limitation and the update readback follow it. The literal diff changes only the claim's selection; positions and numbers are equal (the test publishes one update before and at its entry open with an identical proposal), and a replay keeps the old value and hash. No position changes."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "a1ab2c21fc46c4dd0088ff97538dd3ebd204bf1d252279a6831bb2c53545656d",
+   "successor": "d9b08bddcd46831fe1ac7605ac7eaf301f0854f6706851b0df095f182b42e64b",
+   "change": "a publication's claim follows its timing: timely research before its entry, post-observed for a replay",
+   "reason": "update_claim selects TIMELY_RESEARCH_NOT_TRADE_ADVICE for positions published before their pending entry's open and keeps POST_OBSERVED_QA_NOT_TIMELY_ADVICE otherwise; a plan's limitation and the update readback follow it. The literal diff changes only the claim's selection; positions and numbers are equal (the test publishes one update before and at its entry open with an identical proposal), and a replay keeps the old value and hash. No position changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "d2280284802443d1745e7e5531a5b7b9ef3ba5f206c67708a0eb73b99755c995",
+   "successor": "d0464ecb9551d69fd56ee49063207f2c5e31419025391af127d8fb9caf8e8172",
+   "change": "the stored post-observed claim keeps its 0.2.0 words",
+   "reason": "At the Lead's review: POST_OBSERVED_QA_NOT_TIMELY_ADVICE, which every 0.2.0 publication carries, is worded as in 0.2.0 (research positions, not trade advice) instead of replayed; only TIMELY_RESEARCH_NOT_TRADE_ADVICE has new words. Report words only; no claim selection, sealed value or position changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "3a40c10ee580dcdf6cb63aef876ef6be865a5fbefca28fbde49f4d47ec62d56c",
+   "successor": "8d450f9c579a6e251b3af254a9fb3245af2edb778ce10f100683411c5a8e1d8f",
+   "change": "the stored post-observed claim keeps its 0.2.0 words",
+   "reason": "At the Lead's review: POST_OBSERVED_QA_NOT_TIMELY_ADVICE, which every 0.2.0 publication carries, is worded as in 0.2.0 (research positions, not trade advice) instead of replayed; only TIMELY_RESEARCH_NOT_TRADE_ADVICE has new words. Report words only; no claim selection, sealed value or position changes."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "d9b08bddcd46831fe1ac7605ac7eaf301f0854f6706851b0df095f182b42e64b",
+   "successor": "7d6bbd993eb050af41f1043b08ae5a32dc2ef2d064156181c0edbbe7a8698c47",
+   "change": "the stored post-observed claim keeps its 0.2.0 words",
+   "reason": "At the Lead's review: POST_OBSERVED_QA_NOT_TIMELY_ADVICE, which every 0.2.0 publication carries, is worded as in 0.2.0 (research positions, not trade advice) instead of replayed; only TIMELY_RESEARCH_NOT_TRADE_ADVICE has new words. Report words only; no claim selection, sealed value or position changes."
   }
  ]
 }
