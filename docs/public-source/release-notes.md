@@ -401,7 +401,7 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 
 ## 0.2.1
 
-0.2.1 fixes what the first public runs met. A daily update rewrote copies of the whole history, about 2 GB a day; it now writes the day's change. A daily request in a new session could start a second first use. A lead cut short by a long command lost its place. Some refusals named the problem but not the way on. Contributions are open.
+0.2.1 reduces repeated history writes, keeps provider corrections visible and improves continuation and recovery. Contributions are open.
 
 ### Added
 
@@ -409,12 +409,12 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 
 ### Changed
 
-- A daily update writes about its own day's change. On the replay it now writes about 37 MB, down from about 250 MB, so a year of daily updates adds about 10 GB.
-  - A year of the Feature Panel is stored in quarter parts, and a daily update rewrites only the open quarter.
-  - Frozen observation arrays are stored in 21-session blocks shared by content, and a daily update writes only the last block.
-  - A provider may resend a dividend payer's adjusted history that differs from the stored history only within the data rule's declared precision: 1e-6 relative by default, with unadjusted closes unchanged. That stored history now stands instead of being restated. Each listing kept this way is named in the Goal and the report, with its largest difference. A larger difference, or a corporate action recorded in the same update, still restates the history.
-- First use needs less memory. Its peak, counted over the Host's processes, fell from about 15 GB to about 6 GB on the replay, and measured 6.2 GB on live data.
-- The first daily update after upgrading from 0.2.0 writes about 0.9 GB once: the frozen arrays as blocks, and the kept observation history. It also splits the current Panel year into quarters, about 40 MB. Every record sealed under 0.2.0 verifies unchanged, and published values are the same.
+- Ordinary daily updates preserve earlier history. The Feature Panel uses quarter parts, and a daily update rewrites the open quarter. Frozen observation arrays use shared 21-session blocks, and an ordinary daily update writes the last block.
+- A provider's split adjustments are recorded and applied in order instead of rewriting the stored raw history. A forward split by a power of two keeps stored Features. Other ratios recompute cells that move past the declared agreement; Features in Panel spans already being rewritten are rebuilt exactly.
+- A dividend payer's resent adjusted history is kept when it differs only within the data rule's declared precision, with unadjusted closes unchanged. The default relative precision is 1e-6. A larger difference, or a corporate action recorded in the same update, still restates the history.
+- The Goal and report name every listing whose history is kept, with its largest difference from the provider's history.
+- Backups include the record of split adjustments. Upgrade checks against released 0.2.0 verified stored records and matched published values without changing their seals.
+- An explicit input capture states its preview-time byte ceiling before confirmation. Unchanged inputs reuse the existing version without a new capture Task; the answer names the version to select.
 - `serve --no-browser --detach` answers `STARTED` or `ALREADY_SERVING`, with the workspace and the Host's address. An answer that finds no Host names the workspace it checked.
 - Long commands print their Task id and the read that follows it before they block, and, with `--output`, the file they save. A caller cut short sends that read and reaches the same Task instead of sending the command again.
 - A publication's claim follows its timing. Positions published before their entry session opens are timely research. A replay, or a publication made after the observations it settles, is post-observed. Neither is trade advice. Publications stored before 0.2.1 keep their claim and read as before. Upgrading recomputes nothing extra on the first daily update; a Lab portfolio update that repeats an identical earlier request plans once afresh.
@@ -428,6 +428,19 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
   - a goal note missing its evidence lists the references already attached and offers the attach and note forms;
   - a committee message whose text names a point below the agenda line lists the points it may name.
 
+**Daily writes.** These count retained-file growth, including backups, rather than cumulative disk I/O. Event figures were measured on a replayed history; different universe sizes and events are separate cases. The upgrade figure with an existing backup store is calculated from measured object inventories.
+
+| Case | Observed writes |
+| --- | --- |
+| Ordinary day including book publication and review, 120 listings | About 40 MB, including about 1.3 MB of incremental backup. |
+| Data and Feature maintenance only, 472 listings, five consecutive sessions | About 207 MB: total first-day growth of about 153 MB, dominated by about 138 MB of database growth, then about 14 MB a day. |
+| A day with two dividends | About 57 MB. |
+| First daily after upgrading from 0.2.0, preserving the previous backup objects | About 123 MB once, including backup growth, by content-deduplication accounting. An empty backup store made the measured upgrade about 1.25 GB. |
+| A 3:1 split | About 130 MB. |
+| A split that rounds share volumes, such as 3:2 or 1:2 | About 0.9 GB; the following day was about 45 MB. |
+
+The native first use occupied about 10.27 GB across its managed folders. The first backup added about 4.25 GB of retained study objects once at 472 listings; later backups add changed objects. The 472-listing walk measured data and Feature maintenance only; book publication, book history, review and their backup growth are additional and unmeasured at that scale. A full-year footprint against the 50 GB ceiling has not been measured. Split-day work, refits and additional explicit captures also add to the footprint.
+
 ### Deprecated
 
 - None.
@@ -439,6 +452,11 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 ### Fixed
 
 - A daily update rewrote copies of the whole history. In a fresh folder on live data, that was about 2.1 GB a day. It now writes the day's change.
+- A daily catch-up could keep a dividend the provider had restated because a cached history response was reused. Each acquisition now fetches fresh history; a normal daily makes no extra requests.
+- When a split is reported late for a session already covered by issued positions, the stop names the listing and effective date. Issued positions stay as published; continuing requires a newer reviewed book built from current data.
+- Committee materials and update readback no longer fail on a listing with no eligible score. Such listings are excluded from score comparisons and named.
+- Sector labels and dated Risk answers no longer stay stale in a running Host after a membership change or a settled correction.
+- A backup could fail with a permission error while an SEC campaign held its lock. Runtime lock files are no longer copied, and unreadable sources or backup objects are named with their recovery steps.
 - The goal link an agent offered could open a "historical revision" notice while the first use was still running. The link now opens the current revision. A link pinned to an older revision says a newer one exists and links to it.
 - A daily request in a new session could start a second first use in a new workspace, and ran a full preparation. Once a project's first use is complete, `serve` on a new workspace and `first-use prepare` refuse a second first use by name. Each names the existing workspace and offers its `research-update plan`. Separate new research, asked for in one line, still runs with `--new-research`.
 - A sealed goal showed finished assignments as open. Accepted submissions now read as complete, unanswered work is archived with the goal's seal, and work that is still open says why and what its specialist does next.
@@ -446,3 +464,10 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 ### Previews
 
 - None.
+
+### Known limits
+
+- On 2026-10-19, a Windows native first use took 71.2 minutes. A daily continuation after an interrupted attempt issued positions, completed its review and sealed its backup in a 25.9-minute run on Codex, exceeding the 20-minute daily wall-time budget. Host Tasks accounted for 4.4 minutes; the remaining elapsed time included agent readback and finishing steps. The Goal completion route also existed in 0.2.0; smaller readbacks and fewer finishing steps are planned for 0.2.2. This is a declared exception, not a runtime guarantee or a fresh ordinary-day measurement.
+- Host memory above the 8 GB budget remains a declared limit carried from 0.2.0. The native first use peaked at 8.28 GB; an earlier failed daily reached 8.90 GB, and its successful continuation peaked at 7.48 GB. A matched 120-listing replay measured 7.878 GB on 0.2.0 and 7.890 GB on 0.2.1. These are peaks across the Host's processes, not the whole computer; this release makes no memory-reduction claim. Per-worker memory limits are planned for 0.2.4.
+- An explicit capture still copies the whole market database, about 1 GB at 472 listings. If the immutable snapshot alias cannot be linked, it can need a second full copy. The preview discloses that ceiling and that other files add bytes. Block-based captures remain future work.
+- Outside the spans rewritten after a split that is not a power of two, Panel values derived from kept Features differed from a fresh rebuild by a measured 8.3e-8. Rewritten spans are rebuilt exactly; checking every remaining Panel cell is planned for 0.2.2. Such split days still rewrite whole older parts and are exceptions to the 50 MB ordinary-day write budget.

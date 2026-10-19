@@ -17,11 +17,7 @@ Every numerical input is bounded by the date's information cutoff, and
 verification runs check for look-ahead. The committee can decline to endorse a
 result. AlphaLattice runs locally and is open source.
 
-It does not need the largest models. Claude Haiku 5.5 in Claude Code and GPT-6
-Luna in Codex, each at high reasoning effort, have led a first use and a daily
-update end to end in our fresh-folder runs. With a Claude or ChatGPT
-subscription, Claude Code and Codex draw on your plan rather than per-token API
-billing; check your provider's terms. To see what a run used, open a session's
+Use Claude Code or Codex as the lead. To see what a run used, open a session's
 **Participants** in the Workbench (**Team**, then **Sessions**): it shows the
 models and tokens each member used.
 
@@ -83,18 +79,22 @@ Give your agent this repository's link and one intent:
   ```bash
   brew install libomp
   ```
-- **Time:** Data preparation, multi-year model fitting and validation, and
-  source review take time. One completed run using prepared public-source data
-  and retained filings, replayed offline with four CPU cores on a shared Windows
-  machine, took about **37 minutes** from the start of the first data preparation
-  Task to writing the delivery report. Installation and live downloads were outside
-  that interval. Data and model-pack downloads add time when needed, depending
-  on your connection. In fresh-folder acceptance runs, a first use including its
-  downloads took about an hour, and a daily update takes less. These are
-  observations, not runtime guarantees.
+- **Time:** In Windows native observations on 2026-10-19, first use took
+  **71.2 minutes**. A daily continuation after an interrupted attempt took
+  **25.9 minutes** on Codex, including **4.4 minutes** of Host Task work;
+  other elapsed time included agent reads and finishing steps. It issued
+  positions and sealed its backup, but exceeded the 20-minute daily budget.
+  These are observations, not runtime guarantees.
+- **Disk and memory:** Managed disk use after first use was about **10.27 GB**;
+  the first backup added about **4.25 GB** once, with later backups incremental.
+  Peak memory across the Host's processes was **8.28 GB** during first use and
+  **7.48 GB** during the daily continuation. First use remains above the 8 GB
+  budget. Allow headroom for the operating system and your coding app; these
+  observations are not minimum system requirements. The
+  [release notes](docs/public-source/release-notes.md#021) distinguish ordinary
+  daily writes, upgrade and split days, and explicit captures.
 - **Agent costs:** Your Claude Code or Codex access and usage costs are separate
-  from AlphaLattice, and the lead agent can be a lower-cost model such as Claude
-  Haiku 5.5 or GPT-6 Luna at high reasoning effort; check your provider's terms.
+  from AlphaLattice; check your provider's terms.
 
 See [Getting started](docs/public-source/getting-started.md) and the
 [setup procedure](.agents/skills/alphalattice-research/references/operating.md)
