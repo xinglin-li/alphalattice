@@ -61,6 +61,7 @@ MARKET_TABLES: Final[tuple[str, ...]] = (
     "bar_revision",
     "corporate_action_revision",
     "provider_adjusted_series_revision",
+    "raw_bar_rebase",
     # The universe history.
     "universe_manifest",
     "universe_manifest_listing",
@@ -622,6 +623,7 @@ class WorkspaceBackups:
         target.mkdir(parents=True, exist_ok=True)
         files = tables = 0
         task_control: list[BackupEntry] = []
+        held_tables: set[str] = set()
         for entry in chosen.entries:
             if entry.kind == "LISTED":
                 continue
@@ -634,6 +636,7 @@ class WorkspaceBackups:
                 shutil.copyfile(source, written)
                 files += 1
                 continue
+            held_tables.add(entry.path)
             store, table = entry.path.split("/", 1)
             if store == "task-control":
                 task_control.append(entry)
@@ -655,6 +658,18 @@ class WorkspaceBackups:
             "target": str(target),
             "files": files,
             "tables": tables,
+            "absent": sorted(
+                set(chosen.absent)
+                | {
+                    f"{store}/{table}"
+                    for store, names in (
+                        ("market", MARKET_TABLES),
+                        ("task-control", TASK_CONTROL_TABLES),
+                    )
+                    for table in names
+                    if f"{store}/{table}" not in held_tables
+                }
+            ),
             "listed": [
                 entry.model_dump(mode="json") for entry in chosen.entries if entry.kind == "LISTED"
             ],
