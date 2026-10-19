@@ -13007,6 +13007,62 @@
    "successor": "f302c7410985087c7b518a616de6b3da8a685ef0d29359f44062e02dd8c97f0e",
    "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
    "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "8edd3a678857947ec1510d8b70affa3a72646270be9e3b266b4bd679b4e120f3",
+   "successor": "ba8ba4f6da60cadc30ca3d4d02efc0c496c6dec1ef5b6d4fad91787e64681d5b",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "3048a0bb7da5cfc62134f38af3cb779d06bef0fdd2346545fd682a3f051126c8",
+   "successor": "2dc4b3cdc7723e915ff8c32a01e9811b6c6f035bb79625057cbd0116f78e68ae",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "fc8c4325c7752680512789ab186d1f366470a197afde25d02dbde0468d7604a1",
+   "successor": "83ac66aa0217263642ed78513bc345463df847ff962187653272b1a9d35f936c",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "d14629e703f437b2ebf32f8d1d4f34e99dd7383cdfca72a2e99761c6317f2790",
+   "successor": "88d5428bf4105761ae68fe4eb3b12826341929706cbeddceff55ad00cc4b2230",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "a3856e63cfeb42faeb8a6a912c52557fb85e6b775c28e9be48f00ce333423827",
+   "successor": "57cfdf4b80e749e27df0096c8e9b58c9633a37dae3b98c4028949d35c6f43170",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "ef67839edb0c8df3377fa9cfdbd94be10140ff0c242482a6ef5e9d19f11f6abb",
+   "successor": "1f6f35fbbc6709cba41e32c2953cb5c3470bec855b7e04f45b38570a9afbb7ca",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "0c0dce72abc68a75f2fc84db57aa2bca432b83808bed52f73f512e1e39cd8490",
+   "successor": "d2c9d02271a8ec55de588f7fd9eca85b6338b9af62e6218018d0457dc4539f2e",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "7d444d7ac28a460eb1ca14a56ca1f59594d55c0a36143f0c18eddd634733976f",
+   "successor": "87ba7781afde777456d4f9d4eb66fb280d90d3e2538946df6feeac42f575c664",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
   }
  ]
 }
