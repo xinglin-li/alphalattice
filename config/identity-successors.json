@@ -13511,6 +13511,13 @@
    "successor": "441aa820217d7ffbc19c66ac0713d794ae294a905bd67c73e7d0e8aac298d070",
    "change": "PROVIDER-CACHE-FIX: fresh provider history per acquisition (0.2.1)",
    "reason": "PROVIDER-CACHE-FIX (82b0fa37f, merged as 72ea692da) changes only how the yfinance historical acquisition reaches HTTP: a per-acquisition facade over the native GET replaces the library's process-wide LRU, coalescing only within one acquisition. Requests, price policy, bounds and sealed artifacts are unchanged. A normal daily makes the same number of calls, and a cold acquisition returns the same bytes as before (the uncached controls stay green). Only a catch-up that previously read a stale cached chunk now reads the provider's current history, which is the corrected behaviour. Reviewed independently (PASS), with the test tightenings in 82b0fa37f. All four roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.research_input_capture",
+   "predecessor": "d7dee472e2a34ed6e2154d9b5d475a1efeb14b5096f7be6834a642b98647f1b3",
+   "successor": "1255522fad5c8d0de17a129defec8f094ab57d192f9f0a5855889ab58503f94f",
+   "change": "887a0584a9c5937e71d1c72149ffb2fdf40b8a3a",
+   "reason": "The input capture module is hashed whole; it gained a byte ceiling stated before the confirm and a refusal when nothing changed. Sealing, copying and verification are unchanged, proven by an equal syntax tree for those functions and by the recovery and readback tests."
   }
  ]
 }
