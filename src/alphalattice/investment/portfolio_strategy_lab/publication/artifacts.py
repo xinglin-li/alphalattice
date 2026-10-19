@@ -6,7 +6,6 @@ import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +30,6 @@ from alphalattice.investment.portfolio_strategy_lab.contracts import (
     PortfolioSolverRuntimeEvidence,
     PortfolioTrialEvidence,
     PortfolioTrialLedger,
-    seal_contract,
 )
 from alphalattice.investment.portfolio_strategy_lab.evaluation.evidence import (
     validate_terminal_evidence,
@@ -376,22 +374,6 @@ class PortfolioResearchArtifactStore:
             raise PortfolioPublicationError("portfolio_strategy_lab.baseline_evidence_ambiguous")
         return matches[0] if matches else None
 
-    def publish_baseline_slate(self, value: PortfolioBaselineSlate) -> None:
-        """Publish exact baseline slate and atomically record its by-program index.
-
-        Args:
-            value: Validated sealed baseline slate.
-        """
-        self.publish(category="baseline-slates", value=value, identity_field="slate_hash")
-        self._atomic_write(
-            self.root / "baseline-slates" / "by-program" / f"{value.program_hash}.json",
-            json.dumps(
-                {"program_hash": value.program_hash, "slate_hash": value.slate_hash},
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode(),
-        )
-
     def load_baseline_slate(self, program_hash: str) -> PortfolioBaselineSlate | None:
         """Reopen the exact baseline slate selected by a program index.
 
@@ -448,25 +430,6 @@ class PortfolioResearchArtifactStore:
         """
         self.publish(category="trial-ledgers", value=value, identity_field="ledger_hash")
 
-    def write_ledger_checkpoint(self, *, program_hash: str, phase: str, ledger_hash: str) -> None:
-        """Atomically record exact program/phase trial-ledger checkpoint identities.
-
-        Args:
-            program_hash: Exact experiment program identity.
-            phase: Explicit checkpoint phase.
-            ledger_hash: Exact sealed trial-ledger identity.
-        """
-        self._require_hash(program_hash)
-        self._require_hash(ledger_hash)
-        self._atomic_write(
-            self.root / "checkpoints" / f"{program_hash}-{phase}.json",
-            json.dumps(
-                {"program_hash": program_hash, "phase": phase, "ledger_hash": ledger_hash},
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode(),
-        )
-
     def load_ledger_checkpoint(
         self, *, program_hash: str, phase: str
     ) -> PortfolioTrialLedger | None:
@@ -506,41 +469,6 @@ class PortfolioResearchArtifactStore:
             raise PortfolioPublicationError(
                 "portfolio_strategy_lab.ledger_checkpoint_invalid"
             ) from error
-
-    def write_review_checkpoint(
-        self,
-        *,
-        program_hash: str,
-        ledger_hash: str,
-        dossier_hash: str,
-        rfc_hash: str,
-        review_hash: str,
-    ) -> None:
-        """Atomically record exact program, ledger, dossier, RFC and review identities.
-
-        Args:
-            program_hash: Exact experiment program.
-            ledger_hash: Exact trial ledger.
-            dossier_hash: Exact evidence dossier.
-            rfc_hash: Exact research RFC.
-            review_hash: Exact research review.
-        """
-        for value in (program_hash, ledger_hash, dossier_hash, rfc_hash, review_hash):
-            self._require_hash(value)
-        self._atomic_write(
-            self.root / "checkpoints" / f"{program_hash}-review.json",
-            json.dumps(
-                {
-                    "program_hash": program_hash,
-                    "ledger_hash": ledger_hash,
-                    "dossier_hash": dossier_hash,
-                    "rfc_hash": rfc_hash,
-                    "review_hash": review_hash,
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode(),
-        )
 
     def load_review_checkpoint(
         self, program_hash: str
@@ -728,68 +656,6 @@ class PortfolioResearchArtifactStore:
             pointer=pointer,
         )
 
-    def publish_regularization_current(
-        self,
-        *,
-        bundle: PortfolioStrategyResearchPublicationBundle,
-        published_at: datetime,
-    ) -> CurrentPortfolioStrategyResearchPublication:
-        """Promote one fully bound Strategy research result with marker-last semantics."""
-        self._validate_regularization_bundle(bundle)
-        current = self.read_regularization_current()
-        if isinstance(current, CurrentPortfolioStrategyRecoveryPublication):
-            raise PortfolioPublicationError(
-                "portfolio_strategy_lab.regularization_legacy_route_retired"
-            )
-        if current is not None and current.bundle == bundle:
-            return CurrentPortfolioStrategyResearchPublication(
-                action="REUSED_EXACT",
-                marker=current.marker,
-                bundle=current.bundle,
-                pointer=current.pointer,
-            )
-        self.publish(
-            category="regularization/projection-bundles",
-            value=bundle,
-            identity_field="bundle_hash",
-        )
-        marker = seal_contract(
-            CurrentPortfolioStrategyResearchMarker,
-            "marker_hash",
-            mandate_hash=bundle.mandate_hash,
-            dossier_hash=bundle.dossier_hash,
-            bundle_hash=bundle.bundle_hash,
-            status=bundle.status,
-            published_at=published_at,
-        )
-        self.publish(
-            category="regularization/current-markers",
-            value=marker,
-            identity_field="marker_hash",
-        )
-        pointer = seal_contract(
-            CurrentPortfolioStrategyResearchPointer,
-            "pointer_hash",
-            marker_hash=marker.marker_hash,
-        )
-        self._atomic_write(
-            self.regularization_pointer_path,
-            json.dumps(
-                pointer.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
-            ).encode(),
-        )
-        durable = self.read_regularization_current()
-        if durable is None or durable.pointer != pointer:
-            raise PortfolioPublicationError(
-                "portfolio_strategy_lab.regularization_current_readback_failed"
-            )
-        return CurrentPortfolioStrategyResearchPublication(
-            action="PUBLISHED" if current is None else "REPLACED_CURRENT",
-            marker=marker,
-            bundle=bundle,
-            pointer=pointer,
-        )
-
     def read_regularization_current(
         self,
     ) -> CurrentPortfolioStrategyPublication | None:
@@ -855,130 +721,6 @@ class PortfolioResearchArtifactStore:
         self._validate_regularization_bundle(bundle)
         return CurrentPortfolioStrategyResearchPublication(
             action="READ_CURRENT",
-            marker=marker,
-            bundle=bundle,
-            pointer=pointer,
-        )
-
-    def publish_recovery_current(
-        self,
-        *,
-        bundle: PortfolioStrategyRecoveryPublicationBundle,
-        published_at: datetime,
-    ) -> CurrentPortfolioStrategyRecoveryPublication:
-        """Promote one recovery result through the existing Strategy current pointer."""
-        self._validate_recovery_bundle(bundle, allow_historical_review=False)
-        current = self.read_regularization_current()
-        if isinstance(current, CurrentPortfolioStrategyRecoveryPublication) and (
-            current.bundle == bundle
-        ):
-            return CurrentPortfolioStrategyRecoveryPublication(
-                action="REUSED_EXACT",
-                marker=current.marker,
-                bundle=current.bundle,
-                pointer=current.pointer,
-            )
-        self.publish(
-            category="regularization/recovery-projection-bundles",
-            value=bundle,
-            identity_field="bundle_hash",
-        )
-        marker = seal_contract(
-            CurrentPortfolioStrategyRecoveryMarker,
-            "marker_hash",
-            recovery_mandate_hash=bundle.recovery_mandate_hash,
-            decision_dossier_hash=bundle.decision_dossier_hash,
-            bundle_hash=bundle.bundle_hash,
-            status=bundle.status,
-            published_at=published_at,
-        )
-        self.publish(
-            category="regularization/recovery-current-markers",
-            value=marker,
-            identity_field="marker_hash",
-        )
-        pointer = seal_contract(
-            CurrentPortfolioStrategyResearchPointer,
-            "pointer_hash",
-            marker_hash=marker.marker_hash,
-        )
-        self._atomic_write(
-            self.regularization_pointer_path,
-            json.dumps(
-                pointer.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
-            ).encode(),
-        )
-        durable = self.read_regularization_current()
-        if not isinstance(durable, CurrentPortfolioStrategyRecoveryPublication) or (
-            durable.pointer != pointer
-        ):
-            raise PortfolioPublicationError(
-                "portfolio_strategy_lab.recovery_current_readback_failed"
-            )
-        return CurrentPortfolioStrategyRecoveryPublication(
-            action="PUBLISHED" if current is None else "REPLACED_CURRENT",
-            marker=marker,
-            bundle=bundle,
-            pointer=pointer,
-        )
-
-    def publish_attribution_current(
-        self,
-        *,
-        bundle: PortfolioFold3AttributionPublicationBundle,
-        published_at: datetime,
-    ) -> CurrentPortfolioFold3AttributionPublication:
-        """Promote one Fold-3 evidence update through the single Strategy pointer."""
-        self._validate_attribution_bundle(bundle)
-        current = self.read_regularization_current()
-        if isinstance(current, CurrentPortfolioFold3AttributionPublication) and (
-            current.bundle == bundle
-        ):
-            return CurrentPortfolioFold3AttributionPublication(
-                action="REUSED_EXACT",
-                marker=current.marker,
-                bundle=current.bundle,
-                pointer=current.pointer,
-            )
-        self.publish(
-            category="regularization/attribution-projection-bundles",
-            value=bundle,
-            identity_field="bundle_hash",
-        )
-        marker = seal_contract(
-            CurrentPortfolioFold3AttributionMarker,
-            "marker_hash",
-            diagnostic_hash=bundle.diagnostic_hash,
-            evidence_delta_hash=bundle.evidence_delta_hash,
-            bundle_hash=bundle.bundle_hash,
-            status=bundle.status,
-            published_at=published_at,
-        )
-        self.publish(
-            category="regularization/attribution-current-markers",
-            value=marker,
-            identity_field="marker_hash",
-        )
-        pointer = seal_contract(
-            CurrentPortfolioStrategyResearchPointer,
-            "pointer_hash",
-            marker_hash=marker.marker_hash,
-        )
-        self._atomic_write(
-            self.regularization_pointer_path,
-            json.dumps(
-                pointer.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
-            ).encode(),
-        )
-        durable = self.read_regularization_current()
-        if not isinstance(durable, CurrentPortfolioFold3AttributionPublication) or (
-            durable.pointer != pointer
-        ):
-            raise PortfolioPublicationError(
-                "portfolio_strategy_lab.attribution_current_readback_failed"
-            )
-        return CurrentPortfolioFold3AttributionPublication(
-            action="PUBLISHED" if current is None else "REPLACED_CURRENT",
             marker=marker,
             bundle=bundle,
             pointer=pointer,
@@ -1087,67 +829,6 @@ class PortfolioResearchArtifactStore:
             raise PortfolioPublicationError(
                 "portfolio_strategy_lab.attribution_current_lineage_invalid"
             )
-
-    def publish_risk_calibration_current(
-        self,
-        *,
-        bundle: PortfolioRiskCalibrationPublicationBundle,
-        published_at: datetime,
-    ) -> CurrentPortfolioRiskCalibrationPublication:
-        """Promote one bounded calibration result through the single Strategy pointer."""
-        self._validate_risk_calibration_bundle(bundle)
-        current = self.read_regularization_current()
-        if isinstance(current, CurrentPortfolioRiskCalibrationPublication) and (
-            current.bundle == bundle
-        ):
-            return CurrentPortfolioRiskCalibrationPublication(
-                action="REUSED_EXACT",
-                marker=current.marker,
-                bundle=current.bundle,
-                pointer=current.pointer,
-            )
-        self.publish(
-            category="regularization/risk-calibration-projection-bundles",
-            value=bundle,
-            identity_field="bundle_hash",
-        )
-        marker = seal_contract(
-            CurrentPortfolioRiskCalibrationMarker,
-            "marker_hash",
-            prior_attribution_marker_hash=bundle.prior_attribution_marker_hash,
-            diagnostic_hash=bundle.diagnostic_hash,
-            bundle_hash=bundle.bundle_hash,
-            published_at=published_at,
-        )
-        self.publish(
-            category="regularization/risk-calibration-current-markers",
-            value=marker,
-            identity_field="marker_hash",
-        )
-        pointer = seal_contract(
-            CurrentPortfolioStrategyResearchPointer,
-            "pointer_hash",
-            marker_hash=marker.marker_hash,
-        )
-        self._atomic_write(
-            self.regularization_pointer_path,
-            json.dumps(
-                pointer.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
-            ).encode(),
-        )
-        durable = self.read_regularization_current()
-        if not isinstance(durable, CurrentPortfolioRiskCalibrationPublication) or (
-            durable.pointer != pointer
-        ):
-            raise PortfolioPublicationError(
-                "portfolio_strategy_lab.risk_calibration_current_readback_failed"
-            )
-        return CurrentPortfolioRiskCalibrationPublication(
-            action="PUBLISHED" if current is None else "REPLACED_CURRENT",
-            marker=marker,
-            bundle=bundle,
-            pointer=pointer,
-        )
 
     def _read_risk_calibration_current(
         self,

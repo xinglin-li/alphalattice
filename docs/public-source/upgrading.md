@@ -49,10 +49,10 @@ explains those repairs and their permissions.
 If the doctor calls for agent-project configuration, run it from the same root:
 
 ```powershell
-uv run python -m alphalattice.interface.local_application.native_setup configure --host codex
+uv run python -m alphalattice.interface.local_application.native_setup configure --host claude-code
 ```
 
-Use `--host claude-code` for Claude Code. In a shell outside an agent session,
+Use `--host codex` for Codex. In a shell outside an agent session,
 give the doctor the same host choice; otherwise its fallback is Codex. Read the
 files named in `continue_here` to continue in the same session. Configuration
 refuses to overwrite different files; follow its answer if it refuses.
