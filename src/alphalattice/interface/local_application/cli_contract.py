@@ -2352,6 +2352,67 @@ def _powershell(part: str) -> str:
     return part if safe else "'" + part.replace("'", "''") + "'"
 
 
+OUTPUT_REPLACED = "Replaced the saved refusal at --output; accepted work was not overwritten."
+
+
+def output_fields(path: Path | None, *, replaced: bool = False) -> dict[str, Any]:
+    """Report a completed output write and any refusal it replaced."""
+    return (
+        {
+            "output_file": str(path.resolve()),
+            **({"output_note": worded(OUTPUT_REPLACED)} if replaced else {}),
+        }
+        if path is not None
+        else {}
+    )
+
+
+_FOLLOW_RETURNS = "when the Task ends, needs a decision or recovery, or is deferred; "
+"""Opening guidance before the host-specific way to wait."""
+
+
+def wait_event(
+    kind: str,
+    read: dict[str, Any] | None,
+    *,
+    prefix: tuple[str, ...] = ("alphalattice",),
+    **facts: Any,
+) -> dict[str, Any]:
+    """The one line a waiter ends with: what happened and the command that reads it.
+
+    Args:
+        kind: What happened.
+        read: The request that reads it, or None.
+        prefix: The entry its command starts with, including its workspace.
+        facts: What the event names; a None is left out.
+
+    Returns:
+        The event, its facts and its read command.
+    """
+    return {
+        "event": kind,
+        **{key: value for key, value in facts.items() if value is not None},
+        "read": None if read is None else command(read, prefix=prefix),
+    }
+
+
+def follow_returns() -> str:
+    """When a follow returns and how this host waits for it, never by polling."""
+    session = agent_session(os.environ)
+    way = AGENT_HOST_WAITS.get(session[0]) if session else None
+    way = way or "let your shell wait or run this in the background"
+    return f"{_FOLLOW_RETURNS}{way}, and do not poll it"
+
+
+def with_read_commands(body: dict[str, Any], prefix: tuple[str, ...]) -> dict[str, Any]:
+    """Add each recent item's opening command with the checkout entry and workspace."""
+    for group in body.get("groups", []):
+        for item in group.get("items", []):
+            if isinstance(item.get("read"), dict):
+                item["read_command"] = command(item["read"], prefix=prefix)
+    return body
+
+
 __all__ = [
     "ANSWER_LANGUAGE",
     "CLIENT_HEADER",

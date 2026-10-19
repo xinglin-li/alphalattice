@@ -95,7 +95,7 @@ Keep the original Goal, Task and error, and tell a malformed request, a permissi
 
 1. For a spelling or shape mistake, send the filled correction as offered. For an unreadable document, read the offered schema, repair the named line and column, and resend the original request. For a content mistake, read its named rule and offered valid values, change only the named field and send the corrected request; restore a missing plan hash from the original answer, never the latest plan. A permission refusal is a stop, not a bug; a code fix grants no authority and never weakens a scientific or integrity check.
 2. Take a data decision through its offered preview and confirmation ([pipeline issues](pipeline-issues.md)).
-3. After a timeout or lost connection, read the known Task before repeating anything: no answer does not prove no work was admitted.
+3. After a timeout or lost connection, send the executable `read` printed with the Task id before stage progress: no answer does not prove no work was admitted. Structured `--output` saves the admission first and names `output_file`; without it, no file is saved.
 4. Reproduce a product defect, fix its existing owner and add a regression. For changed source, stop only an idle Host you own with `host stop`, serve it again and open its new link.
 5. Take the stopped Task's offered resume yourself and say so in one line; replan or cancel only when none is offered. Changed method or input needs new evidence: keep the earlier result and follow the owner's new plan, never rewriting stored bindings.
 

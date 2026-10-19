@@ -130,8 +130,11 @@ the turn instead: the goal's next turn starts before a queued notice is taken. A
 registration answering `local_client.codex_unreachable` means the Host cannot reach
 Codex (it runs inside the agent's sandbox), so no notice will come: wait inside the turn.
 
-With `--wait --output`, admission is saved first and replaced by the final
-answer; save failure does not undo admission. Request documents are limited to
+Before following a Task the client prints its id and executable `read`, ahead
+of stage progress. If the tool window ends, send that read to resume the wait.
+With structured `--output`, admission is saved first as `output_file` and replaced
+by the final answer; without it no file is saved. Save failure does not undo admission.
+Request documents are limited to
 128 KiB; `--from` reads up to 4 MiB. Document refusals name `document_location`
 and applicable size limits.
 
