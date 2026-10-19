@@ -233,6 +233,9 @@ class _Parser(argparse.ArgumentParser):
                     detail=refusal.detail,
                     next_action=refusal.next_action,
                     next_requests=repair.pop("next_requests", None),
+                    next_commands={"correct": join(repair["corrected_command"], shell())}
+                    if "corrected_command" in repair
+                    else {"help": repair.get("help", f"{self.prog} --help")},
                     usage_error={
                         "observed": message,
                         "usage": " ".join(self.format_usage().split()),
@@ -247,6 +250,7 @@ class _Parser(argparse.ArgumentParser):
 
 def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
     """The repair a parser's error names, where one is certain (the review's F5)."""
+    help_line = f"{parser.prog} --help"
     if (state := _PARSER_LINE.get()) is not None:
         root, arguments, _ = state
         token = _PARSER_LINE.set((root, arguments, True))
@@ -257,6 +261,7 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                 wrong = bad.partition("=")[0]
                 name = " ".join((root.prog, parsed.noun, getattr(parsed, "verb", ""))).rstrip()
                 owner = next(child for child in _commands_of(root) if child.prog == name)
+                help_line = f"{owner.prog} --help"
                 choices = owner._option_string_actions
             elif "invalid choice: " in message:
                 wrong = message.split("invalid choice: ", 1)[1].split(" (choose from", 1)[0]
@@ -299,6 +304,7 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                     f"Replace {wrong} with {nearest[0]} and send the corrected request."
                 ),
                 "corrected_command": ["alphalattice", *corrected],
+                "help": help_line,
                 "next_requests": {"correct": request},
             }
         except (ValueError, OSError, StopIteration, client.LocalResearchClientError):
@@ -308,11 +314,15 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
     if "--workspace" in message:
         return {
             "repair": "Name the workspace's folder once on the line: alphalattice --workspace "
-            "<dir> <object> <action> ..."
+            "<dir> <object> <action> ...",
+            "help": help_line,
         }
     if "unrecognized arguments" in message:
-        return {"repair": "Read the action's flags in its help; a flag is not the field's name."}
-    return {}
+        return {
+            "repair": "Read the action's flags in its help; a flag is not the field's name.",
+            "help": help_line,
+        }
+    return {"help": help_line}
 
 
 def _answers(child: argparse.ArgumentParser, *, declaration: bool = False) -> None:
@@ -1399,11 +1409,17 @@ def main(
     try:
         parser = _parser(_named(arguments))
         args = parser.parse_args(arguments)
+        args.command_line = tuple(arguments)
         form = " ".join(filter(None, (args.noun, getattr(args, "verb", ""))))
         tags = tuple(f"option:{form}/{a.split('=')[0]}" for a in arguments if a.startswith("-"))
         SURFACE_USE.set((f"command:{form}", *tags))
         if getattr(args, "client_command", None) == ("answer", "show"):
             return _saved_answer(args, started)
+        if getattr(args, "client_command", None) in OFFLINE_COMMANDS | {("session", "bind")}:
+            try:
+                client.output_replacement(args.output, line=args.command_line)
+            except client.LocalResearchClientError as error:
+                return _refused(error, started, line=arguments)
         if getattr(args, "client_command", None) in WORKSPACE_FREE:
             return _unbind(args, started)
         # Read anywhere on the line (V412); left out, it is the session's binding's (V568).
@@ -1606,7 +1622,7 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
     through the same format and refusal-retry owner as a live answer.
     """
     try:
-        replace = client.output_replacement(args.output)
+        replace = client.output_replacement(args.output, line=args.command_line)
         body = client.saved_answer(
             args.saved_answer, section=args.section, list_sections=args.list_sections
         )
@@ -1641,7 +1657,7 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
         refusal = client_refusal(str(error))
         diagnostics = {
             name: value
-            for name in ("document_size", "document_location", "sections")
+            for name in ("document_size", "document_location", "sections", "next_commands")
             if (value := getattr(error, name, None)) is not None
         }
         result = envelope(
@@ -1700,8 +1716,9 @@ def _refused(
                 failure_code=code,
                 detail=detail,
                 next_action=refusal.next_action,
+                next_commands=getattr(error, "next_commands", None),
                 **(
-                    {"binding_context": context, "next_commands": error.next_commands}
+                    {"binding_context": context}
                     if context and isinstance(error, client.LocalResearchClientError)
                     else {}
                 ),
@@ -1909,6 +1926,7 @@ def _command(
         "request_timeout": args.request_timeout,
         "goal": args.goal,
         "output": args.output,
+        "command_line": args.command_line,
     }
     if getattr(args, "client_command", None) == ("backup", "restore"):
         return _restore(args, started, restore)

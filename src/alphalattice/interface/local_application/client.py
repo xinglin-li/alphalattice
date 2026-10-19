@@ -47,6 +47,7 @@ from alphalattice.interface.local_application.cli_contract import (
     named_read,
     offered_requests,
     outcome_of,
+    output_retry,
     refused,
     shell,
     task_state,
@@ -1301,8 +1302,8 @@ def continued(
     return request
 
 
-def output_replacement(path: Path | None) -> bool:
-    """Permit an explicit retry over a complete refusal, never an admitted Task receipt."""
+def output_replacement(path: Path | None, *, line: tuple[str, ...] = ()) -> bool:
+    """Only a complete refusal can be replaced; protect admitted Tasks."""
     if path is None or not path.exists():
         return False
     if path.is_file() and not path.is_symlink() and not path.is_junction():
@@ -1311,7 +1312,9 @@ def output_replacement(path: Path | None) -> bool:
             held = any(previous.get(key) for key in ("admission", *LOCATORS["task_id"]))
             if refused(previous) and not (task_state(previous) or held):
                 return True
-    raise LocalResearchClientError("local_client.output_exists_choose_another_path")
+    error = LocalResearchClientError("local_client.output_exists_choose_another_path")
+    error.next_commands = output_retry(line, _next_output(path))
+    raise error
 
 
 def _save_output(
@@ -1400,8 +1403,7 @@ def _save_declaration(path: Path, body: dict[str, Any]) -> None:
 
 
 def _write_new(path: Path, payload: bytes, *, replace: bool = False) -> None:
-    """Write a file that does not exist yet; an existing one is never replaced, but for
-    ``replace``: a verified refusal retry or this command's own admission."""
+    """Write exclusively; authorized replacements use an atomic sibling file."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         if replace:
@@ -3447,7 +3449,7 @@ def run(
         if sum(getattr(args, field, None) == Path("-") for field in ("file", "from_response")) > 1:
             raise LocalResearchClientError("local_client.document_multiple_stdin_sources")
         output = getattr(args, "output", None)
-        replaced_output = output_replacement(output)
+        replaced_output = output_replacement(output, line=getattr(args, "command_line", ()))
         client = LocalResearchClient(
             args.workspace, timeout=args.request_timeout, goal=getattr(args, "goal", None)
         )
@@ -3529,10 +3531,8 @@ def run(
         failed = (code, document, error.__cause__, args.request_timeout, body is not None)
         refusal, transport = client_failure(*failed, workspace=Path(args.workspace))
         if body is not None:
-            # The owner answered before a local step (writing --output or a bundle, following
-            # the Task) failed: its outcome stands, the local failure is reported beside it,
-            # and an admitted operation never reads as refused or is sent again (V129). A wait
-            # that lost its Host keeps its admission in --output, its work's receipt (V139).
+            # A local failure preserves the owner's outcome (V129) and admitted Task's receipt
+            # (V139), so the agent inspects it without resending admitted work.
             wanted = getattr(args, "output", None)
             if wanted is not None and saved_output[0] is None and not wanted.exists():
                 with suppress(LocalResearchClientError):
@@ -3571,6 +3571,7 @@ def run(
                     detail=refusal.detail,
                     next_action=refusal.next_action,
                     next_requests=transport.pop("next_requests", None),
+                    next_commands=error.next_commands,
                     context=_context(args.workspace, getattr(args, "goal", None)),
                     **{
                         field: getattr(error, field)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -533,6 +534,20 @@ def test_a_retry_replaces_only_a_saved_refusal(
         refused = json.loads(capsys.readouterr().out)
         assert refused["failure_code"] == "local_client.output_exists_choose_another_path"
         assert saved.read_text("utf-8") == held and len(fake_host.sent) == 2
+    assert cli.main(shlex.split(refused["next_commands"][0])[1:], serve=lambda _: 99) == 0
+    retried = json.loads(capsys.readouterr().out)
+    assert Path(retried["output_file"]).read_text("utf-8") and retried["output_file"] != str(saved)
+    assert saved.read_text("utf-8") == held and fake_host.sent[-1] == {"operation": "TASKS"}
+    assert (
+        cli.main(
+            [*arguments[:2], "backup", "restore", "--dir", str(tmp_path), *options[:2]],
+            serve=lambda _: 99,
+            restore=lambda *a, **k: pytest.fail("output preflight comes first"),
+        )
+        == 1
+    )
+    stopped = json.loads(capsys.readouterr().out)
+    assert stopped["failure_code"] == refused["failure_code"] and stopped["next_commands"]
 
 
 @pytest.mark.parametrize("view", ["compact", "full"])

@@ -362,11 +362,11 @@ def _without_empty(
 
 def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> dict[str, object]:
     """Read valid values without choosing work or assuming a refused member's credentials."""
+    from alphalattice.interface.local_application.cli_contract import schema_request
+
     if "operation" in reasons:
         return {}
     if "evidence_setup" in reasons:
-        from alphalattice.interface.local_application.cli_contract import schema_request
-
         return {**schema_request(str(request["operation"]))}
     # A completed Task can offer an unbound replan with no recovery context.
     if "strategy_package_id" in reasons:
@@ -388,7 +388,10 @@ def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> 
         except ValueError:
             return {"operation": "TASKS"}
         return {"operation": "TASK_RECOVERY", "task_id": task}
-    if any(name.startswith("committee_message") for name in reasons):
+    if any(name.startswith("committee_message") for name in reasons) and {
+        "committee_role",
+        "committee_key",
+    }.isdisjoint(reasons):
         try:
             read: dict[str, object] = {
                 "operation": "COMMITTEE_READ",
@@ -398,6 +401,8 @@ def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> 
             return {"operation": "TASKS"}
         read.update({k: request[k] for k in ("committee_role", "committee_key") if k in request})
         return read
+    if request.get("operation") == "COMMITTEE_SUBMIT":
+        return {**schema_request("COMMITTEE_SUBMIT")}
     return {}
 
 

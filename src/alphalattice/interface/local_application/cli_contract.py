@@ -2337,6 +2337,18 @@ def join(parts: list[str], quoting: str) -> str:
     return " ".join(shlex.quote(str(part)) for part in parts)
 
 
+def output_retry(line: tuple[str, ...], path: Path) -> list[str] | None:
+    """Keep the parsed command, replacing only its effective output option."""
+    parts = list(line)
+    end = parts.index("--") if "--" in parts else len(parts)
+    for index in range(end - 1, -1, -1):
+        option, equal, _value = parts[index].partition("=")
+        if len(option) > 2 and option.startswith("--") and "--output".startswith(option):
+            parts[index : index + (1 if equal else 2)] = [f"--output={path}"]
+            return [join([*command_prefix(), *parts], shell())]
+    return None
+
+
 def _json(value: object) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
