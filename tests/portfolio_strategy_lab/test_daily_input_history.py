@@ -70,11 +70,11 @@ def _publish(store, prepared, reuse=None, **rebased):
     )
 
 
-def _capture(workspace, through, features=(), history=None):
+def _capture(workspace, through, features=(), history=None, observed_at=OBSERVED_AT):
     return prepare_workspace_component_inputs(
         workspace,
         through=through,
-        observed_at=OBSERVED_AT,
+        observed_at=observed_at,
         expected_source_hash=workspace_score_source_identity(workspace),
         ordered_feature_ids=features,
         history=history,
@@ -533,65 +533,105 @@ def test_three_consecutive_days_write_only_their_last_frozen_block(
     assert max(size[first + 1 :]) * len(snapshot.array_files) <= 2 * size[first]
 
 
-def test_a_split_reaches_the_kept_history_the_frozen_read_and_the_next_day_as_stored(
-    daily_workspace,
-):
-    """requirement: splits rebased in the store, a 3-for-1 then a 1-for-2 composed, read through
-    the kept history, the frozen inputs and the next daily as the store's bars; each formula
-    agrees with a cold capture."""
-    from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
-    from alphalattice.foundation.market_data_ops.storage.rebase import RawBarRebase, record
+@pytest.fixture(scope="module")
+def split_history(tmp_path_factory):
+    from alphalattice.control.workspace_runtime.reader_threads import apply_reader_threads
+    from tests.researcher_methodology_surface.real_workspace import build_real_risk_workspace
 
+    apply_reader_threads(4)
+    return build_real_risk_workspace(
+        tmp_path_factory.mktemp("split-chain"), symbols=("AAA", "BBB", "CCC", "DDD", "EEE")
+    )
+
+
+def test_a_split_reaches_the_kept_history_the_frozen_read_and_the_next_day_as_stored(split_history):
+    """Three acquisitions reach advancing frozen readers as cold captures do; qualification and
+    sealed ten-year chunk readback make this composition control take over ten seconds.
+    """
+    from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
+    from alphalattice.foundation.market_data_ops.runtime.universe_maintenance import (
+        CurrentUniverseMaintenance,
+        CurrentUniverseMaintenanceStatus,
+    )
+    from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
+    from alphalattice.foundation.market_data_ops.sources.manifest import (
+        build_quality_filtered_research_manifest,
+    )
+    from alphalattice.foundation.market_data_ops.storage.rebase import recorded
+    from tests.workspace_maintenance.local_data_provider import HeldDataProvider
+
+    daily_workspace = split_history.workspace
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
     first = _capture(daily_workspace, FIRST, WIDE)
     _publish(store, first)
-    listing, receipts = first.ordered_listing_ids[1], []
-
-    def split(ex_date: date, ratio: float) -> None:  # as the store rebases: then its row
-        price, at = 1 / ratio, OBSERVED_AT.replace(tzinfo=None) + timedelta(days=len(receipts))
-        with MarketDataRepository(daily_workspace).database.connect(read_only=False) as db:
-            provider, start = db.execute(
-                "SELECT provider, min(session_date) FROM raw_daily_bar_current"
-                " WHERE listing_id = ? GROUP BY provider",
-                [listing],
-            ).fetchone()
-            db.execute(
-                "UPDATE raw_daily_bar_current SET open = open * ?, high = high * ?, low = low * ?,"
-                " close = close * ?, volume = floor(volume * ? + 0.5)"
-                " WHERE listing_id = ? AND session_date < ?",
-                [price] * 4 + [ratio, listing, ex_date],
+    listing, market = first.ordered_listing_ids[1], MarketDataRepository(daily_workspace)
+    acquisition = build_quality_filtered_research_manifest(
+        split_history.manifest, eligible_listing_ids=(listing,)
+    )
+    provider = HeldDataProvider(daily_workspace, through=date(2026, 8, 5), window_days=4000)
+    split_day = date(2026, 7, 30)
+    for step, (ratio, noise, ex_date, through) in enumerate(
+        ((3.0, 0.0, split_day, split_day), (1.0, 1e-7, split_day, LAST), (0.5, 0.0, LAST, LAST)),
+        1,
+    ):
+        clock = OBSERVED_AT + timedelta(days=step, hours=23)  # after the acquired session closes
+        provider.bars[listing] = [
+            (
+                day,
+                *(v / ratio * (1 + noise) if day < ex_date else v for v in values[:4]),
+                int(np.floor(values[4] * ratio + 0.5)) if day < ex_date else values[4],
             )
-            db.execute(
-                "UPDATE provider_adjusted_close_current SET adjusted_close = adjusted_close * ?"
-                " WHERE listing_id = ? AND session_date < ?",
-                [price, listing, ex_date],
+            for day, *values in provider.bars[listing]
+        ]
+        provider.adjusted[listing] = {
+            day: value / ratio * (1 + noise) if day < ex_date else value
+            for day, value in provider.adjusted[listing].items()
+        }
+        if ratio != 1:
+            provider.actions[listing] += (
+                CorporateActionEvent(listing, provider.name, ex_date, "SPLIT", ratio),
             )
-            last = ex_date - timedelta(days=1)
-            rebase = RawBarRebase(listing, provider, ex_date, start, last, price, ratio, 0.0, at)
-            record(db, [rebase], "fixture")
-        receipts.append(rebase.receipt_hash)
-
-    for day, ratio in ((date(2026, 7, 30), 3.0), (LAST, 0.5)):  # the split day, the next daily
-        split(day, ratio)
-        history = store.load_workspace_observation_history("1" * 64)
-        prepared = _capture(daily_workspace, day, WIDE, history)
-        assert [item.receipt_hash for item in prepared.rebases] == receipts  # in store order
-        # No research manifest declares a rule here: the shipped rule kept the rows, by name.
-        assert prepared.rebases[-1].kept_rule_hash == DataDecisionRule().rule_hash
-        _publish(store, prepared, rebases=prepared.rebases, kept_rows=prepared.kept_rows)
-        request = dict(
-            formation=day,
-            observed_at=OBSERVED_AT,
-            expected_source_hash=workspace_score_source_identity(daily_workspace),
-            ordered_feature_ids=WIDE,
-        )
-        cold = build_workspace_score_inputs(daily_workspace, **request)
-        kept = build_workspace_score_inputs(daily_workspace, **request, prepared=prepared)
-        snapshot = store.publish_frozen_observations(kept, disposition="RECORDED_INPUT_QA")
-        read = store.load_frozen_observations(snapshot.snapshot_hash)
-        for name in ("open", "high", "low", "close", "volume"):
-            assert getattr(read, name).tobytes() == getattr(cold, name).tobytes()  # as stored
-            with pytest.raises(ValueError):
-                getattr(read, name).setflags(write=True)
-        for name, values in cold.formula_values.items():
-            np.testing.assert_allclose(read.formula_values[name], values, rtol=1e-6, atol=1e-12)
+        revisions = market.revision_count(listing)
+        outcome = CurrentUniverseMaintenance(
+            market,
+            acquisition,
+            provider,
+            clock.date(),
+            max_workers=1,
+            adjusted_tolerance=1e-6,
+            rebase_agreement=(1e-6, 1e-12),
+            full_history_escalation_listing_ids=frozenset() if noise else frozenset({listing}),
+        ).run(observed_at=clock)
+        assert (outcome.status, outcome.failed) == (CurrentUniverseMaintenanceStatus.COMPLETED, 0)
+        if noise:
+            assert market.revision_count(listing) == revisions  # zero noisy-day bar revisions
+        with market.database.read_transaction() as connection:
+            receipts = recorded(connection, (listing,))
+        assert len(receipts) == (1 if step < 3 else 2)
+        with market.database.retain(read_only=True):
+            history = store.load_workspace_observation_history("1" * 64)
+            prepared = _capture(daily_workspace, through, WIDE, history, clock)
+            assert [item.receipt_hash for item in prepared.rebases] == [
+                item.receipt_hash for item in receipts
+            ]
+            # No research manifest declares a rule here: the shipped rule kept the rows, by name.
+            assert prepared.rebases[-1].kept_rule_hash == DataDecisionRule().rule_hash
+            _publish(store, prepared, rebases=prepared.rebases, kept_rows=prepared.kept_rows)
+            request = dict(
+                formation=through,
+                observed_at=clock,
+                expected_source_hash=workspace_score_source_identity(daily_workspace),
+                ordered_feature_ids=WIDE,
+            )
+            cold = build_workspace_score_inputs(daily_workspace, **request)
+            kept = build_workspace_score_inputs(daily_workspace, **request, prepared=prepared)
+            snapshot = store.publish_frozen_observations(kept, disposition="RECORDED_INPUT_QA")
+            read = store.load_frozen_observations(snapshot.snapshot_hash)
+            for name in ("open", "high", "low", "close", "volume"):
+                assert getattr(read, name).tobytes() == getattr(cold, name).tobytes()  # as stored
+                with pytest.raises(ValueError):
+                    getattr(read, name).setflags(write=True)
+            for name, values in cold.formula_values.items():
+                np.testing.assert_allclose(read.formula_values[name], values, rtol=1e-6, atol=1e-12)
+    column = first.ordered_listing_ids.index(listing)
+    assert read.close[0, column] == (first.ohlcv["close"][0, column] * (1 / 3)) * 2
