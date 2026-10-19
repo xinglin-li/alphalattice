@@ -594,14 +594,10 @@ def _model_usage(model: str, responses: list[ResponseUsage]) -> ModelUsage:
 
 def _replace_counts(known: ResponseUsage, later: ResponseUsage) -> ResponseUsage:
     """A response's later record carries its final counts; it keeps its first place."""
-    return ResponseUsage(
+    return replace(
+        later,
         response_id=known.response_id,
-        model=later.model,
         effort=later.effort or known.effort,
-        input_tokens=later.input_tokens,
-        cache_read_tokens=later.cache_read_tokens,
-        cache_write_tokens=later.cache_write_tokens,
-        output_tokens=later.output_tokens,
         at=later.at or known.at,
     )
 

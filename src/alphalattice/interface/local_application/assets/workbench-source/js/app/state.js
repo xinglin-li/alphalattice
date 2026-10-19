@@ -79,12 +79,12 @@ const app = {
   theme: 'follow',
   workspace: Data.workspace(),
   empty: false,
-  input: 'demo-input-0803',
+  input: '',
   data: Data.clocks().data,
   feature: Data.clocks().feature,
-  session: '2024-08-12',
-  book: 'demo-book-01',
-  analysis: 'demo-analysis-03',
+  session: '',
+  book: '',
+  analysis: '',
   tab: 'holdings',
   mode: 'yaml',
   chart: 'indexed',
@@ -92,22 +92,18 @@ const app = {
   declaration: null,
   yaml: '',
   decisionSaved: false,
-  foundationSaved: true,
+  foundationSaved: false,
   historyQuery: '',
   historyKind: 'all',
   historySort: 'source',
   holdingsQuery: '',
   holdingsPage: 0,
-  compareOther: 'demo-book-02',
+  compareOther: '',
   issuesDecision: null,
   cleared: false,
   firstRun: {name: 'New Research', path: 'D:/AlphaLattice/new-research'},
   tasks: [],
-  inputs: [
-    {id: 'demo-input-0803', name: 'Factor development', date: '2026-08-03', verified: true, pinned: true},
-    {id: 'demo-input-0727', name: 'Factor development', date: '2026-07-27', verified: true, pinned: false},
-    {id: 'demo-input-0720', name: 'Factor development', date: '2026-07-20', verified: true, pinned: true},
-  ],
+  inputs: [],
   freeze: false,
   labTask: null,
   labTaskYaml: null,
@@ -117,17 +113,6 @@ const app = {
   reviewTab: 'scope',
   reviewItem: 'mapping',
 };
-
-app.tasks = [];
-Object.assign(app, {input: '', session: '', book: '', analysis: '', compareOther: '', inputs: [], foundationSaved: false});
-const factors = [
-  ['MOM_21D', 'Momentum', 0.031, 0.043, 97.8, 'keep'],
-  ['REV_5D', 'Reversal', 0.019, 0.078, 98.1, 'constrain'],
-  ['VOL_20D', 'Volatility', -0.026, 0.061, 99.2, 'keep'],
-  ['RANGE_10D', 'Range', 0.011, 0.196, 96.4, 'reject'],
-  ['VOLUME_Z20', 'Liquidity', 0.017, 0.108, 97.7, 'constrain'],
-  ['TREND_63D', 'Trend', 0.022, 0.059, 98.4, 'keep'],
-].map((r, i) => ({id: i, name: r[0], family: r[1], ic: r[2], q: r[3], coverage: r[4], choice: r[5], rationale: i === 3 ? 'Weak support in this illustrative screen.' : 'Illustrative curation rationale; evaluate within the declared sample.'}));
 
 /* ---- research declaration ---- */
 function defaults() {
@@ -169,7 +154,6 @@ function currentContext() {
   if (LiveReview.pages.has(app.page)) return {page:app.page,workspace:Data.workspace(),review:LiveReview.context(),claim:'EVIDENCE_AND_REVIEW_NOT_TRADE_AUTHORITY'};
   if (app.page==='lab') return {page:app.page,workspace:Data.workspace(),declaration:LiveResearch.context(),claim:'DECLARATION_AND_PREVIEW_NOT_EXECUTION'};
   return {page: app.page, workspace: Data.workspace(), subject: Data.subject(), claim: Data.notice()};
-  return {prototype: true, page: app.page, workspace: app.workspace, inputId: input().id, inputCutoff: input().date, selectedInputForFutureResearch: app.input, workDataThrough: app.data, bookId: viewBook(), holdingsSession: viewSession(), reviewState: 'PARTIAL', route: 'REQUEST_EVIDENCE_REFRESH', blockingAction: 'RESOLVE_ISSUER_MAPPING'};
 }
 
 /* ---- viewer preferences (theme, language, comfort) ---- */

@@ -1188,6 +1188,33 @@ def _sandbox(
     return EXIT_CODES[refusal.outcome]
 
 
+def _model_refused(args: argparse.Namespace, operation: str, started: float, code: str) -> int:
+    """Keep model-command refusals identical on stdout and in saved answers."""
+    refusal = client_refusal(code)
+    refused_body = {
+        "status": "REFUSED",
+        "failure_code": code,
+        "detail": refusal.detail,
+        "next_action": refusal.next_action,
+    }
+    print(
+        answer_json(
+            envelope(
+                operation=operation,
+                outcome=refusal.outcome,
+                body=None,
+                elapsed_seconds=time.perf_counter() - started,
+                status="REFUSED",
+                failure_code=code,
+                detail=refusal.detail,
+                next_action=refusal.next_action,
+                **_saved(args, refused_body),
+            ),
+        )
+    )
+    return EXIT_CODES[refusal.outcome]
+
+
 def _model(args: argparse.Namespace, started: float) -> int:
     """`model scaffold` and `model check`, with no Host: a model's files are the checkout's (EX).
 
@@ -1208,29 +1235,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
             client._write_new(written, declaration_template().encode("utf-8"))
         except client.LocalResearchClientError as error:
             code = public_failure(error, "local_client.output_write_refused")
-            refusal = client_refusal(code)
-            refused_body = {
-                "status": "REFUSED",
-                "failure_code": code,
-                "detail": refusal.detail,
-                "next_action": refusal.next_action,
-            }
-            print(
-                answer_json(
-                    envelope(
-                        operation=operation,
-                        outcome=refusal.outcome,
-                        body=None,
-                        elapsed_seconds=time.perf_counter() - started,
-                        status="REFUSED",
-                        failure_code=code,
-                        detail=refusal.detail,
-                        next_action=refusal.next_action,
-                        **_saved(args, refused_body),
-                    ),
-                )
-            )
-            return EXIT_CODES[refusal.outcome]
+            return _model_refused(args, operation, started, code)
         body = {
             "status": "DECLARATION_WRITTEN",
             "declaration_file": str(written.resolve()),
@@ -1258,29 +1263,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
         code = public_failure(error, "model_extension.refused")
         if scaffold and code == "model_declaration.invalid":
             code += _declaration_fields(Path(str(args.declaration)))
-        refusal = client_refusal(code)
-        refused_body = {
-            "status": "REFUSED",
-            "failure_code": code,
-            "detail": refusal.detail,
-            "next_action": refusal.next_action,
-        }
-        print(
-            answer_json(
-                envelope(
-                    operation=operation,
-                    outcome=refusal.outcome,
-                    body=None,
-                    elapsed_seconds=time.perf_counter() - started,
-                    status="REFUSED",
-                    failure_code=code,
-                    detail=refusal.detail,
-                    next_action=refusal.next_action,
-                    **_saved(args, refused_body),
-                ),
-            )
-        )
-        return EXIT_CODES[refusal.outcome]
+        return _model_refused(args, operation, started, code)
     failed = next((row["code"] for row in answer.get("findings", ()) if row["code"]), None)
     found = client_refusal(failed) if failed else None
     outcome: Outcome = found.outcome if found else "OK"

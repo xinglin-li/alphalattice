@@ -7,7 +7,7 @@ Owner: the local application's Portfolio research service (`portfolio_research`)
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,25 +38,7 @@ class PortfolioExportManifest:
 
     def as_json(self) -> str:
         """Serialize the manifest with stable keys and readable indentation."""
-        return json.dumps(
-            {
-                "kind": "PortfolioExportManifest",
-                "workspace_id": self.workspace_id,
-                "spec_hash": self.spec_hash,
-                "holdings_spec_hash": self.holdings_spec_hash,
-                "program_hash": self.program_hash,
-                "numerical_input_assembly_hash": self.numerical_input_assembly_hash,
-                "result_hash": self.result_hash,
-                "execution_ledger_hash": self.execution_ledger_hash,
-                "economic_ledger_hash": self.economic_ledger_hash,
-                "report_hash": self.report_hash,
-                "authorities_hash": self.authorities_hash,
-                "originating_task_id": self.originating_task_id,
-                "execution_mode": self.execution_mode,
-                "controls": [list(pair) for pair in self.controls],
-                "command": self.command,
-                "spec": self.spec_document,
-            },
-            indent=2,
-            sort_keys=True,
-        )
+        body = {field.name: getattr(self, field.name) for field in fields(self)}
+        body["kind"] = "PortfolioExportManifest"
+        body["spec"] = body.pop("spec_document")
+        return json.dumps(body, indent=2, sort_keys=True)
