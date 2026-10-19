@@ -13258,105 +13258,105 @@
    "predecessor": "1b1439ad950b9fd93c03cceb508261c854cc4a1c6e14e77ffe363ef4d8d23f45",
    "successor": "30457cc904584f3ba69fb60f0f74fca60ae0a16519b7b3ef0488701cae27d204",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "portfolio_strategy_lab.public_path",
    "predecessor": "2638eaa5a9c7aef67526c8bc3ecdc1041cbb2e12772787f87a72f8fcc965d0eb",
    "successor": "c881276277250096b785cffca1e349c9aee69cfd4f251196bcac1555c7d590d1",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "product_host.conditional_decision_advancement",
    "predecessor": "19c6cb0036342174040a041cad314a8036e2d6fa3124003c2936e108bdcc7bba",
    "successor": "637f91bb9539839dbca559c78515f34de2f46e597d4297ff933491bcb8634a58",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "product_host.portfolio_updates",
    "predecessor": "d420c007cc97563e847f9f5c87bff8819b7e8555a71e0d8c39e8723ff98d143c",
    "successor": "b109d409cba69415ba1546219af7fe2e9d8d7085101cc3558ef8b3692d31fdfb",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "product_host.research_component_training_input",
    "predecessor": "32d6ee277ce07073a690e0e42f06ace2458f130b2a885f89f8629f89a251340a",
    "successor": "067e7ebd345852799346c4cb685ab2cd89663d613efbb1887287b745018710c3",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "product_host.research_feature_materialization.prepared",
    "predecessor": "125a916a817715dec2f8b5a52ed1cfb402b7d25bd6b393152f0a9c3bd52caab2",
    "successor": "7640282a8d80e95c0f0752802c36c59f427a3ac15d3282e8b1523ea50e084348",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "product_host.research_strategy_preparation",
    "predecessor": "5e0a78ed4ab04fba103538e0538e06d8ab16e488a9bec1508c6505c1bf4f78c4",
    "successor": "1f3a18d626dc02e046c5cdfcbabbb70ffd2c35cd3a2ebe0c2b8852abaa18aa3b",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "product_host.strategy_calibration",
    "predecessor": "55f57ea312cad6c4f2981031f60c559e42d62885ebf5185bc565c4c722cd7a78",
    "successor": "e13f1f2155f8bf15e39d8dcc16644e8725099668ac80916209804b38bbc32c95",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "product_host.strategy_scoring",
    "predecessor": "f92c669fcf2b72f9e4d2c3dc8237f6b1214e827519f5f447db3a0ad7a3213796",
    "successor": "422d90db8e7911e5aa76cbbeb648c566db26755410705f2e0551fc5d2b2a843a",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "product_host.workspace_preparation",
    "predecessor": "497e7a0befe72827d39de166b174bf469e55d2984294d9ce0fc513501e7af860",
    "successor": "5333c0a2002f8709b0dc8aab6871937f6dbf3ba1580b7f910d10d23b789d11c8",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "research_experiment.alpha.model-development.implementation",
    "predecessor": "3c29366693ae721b68765fd27c6666a95f82595c9e28c1379ee8abd032768d78",
    "successor": "a672ddb1e0b79e53749f67b9a416ffb3e692f0f1792c930466f5ab454762036d",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "research_experiment.alpha.model-development.lifecycle.implementation",
    "predecessor": "3c29366693ae721b68765fd27c6666a95f82595c9e28c1379ee8abd032768d78",
    "successor": "a672ddb1e0b79e53749f67b9a416ffb3e692f0f1792c930466f5ab454762036d",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "research_experiment.alpha.qualification.implementation",
    "predecessor": "4038f7e723df3f293ec00000017deafde194332789455836249fcbecf03dacb7",
    "successor": "e58218a13b4d9ba5361eb29f34ac740973c1b8f40760b7d393a14b49dbd30b29",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "research_experiment.portfolio.policy-development.implementation",
    "predecessor": "daa0c1698b48a3f54a949eedfb64b65274adf5c2c41a5370aa32cb97a3e3c61c",
    "successor": "97c73857b58546d49ca2257956bcfd056aa2001b98b0133f3d8220aa3657e614",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "research_experiment.risk.covariance-development.implementation",
    "predecessor": "87ba7781afde777456d4f9d4eb66fb280d90d3e2538946df6feeac42f575c664",
    "successor": "0876f9769f4e929448bd4cd0745fb055f265f0a83caa3ff86a7c090271f49d4d",
    "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
-   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (DOC's proof, implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
   },
   {
    "role": "product_host.workspace_preparation",
@@ -13370,21 +13370,147 @@
    "predecessor": "c881276277250096b785cffca1e349c9aee69cfd4f251196bcac1555c7d590d1",
    "successor": "2ddc1e80578d2c04fcbfa2e4e004d1e9ce883b30c933dd123279db749e837874",
    "change": "LATE-SPLIT-WORDS: a late split's stop has words and its way on (0.2.1)",
-   "reason": "AX's LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (INV's review, 16:03; DOC's re-review PASS, 17:24), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
+   "reason": "LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (an independent review and a re-review, both closed), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
   },
   {
    "role": "product_host.conditional_decision_advancement",
    "predecessor": "637f91bb9539839dbca559c78515f34de2f46e597d4297ff933491bcb8634a58",
    "successor": "6a62f85bedf058828155609f0ce46e95e44a9808e6eefefc11f523535e2a6fdc",
    "change": "LATE-SPLIT-WORDS: a late split's stop has words and its way on (0.2.1)",
-   "reason": "AX's LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (INV's review, 16:03; DOC's re-review PASS, 17:24), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
+   "reason": "LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (an independent review and a re-review, both closed), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
   },
   {
    "role": "product_host.portfolio_updates",
    "predecessor": "b109d409cba69415ba1546219af7fe2e9d8d7085101cc3558ef8b3692d31fdfb",
    "successor": "a6b2173e1fe6a24349d66c2fada73795d29e7f766f9c09cce8ec54007ca6cf90",
    "change": "LATE-SPLIT-WORDS: a late split's stop has words and its way on (0.2.1)",
-   "reason": "AX's LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (INV's review, 16:03; DOC's re-review PASS, 17:24), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
+   "reason": "LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (an independent review and a re-review, both closed), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "30457cc904584f3ba69fb60f0f74fca60ae0a16519b7b3ef0488701cae27d204",
+   "successor": "e7b65cf232196b8ab3d0f8970f21c55b06939ec5ad763f32bc1c5ae995f985fb",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "2ddc1e80578d2c04fcbfa2e4e004d1e9ce883b30c933dd123279db749e837874",
+   "successor": "0c36f17b5084d70e45190bd59b966ddc7e60bb0b3920f1ef4e3333d7f2f39fa1",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "6a62f85bedf058828155609f0ce46e95e44a9808e6eefefc11f523535e2a6fdc",
+   "successor": "d1cadf362db6de0a01a2b8d85a8408f9dceb79ebc3052216ce1b9983826128b7",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "a6b2173e1fe6a24349d66c2fada73795d29e7f766f9c09cce8ec54007ca6cf90",
+   "successor": "f1894f9820db74f59f44afd34eae070c1a156c86685f95457937ecef481a2c3a",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "067e7ebd345852799346c4cb685ab2cd89663d613efbb1887287b745018710c3",
+   "successor": "a9c18ab7b82657ce28ad74bf3e184404e9955eca75c1649d59e1fdf006d2fa2a",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "7640282a8d80e95c0f0752802c36c59f427a3ac15d3282e8b1523ea50e084348",
+   "successor": "dbce8d57d12fe9cb7e7bd705cfb370edfb834f48ecfe9ae2aa263ee2e63060f9",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "ad609fd531bcada6c9f95a545804a76b9c2c98f572a46ba874670f6805a2bb4f",
+   "successor": "5b245de3c04626aa4ea3e4aad7c27ad0f6de7c2bbbc2b3e07db364720ffc412e",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "1f3a18d626dc02e046c5cdfcbabbb70ffd2c35cd3a2ebe0c2b8852abaa18aa3b",
+   "successor": "24722970230b65b6521566e1d5ed997b01c9b2ccb9bbb9fd62e1441153302dc8",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "e13f1f2155f8bf15e39d8dcc16644e8725099668ac80916209804b38bbc32c95",
+   "successor": "f10b34ca3cfc6da504a13c668c7da0f5a9c284ae0b213d1bc4514f0468e37dad",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "422d90db8e7911e5aa76cbbeb648c566db26755410705f2e0551fc5d2b2a843a",
+   "successor": "c0a14cd20ac9ef117157128e420588999f3377ea53174e7e67f38f6283134947",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "3bece6af7c2c24693a70a9280e44d7fadeb8aacd0f8084327555f77bbd9a1482",
+   "successor": "0e26ba39d0be664ef9ea5c0a3e601d0a454c45e5d6e2a09e2a4540c9b0f40dac",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "a672ddb1e0b79e53749f67b9a416ffb3e692f0f1792c930466f5ab454762036d",
+   "successor": "507a6ecb2e825cb636fddc8df439105a3183eb903fafdc2fa6fdf92251a455d1",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "a672ddb1e0b79e53749f67b9a416ffb3e692f0f1792c930466f5ab454762036d",
+   "successor": "507a6ecb2e825cb636fddc8df439105a3183eb903fafdc2fa6fdf92251a455d1",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "e58218a13b4d9ba5361eb29f34ac740973c1b8f40760b7d393a14b49dbd30b29",
+   "successor": "3e655d913f23ba831ca1b4a90c6e9d13e676c10f8ad6dea9a224084e3a8c1551",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "0c36f17b5084d70e45190bd59b966ddc7e60bb0b3920f1ef4e3333d7f2f39fa1",
+   "successor": "50d890f818abb00668bda2851f9e3d86c2c66ee03feda1735ab23a656f2d26a0",
+   "change": "PROVIDER-CACHE-FIX: fresh provider history per acquisition (0.2.1)",
+   "reason": "PROVIDER-CACHE-FIX (82b0fa37f, merged as 72ea692da) changes only how the yfinance historical acquisition reaches HTTP: a per-acquisition facade over the native GET replaces the library's process-wide LRU, coalescing only within one acquisition. Requests, price policy, bounds and sealed artifacts are unchanged. A normal daily makes the same number of calls, and a cold acquisition returns the same bytes as before (the uncached controls stay green). Only a catch-up that previously read a stale cached chunk now reads the provider's current history, which is the corrected behaviour. Reviewed independently (PASS), with the test tightenings in 82b0fa37f. All four roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "d1cadf362db6de0a01a2b8d85a8408f9dceb79ebc3052216ce1b9983826128b7",
+   "successor": "cfd02e14238e7a2b037b19cb3a63f26c3354f16fd8431dcfbd7aa729773c5e0c",
+   "change": "PROVIDER-CACHE-FIX: fresh provider history per acquisition (0.2.1)",
+   "reason": "PROVIDER-CACHE-FIX (82b0fa37f, merged as 72ea692da) changes only how the yfinance historical acquisition reaches HTTP: a per-acquisition facade over the native GET replaces the library's process-wide LRU, coalescing only within one acquisition. Requests, price policy, bounds and sealed artifacts are unchanged. A normal daily makes the same number of calls, and a cold acquisition returns the same bytes as before (the uncached controls stay green). Only a catch-up that previously read a stale cached chunk now reads the provider's current history, which is the corrected behaviour. Reviewed independently (PASS), with the test tightenings in 82b0fa37f. All four roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "c0a14cd20ac9ef117157128e420588999f3377ea53174e7e67f38f6283134947",
+   "successor": "5b181b1deab407a9c7223a910a02a0438c1cde5aaf1b862eef6a0421767db15c",
+   "change": "PROVIDER-CACHE-FIX: fresh provider history per acquisition (0.2.1)",
+   "reason": "PROVIDER-CACHE-FIX (82b0fa37f, merged as 72ea692da) changes only how the yfinance historical acquisition reaches HTTP: a per-acquisition facade over the native GET replaces the library's process-wide LRU, coalescing only within one acquisition. Requests, price policy, bounds and sealed artifacts are unchanged. A normal daily makes the same number of calls, and a cold acquisition returns the same bytes as before (the uncached controls stay green). Only a catch-up that previously read a stale cached chunk now reads the provider's current history, which is the corrected behaviour. Reviewed independently (PASS), with the test tightenings in 82b0fa37f. All four roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "0e26ba39d0be664ef9ea5c0a3e601d0a454c45e5d6e2a09e2a4540c9b0f40dac",
+   "successor": "441aa820217d7ffbc19c66ac0713d794ae294a905bd67c73e7d0e8aac298d070",
+   "change": "PROVIDER-CACHE-FIX: fresh provider history per acquisition (0.2.1)",
+   "reason": "PROVIDER-CACHE-FIX (82b0fa37f, merged as 72ea692da) changes only how the yfinance historical acquisition reaches HTTP: a per-acquisition facade over the native GET replaces the library's process-wide LRU, coalescing only within one acquisition. Requests, price policy, bounds and sealed artifacts are unchanged. A normal daily makes the same number of calls, and a cold acquisition returns the same bytes as before (the uncached controls stay green). Only a catch-up that previously read a stale cached chunk now reads the provider's current history, which is the corrected behaviour. Reviewed independently (PASS), with the test tightenings in 82b0fa37f. All four roles are ones 0.2.1 already moves."
   }
  ]
 }
