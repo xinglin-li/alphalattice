@@ -13518,6 +13518,13 @@
    "successor": "1255522fad5c8d0de17a129defec8f094ab57d192f9f0a5855889ab58503f94f",
    "change": "887a0584a9c5937e71d1c72149ffb2fdf40b8a3a",
    "reason": "The input capture module is hashed whole; it gained a byte ceiling stated before the confirm and a refusal when nothing changed. Sealing, copying and verification are unchanged, proven by an equal syntax tree for those functions and by the recovery and readback tests."
+  },
+  {
+   "role": "product_host.research_input_capture",
+   "predecessor": "1255522fad5c8d0de17a129defec8f094ab57d192f9f0a5855889ab58503f94f",
+   "successor": "5a5d1bf029fb5b5c7c30500e7a50d8ad6c1fb073f28273da3b63f1868be09f8c",
+   "change": "15c2c239c17b688dd491fe69c95f86be7318ce0c",
+   "reason": "The input capture's byte ceiling counts a missing live database as zero instead of failing. Sealing, copying, admission and verification are unchanged."
   }
  ]
 }
