@@ -86,10 +86,10 @@ on each command, with nothing to approve. Use the **alphalattice-research** Skil
 
 A project has one first use. A new session reads the project binding and `workspace show`
 first: once the first use is complete with its strategy running forward, a date's sentence is
-the daily road in that same workspace. `first-use prepare` refuses a second first use by name
-(`local_client.first_use_completed`), naming the workspace and offering its `research-update
-plan` for the date. Only when the person asks for separate new research, asked in one line,
-run it again with `--new-research`.
+the daily road in that same workspace. `serve` on a new workspace refuses before it starts,
+and `first-use prepare` refuses a second first use, by name (`local_client.first_use_completed`):
+each names the workspace and offers its `research-update plan`. Only when the person asks for
+separate new research, asked in one line, run it again with `--new-research`.
 
 Start it in the workspace you serve, with the person's exact sentence and the date it names
 for the positions (today's when it names none), as you read it:

@@ -381,6 +381,22 @@ def _section(child: argparse.ArgumentParser, *, wanted: bool = True) -> None:
     )
 
 
+NEW_RESEARCH_HELP = (
+    "Only on the person's yes to separate new research: serve or open a first use even where "
+    "the project's first use is complete (its daily road is offered otherwise)."
+)
+"""The one way past a completed first use's daily road, for `serve` and `first-use prepare`."""
+
+
+def _serve_options(start: argparse.ArgumentParser) -> None:
+    """`serve`'s own options: how the Host runs, and the person's yes to separate research."""
+    start.add_argument("--stop-on-stdin", action="store_true")
+    start.add_argument("--detach", action="store_true")
+    start.add_argument("--no-browser", action="store_true")
+    start.add_argument("--new-research", action="store_true", help=NEW_RESEARCH_HELP)
+    start.add_argument("--port", type=int, default=0)
+
+
 def _first_use_options(child: argparse.ArgumentParser) -> None:
     """`first-use prepare`'s own options: the person's sentence and date, and their yes."""
     child.add_argument(
@@ -397,12 +413,7 @@ def _first_use_options(child: argparse.ArgumentParser) -> None:
         help="The date the sentence names for the positions (YYYY-MM-DD), as you read it; "
         "they are entered on the first session on or after it, decided at the close before.",
     )
-    child.add_argument(
-        "--new-research",
-        action="store_true",
-        help="Only on the person's yes to separate new research: open a first use even "
-        "where the project's first use is complete (its daily road is offered otherwise).",
-    )
+    child.add_argument("--new-research", action="store_true", help=NEW_RESEARCH_HELP)
 
 
 def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> None:
@@ -613,10 +624,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
         dest="noun", required=True, metavar="<object>", help="One of the objects below."
     )
     start = nouns.add_parser("serve", description="Start the Local Web Host on this workspace.")
-    start.add_argument("--stop-on-stdin", action="store_true")
-    start.add_argument("--detach", action="store_true")
-    start.add_argument("--no-browser", action="store_true")
-    start.add_argument("--port", type=int, default=0)
+    _serve_options(start)
     whole = nouns.add_parser(
         "request",
         description="Send one whole request document, or one next request of a saved answer.",
@@ -1883,7 +1891,7 @@ def _command(
                 str(args.port),
                 *(
                     "--" + switch.replace("_", "-")
-                    for switch in ("no_browser", "stop_on_stdin", "detach")
+                    for switch in ("no_browser", "stop_on_stdin", "detach", "new_research")
                     if getattr(args, switch)
                 ),
             ]

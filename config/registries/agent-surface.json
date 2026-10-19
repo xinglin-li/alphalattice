@@ -38401,6 +38401,12 @@
       "required": false,
       "type": null
     },
+    "option:serve/--new-research": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
     "option:serve/--no-browser": {
       "choices": null,
       "nargs": 0,
