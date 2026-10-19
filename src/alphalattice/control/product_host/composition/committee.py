@@ -1190,7 +1190,8 @@ def _rule_words(
     subject = str(size) if rule == "AGENDA" else ", ".join(_typed(floor, message)[0])
     words: dict[str, Any] = {"detail": RULE_WORDS[rule].replace("{subject}", subject), "rule": rule}
     if rule == "AGENDA":
-        words["agenda_size"] = size
+        bounded = agenda_view(floor)["agenda"] if floor else {"aliases": [], "raised": []}
+        words |= {"agenda_size": size, "agenda_points": [*bounded["aliases"], *bounded["raised"]]}
         if not corrected:
             words["author_revision_fields"] = ["committee_message.text"]
     if rule in {"NUMBER", "TARGET"} and floor is not None:  # what may be named, by alias

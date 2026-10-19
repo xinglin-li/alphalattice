@@ -359,10 +359,12 @@ def test_a_populated_floor_bounds_stances_and_discloses_every_other_point(tmp_pa
         )
         refused = send(given)
         assert refused["failure_code"] == "committee.message_refused:AGENDA"
-        if "text" in fields:
-            assert "corrected" not in refused["next_requests"]
+        if "text" in fields:  # nothing the Host can correct, so it names the points (0.2.1)
             assert refused["author_revision_fields"] == ["committee_message.text"]
-            assert set(refused["next_requests"]) == {"floor", "schema"}
+            assert set(refused["next_requests"]) == {"floor", "schema"}, refused
+            assert refused["agenda_points"] == agenda["aliases"]
+        else:  # a target or a fact-keyed position the Host drops: the message, ready to send
+            assert refused["next_requests"]["corrected"]["committee_message"]["text"]
     # regression (a fresh-folder first use): a point typed by its kind, or a holding by its name,
     # is offered the same message with their aliases, not a bare TARGET refusal.
     point, holding = floor.opened["tension_points"][0], floor.opened["holdings"][0]

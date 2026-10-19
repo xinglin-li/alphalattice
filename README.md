@@ -282,8 +282,8 @@ people using AlphaLattice decide what comes after 0.5.
 [Open an issue](https://github.com/xinglin-li/alphalattice/issues) with the command
 you were running, what you expected and the answer you received. Redact private
 data and credentials. For proposed code changes, follow
-[CONTRIBUTING](CONTRIBUTING.md), including its current contribution-opening
-conditions and agreement.
+[CONTRIBUTING](CONTRIBUTING.md): open an issue first for nontrivial work, and sign
+the contributor agreement on your first pull request.
 For a security vulnerability, report privately as described in [SECURITY](SECURITY.md).
 
 ## About
@@ -296,7 +296,7 @@ agent, the software and the person share the work.
 Created and maintained by Xinglin Li: [LinkedIn](https://www.linkedin.com/in/xinglin-li-381571139/)
 or [xinglin789@outlook.com](mailto:xinglin789@outlook.com).
 See [governance](GOVERNANCE.md) for project decisions and contribution credit,
-and [contributing](CONTRIBUTING.md) for the opening condition, agreement and workflow.
+and [contributing](CONTRIBUTING.md) for the agreement and workflow.
 
 ## Verify a source checkout
 

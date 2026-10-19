@@ -183,7 +183,7 @@
 
 ## 告诉我们你在哪里遇到了问题
 
-[提交 issue](https://github.com/xinglin-li/alphalattice/issues)，附上运行的命令、预期行为和收到的回答。请隐去私人数据与凭据。提议修改代码前，请遵循 [CONTRIBUTING](CONTRIBUTING.md)，包括当前开放贡献的条件和协议。安全漏洞请按 [SECURITY](SECURITY.md) 的说明私下报告。
+[提交 issue](https://github.com/xinglin-li/alphalattice/issues)，附上运行的命令、预期行为和收到的回答。请隐去私人数据与凭据。欢迎贡献代码：较大的改动请先开 issue 讨论范围，第一次提交 PR 时需在线签署贡献者协议，详见 [CONTRIBUTING](CONTRIBUTING.md)。安全漏洞请按 [SECURITY](SECURITY.md) 的说明私下报告。
 
 <a id="about"></a>
 
@@ -193,7 +193,7 @@
 
 [设计原则](docs/public-source/design-principles.md)解释了代理、软件和用户如何分工。
 
-由 Xinglin Li 创建并维护：[LinkedIn](https://www.linkedin.com/in/xinglin-li-381571139/) 或 [xinglin789@outlook.com](mailto:xinglin789@outlook.com)。项目决策和贡献署名见[治理说明](GOVERNANCE.md)，开放贡献的条件、协议与流程见[贡献指南](CONTRIBUTING.md)。
+由 Xinglin Li 创建并维护：[LinkedIn](https://www.linkedin.com/in/xinglin-li-381571139/) 或 [xinglin789@outlook.com](mailto:xinglin789@outlook.com)。项目决策和贡献署名见[治理说明](GOVERNANCE.md)，贡献协议与流程见[贡献指南](CONTRIBUTING.md)。
 
 <a id="verify-a-source-checkout"></a>
 

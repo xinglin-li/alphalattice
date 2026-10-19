@@ -7356,7 +7356,7 @@ window.ALPHA_ZH = {
   "Raised by PM: {points}": "由主代理提请讨论：{points}",
   "{n} agenda points; {below} below the agenda line, no stance required.": "议程包含 {n} 个议题；{below} 个议题位于议程线以下，无需表态。",
   "Affected holding weight, then adverse count, then original alias.": "按受影响持仓权重、负面事项数量、原始别名依次排序。",
-  "This message's positions do not fit the agenda of {subject} points: key positions by agenda point or holding aliases, never by fact aliases, which are cited in the text. The PM may raise one below-line point through a REPLY's positions; other messages name only agenda or raised points. Send the offered correction, or revise the named text field.": "此消息的立场不符合 {subject} 个议题的议程：立场以议题别名或持仓别名为键，绝不以事实别名为键，事实在正文中引用。PM 可通过一条回应的立场提请讨论一个议程线以下的议题；其他消息只能指明议程内或已提请的议题。请发送答复中提供的更正，或修改所指明的文本字段。",
+  "This message's positions do not fit the agenda of {subject} points: key positions by agenda point or holding aliases, never by fact aliases, which are cited in the text. The PM may raise one below-line point through a REPLY's positions; other messages name only agenda or raised points, which `agenda_points` lists. Send the offered correction, or revise the named text field.": "此消息的立场不符合 {subject} 个议题的议程：立场以议题别名或持仓别名为键，绝不以事实别名为键，事实在正文中引用。PM 可通过一条回应的立场提请讨论一个议程线以下的议题；其他消息只能指明议程内或已提请的议题（即 `agenda_points` 所列）。请发送答复中提供的更正，或修改所指明的文本字段。",
   "`committee_agenda_limit` must be a strict integer from 1 through 24. Omit the field to use 12, or correct the workspace declaration and retry.": "`committee_agenda_limit` 必须是 1 到 24 之间的严格整数。省略此字段将使用 12，或修正工作空间声明后重试。",
   "Already applied": "已应用",
   "Already prepared": "已准备",

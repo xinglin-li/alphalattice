@@ -63,8 +63,8 @@ RULE_WORDS: Final = {
     "AGENDA": "This message's positions do not fit the agenda of {subject} points: key positions "
     "by agenda point or holding aliases, never by fact aliases, which are cited in "
     "the text. The PM may raise one below-line point through a REPLY's positions; other messages "
-    "name only agenda or raised points. Send the offered correction, or revise the named text "
-    "field.",
+    "name only agenda or raised points, which `agenda_points` lists. Send the offered correction, "
+    "or revise the named text field.",
 }
 """Each floor rule's own words, as its refusal says them."""
 

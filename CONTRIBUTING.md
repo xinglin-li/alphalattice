@@ -1,11 +1,11 @@
 # Contributing to AlphaLattice
-Date: 2026-10-08
+Date: 2026-10-17
 
-contributions open once the CLA bot is active
-
-The maintainer must also complete the contribution infrastructure and repository
-settings before announcing that contributions are open. See [governance](GOVERNANCE.md)
-for final authority, contribution credit and maintainer permissions.
+Contributions are open. Pull requests to `main` need the public checks to pass and
+the maintainer's review; your first pull request asks you to sign the
+[Contributor License Agreement](CLA.md) through CLA Assistant. See
+[governance](GOVERNANCE.md) for final authority, contribution credit and maintainer
+permissions. Issues labelled `good first issue` are a good place to start.
 
 ## Propose a change
 
