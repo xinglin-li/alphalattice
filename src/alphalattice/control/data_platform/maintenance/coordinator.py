@@ -922,11 +922,9 @@ class WorkspaceMaintenanceCoordinator:
                 )
             active_panel = self.panel_state.active_feature_panel(request.market_profile_id)
             # The disclosure is sealed into the Panel at publication, so one published before the
-            # admission reads unqualified: republish from the Feature rows, no rebuild.
-            # Only while the Panel still answers for the current manifest: an
-            # admission that derives a new child revision leaves the Panel stale,
-            # and rebuilding it against that revision belongs to the feature
-            # phase below, which already plans a panel_binding_change.
+            # admission reads unqualified: republish from the Feature rows, no rebuild. Only while
+            # the Panel answers for the current manifest: a new child revision leaves it stale for
+            # the feature phase below, which plans a panel_binding_change.
             if (
                 active_panel is not None
                 and self.snapshot_publisher is not None
@@ -1186,12 +1184,12 @@ class WorkspaceMaintenanceCoordinator:
                 effect_receipts=(handed_off,) if handed_off else None,
             )
         if needs_feature_initialization and sector_available:
-            # U0's baseline qualification answers from computed base values.
-            # When an earlier build of this first use (refused at its Panel, or over a membership
-            # governance replaced) materialized every candidate's as-of row, the judgement is made
-            # here, before a Panel is composed for a membership it would leave; an exclusion is
-            # taken from a row only while its materialization still applies to current inputs,
-            # else the build judges, as before. Nothing is published before the judgement.
+            # U0's baseline qualification answers from computed base values. When an earlier build
+            # of this first use (refused at its Panel, or over a membership governance replaced)
+            # materialized every candidate's as-of row, it is judged here, before a Panel is
+            # composed for a membership it would leave; a row excludes only while its
+            # materialization applies to current inputs, else the build judges. Nothing is
+            # published before the judgement.
             qualification = self._qualify_features_for_membership(
                 request=request, observed_at=now, only_when_materialized=True
             )
@@ -2131,12 +2129,10 @@ class WorkspaceMaintenanceCoordinator:
     ) -> CurrentUniverseMaintenance:
         """The maintenance runner for this cycle, kept across its bounded runs.
 
-        A runner holds no per-run state; everything it advances is durable
-        listing state it re-reads on every run. Keeping the instance lets its
-        idempotent admission run once per process instead of once per listing.
-        Any change in what identifies the run -- membership, target session,
-        authorized or required listings, the transport budget -- builds a new
-        runner, exactly as before.
+        A runner holds no per-run state (it re-reads durable listing state each run), so
+        keeping it runs its idempotent admission once per process. Any change in what
+        identifies the run (membership, target session, authorized or required listings,
+        transport budget, the data rule's precision) builds a new runner.
         """
 
         key: tuple[object, ...] = (
@@ -2148,6 +2144,7 @@ class WorkspaceMaintenanceCoordinator:
             transport_workers,
             history_start,
             tuple(sorted((retry_grants or {}).items())),
+            getattr(self.diagnose, "adjusted_tolerance", 0.0),
         )
         if self._maintenance_runner is not None and self._maintenance_runner[0] == key:
             return self._maintenance_runner[1]
@@ -2170,6 +2167,7 @@ class WorkspaceMaintenanceCoordinator:
             authorization_identity_listing_ids=frozenset(requested_full_listing_ids),
             retry_grants=dict(retry_grants or {}),
             max_workers=transport_workers,
+            adjusted_tolerance=getattr(self.diagnose, "adjusted_tolerance", 0.0),
             mutation_gate=self.mutation_gate,
             progress_sink=self.feature_foundation.progress_sink,
         )
@@ -2183,6 +2181,8 @@ class WorkspaceMaintenanceCoordinator:
         request: WorkspaceMaintenanceRequest,
         observed_at: datetime,
     ) -> MarketDataChangeSet:
+        if kept := getattr(self.diagnose, "kept", None):
+            kept(documents, self.manifest.listings)
         changes: list[ListingMarketDataChange] = []
         receipts: list[str] = []
         for item in documents:
@@ -2677,8 +2677,8 @@ class WorkspaceMaintenanceCoordinator:
         # receipt, ``latest_action_audit_receipts``) and the link sealed for this session in
         # maintenance's scope (a rolling window on an ordinary day, from the change document or
         # the store). The adjusted-close diagnostic is judged over both (the anchor keeps an old
-        # mismatch visible, the link a fresh one), and both governance passes read the same two
-        # receipts, so a listing's evidence identity does not move between them.
+        # mismatch visible, the link a fresh one); both governance passes read the same two
+        # receipts, so its evidence identity does not move between them.
         listing_ids = tuple(listing.listing_id for listing in quality_manifest.listings)
         # One set-scoped read for the whole manifest, then one evaluation per
         # listing over its slice: the same rows, order and evidence identity

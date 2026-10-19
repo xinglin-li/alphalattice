@@ -28,7 +28,14 @@ from alphalattice.foundation.feature_engine.producers.factors.session_observatio
     session_observation_factor_specs,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.investment.alpha_research.experiments.development_contracts import (
+    seal_current_contract,
+)
+from alphalattice.investment.alpha_research.publication import artifacts
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
+from alphalattice.investment.alpha_research.publication.contracts import (
+    FrozenScoreObservationSnapshot,
+)
 from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT
 from tests.researcher_methodology_surface.session_fixtures import (
     offline_execution_environment,
@@ -471,3 +478,55 @@ def test_a_head_without_listing_proofs_keeps_its_seal_and_reuses_whole(daily_wor
     assert history is not None and history[0] == head
     appended = _capture(daily_workspace, LAST, WIDE[:1], history)
     assert appended.reused_history_hash == head.head_hash and not appended.restated_listing_ids
+
+
+def _legacy(store, snapshot):
+    """The record the release before blocks wrote: one whole npz and no block list."""
+    record = snapshot.model_dump(mode="json", exclude={"snapshot_hash", "array_blocks"})
+    legacy = seal_current_contract(
+        FrozenScoreObservationSnapshot,
+        {**record, "array_content_hash": snapshot.array_files[0]},
+        "snapshot_hash",
+    )
+    store._publish("frozen-observation-snapshots", legacy, "snapshot_hash")
+    return legacy
+
+
+@pytest.mark.parametrize("upgraded", [False, True])
+def test_three_consecutive_days_write_only_their_last_frozen_block(
+    daily_workspace, monkeypatch, upgraded
+):
+    store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
+    folder = store.root / "current/frozen-observation-arrays"
+    days = (date(2026, 7, 29), date(2026, 7, 30), date(2026, 7, 31))
+    written = []
+    for day in days:
+        before = set(folder.glob("*.bin")) if folder.exists() else set()
+        source = build_workspace_score_inputs(
+            daily_workspace,
+            formation=day,
+            observed_at=OBSERVED_AT,
+            expected_source_hash=workspace_score_source_identity(daily_workspace),
+            ordered_feature_ids=(),
+        )
+        # Upgraded: the first day's snapshot is a stored whole-history file, as before blocks.
+        legacy = upgraded and day == days[0]
+        with monkeypatch.context() as patch:
+            if legacy:
+                patch.setattr(artifacts, "FROZEN_BLOCK_SESSIONS", len(source.formation_sessions))
+            snapshot = store.publish_frozen_observations(source, disposition="RECORDED_INPUT_QA")
+        if legacy:
+            snapshot = _legacy(store, snapshot)
+            assert snapshot.array_blocks is None and "array_blocks" not in snapshot.model_dump()
+            store.verify_frozen_observations(snapshot.snapshot_hash)
+        written.append(set(folder.glob("*.bin")) - before)
+        loaded = store.load_frozen_observations(snapshot.snapshot_hash)
+        for name in ("open", "close", "volume", "market_context_values", "sector_trend_values"):
+            assert getattr(loaded, name).tobytes() == getattr(source, name).tobytes()
+    # The first day of blocks (the upgrade's first day, after a stored whole file) writes every
+    # block once; each later day only its last, the rest shared: about one block's bytes.
+    first = int(upgraded)
+    size = [sum(path.stat().st_size for path in w) for w in written]
+    assert len(written[first]) == len(snapshot.array_files)
+    assert [len(w) for w in written[first + 1 :]] == [1] * (2 - first)
+    assert max(size[first + 1 :]) * len(snapshot.array_files) <= 2 * size[first]

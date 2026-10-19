@@ -12797,6 +12797,125 @@
    "successor": "7d6bbd993eb050af41f1043b08ae5a32dc2ef2d064156181c0edbbe7a8698c47",
    "change": "the stored post-observed claim keeps its 0.2.0 words",
    "reason": "At the Lead's review: POST_OBSERVED_QA_NOT_TIMELY_ADVICE, which every 0.2.0 publication carries, is worded as in 0.2.0 (research positions, not trade advice) instead of replayed; only TIMELY_RESEARCH_NOT_TRADE_ADVICE has new words. Report words only; no claim selection, sealed value or position changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "8d450f9c579a6e251b3af254a9fb3245af2edb778ce10f100683411c5a8e1d8f",
+   "successor": "26e65ce55a923b308dcc49259f903c80e0967e3b1f924c1c6023cb0d6c8c5a47",
+   "change": "the data rule declares a precision for stored adjusted closes",
+   "reason": "The workspace data rule gains adjusted_precision (relative, default 1e-6, identity-bearing; raw closes stay bit-equal): a provider's re-sent adjusted close for a stored session within it leaves the stored value standing instead of restating the listing's whole history, and each listing kept is recorded on the goal and disclosed with its largest relative difference; past the bound the series restates as before. The adjusted-return comparison moved unchanged into the action audit module. On the plant replay every stored table, the published book and every frozen snapshot are equal before and after. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "f0c3627f745a24d9d890e9b41fac8530712601f44d2e93ea99c60874c4f259c7",
+   "successor": "87d9d0d79fd73b85c29c49ae5bb1c0a8e0e8ae5b11fe33adb3c00ea04d8afbbb",
+   "change": "the data rule declares a precision for stored adjusted closes",
+   "reason": "The workspace data rule gains adjusted_precision (relative, default 1e-6, identity-bearing; raw closes stay bit-equal): a provider's re-sent adjusted close for a stored session within it leaves the stored value standing instead of restating the listing's whole history, and each listing kept is recorded on the goal and disclosed with its largest relative difference; past the bound the series restates as before. The adjusted-return comparison moved unchanged into the action audit module. On the plant replay every stored table, the published book and every frozen snapshot are equal before and after. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "2e0dd1a990c79ad90b1148f25b7caa0b78364777c1460806b8d6cb146dd22b74",
+   "successor": "27da6e182c8f711a8bd127545007d3058e29e3cdb0e086c3378d17f1010079a8",
+   "change": "the data rule declares a precision for stored adjusted closes",
+   "reason": "The workspace data rule gains adjusted_precision (relative, default 1e-6, identity-bearing; raw closes stay bit-equal): a provider's re-sent adjusted close for a stored session within it leaves the stored value standing instead of restating the listing's whole history, and each listing kept is recorded on the goal and disclosed with its largest relative difference; past the bound the series restates as before. The adjusted-return comparison moved unchanged into the action audit module. On the plant replay every stored table, the published book and every frozen snapshot are equal before and after. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "a7e231879770d0a90232d22b72679a3815d1fbf8cd6182f57915292a125f0173",
+   "successor": "bd4fea984c1645e5db7bd447d5d326ff2e7e17ece26d3c5bc09add72ee68a3af",
+   "change": "the data rule declares a precision for stored adjusted closes",
+   "reason": "The workspace data rule gains adjusted_precision (relative, default 1e-6, identity-bearing; raw closes stay bit-equal): a provider's re-sent adjusted close for a stored session within it leaves the stored value standing instead of restating the listing's whole history, and each listing kept is recorded on the goal and disclosed with its largest relative difference; past the bound the series restates as before. The adjusted-return comparison moved unchanged into the action audit module. On the plant replay every stored table, the published book and every frozen snapshot are equal before and after. No value changes."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "19df5284007339f5a19d91b557387edbc8a72b183b7c8d9325eddbb32a4ad817",
+   "successor": "f3c7afba1e0803226c9d2d9f0c579253f0f80a4bc4e90d17113a783a2bd997fa",
+   "change": "the data rule declares a precision for stored adjusted closes",
+   "reason": "The workspace data rule gains adjusted_precision (relative, default 1e-6, identity-bearing; raw closes stay bit-equal): a provider's re-sent adjusted close for a stored session within it leaves the stored value standing instead of restating the listing's whole history, and each listing kept is recorded on the goal and disclosed with its largest relative difference; past the bound the series restates as before. The adjusted-return comparison moved unchanged into the action audit module. On the plant replay every stored table, the published book and every frozen snapshot are equal before and after. No value changes."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "a17144fe83a530f0f18fed58424104f6a590a785fd7f6fb881c8e7380f729b62",
+   "successor": "761a451cbe8d73eeff9f8dd0289b2f1bb4b8fd90917fda258a6d2e9154569d0a",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "d0464ecb9551d69fd56ee49063207f2c5e31419025391af127d8fb9caf8e8172",
+   "successor": "fc8c4325c7752680512789ab186d1f366470a197afde25d02dbde0468d7604a1",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "26e65ce55a923b308dcc49259f903c80e0967e3b1f924c1c6023cb0d6c8c5a47",
+   "successor": "a871c16fda42cbb7ed7471bf05a6172be87be1e7d6f83c67f0071f80239b03d1",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "7d6bbd993eb050af41f1043b08ae5a32dc2ef2d064156181c0edbbe7a8698c47",
+   "successor": "d14629e703f437b2ebf32f8d1d4f34e99dd7383cdfca72a2e99761c6317f2790",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "127aa8765d84f78878cdec76afa304063793ad778ab7f0584270abf42406d79e",
+   "successor": "fe86c8c4f12afb802d9e29e0680bb3581fc55ec6272c3f31a9ac7fea512e3b04",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "1dbdc845b8c2337185c863f61720b315bd8ca590f4b2e178e01b562cfaafb0ef",
+   "successor": "8e23d01456a4e2bc7f8b674053ea0fa9cebc44549a8c81f1c9b815a9609d3f9b",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "8f8cb068d73896253b868fe63a6ed79a7147a5f30575dddba504ddcbb059642e",
+   "successor": "c8fac2556f451f7adae4cc028e7ca16d7e9dc49d6f729dea68afeaa510a06454",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "27da6e182c8f711a8bd127545007d3058e29e3cdb0e086c3378d17f1010079a8",
+   "successor": "d68a2b58df58cc4901307efa789d9801166e6a80a204a7b8ab3e61a73beb6168",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "bd4fea984c1645e5db7bd447d5d326ff2e7e17ece26d3c5bc09add72ee68a3af",
+   "successor": "2e41d4968c085e50e2bea88412b9c027b4af7a3031ff5cf1555f41e317a9fec6",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "a966cbfa67ee32b04389bf3e2002dbfe4052518d6698aa455f80a5b173fefcba",
+   "successor": "f691dba7c867cac895c6c85afa12ed1df49308ed647996a77e0cabc9f9111a8c",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "a966cbfa67ee32b04389bf3e2002dbfe4052518d6698aa455f80a5b173fefcba",
+   "successor": "f691dba7c867cac895c6c85afa12ed1df49308ed647996a77e0cabc9f9111a8c",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "255312306f48d8d294c11cf2dc741a6fe18127d1274fc83d6220c97cea313c96",
+   "successor": "52bbd45bb6f8fbc5ed991b45ac8dee897a477ac68e357be5fa098986ea0dedc3",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
   }
  ]
 }

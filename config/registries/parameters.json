@@ -4476,7 +4476,7 @@
 "class": "LIMIT",
 "count": 1
 },
-"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::_provider_adjusted_return_changes::1e-12": {
+"src/alphalattice/foundation/market_data_ops/storage/action_audit.py::adjusted_return_changes::1e-12": {
 "class": "METHOD",
 "count": 1
 },
@@ -11066,6 +11066,14 @@
 },
 "src/alphalattice/oversight/model_validation/protected_gate.py::claim_hash::64": {
 "class": "METHOD",
+"count": 1
+},
+"src/alphalattice/investment/alpha_research/publication/artifacts.py::FROZEN_BLOCK_SESSIONS::21": {
+"class": "LIMIT",
+"count": 1
+},
+"src/alphalattice/investment/alpha_research/publication/artifacts.py::_packed_block::1980": {
+"class": "LIMIT",
 "count": 1
 }
 },

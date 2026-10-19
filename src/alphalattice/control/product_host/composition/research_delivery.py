@@ -307,10 +307,12 @@ def export_update_delivery(
             held = records.get(str(cast(dict[str, object], owner or {}).get("goal_id")), ())
             task = str(request.update_task_id)
             cases, audits = goal_store.rule_cases(task, held), goal_store.rule_audits(task, held)
-            kept = goal_store.rule_held(task, held)
+            kept, stood = goal_store.rule_held(task, held), goal_store.rule_kept(task, held)
         else:
-            cases, audits, kept = floor.rule_cases, floor.rule_audits, floor.rule_held
-        data_decisions = read_data_decisions(case_tokens=cases, audits=audits, held=kept)
+            cases, audits, kept, stood = floor.rule_cases, floor.rule_audits, floor.rule_held, ()
+        data_decisions = read_data_decisions(
+            case_tokens=cases, audits=audits, held=kept, kept=stood
+        )
     publication = readback.get("publication")
     subject = {
         "update_task_id": str(request.update_task_id),

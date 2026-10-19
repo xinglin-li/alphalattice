@@ -152,6 +152,8 @@ class CurrentUniverseMaintenance:
     retry_budget: int = 2
     full_audit_listing_ids: frozenset[str] = frozenset()
     max_workers: int = 4
+    adjusted_tolerance: float = 0.0
+    """The data rule's relative precision for stored adjusted closes observed again."""
     chunk_size: int = 25
     maximum_listing_attempts: int = 2
     full_history_escalation_listing_ids: frozenset[str] = frozenset()
@@ -898,14 +900,8 @@ class CurrentUniverseMaintenance:
         force_full_audit = False
         adjusted_return_change_sessions: set[date] = set()
         try:
-            receipt, audit_counts = yield ActionAuditObservation(
-                listing_id=item.listing_id,
-                provider=self.provider.name,
-                actions=hydration.actions,
-                adjusted_closes=hydration.adjusted_closes,
-                history_start=audit_start,
-                history_end=self.as_of_session,
-                observed_at=observed_at,
+            receipt, audit_counts = yield self._observation(
+                item, hydration, audit_start, observed_at, write_counts
             )
             adjusted_revision = self.store.provider_adjusted_revision(
                 receipt.receipt_hash, _connection=connection
@@ -1010,14 +1006,8 @@ class CurrentUniverseMaintenance:
                 receipt, audit_counts = self._mutate(
                     self.store.complete_action_audit,
                     self.manifest,
-                    ActionAuditObservation(
-                        listing_id=item.listing_id,
-                        provider=self.provider.name,
-                        actions=hydration.actions,
-                        adjusted_closes=hydration.adjusted_closes,
-                        history_start=bars[0].session_date,
-                        history_end=self.as_of_session,
-                        observed_at=observed_at,
+                    self._observation(
+                        item, hydration, bars[0].session_date, observed_at, write_counts
                     ),
                 )[0]
                 adjusted_revision = self.store.provider_adjusted_revision(receipt.receipt_hash)
@@ -1081,6 +1071,7 @@ class CurrentUniverseMaintenance:
                 mapping_revision=receipt.mapping_revision,
                 adjusted_diagnostic_max_bps=receipt.max_adjusted_close_difference_bps,
                 adjusted_return_change_sessions=tuple(sorted(adjusted_return_change_sessions)),
+                precision_kept=audit_counts.get("precision_kept"),
                 provider_policy_hash=hydration.provider_policy_hash,
                 provider_repaired_sessions=hydration.repaired_sessions,
                 sentinel_report=sentinel_report,
@@ -1133,6 +1124,29 @@ class CurrentUniverseMaintenance:
             ),
         )
 
+    def _observation(
+        self,
+        item: CurrentUniverseMaintenanceListing,
+        hydration: HydrationEvidence,
+        start: date,
+        observed_at: datetime,
+        write_counts: Mapping[str, int],
+    ) -> ActionAuditObservation:
+        """The listing's audit observation from `start`; the data rule's precision may keep
+        stored adjusted closes only while no raw bar moved."""
+        return ActionAuditObservation(
+            listing_id=item.listing_id,
+            provider=self.provider.name,
+            actions=hydration.actions,
+            adjusted_closes=hydration.adjusted_closes,
+            history_start=start,
+            history_end=self.as_of_session,
+            observed_at=observed_at,
+            adjusted_tolerance=self.adjusted_tolerance
+            if not write_counts.get("corrected")
+            else 0.0,
+        )
+
     @staticmethod
     def _change_document(
         *,
@@ -1148,6 +1162,7 @@ class CurrentUniverseMaintenance:
         mapping_revision: str,
         adjusted_diagnostic_max_bps: float | None,
         adjusted_return_change_sessions: tuple[date, ...],
+        precision_kept: float | None,
         provider_policy_hash: str | None,
         provider_repaired_sessions: tuple[date, ...],
         sentinel_report: PriceActionIntegritySentinelReport,
@@ -1186,6 +1201,8 @@ class CurrentUniverseMaintenance:
             "adjusted_return_change_sessions": [
                 item.isoformat() for item in adjusted_return_change_sessions
             ],
+            # Stored adjusted closes the provider sent again within the data rule's precision.
+            **({"adjusted_precision_kept": precision_kept} if precision_kept is not None else {}),
             "audit_scope": "FULL" if audit_start == min(after_bars) else "ROLLING",
             "history_start": min(after_bars).isoformat(),
             "history_end": max(after_bars).isoformat(),

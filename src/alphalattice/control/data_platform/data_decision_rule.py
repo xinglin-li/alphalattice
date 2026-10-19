@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import asdict
+from functools import partial
 from typing import Any, Literal, cast
 
 from pydantic import ConfigDict, Field
@@ -38,10 +39,15 @@ class DataDecisionRule:
     against the same share of names, apart. Mixed, an ordinary ex-dividend day would escalate.
     A re-raised case whose anomaly signature already carries this rule's decision holds it and
     counts toward no bound: the same evidence gets the same decision, not a new one.
+
+    `adjusted_precision` is the relative difference within which a provider's re-sent adjusted
+    close for a stored session leaves the stored value standing (raw closes unchanged): a
+    later observation does not rewrite a published session. Past it the series restates.
     """
 
     max_cases: int = Field(default=10, ge=0, strict=True)
     max_population_share: float = Field(default=0.02, ge=0, le=1, allow_inf_nan=False, strict=True)
+    adjusted_precision: float = Field(default=1e-6, ge=0, le=1e-3, allow_inf_nan=False, strict=True)
     version: Literal["data-decision-rule/1"] = "data-decision-rule/1"
 
     @property
@@ -232,8 +238,12 @@ book's update and a data update, so the same evidence gets the same decision."""
 
 AUDIT = "full_history_audit"
 """A full-history audit the rule approved, as its disclosed row names it."""
+KEPT = "adjusted_precision_kept"
+"""Stored adjusted closes the rule's precision kept, as their disclosed row names them."""
 FULL_HISTORY = "FULL_HISTORY_AUDIT"
 """The Goal entry of the rule's decision on a full-history audit, never a membership change."""
+ADJUSTED_PRECISION = "ADJUSTED_PRECISION_KEPT"
+"""The Goal entry recording listings whose stored adjusted closes stood under the precision."""
 
 
 def rule_receipt(saved: Mapping[str, Any]) -> tuple[str, str] | None:
@@ -276,6 +286,18 @@ def held_decisions(
     }
 
 
+def kept_listings(entries: Iterable[Mapping[str, Any]]) -> dict[str, tuple[str, float]]:
+    """Each listing whose stored adjusted closes stood under the rule's precision, latest first."""
+    stood: dict[str, tuple[str, float]] = {}
+    for e in entries:
+        if e.get("operation") == ADJUSTED_PRECISION and e.get("decided_by") == "RULE":
+            for listing, largest in zip(
+                e["listing_ids"], e["largest_relative_differences"], strict=True
+            ):
+                stood[str(listing)] = (str(e["rule_hash"]), float(largest))
+    return stood
+
+
 def approved_audits(entries: Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
     """The rule's audit approvals among these entries, less any its cycle did not admit."""
     last: dict[Any, Mapping[str, Any]] = {}
@@ -283,6 +305,61 @@ def approved_audits(entries: Iterable[Mapping[str, Any]]) -> list[Mapping[str, A
         if e.get("operation") == FULL_HISTORY and e.get("decided_by") == "RULE":
             last[e.get("audit_id")] = e
     return [e for e in last.values() if e.get("status") == "DECIDED_BY_RULE"]
+
+
+def attach(
+    decide: Any,
+    rule: DataDecisionRule,
+    live: Callable[[], Any],
+    entries: Callable[[], Iterable[Mapping[str, Any]]],
+    record: Callable[[dict[str, Any]], None],
+    task: str,
+) -> Callable[..., Any]:
+    """Give a Task's decide its audits, its precision and its record of closes that stood."""
+    decide.audit = partial(audit, rule, live, entries, record, task)
+    decide.adjusted_tolerance = rule.adjusted_precision
+    decide.kept = partial(kept, rule, live, record)
+    return cast(Callable[..., Any], decide)
+
+
+def kept(
+    rule: DataDecisionRule,
+    live: Callable[[], Any],
+    record: Callable[[dict[str, Any]], None],
+    documents: Iterable[Mapping[str, Any]],
+    manifest_listings: Iterable[Any],
+) -> None:
+    """Record the listings whose stored adjusted closes stood under the rule's precision.
+
+    Each carries its symbol and the largest relative difference the provider sent again, as
+    its maintenance change document records it.
+    """
+    symbols = {item.listing_id: item.symbol for item in manifest_listings}
+    listings = {
+        str(item["listing_id"]): (
+            symbols.get(str(item["listing_id"]), str(item["listing_id"])),
+            float(item["adjusted_precision_kept"]),
+        )
+        for item in documents
+        if "adjusted_precision_kept" in item
+    }
+    goal = live()
+    if goal is None or not listings:
+        return
+    ordered = sorted(listings)
+    record(
+        {
+            "operation": ADJUSTED_PRECISION,
+            "decided_by": "RULE",
+            "status": "KEPT_BY_RULE",
+            "listing_ids": ordered,
+            "symbols": [listings[item][0] for item in ordered],
+            "largest_relative_differences": [listings[item][1] for item in ordered],
+            "adjusted_precision": rule.adjusted_precision,
+            "rule_hash": rule.rule_hash,
+            "goal_hash": goal.goal_hash,
+        }
+    )
 
 
 def audit(

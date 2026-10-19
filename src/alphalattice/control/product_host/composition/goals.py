@@ -30,7 +30,7 @@ from alphalattice.control.data_platform.data_decision_rule import (
     DataDecisionRule,
     held_decisions,
 )
-from alphalattice.control.data_platform.data_decision_rule import audit as audit_rule
+from alphalattice.control.data_platform.data_decision_rule import attach as attach_rule
 from alphalattice.control.product_host.composition.first_use_road import (
     daily_road,
     first_use_command,
@@ -820,8 +820,8 @@ class GoalApplication:
             return rule.submission(case, option, str(goal.goal_id), authority=authority)
 
         own = {"task_id": str(task_id), "delegation": delegation, "authority": authority}
-        decide.audit = partial(  # type: ignore[attr-defined]
-            audit_rule,
+        return attach_rule(
+            decide,
             rule,
             live,
             partial(self.store.attributed, goal.goal_id),
@@ -830,7 +830,6 @@ class GoalApplication:
             ),
             str(task_id),
         )
-        return decide
 
     def resume_decided(
         self,

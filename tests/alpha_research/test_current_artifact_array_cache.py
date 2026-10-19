@@ -140,9 +140,7 @@ def test_immutable_artifacts_reuse_across_opted_in_scopes_with_unbroken_os_lease
     load_calls = 0
     watched_paths = {
         (
-            store.root
-            / "current/frozen-observation-arrays"
-            / f"{observation.array_content_hash}.bin"
+            store.root / "current/frozen-observation-arrays" / f"{observation.array_files[-1]}.bin"
         ).resolve(): "arrays",
         (
             store.root / "current/frozen-feature-arrays" / f"{preparation.array_content_hash}.bin"
@@ -282,7 +280,7 @@ def test_observation_admission_proof_refuses_current_bytes_tampered_after_verifi
     with verified_model_read_scope(reuse_verified=True):
         store.verify_frozen_observations(observation.snapshot_hash)
 
-    path = store._path("current/frozen-observation-arrays", observation.array_content_hash, "bin")
+    path = store._path("current/frozen-observation-arrays", observation.array_files[-1], "bin")
     before = path.stat()
     damaged = bytearray(path.read_bytes())
     damaged[len(damaged) // 2] ^= 1
@@ -301,7 +299,7 @@ def test_observation_admission_proof_skips_unchanged_packed_bytes_in_a_new_scope
     current_artifacts, monkeypatch
 ):
     store, observation, _ = current_artifacts
-    path = store._path("current/frozen-observation-arrays", observation.array_content_hash, "bin")
+    path = store._path("current/frozen-observation-arrays", observation.array_files[-1], "bin")
     open_file = Path.open
     reads = 0
 
@@ -322,7 +320,7 @@ def test_observation_admission_proof_skips_unchanged_packed_bytes_in_a_new_scope
 def test_cached_payload_read_still_refuses_tampering_with_restored_mtime(kind, current_artifacts):
     store, observation, preparation = current_artifacts
     category, identity = (
-        ("current/frozen-observation-arrays", observation.array_content_hash)
+        ("current/frozen-observation-arrays", observation.array_files[-1])
         if kind == "observation"
         else ("current/frozen-feature-arrays", preparation.array_content_hash)
     )

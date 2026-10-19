@@ -198,11 +198,19 @@ class FrozenScoreObservationSnapshot(_Contract):
     """The reclassifications its sessions read beside the current map (V346); absent while
     none is in force, so such a snapshot is what it was."""
     array_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    array_blocks: tuple[str, ...] | None = Field(default=None, exclude_if=lambda v: v is None)
+    """The arrays' session blocks, each a packed file, when stored in blocks; then
+    array_content_hash is their list's hash. Absent, one file holds the whole history."""
     source_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     ordered_formula_ids: tuple[str, ...] = Field(default=(), exclude_if=lambda v: not v)
     reference_eligibility_recorded: bool = Field(default=False, exclude_if=lambda v: not v)
     nominal_population_recorded: bool = Field(default=False, exclude_if=lambda v: not v)
     snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @property
+    def array_files(self) -> tuple[str, ...]:
+        """The packed files holding the arrays, in session order."""
+        return self.array_blocks if self.array_blocks is not None else (self.array_content_hash,)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> FrozenScoreObservationSnapshot:
@@ -212,6 +220,10 @@ class FrozenScoreObservationSnapshot(_Contract):
             or len(self.ordered_listing_ids) != len(set(self.ordered_listing_ids))
             or set(self.sector_by_listing_id) != set(self.ordered_listing_ids)
             or self.ordered_formula_ids != tuple(sorted(set(self.ordered_formula_ids)))
+            or (
+                self.array_blocks is not None
+                and self.array_content_hash != canonical_hash(self.array_blocks)
+            )
             or self.snapshot_hash
             != canonical_hash(self.model_dump(mode="json", exclude={"snapshot_hash"}))
         ):

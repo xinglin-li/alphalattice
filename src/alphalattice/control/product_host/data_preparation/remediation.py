@@ -20,6 +20,7 @@ from alphalattice.control.data_platform.contracts import (
 )
 from alphalattice.control.data_platform.data_decision_rule import (
     AUDIT,
+    KEPT,
     QUARANTINE,
     RETAIN,
     DataDecisionRule,
@@ -175,6 +176,7 @@ _RULE_CAVEATS: Final = {
     RETAIN: "An unexplained one-day move is kept as reported; it may be a data error.",
     QUARANTINE: "Set aside until its next recheck; the original inputs are kept.",
     AUDIT: "Its provider back-adjusted its history; its whole history was audited before use.",
+    KEPT: "Its provider re-sent stored adjusted closes within the rule's precision; they stand.",
 }
 """What each choice of the Host's rule means for the research, said beside the listing."""
 
@@ -427,6 +429,7 @@ class WorkspaceDataIssueApplication:
         case_tokens: set[str] | None = None,
         audits: Sequence[tuple[str, str]] | None = None,
         held: Collection[str] | None = None,
+        kept: Sequence[tuple[str, str, float]] = (),
     ) -> dict[str, Any] | None:
         """The data issues the Host's rule decided, in one line.
 
@@ -476,7 +479,7 @@ class WorkspaceDataIssueApplication:
             decided += self._rule_rows(case, choice, symbols, active, seen)
         configured = self._configured()
         audit_rows, audit_rules, held, unreadable = self._audit_rows(
-            choices, (audits, held), symbols, configured
+            choices, (audits, held, kept), symbols, configured
         )
         decided, rules = decided + audit_rows, rules | audit_rules
         if not (decided or unreadable):
@@ -503,24 +506,33 @@ class WorkspaceDataIssueApplication:
     def _audit_rows(
         self,
         choices: Any,
-        given: tuple[Sequence[tuple[str, str]] | None, Collection[str] | None],
+        given: tuple[
+            Sequence[tuple[str, str]] | None,
+            Collection[str] | None,
+            Sequence[tuple[str, str, float]],
+        ],
         symbols: dict[str, str],
         configured: ResearchWorkspaceManifest | None,
     ) -> tuple[list[dict[str, Any]], set[str], Collection[str], list[dict[str, str]]]:
         """The rule's approved audits as disclosed rows, the rules that approved them, the cases
         that held its decision, and any Goal whose record could not be read: as given (a dated
         update's own Goal), else read from the Goals that hold the rule's decisions."""
-        audits, held, unreadable = (
+        audits, held, unreadable, kept = (
             self._rule_audits(choices, configured)
             if given[0] is None
-            else (given[0], given[1] or (), [])
+            else (given[0], given[1] or (), [], given[2])
         )
         rows = [
             {"listing_id": item, "symbol": symbols.get(item), "option_id": AUDIT}
             | {"caveat": _RULE_CAVEATS[AUDIT]}
             for item, _rule in audits
+        ] + [
+            {"listing_id": item, "symbol": symbols.get(item), "option_id": KEPT}
+            | {"largest_relative_difference": largest, "caveat": _RULE_CAVEATS[KEPT]}
+            for item, _rule, largest in kept
         ]
-        return rows, {rule for _item, rule in audits}, held, unreadable
+        rules = {rule for _item, rule in audits} | {rule for _item, rule, _ in kept}
+        return rows, rules, held, unreadable
 
     @staticmethod
     def _rule_bounds(
@@ -590,14 +602,19 @@ class WorkspaceDataIssueApplication:
 
     def _rule_audits(
         self, choices: Any, configured: ResearchWorkspaceManifest | None
-    ) -> tuple[tuple[tuple[str, str], ...], frozenset[str], list[dict[str, str]]]:
-        """The full-history audits the rule approved and the cases that held its decision, read
-        once from the Goals that hold its decisions: those its signed choices name, and the
-        open ones."""
+    ) -> tuple[
+        tuple[tuple[str, str], ...],
+        frozenset[str],
+        list[dict[str, str]],
+        tuple[tuple[str, str, float], ...],
+    ]:
+        """The full-history audits the rule approved, the cases that held its decision and the
+        listings whose stored closes stood under its precision, read once from the Goals that
+        hold its decisions: those its signed choices name, and the open ones."""
         from alphalattice.control.product_host.publication.goals import GoalStore
 
         if configured is None:
-            return (), frozenset(), []
+            return (), frozenset(), [], ()
         store = GoalStore(self.session.workspace / "artifacts", configured.workspace_id)
         named = {
             saved["receipt"]["submission"]["proposal"]["rationale"]
@@ -608,6 +625,7 @@ class WorkspaceDataIssueApplication:
         }
         pairs: set[tuple[str, str]] = set()
         held: set[str] = set()
+        stood: set[tuple[str, str, float]] = set()
         unreadable = []
         for goal in store.goal_ids():
             try:
@@ -615,10 +633,11 @@ class WorkspaceDataIssueApplication:
                     entries = store.attributed(goal)
                     pairs |= set(store.rule_audits(None, entries))
                     held |= store.rule_held(None, entries)
+                    stood |= set(store.rule_kept(None, entries))
             except ValueError as error:
                 failure = public_failure(error, "goal.attribution_invalid")
                 unreadable.append({"goal_id": str(goal), "failure_code": failure})
-        return tuple(sorted(pairs)), frozenset(held), unreadable
+        return tuple(sorted(pairs)), frozenset(held), unreadable, tuple(sorted(stood))
 
     def _escalation(
         self,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -72,6 +73,28 @@ from .workspace_history import (
     WorkspaceObservationHistoryRetention,
     _WorkspaceObservationHistoryStore,
 )
+
+FROZEN_BLOCK_SESSIONS = 21
+"""Sessions per frozen-observation block: a day rewrites its last block and shares the rest."""
+
+
+def _packed_block(arrays: Mapping[str, npt.NDArray[Any]]) -> bytes:
+    """An npz of `arrays` whose bytes depend on their values alone, so equal blocks share a file."""
+    payload = BytesIO()
+    with zipfile.ZipFile(payload, "w", zipfile.ZIP_STORED) as archive:
+        for name, values in arrays.items():
+            member = BytesIO()
+            np.lib.format.write_array(member, np.ascontiguousarray(values), allow_pickle=False)
+            archive.writestr(
+                zipfile.ZipInfo(f"{name}.npy", (1980, 1, 1, 0, 0, 0)), member.getvalue()
+            )
+    return payload.getvalue()
+
+
+def _joined(blocks: list[npt.NDArray[Any]]) -> npt.NDArray[Any]:
+    joined = np.concatenate(blocks)
+    joined.setflags(write=False)
+    return joined
 
 
 class AlphaCurrentArtifactReadbackError(AlphaDevelopmentArtifactReadbackError):
@@ -196,9 +219,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             ValueError: Existing identity-addressed payload or snapshot conflicts with this
                 publication.
         """
-        payload = BytesIO()
-        np.savez(
-            payload,
+        arrays: dict[str, npt.NDArray[Any]] = {
             **{
                 name: getattr(source, name)
                 for name in (
@@ -225,10 +246,18 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                 if source.nominal_member_count is not None
                 else {}
             ),
-        )
-        content_hash = self._publish_packed_bytes(
-            category="current/frozen-observation-arrays",
-            payload=payload.getvalue(),
+        }
+        blocks = tuple(
+            self._publish_packed_bytes(
+                category="current/frozen-observation-arrays",
+                payload=_packed_block(
+                    {
+                        name: values[start : start + FROZEN_BLOCK_SESSIONS]
+                        for name, values in arrays.items()
+                    }
+                ),
+            )
+            for start in range(0, len(source.formation_sessions), FROZEN_BLOCK_SESSIONS)
         )
         snapshot = seal_current_contract(
             FrozenScoreObservationSnapshot,
@@ -242,7 +271,8 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                     if (record := SectorHistoryRecord.of(source.sector_by_listing_id)) is not None
                     else {}
                 ),
-                "array_content_hash": content_hash,
+                "array_content_hash": canonical_hash(blocks),
+                "array_blocks": blocks,
                 "source_binding_hash": source.source_binding_hash,
                 "reference_eligibility_recorded": source.reference_eligible is not None,
                 "nominal_population_recorded": source.nominal_member_count is not None,
@@ -320,7 +350,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             ("alpha-current-observation-proof", str(self.root), content_hash),
             (
                 self._path("current/frozen-observation-snapshots", content_hash, "json"),
-                self._path("current/frozen-observation-arrays", snapshot.array_content_hash, "bin"),
+                *(
+                    self._path("current/frozen-observation-arrays", block, "bin")
+                    for block in snapshot.array_files
+                ),
             ),
             check,
             nbytes=0,
@@ -335,9 +368,16 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             content_hash=content_hash,
             identity_field="snapshot_hash",
         )
-        arrays, file_identity = self._frozen_arrays_with_identity(
-            "frozen-observation-arrays", snapshot.array_content_hash
+        parts = [
+            self._frozen_arrays_with_identity("frozen-observation-arrays", block)
+            for block in snapshot.array_files
+        ]
+        arrays = (
+            parts[0][0]
+            if len(parts) == 1
+            else {name: _joined([part[name] for part, _ in parts]) for name in parts[0][0]}
         )
+        file_identity = tuple(item for _, identity in parts for item in identity)
         identity = (
             "alpha-current",
             str(self.root),

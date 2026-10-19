@@ -8,9 +8,11 @@ force and the receipt's payload.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
+from itertools import pairwise
 from typing import Any
 
 from alphalattice.foundation.market_data_ops.publication.projection import (
@@ -40,6 +42,9 @@ class ActionAuditObservation:
     observed_at: datetime
     requested_as_of: date | None = None
     """The session the audit is for; None is its ``history_end``."""
+    adjusted_tolerance: float = 0.0
+    """The data rule's relative precision for stored adjusted closes observed again: within it
+    the stored value stands. Zero when the refresh corrected a raw bar."""
 
     @property
     def as_of(self) -> date:
@@ -128,3 +133,79 @@ def receipt_payload(
         "diagnostic_policy_hash": ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH,
         "observed_at": item.observed_at,
     }
+
+
+def adjusted_return_changes(
+    prior: Mapping[date, float],
+    current: Mapping[date, float],
+    *,
+    refreshed_from: date | None = None,
+) -> tuple[date, ...]:
+    """The sessions whose log return differs between two adjusted series.
+
+    `refreshed_from` names the first session a rolling refresh replaced, every earlier one
+    kept as it was: a return can then change only from the kept session before it, so the
+    earlier returns, which read the same two closes on both sides, are not compared.
+    """
+    if refreshed_from is not None:
+        since = max((session for session in prior if session < refreshed_from), default=None)
+        if since is not None:
+            prior = {session: close for session, close in prior.items() if session >= since}
+            current = {session: close for session, close in current.items() if session >= since}
+
+    def returns(values: Mapping[date, float]) -> dict[date, float]:
+        sessions = sorted(values)
+        return {
+            session: math.log(float(values[session]) / float(values[previous]))
+            for previous, session in pairwise(sessions)
+        }
+
+    old_returns = returns(prior)
+    new_returns = returns(current)
+    return tuple(
+        session
+        for session in sorted(set(old_returns) | set(new_returns))
+        if session not in old_returns
+        or session not in new_returns
+        or abs(new_returns[session] - old_returns[session]) > 1e-12
+    )
+
+
+def _within_precision(
+    prior: Mapping[date, float], observed: Mapping[date, float], tolerance: float
+) -> float | None:
+    """The largest relative difference of stored closes observed again, when inside `tolerance`.
+
+    None when nothing differs, when nothing is shared, or when any difference passes it.
+    """
+    shared = observed.keys() & prior.keys()
+    if tolerance <= 0.0 or not shared:
+        return None
+    largest = max(abs(observed[session] - prior[session]) / prior[session] for session in shared)
+    return largest if 0.0 < largest <= tolerance else None
+
+
+def standing(
+    prior: Mapping[date, float],
+    observed: dict[date, float],
+    added: set[date],
+    tolerance: float,
+    *,
+    replaces: bool,
+) -> tuple[dict[date, float], dict[date, float], float | None]:
+    """The closes a refresh writes, the series it leaves, and how far stored closes stood.
+
+    A stored close observed again within the data rule's precision stands: a later observation
+    does not rewrite a published session, so only the new sessions are written then. Otherwise
+    a full refresh (`replaces`) leaves its own series and a rolling one the stored one updated.
+    """
+    kept = _within_precision(prior, observed, tolerance)
+    if kept is None:
+        return observed, (dict(observed) if replaces else {**prior, **observed}), kept
+    written = {item: observed[item] for item in added}
+    return written, {**prior, **written}, kept
+
+
+def closed_years(digests: Mapping[int, str], scope_end: date) -> dict[int, str]:
+    """The digests of the years before `scope_end`'s, which a refresh renews as their facts."""
+    return {year: digest for year, digest in digests.items() if year < scope_end.year}

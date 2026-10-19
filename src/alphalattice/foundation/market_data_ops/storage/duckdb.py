@@ -12,7 +12,6 @@ from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass, fields, replace
 from datetime import UTC, date, datetime, timedelta
 from io import RawIOBase
-from itertools import pairwise
 from typing import Any, Protocol
 
 import duckdb
@@ -61,9 +60,12 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
 from alphalattice.foundation.market_data_ops.sources.sanitization import SanitizedBatch
 from alphalattice.foundation.market_data_ops.storage.action_audit import (
     ActionAuditObservation,
+    adjusted_return_changes,
     audited_natural_keys,
+    closed_years,
     mapping_in_force,
     receipt_payload,
+    standing,
 )
 
 FeaturePersistenceTimingSink = Callable[[str, float], None]
@@ -305,6 +307,8 @@ class ProviderAdjustedSeriesRevision:
     uniform_rescale: bool
     source_receipt_hash: str
     observed_at: datetime
+    precision_kept: float | None = None
+    """The largest relative difference of stored closes kept under the data rule's precision."""
 
 
 @dataclass(frozen=True)
@@ -4569,41 +4573,7 @@ class MarketDataRepository(WorkspaceRepository):
             sorted({**(held or {}), **cls._adjusted_year_digests(values)}.items())
         )
 
-    @staticmethod
-    def _provider_adjusted_return_changes(
-        prior: Mapping[date, float],
-        current: Mapping[date, float],
-        *,
-        refreshed_from: date | None = None,
-    ) -> tuple[date, ...]:
-        """The sessions whose log return differs between two adjusted series.
-
-        `refreshed_from` names the first session a rolling refresh replaced, every earlier one
-        kept as it was: a return can then change only from the kept session before it, so the
-        earlier returns, which read the same two closes on both sides, are not compared.
-        """
-        if refreshed_from is not None:
-            since = max((session for session in prior if session < refreshed_from), default=None)
-            if since is not None:
-                prior = {session: close for session, close in prior.items() if session >= since}
-                current = {session: close for session, close in current.items() if session >= since}
-
-        def returns(values: Mapping[date, float]) -> dict[date, float]:
-            sessions = sorted(values)
-            return {
-                session: math.log(float(values[session]) / float(values[previous]))
-                for previous, session in pairwise(sessions)
-            }
-
-        old_returns = returns(prior)
-        new_returns = returns(current)
-        return tuple(
-            session
-            for session in sorted(set(old_returns) | set(new_returns))
-            if session not in old_returns
-            or session not in new_returns
-            or abs(new_returns[session] - old_returns[session]) > 1e-12
-        )
+    _provider_adjusted_return_changes = staticmethod(adjusted_return_changes)
 
     def _reconcile_provider_adjusted_series(
         self,
@@ -4618,6 +4588,7 @@ class MarketDataRepository(WorkspaceRepository):
         earliest_session: date | None,
         source_receipt_hash: str,
         observed_at: datetime,
+        tolerance: float = 0.0,
     ) -> ProviderAdjustedSeriesRevision:
         """Write a refresh of the listing's adjusted series and record its revision.
 
@@ -4679,13 +4650,12 @@ class MarketDataRepository(WorkspaceRepository):
             raise ActionAuditScopeInsufficient(
                 "provider adjusted refresh omitted a canonical session"
             )
-        next_values = dict(prior)
-        next_values.update(observed)
         added_sessions = set(observed) - set(prior)
         if full_history and prior and any(session <= max(prior) for session in added_sessions):
             raise ValueError("full provider adjusted series changed its historical session set")
-        if full_history:
-            next_values = observed
+        observed, next_values, kept = standing(
+            prior, observed, added_sessions, tolerance, replaces=full_history
+        )
         prior_hash = self._provider_adjusted_series_hash(prior, held) if prior or held else None
         next_hash = self._provider_adjusted_series_hash(next_values, held)
         changed_values = sum(
@@ -4697,8 +4667,10 @@ class MarketDataRepository(WorkspaceRepository):
             )
         session_set_changed = bool(prior or held) and set(prior) != set(next_values)
         return_changes = (
-            self._provider_adjusted_return_changes(
-                prior, next_values, refreshed_from=None if full_history else min(observed)
+            adjusted_return_changes(
+                prior,
+                next_values,
+                refreshed_from=None if full_history else min(observed, default=None),
             )
             if prior
             else ()
@@ -4718,30 +4690,25 @@ class MarketDataRepository(WorkspaceRepository):
                     "updated_at": observed_at,
                 }
                 for item in ordered
+                if item.session_date in observed
             ]
         )
         connection.register(stage_name, stage)
         try:
-            connection.execute(
-                """
-                INSERT OR REPLACE INTO provider_adjusted_close_current
-                SELECT listing_id, provider, session_date, adjusted_close, payload_hash, updated_at
-                FROM provider_adjusted_close_stage
-                """
-            )
+            if observed:  # nothing to write when every observed close stood
+                connection.execute(
+                    """
+                    INSERT OR REPLACE INTO provider_adjusted_close_current
+                    SELECT listing_id, provider, session_date, adjusted_close, payload_hash,
+                           updated_at
+                    FROM provider_adjusted_close_stage
+                    """
+                )
         finally:
             connection.unregister(stage_name)
         # The closed years this refresh read, as it leaves them, are held for the next one; a
         # written year's fact it does not renew ends.
-        renewed = (
-            {
-                year: digest
-                for year, digest in self._adjusted_year_digests(next_values).items()
-                if year < scope_end.year
-            }
-            if min(next_values).year < scope_end.year
-            else {}
-        )
+        renewed = closed_years(self._adjusted_year_digests(next_values), scope_end)
         record_year_facts(
             connection,
             kind=ADJUSTED_YEAR,
@@ -4772,6 +4739,7 @@ class MarketDataRepository(WorkspaceRepository):
             "session_set_changed": session_set_changed,
             "uniform_rescale": uniform_rescale,
             "source_receipt_hash": source_receipt_hash,
+            **({"precision_kept": kept} if kept is not None else {}),
         }
         revision = ProviderAdjustedSeriesRevision(
             receipt_hash=_canonical_hash(payload),
@@ -4788,6 +4756,7 @@ class MarketDataRepository(WorkspaceRepository):
             uniform_rescale=uniform_rescale,
             source_receipt_hash=source_receipt_hash,
             observed_at=_utc_aware(observed_at),
+            precision_kept=kept,
         )
         if prior_hash != next_hash:
             connection.execute(
@@ -5382,7 +5351,7 @@ class MarketDataRepository(WorkspaceRepository):
                         }
                     ),
                 )
-                self._reconcile_provider_adjusted_series(
+                revision = self._reconcile_provider_adjusted_series(
                     connection,
                     listing_id=listing,
                     provider=item.provider,
@@ -5393,7 +5362,10 @@ class MarketDataRepository(WorkspaceRepository):
                     earliest_session=earliest[listing],
                     source_receipt_hash=receipt.receipt_hash,
                     observed_at=item.observed_at,
+                    tolerance=item.adjusted_tolerance,
                 )
+                if revision.precision_kept is not None:
+                    count = {**count, "precision_kept": revision.precision_kept}
                 receipts.append((receipt, count))
             self._insert_receipts(connection, [receipt for receipt, _ in receipts])
             if _connection is None:
