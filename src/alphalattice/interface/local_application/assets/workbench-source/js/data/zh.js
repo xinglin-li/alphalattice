@@ -298,7 +298,7 @@ window.ALPHA_ZH = {
   "maximum_tasks": "最多新任务数",
   "maximum_numerical_calls": "最多数值调用数",
   "maximum_model_calls": "最多模型调用数",
-  "Historical revision": "历史修订",
+  "A newer revision exists.": "已有较新的修订。",
   "Open current revision": "打开当前修订",
   "Research question": "研究问题",
   "Comparison design": "对照设计",

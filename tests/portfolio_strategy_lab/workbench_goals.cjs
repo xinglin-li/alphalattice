@@ -488,7 +488,7 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
   assert.equal(liveReads,8,'the pending newer bound event gets its own complete owner pass');
   assert.ok(shows('Answer during slow verification','Reference integrity checked')&&
     hides('Checking reference integrity'));
-  assert.ok(shows('Revision: 2'));assert.equal(route.get('goal'),liveId);
+  assert.ok(shows('Revision: 2')&&hides('Historical revision',c.t('A newer revision exists.')));assert.equal(route.get('goal'),liveId);
   feed={...feed,epoch:'goal-store-2',cursor:'goal-store-2:1',disposition:'RESET'};
   retained=[{ordinal:1,payload:{subject:{goal_id:'other-goal'}}}];
   await c.live.observe();assert.equal(liveReads,10,'a changed store rereads the Goal owner');
@@ -517,11 +517,13 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
   await reload.live.ensure();
   assert.equal(liveReads,16,'a cold page reads the current owner record');
   assert.ok(String(reload.live.page()).includes('Recorded while away'));
-  liveBody={...liveBody,head_hash:'completed-head',head:{goal_hash:'completed-head',state:'COMPLETE',outcome:'ACHIEVED'},goal:{...liveBody.goal,goal_hash:liveHash,revision:1}};
-  route.set('goal',liveHash);c.live.leaveReads();await c.live.ensure();
-  assert.ok(shows('Historical revision','Record complete','Achieved'));
-  assert.ok(hides('data-state="pending">Open','data-action="goal-note"'));
-  assert.ok(shows('data-action="goal-open" data-value="'+liveId+'"'));
+  liveBody={...liveBody,head_hash:'completed-head',head:{goal_hash:'completed-head',state:'COMPLETE',outcome:'ACHIEVED'}};
+  for(const [hash,revision,newer] of [['completed-head',3,false],[liveHash,1,true]]) {
+    Object.assign(liveBody.goal,{goal_hash:hash,revision,state:newer?'OPEN':'COMPLETE'});
+    route.set('goal',hash);c.live.leaveReads();await c.live.ensure();
+    assert.deepEqual([shows('Revision: '+revision,'Record complete','Achieved'),hides('Historical revision','data-state="pending">Open','data-action="goal-note"'),
+      shows(c.t('A newer revision exists.')),shows('data-action="goal-open" data-value="'+liveId+'"')],[true,true,newer,newer]);
+  }
   delete c.LiveActivity;
   // the list: one row per goal, the composer's primary in the head
   route=new URLSearchParams('page=goals');c.app.page='goals';

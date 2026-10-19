@@ -136,9 +136,10 @@ const LiveGoals = (() => {
     const primary = !passComplete(b) && !S.verifying ? btn(t('Check reference integrity'), 'goal-verify', '', 'button primary') : isOpen ? btn(t('Add a decision note'), 'goal-note', '', 'button primary') : '';
     const facts = [[t('Kind'), kindWord(d.kind)], [t('Revision'), html`${g.revision}${g.parent_hash ? html` · ${btn(t('previous'), 'goal-open', g.parent_hash, 'inline-link')}` : ''}`], [t('Criteria'), count(d.criteria.length)], [t('Evidence'), evidenceState(b)], ...(gaps.length ? [[t('Missing'), count(gaps.length)]] : []), [t('Recorded'), when(g.recorded_at)], [t('Revision recorded by'), actorWords(g.submitted_by)]];
     const criteria = kv(d.criteria.map((c) => [html`<span class="mono">${c.criterion_id}</span>`, html`<span class="owner-text">${c.text}</span>`]), 'kv-columns');
-    const historical = g.goal_hash !== b.head_hash ? noteLine(t('Current goal'), b.head ? checkLine(b.head) : '', 'warning', btn(t('Open current revision'), 'goal-open', g.goal_id, 'button compact')) : '';
+    const newer = b.head_hash && g.goal_hash !== b.head_hash;
+    const historical = newer ? noteLine(t('A newer revision exists.'), '', 'neutral', btn(t('Open current revision'), 'goal-open', g.goal_id, 'button compact')) : '';
     const missing = gaps.length ? noteLine(t('Missing'), gaps.map((x) => x.stage ? codeWords(x.stage) : x.reference_id).join(' · '), 'warning') : '';
-    return html`${objectHead(t(d.title), html`<p class="lede owner-text">${d.objective}</p>${criteria}`, primary, historical ? stateLine('metadata', {word: t('Historical revision'), next: ''}) : checkLine(b.head || g), tools, {object: true, id: g.goal_hash, facts, scope: {name: t(d.title), href: routeUrl('goal', {goal: addressed()}), self: app.page === 'goal'}})}${historical}${missing}`;
+    return html`${objectHead(t(d.title), html`<p class="lede owner-text">${d.objective}</p>${criteria}`, primary, checkLine(b.head || g), tools, {object: true, id: g.goal_hash, facts, scope: {name: t(d.title), href: routeUrl('goal', {goal: addressed()}), self: app.page === 'goal'}})}${historical}${missing}`;
   }
   function page() {
     if (!selected() && !listing()) return null;

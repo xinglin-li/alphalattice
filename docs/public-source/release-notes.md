@@ -398,3 +398,43 @@ These are new and still being proven. 0.2.0 will promote them once they run end 
 ### Previews
 
 - None.
+
+## 0.2.1
+
+0.2.1 fixes what the first public runs met. A daily request in a new session could start a second first use. A lead cut short by a long command lost its place. Some refusals named the problem but not the way on. Contributions are open.
+
+### Added
+
+- Contributions are open. Pull requests to `main` need the public checks to pass and the maintainer's review. Your first pull request asks you to sign the [Contributor License Agreement](../../CLA.md). See [CONTRIBUTING](../../CONTRIBUTING.md).
+
+### Changed
+
+- `serve --no-browser --detach` answers `STARTED` or `ALREADY_SERVING`, with the workspace and the Host's address. An answer that finds no Host names the workspace it checked.
+- Long commands print their Task id and the read that follows it before they block, and, with `--output`, the file they save. A caller cut short sends that read and reaches the same Task instead of sending the command again.
+- A publication's claim follows its timing. Positions published before their entry session opens are timely research. A replay, or a publication made after the observations it settles, is post-observed. Neither is trade advice. Publications stored before 0.2.1 keep their claim and read as before. Upgrading recomputes nothing extra on the first daily update; a Lab portfolio update that repeats an identical earlier request plans once afresh.
+- A local write that would be refused is refused before a restore, sandbox or bind changes anything.
+- More refusals offer their way on, ready to run:
+  - a missing agent-project declaration offers its two steps: configure the project for this host, then bind the session from it;
+  - an output file that is already taken offers the same command with the next free output path;
+  - a committee submission with the wrong fields names them and offers the schema for those fields;
+  - a usage error offers the corrected command where the client can make it, and otherwise the command's exact help, never a template with unfilled placeholders;
+  - work attributed to a closed goal offers the goal's read and the same operation again;
+  - a goal note missing its evidence lists the references already attached and offers the attach and note forms;
+  - a committee message whose text names a point below the agenda line lists the points it may name.
+
+### Deprecated
+
+- None.
+
+### Removed
+
+- None.
+
+### Fixed
+
+- A daily request in a new session could start a second first use in a new workspace, and ran a full preparation. Once a project's first use is complete, `serve` on a new workspace and `first-use prepare` refuse a second first use by name. Each names the existing workspace and offers its `research-update plan`. Separate new research, asked for in one line, still runs with `--new-research`.
+- A sealed goal showed finished assignments as open. Accepted submissions now read as complete, unanswered work is archived with the goal's seal, and work that is still open says why and what its specialist does next.
+
+### Previews
+
+- None.
