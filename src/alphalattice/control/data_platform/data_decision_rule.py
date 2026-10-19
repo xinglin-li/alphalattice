@@ -19,10 +19,18 @@ from alphalattice.foundation.feature_engine.inputs.gateway import (
 )
 from alphalattice.foundation.market_data_ops.runtime.remediation import canonical_hash
 from alphalattice.foundation.market_data_ops.sources.contracts import DataRemediationProposal
+from alphalattice.foundation.market_data_ops.storage.action_audit import ADJUSTMENT_SEGMENTS
+from alphalattice.foundation.market_data_ops.storage.rebase import RAW_REBASES
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 
 SHIPPED_PRECISION = 1e-6
 """The shipped `adjusted_precision`, outside a rule's identity: the release before it had none."""
+SHIPPED_REBASE_PRECISION = 1e-6
+"""The shipped `rebase_precision`, outside a rule's identity as `adjusted_precision` is: a kept
+Feature reproduces within it, and a provider's whole-share rounding of a rescaled volume moves a
+dollar volume by a few parts in 10^7."""
+SHIPPED_REBASE_FLOOR = 1e-12
+"""The shipped `rebase_floor`, outside a rule's identity as `adjusted_precision` is."""
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -45,6 +53,9 @@ class DataDecisionRule:
     `adjusted_precision` is the relative difference within which a provider's re-sent adjusted
     close for a stored session leaves the stored value standing (raw closes unchanged): a
     later observation does not rewrite a published session. Past it the series restates.
+    `rebase_precision` and `rebase_floor` are how closely a split's rebased listing's
+    recomputed scale-free values (relative, and absolute near zero) must agree with those
+    stored for its kept rows and frozen blocks to stay as stored.
     """
 
     max_cases: int = Field(default=10, ge=0, strict=True)
@@ -57,7 +68,28 @@ class DataDecisionRule:
         strict=True,
         exclude_if=lambda value: value == SHIPPED_PRECISION,
     )
+    rebase_precision: float = Field(
+        default=SHIPPED_REBASE_PRECISION,
+        ge=0,
+        le=1e-6,
+        allow_inf_nan=False,
+        strict=True,
+        exclude_if=lambda value: value == SHIPPED_REBASE_PRECISION,
+    )
+    rebase_floor: float = Field(
+        default=SHIPPED_REBASE_FLOOR,
+        ge=0,
+        le=1e-9,
+        allow_inf_nan=False,
+        strict=True,
+        exclude_if=lambda value: value == SHIPPED_REBASE_FLOOR,
+    )
     version: Literal["data-decision-rule/1"] = "data-decision-rule/1"
+
+    @property
+    def rebase_agreement(self) -> tuple[float, float]:
+        """The relative and absolute agreement that keeps a rebased listing's rows as stored."""
+        return self.rebase_precision, self.rebase_floor
 
     @property
     def rule_hash(self) -> str:
@@ -255,6 +287,8 @@ FULL_HISTORY = "FULL_HISTORY_AUDIT"
 """The Goal entry of the rule's decision on a full-history audit, never a membership change."""
 ADJUSTED_PRECISION = "ADJUSTED_PRECISION_KEPT"
 """The Goal entry recording listings whose stored adjusted closes stood under the precision."""
+OBSERVATIONS_KEPT = "OBSERVATIONS_KEPT"
+"""The Goal entry naming the observation rows and blocks an update kept as stored."""
 
 
 def rule_receipt(saved: Mapping[str, Any]) -> tuple[str, str] | None:
@@ -297,16 +331,73 @@ def held_decisions(
     }
 
 
-def kept_listings(entries: Iterable[Mapping[str, Any]]) -> dict[str, tuple[str, float]]:
-    """Each listing whose stored adjusted closes stood under the rule's precision, latest first."""
-    stood: dict[str, tuple[str, float]] = {}
+Segments = tuple[tuple[str, str, float], ...]
+"""A back-adjustment's segments: first session, last session and factor."""
+Rebases = tuple[tuple[str, str, str, float, float, str], ...]
+"""A split's rebases of the raw bars: ex-date, the first and last session rebased, the price and
+volume factors and the rebase's receipt."""
+KeptObservations = tuple[
+    str, tuple[tuple[str, str, int, float], ...], tuple[int, ...], tuple[float, float]
+]
+"""An update's observations kept as stored: its frozen snapshot, each rebased listing's rows
+whose recomputed values differed within the agreement (listing, rebase receipt, rows, largest
+relative difference), the frozen blocks kept and the agreement."""
+KeptListing = tuple[str, str, float, Segments, Rebases]
+"""A listing whose closes stood: its id, the rule's hash, the largest difference, its adjusted
+segments and its raw rebases."""
+
+
+_REBASE_KEYS = (
+    "ex_date", "first_session", "last_session", "price_factor", "volume_factor", "receipt_hash"
+)  # fmt: skip
+"""A change document's rebase disclosure, in the order the Goal keeps it."""
+
+
+def _segments(parts: Iterable[Sequence[Any]]) -> Segments:
+    return tuple((str(first), str(last), float(factor)) for first, last, factor in parts)
+
+
+def _rebases(items: Iterable[Sequence[Any]]) -> Rebases:
+    return tuple(
+        (str(ex), str(first), str(last), float(price), float(volume), str(receipt))
+        for ex, first, last, price, volume, receipt in items
+    )
+
+
+def kept_listings(
+    entries: Iterable[Mapping[str, Any]],
+) -> dict[str, tuple[str, float, Segments, Rebases]]:
+    """Each listing whose stored adjusted closes stood under the rule's precision, latest first.
+
+    With the largest difference kept and a back-adjustment's segments (none when they stood).
+    A listing's rebases gather across its entries, each once, so a later keep never hides one.
+    """
+    stood: dict[str, tuple[str, float, Segments, Rebases]] = {}
     for e in entries:
         if e.get("operation") == ADJUSTED_PRECISION and e.get("decided_by") == "RULE":
-            for listing, largest in zip(
-                e["listing_ids"], e["largest_relative_differences"], strict=True
-            ):
-                stood[str(listing)] = (str(e["rule_hash"]), float(largest))
+            listings, largest = e["listing_ids"], e["largest_relative_differences"]
+            segments = e.get(ADJUSTMENT_SEGMENTS) or [()] * len(listings)
+            rebases = e.get(RAW_REBASES) or [()] * len(listings)
+            for listing, kept, parts, raw in zip(listings, largest, segments, rebases, strict=True):
+                earlier = stood[str(listing)][3] if str(listing) in stood else ()
+                gathered = earlier + tuple(r for r in _rebases(raw) if r not in earlier)
+                stood[str(listing)] = (str(e["rule_hash"]), float(kept), _segments(parts), gathered)
     return stood
+
+
+def kept_observations(entries: Iterable[Mapping[str, Any]]) -> tuple[KeptObservations, ...]:
+    """Each update snapshot's observations kept as stored under the rule, once a snapshot."""
+    found = {
+        str(e["observation_snapshot_hash"]): (
+            str(e["observation_snapshot_hash"]),
+            tuple((str(a), str(b), int(n), float(x)) for a, b, n, x in e["kept_rows"]),
+            tuple(int(block) for block in e["kept_blocks"]),
+            (float(e["rebase_agreement"][0]), float(e["rebase_agreement"][1])),
+        )
+        for e in entries
+        if e.get("operation") == OBSERVATIONS_KEPT and e.get("decided_by") == "RULE"
+    }
+    return tuple(found[key] for key in sorted(found))
 
 
 def approved_audits(entries: Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
@@ -326,11 +417,16 @@ def attach(
     record: Callable[[dict[str, Any]], None],
     task: str,
 ) -> Callable[..., Any]:
-    """Give a Task's decide its audits, its precision and its record of closes that stood."""
+    """Give a Task's decide its audits, precision and records of what the rule kept.
+
+    The records name the closes that stood and the observations an update kept as stored.
+    """
     granted: list[Any] = []
     decide.audit = partial(audit, rule, live, entries, record, task)
     decide.precision = partial(precision, rule, live, granted)
+    decide.agreement = partial(agreement, rule, live)
     decide.kept = partial(kept, rule, granted, record)
+    decide.retained = partial(retained, rule, live, record)
     return cast(Callable[..., Any], decide)
 
 
@@ -345,6 +441,14 @@ def precision(rule: DataDecisionRule, live: Callable[[], Any], granted: list[Any
     return 0.0 if goal is None else rule.adjusted_precision
 
 
+def agreement(rule: DataDecisionRule, live: Callable[[], Any]) -> tuple[float, float]:
+    """The agreement a maintenance cycle may rebase stored bars under.
+
+    The rule's while its Goal's authority holds; else none, and a split's listing restates.
+    """
+    return rule.rebase_agreement if live() is not None else (0.0, 0.0)
+
+
 def kept(
     rule: DataDecisionRule,
     granted: list[Any],
@@ -354,14 +458,17 @@ def kept(
 ) -> None:
     """Record the listings whose stored adjusted closes stood under the rule's precision.
 
-    Each carries its symbol and the largest relative difference the provider sent again, as
-    its maintenance change document records it.
+    Each carries its symbol, the largest relative difference the provider sent again and a
+    back-adjustment's segments (none when the closes stood as stored), as its maintenance change
+    document records them.
     """
     symbols = {item.listing_id: item.symbol for item in manifest_listings}
     listings = {
         str(item["listing_id"]): (
             symbols.get(str(item["listing_id"]), str(item["listing_id"])),
             float(item["adjusted_precision_kept"]),
+            _segments(item.get(ADJUSTMENT_SEGMENTS, ())),
+            _rebases([r[k] for k in _REBASE_KEYS] for r in item.get(RAW_REBASES, ())),
         )
         for item in documents
         if "adjusted_precision_kept" in item
@@ -379,7 +486,43 @@ def kept(
             "listing_ids": ordered,
             "symbols": [listings[item][0] for item in ordered],
             "largest_relative_differences": [listings[item][1] for item in ordered],
+            ADJUSTMENT_SEGMENTS: [listings[item][2] for item in ordered],
+            RAW_REBASES: [listings[item][3] for item in ordered],
             "adjusted_precision": rule.adjusted_precision,
+            "rebase_agreement": list(rule.rebase_agreement),
+            "rule_hash": rule.rule_hash,
+            "goal_hash": goal.goal_hash,
+        }
+    )
+
+
+def retained(
+    rule: DataDecisionRule,
+    live: Callable[[], Any],
+    record: Callable[[dict[str, Any]], None],
+    snapshot: Any,
+) -> None:
+    """Record on the live Goal the observations an update's frozen snapshot kept as stored.
+
+    Each rebased listing's rows whose recomputed values differed within the rule's agreement,
+    with the largest difference, and the frozen blocks kept so; nothing when it kept none.
+    """
+    rows = [
+        [item.listing_id, item.receipt_hash, item.kept_within, item.kept_largest]
+        for item in snapshot.rebases
+        if item.kept_within
+    ]
+    if not (rows or snapshot.kept_blocks) or (goal := live()) is None:
+        return
+    record(
+        {
+            "operation": OBSERVATIONS_KEPT,
+            "decided_by": "RULE",
+            "status": "KEPT_BY_RULE",
+            "observation_snapshot_hash": snapshot.snapshot_hash,
+            "kept_rows": rows,
+            "kept_blocks": list(snapshot.kept_blocks),
+            "rebase_agreement": list(snapshot.kept_agreement or rule.rebase_agreement),
             "rule_hash": rule.rule_hash,
             "goal_hash": goal.goal_hash,
         }

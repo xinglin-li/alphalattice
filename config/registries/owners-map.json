@@ -50,6 +50,15 @@
    ],
    "folds_in": []
   },
+  "raw bar rebase": {
+   "covers": "a split-adjusting provider's rebase of a listing's stored bars, kept as factors (CRSP's CFACPR and CFACSHR): its one record a split, and the factors the kept history and frozen observations apply when read",
+   "owner": "alphalattice.foundation.market_data_ops",
+   "defined_by": [
+    "alphalattice.foundation.market_data_ops.storage.rebase"
+   ],
+   "folds_in": [],
+   "note": "Consumers: universe maintenance (recognises and writes it), Feature invalidation (by the change document's raw corrections), the kept workspace history (reuse and load), frozen observation publication and load, the execution source watermark (data_revision_hash), and the data rule's kept record on the Goal and delivery roads."
+  },
   "feature": {
    "covers": "features, Panels and their state",
    "owner": "alphalattice.foundation.feature_engine",

@@ -17,6 +17,7 @@ from alphalattice.control.data_platform.data_decision_rule import (
     attach,
     audit,
     held_decisions,
+    kept_listings,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
@@ -206,6 +207,36 @@ def test_the_rule_keeps_stored_closes_only_while_its_goal_holds_and_records_each
     assert decide.precision() == 1e-6  # type: ignore[attr-defined]
     listing = type("Listing", (), {"listing_id": "L1", "symbol": "AAA"})()
     holding[0] = None  # the goal closes before the cycle records its change set
-    decide.kept([{"listing_id": "L1", "adjusted_precision_kept": 5e-7}], [listing])  # type: ignore[attr-defined]
+    parts = [["2026-07-27", "2026-07-29", 0.99], ["2026-07-30", "2026-07-31", 1.0]]
+    split = {"ex_date": "2026-07-30", "first_session": "2026-07-27"}
+    split |= {"last_session": "2026-07-29", "price_factor": 0.5, "volume_factor": 2.0}
+    split |= {"receipt_hash": "h", "largest_difference": 0.0}
+    changes = [{"listing_id": "L1", "adjusted_precision_kept": 5e-7, "adjustment_segments": parts}]
+    decide.kept([changes[0] | {"raw_rebases": [split]}], [listing])  # type: ignore[attr-defined]
     assert [(r["listing_ids"], r["goal_hash"]) for r in recorded] == [(["L1"], "g" * 64)]
+    entry = json.loads(json.dumps(recorded[0])) | {"rule_hash": "r"}  # as the Goal keeps it
+    assert kept_listings([entry]) == {
+        "L1": (
+            "r",
+            5e-7,
+            tuple(map(tuple, parts)),
+            (("2026-07-30", "2026-07-27", "2026-07-29", 0.5, 2.0, "h"),),
+        )
+    }
+    plain = entry | {"raw_rebases": [[]], "largest_relative_differences": [4e-7]}  # a later keep
+    assert kept_listings([entry, plain])["L1"][3] == kept_listings([entry])["L1"][3]
     assert decide.precision() == 0.0  # type: ignore[attr-defined]
+    from alphalattice.control.data_platform.data_decision_rule import kept_observations
+
+    rows = (type("Rebase", (), {"listing_id": "L1", "receipt_hash": "h", "kept_within": 3})(),)
+    rows[0].kept_largest = 4e-7  # type: ignore[attr-defined]
+    snapshot = type(
+        "Snapshot", (), {"rebases": rows, "kept_blocks": (0, 2), "kept_agreement": None}
+    )
+    snapshot.snapshot_hash = "5" * 64  # type: ignore[attr-defined]
+    decide.retained(snapshot)  # type: ignore[attr-defined]  # the goal closed: none recorded
+    holding[0] = goal
+    decide.retained(snapshot)  # type: ignore[attr-defined]
+    assert kept_observations(json.loads(json.dumps(item)) for item in recorded) == (
+        ("5" * 64, (("L1", "h", 3, 4e-7),), (0, 2), (1e-6, 1e-12)),
+    )

@@ -10,7 +10,13 @@ from threading import RLock
 from typing import cast
 from uuid import UUID
 
-from alphalattice.control.data_platform.data_decision_rule import approved_audits, kept_listings
+from alphalattice.control.data_platform.data_decision_rule import (
+    KeptListing,
+    KeptObservations,
+    approved_audits,
+    kept_listings,
+    kept_observations,
+)
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
@@ -494,10 +500,17 @@ class GoalStore:
     @staticmethod
     def rule_kept(
         task: str | None, entries: Iterable[Mapping[str, object]]
-    ) -> tuple[tuple[str, str, float], ...]:
+    ) -> tuple[KeptListing, ...]:
         """Each listing whose stored adjusted closes stood under the rule's precision."""
         ruled = (entry for entry in entries if GoalStore._ruled(task, entry))
         return tuple(sorted((key, *value) for key, value in kept_listings(ruled).items()))
+
+    @staticmethod
+    def rule_retained(
+        task: str | None, entries: Iterable[Mapping[str, object]]
+    ) -> tuple[KeptObservations, ...]:
+        """Each update's observations kept as stored under the rule's rebase agreement."""
+        return kept_observations(entry for entry in entries if GoalStore._ruled(task, entry))
 
     @staticmethod
     def rule_audits(

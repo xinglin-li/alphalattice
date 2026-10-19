@@ -9,7 +9,7 @@ import math
 from bisect import bisect_left
 from collections.abc import Buffer, Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, suppress
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 from datetime import UTC, date, datetime, timedelta
 from io import RawIOBase
 from typing import Any, Protocol
@@ -60,12 +60,21 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
 from alphalattice.foundation.market_data_ops.sources.sanitization import SanitizedBatch
 from alphalattice.foundation.market_data_ops.storage.action_audit import (
     ActionAuditObservation,
+    ActionAuditScopeInsufficient,
     adjusted_return_changes,
+    adjusted_stage,
     audited_natural_keys,
     closed_years,
     mapping_in_force,
     receipt_payload,
+    record_revision,
     standing,
+)
+from alphalattice.foundation.market_data_ops.storage.rebase import (
+    RawBarRebase,
+    ex_date_deltas,
+    unrebased,
+    watermark,
 )
 
 FeaturePersistenceTimingSink = Callable[[str, float], None]
@@ -126,10 +135,6 @@ def _first_by_key(
     for item in items:
         collapsed.setdefault(item[key_index], item)
     return list(collapsed.values())
-
-
-class ActionAuditScopeInsufficient(ValueError):
-    """A rolling action audit needs a wider provider observation to reconcile safely."""
 
 
 def _membership_digest(listing_ids: Iterable[str]) -> str:
@@ -307,8 +312,56 @@ class ProviderAdjustedSeriesRevision:
     uniform_rescale: bool
     source_receipt_hash: str
     observed_at: datetime
-    precision_kept: float | None = None
-    """The largest relative difference of stored closes kept under the data rule's precision."""
+    disclosed: Mapping[str, Any] = field(default_factory=dict)
+    """The precision kept and any back-adjustment's segments, as `standing` disclosed them."""
+
+    def hashed(self) -> str:
+        """Its receipt hash, of what it records; a revision read back gives the one written."""
+        return _canonical_hash(self.payload())
+
+    def payload(self) -> dict[str, Any]:
+        """What its receipt hash binds."""
+        return {
+            "listing_id": self.listing_id,
+            "provider": self.provider,
+            "prior_series_hash": self.prior_series_hash,
+            "next_series_hash": self.next_series_hash,
+            "scope_start": self.scope_start,
+            "scope_end": self.scope_end,
+            "full_history": self.full_history,
+            "changed_value_count": self.changed_value_count,
+            "changed_return_sessions": [item.isoformat() for item in self.changed_return_sessions],
+            "session_set_changed": self.session_set_changed,
+            "uniform_rescale": self.uniform_rescale,
+            "source_receipt_hash": self.source_receipt_hash,
+            **self.disclosed,
+        }
+
+    @classmethod
+    def read(cls, row: Sequence[Any]) -> ProviderAdjustedSeriesRevision:
+        """A revision as its row of `_REVISION_COLUMNS` keeps it."""
+        return cls(
+            str(row[0]),
+            str(row[1]),
+            str(row[2]),
+            None if row[3] is None else str(row[3]),
+            str(row[4]),
+            row[5],
+            row[6],
+            bool(row[7]),
+            int(row[8]),
+            tuple(date.fromisoformat(item) for item in json.loads(str(row[9]))),
+            bool(row[10]),
+            bool(row[11]),
+            str(row[12]),
+            _utc_aware(row[13]),
+            json.loads(row[14]) if row[14] else {},
+        )
+
+
+_REVISION_COLUMNS = """receipt_hash, listing_id, provider, prior_series_hash, next_series_hash,
+    scope_start, scope_end, full_history, changed_value_count, changed_return_sessions_json,
+    session_set_changed, uniform_rescale, source_receipt_hash, observed_at, disclosed_json"""
 
 
 @dataclass(frozen=True)
@@ -933,31 +986,17 @@ class MarketDataRepository(WorkspaceRepository):
             connection.execute(
                 """
                 ALTER TABLE action_audit_receipt
-                ADD COLUMN IF NOT EXISTS provider_adjusted_close_evidence_hash VARCHAR
-                """
-            )
-            connection.execute(
-                """
+                ADD COLUMN IF NOT EXISTS provider_adjusted_close_evidence_hash VARCHAR;
                 ALTER TABLE action_audit_receipt
-                ADD COLUMN IF NOT EXISTS max_adjusted_close_difference_bps DOUBLE
-                """
-            )
-            connection.execute(
-                """
+                ADD COLUMN IF NOT EXISTS max_adjusted_close_difference_bps DOUBLE;
                 ALTER TABLE action_audit_receipt
-                ADD COLUMN IF NOT EXISTS adjusted_close_mismatch_count INTEGER
-                """
-            )
-            connection.execute(
-                """
+                ADD COLUMN IF NOT EXISTS adjusted_close_mismatch_count INTEGER;
                 ALTER TABLE action_audit_receipt
-                ADD COLUMN IF NOT EXISTS first_adjusted_close_mismatch_session DATE
-                """
-            )
-            connection.execute(
-                """
+                ADD COLUMN IF NOT EXISTS first_adjusted_close_mismatch_session DATE;
                 ALTER TABLE action_audit_receipt
-                ADD COLUMN IF NOT EXISTS diagnostic_policy_hash VARCHAR
+                ADD COLUMN IF NOT EXISTS diagnostic_policy_hash VARCHAR;
+                ALTER TABLE provider_adjusted_series_revision
+                ADD COLUMN IF NOT EXISTS disclosed_json VARCHAR;
                 """
             )
             connection.execute(
@@ -2270,8 +2309,7 @@ class MarketDataRepository(WorkspaceRepository):
 
     def load_universe_manifest_revision(self, manifest_revision: str) -> UniverseManifest:
         """Restore one unambiguous manifest from its immutable content revision."""
-        connection = self._connect(read_only=True)
-        try:
+        with self._connect(read_only=True) as connection:
             rows = connection.execute(
                 """
                 SELECT manifest_id FROM universe_manifest
@@ -2279,8 +2317,6 @@ class MarketDataRepository(WorkspaceRepository):
                 """,
                 [manifest_revision],
             ).fetchall()
-        finally:
-            connection.close()
         if len(rows) != 1:
             raise ValueError("workspace manifest revision is missing or ambiguous")
         return self.load_universe_manifest(str(rows[0][0]))
@@ -4138,17 +4174,16 @@ class MarketDataRepository(WorkspaceRepository):
         ingestion_id: str,
         observed_at: datetime,
         _connection: duckdb.DuckDBPyConnection | None = None,
+        rebases: Sequence[RawBarRebase] = (),
     ) -> dict[str, int]:
         """Apply a normal, bounded refresh atomically.
 
-        The normal 45-day overlap may add or correct observed action rows, but
-        never retracts an action that is simply absent from a partial refresh.
-        Only :meth:`complete_action_audit` has that authority.
+        The normal 45-day overlap may add or correct observed action rows, but never retracts an
+        action simply absent from a partial refresh: only :meth:`complete_action_audit` may.
         ``_connection`` is the caller's open transaction, which the caller commits.
         """
         observed_at = _utc_naive(observed_at)
-        self._assert_manifest_scope(manifest, (item.listing_id for item in batch.bars))
-        self._assert_manifest_scope(manifest, (item.listing_id for item in batch.actions))
+        self._assert_manifest_scope(manifest, (i.listing_id for i in (*batch.bars, *batch.actions)))
         if not batch.bars:
             raise ValueError("validated batch must contain at least one raw bar")
         bar_rows = [
@@ -4188,15 +4223,12 @@ class MarketDataRepository(WorkspaceRepository):
                  AND current.session_date = s.session_date
                 """
             ).fetchone()
-            inserted = int(inserted)
-            corrected = int(corrected)
+            inserted, corrected = int(inserted), int(corrected)
             if corrected:
                 changed = connection.execute(
                     f"""
                     SELECT
-                        s.listing_id,
-                        s.provider,
-                        s.session_date,
+                        s.listing_id, s.provider, s.session_date,
                         current.payload_hash AS prior_hash,
                         s.payload_hash AS next_hash
                     FROM {stage_name} AS s
@@ -4208,6 +4240,8 @@ class MarketDataRepository(WorkspaceRepository):
                     ORDER BY s.listing_id, s.provider, s.session_date
                     """
                 ).fetchall()
+                changed, corrected = unrebased(connection, changed, rebases, ingestion_id)
+            if corrected:
                 connection.executemany(
                     """
                     INSERT INTO bar_revision
@@ -4586,16 +4620,16 @@ class MarketDataRepository(WorkspaceRepository):
         scope_end: date,
         full_history: bool,
         earliest_session: date | None,
-        source_receipt_hash: str,
+        receipt: Callable[..., ActionAuditReceipt],
         observed_at: datetime,
         tolerance: float = 0.0,
-    ) -> ProviderAdjustedSeriesRevision:
+        actions: Iterable[date] = (),
+    ) -> tuple[ProviderAdjustedSeriesRevision, ActionAuditReceipt]:
         """Write a refresh of the listing's adjusted series and record its revision.
 
-        A rolling refresh reads the stored series only from its scope's calendar year: each
-        earlier year, back to the first raw bar's, is held by its fact (`ADJUSTED_YEAR`), or the
-        whole series is read. Every closed year it read is recorded as it leaves it; a full
-        refresh first forgets every year of the series it replaces.
+        A rolling refresh reads the stored series from its scope's year: each earlier one is held
+        by its fact (`ADJUSTED_YEAR`), or the whole series is read. Every closed year it read is
+        recorded as it leaves it; a full refresh forgets every year of the series it replaces.
         """
         ordered = tuple(sorted(points, key=lambda item: item.session_date))
         if not ordered or len({item.session_date for item in ordered}) != len(ordered):
@@ -4653,14 +4687,12 @@ class MarketDataRepository(WorkspaceRepository):
         added_sessions = set(observed) - set(prior)
         if full_history and prior and any(session <= max(prior) for session in added_sessions):
             raise ValueError("full provider adjusted series changed its historical session set")
-        observed, next_values, kept = standing(
-            prior, observed, added_sessions, tolerance, replaces=full_history
+        observed, next_values, disclosed = standing(
+            prior, observed, added_sessions, tolerance, replaces=full_history, actions=actions
         )
         prior_hash = self._provider_adjusted_series_hash(prior, held) if prior or held else None
         next_hash = self._provider_adjusted_series_hash(next_values, held)
-        changed_values = sum(
-            1 for session, value in observed.items() if prior.get(session) != value
-        )
+        changed_values = sum(prior.get(session) != value for session, value in observed.items())
         if full_history:
             forget_year_facts(
                 connection, ADJUSTED_YEAR, pairs=[(scope, session.year) for session in prior]
@@ -4670,32 +4702,17 @@ class MarketDataRepository(WorkspaceRepository):
             adjusted_return_changes(
                 prior,
                 next_values,
+                tolerance,
                 refreshed_from=None if full_history else min(observed, default=None),
             )
             if prior
             else ()
         )
         uniform_rescale = bool(changed_values) and not return_changes and not session_set_changed
-        stage_name = "provider_adjusted_close_stage"
-        stage = pa.Table.from_pylist(
-            [
-                {
-                    "listing_id": listing_id,
-                    "provider": provider,
-                    "session_date": item.session_date,
-                    "adjusted_close": float(item.adjusted_close),
-                    "payload_hash": _canonical_hash(
-                        [listing_id, provider, item.session_date.isoformat(), item.adjusted_close]
-                    ),
-                    "updated_at": observed_at,
-                }
-                for item in ordered
-                if item.session_date in observed
-            ]
-        )
-        connection.register(stage_name, stage)
-        try:
-            if observed:  # none to write when every close stood
+        if observed:
+            stage = adjusted_stage(listing_id, provider, observed, observed_at, _canonical_hash)
+            connection.register("provider_adjusted_close_stage", stage)
+            try:
                 connection.execute(
                     """
                     INSERT OR REPLACE INTO provider_adjusted_close_current
@@ -4704,8 +4721,15 @@ class MarketDataRepository(WorkspaceRepository):
                     FROM provider_adjusted_close_stage
                     """
                 )
-        finally:
-            connection.unregister(stage_name)
+            finally:
+                connection.unregister("provider_adjusted_close_stage")
+        made = receipt(
+            adjusted=[
+                ProviderAdjustedClosePoint(listing_id, provider, day, value)
+                for day, value in sorted(next_values.items())
+                if scope_start <= day <= scope_end
+            ]
+        )
         # The closed years this refresh read, as it leaves them, are held for the next one; a
         # written year's fact it does not renew ends.
         renewed = closed_years(self._adjusted_year_digests(next_values), scope_end)
@@ -4726,23 +4750,8 @@ class MarketDataRepository(WorkspaceRepository):
                 if session.year in facts and session.year not in renewed
             ],
         )
-        payload = {
-            "listing_id": listing_id,
-            "provider": provider,
-            "prior_series_hash": prior_hash,
-            "next_series_hash": next_hash,
-            "scope_start": scope_start,
-            "scope_end": scope_end,
-            "full_history": full_history,
-            "changed_value_count": changed_values,
-            "changed_return_sessions": [item.isoformat() for item in return_changes],
-            "session_set_changed": session_set_changed,
-            "uniform_rescale": uniform_rescale,
-            "source_receipt_hash": source_receipt_hash,
-            **({"precision_kept": kept} if kept is not None else {}),
-        }
         revision = ProviderAdjustedSeriesRevision(
-            receipt_hash=_canonical_hash(payload),
+            receipt_hash="",
             listing_id=listing_id,
             provider=provider,
             prior_series_hash=prior_hash,
@@ -4754,38 +4763,14 @@ class MarketDataRepository(WorkspaceRepository):
             changed_return_sessions=return_changes,
             session_set_changed=session_set_changed,
             uniform_rescale=uniform_rescale,
-            source_receipt_hash=source_receipt_hash,
+            source_receipt_hash=made.receipt_hash,
             observed_at=_utc_aware(observed_at),
-            precision_kept=kept,
+            disclosed=disclosed,
         )
+        revision = replace(revision, receipt_hash=revision.hashed())
         if prior_hash != next_hash:
-            connection.execute(
-                """
-                INSERT INTO provider_adjusted_series_revision VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                ) ON CONFLICT (receipt_hash) DO NOTHING
-                """,
-                [
-                    revision.receipt_hash,
-                    revision.listing_id,
-                    revision.provider,
-                    revision.prior_series_hash,
-                    revision.next_series_hash,
-                    revision.scope_start,
-                    revision.scope_end,
-                    revision.full_history,
-                    revision.changed_value_count,
-                    json.dumps(
-                        [item.isoformat() for item in revision.changed_return_sessions],
-                        separators=(",", ":"),
-                    ),
-                    revision.session_set_changed,
-                    revision.uniform_rescale,
-                    revision.source_receipt_hash,
-                    observed_at,
-                ],
-            )
-        return revision
+            record_revision(connection, revision, observed_at)
+        return revision, made
 
     def provider_adjusted_closes(
         self,
@@ -4908,37 +4893,14 @@ class MarketDataRepository(WorkspaceRepository):
         connection = _connection or self._connect(read_only=True)
         try:
             row = connection.execute(
-                """
-                SELECT receipt_hash, listing_id, provider, prior_series_hash,
-                       next_series_hash, scope_start, scope_end, full_history,
-                       changed_value_count, changed_return_sessions_json,
-                       session_set_changed, uniform_rescale, source_receipt_hash,
-                       observed_at
+                f"""
+                SELECT {_REVISION_COLUMNS}
                 FROM provider_adjusted_series_revision
                 WHERE source_receipt_hash = ? ORDER BY observed_at DESC LIMIT 1
                 """,
                 [source_receipt_hash],
             ).fetchone()
-            if row is None:
-                return None
-            return ProviderAdjustedSeriesRevision(
-                receipt_hash=str(row[0]),
-                listing_id=str(row[1]),
-                provider=str(row[2]),
-                prior_series_hash=str(row[3]) if row[3] is not None else None,
-                next_series_hash=str(row[4]),
-                scope_start=row[5],
-                scope_end=row[6],
-                full_history=bool(row[7]),
-                changed_value_count=int(row[8]),
-                changed_return_sessions=tuple(
-                    date.fromisoformat(item) for item in json.loads(str(row[9]))
-                ),
-                session_set_changed=bool(row[10]),
-                uniform_rescale=bool(row[11]),
-                source_receipt_hash=str(row[12]),
-                observed_at=_utc_aware(row[13]),
-            )
+            return None if row is None else ProviderAdjustedSeriesRevision.read(row)
         finally:
             if _connection is None:
                 connection.close()
@@ -4947,42 +4909,15 @@ class MarketDataRepository(WorkspaceRepository):
         self,
     ) -> tuple[ProviderAdjustedSeriesRevision, ...]:
         """Return the monotonic semantic revision ledger for frozen-label preparation."""
-        connection = self._connect(read_only=True)
-        try:
+        with self._connect(read_only=True) as connection:
             rows = connection.execute(
-                """
-                SELECT receipt_hash, listing_id, provider, prior_series_hash,
-                       next_series_hash, scope_start, scope_end, full_history,
-                       changed_value_count, changed_return_sessions_json,
-                       session_set_changed, uniform_rescale, source_receipt_hash,
-                       observed_at
+                f"""
+                SELECT {_REVISION_COLUMNS}
                 FROM provider_adjusted_series_revision
                 ORDER BY observed_at, receipt_hash
                 """
             ).fetchall()
-        finally:
-            connection.close()
-        return tuple(
-            ProviderAdjustedSeriesRevision(
-                receipt_hash=str(row[0]),
-                listing_id=str(row[1]),
-                provider=str(row[2]),
-                prior_series_hash=str(row[3]) if row[3] is not None else None,
-                next_series_hash=str(row[4]),
-                scope_start=row[5],
-                scope_end=row[6],
-                full_history=bool(row[7]),
-                changed_value_count=int(row[8]),
-                changed_return_sessions=tuple(
-                    date.fromisoformat(item) for item in json.loads(str(row[9]))
-                ),
-                session_set_changed=bool(row[10]),
-                uniform_rescale=bool(row[11]),
-                source_receipt_hash=str(row[12]),
-                observed_at=_utc_aware(row[13]),
-            )
-            for row in rows
-        )
+        return tuple(ProviderAdjustedSeriesRevision.read(row) for row in rows)
 
     def provider_adjusted_semantic_deltas_since(
         self,
@@ -4992,17 +4927,10 @@ class MarketDataRepository(WorkspaceRepository):
         through: date,
     ) -> tuple[ProviderAdjustedSeriesRevision, ...]:
         """Return manifest-scoped adjusted-return revisions after a verified panel prefix."""
-        connection = self._connect(read_only=True)
-        try:
+        with self._connect(read_only=True) as connection:
             rows = connection.execute(
-                """
-                SELECT revision.receipt_hash, revision.listing_id, revision.provider,
-                       revision.prior_series_hash, revision.next_series_hash,
-                       revision.scope_start, revision.scope_end, revision.full_history,
-                       revision.changed_value_count,
-                       revision.changed_return_sessions_json,
-                       revision.session_set_changed, revision.uniform_rescale,
-                       revision.source_receipt_hash, revision.observed_at
+                f"""
+                SELECT {", ".join("revision." + c.strip() for c in _REVISION_COLUMNS.split(","))}
                 FROM provider_adjusted_series_revision AS revision
                 JOIN universe_manifest_listing AS member USING (listing_id)
                 WHERE member.manifest_id = ? AND revision.provider = ?
@@ -5016,30 +4944,15 @@ class MarketDataRepository(WorkspaceRepository):
                     through,
                 ],
             ).fetchall()
-        finally:
-            connection.close()
+        revisions = (ProviderAdjustedSeriesRevision.read(row) for row in rows)
         return tuple(
-            ProviderAdjustedSeriesRevision(
-                receipt_hash=str(row[0]),
-                listing_id=str(row[1]),
-                provider=str(row[2]),
-                prior_series_hash=str(row[3]) if row[3] is not None else None,
-                next_series_hash=str(row[4]),
-                scope_start=row[5],
-                scope_end=row[6],
-                full_history=bool(row[7]),
-                changed_value_count=int(row[8]),
+            replace(
+                item,
                 changed_return_sessions=tuple(
-                    session
-                    for session in (date.fromisoformat(item) for item in json.loads(str(row[9])))
-                    if session <= through
+                    session for session in item.changed_return_sessions if session <= through
                 ),
-                session_set_changed=bool(row[10]),
-                uniform_rescale=bool(row[11]),
-                source_receipt_hash=str(row[12]),
-                observed_at=_utc_aware(row[13]),
             )
-            for row in rows
+            for item in revisions
         )
 
     def raw_bar_semantic_deltas_since(
@@ -5050,27 +4963,21 @@ class MarketDataRepository(WorkspaceRepository):
         through: date,
     ) -> tuple[FeatureSourceDelta, ...]:
         """Return exact corrected raw sessions after a verified panel prefix."""
-        connection = self._connect(read_only=True)
+        after, connection = _utc_naive(observed_after), self._connect(read_only=True)
         try:
             rows = connection.execute(
                 """
-                SELECT revision.listing_id, revision.session_date,
-                       revision.prior_payload_hash, revision.next_payload_hash,
-                       revision.observed_at
-                FROM bar_revision AS revision
+                SELECT r.listing_id, r.session_date, r.prior_payload_hash, r.next_payload_hash,
+                       r.observed_at
+                FROM bar_revision AS r
                 JOIN universe_manifest_listing AS member USING (listing_id)
-                WHERE member.manifest_id = ? AND revision.provider = ?
-                  AND revision.observed_at > ? AND revision.session_date <= ?
-                ORDER BY revision.listing_id, revision.session_date,
-                         revision.observed_at, revision.revision_id
+                WHERE member.manifest_id = ? AND r.provider = ?
+                  AND r.observed_at > ? AND r.session_date <= ?
+                ORDER BY r.listing_id, r.session_date, r.observed_at, r.revision_id
                 """,
-                [
-                    manifest.manifest_id,
-                    manifest.profile.provider,
-                    _utc_naive(observed_after),
-                    through,
-                ],
+                [manifest.manifest_id, manifest.profile.provider, after, through],
             ).fetchall()
+            rows += ex_date_deltas(connection, manifest, after, through)
         finally:
             connection.close()
         grouped: dict[str, list[tuple[object, ...]]] = {}
@@ -5331,7 +5238,8 @@ class MarketDataRepository(WorkspaceRepository):
                     for row in actions[listing]
                     if row[3] == "ACTIVE"
                 )
-                receipt = self._audit_receipt(
+                receipt_for = functools.partial(
+                    self._audit_receipt,
                     manifest,
                     item,
                     active=active,
@@ -5351,7 +5259,7 @@ class MarketDataRepository(WorkspaceRepository):
                         }
                     ),
                 )
-                revision = self._reconcile_provider_adjusted_series(
+                revision, receipt = self._reconcile_provider_adjusted_series(
                     connection,
                     listing_id=listing,
                     provider=item.provider,
@@ -5360,12 +5268,12 @@ class MarketDataRepository(WorkspaceRepository):
                     scope_end=item.history_end,
                     full_history=item.history_start == earliest[listing],
                     earliest_session=earliest[listing],
-                    source_receipt_hash=receipt.receipt_hash,
+                    receipt=receipt_for,
                     observed_at=item.observed_at,
-                    tolerance=item.tolerance_after(count),
+                    tolerance=item.adjusted_tolerance,
+                    actions={action.effective_date for action in item.actions},
                 )
-                if revision.precision_kept is not None:
-                    count = {**count, "precision_kept": revision.precision_kept}
+                count = {**count, **revision.disclosed}
                 receipts.append((receipt, count))
             self._insert_receipts(connection, [receipt for receipt, _ in receipts])
             if _connection is None:
@@ -5472,9 +5380,12 @@ class MarketDataRepository(WorkspaceRepository):
         item: ActionAuditObservation,
         *,
         bars: tuple[RawDailyBar, ...],
+        adjusted: Sequence[ProviderAdjustedClosePoint] | None = None,
         **evidence: Any,
     ) -> ActionAuditReceipt:
-        """One observation's receipt, once its bars cover its adjusted closes exactly."""
+        """One observation's receipt, once its bars cover its stored closes exactly."""
+        if adjusted is not None:
+            item = replace(item, adjusted_closes=tuple(adjusted))
         observed = {point.session_date for point in item.adjusted_closes}
         if (
             not bars
@@ -6585,6 +6496,7 @@ class MarketDataRepository(WorkspaceRepository):
                 """,
                 [listing_ids, through],
             ).fetchone()
+            rebased = watermark(connection, listing_ids)
         finally:
             connection.close()
         values = {
@@ -6602,6 +6514,7 @@ class MarketDataRepository(WorkspaceRepository):
             "action_last_session": actions[2],
             "action_revision_count": int(action_revision[0]),
             "action_revision_latest_observed_at": action_revision[1],
+            **rebased,
         }
         if listing_ids != manifest_listing_ids:
             values["coverage_listing_set_hash"] = _canonical_hash(listing_ids)
@@ -6813,15 +6726,12 @@ class MarketDataRepository(WorkspaceRepository):
 
     def revision_count(self, listing_id: str) -> int:
         """Count stored raw-bar revisions for one listing."""
-        connection = self._connect(read_only=True)
-        try:
-            return int(
-                connection.execute(
-                    "SELECT count(*) FROM bar_revision WHERE listing_id = ?", [listing_id]
-                ).fetchone()[0]
-            )
-        finally:
-            connection.close()
+        return self._listing_rows("bar_revision", listing_id)
+
+    def _listing_rows(self, table: str, listing_id: str) -> int:
+        with self._connect(read_only=True) as connection:
+            sql = f"SELECT count(*) FROM {table} WHERE listing_id = ?"
+            return int(connection.execute(sql, [listing_id]).fetchone()[0])
 
     def maintenance_revision_fingerprint(
         self, manifest: UniverseManifest, *, listing_ids: Sequence[str] | None = None
@@ -6850,16 +6760,7 @@ class MarketDataRepository(WorkspaceRepository):
 
     def action_revision_count(self, listing_id: str) -> int:
         """Count stored corporate-action revisions for one listing."""
-        connection = self._connect(read_only=True)
-        try:
-            return int(
-                connection.execute(
-                    "SELECT count(*) FROM corporate_action_revision WHERE listing_id = ?",
-                    [listing_id],
-                ).fetchone()[0]
-            )
-        finally:
-            connection.close()
+        return self._listing_rows("corporate_action_revision", listing_id)
 
     def record_remediation_execution(
         self, proposal_hash: str, option_id: str, *, executed_at: datetime
@@ -6893,13 +6794,10 @@ class MarketDataRepository(WorkspaceRepository):
 
     def remediation_count(self) -> int:
         """Count recorded remediation executions."""
-        connection = self._connect(read_only=True)
-        try:
+        with self._connect(read_only=True) as connection:
             return int(
                 connection.execute("SELECT count(*) FROM remediation_execution").fetchone()[0]
             )
-        finally:
-            connection.close()
 
     def prove_atomic_rollback(self, listing_id: str) -> None:
         """Fixture-only proof that a failed batch cannot leave a quality update behind."""

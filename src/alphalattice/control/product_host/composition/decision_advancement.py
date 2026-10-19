@@ -8,10 +8,11 @@ the existing advancement store until the Portfolio branch is ready to expose.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date
-from typing import Literal, Self, cast
+from typing import Any, Literal, Self, cast
 from uuid import UUID
 
 import numpy as np
@@ -1091,6 +1092,7 @@ class DecisionAdvancementApplication:
                 for index in range(len(plan.bindings))
             }
             prepared_inputs: dict[int, PreparedWorkspaceComponentInputs | None] = {}
+            sealed: list[tuple[int, Any]] = []
             for index, day in plan.requests:
                 self._cancel(task)
                 score_plan = self._score_plan(plan, day, source, index)
@@ -1119,19 +1121,17 @@ class DecisionAdvancementApplication:
                             captured_authority_hash=effective_authorities.get(index),
                             prepared_inputs=prepared_inputs.get(index),
                         )
-                    held = self._commit(
-                        plan,
-                        key,
-                        (score_plan.plan_hash, str(result.evidence[0].content_hash)),
-                        source,
-                    )
+                    evidence = (score_plan.plan_hash, str(result.evidence[0].content_hash))
+                    held = self._commit(plan, key, evidence, source)
                 with span("verify", "score_features"):
                     self._verify_features(held)
                 feature_preparation, _ = self.scoring.store.load_frozen_feature_preparation(
                     held.products[1]
                 )
                 effective_authorities[index] = feature_preparation.inference_authority_hash
+                sealed.append((index, feature_preparation))
                 products.append(held.content_hash)
+            self._record_kept(task, plan, sealed, prepared_inputs)
             if workspace_score_source_identity(self.session.workspace) != source:
                 raise ValueError("research_update.source_changed_during_seal")
             return self._commit(plan, stage, tuple(products), source)
@@ -1723,6 +1723,34 @@ class DecisionAdvancementApplication:
         return None
 
     @verified_model_read_scope(reuse_verified=True)
+    def _record_kept(
+        self,
+        task: TaskRecord,
+        plan: DecisionAdvancementPlan,
+        sealed: Sequence[tuple[int, Any]],
+        prepared: Mapping[int, PreparedWorkspaceComponentInputs | None],
+    ) -> None:
+        """Record on the update's Goal the observations its snapshots kept as stored, by the rule.
+
+        Only a workspace snapshot whose inputs carried a rebase, or that an earlier run sealed,
+        is read: an ordinary day reads nothing more.
+        """
+        rebased = [
+            preparation
+            for index, preparation in sealed
+            if plan.bindings[index].source_kind == "WORKSPACE_DATA_FEATURE"
+            and ((inputs := prepared.get(index)) is None or inputs.rebases)
+        ]
+        decide = self.data.data_rule(task.task_id) if rebased and self.data.data_rule else None
+        if decide is None:
+            return
+        for preparation in rebased:
+            decide.retained(
+                self.scoring.store.load_frozen_observation_snapshot(
+                    preparation.observation_snapshot_hash
+                )
+            )
+
     def verify_stage(
         self,
         *,

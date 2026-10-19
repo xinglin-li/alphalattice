@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, date, datetime
 from enum import StrEnum
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -15,6 +15,7 @@ from alphalattice.foundation.feature_engine.contracts import canonical_hash
 from alphalattice.foundation.feature_engine.inputs.contracts import FeatureCandidateRecheck
 from alphalattice.foundation.market_data_ops.sources.contracts import CandidateDataRecheck
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
+from alphalattice.kernel.shared_kernel.identity import successor_identity_payload
 
 
 class MaintenanceTrigger(StrEnum):
@@ -273,6 +274,10 @@ class ListingMarketDataChange:
         raw_correction_sessions: Sorted unique raw-input correction sessions.
         adjusted_return_change_sessions: Sorted unique adjusted-return correction sessions.
         source_receipt_hashes: Evidence receipt commitments retained with the listing changes.
+        rebase_moved: Each Feature whose value a split's rebase of the stored bars moved past
+            the data rule's agreement, with its sessions, expanded to all Features in each
+            existing Panel span reached. These cells remain owed across requests until the
+            Panel holds them. Empty, and left out of the change's identity, when none moved.
     """
 
     listing_id: str
@@ -283,6 +288,32 @@ class ListingMarketDataChange:
     raw_correction_sessions: tuple[date, ...] = ()
     adjusted_return_change_sessions: tuple[date, ...] = ()
     source_receipt_hashes: tuple[str, ...] = ()
+    rebase_moved: tuple[tuple[str, tuple[date, ...]], ...] = ()
+
+    @classmethod
+    def read(cls, item: Mapping[str, Any]) -> Self:
+        """The change as its record keeps it, each date from its ISO text."""
+
+        def day(value: Any) -> date | None:
+            return date.fromisoformat(str(value)[:10]) if value else None
+
+        def days(name: str) -> tuple[date, ...]:
+            return tuple(cast(date, day(value)) for value in item.get(name, ()))
+
+        return cls(
+            listing_id=str(item["listing_id"]),
+            new_session_start=day(item.get("new_session_start")),
+            new_sessions=days("new_sessions"),
+            raw_correction_start=day(item.get("raw_correction_start")),
+            action_correction_start=day(item.get("action_correction_start")),
+            raw_correction_sessions=days("raw_correction_sessions"),
+            adjusted_return_change_sessions=days("adjusted_return_change_sessions"),
+            source_receipt_hashes=tuple(item["source_receipt_hashes"]),
+            rebase_moved=tuple(
+                (str(factor), tuple(cast(date, day(value)) for value in sessions))
+                for factor, sessions in item.get("rebase_moved", ())
+            ),
+        )
 
     def __post_init__(self) -> None:
         """Require every declared session tuple to be sorted and unique.
@@ -291,13 +322,27 @@ class ListingMarketDataChange:
             ValueError: Added, raw-correction or adjusted-return sessions repeat or are out of
                 order.
         """
+        factors = tuple(factor for factor, _sessions in self.rebase_moved)
         for value in (
             self.new_sessions,
             self.raw_correction_sessions,
             self.adjusted_return_change_sessions,
+            *(sessions for _factor, sessions in self.rebase_moved),
         ):
-            if value != tuple(sorted(set(value))):
+            if value != tuple(sorted(set(value))) or factors != tuple(sorted(set(factors))):
                 raise ValueError("market-data change sessions must be sorted and unique")
+
+
+Cells = tuple[tuple[str, tuple[date, ...]], ...]
+"""Feature cells by Feature: each with its sessions, both sorted."""
+
+
+def gathered_cells(left: Cells, right: Cells) -> Cells:
+    """Both sets of cells, each Feature's sessions joined."""
+    cells: dict[str, set[date]] = {}
+    for factor, sessions in (*left, *right):
+        cells.setdefault(factor, set()).update(sessions)
+    return tuple((factor, tuple(sorted(days))) for factor, days in sorted(cells.items()))
 
 
 @dataclass(frozen=True)
@@ -335,7 +380,9 @@ class MarketDataChangeSet:
         if self.spy_return_change_sessions != tuple(sorted(set(self.spy_return_change_sessions))):
             raise ValueError("SPY return change sessions must be sorted and unique")
         payload: dict[str, Any] = {
-            "listing_changes": [asdict(item) for item in ordered],
+            "listing_changes": [
+                successor_identity_payload(asdict(item), ("rebase_moved",)) for item in ordered
+            ],
             "spy_correction_start": self.spy_correction_start,
             "spy_return_change_sessions": self.spy_return_change_sessions,
             "sector_revision_changed": self.sector_revision_changed,
@@ -351,6 +398,88 @@ class MarketDataChangeSet:
         object.__setattr__(self, "membership_removals", tuple(payload["membership_removals"]))
         object.__setattr__(self, "receipt_hashes", tuple(payload["receipt_hashes"]))
         object.__setattr__(self, "change_set_hash", expected)
+
+    @classmethod
+    def merged(
+        cls, prior: MarketDataChangeSet, current: MarketDataChangeSet
+    ) -> MarketDataChangeSet:
+        """Carry a verified market-data prefix across deferred stage resumes.
+
+        Each listing's changes join, a rebase's moved cells among them, so a resumed cycle still
+        rebuilds what the split moved after the cells' Feature rows were written.
+        """
+        if prior.empty:
+            return current
+        if current.empty or prior.change_set_hash == current.change_set_hash:
+            return prior
+
+        def earliest(left: date | None, right: date | None) -> date | None:
+            values = tuple(value for value in (left, right) if value is not None)
+            return min(values) if values else None
+
+        by_listing: dict[str, ListingMarketDataChange] = {
+            item.listing_id: item for item in prior.listing_changes
+        }
+        for item in current.listing_changes:
+            previous = by_listing.get(item.listing_id)
+            if previous is None:
+                by_listing[item.listing_id] = item
+                continue
+            by_listing[item.listing_id] = ListingMarketDataChange(
+                listing_id=item.listing_id,
+                new_session_start=earliest(previous.new_session_start, item.new_session_start),
+                new_sessions=tuple(sorted(set(previous.new_sessions) | set(item.new_sessions))),
+                raw_correction_start=earliest(
+                    previous.raw_correction_start,
+                    item.raw_correction_start,
+                ),
+                action_correction_start=earliest(
+                    previous.action_correction_start,
+                    item.action_correction_start,
+                ),
+                raw_correction_sessions=tuple(
+                    sorted(
+                        set(previous.raw_correction_sessions) | set(item.raw_correction_sessions)
+                    )
+                ),
+                adjusted_return_change_sessions=tuple(
+                    sorted(
+                        set(previous.adjusted_return_change_sessions)
+                        | set(item.adjusted_return_change_sessions)
+                    )
+                ),
+                source_receipt_hashes=tuple(
+                    sorted(set(previous.source_receipt_hashes) | set(item.source_receipt_hashes))
+                ),
+                rebase_moved=gathered_cells(previous.rebase_moved, item.rebase_moved),
+            )
+
+        additions = set(prior.membership_additions)
+        removals = set(prior.membership_removals)
+        for listing_id in current.membership_additions:
+            removals.discard(listing_id)
+            additions.add(listing_id)
+        for listing_id in current.membership_removals:
+            additions.discard(listing_id)
+            removals.add(listing_id)
+        return cls(
+            listing_changes=tuple(by_listing.values()),
+            spy_correction_start=earliest(
+                prior.spy_correction_start,
+                current.spy_correction_start,
+            ),
+            spy_return_change_sessions=tuple(
+                sorted(
+                    set(prior.spy_return_change_sessions) | set(current.spy_return_change_sessions)
+                )
+            ),
+            sector_revision_changed=(
+                prior.sector_revision_changed or current.sector_revision_changed
+            ),
+            membership_additions=tuple(sorted(additions)),
+            membership_removals=tuple(sorted(removals)),
+            receipt_hashes=tuple(sorted(set(prior.receipt_hashes) | set(current.receipt_hashes))),
+        )
 
     @property
     def empty(self) -> bool:

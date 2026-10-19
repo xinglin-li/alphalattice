@@ -8,10 +8,10 @@ quality gates: it advances a frozen quality-filtered manifest with a bounded
 
 from __future__ import annotations
 
-from collections.abc import Callable, Generator, Iterator, Mapping
+from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from functools import partial
@@ -52,12 +52,24 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import (
     SanitizedBatch,
     sanitize_payload,
 )
-from alphalattice.foundation.market_data_ops.storage.action_audit import ActionAuditObservation
+from alphalattice.foundation.market_data_ops.storage.action_audit import (
+    ADJUSTMENT_SEGMENTS,
+    PRECISION_KEPT,
+    ActionAuditObservation,
+)
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
     ActionAuditScopeInsufficient,
     CurrentUniverseMaintenanceListing,
     MarketDataRepository,
+)
+from alphalattice.foundation.market_data_ops.storage.rebase import (
+    RawBarRebase,
+    rebase_changes,
+    rebase_disclosure,
+    recognize,
+    recorded,
+    standing,
 )
 from alphalattice.kernel.shared_kernel.spans import span
 
@@ -154,6 +166,8 @@ class CurrentUniverseMaintenance:
     max_workers: int = 4
     adjusted_tolerance: float = 0.0
     """The data rule's relative precision for stored adjusted closes observed again."""
+    rebase_agreement: tuple[float, float] = (0.0, 0.0)
+    """The data rule's agreement (relative, absolute) for stored bars a split rescales."""
     chunk_size: int = 25
     maximum_listing_attempts: int = 2
     full_history_escalation_listing_ids: frozenset[str] = frozenset()
@@ -784,9 +798,8 @@ class CurrentUniverseMaintenance:
         ) or self.store.provider_adjusted_closes(
             item.listing_id, through=self.as_of_session, _connection=connection
         )
-        before_adjusted_through = (
-            max(point.session_date for point in before_adjusted) if before_adjusted else None
-        )
+        before_adjusted_through = max((p.session_date for p in before_adjusted), default=None)
+        batch = self._standing(batch, existing, before_actions)  # a re-rounded rescale stands
         # Pure pre-admission observation: how the candidate batch disagrees with
         # already-qualified history, by content identity, before qualification
         # decides anything. It never writes; ``apply_validated_batch`` below
@@ -824,14 +837,10 @@ class CurrentUniverseMaintenance:
                 connection=connection,
             )
             return "FAILED"
-        write_counts = self._mutate(
-            self.store.apply_validated_batch,
-            self.manifest,
-            batch,
+        write_counts, waits = self._apply_bars(
+            batch, existing, hydration, before_actions, observed_at, connection,
             ingestion_id=f"{self.maintenance_id}:refresh:{listing.listing_id}",
-            observed_at=observed_at,
-            _connection=connection,
-        )
+        )  # fmt: skip
         return (
             yield from self._audit_and_finish(
                 item,
@@ -848,8 +857,76 @@ class CurrentUniverseMaintenance:
                 sentinel_report=sentinel_report,
                 restatement_observation=restatement_observation,
                 connection=connection,
+                waits=waits,
             )
         )
+
+    def _apply_bars(
+        self,
+        batch: SanitizedBatch,
+        stored: Sequence[object],
+        hydration: HydrationEvidence,
+        before: tuple[object, ...],
+        observed_at: datetime,
+        connection: DuckDBPyConnection | None,
+        *,
+        ingestion_id: str,
+    ) -> tuple[dict[str, int], bool]:
+        """Write a refresh's bars: its counts, and whether a rebase waits for the full audit.
+
+        A newly reported split's rebase of the stored bars, within the rule's precision, is
+        written whole, from the full history: a rolling refresh that sees one writes only its
+        new sessions and waits for the full audit.
+        """
+        known = {(a.effective_date, a.new_shares_per_old_share) for a in before}  # type: ignore[attr-defined]
+        splits = [
+            a
+            for a in hydration.actions
+            if a.action_kind == "SPLIT"
+            and a.new_shares_per_old_share not in (None, 1.0)
+            and (a.effective_date, a.new_shares_per_old_share) not in known
+        ]
+        bars = tuple(bar for bar in stored if isinstance(bar, RawDailyBar))
+        found = recognize(bars, batch.bars, splits, self.rebase_agreement, observed_at)
+        rebases, waits = (found[1], False) if found and found[2] else ((), found is not None)
+        prior = {bar.session_date for bar in bars}
+        written = (
+            (found[0] if rebases else tuple(b for b in batch.bars if b.session_date not in prior))
+            if found
+            else batch.bars
+        )
+        if not written:  # a retry of a waiting rebase: its new sessions are already stored
+            return {}, waits
+        counts = self._mutate(
+            self.store.apply_validated_batch,
+            self.manifest,
+            replace(batch, bars=written),
+            ingestion_id=ingestion_id,
+            observed_at=observed_at,
+            _connection=connection,
+            rebases=rebases,
+        )
+        return counts, waits
+
+    def _standing(
+        self, batch: SanitizedBatch, stored: Sequence[object], actions: Sequence[object]
+    ) -> SanitizedBatch:
+        """The batch, each resent bar before a known split that agrees with its stored one as it."""
+        known = {a.effective_date for a in actions if a.action_kind == "SPLIT"}  # type: ignore[attr-defined]
+        bars = tuple(bar for bar in stored if isinstance(bar, RawDailyBar))
+        return replace(batch, bars=standing(bars, batch.bars, known, self.rebase_agreement))
+
+    def _rebases(
+        self, listing_id: str, connection: DuckDBPyConnection | None
+    ) -> tuple[RawBarRebase, ...]:
+        """The rebases this cycle wrote for the listing, read back from the store.
+
+        A restart after the bars' commit so still discloses them.
+        """
+        if connection is not None:
+            return recorded(connection, (listing_id,), f"{self.maintenance_id}:")
+        with self.store.database.read_transaction() as read:
+            return recorded(read, (listing_id,), f"{self.maintenance_id}:")
 
     def _price_action_sentinel(self, batch: SanitizedBatch) -> PriceActionIntegritySentinelReport:
         """Run the sentinels against the authority the Host qualified.
@@ -885,6 +962,7 @@ class CurrentUniverseMaintenance:
         sentinel_report: PriceActionIntegritySentinelReport,
         restatement_observation: RestatementObservationReceipt,
         connection: DuckDBPyConnection | None = None,
+        waits: bool = False,
     ) -> _Steps:
         # The batch wrote only its own sessions: the bars before them are as they were read.
         after = {session: bar for session, bar in before_bars.items() if session < written_from} | {
@@ -897,7 +975,7 @@ class CurrentUniverseMaintenance:
             )
         }
         bars = tuple(after[session] for session in sorted(after))
-        force_full_audit = False
+        force_full_audit = waits
         adjusted_return_change_sessions: set[date] = set()
         try:
             receipt, audit_counts = yield self._observation(
@@ -954,10 +1032,8 @@ class CurrentUniverseMaintenance:
         needs_full = force_full_audit or (
             audit_start != bars[0].session_date
             and (
-                write_counts["corrected"] > 0
-                or write_counts["action_corrected"] > 0
-                or audit_counts["corrected"] > 0
-                or audit_counts["retracted"] > 0
+                write_counts["corrected"] + write_counts["action_corrected"] > 0
+                or audit_counts["corrected"] + audit_counts["retracted"] > 0
                 or historical_adjusted_change
             )
         )
@@ -992,17 +1068,13 @@ class CurrentUniverseMaintenance:
                         observed_at=observed_at,
                     )
                     return "FAILED"
-                full_counts = self._mutate(
-                    self.store.apply_validated_batch,
-                    self.manifest,
-                    full_batch,
+                full_counts, _ = self._apply_bars(
+                    self._standing(full_batch, bars, before_actions), bars, hydration,
+                    before_actions, observed_at, None,
                     ingestion_id=f"{self.maintenance_id}:full:{listing.listing_id}",
-                    observed_at=observed_at,
-                )
-                write_counts = {
-                    key: write_counts.get(key, 0) + full_counts.get(key, 0)
-                    for key in set(write_counts) | set(full_counts)
-                }
+                )  # fmt: skip
+                keys = set(write_counts) | set(full_counts)
+                write_counts = {k: write_counts.get(k, 0) + full_counts.get(k, 0) for k in keys}
                 receipt, audit_counts = self._mutate(
                     self.store.complete_action_audit,
                     self.manifest,
@@ -1071,12 +1143,13 @@ class CurrentUniverseMaintenance:
                 mapping_revision=receipt.mapping_revision,
                 adjusted_diagnostic_max_bps=receipt.max_adjusted_close_difference_bps,
                 adjusted_return_change_sessions=tuple(sorted(adjusted_return_change_sessions)),
-                precision_kept=audit_counts.get("precision_kept"),
+                disclosed=audit_counts,
                 provider_policy_hash=hydration.provider_policy_hash,
                 provider_repaired_sessions=hydration.repaired_sessions,
                 sentinel_report=sentinel_report,
                 restatement_observation=restatement_observation,
                 observed_at=observed_at,
+                rebases=self._rebases(item.listing_id, connection),
             ),
             observed_at=observed_at,
             _connection=connection,
@@ -1133,8 +1206,7 @@ class CurrentUniverseMaintenance:
         write_counts: Mapping[str, int],
     ) -> ActionAuditObservation:
         """The listing's audit observation from `start`; the data rule's precision may keep
-        stored adjusted closes only while this run moved no raw bar and no action."""
-        moved = ("corrected", "action_inserted", "action_corrected")
+        stored adjusted closes only while this run corrected no raw bar."""
         return ActionAuditObservation(
             listing_id=item.listing_id,
             provider=self.provider.name,
@@ -1143,9 +1215,7 @@ class CurrentUniverseMaintenance:
             history_start=start,
             history_end=self.as_of_session,
             observed_at=observed_at,
-            adjusted_tolerance=0.0
-            if any(write_counts.get(key) for key in moved)
-            else self.adjusted_tolerance,
+            adjusted_tolerance=0.0 if write_counts.get("corrected") else self.adjusted_tolerance,
         )
 
     @staticmethod
@@ -1163,12 +1233,13 @@ class CurrentUniverseMaintenance:
         mapping_revision: str,
         adjusted_diagnostic_max_bps: float | None,
         adjusted_return_change_sessions: tuple[date, ...],
-        precision_kept: float | None,
+        disclosed: Mapping[str, Any],
         provider_policy_hash: str | None,
         provider_repaired_sessions: tuple[date, ...],
         sentinel_report: PriceActionIntegritySentinelReport,
         restatement_observation: RestatementObservationReceipt,
         observed_at: datetime,
+        rebases: tuple[RawBarRebase, ...] = (),
     ) -> dict[str, object]:
         def bar_payload(value: object) -> tuple[object, ...]:
             return tuple(
@@ -1176,10 +1247,14 @@ class CurrentUniverseMaintenance:
             )
 
         new_sessions = sorted(set(after_bars) - set(before_bars))
-        corrected = sorted(
-            session
-            for session in set(before_bars) & set(after_bars)
-            if bar_payload(before_bars[session]) != bar_payload(after_bars[session])
+        corrected = rebase_changes(
+            sorted(
+                session
+                for session in set(before_bars) & set(after_bars)
+                if bar_payload(before_bars[session]) != bar_payload(after_bars[session])
+            ),
+            rebases,
+            before_bars,
         )
         before_action_map = {
             (item.effective_date, item.action_kind): asdict(item) for item in before_actions
@@ -1202,8 +1277,14 @@ class CurrentUniverseMaintenance:
             "adjusted_return_change_sessions": [
                 item.isoformat() for item in adjusted_return_change_sessions
             ],
-            # Stored adjusted closes the provider sent again within the data rule's precision.
-            **({"adjusted_precision_kept": precision_kept} if precision_kept is not None else {}),
+            # Stored adjusted closes the provider sent again within the data rule's precision, and a
+            # back-adjustment's segments kept in the adjustment-factor form.
+            **{
+                key: disclosed[key]
+                for key in (PRECISION_KEPT, ADJUSTMENT_SEGMENTS)
+                if key in disclosed
+            },
+            **rebase_disclosure(rebases),
             "audit_scope": "FULL" if audit_start == min(after_bars) else "ROLLING",
             "history_start": min(after_bars).isoformat(),
             "history_end": max(after_bars).isoformat(),

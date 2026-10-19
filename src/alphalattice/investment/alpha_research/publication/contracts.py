@@ -39,6 +39,32 @@ class WorkspaceObservationHistoryPart(_Contract):
         return self
 
 
+class StoredRebase(_Contract):
+    """A split's rebase that some of a listing's kept rows still need when they are read.
+
+    Their bytes are as written before the store rebased its bars (CRSP's form: values as they
+    were, a factor applied on read); a reader scales them in the order listed, as the store
+    scaled its bars. Every rebase the store held when they were written is listed, with no rows
+    once none needs it, so a later one is known as new.
+    """
+
+    listing_id: str
+    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    price_factor: float
+    volume_factor: float
+    rows: tuple[tuple[int, int], ...] = ()
+    """Half-open row ranges on the record's session axis."""
+    kept_within: int = Field(default=0, ge=0, exclude_if=lambda v: not v)
+    """The rows kept as stored whose recomputed values differed, within the rule's agreement
+    (a whole-share rounding of a rescaled volume moves a dollar volume so); absent when none."""
+    kept_largest: float = Field(default=0.0, ge=0, exclude_if=lambda v: not v)
+    """The largest relative difference among them; where the recomputed value is zero, the
+    absolute one, which the rule's floor bounds."""
+    kept_rule_hash: str = Field(default="", exclude_if=lambda v: not v)
+    """The data rule whose agreement kept them: the workspace's sealed rule, or the shipped one
+    where the workspace declares none; absent when no row was kept so."""
+
+
 HistoryProofParts = tuple[str, tuple[str, ...], tuple[str, ...]]
 """A kept history's prefix proof parts: its axes, each listing's digest and closed years."""
 _PROOF_FIELDS = ("axes_proof", "listing_digests", "listing_closed")
@@ -69,6 +95,8 @@ class WorkspaceObservationHistoryHead(_Contract):
     axes_proof: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     listing_digests: tuple[str, ...] = ()
     listing_closed: tuple[str, ...] = ()
+    rebases: tuple[StoredRebase, ...] = Field(default=(), exclude_if=lambda v: not v)
+    """Absent while no split rebased a listing, so an earlier head keeps its seal."""
     head_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @classmethod
@@ -205,6 +233,12 @@ class FrozenScoreObservationSnapshot(_Contract):
     ordered_formula_ids: tuple[str, ...] = Field(default=(), exclude_if=lambda v: not v)
     reference_eligibility_recorded: bool = Field(default=False, exclude_if=lambda v: not v)
     nominal_population_recorded: bool = Field(default=False, exclude_if=lambda v: not v)
+    rebases: tuple[StoredRebase, ...] = Field(default=(), exclude_if=lambda v: not v)
+    """The splits its OHLCV rows still need, as `StoredRebase`; absent while none does."""
+    kept_blocks: tuple[int, ...] = Field(default=(), exclude_if=lambda v: not v)
+    """The blocks a split day kept as an earlier snapshot's, their values within the rule's
+    `kept_agreement` (relative, absolute) of its own recomputed ones; absent while none."""
+    kept_agreement: tuple[float, float] | None = Field(default=None, exclude_if=lambda v: v is None)
     snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @property

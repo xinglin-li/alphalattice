@@ -22,7 +22,8 @@
       "tables": [
         "bar_revision",
         "corporate_action_revision",
-        "provider_adjusted_series_revision"
+        "provider_adjusted_series_revision",
+        "raw_bar_rebase"
       ],
       "database": "workspace",
       "semantic_role": "append-only semantic revision evidence",

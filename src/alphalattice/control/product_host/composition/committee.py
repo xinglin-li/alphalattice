@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Final
 from uuid import UUID
 
+from alphalattice.control.data_platform.data_decision_rule import KeptListing, KeptObservations
 from alphalattice.control.product_host.composition.committee_materials import (
     AGENDA_LIMIT as AGENDA_LIMIT,
 )
@@ -142,7 +143,8 @@ class Floor:
     rule_cases: frozenset[str] = field(default=frozenset(), compare=False)
     rule_audits: tuple[tuple[str, str], ...] = field(default=(), compare=False)
     rule_held: frozenset[str] = field(default=frozenset(), compare=False)
-    rule_kept: tuple[tuple[str, str, float], ...] = field(default=(), compare=False)
+    rule_kept: tuple[KeptListing, ...] = field(default=(), compare=False)
+    rule_retained: tuple[KeptObservations, ...] = field(default=(), compare=False)
 
     def key(self, role: str) -> str:
         """Derive the member's key on this floor from the seed the Host keeps outside records."""
@@ -614,6 +616,7 @@ def thread_of(store: GoalStore, thread: str) -> Floor | None:
         rule_audits=store.rule_audits(thread, entries),
         rule_held=store.rule_held(thread, entries),
         rule_kept=store.rule_kept(thread, entries),
+        rule_retained=store.rule_retained(thread, entries),
     )
 
 

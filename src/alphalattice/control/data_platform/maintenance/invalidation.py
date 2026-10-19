@@ -8,7 +8,30 @@ from datetime import date
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.contracts import FeatureInvalidation, canonical_hash
 
-from .contracts import MarketDataChangeSet
+from .contracts import ListingMarketDataChange, MarketDataChangeSet
+
+_RAW_FIELDS = (
+    "open_raw", "high_raw", "low_raw", "close_raw", "volume_raw",
+    "open_split_adjusted", "high_split_adjusted", "low_split_adjusted", "close_split_adjusted",
+)  # fmt: skip
+"""The stored bar fields a raw correction reaches."""
+
+
+def _rebase_items(
+    change: ListingMarketDataChange, receipt: str | None
+) -> list[FeatureInvalidation]:
+    """A split's rebuild of exactly the cells its early cutoff found moved, one a Feature.
+
+    They are planned as the exact output sessions a new session's are, so no Feature
+    implementation's identity moves; the change's `rebase_moved` records that a split moved them.
+    """
+    return [
+        FeatureInvalidation(
+            "normal_new_session", listing_id=change.listing_id, earliest_session=sessions[0],
+            affected_sessions=sessions, factor_ids=(factor,), source_receipt_hash=receipt,
+        )
+        for factor, sessions in change.rebase_moved
+    ]  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -83,17 +106,7 @@ class FeatureInvalidationTopology:
         items: list[FeatureInvalidation] = []
         all_factors = tuple(sorted(self.catalog.factor_ids))
         adjusted_factors = self._factors_for_fields({"provider_adjusted_close"})
-        raw_fields = {
-            "open_raw",
-            "high_raw",
-            "low_raw",
-            "close_raw",
-            "volume_raw",
-            "open_split_adjusted",
-            "high_split_adjusted",
-            "low_split_adjusted",
-            "close_split_adjusted",
-        }
+        raw_fields = set(_RAW_FIELDS)
         raw_factors = self._factors_for_fields(raw_fields)
         for change in change_set.listing_changes:
             receipt = change.source_receipt_hashes[0] if change.source_receipt_hashes else None
@@ -136,6 +149,7 @@ class FeatureInvalidationTopology:
                         source_receipt_hash=receipt,
                     )
                 )
+            items += _rebase_items(change, receipt)
             # Corporate-action evidence is intentionally absent here.  It is
             # provenance unless provider OHLCV or adjusted returns also changed.
         if change_set.spy_correction_start is not None:

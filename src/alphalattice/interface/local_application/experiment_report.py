@@ -869,6 +869,16 @@ def alpha_report_section(body: dict[str, Any]) -> str:
     )
 
 
+def _data_decisions(decisions: dict[str, Any]) -> dict[str, Any]:
+    """The data issues the Host's rule decided: its words, each listing's row and what it kept."""
+    kept = decisions.get("kept_observations")
+    return {
+        "Data decisions": decisions["words"],
+        "Decided by the rule": decisions["decided"],
+        **({"Observations kept as stored": kept} if kept else {}),
+    }
+
+
 def render_research_delivery(snapshot: dict[str, Any]) -> str:
     """Compose existing verified content; commentary stays escaped and non-authoritative."""
     from alphalattice.interface.local_application.evidence_cro import render_review_export
@@ -888,7 +898,7 @@ def render_research_delivery(snapshot: dict[str, Any]) -> str:
                         "Question for this delivery": snapshot["question"],
                         **snapshot["input"],
                         **(
-                            {"Data decisions": snapshot["data_decisions"]["words"]}
+                            _data_decisions(snapshot["data_decisions"])
                             if "data_decisions" in snapshot
                             else {}
                         ),

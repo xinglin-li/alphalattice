@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from bisect import bisect_left
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
@@ -20,10 +21,13 @@ from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
+from alphalattice.foundation.market_data_ops.storage.rebase import PRICES
+from alphalattice.foundation.market_data_ops.storage.rebase import apply as apply_rebase
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .contracts import (
     HistoryProofParts,
+    StoredRebase,
     WorkspaceObservationHistoryHead,
     WorkspaceObservationHistoryMarker,
     WorkspaceObservationHistoryPart,
@@ -45,6 +49,229 @@ _REUSE_INVALID = "alpha_research.workspace_observation_history_reuse_invalid"
 def _part_category(column_names: tuple[str, ...], shape: tuple[int, int]) -> str:
     layout = canonical_hash({"column_names": column_names, "shape": shape, "dtype": "float64"})
     return f"{_PARTS}/{layout}"
+
+
+HISTORY_PART_SESSIONS = 21
+"""Sessions per stable history part: a day rewrites the parts its changed sessions fall in."""
+
+
+def _same_parts(
+    current: tuple[WorkspaceObservationHistoryHead, _Columns] | None,
+    sessions: tuple[date, ...],
+    listings: tuple[str, ...],
+    names: tuple[str, ...],
+) -> dict[tuple[int, int], WorkspaceObservationHistoryPart]:
+    """The current head's parts by session range, while its axes and columns are these."""
+    if current is None or current[0].ordered_listing_ids != listings:
+        return {}
+    head = current[0]
+    if head.column_names != names:
+        return {}
+    return {
+        (part.start, part.stop): part
+        for part in head.parts
+        if head.formation_sessions[: part.stop] == sessions[: part.stop]
+    }
+
+
+def rebased(
+    columns: Mapping[str, npt.NDArray[np.float64]],
+    listings: Sequence[str],
+    rebases: Iterable[StoredRebase],
+    prefix: str = "ohlcv::",
+) -> dict[str, npt.NDArray[np.float64]]:
+    """These columns as read: each stored rebase scales its listing's rows, in the order listed.
+
+    The OHLCV columns are copied when any rebase has rows and held, as every read array is, by
+    immutable bytes; every other column is as given.
+    """
+    rebases = [item for item in rebases if item.rows]
+    out = dict(columns)
+    if not rebases:
+        return out
+    view = {name: np.array(out[prefix + name]) for name in (*PRICES, "volume")}
+    index = {listing: column for column, listing in enumerate(listings)}
+    for item in rebases:
+        for start, stop in item.rows:
+            apply_rebase(
+                view, slice(start, stop), index[item.listing_id], item.price_factor,
+                item.volume_factor,
+            )  # fmt: skip
+    for name, values in view.items():
+        out[prefix + name] = _held(values)
+    return out
+
+
+type RebaseKeep = Mapping[str, tuple[npt.NDArray[np.bool_], Mapping[str, npt.NDArray[np.float64]]]]
+"""Each rebased listing's kept rows: which rows of the kept history, and its values as stored."""
+
+
+def _ranges(mask: npt.NDArray[np.bool_]) -> tuple[tuple[int, int], ...]:
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], mask.astype(np.int8), [0]))))
+    return tuple((int(a), int(b)) for a, b in zip(edges[::2], edges[1::2], strict=True))
+
+
+def rebase_keep(
+    history: tuple[WorkspaceObservationHistoryHead, _Columns] | None,
+    listings: Sequence[str],
+    fresh: Mapping[str, npt.NDArray[np.float64]],
+    known: Sequence[Any],
+    agreement: tuple[float, float],
+    rule_hash: str = "",
+) -> tuple[tuple[StoredRebase, ...], RebaseKeep]:
+    """The rebases a new head lists, and the rebased listings' rows it keeps as stored.
+
+    `known` are the store's rebases in the order it applied them. A row is kept when they
+    give its new OHLCV from the stored one exactly and its other columns, which no rebase
+    scales, agree within the data rule's `agreement` (relative, then absolute near zero): a
+    part or block that differs only so keeps its bytes, and each rebase lists the rows that
+    need it, and the hash of the rule whose agreement kept them.
+    """
+    head, stored = history if history is not None else (None, {})
+    entries = list(head.rebases) if head is not None else []
+    sessions = head.formation_sessions if head is not None else ()
+    absorbed = {item.receipt_hash for item in entries}
+    entries += [
+        StoredRebase(
+            listing_id=item.listing_id, receipt_hash=item.receipt_hash,
+            price_factor=item.price_factor, volume_factor=item.volume_factor,
+            rows=((0, bisect_left(sessions, item.ex_date)),),
+        )
+        for item in known
+        if item.receipt_hash not in absorbed
+    ]  # fmt: skip
+    keep: dict[str, Any] = {}
+    within: dict[str, tuple[int, float]] = {}
+    if (
+        head is not None
+        and head.ordered_listing_ids == tuple(listings)
+        and set(stored) == set(fresh)
+    ):
+        size = min(len(sessions), len(next(iter(fresh.values()))))  # a shorter capture bounds it
+        for listing in dict.fromkeys(item.listing_id for item in entries if item.rows):
+            column = listings.index(listing)
+            old = {name: np.array(values[:size, column]) for name, values in stored.items()}
+            mine = [item for item in entries if item.listing_id == listing]
+            fresh_column = {name: fresh[name][:size, column] for name in old}
+            mask, within[listing] = _kept_rows(old, fresh_column, mine, listing, agreement)
+            keep[listing] = (mask, old)
+    return tuple(
+        item.model_copy(
+            update={
+                "rows": _ranges(
+                    keep[item.listing_id][0] & _covered(item.rows, len(keep[item.listing_id][0]))
+                )
+                if item.listing_id in keep
+                else ()
+            }
+            | (
+                {
+                    "kept_within": within[item.listing_id][0],
+                    "kept_largest": within[item.listing_id][1],
+                    "kept_rule_hash": rule_hash,
+                }
+                if item.receipt_hash not in absorbed and item.listing_id in within
+                else {}
+            )
+        )
+        for item in entries
+    ), MappingProxyType(keep)
+
+
+def _kept_rows(
+    old: Mapping[str, npt.NDArray[np.float64]],
+    fresh: Mapping[str, npt.NDArray[np.float64]],
+    rebases: Sequence[StoredRebase],
+    listing: str,
+    agreement: tuple[float, float],
+) -> tuple[npt.NDArray[np.bool_], tuple[int, float]]:
+    """One listing's rows kept as stored, and how many of them, with the largest difference,
+    differed within the agreement: its OHLCV exactly as rebased, every other column close."""
+    view = rebased({n: v.reshape(-1, 1) for n, v in old.items()}, (listing,), rebases)
+    size = len(next(iter(old.values())))
+    mask, pairs = np.ones(size, dtype=np.bool_), []
+    for name, values in view.items():
+        a, b = values.reshape(-1), fresh[name]
+        same = (a == b) | (np.isnan(a) & np.isnan(b))
+        close = np.isclose(a, b, rtol=agreement[0], atol=agreement[1], equal_nan=True)
+        mask &= same if name.startswith("ohlcv::") else close
+        pairs.append((a, b, same))
+    unequal, largest = np.zeros(size, dtype=np.bool_), 0.0
+    for a, b, same in pairs:
+        moved = mask & ~same
+        unequal |= moved
+        gap, base = np.abs(a - b)[moved], np.abs(b)[moved]
+        gap = np.divide(gap, base, out=gap, where=base > 0)  # a zero keeps its absolute gap
+        largest = max(largest, float(gap.max(initial=0.0)))
+    return mask, (int(unequal.sum()), largest)
+
+
+def _covered(rows: Sequence[tuple[int, int]], size: int) -> npt.NDArray[np.bool_]:
+    mask = np.zeros(size, dtype=np.bool_)
+    for start, stop in rows:
+        mask[start:stop] = True
+    return mask
+
+
+def patched(
+    values: npt.NDArray[Any],
+    name: str,
+    start: int,
+    keep: RebaseKeep,
+    listings: Sequence[str],
+) -> npt.NDArray[Any]:
+    """Rows of one column from `start`, each rebased listing's kept rows as stored."""
+    out = None
+    for listing, (mask, old) in keep.items():
+        rows = mask[start : start + len(values)]
+        if name not in old or listing not in listings or not rows.any():
+            continue
+        column, kept = listings.index(listing), old[name][start : start + len(rows)][rows]
+        if values[: len(rows)][rows, column].tobytes() == kept.tobytes():
+            continue  # already as stored: no copy
+        if out is None:
+            out = np.array(values)
+        out[: len(rows)][rows, column] = kept
+    return values if out is None else out
+
+
+def _publishable(
+    capacity: object,
+    sessions: tuple[date, ...],
+    listings: tuple[str, ...],
+    stable: int,
+    columns: Mapping[str, npt.NDArray[Any]],
+) -> bool:
+    """Whether a publication's arguments are a history's: dated axes, its listings, its columns."""
+    shape = (len(sessions), len(listings))
+    return not (
+        not callable(capacity)
+        or not sessions
+        or any(type(value) is not date for value in sessions)
+        or sessions != tuple(sorted(set(sessions)))
+        or not listings
+        or any(not isinstance(value, str) or not value for value in listings)
+        or len(set(listings)) != len(listings)
+        or type(stable) is not int
+        or not 0 <= stable <= len(sessions)
+        or not columns
+        or any(not isinstance(name, str) or not name for name in columns)
+        or any(
+            not isinstance(value, np.ndarray)
+            or value.dtype != np.dtype("float64")
+            or value.shape != shape
+            for value in columns.values()
+        )
+    )
+
+
+def _stored(
+    columns: Mapping[str, npt.NDArray[Any]], kept: RebaseKeep, listings: Sequence[str]
+) -> dict[str, npt.NDArray[Any]]:
+    """Each column as it is stored, a rebased listing's kept rows as they were, sorted by name."""
+    return {
+        name: _held(patched(columns[name], name, 0, kept, listings)) for name in sorted(columns)
+    }
 
 
 def _held(values: npt.NDArray[Any]) -> npt.NDArray[Any]:
@@ -219,6 +446,59 @@ class _WorkspaceObservationHistoryStore:
                     self._part(previous, part, {})
         return head, columns
 
+    def _parts(
+        self,
+        content: ContentAddressedStore,
+        held: dict[str, npt.NDArray[Any]],
+        parts: list[WorkspaceObservationHistoryPart],
+        stable_session_count: int,
+        current: tuple[WorkspaceObservationHistoryHead, _Columns] | None,
+        formation_sessions: tuple[date, ...],
+        ordered_listing_ids: tuple[str, ...],
+    ) -> list[WorkspaceObservationHistoryPart]:
+        """The head's parts after the reused ones.
+
+        The stable sessions in fixed parts, each kept while the current head holds it as it is,
+        then the open sessions.
+        """
+        start = parts[-1].stop if parts else 0
+        # Stable sessions in fixed parts: a part whose sessions and values the current head holds
+        # as they are is kept, so a listing restated from a recent session rewrites only its parts.
+        held_parts = _same_parts(current, formation_sessions, ordered_listing_ids, tuple(held))
+        first = (start // HISTORY_PART_SESSIONS + 1) * HISTORY_PART_SESSIONS
+        bounds = range(first, stable_session_count, HISTORY_PART_SESSIONS)
+        for stop in (*bounds, stable_session_count, len(formation_sessions)):
+            if stop <= start:
+                continue
+            kept = held_parts.get((start, stop))
+            if (
+                kept is not None
+                and current is not None
+                and all(
+                    current[1][name][start:stop].tobytes() == values[start:stop].tobytes()
+                    for name, values in held.items()
+                )
+            ):
+                parts.append(kept)
+                start = stop
+                continue
+            try:
+                content_hash = content.publish_columns(
+                    category=_part_category(tuple(held), (stop - start, len(ordered_listing_ids))),
+                    columns={name: value[start:stop] for name, value in held.items()},
+                )
+            except ContentAddressedStoreError as error:
+                raise self.error(_INVALID) from error
+            parts.append(
+                seal_current_contract(
+                    WorkspaceObservationHistoryPart,
+                    {"start": start, "stop": stop, "content_hash": content_hash},
+                    "part_hash",
+                )
+            )
+            start = stop
+        return parts
+
     def publish(
         self,
         *,
@@ -233,37 +513,21 @@ class _WorkspaceObservationHistoryStore:
         capacity: Callable[[int], None],
         loaded: tuple[WorkspaceObservationHistoryHead, _Columns] | None = None,
         proofs: HistoryProofParts | None = None,
+        rebased: tuple[tuple[StoredRebase, ...], RebaseKeep] = ((), MappingProxyType({})),
     ) -> WorkspaceObservationHistoryHead:
         """Admit every staging write and commit a marker after all exact parts and head.
 
         ``loaded`` is the caller's `load` of this slot; it stands for the current head while
-        the marker still names it, so the slot is not read a second time.
+        the marker still names it, so the slot is not read a second time. ``rebased`` holds
+        the rebases its readers apply and the rows written as stored (`rebase_keep`).
         """
         for value in (scope_hash, selection_hash, dependency_prefix_hash):
             self._require_hash(value)
-        if (
-            not callable(capacity)
-            or not formation_sessions
-            or any(type(value) is not date for value in formation_sessions)
-            or formation_sessions != tuple(sorted(set(formation_sessions)))
-            or not ordered_listing_ids
-            or any(not isinstance(value, str) or not value for value in ordered_listing_ids)
-            or len(set(ordered_listing_ids)) != len(ordered_listing_ids)
-            or type(stable_session_count) is not int
-            or not 0 <= stable_session_count <= len(formation_sessions)
-            or not columns
-            or any(not isinstance(name, str) or not name for name in columns)
+        if not _publishable(
+            capacity, formation_sessions, ordered_listing_ids, stable_session_count, columns
         ):
             raise self.error(_INVALID)
-        shape = (len(formation_sessions), len(ordered_listing_ids))
-        if any(
-            not isinstance(value, np.ndarray)
-            or value.dtype != np.dtype("float64")
-            or value.shape != shape
-            for value in columns.values()
-        ):
-            raise self.error(_INVALID)
-        held = {name: _held(columns[name]) for name in sorted(columns)}
+        held = _stored(columns, rebased[1], ordered_listing_ids)
         marker = self._marker(scope_hash) if loaded is not None else None
         current = (
             loaded
@@ -307,6 +571,7 @@ class _WorkspaceObservationHistoryStore:
                 and old.ordered_listing_ids == ordered_listing_ids
                 and old.column_names == tuple(held)
                 and old.stable_session_count == stable_session_count
+                and old.rebases == rebased[0]
                 and all(
                     old_columns[name].tobytes(order="C") == held[name].tobytes() for name in held
                 )
@@ -315,26 +580,15 @@ class _WorkspaceObservationHistoryStore:
         content = ContentAddressedStore(
             self.root, uri_prefix="artifact://alpha-research", capacity=capacity
         )
-        parts = list(reusable)
-        start = parts[-1].stop if parts else 0
-        for stop in (stable_session_count, len(formation_sessions)):
-            if stop <= start:
-                continue
-            try:
-                content_hash = content.publish_columns(
-                    category=_part_category(tuple(held), (stop - start, len(ordered_listing_ids))),
-                    columns={name: value[start:stop] for name, value in held.items()},
-                )
-            except ContentAddressedStoreError as error:
-                raise self.error(_INVALID) from error
-            parts.append(
-                seal_current_contract(
-                    WorkspaceObservationHistoryPart,
-                    {"start": start, "stop": stop, "content_hash": content_hash},
-                    "part_hash",
-                )
-            )
-            start = stop
+        parts = self._parts(
+            content,
+            held,
+            list(reusable),
+            stable_session_count,
+            current,
+            formation_sessions,
+            ordered_listing_ids,
+        )
         head = WorkspaceObservationHistoryHead.sealed(
             {
                 "scope_hash": scope_hash,
@@ -346,6 +600,7 @@ class _WorkspaceObservationHistoryStore:
                 "stable_session_count": stable_session_count,
                 "predecessor_head_hash": current[0].head_hash if current is not None else None,
                 "parts": tuple(parts),
+                "rebases": rebased[0],
             },
             proofs,
         )

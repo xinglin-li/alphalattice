@@ -15,7 +15,9 @@ from alphalattice.control.data_platform.maintenance.contracts import (
     CANCELLED_AT_SAFE_CHECKPOINT,
     ActionAuditChainReceipt,
     ActionAuditScope,
+    Cells,
     DataRemediationFailureReceipt,
+    ListingMarketDataChange,
     MaintenancePhase,
     MaintenanceStatus,
     MaintenanceTrigger,
@@ -23,6 +25,7 @@ from alphalattice.control.data_platform.maintenance.contracts import (
     WorkspaceDataUpdateReceipt,
     WorkspaceMaintenanceCycle,
     WorkspaceMaintenanceRequest,
+    gathered_cells,
 )
 from alphalattice.control.workspace_runtime.database import open_workspace_database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
@@ -867,38 +870,7 @@ class DuckDbWorkspaceMaintenanceRegistry:
 
             change_set = MarketDataChangeSet(
                 listing_changes=tuple(
-                    ListingMarketDataChange(
-                        listing_id=str(item["listing_id"]),
-                        new_session_start=(
-                            datetime.fromisoformat(str(item["new_session_start"])).date()
-                            if item.get("new_session_start")
-                            else None
-                        ),
-                        new_sessions=tuple(
-                            datetime.fromisoformat(str(value)).date()
-                            for value in item.get("new_sessions", ())
-                        ),
-                        raw_correction_start=(
-                            datetime.fromisoformat(str(item["raw_correction_start"])).date()
-                            if item.get("raw_correction_start")
-                            else None
-                        ),
-                        action_correction_start=(
-                            datetime.fromisoformat(str(item["action_correction_start"])).date()
-                            if item.get("action_correction_start")
-                            else None
-                        ),
-                        raw_correction_sessions=tuple(
-                            datetime.fromisoformat(str(value)).date()
-                            for value in item.get("raw_correction_sessions", ())
-                        ),
-                        adjusted_return_change_sessions=tuple(
-                            datetime.fromisoformat(str(value)).date()
-                            for value in item.get("adjusted_return_change_sessions", ())
-                        ),
-                        source_receipt_hashes=tuple(item["source_receipt_hashes"]),
-                    )
-                    for item in payload["listing_changes"]
+                    ListingMarketDataChange.read(item) for item in payload["listing_changes"]
                 ),
                 spy_correction_start=(
                     datetime.fromisoformat(str(payload["spy_correction_start"])).date()
@@ -930,6 +902,46 @@ class DuckDbWorkspaceMaintenanceRegistry:
             transport_workers=int(row[8]),
             updated_at=updated,
         )
+
+    def rebase_moved_since(
+        self, market_profile_id: str, *, after: datetime, through: date
+    ) -> dict[str, Cells]:
+        """Cells owed by cycles admitted after the active Panel's consumption prefix.
+
+        A cancelled or blocked cycle keeps its recorded cells. A later Panel activation
+        consumes earlier cycles; a different request must not erase an outstanding obligation.
+
+        Scope is the market profile, so an admitted derived manifest keeps the debt. Admission
+        time, rather than the last status update, keeps cancellation of a consumed cycle from
+        reviving it. Only requests through the current target can contribute sessions.
+
+        Returns:
+            Each listing's union of durable cells, read together without reopening each cycle.
+        """
+        cursor = after.astimezone(UTC).replace(tzinfo=None) if after.tzinfo is not None else after
+
+        def operation(connection: duckdb.DuckDBPyConnection) -> Any:
+            return connection.execute(
+                """
+                SELECT change_set_json FROM workspace_maintenance_cycle
+                WHERE created_at > ? AND change_set_json IS NOT NULL
+                  AND json_extract_string(request_json, '$.market_profile_id') = ?
+                  AND CAST(json_extract_string(request_json, '$.target_market_session')
+                           AS DATE) <= ?
+                ORDER BY created_at, cycle_id
+                """,
+                [cursor, market_profile_id, through],
+            ).fetchall()
+
+        owed: dict[str, Cells] = {}
+        for (payload,) in self._read(operation):
+            for item in json.loads(payload)["listing_changes"]:
+                change = ListingMarketDataChange.read(item)
+                if change.rebase_moved:
+                    owed[change.listing_id] = gathered_cells(
+                        owed.get(change.listing_id, ()), change.rebase_moved
+                    )
+        return owed
 
     def latest_cycle(self, market_profile_id: str) -> WorkspaceMaintenanceCycle | None:
         """Resolve the most recently updated cycle for one market profile.

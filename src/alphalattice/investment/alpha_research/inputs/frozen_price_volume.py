@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from types import MappingProxyType
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -72,6 +72,12 @@ class FrozenPriceVolumeInputs:
     """
     nominal_member_count: npt.NDArray[np.int64] | None = None
     """Coverage denominator before source exclusions; absent means the reference roster."""
+    rebases: tuple[Any, ...] = ()
+    """The store's rebases its publication lists, each with the rows that still need it."""
+    kept_rows: Mapping[str, Any] = field(default_factory=dict)
+    """A rebased listing's rows its publication writes as stored (the kept history's)."""
+    rebase_agreement: tuple[float, float] = (0.0, 0.0)
+    """The data rule's agreement within which a block may stay an earlier snapshot's."""
 
     @property
     def ordered_sector_ids(self) -> tuple[str, ...]:
