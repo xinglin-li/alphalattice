@@ -100,6 +100,9 @@ See [Getting started](docs/public-source/getting-started.md) and the
 [setup procedure](.agents/skills/alphalattice-research/references/operating.md)
 for installation, downloads and the permissions each step needs.
 
+Already using AlphaLattice? Follow [Upgrading](docs/public-source/upgrading.md)
+before installing a later 0.2.x patch in your existing workspace.
+
 ## Why AlphaLattice
 
 - **A complete research workflow.** Data preparation, quantitative studies,
