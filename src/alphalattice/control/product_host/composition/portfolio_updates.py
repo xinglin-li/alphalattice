@@ -56,6 +56,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     PortfolioDecisionCheckpoint,
     PortfolioSourceRevision,
     PortfolioUpdatePublication,
+    SplitBasisRevision,
     advance_decision_state,
     continue_issued_observations,
     require_proposal_position,
@@ -196,6 +197,24 @@ def _task_contract(
         ),
     )
     return envelope, goal, workflow
+
+
+def update_refusal(error: Exception, fallback: str, **context: object) -> dict[str, object]:
+    """Word an update refusal, retaining complete changed split subjects beside bounded words."""
+    from alphalattice.interface.local_application.failure_codes import located_failure
+
+    from .plain_refusals import refused
+
+    failure = located_failure(error, fallback)
+    body = failure | refused(str(failure["failure_code"]), **context)
+    if isinstance(error, SplitBasisRevision):
+        body["data"] = {
+            "split_basis_changes": [
+                {"listing_id": listing, "effective_date": effective.isoformat()}
+                for listing, effective in error.pairs
+            ]
+        }
+    return body
 
 
 class PortfolioUpdateApplication:

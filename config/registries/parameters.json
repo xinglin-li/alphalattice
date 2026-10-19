@@ -7724,6 +7724,10 @@
 "class": "METHOD",
 "count": 1
 },
+"src/alphalattice/investment/portfolio_strategy_lab/application/decision_updates.py::limit::140": {
+"class": "LIMIT",
+"count": 1
+},
 "src/alphalattice/investment/portfolio_strategy_lab/application/decision_updates.py::costs::10": {
 "class": "METHOD",
 "count": 1

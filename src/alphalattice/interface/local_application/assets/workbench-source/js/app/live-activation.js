@@ -156,5 +156,35 @@ const LiveActivation = (() => {
     const models = (b.models || []).map((m) => [codeWords(m.component_id), countText(Number(m.reused_fits) || 0, '{n} fit reused', '{n} fits reused')]);
     openDialog(t('Strategy'), t('Runs forward'), html`${kv([...decisionRows(dates), ...(dates.replayRange ? [] : [[t('Next decision session'), b.next_decision_session || '']]), [t('Horizon'), b.horizon || ''], ...models, [t('Models fitted'), count(b.fit_calls ?? 0)], ...(b.review_standing ? [[t('Review'), reviewOf(b.review_standing)]] : [])])}${activationTiming(b)}<p class="caption">${t('Positions are held only from the trading start; its daily research update continues the forward book.')}</p>`, btn(t('Close'), 'close', '', 'button'));
   }
-  return {ensure, observe, panel: panelOf, confirm, commit, read: () => ensure(Data.subject(), true), forwardAbsence};
+  async function controls(value) {
+    const {operation,...fields}=JSON.parse(value);
+    if(S.busy || operation!=='CONTROLS' || !Data.offers(operation)) return;
+    S.busy=true;
+    try {
+      const b=await Data.readShared(Data.route(operation)+'?'+new URLSearchParams(fields)), a=b.activation || {};
+      const book=a.next_requests?.activate?.task_id || a.book_task_id;
+      const values=(b.controls || []).map(row=>[
+        t(row.label),b.template?.[row.control_id] ?? row.default_value ?? ''
+      ]);
+      const fixed=(b.frozen || []).map(row=>[
+        t(row.label),html`${row.frozen_display}${row.reason ? html` · ${t(row.reason)}` : ''}`
+      ]);
+      const way=a.status==='ACTIVE'
+        ? t('Open the current book and ask the person to Stop it, then read controls again before activation.')
+        : t('Open the offered book to check whether it is newer and reviewed; otherwise preview a new book from current data.');
+      const facts=kv([
+        [t('Strategy'),b.strategy_package_id],
+        [t('Activation'),codeWords(a.status || 'INACTIVE')],...values,...fixed
+      ]);
+      const detail=html`${facts}<p>${way}</p>
+        ${a.held ? refusal(a.held) : ''}
+        ${a.detail ? html`<p>${t(a.detail)}</p>` : ''}`;
+      const ways=html`
+        ${book ? btn(t('Open the book'),'task-result',book,'button') : ''}
+        ${b.next_requests?.preview ? btn(t('Preview'),'book-plan',JSON.stringify(b.next_requests.preview),'button primary') : ''}`;
+      openDialog(t('Portfolio controls'),codeWords(b.strategy_package_id),detail,ways);
+    } catch(e) { openDialog(t('Portfolio controls'),t('Not read'),refusal(e.body || {detail:e.message})); }
+    finally { S.busy=false; }
+  }
+  return {ensure, observe, panel: panelOf, confirm, commit, controls, read: () => ensure(Data.subject(), true), forwardAbsence};
 })();

@@ -558,6 +558,11 @@
   "detail": "The publication named is not one this update Task published, so it was not read; name a publication the Task's readback lists.",
   "next_action": "NAME_A_PUBLICATION_THE_TASK_LISTS"
  },
+ "portfolio_update.revised_split_basis_requires_review": {
+  "stop_detail": "A split for {subject} reaches issued positions. They stay published; this book stops. Read controls: build a newer reviewed book if absent; ask for Stop if active.",
+  "detail": "The provider reported a split for {subject}. Its effective session is already covered by the issued positions. Issued positions stay as published and are never re-based silently, so this book cannot continue. Read `alphalattice strategy-book controls --package <package>`. If its activation offer names a newer reviewed book built from current data, ask the person in one line: Will you activate this newer reviewed book? Otherwise use the controls' PLAN preview to build and review a newer book from current data. If the package is still active, ask the person to Stop it before rereading controls and asking for activation; follow the offered book and prerequisites.",
+  "next_action": "ASK_A_PERSON_TO_ACTIVATE_A_NEWER_BOOK"
+ },
  "portfolio_update.strategy_package_required": {
   "detail": "This workspace holds Portfolio updates of more than one strategy, so its latest would be one of them by guess: read a strategy's own latest with --package <strategy-package-id> (`next_requests` offers each strategy's, and `strategy_package_ids` names them), or one update with --task.",
   "next_action": "READ_ONE_STRATEGYS_LATEST_UPDATE"

@@ -165,6 +165,7 @@ _NOT_RUNNING_FORWARD = frozenset(
         "strategy_score.input_preparation_not_installed",
         "portfolio_calibration.not_installed",
         "portfolio_update.not_installed",
+        "portfolio_update.revised_split_basis_requires_review",
     }
 )
 """The refusals of a strategy that does not run forward: its activation binds what they ask for."""
@@ -310,9 +311,20 @@ def _package_selection(
 def forward_availability_words(
     code: str, installed_packages: Collection[str] | None, strategy_package_id: str | None
 ) -> dict[str, Any]:
-    """Distinguish an unavailable package selector from an installed inactive strategy."""
+    """Word an unavailable forward book and its activation or replacement route."""
+    base = code.partition(":")[0]
+    if base == "portfolio_update.revised_split_basis_requires_review":
+        return {
+            **refusal_words(code),
+            "next_requests": {
+                "controls": {
+                    "operation": "CONTROLS",
+                    **({"strategy_package_id": strategy_package_id} if strategy_package_id else {}),
+                }
+            },
+        }
     if (
-        code == "portfolio_update.not_installed"
+        base == "portfolio_update.not_installed"
         and strategy_package_id is not None
         and installed_packages is not None
         and strategy_package_id not in installed_packages
@@ -509,7 +521,7 @@ def explain(
             else {},
         }
     if base in _NOT_RUNNING_FORWARD:
-        return forward_availability_words(base, installed_packages, strategy_package_id)
+        return forward_availability_words(code, installed_packages, strategy_package_id)
     if base in _STRATEGY_ACTIVATION_WORDS:
         return {
             "detail": _STRATEGY_ACTIVATION_WORDS[base].format(
@@ -1200,7 +1212,11 @@ def deferral(
 
 def refused(code: str, **context: Any) -> dict[str, Any]:
     """A typed refusal carrying its explanation."""
-    return {"status": "REFUSED", "failure_code": code, **explain(code, **context)}
+    for_stop = context.pop("for_stop", False)
+    words = explain(code, **context)
+    if for_stop:
+        words.update(refusal_words(code, for_stop=True))
+    return {"status": "REFUSED", "failure_code": code, **words}
 
 
 def task_record_refusal(task_id: str) -> dict[str, Any]:

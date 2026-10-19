@@ -50,7 +50,7 @@ Object.assign(ACTIONS, {
 
 /* Element-attribute handlers (change events on inputs named by a data attribute). */
 // One dispatch seam for clicks and automation; no design simulation in product mode.
-const READ_ACTIONS = new Set(['portfolio-performance', 'tab-more', 'detail-back', 'close', 'copy-block', 'data-reload', 'page-reload', 'code-open', 'code-copy', 'inspector-tab', 'lab-reader-close', 'review-item-close', 'quick-open', 'quick-pick', 'focus-toggle', 'shortcuts', 'side-toggle', 'side-group', 'inspector-close', 'facts', 'facts-open', 'record', 'copy-link', 'go', 'lab-reader', 'locale-set', 'row-peek', 'peek-open', 'peek-close', 'step-prev', 'step-next', 'proof-open', 'proof-close', 'context', 'research-map', 'tools-menu', 'row-menu', 'display-menu', 'display-set', 'picker-menu', 'theme-select', 'appearance', 'filter-set', 'filter-clear', 'filter-field', 'lobby-fold', 'lobby-more', 'lobby-clear', 'experience-settings', 'section-menu', 'holding', 'holding-page-prev', 'holding-page-next', 'holding-sort', 'portfolio-tab', 'session-prev', 'session-next', 'chart', 'chart-range', 'chart-data', 'history-open', 'history-copy', 'exact', 'research-update-read', 'usage-reading-read']);
+const READ_ACTIONS = new Set(['book-controls', 'portfolio-performance', 'tab-more', 'detail-back', 'close', 'copy-block', 'data-reload', 'page-reload', 'code-open', 'code-copy', 'inspector-tab', 'lab-reader-close', 'review-item-close', 'quick-open', 'quick-pick', 'focus-toggle', 'shortcuts', 'side-toggle', 'side-group', 'inspector-close', 'facts', 'facts-open', 'record', 'copy-link', 'go', 'lab-reader', 'locale-set', 'row-peek', 'peek-open', 'peek-close', 'step-prev', 'step-next', 'proof-open', 'proof-close', 'context', 'research-map', 'tools-menu', 'row-menu', 'display-menu', 'display-set', 'picker-menu', 'theme-select', 'appearance', 'filter-set', 'filter-clear', 'filter-field', 'lobby-fold', 'lobby-more', 'lobby-clear', 'experience-settings', 'section-menu', 'holding', 'holding-page-prev', 'holding-page-next', 'holding-sort', 'portfolio-tab', 'session-prev', 'session-next', 'chart', 'chart-range', 'chart-data', 'history-open', 'history-copy', 'exact', 'research-update-read', 'usage-reading-read']);
 const PRODUCT_ACTIONS = {
     'copy-text':(text)=>copyText(text),
     'copy-link':()=>copyLink(),
@@ -70,6 +70,8 @@ const PRODUCT_ACTIONS = {
     'activation-confirm':v=>LiveActivation.confirm(v), // U73: a strategy run forward from its book, or stopped
     'activation-commit':()=>LiveActivation.commit(),
     'activation-read':()=>LiveActivation.read(),
+    'book-controls':value=>LiveActivation.controls(value),
+    'book-plan':value=>LiveTasks.previewRequest(JSON.parse(value)),
     'research-update-enable':()=>Settings.setUpdate(true), // U73: the daily update for every strategy that runs forward
     'goal-first-use-stop-commit':()=>LiveGoals.stopFirstUseCommit(),
     'goal-export':format=>LiveGoals.exportGoal(format),

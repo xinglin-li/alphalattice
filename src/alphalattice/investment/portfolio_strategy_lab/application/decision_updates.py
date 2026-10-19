@@ -28,6 +28,7 @@ from alphalattice.foundation.causal_outcomes.execution.contracts import (
     LocalQAMarketSnapshot,
 )
 from alphalattice.foundation.causal_outcomes.execution.readers import local_qa_point_rows
+from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
 from alphalattice.investment.portfolio_strategy_lab.application.calibration import (
     PreparedPortfolioBookInput,
     PreparedPortfolioComponentInput,
@@ -549,6 +550,44 @@ def market_on_axis(snapshot: LocalQAMarketSnapshot, axis: tuple[str, ...]) -> Lo
     )
 
 
+class SplitBasisRevision(ValueError):
+    """A refused issued basis, with bounded words and the complete changed event subjects."""
+
+    def __init__(
+        self, previous: tuple[CorporateActionEvent, ...], current: tuple[CorporateActionEvent, ...]
+    ) -> None:
+        """Retain changed listing/date pairs and encode only a bounded public subject."""
+        self.pairs = tuple(
+            sorted(
+                {
+                    (v.listing_id, v.effective_date)
+                    for v in (set(previous) ^ set(current)) or set(previous)
+                }
+            )
+        )
+        super().__init__(
+            f"portfolio_update.revised_split_basis_requires_review:{_split_basis_subject(self.pairs)}"
+        )
+
+
+def _split_basis_subject(
+    pairs: tuple[tuple[str, date], ...],
+) -> str:
+    """Name changed split events within the public refusal's bounded subject."""
+    subjects = [f"{listing} effective {effective.isoformat()}" for listing, effective in pairs]
+    subject = ", ".join(subjects)
+    # Retain the first effective date and count, even when its identifier needs shortening.
+    limit = 140
+    if len(subject) > limit:
+        listing, effective = pairs[0]
+        tail = f" effective {effective.isoformat()}" + (
+            f", +{len(pairs) - 1} more" if len(pairs) > 1 else ""
+        )
+        room = limit - len(tail)
+        subject = (listing if len(listing) <= room else listing[: room - len("...")] + "...") + tail
+    return subject
+
+
 def continue_issued_observations(
     previous: LocalQAMarketSnapshot,
     current: LocalQAMarketSnapshot,
@@ -573,14 +612,15 @@ def continue_issued_observations(
     ):
         raise ValueError("portfolio_update.raw_basis_axis_or_clock_invalid")
     old_splits = tuple(v for v in factual.actions if v.action_kind == "SPLIT")
-    if old_splits != tuple(
+    issued_splits = tuple(
         v
         for v in current.actions
         if v.action_kind == "SPLIT"
         and v.effective_date <= previous.through
         and v.listing_id in previous.ordered_listing_ids
-    ):
-        raise ValueError("portfolio_update.revised_split_basis_requires_review")
+    )
+    if old_splits != issued_splits:
+        raise SplitBasisRevision(old_splits, issued_splits)
     factors = dict.fromkeys(previous.ordered_listing_ids, 1.0)
     for action in current.actions:
         if action.action_kind == "SPLIT" and action.effective_date > previous.through:

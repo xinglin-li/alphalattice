@@ -101,6 +101,7 @@ from alphalattice.control.product_host.composition.portfolio_updates import (
 from alphalattice.control.product_host.composition.portfolio_updates import (
     PortfolioUpdateApplication,
     PortfolioUpdateCommand,
+    update_refusal,
 )
 from alphalattice.control.product_host.composition.research_experiments import (
     LEDGER_READ_OPERATIONS,
@@ -163,6 +164,7 @@ from alphalattice.control.product_host.composition.task_recovery import (
     build_task_recovery_view,
     cancellation_pending,
     finished_stop,
+    replan_offer,
     resolved_read,
     stop_detail,
     task_facts,
@@ -1680,15 +1682,14 @@ class PortfolioResearchOperations:
                         plan.data_plan,
                     )
                 except (ValueError, KeyError, FileNotFoundError) as error:
-                    failure = located_failure(error, "research_update.refused")
-                    body = refused(
-                        str(failure["failure_code"]),
+                    body = update_refusal(
+                        error,
+                        "research_update.refused",
                         installed_packages=tuple(self._packages),
                         strategy_package_id=request.strategy_package_id,
                     )
-                    body = {**failure, **body}
                     if (
-                        failure["failure_code"] == "portfolio_update.not_installed"
+                        body["failure_code"] == "portfolio_update.not_installed"
                         and request.strategy_package_id is not None
                         and request.strategy_package_id in self._packages
                         and self.activations is not None
@@ -1733,15 +1734,13 @@ class PortfolioResearchOperations:
                         "failure_code": admitted.refusal_detail,
                     }
                 except FileNotFoundError:
-                    return {
-                        "status": "REFUSED",
-                        "failure_code": "portfolio_update.artifact_missing",
-                    }
+                    return refused("portfolio_update.artifact_missing")
                 except (ValueError, KeyError) as error:
-                    return {
-                        "status": "REFUSED",
-                        **located_failure(error, "portfolio_update.refused"),
-                    }
+                    return update_refusal(
+                        error,
+                        "portfolio_update.refused",
+                        strategy_package_id=request.strategy_package_id,
+                    )
             case (
                 "STRATEGY_CALIBRATION_PLAN"
                 | "STRATEGY_CALIBRATION_RUN"
@@ -4535,30 +4534,7 @@ class PortfolioResearchOperations:
                 **refusal_words(code),
                 "next_requests": {"issues": {"operation": "DATA_ISSUES"}},
             }
-        owned = self._task_replan_owner(task)
-        if owned is None:
-            return None
-        declared, owner = owned
-        if declared.preview is None:
-            return None
-        _required, allowed = PortfolioResearchOperationRequest.field_contract(declared.preview)
-        choices = allowed - {"recovery_task_id", "recovery_task_hash"}
-        request = (
-            {"operation": declared.preview}
-            if not choices
-            else cast(dict[str, object], cast(Any, owner).replan_request(task))
-        )
-        if task.lifecycle in _RECOVERY_SOURCES:
-            # A refused resume leaves its unbound plan read.
-            if code := getattr(owner, "replan_refusal", lambda _: None)(task):
-                refused = {"failure_code": code, **refusal_words(code)}
-                return {**refused, "next_requests": {"plan": request}}
-            return {
-                **request,
-                "recovery_task_id": str(task.task_id),
-                "recovery_task_hash": task.record_hash,
-            }
-        return request
+        return cast(dict[str, object] | None, replan_offer(task, self._task_replan_owner(task)))
 
     def _offers_replan(self, task: TaskRecord) -> bool:
         return "operation" in (self._task_replan(task) or {})

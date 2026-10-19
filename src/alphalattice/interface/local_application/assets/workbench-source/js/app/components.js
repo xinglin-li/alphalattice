@@ -2360,14 +2360,13 @@ const methodWords = (token) => labelOf(token) ? labelWords(labelOf(token)) : MET
 /* The words with the code on hover: a reader who needs the exact token still has it. */
 // A code the catalog knows is said in words; a sentence the owner already wrote stays words; only a bare token is shown as one.
 const coded = (code) => html`<span class="coded" data-tip="${code ?? ''}">${codeWords(code)}</span>`;
-/* What a flow needs before it runs (U60, V367): the owner's sentence, the completed results it reads on its input (newest
- * first, at most five of each, each opening its page), what is missing, and the owner's next requests as the ways this
- * page already has. `input` is the input the block is for ({id, binding}), which a handoff's draft names. */
+/* Prerequisites and offered routes, retaining each input's {id, binding} and the owner's selectors. */
 const PREREQ_RESULTS = {FACTOR_STUDY: 'Factor studies', ALPHA_STUDY: 'Alpha studies', RISK_STUDY: 'Risk studies', BOOK: 'Books'};
 const PREREQ_MISSING = {CURATED_FACTOR_STUDY: 'a curated Factor study', ALPHA_STUDY: 'a completed Alpha study', BOOK: 'a completed book'};
 const PREREQ_KINDS = {'factor.screening-development': 'Start a Factor study on this input', 'risk.covariance-development': 'Start a Risk study on this input'};
 function prerequisiteWays(next, input = null) {
   const ways = Object.values(next || {}).map((r) => {
+    if (r.operation === 'CONTROLS') return btn(t('Portfolio controls'), 'book-controls', JSON.stringify(r), 'button compact');
     if (r.operation === 'MODEL_EXTENSIONS') return link(t('Models'), 'models', 'button compact');
     if (r.operation === 'EXPERIMENT_CONTROLS' && PREREQ_KINDS[r.experiment_kind]) return link(t(PREREQ_KINDS[r.experiment_kind]), 'lab', 'button compact', {experiment_kind: r.experiment_kind, research_input: r.research_input_id, input_binding: r.input_binding_hash, origin: '', plan: '', draft_source: ''});
     if (r.operation === 'EXPERIMENT_CURATION') return btn(t('Curate the Factor study'), 'task-result', r.task_id, 'button compact');

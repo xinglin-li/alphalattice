@@ -247,7 +247,13 @@ def test_two_component_conditional_book_matches_the_existing_merged_walk():
     )
 
 
-def test_corrections_keep_issued_prices_and_verify_split_conversion(numerical):
+def test_corrections_keep_issued_prices_and_verify_split_conversion(
+    numerical, tmp_path, live, monkeypatch
+):
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+
     n = numerical
     old = snapshot_for(n, n.first)
     raw = snapshot_for(n, n.first + 1)
@@ -345,8 +351,57 @@ def test_corrections_keep_issued_prices_and_verify_split_conversion(numerical):
             "actions": (replace(split, effective_date=old.through),),
         }
     )
-    with pytest.raises(ValueError, match="revised_split_basis_requires_review"):
-        continue_issued_observations(old, revised_past)
+    store = PortfolioLedgerStore(tmp_path)
+    store.publish_decision_checkpoint(n.checkpoint)
+    store.content.publish_model(
+        category="decision-observations", value=old, identity_field="content_hash"
+    )
+    stored = store.content.load_model(
+        category="decision-observations",
+        content_hash=old.content_hash,
+        model=LocalQAMarketSnapshot,
+        identity_field="content_hash",
+    )
+    for ids in [("L" * 110, "M" * 110), (listing,), ("L" * 210,), ("L" * 210, "M", "N")]:
+        before = LocalQAMarketSnapshot.create(
+            **{
+                **stored.model_dump(exclude={"content_hash"}),
+                "ordered_listing_ids": ids,
+                "bars": (),
+            }
+        )
+        events = tuple(replace(split, listing_id=i, effective_date=old.through) for i in ids)
+        after = LocalQAMarketSnapshot.create(
+            **{
+                **revised_past.model_dump(exclude={"content_hash"}),
+                "actions": events,
+                "ordered_listing_ids": ids,
+                "bars": (),
+            }
+        )
+        monkeypatch.setattr(
+            live.operations.updates,
+            "plan",
+            lambda *_, prior=before, current=after: continue_issued_observations(prior, current),
+        )
+        answer = live.operations.execute(
+            PortfolioResearchOperationRequest(
+                operation="PORTFOLIO_UPDATE_PLAN", strategy_package_id="book"
+            )
+        )
+        code, _, subject = answer["failure_code"].partition(":")
+        assert code == "portfolio_update.revised_split_basis_requires_review"
+        assert 0 < len(subject) <= 140
+        assert ids[0][:80] in subject and old.through.isoformat() in subject
+        if len(ids) > 1:
+            assert f"+{len(ids) - 1} more" in subject
+        assert answer["data"]["split_basis_changes"] == [
+            {"listing_id": i, "effective_date": old.through.isoformat()} for i in ids
+        ]
+        assert answer["next_action"] == "ASK_A_PERSON_TO_ACTIVATE_A_NEWER_BOOK"
+        assert answer["next_requests"] == {
+            "controls": {"operation": "CONTROLS", "strategy_package_id": "book"}
+        }
     assert old.model_dump_json() == original
 
     first = advance_decision_state(
