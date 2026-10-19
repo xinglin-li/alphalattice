@@ -8,11 +8,13 @@ import time
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
 import numpy as np
 import pandas as pd
 import pytest
+from yfinance import data as yfinance_data
 
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.producers.base_materializer import (
@@ -262,6 +264,7 @@ class _Ticker:
     def __init__(self, frame: pd.DataFrame, calls: list[dict[str, object]]) -> None:
         self.frame = frame
         self.calls = calls
+        self._data = SimpleNamespace(get=lambda *_args, **_kwargs: None)
 
     def history(self, **kwargs):
         self.calls.append(kwargs)
@@ -274,6 +277,7 @@ class _Ticker:
 
 class _YFinance:
     cache = _Cache()
+    data = yfinance_data
 
     def __init__(self, frame: pd.DataFrame) -> None:
         self.frame = frame
@@ -1252,13 +1256,13 @@ def test_hydration_host_rejects_ticker_identity_mismatch() -> None:
 
 
 def test_one_response_hydration_maps_shared_session_instability(tmp_path, monkeypatch) -> None:
-    class UnstableTicker:
+    class UnstableTicker(_Ticker):
         def history(self, **_kwargs):
             raise RuntimeError("curl multi handle session already in use")
 
     class UnstableYFinance(_YFinance):
         def Ticker(self, _symbol: str):
-            return UnstableTicker()
+            return UnstableTicker(self.frame, self.calls)
 
     fake = UnstableYFinance(_history_frame())
     monkeypatch.setattr(YFinanceMarketDataProvider, "_module", lambda _self: fake)

@@ -13,9 +13,11 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from functools import cache
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from threading import Lock
+from types import SimpleNamespace
 from typing import Any, Protocol, runtime_checkable
 
 from alphalattice.foundation.market_data_ops.sources.contracts import (
@@ -185,6 +187,14 @@ class YFinanceMarketDataProvider:
     _runtime_module: Any = field(default=None, init=False, repr=False)
     _initialization_lock: Lock = field(default_factory=Lock, init=False, repr=False)
 
+    @staticmethod
+    def _ticker(yf: Any, symbol: str) -> Any:
+        """Coalesce native GETs only within this acquisition; never reuse older bodies."""
+        ticker = yf.Ticker(symbol)
+        get = yf.data.lru_cache_freezeargs(cache(ticker._data.get))
+        ticker._data = SimpleNamespace(get=get, cache_get=get)
+        return ticker
+
     def execution_identity(self) -> Mapping[str, object]:
         """Return the exact provider behavior that can change stored observations."""
         try:
@@ -247,7 +257,7 @@ class YFinanceMarketDataProvider:
         payload: dict[str, Sequence[Mapping[str, object]]] = {}
         for symbol in symbols:
             try:
-                frame = yf.Ticker(symbol).history(
+                frame = self._ticker(yf, symbol).history(
                     start=start.isoformat(),
                     end=(end + timedelta(days=1)).isoformat(),
                     auto_adjust=False,
@@ -284,7 +294,7 @@ class YFinanceMarketDataProvider:
             raise ValueError("hydration provider range start is after end")
         yf = self._module()
         try:
-            frame = yf.Ticker(provider_symbol).history(
+            frame = self._ticker(yf, provider_symbol).history(
                 start=start.isoformat(),
                 end=(end + timedelta(days=1)).isoformat(),
                 auto_adjust=False,
@@ -346,7 +356,7 @@ class YFinanceMarketDataProvider:
             raise ValueError("adjusted-close provider range start is after end")
         yf = self._module()
         try:
-            frame = yf.Ticker(provider_symbol).history(
+            frame = self._ticker(yf, provider_symbol).history(
                 start=start.isoformat(),
                 end=(end + timedelta(days=1)).isoformat(),
                 auto_adjust=False,
@@ -417,7 +427,7 @@ class YFinanceMarketDataProvider:
             raise ValueError("action provider range start is after end")
         yf = self._module()
         try:
-            frame = yf.Ticker(provider_symbol).actions
+            frame = self._ticker(yf, provider_symbol).actions
         except Exception as exc:
             raise _error(exc) from exc
         if frame is None or frame.empty:
