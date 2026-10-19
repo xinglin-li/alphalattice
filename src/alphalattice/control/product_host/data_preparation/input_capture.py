@@ -194,7 +194,10 @@ class ResearchInputCaptureApplication:
 
     def _write_summary(self, *, reused: bool = False) -> dict[str, object]:
         """Preview snapshot size; a new capture may need two copies, plus other files."""
-        size = 0 if reused else (self.session.workspace / "market-data.duckdb").stat().st_size
+        try:
+            size = 0 if reused else (self.session.workspace / "market-data.duckdb").stat().st_size
+        except FileNotFoundError:
+            size = 0
         return {
             "database_snapshot_bytes": size,
             "write_policy": "Preview ceiling: no copy if unchanged, else up to two full databases. "
