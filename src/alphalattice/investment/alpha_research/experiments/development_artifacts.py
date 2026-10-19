@@ -94,7 +94,6 @@ from alphalattice.investment.alpha_research.targets.canonical import (
 )
 from alphalattice.investment.alpha_research.targets.total_return import (
     TotalReturnAlphaTargetEvidence,
-    TotalReturnAlphaTargetSurface,
     total_return_array_identity,
 )
 from alphalattice.kernel.shared_kernel.arrow_identity import canonical_hash_with_rows
@@ -781,15 +780,6 @@ class AlphaDevelopmentArtifactStore:
             identity_field="program_hash",
         )
 
-    def publish_total_return_target_binding(
-        self, value: WholeUniverseAlphaTargetMethodBinding
-    ) -> str:
-        return self._publish_identity_json(
-            category=TOTAL_RETURN_TARGET_BINDING_CATEGORY,
-            value=value,
-            identity_field="binding_hash",
-        )
-
     def load_total_return_target_binding(
         self, content_hash: str
     ) -> WholeUniverseAlphaTargetMethodBinding:
@@ -798,13 +788,6 @@ class AlphaDevelopmentArtifactStore:
             category=TOTAL_RETURN_TARGET_BINDING_CATEGORY,
             content_hash=content_hash,
             identity_field="binding_hash",
-        )
-
-    def publish_total_return_target_evidence(self, value: TotalReturnAlphaTargetEvidence) -> str:
-        return self._publish_identity_json(
-            category=TOTAL_RETURN_TARGET_EVIDENCE_CATEGORY,
-            value=value,
-            identity_field="evidence_hash",
         )
 
     def load_total_return_target_evidence(
@@ -816,35 +799,6 @@ class AlphaDevelopmentArtifactStore:
             content_hash=content_hash,
             identity_field="evidence_hash",
         )
-
-    def publish_total_return_target_surface(
-        self,
-        *,
-        evidence: TotalReturnAlphaTargetEvidence,
-        surface: TotalReturnAlphaTargetSurface,
-    ) -> str:
-        if (
-            surface.lane_identity.lane_identity_hash != evidence.lane_identity_hash
-            or surface.formation_sessions != evidence.formation_sessions
-            or surface.ordered_listing_ids != evidence.ordered_listing_ids
-        ):
-            raise ValueError("TOTAL_RETURN_TARGET_SURFACE_EVIDENCE_MISMATCH")
-        directory = self.root / TOTAL_RETURN_TARGET_SURFACE_CATEGORY / evidence.evidence_hash
-        files = {
-            "targets.parquet": surface.targets,
-            "dispersion.parquet": surface.dispersion,
-            "bounds.parquet": surface.bounds,
-        }
-        directory.mkdir(parents=True, exist_ok=True)
-        for name, table in files.items():
-            target = directory / name
-            if not target.exists():
-                staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
-                pq.write_table(table, staged, compression="zstd")
-                os.replace(staged, target)
-                staged.unlink(missing_ok=True)
-        self.load_total_return_target_surface(evidence.evidence_hash)
-        return self.uri(TOTAL_RETURN_TARGET_SURFACE_CATEGORY, evidence.evidence_hash)
 
     def load_total_return_target_surface(
         self, evidence_hash: str

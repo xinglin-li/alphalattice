@@ -13210,6 +13210,48 @@
    "successor": "4038f7e723df3f293ec00000017deafde194332789455836249fcbecf03dacb7",
    "change": "a loaded kept history's columns are backed by immutable bytes again",
    "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "83ac66aa0217263642ed78513bc345463df847ff962187653272b1a9d35f936c",
+   "successor": "2638eaa5a9c7aef67526c8bc3ecdc1041cbb2e12772787f87a72f8fcc965d0eb",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "6dbbf558fda8f08a762888c7f1b98c4987608a77fcc3629a05ce3bc227ad598a",
+   "successor": "19c6cb0036342174040a041cad314a8036e2d6fa3124003c2936e108bdcc7bba",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "e55241c59b27a2bf81e870df575c400cd212fae8350b97d1237ba0993096c13d",
+   "successor": "d420c007cc97563e847f9f5c87bff8819b7e8555a71e0d8c39e8723ff98d143c",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "eeafe000460ef0c07c8210b5e1383044be90a8f0662af5e12a9c7036dc8d8f79",
+   "successor": "5e0a78ed4ab04fba103538e0538e06d8ab16e488a9bec1508c6505c1bf4f78c4",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "d5dea5b744e1341f0523b5b9ce00bcd6fd35f931fe31b46e3c4a63aef2cbd5a8",
+   "successor": "55f57ea312cad6c4f2981031f60c559e42d62885ebf5185bc565c4c722cd7a78",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "f302c7410985087c7b518a616de6b3da8a685ef0d29359f44062e02dd8c97f0e",
+   "successor": "daa0c1698b48a3f54a949eedfb64b65274adf5c2c41a5370aa32cb97a3e3c61c",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
   }
  ]
 }
