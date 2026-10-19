@@ -209,6 +209,7 @@ def _build_revision_journey(root: Path, original_root: Path) -> dict:
             method="POST",
             payload={"research_input_id": anchor.input_id},
         )
+        capture_database_bytes = (root / "market-data.duckdb").stat().st_size
         assert capture["status"] == "CONFIRMATION_REQUIRED", capture
         bridge = InstalledAgent(live.operations)
         refusal = json.loads(
@@ -309,6 +310,9 @@ def _build_revision_journey(root: Path, original_root: Path) -> dict:
         "publication": publication.model_dump(mode="json"),
         "old_task": old_task,
         "old_export": old_export,
+        "capture": capture,
+        "capture_database_bytes": capture_database_bytes,
+        "reuse": repeat,
     }
 
 
@@ -335,8 +339,15 @@ def revision_journey(revision_seed, tmp_path):
 
 
 def test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged(
-    revision_journey, monkeypatch
+    revision_journey, revision_seed, monkeypatch
 ):
+    from alphalattice.interface.local_application.client import compact_display
+
+    metadata = revision_seed[1]
+    preview = metadata["capture"]
+    assert 0 < preview["summary"]["database_snapshot_bytes"] == metadata["capture_database_bytes"]
+    assert compact_display(preview)["data"]["summary"] == preview["summary"]
+    assert metadata["reuse"]["summary"]["database_snapshot_bytes"] == 0
     root, anchor, publication, _old_task, _export = revision_journey
     bundle = read_factor_bundle(root, publication.binding_hash)
     _, artifacts = factor_input_paths(root, publication.binding_hash)

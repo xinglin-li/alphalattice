@@ -2,6 +2,8 @@
  * English phrase is worded differently in another part of the product. Generated data; edit
  * translations here, never in the templates. */
 window.ALPHA_ZH = {
+  "Database snapshot (estimate)": "数据库快照（估计）",
+  "Preview ceiling: no copy if unchanged, else up to two full databases. Identical snapshots are reused. Cost may change; other files add bytes.": "预览上限：输入未变时不复制，否则最多写入两份完整数据库。相同快照复用。成本可能变化，其他文件另计。",
   "A held source record is unreadable; restore its read access and retry `alphalattice backup run`.": "无法读取保留的源记录；请恢复其读取权限，再重试 `alphalattice backup run`。",
   "A backup object is unreadable; restore its read access, then retry the backup or use a new empty directory for the restore.": "无法读取备份对象；请恢复其读取权限，再重试备份，或改用新的空目录进行恢复。",
   "The lock filename must end in .lock; retry with a name ending in .lock.": "锁文件名必须以 .lock 结尾；请改用以 .lock 结尾的名称后重试。",

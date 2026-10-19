@@ -1076,7 +1076,7 @@
       "roots": [
         "workspace"
       ],
-      "semantic_role": "research inputs: a sealed copy of the market store, the Panel and the outcome an experiment reads, pooled by digest; not rebuildable once the live store moves",
+      "semantic_role": "research inputs: a sealed copy of the market store, the Panel and the outcome an experiment reads, pooled by digest; not rebuildable once the live store moves. Explicit capture previews disclose current database-copy byte estimates and reuse before confirmation; unchanged inputs create no new version",
       "authority_owner": "product_host.research_authoring._bind_factor_inputs",
       "retention_owner": "product_host",
       "rebuildability": "PHYSICAL_RETENTION_REQUIRED",

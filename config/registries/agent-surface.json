@@ -12236,6 +12236,14 @@
         "type": "string"
       }
     },
+    "answer:RESEARCH_INPUT_PLAN.summary": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
+      }
+    },
     "answer:RESEARCH_INPUT_PLAN.task_id": {
       "required": false,
       "schema": {

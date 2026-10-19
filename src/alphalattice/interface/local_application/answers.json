@@ -1180,6 +1180,12 @@
     "meaning": "`CONFIRMATION_REQUIRED` when a person must confirm a capture or its retry; `REUSED_EXACT` when the local sources match the latest version; else the lifecycle of the pending capture Task."
    },
    {
+    "name": "summary",
+    "kind": "object",
+    "required": false,
+    "meaning": "Before a new capture or blocked retry is confirmed: database_snapshot_bytes is the current full database size in bytes. The write_policy explains that capture can write up to two such full copies when an alias copy is needed, identical pooled snapshots can cost less, and other files add bytes. This is a preview-time estimate, not an enforced future bound: capture uses the current database and cost may change. REUSED_EXACT reports zero and admits no capture Task."
+   },
+   {
     "name": "input_id",
     "kind": "string",
     "required": false,
