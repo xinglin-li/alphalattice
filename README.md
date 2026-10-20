@@ -251,26 +251,38 @@ it; patches in between make the current version smoother. Each version builds on
 methods already proven elsewhere, adapted to AlphaLattice's own rules: dated
 inputs, sealed results and your authority.
 
-The next 0.2.x patches are planned as follows:
+The next 0.2.x patches, in order. Each holds one theme, and each publishes its
+measured time, disk and memory against a stated budget:
 
-- **0.2.2: fewer lines and a complete registry.** Reduce repeated code and cover
-  extensible kinds in one registry.
-- **0.2.3: realistic replay and an evaluation flywheel.** Replay realistic usage
-  and grade outcomes from the product's own records and the Workbench's data.
-- **0.2.4: a storage data model.** Organize data and shared snapshots so daily
-  writes stay proportional to what changed.
-- **0.2.5: lower checking costs.** Hash once and verify at trust boundaries,
-  borrowing from Git's index and Bazel's action cache.
-- **0.2.6: agent experience and upgrades.** Improve reviewed memory, the upgrade
-  path and recovery, informed by launch feedback.
-- **0.2.7: prepare for daily supervision.** Data-health checks and a store for the
-  forward record of positions.
+- **0.2.2: fewer lines and a complete registry.** Remove repeated and unused code,
+  and register every extensible kind in one registry.
+- **0.2.3: questions and messages by code.** Each question only you can answer, and
+  each message, carries a stable code beside its words.
+- **0.2.4: a smoother daily update.** A shorter wrap-up for the agent, a measured time
+  for each stage, and a background service that stays up between sessions.
+- **0.2.5: an evaluation flywheel.** One runner and fixed gates check every patch
+  from the product's own records.
+- **0.2.6: realistic replay and data checks.** Replay real-world events (corporate
+  actions, late reports, provider outages) and check data health every day.
+- **0.2.7: a first result in ten minutes.** A short trial on a small sample, labelled
+  as a trial.
+- **0.2.8: memory within budget.** Bring first use and daily updates within 8 GB.
+- **0.2.9: nothing stored twice.** A storage data model; upgrades reuse unchanged data.
+- **0.2.10: caching and checking, done once.** Hash once, verify at trust boundaries
+  and recompute only what changed, borrowing from Git's index and Bazel's action
+  cache.
+- **0.2.11: history you can query by date.** Ask what was known, tried and decided on
+  a past date, with nothing learned after it.
+- **0.2.12: less waiting on the program.** The program prepares likely next steps
+  while the agent is thinking.
+- **0.2.13: ground for daily supervision.** A store for the forward record of
+  positions.
 
 Later minor versions:
 
 - **0.3 Daily supervision: "watch my strategy; tell me only what matters."**
-  - Data-health tests in dbt's form, and factor monitors in Alphalens' terms: IC,
-    decay and turnover.
+  - Factor monitors in Alphalens' terms: IC, decay and turnover, on top of the
+    daily data-health checks.
   - Drift is flagged by CUSUM and EWMA control charts, so quiet days stay quiet.
   - At most one digest a day.
   - A forward record of positions as published, kept apart from the backtest on GIPS
@@ -288,7 +300,8 @@ Later minor versions:
   `sklearn.covariance` form, and data sources an Airbyte-style connector contract:
   spec, check, discover, read.
 - **Later, proposed:**
-  - macro data as it was known at the time (ALFRED vintages), and consented news;
+  - macro data as it was known at the time (ALFRED vintages), company fundamentals
+    as filed with the SEC, and consented news;
   - survivorship-free research on a CRSP-style data model;
   - several strategies as one portfolio, by risk budgeting and hierarchical risk
     parity;
