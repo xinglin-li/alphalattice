@@ -5,6 +5,7 @@
 [![许可证](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg)](docs/public-source/getting-started.md)
 [![uv](https://img.shields.io/badge/uv-locked-261230.svg)](docs/public-source/getting-started.md)
+[![Mentioned in Awesome](https://awesome.re/mentioned-badge.svg)](https://github.com/wilsonfreitas/awesome-quant)
 
 **把投资想法变成经过审阅的研究组合。**
 
@@ -162,11 +163,21 @@
 
 ## 本次发布与后续方向
 
-**当前的 0.2.0。** 从一句话到指定日期、经过审阅的结果：数据、策略、该日期的研究仓位、来自 SEC 文件的证据、投资委员会及报告。工作台在编程应用的浏览器中打开，每日更新在同一文件夹中继续，代理会记录你的纠正。[发布说明](docs/public-source/release-notes.md)列出了各项变更。
+**当前的 0.2.1。** 0.2.0 实现了从一句话到指定日期、经过审阅的研究结果：数据、策略、研究仓位、SEC 证据、委员会审阅及报告。0.2.1 的普通每日更新只写入当天的变化，不再复制整段历史。[发布说明](docs/public-source/release-notes.md#021)列出了各项变更。
 
 每个次版本提前确定范围，并在运行证明后发布；期间的补丁让当前版本更顺畅。各版本借鉴已在其他地方得到验证的方法，并按 AlphaLattice 自身的规则调整：按日期限定的输入、封存的结果，以及你的决定权。
 
-- **0.2.x 补丁：更快、更稳。** 降低检查开销：只计算一次哈希，在信任边界进行验证，借鉴 Git 索引与 Bazel 动作缓存。任务的进程树作为整体管理和结束，采用作业对象或进程组。缓存和临时文件声明清理期限，借鉴 systemd-tmpfiles。用同一个注册表覆盖所有可扩展类型，每项拒绝都给出下一步，并持续审阅代理记忆。
+后续 0.2.x 补丁计划如下：
+
+- **0.2.2：更少的代码和完整的注册表。** 减少重复代码，用同一个注册表覆盖可扩展类型。
+- **0.2.3：贴近实际使用的回放和评测飞轮。** 回放实际使用场景，依据产品自身的记录和工作台数据评判结果。
+- **0.2.4：存储数据模型。** 组织数据和共享快照，使每日写入量与变化量相称。
+- **0.2.5：降低检查开销。** 只计算一次哈希，在信任边界进行验证，借鉴 Git 索引与 Bazel 动作缓存。
+- **0.2.6：代理体验与升级。** 根据发布后的反馈，完善经过审阅的记忆、升级路径和恢复过程。
+- **0.2.7：为每日监督打基础。** 数据健康检查，以及保存前向仓位记录的存储。
+
+后续次版本：
+
 - **0.3 每日监督："watch my strategy; tell me only what matters."**
   - 借鉴 dbt 的数据健康检查和 Alphalens 的因子监测术语：IC、衰减和换手率。
   - 用 CUSUM 和 EWMA 控制图标记漂移，没有异常的日子保持安静。
