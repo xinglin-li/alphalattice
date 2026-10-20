@@ -79,20 +79,29 @@ Give your agent this repository's link and one intent:
   ```bash
   brew install libomp
   ```
-- **Time:** In Windows native observations on 2026-10-19, first use took
-  **71.2 minutes**. A daily continuation after an interrupted attempt took
-  **25.9 minutes** on Codex, including **4.4 minutes** of Host Task work;
-  other elapsed time included agent reads and finishing steps. It issued
-  positions and sealed its backup, but exceeded the 20-minute daily budget.
+- **Time:** In Windows native observations on 2026-10-19 with Codex at extra-high
+  reasoning effort, first use took **74.7 minutes**; its committee proceeded with
+  notes. After an interrupted attempt, the person granted the daily network
+  question; an assisted daily recovery then issued positions and sealed its
+  first backup in **35.3 minutes**.
+  Recorded Host work, including the data update, accounted for about
+  **12.6 minutes**; the remaining **22.7 minutes** included agent turns, tools
+  and waits. The recovery exceeded the 20-minute daily budget.
   These are observations, not runtime guarantees.
-- **Disk and memory:** Managed disk use after first use was about **10.27 GB**;
-  the first backup added about **4.25 GB** once, with later backups incremental.
-  Peak memory across the Host's processes was **8.28 GB** during first use and
-  **7.48 GB** during the daily continuation. First use remains above the 8 GB
-  budget. Allow headroom for the operating system and your coding app; these
+- **Disk and memory:** The first-use workspace occupied about **8.69 GB**, with
+  about **10.38 GB** across managed installation, workspace, cache and model
+  folders, excluding backup. The authorized daily recovery grew the workspace
+  by about **181 MB**, including the first day's database step; its first backup
+  filled **4.26 GB** once, with later backups incremental. Sampled peak memory
+  across the Host's processes was **8.37 GB** during first use and **9.39 GB**
+  during the recovery. Both runs exceeded the 8 GB budget.
+  Allow headroom for the operating system and your coding app; these
   observations are not minimum system requirements. The
   [release notes](docs/public-source/release-notes.md#021) distinguish ordinary
   daily writes, upgrade and split days, and explicit captures.
+- **Package downloads:** On a machine with an empty package cache, first use
+  asks once for permission to download the retrieval packages. Installing locked
+  packages under the first use's network consent is planned for a later release.
 - **Agent costs:** Your Claude Code or Codex access and usage costs are separate
   from AlphaLattice; check your provider's terms.
 
