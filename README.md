@@ -5,6 +5,7 @@ English | [简体中文](README.zh-CN.md)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg)](docs/public-source/getting-started.md)
 [![uv](https://img.shields.io/badge/uv-locked-261230.svg)](docs/public-source/getting-started.md)
+[![Mentioned in Awesome](https://awesome.re/mentioned-badge.svg)](https://github.com/wilsonfreitas/awesome-quant)
 
 **Turn an investment idea into a reviewed research portfolio.**
 
@@ -239,23 +240,34 @@ explains recorded usage and its switch.
 
 ## This release and where it is going
 
-**0.2.0, now.** One sentence to a dated, reviewed result: data, strategy, the
-date's research positions, Evidence from SEC filings, an investment committee and
-its report. The Workbench opens in your coding app's browser, daily updates continue
-in the same folder, and the agent records your corrections. The
-[release notes](docs/public-source/release-notes.md) list every change.
+**0.2.1, now.** 0.2.0 brought a one-sentence path to a dated, reviewed research
+result: data, strategy, research positions, SEC evidence, committee review and a
+report. 0.2.1 changes ordinary daily updates to write the day's changes instead of
+copying the full history. The [release notes](docs/public-source/release-notes.md#021)
+list every change.
 
 Each minor version's scope is fixed in advance and released only after a run proves
 it; patches in between make the current version smoother. Each version builds on
 methods already proven elsewhere, adapted to AlphaLattice's own rules: dated
 inputs, sealed results and your authority.
 
-- **0.2.x patches: faster and steadier.** Checking that costs little: hash once,
-  verify at trust boundaries, in the manner of Git's index and Bazel's action cache.
-  A Task's process tree is held and ended as one (job objects, process groups). Cache
-  and temporary files carry declared cleanup ages, as in systemd-tmpfiles. One
-  registry covers every extensible kind, every refusal offers its way forward, and
-  agent memory is kept reviewed.
+The next 0.2.x patches are planned as follows:
+
+- **0.2.2: fewer lines and a complete registry.** Reduce repeated code and cover
+  extensible kinds in one registry.
+- **0.2.3: realistic replay and an evaluation flywheel.** Replay realistic usage
+  and grade outcomes from the product's own records and the Workbench's data.
+- **0.2.4: a storage data model.** Organize data and shared snapshots so daily
+  writes stay proportional to what changed.
+- **0.2.5: lower checking costs.** Hash once and verify at trust boundaries,
+  borrowing from Git's index and Bazel's action cache.
+- **0.2.6: agent experience and upgrades.** Improve reviewed memory, the upgrade
+  path and recovery, informed by launch feedback.
+- **0.2.7: prepare for daily supervision.** Data-health checks and a store for the
+  forward record of positions.
+
+Later minor versions:
+
 - **0.3 Daily supervision: "watch my strategy; tell me only what matters."**
   - Data-health tests in dbt's form, and factor monitors in Alphalens' terms: IC,
     decay and turnover.
