@@ -60,6 +60,7 @@ DECISION_WORDS = {
     "OUTCOME_SETTLED": "Outcome settled",
     "CLOSE_MARKED_ESTIMATE_NOT_EXECUTION_TARGET": "Close-marked estimates, not execution targets",
     "OBSERVED_RESEARCH_ENTRY_WEIGHTS": "Observed research entry weights",
+    "TIMELY_RESEARCH_NOT_TRADE_ADVICE": "Timely research positions, not trade advice",
     "POST_OBSERVED_QA_NOT_TIMELY_ADVICE": "Research positions, not trade advice",
 }
 

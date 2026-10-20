@@ -1650,46 +1650,75 @@ the caller already holds the refusal.
 """
 
 
+CHECKED: Final = "The workspace checked is {subject}; serve it with {subject}."
+OTHER_BOUND: Final = (
+    "This Session is bound to another workspace, {subject}: name that one with --workspace to "
+    "use its Host."
+)
+
+
+def host_checked(detail: str, workspace: Path) -> str:
+    """A no-Host answer's words, naming the workspace it checked and how to serve it.
+
+    Args:
+        detail: The refusal's own words.
+        workspace: The workspace the client looked for a Host in.
+
+    Returns:
+        The words in the command's language, with the Session's bound workspace where another.
+    """
+    checked, bound = workspace.resolve(), BOUND_WORKSPACE.get()
+    serve = ["alphalattice", "--workspace", str(checked), "serve", "--no-browser", "--detach"]
+    words = str(worded(CHECKED)).replace("{subject}", str(checked), 1)
+    words = words.replace("{subject}", f"`{join(serve, shell())}`")
+    if bound not in {None, checked}:
+        words += " " + str(worded(OTHER_BOUND)).replace("{subject}", str(bound))
+    return f"{worded(detail)} {words}"
+
+
 def client_failure(
     code: str,
     document: Mapping[str, Any],
     cause: BaseException | None,
     request_timeout: float,
     answered: bool,
+    workspace: Path | None = None,
 ) -> tuple[ClientRefusal, dict[str, Any]]:
     """A local refusal's words and, for a connection lost in flight, what it leaves known.
 
     A read not yet answered changes nothing, so its exact request is offered again; any other
     request, or a step after an answer, is inspected as its Task before work is sent again.
+    A no-Host refusal names the workspace it checked (`host_checked`).
     """
+    known: dict[str, Any] = {}
     if code == "local_client.document_unreadable":
-        return client_refusal(code), {
-            "next_requests": {"schema": schema_request(document.get("operation"))}
-        }
-    if code.startswith("local_client.review_answers_missing:"):
+        known = {"next_requests": {"schema": schema_request(document.get("operation"))}}
+    elif code.startswith("local_client.review_answers_missing:"):
         # The named strategy's last published review, read with its own date.
         package = code.partition(":")[2]
         last = {"history_kind": "CRO_REVIEW", "history_limit": 1, "strategy_package_id": package}
-        return client_refusal(code), {
-            "next_requests": {"last_review": {"operation": "RESEARCH_HISTORY", **last}}
+        known = {"next_requests": {"last_review": {"operation": "RESEARCH_HISTORY", **last}}}
+    elif code == "local_client.connection_lost_task_may_still_run":
+        read = not answered and document.get("operation") in READ_OPERATIONS
+        code = "local_client.connection_lost_read" if read else code
+        known = {
+            "transport_reason": "HTTP_WAIT_EXPIRED"
+            if isinstance(cause, TimeoutError)
+            else "CONNECTION_INTERRUPTED",
+            "request_timeout_seconds": request_timeout,
+            "operation_outcome": "UNKNOWN",
+            "guidance": (
+                "--request-timeout may increase this read's HTTP waiting."
+                if read
+                else "Inspect the same Task before resubmitting work. For a read-only "
+                "request, --request-timeout may increase HTTP waiting, not the Task budget."
+            ),
+            **({"next_requests": {"read": dict(document)}} if read else {}),
         }
-    if code != "local_client.connection_lost_task_may_still_run":
-        return client_refusal(code), {}
-    read = not answered and document.get("operation") in READ_OPERATIONS
-    return client_refusal("local_client.connection_lost_read" if read else code), {
-        "transport_reason": "HTTP_WAIT_EXPIRED"
-        if isinstance(cause, TimeoutError)
-        else "CONNECTION_INTERRUPTED",
-        "request_timeout_seconds": request_timeout,
-        "operation_outcome": "UNKNOWN",
-        "guidance": (
-            "--request-timeout may increase this read's HTTP waiting."
-            if read
-            else "Inspect the same Task before resubmitting work. For a read-only "
-            "request, --request-timeout may increase HTTP waiting, not the Task budget."
-        ),
-        **({"next_requests": {"read": dict(document)}} if read else {}),
-    }
+    refusal = client_refusal(code)
+    if workspace is not None and refusal.outcome == "NO_HOST":
+        refusal = refusal._replace(detail=host_checked(refusal.detail, workspace))
+    return refusal, known
 
 
 def envelope(
@@ -2308,6 +2337,18 @@ def join(parts: list[str], quoting: str) -> str:
     return " ".join(shlex.quote(str(part)) for part in parts)
 
 
+def output_retry(line: tuple[str, ...], path: Path) -> list[str] | None:
+    """Keep the parsed command, replacing only its effective output option."""
+    parts = list(line)
+    end = parts.index("--") if "--" in parts else len(parts)
+    for index in range(end - 1, -1, -1):
+        option, equal, _value = parts[index].partition("=")
+        if len(option) > 2 and option.startswith("--") and "--output".startswith(option):
+            parts[index : index + (1 if equal else 2)] = [f"--output={path}"]
+            return [join([*command_prefix(), *parts], shell())]
+    return None
+
+
 def _json(value: object) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
@@ -2321,6 +2362,67 @@ def _given(value: str) -> str:
 def _powershell(part: str) -> str:
     safe = bool(part) and part[0] != "@" and all(c.isalnum() or c in "-_.:/\\=" for c in part)
     return part if safe else "'" + part.replace("'", "''") + "'"
+
+
+OUTPUT_REPLACED = "Replaced the saved refusal at --output; accepted work was not overwritten."
+
+
+def output_fields(path: Path | None, *, replaced: bool = False) -> dict[str, Any]:
+    """Report a completed output write and any refusal it replaced."""
+    return (
+        {
+            "output_file": str(path.resolve()),
+            **({"output_note": worded(OUTPUT_REPLACED)} if replaced else {}),
+        }
+        if path is not None
+        else {}
+    )
+
+
+_FOLLOW_RETURNS = "when the Task ends, needs a decision or recovery, or is deferred; "
+"""Opening guidance before the host-specific way to wait."""
+
+
+def wait_event(
+    kind: str,
+    read: dict[str, Any] | None,
+    *,
+    prefix: tuple[str, ...] = ("alphalattice",),
+    **facts: Any,
+) -> dict[str, Any]:
+    """The one line a waiter ends with: what happened and the command that reads it.
+
+    Args:
+        kind: What happened.
+        read: The request that reads it, or None.
+        prefix: The entry its command starts with, including its workspace.
+        facts: What the event names; a None is left out.
+
+    Returns:
+        The event, its facts and its read command.
+    """
+    return {
+        "event": kind,
+        **{key: value for key, value in facts.items() if value is not None},
+        "read": None if read is None else command(read, prefix=prefix),
+    }
+
+
+def follow_returns() -> str:
+    """When a follow returns and how this host waits for it, never by polling."""
+    session = agent_session(os.environ)
+    way = AGENT_HOST_WAITS.get(session[0]) if session else None
+    way = way or "let your shell wait or run this in the background"
+    return f"{_FOLLOW_RETURNS}{way}, and do not poll it"
+
+
+def with_read_commands(body: dict[str, Any], prefix: tuple[str, ...]) -> dict[str, Any]:
+    """Add each recent item's opening command with the checkout entry and workspace."""
+    for group in body.get("groups", []):
+        for item in group.get("items", []):
+            if isinstance(item.get("read"), dict):
+                item["read_command"] = command(item["read"], prefix=prefix)
+    return body
 
 
 __all__ = [

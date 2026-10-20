@@ -98,13 +98,6 @@ def _installed_leg() -> dict[str, Any]:
         return {"present": False, "command": command, "reason": "DISTRIBUTION_MISSING"}
 
 
-def _workbench_current() -> bool:
-    """Whether serve would take this checkout's built Workbench (`workbench_current`)."""
-    from alphalattice.interface.local_application import workbench_assets
-
-    return workbench_assets.workbench_current()
-
-
 def _host_facts(binding: NativeResearchBinding | None) -> dict[str, Any]:
     """Read existing Host facts when bound; an absent Host supplies no made-up measurements."""
     from alphalattice.interface.local_application.client import (
@@ -421,6 +414,7 @@ def host_readiness(
     project: Path, host: str, binding: NativeResearchBinding | None
 ) -> list[dict[str, Any]]:
     """One advisory dependency list: the measured facts, what they enable and who fills them."""
+    from alphalattice.interface.local_application import workbench_assets
     from alphalattice.kernel.knowledge.model_store import default_store_root, recipe_readiness
 
     facts = _host_facts(binding)
@@ -464,7 +458,7 @@ def host_readiness(
             (tool := fillable["installed_leg"]).pop("present"),
             {**{k: v for k, v in _installed_leg().items() if k != "present"}, **tool},
         ),
-        ("workbench_build", _workbench_current(), {"command": WORKBENCH_BUILD}),
+        ("workbench_build", workbench_assets.workbench_current(), {"command": WORKBENCH_BUILD}),
         (
             "retrieval_runtime",
             (retrieval := fillable["retrieval_runtime"]).pop("present"),

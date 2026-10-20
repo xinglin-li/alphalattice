@@ -28,6 +28,7 @@ from alphalattice.foundation.causal_outcomes.execution.contracts import (
     LocalQAMarketSnapshot,
 )
 from alphalattice.foundation.causal_outcomes.execution.readers import local_qa_point_rows
+from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
 from alphalattice.investment.portfolio_strategy_lab.application.calibration import (
     PreparedPortfolioBookInput,
     PreparedPortfolioComponentInput,
@@ -343,6 +344,26 @@ class PortfolioSourceRevision(_Sealed):
     replay_status: Literal["NOT_ADOPTED_NOT_PERFORMED"] = "NOT_ADOPTED_NOT_PERFORMED"
 
 
+UpdateClaim = Literal["TIMELY_RESEARCH_NOT_TRADE_ADVICE", "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"]
+"""What a publication's positions are: research, never trade advice, timely or a replay."""
+
+
+def update_claim(
+    pending: PortfolioConditionalProposal | None, published_at: datetime
+) -> UpdateClaim:
+    """Positions published before their entry open are timely; any other is post-observed."""
+    if pending is not None and published_at < pending.schedule.entry_open_at:
+        return "TIMELY_RESEARCH_NOT_TRADE_ADVICE"
+    return "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"
+
+
+def planned_claim(target: date, data_through: date | None) -> UpdateClaim:
+    """A plan's claim: its entry, the session after `target`, is unobserved until data passes."""
+    if data_through is None or target >= data_through:
+        return "TIMELY_RESEARCH_NOT_TRADE_ADVICE"
+    return "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"
+
+
 class PortfolioUpdatePublication(_Sealed):
     """Bind a research positions publication to source and continuation authority.
 
@@ -363,7 +384,7 @@ class PortfolioUpdatePublication(_Sealed):
     events: tuple[PortfolioObservedSettlement, ...]
     source_snapshot_hash: str
     html_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    claim: Literal["POST_OBSERVED_QA_NOT_TIMELY_ADVICE"] = "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"
+    claim: UpdateClaim = "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"
     risk_status: Literal["NOT_EVALUATED_FOR_THIS_PROPOSAL"] = "NOT_EVALUATED_FOR_THIS_PROPOSAL"
     cro_status: Literal["NOT_REVIEWED_FOR_THIS_PROPOSAL"] = "NOT_REVIEWED_FOR_THIS_PROPOSAL"
     input_checkpoint_hash: str | None = Field(
@@ -529,6 +550,44 @@ def market_on_axis(snapshot: LocalQAMarketSnapshot, axis: tuple[str, ...]) -> Lo
     )
 
 
+class SplitBasisRevision(ValueError):
+    """A refused issued basis, with bounded words and the complete changed event subjects."""
+
+    def __init__(
+        self, previous: tuple[CorporateActionEvent, ...], current: tuple[CorporateActionEvent, ...]
+    ) -> None:
+        """Retain changed listing/date pairs and encode only a bounded public subject."""
+        self.pairs = tuple(
+            sorted(
+                {
+                    (v.listing_id, v.effective_date)
+                    for v in (set(previous) ^ set(current)) or set(previous)
+                }
+            )
+        )
+        super().__init__(
+            f"portfolio_update.revised_split_basis_requires_review:{_split_basis_subject(self.pairs)}"
+        )
+
+
+def _split_basis_subject(
+    pairs: tuple[tuple[str, date], ...],
+) -> str:
+    """Name changed split events within the public refusal's bounded subject."""
+    subjects = [f"{listing} effective {effective.isoformat()}" for listing, effective in pairs]
+    subject = ", ".join(subjects)
+    # Retain the first effective date and count, even when its identifier needs shortening.
+    limit = 140
+    if len(subject) > limit:
+        listing, effective = pairs[0]
+        tail = f" effective {effective.isoformat()}" + (
+            f", +{len(pairs) - 1} more" if len(pairs) > 1 else ""
+        )
+        room = limit - len(tail)
+        subject = (listing if len(listing) <= room else listing[: room - len("...")] + "...") + tail
+    return subject
+
+
 def continue_issued_observations(
     previous: LocalQAMarketSnapshot,
     current: LocalQAMarketSnapshot,
@@ -553,14 +612,15 @@ def continue_issued_observations(
     ):
         raise ValueError("portfolio_update.raw_basis_axis_or_clock_invalid")
     old_splits = tuple(v for v in factual.actions if v.action_kind == "SPLIT")
-    if old_splits != tuple(
+    issued_splits = tuple(
         v
         for v in current.actions
         if v.action_kind == "SPLIT"
         and v.effective_date <= previous.through
         and v.listing_id in previous.ordered_listing_ids
-    ):
-        raise ValueError("portfolio_update.revised_split_basis_requires_review")
+    )
+    if old_splits != issued_splits:
+        raise SplitBasisRevision(old_splits, issued_splits)
     factors = dict.fromkeys(previous.ordered_listing_ids, 1.0)
     for action in current.actions:
         if action.action_kind == "SPLIT" and action.effective_date > previous.through:
@@ -1114,6 +1174,7 @@ def advance_decision_state(
         active_entry=active,
         events=tuple(events),
         source_snapshot_hash=observed.content_hash,
+        claim=update_claim(pending, published_at),
         revised_source_hash=revised_source_hash,
         source_revision=source_revision,
     )

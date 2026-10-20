@@ -17,6 +17,7 @@ from uuid import UUID, uuid4
 import numpy as np
 import pytest
 
+from alphalattice.control.data_platform.data_decision_rule import ADJUSTED_PRECISION
 from alphalattice.control.product_host.composition import committee, committee_materials
 from alphalattice.control.product_host.composition import portfolio_result_context as context
 from alphalattice.control.product_host.composition.goals import GoalApplication
@@ -124,9 +125,13 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
     ]
     table = np.random.default_rng(5).normal(0.0, 0.01, (len(days), len(listings)))
     rows = {d: i for i, d in enumerate(days)}
-    state = SimpleNamespace(positions=positions, k=days.index(session), days=days)
+    state = SimpleNamespace(positions=positions, k=days.index(session), days=days, table=table)
     state.sessions, state.bars, state.listings = days, set(listings), listings
-    authority = SimpleNamespace(sector_map_hash="b" * 64)
+    authority = SimpleNamespace(
+        authority_hash=uuid4().hex * 2,
+        risk_return_surface_hash=uuid4().hex * 2,
+        sector_map_hash="b" * 64,
+    )
     classification = SimpleNamespace(
         map_hash="b" * 64,
         sector_revision="d" * 64,
@@ -145,13 +150,12 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
             raise RiskReturnSurfaceError("risk_research.return_bars_missing")
         column = listings.index(listing.listing_id)
         return tuple(
-            {"open_total_return_log": table[rows[d], column], "row_hash": d.isoformat()}
+            {
+                "open_total_return_log": table[rows[d], column],
+                "row_hash": canonical_hash((d.isoformat(), float(table[rows[d], column]))),
+            }
             for d in sessions[1:]
         )
-
-    def load(*_args: Any, **_kwargs: Any) -> Any:
-        authority.risk_return_surface_hash = uuid4().hex * 2  # no memo answers another read
-        return authority
 
     market = SimpleNamespace(
         load_universe_manifest_revision=lambda _revision: "universe",
@@ -165,7 +169,7 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
     history = SimpleNamespace(reclassifications=(), current={v: v[-1] for v in listings})
     stores = SimpleNamespace(load_manifest=lambda _hash: surface)
     relative_path = f"artifacts/portfolio-strategy-lab/{context.CATEGORY}/{'a' * 64}.json"
-    monkeypatch.setattr(context.PortfolioResearchArtifactStore, "load", load)
+    monkeypatch.setattr(context.PortfolioResearchArtifactStore, "load", lambda *_a, **_k: authority)
     monkeypatch.setattr(
         context.PanelClosureArtifactStore, "load_model", lambda *_a, **_k: classification
     )
@@ -181,16 +185,116 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
             SimpleNamespace(artifact_key=context.ARTIFACT_KEY, relative_path=relative_path),
         )
     )
-    state.risk = lambda: date_risk(tmp_path, manifest, readback, positions)
+    state.producer = context.RiskSurfaceProducer()
+    monkeypatch.setattr(context, "RiskSurfaceProducer", lambda: state.producer)
+    state.risk = lambda body=readback, held=positions: date_risk(tmp_path, manifest, body, held)
     return state
+
+
+def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, monkeypatch):
+    """A wider or differently ordered book never borrows another book's cached label axis."""
+    from alphalattice.control.product_host.research_authoring import execution, factor_inputs
+    from alphalattice.kernel.quant.sector_history import SectorHistory
+
+    body = {
+        "portfolio_source": {
+            "input_binding_hash": uuid4().hex * 2,
+            "panel_snapshot_hash": "b" * 64,
+            "universe_revision": "c" * 64,
+        },
+        "position": {"session": "2024-01-03"},
+    }
+    history = SectorHistory("d" * 64, {"one": "Technology", "two": "Energy"})
+    monkeypatch.setattr(factor_inputs, "factor_input_paths", lambda *_: (tmp_path, tmp_path))
+    monkeypatch.setattr(
+        context.MarketDataRepository,
+        "load_universe_manifest_revision",
+        lambda *_: SimpleNamespace(profile=SimpleNamespace(market_profile_id="fixture")),
+    )
+    monkeypatch.setattr(
+        context.ArtifactResolver,
+        "load_feature_panel_manifest",
+        lambda *_: {"safe_summary": {"lineage": {"manifest_revision": "c" * 64}}},
+    )
+    monkeypatch.setattr(
+        execution,
+        "panel_sector_labels",
+        lambda _store, _manifest, _panel, listings: (history.subset(listings), None),
+    )
+    for axis in (["one"], ["one", "two"], ["two", "one"]):
+        body["portfolio_source"]["ordered_listing_ids"] = axis
+        labels = context.book_sectors(tmp_path, body)["by_listing"]
+        assert labels == {key: history.current[key] for key in axis}
+        assert list(labels) == axis
+
+
+@pytest.mark.parametrize("last_eligible", (False, True), ids=("all-excluded", "one-scored"))
+def test_ineligible_pending_scores_are_excluded_from_materials_and_update_readback(
+    readback: dict[str, Any], risk_source: Any, last_eligible: bool
+) -> None:
+    """Unscored and ineligible names remain readable without entering score arithmetic."""
+    value = PortfolioUpdatePublication.model_validate(readback["publication"])
+    proposal = value.pending_proposal
+    assert proposal is not None
+    part = proposal.input
+    names = [row["listing_id"] for row in committee.holdings(readback)[:3]]
+    scores, eligible, weights = (
+        list(part.scores),
+        list(part.decision_eligible),
+        list(proposal.estimated_weights),
+    )
+    for listing, score, allowed in zip(
+        names, (None, 8.0, -0.25), (False, False, last_eligible), strict=True
+    ):
+        i = part.ordered_listing_ids.index(listing)
+        scores[i], eligible[i], weights[i] = score, allowed, 0.0
+    prepared = type(part).create(
+        **{k: v for k, v in part if k not in {"content_hash", "scores", "decision_eligible"}},
+        scores=tuple(scores),
+        decision_eligible=tuple(eligible),
+    )
+    pending = type(proposal).create(
+        **{
+            k: v
+            for k, v in proposal
+            if k not in {"content_hash", "input", "estimated_weights", "estimated_weight_changes"}
+        },
+        input=prepared,
+        estimated_weights=tuple(weights),
+        estimated_weight_changes=tuple(
+            a - b for a, b in zip(weights, proposal.close_weights, strict=True)
+        ),
+    )
+    published = type(value).create(
+        **{k: v for k, v in value if k not in {"content_hash", "pending_proposal"}},
+        pending_proposal=pending,
+    )
+    answer = {**readback, "publication": published.model_dump(mode="json")}
+    answer["date_risk"] = risk_source.risk(answer, portfolio_update_positions(published))
+    assert answer["date_risk"]["risk_status"] == "EVALUATED"
+    held = committee.holdings(answer)
+    rows = {row["listing_id"]: row for row in held}
+    assert [rows[k]["scores"] for k in names] == [{}, {}, {f"C{1}": -0.25} if last_eligible else {}]
+    facts = committee.facts(answer, EVIDENCE, held)
+    clean = [f["text"] for f in facts if f["question"] == "ALPHA.clean"]
+    excluded = clean[0].rsplit(": ", 1)[1].removesuffix(".").split(", ")
+    assert {rows[k]["alias"] for k in names[:2]}.issubset(excluded)
+    spread = [f for f in facts if f["question"] == "ALPHA.cost"]
+    assert len(spread) == 1
+    if last_eligible:
+        assert spread[0]["source"] == "publication"
+        assert float(spread[0]["text"].split("score spread ")[1].split()[0]) == 0.0
+    else:
+        assert rows[names[2]]["alias"] in excluded
+        assert spread[0]["state"] == "UNAVAILABLE"
 
 
 def test_a_dates_risk_stands_at_its_formation_or_dated_at_the_surfaces_next_session(
     risk_source: Any,
     readback: dict[str, Any],
 ) -> None:
-    """requirement: a Risk carried by later returns is the one read inside the surface; without
-    them it stands, dated, at the session after the surface ends."""
+    """requirement: dated Risk follows its return history, corrections and recipe; without later
+    returns it stands at the session after the surface ends."""
     s = risk_source
     inside = s.risk()
     assert inside["risk_as_of"] == s.days[s.k].isoformat()
@@ -205,6 +309,18 @@ def test_a_dates_risk_stands_at_its_formation_or_dated_at_the_surfaces_next_sess
     s.sessions = s.days[: s.k - 2]
     carried = s.risk()
     assert {**carried, "source_hash": None} == {**inside, "source_hash": None}
+    assert s.risk() == carried
+    largest = int(np.argmax(np.abs(s.positions.weights)))
+    s.table[s.k - 1, largest] += 0.1
+    corrected = s.risk()
+    assert corrected["source_hash"] != carried["source_hash"]
+    assert corrected["volatility_per_session"] != carried["volatility_per_session"]
+    recipe = s.producer.recipe.model_dump(exclude={"recipe_hash"})
+    recipe["conditional_volatility_decay"] = 0.9
+    s.producer.recipe = type(s.producer.recipe)(**recipe, recipe_hash=canonical_hash(recipe))
+    revised = s.risk()
+    assert revised["source_hash"] == corrected["source_hash"]
+    assert revised["volatility_per_session"] != corrected["volatility_per_session"]
     s.bars = set()
     stale = s.risk()
     assert stale["risk_as_of"] == s.days[s.k - 2].isoformat()
@@ -359,10 +475,12 @@ def test_a_populated_floor_bounds_stances_and_discloses_every_other_point(tmp_pa
         )
         refused = send(given)
         assert refused["failure_code"] == "committee.message_refused:AGENDA"
-        if "text" in fields:
-            assert "corrected" not in refused["next_requests"]
+        if "text" in fields:  # nothing the Host can correct, so it names the points (0.2.1)
             assert refused["author_revision_fields"] == ["committee_message.text"]
-            assert set(refused["next_requests"]) == {"floor", "schema"}
+            assert set(refused["next_requests"]) == {"floor", "schema"}, refused
+            assert refused["agenda_points"] == agenda["aliases"]
+        else:  # a target or a fact-keyed position the Host drops: the message, ready to send
+            assert refused["next_requests"]["corrected"]["committee_message"]["text"]
     # regression (a fresh-folder first use): a point typed by its kind, or a holding by its name,
     # is offered the same message with their aliases, not a bare TARGET refusal.
     point, holding = floor.opened["tension_points"][0], floor.opened["holdings"][0]
@@ -1410,6 +1528,11 @@ def test_a_dates_delivery_carries_the_closed_floor_as_its_commentary(
     tmp_path: Path, readback: dict[str, Any]
 ) -> None:
     """The date's delivery retains its positions and attributed floor commentary."""
+    from alphalattice.control.data_platform.data_decision_rule import OBSERVATIONS_KEPT
+    from alphalattice.control.product_host.data_preparation.remediation import (
+        kept_observation_rows,
+    )
+
     request = Request(
         operation="EXPERIMENT_DELIVERY_EXPORT",
         update_task_id=UUID(TASK),
@@ -1427,17 +1550,45 @@ def test_a_dates_delivery_carries_the_closed_floor_as_its_commentary(
     store, now = _floor(tmp_path, readback)
     _stances(store, now)
     _say(store, now, "PM", "VERDICT", outcome="PROCEED")
+    # Closes the rule's precision kept are disclosed from the floor as from the goal.
+    kept = {"operation": ADJUSTED_PRECISION, "decided_by": "RULE", "task_id": TASK}
+    kept |= {"listing_ids": ["L1"], "largest_relative_differences": [5e-7], "rule_hash": "r"}
+    kept |= {"adjustment_segments": [[["2026-07-27", "2026-07-29", 0.99]]]}
+    split = ["2026-07-30", "2016-01-04", "2026-07-29", 0.5, 2.0, "h"]  # ex-date, span, factors
+    kept |= {"raw_rebases": [[split]]}
+    store.attribute(UUID(int=7), kept)
+    # ...and the rows and blocks the update's observations kept as stored, by its snapshot.
+    snapshot = "5" * 64
+    retained = {"operation": OBSERVATIONS_KEPT, "decided_by": "RULE", "task_id": TASK}
+    retained |= {"observation_snapshot_hash": snapshot, "kept_rows": [["L1", "h", 3, 4e-7]]}
+    retained |= {"kept_blocks": [0, 2], "rebase_agreement": [1e-6, 1e-12]}
+    store.attribute(UUID(int=7), retained)
     floor = committee.floor_of(store, TASK)
     assert floor is not None
     context = committee.context(floor, now[0])
     said = committee.commentary(floor, now[0])
     assert said is not None
+    decided: dict[str, Any] = {}
+    shown = {"words": "The rule decided.", "decided": [{"listing_id": "L1", "raw_rebases": split}]}
+
+    def read(**seen: Any) -> dict[str, Any]:
+        decided.update(seen)
+        return shown | kept_observation_rows(seen["retained"], {})
+
     delivered = export_update_delivery(
         request=request,
         readback={**readback, **facts, "committee_context": context},
         review=None,
         committee=said,
+        read_data_decisions=read,
+        floor=floor,
     )
+    assert decided["kept"] == (
+        ("L1", "r", 5e-7, (("2026-07-27", "2026-07-29", 0.99),), (tuple(split),)),
+    )
+    assert decided["retained"] == ((snapshot, (("L1", "h", 3, 4e-7),), (0, 2), (1e-6, 1e-12)),)
+    page = delivered["html"]  # the person's page names the kept rows and blocks
+    assert all(text in page for text in ("Observations kept as stored", snapshot, "2016-01-04"))
     assert delivered["committee_context"] == context
     with pytest.raises(AuthoringError, match=r"^research_delivery\.update_subject_mismatch$"):
         export_update_delivery(

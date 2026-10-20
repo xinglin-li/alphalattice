@@ -99,13 +99,32 @@ def daily_road(selected: Path, declaration: GoalDeclaration) -> dict[str, Any] |
     found = completed_first_use(selected) if declaration.target_date else None
     if found is None:
         return None
-    workspace, package = found
-    plan = {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": package}
     named = target_sessions(declaration.target_date)  # type: ignore[arg-type]
-    plan["positions_date"] = str(named["entry_session"])
+    return _road(selected, *found, str(named["entry_session"]))
+
+
+def serve_road(selected: Path) -> dict[str, Any] | None:
+    """A serve refused by name where the project's first use completed in another workspace.
+
+    Before anything starts: a new workspace's Host would open a second first use there. The
+    refusal offers that workspace's daily update; None where the first use is this workspace's
+    own, or the project holds none.
+    """
+    found = completed_first_use(selected)
+    if found is None or found[0] == selected.resolve():
+        return None
+    return _road(selected, *found, None)
+
+
+def _road(selected: Path, workspace: Path, package: str, date: str | None) -> dict[str, Any]:
+    """The refusal naming the first use's workspace and its daily update's plan, for the date
+    or the latest settled close; in that same workspace, the plan ready to send."""
+    plan = {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": package}
+    command = [*entry(workspace), "research-update", "plan", "--package", package]
+    if date is not None:
+        plan["positions_date"] = date
+        command += ["--date", date]
     words = client_refusal(CODE)
-    command = (*entry(workspace), "research-update", "plan", "--package", package)
-    same = workspace == selected.resolve()
     return {
         "status": words.outcome,
         "failure_code": CODE,
@@ -113,8 +132,8 @@ def daily_road(selected: Path, declaration: GoalDeclaration) -> dict[str, Any] |
         "next_action": words.next_action,
         "workspace": str(workspace),
         "strategy_package_id": package,
-        "next_command": join([*command, "--date", plan["positions_date"]], shell()),
-        **({"next_requests": {"plan": plan}} if same else {}),
+        "next_command": join(command, shell()),
+        **({"next_requests": {"plan": plan}} if workspace == selected.resolve() else {}),
     }
 
 

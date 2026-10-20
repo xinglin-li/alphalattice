@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Final
 from uuid import UUID
 
+from alphalattice.control.data_platform.data_decision_rule import KeptListing, KeptObservations
 from alphalattice.control.product_host.composition.committee_materials import (
     AGENDA_LIMIT as AGENDA_LIMIT,
 )
@@ -142,6 +143,8 @@ class Floor:
     rule_cases: frozenset[str] = field(default=frozenset(), compare=False)
     rule_audits: tuple[tuple[str, str], ...] = field(default=(), compare=False)
     rule_held: frozenset[str] = field(default=frozenset(), compare=False)
+    rule_kept: tuple[KeptListing, ...] = field(default=(), compare=False)
+    rule_retained: tuple[KeptObservations, ...] = field(default=(), compare=False)
 
     def key(self, role: str) -> str:
         """Derive the member's key on this floor from the seed the Host keeps outside records."""
@@ -612,6 +615,8 @@ def thread_of(store: GoalStore, thread: str) -> Floor | None:
         rule_cases=store.rule_cases(thread, entries),
         rule_audits=store.rule_audits(thread, entries),
         rule_held=store.rule_held(thread, entries),
+        rule_kept=store.rule_kept(thread, entries),
+        rule_retained=store.rule_retained(thread, entries),
     )
 
 
@@ -1190,7 +1195,8 @@ def _rule_words(
     subject = str(size) if rule == "AGENDA" else ", ".join(_typed(floor, message)[0])
     words: dict[str, Any] = {"detail": RULE_WORDS[rule].replace("{subject}", subject), "rule": rule}
     if rule == "AGENDA":
-        words["agenda_size"] = size
+        bounded = agenda_view(floor)["agenda"] if floor else {"aliases": [], "raised": []}
+        words |= {"agenda_size": size, "agenda_points": [*bounded["aliases"], *bounded["raised"]]}
         if not corrected:
             words["author_revision_fields"] = ["committee_message.text"]
     if rule in {"NUMBER", "TARGET"} and floor is not None:  # what may be named, by alias
@@ -1810,7 +1816,7 @@ def role_lines(
     if role == "ALPHA":
         view = [
             f"{h['alias']} {h['name']}: weight {h['weight']:.2%}; component scores at formation "
-            "(0 to 1, higher ranks better): "
+            "(higher ranks better): "
             + (", ".join(f"{k} {v:.2f}" for k, v in sorted(h["scores"].items())) or "none")
             for h in held
         ]

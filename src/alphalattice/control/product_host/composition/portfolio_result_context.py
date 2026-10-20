@@ -702,7 +702,7 @@ def read_portfolio(
     )
 
 
-_SECTOR_CACHE: dict[tuple[str, str, str], dict[str, Any]] = {}
+_SECTOR_CACHE: dict[tuple[str, ...], dict[str, Any]] = {}
 
 
 def book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
@@ -736,7 +736,13 @@ def book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
             "by_listing": {},
         }
     shown = (body.get("position") or {}).get("session")
-    key = (str(binding), str(snapshot), str(shown))
+    key = (
+        str(binding),
+        str(snapshot),
+        str(revision),
+        str(shown),
+        canonical_hash(tuple(str(v) for v in listings)),
+    )
     cached = _SECTOR_CACHE.get(key)
     if cached is not None:
         return cached
@@ -776,8 +782,8 @@ def book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
     return value
 
 
-_DATE_RISK: dict[tuple[str, str], dict[str, Any]] = {}
-"""Each publication's Risk at its own session with every name covered, once per process."""
+_DATE_RISK: dict[tuple[str, ...], dict[str, Any]] = {}
+"""Each publication's Risk, bound to its authority, recipe, positions and current carried rows."""
 
 
 def date_risk(
@@ -822,9 +828,6 @@ def _date_risk(
     if installed is None:
         raise ValueError("risk_research.installed_risk_surface_absent")
     root, authority = installed
-    key = (str(readback["publication"]["content_hash"]), str(authority.risk_return_surface_hash))
-    if key in _DATE_RISK:
-        return _DATE_RISK[key]
     surface = RiskReturnArtifactStore(root).load_manifest(authority.risk_return_surface_hash)
     reader = CausalRiskReturnReader(root)
     closure = PanelClosureArtifactStore(ArtifactResolver(root))
@@ -858,6 +861,15 @@ def _date_risk(
         return _unevaluated(f"risk_research.{why}", covered)
     columns = [surface.epoch.ordered_listing_ids.index(v) for v in listings]
     source = canonical_hash({"surface": surface.surface_hash, "carried": hashes})
+    key = (
+        str(readback["publication"]["content_hash"]),
+        authority.authority_hash,
+        recipe.recipe_hash,
+        positions.position_hash,
+        source,
+    )
+    if key in _DATE_RISK:
+        return _DATE_RISK[key]
     model = producer.produce(
         RiskDecompositionInputs.at(
             formation,

@@ -162,7 +162,7 @@ def test_admission_verifies_unique_arrays_in_parallel_after_serial_bindings(
     store, root, authority, observations = retained_lifecycle_admission
     snapshot = store.load_frozen_observation_snapshot(observations[0].observation_hash)
     hashes = {
-        snapshot.array_content_hash,
+        *snapshot.array_files,
         observations[0].array_file_hash,
         *(p.array_file_hash for p in authority.prepared),
     }
@@ -234,7 +234,7 @@ def test_admission_refuses_array_tamper_before_reading_initial_children(
     store, root, authority, observations = retained_lifecycle_admission
     snapshot = store.load_frozen_observation_snapshot(observations[0].observation_hash)
     hashes = {
-        snapshot.array_content_hash,
+        *snapshot.array_files,
         observations[0].array_file_hash,
         *(p.array_file_hash for p in authority.prepared),
     }
@@ -263,7 +263,7 @@ def test_admission_refuses_array_tamper_before_reading_initial_children(
         authority.model_dump_json(), encoding="utf-8", newline="\n"
     )
     identity = {
-        "frozen": snapshot.array_content_hash,
+        "frozen": snapshot.array_files[-1],
         "labels": observations[0].array_file_hash,
         "prepared": authority.prepared[-1].array_file_hash,
     }[damaged_source]
@@ -318,7 +318,7 @@ def test_admission_refuses_array_tamper_before_reading_initial_children(
             assert checks == completed == Counter({value: 1 for value in hashes - {identity}})
             assert active == 0
             assert reads.count("lifecycle-arrays") == 3
-            assert reads.count("frozen-observation-arrays") == 1
+            assert reads.count("frozen-observation-arrays") == len(snapshot.array_files)
             assert "imported-models" not in reads
 
 
@@ -753,7 +753,7 @@ def test_formula_snapshot_roundtrip_is_bound_without_changing_legacy_shape(tmp_p
         replace(reopened, formula_values={"mom_252_21": source.close + 1}).require_unchanged_prefix(
             reopened
         )
-    path = store._path("current/frozen-observation-arrays", new.array_content_hash, "bin")
+    path = store._path("current/frozen-observation-arrays", new.array_files[-1], "bin")
     payload = path.read_bytes()
     path.write_bytes(payload[:-1] + bytes([payload[-1] ^ 1]))
     with pytest.raises(ValueError, match="frozen_input_content_invalid"):

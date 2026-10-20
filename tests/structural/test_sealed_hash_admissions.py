@@ -315,8 +315,6 @@ def test_records_take_the_kind_their_job_names() -> None:
     assert hashed == {
         "alphalattice/capabilities/portfolio_inputs/tradability/surface.py::HistoricalTradabilityBuilder._prepare_inputs",
         "alphalattice/control/product_host/composition/research_history.py::HistoryEntry.body",
-        # Frozen policy declaration: the version names its record; bound edits rotate its hash.
-        "alphalattice/control/data_platform/data_decision_rule.py::DataDecisionRule.rule_hash",
         "alphalattice/control/data_platform/candidate_requalification.py::CandidateDataRequalification._transition",
         "alphalattice/control/data_platform/maintenance/contracts.py::AgentExecutionBudget.policy_hash",
         "alphalattice/control/data_platform/maintenance/contracts.py::DataRemediationFailureReceipt.__post_init__",

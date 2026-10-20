@@ -228,6 +228,8 @@ c.objectRow=publicBuilders.objectRow;
   const unsafe=posts.length;await w.preview('continue','0');assert.equal(posts.length,unsafe,'foreign continuation is refused locally');
   c.app.page='inputs';await w.refresh();await w.preview('capture');const afterCapture=posts.length;
   await w.commit();assert.equal(posts.length,afterCapture,'exact input reuse needs no confirm/write');
+  bodies['/api/research-inputs/plan']={status:'CONFIRMATION_REQUIRED',input_id:'family',plan_hash:'capture-plan',summary:{database_snapshot_bytes:1004285952}};
+  await w.preview('capture');assert.ok(modal.content.split('<template>')[0].includes('1.004'),'snapshot GB must be visible before confirmation');
   await w.selectInput(JSON.stringify(['family','binding']));assert.deepEqual(drafts,[JSON.stringify(['family','binding'])]);
   c.app.page='storage';await w.refresh();await w.preview('cleanup');c.app.page='data';const moved=posts.length;await w.commit();assert.equal(posts.length,moved,'a different page cannot confirm stale cleanup');
   c.app.page='storage';bodies['/api/workspace/storage/plan'].targets={};await w.preview('cleanup');
@@ -536,7 +538,7 @@ c.objectRow=publicBuilders.objectRow;
   w.observe();await new Promise(r=>setTimeout(r,20));markup=w.page();
   assert.ok(markup.includes('data-shown="prepare_data"') && markup.includes('Inspecting') && markup.includes('Return to current:workspace-stage::') && markup.includes('id="prepListingLog"'),'the held log stays shown when the owner advances, with the way back');
   assert.deepEqual(prefs.workScene,{task:TASK,folded:false,inspect:'prepare_data',follow:false});
-  const reloaded=library.context({...c});vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8')+fs.readFileSync(path.join(root,'router.js'),'utf8')+fs.readFileSync(path.join(root,'live-workarea.js'),'utf8')+fs.readFileSync(path.join(root,'live-workspace.js'),'utf8')+';globalThis.w=LiveWorkspace;',reloaded); // a reload: the router and the page again, over the kept route and preference
+  const reloaded=library.context({...c},root);vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8')+fs.readFileSync(path.join(root,'router.js'),'utf8')+fs.readFileSync(path.join(root,'live-workarea.js'),'utf8')+fs.readFileSync(path.join(root,'live-workspace.js'),'utf8')+';globalThis.w=LiveWorkspace;',reloaded); // a reload: the router and the page again, over the kept route and preference
   reloaded.patchMain=()=>patches.push(c.app.page);reloaded.render=()=>renders.push(c.app.page);
   await reloaded.w.refresh('welcome');markup=reloaded.w.page();
   assert.ok(reloaded.w.area().follow===false && markup.includes('data-shown="prepare_data"') && !markup.includes('workspace-follow') && !markup.includes('data-reading'),'reload retains held historical stage');

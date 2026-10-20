@@ -255,7 +255,7 @@
     "name": "record",
     "kind": "object",
     "required": true,
-    "meaning": "The Host's own facts: the sessions and Tasks bound to the goal, request and event counts, the Team conversation, open assignments and usage."
+    "meaning": "The Host's own facts: bound sessions and Tasks, counts, conversation, assignments and usage. `open_assignments` explains missing acceptance and the next action; `closed_assignments` retains accepted-answer or goal-seal receipts."
    },
    {
     "name": "next_requests",
@@ -371,7 +371,7 @@
     "name": "record",
     "kind": "object",
     "required": true,
-    "meaning": "The Host's own facts: the sessions and Tasks bound to the goal, request and event counts, the Team conversation, open assignments and usage."
+    "meaning": "The Host's own facts: bound sessions and Tasks, counts, conversation, assignments and usage. `open_assignments` explains missing acceptance and the next action; `closed_assignments` retains accepted-answer or goal-seal receipts."
    },
    {
     "name": "next_requests",
@@ -499,7 +499,13 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The requests that read the goal and, while it is open, take, submit or revise it, each ready to send."
+    "meaning": "The goal's continuation requests. A missing-evidence refusal offers the goal read and schemas, an attach form and the preserved note form; empty fields remain choices."
+   },
+   {
+    "name": "expected",
+    "kind": "object",
+    "required": false,
+    "meaning": "On a missing-evidence refusal, the ids of the references already attached to this exact revision; relevance remains the author's choice."
    }
   ]
  },
@@ -787,6 +793,12 @@
  },
  "GOAL_SUBMIT": {
   "fields": [
+   {
+    "name": "open_assignments",
+    "kind": "array",
+    "required": false,
+    "meaning": "An empty list once the Goal seals; unanswered assignments are archived with the seal in the Goal record."
+   },
    {
     "name": "status",
     "kind": "string",
@@ -1166,6 +1178,12 @@
     "kind": "string",
     "required": true,
     "meaning": "`CONFIRMATION_REQUIRED` when a person must confirm a capture or its retry; `REUSED_EXACT` when the local sources match the latest version; else the lifecycle of the pending capture Task."
+   },
+   {
+    "name": "summary",
+    "kind": "object",
+    "required": false,
+    "meaning": "Before a new capture or blocked retry is confirmed: database_snapshot_bytes is the current full database size in bytes. The write_policy explains that capture can write up to two such full copies when an alias copy is needed, identical pooled snapshots can cost less, and other files add bytes. This is a preview-time estimate, not an enforced future bound: capture uses the current database and cost may change. REUSED_EXACT reports zero and admits no capture Task."
    },
    {
     "name": "input_id",
@@ -9610,7 +9628,7 @@
     "name": "limitation",
     "kind": "string",
     "required": false,
-    "meaning": "`POST_OBSERVED_QA_NOT_TIMELY_ADVICE`: research positions, not trade advice. Only with `PLANNED`."
+    "meaning": "`TIMELY_RESEARCH_NOT_TRADE_ADVICE` while the positions' entry session is ahead, otherwise `POST_OBSERVED_QA_NOT_TIMELY_ADVICE`: research positions either way, never trade advice. Only with `PLANNED`."
    },
    {
     "name": "task_id",
@@ -9862,7 +9880,7 @@
     "name": "limitation",
     "kind": "string",
     "required": false,
-    "meaning": "`POST_OBSERVED_QA_NOT_TIMELY_ADVICE`: research positions, not trade advice. Only with `PLANNED`."
+    "meaning": "`TIMELY_RESEARCH_NOT_TRADE_ADVICE` while the positions' entry session is ahead, otherwise `POST_OBSERVED_QA_NOT_TIMELY_ADVICE`: research positions either way, never trade advice. Only with `PLANNED`."
    },
    {
     "name": "task_id",

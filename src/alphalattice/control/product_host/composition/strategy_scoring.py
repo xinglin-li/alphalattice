@@ -852,6 +852,8 @@ class StrategyScoringApplication:
                 proofs=None
                 if prepared.axes_proof is None
                 else (prepared.axes_proof, prepared.listing_digests, prepared.listing_closed),
+                rebases=prepared.rebases,
+                kept_rows=prepared.kept_rows,
             )
         return prepared
 

@@ -1344,6 +1344,7 @@ Host routes and the session answer names (U13, OW10), so a page turns a next req
 route without a map of its own."""
 
 HANDLED_OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
+    ("GET", "/api/controls", "CONTROLS"),
     ("GET", "/api/workbench/portfolio", "PORTFOLIO_READBACK"),
     ("POST", "/api/data-update/plan", "DATA_UPDATE_PLAN"),
     ("POST", "/api/data-update/confirm", "DATA_CHANGE_CONFIRM"),
@@ -1365,8 +1366,7 @@ HANDLED_OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("GET", "/api/research-update/automation", "RESEARCH_UPDATE_AUTOMATION_READBACK"),
     ("POST", "/api/research-update/automation", "RESEARCH_UPDATE_AUTOMATION_CONFIGURE"),
 )
-"""The operations served by handlers of their own rather than the table's route: their
-handlers read their paths here, and the session answer names them beside the table's (U13)."""
+"""Dedicated handlers' routes, also published in the session's operation table (U13)."""
 
 _HANDLED_ROUTE: Final[dict[str, tuple[str, str]]] = {
     operation: (method, path) for method, path, operation in HANDLED_OPERATION_ROUTES
@@ -1680,7 +1680,7 @@ def build_local_web_application(
             )
         )
 
-    @web.route("GET", "/api/controls")
+    @web.route(*_HANDLED_ROUTE["CONTROLS"])
     def _controls(query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
         """The shared catalog, projected through the selected package's surface.
 

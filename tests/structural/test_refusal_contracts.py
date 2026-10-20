@@ -49,6 +49,8 @@ def test_every_task_stop_sentence_fits_its_bound_and_reads_whole() -> None:
         assert stop_detail("research_experiment", code, "TASK_CONTROL") == worded[code], code
     long = {code: len(words) for code, words in worded.items() if len(words) > STOP_WORDS_BOUND}
     assert long == {}, long
+    code = "portfolio_update.revised_split_basis_requires_review:" + "x" * 140
+    assert stop_detail("research_experiment", code, "TASK_CONTROL") == explain(code)["detail"]
     data = refusal_codes()["maintenance_dict_keys"]
     assert data and all(len(maintenance_failure_detail(code)) <= STOP_WORDS_BOUND for code in data)
     # One lookup whatever the Task kind: a code any owner words reads worded for every kind.
@@ -132,11 +134,17 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ("interface/local_application/cli_contract.py", "<module>"): (
             "the unbound refusals' way on and the binding's words"
         ),
+        ("interface/local_application/cli_contract.py", "host_checked"): (
+            "a no-Host answer's command that serves the workspace it checked"
+        ),
         ("interface/local_application/cli_contract.py", "entry"): (
             "the full form, for every workspace but the bound one"
         ),
         ("interface/local_application/client.py", "_write_bundle"): (
             "where an entry's workspace ends, never printed"
+        ),
+        ("interface/local_application/native_bridge.py", "declaration_setup"): (
+            "a missing declaration's bind, the step after its configure"
         ),
         ("interface/local_application/native_setup.py", "main"): "the bridge setup's bind option",
         (

@@ -30,7 +30,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
@@ -49,6 +49,7 @@ from alphalattice.control.observation_runtime.guardian import (
 from alphalattice.control.product_host.composition.plain_refusals import (
     STOP_WORDS_BOUND,
     explain,
+    refused,
 )
 from alphalattice.control.task_control.contracts import (
     PLAN_WORK_ITEM_LIMIT,
@@ -74,6 +75,9 @@ from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.failure_codes import (
     FAILURE_DETAIL_WITHHELD,
     safe_failure_code,
+)
+from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchOperationRequest,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
@@ -477,6 +481,45 @@ _STOPPED = frozenset(
     {TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED, TaskLifecycle.CANCELLED}
 )
 """The lifecycles `task_attention` reads as a stop, and a successor chain passes through."""
+
+
+def replan_offer(
+    task: TaskRecord, owned: tuple[TaskReplan, Any] | None
+) -> dict[str, object] | None:
+    """Bind a stopped Task's preview or replacement route through its composed owner."""
+    if owned is None:
+        return None
+    declared, owner = owned
+    if declared.preview is None:
+        return None
+    _required, allowed = PortfolioResearchOperationRequest.field_contract(declared.preview)
+    choices = allowed - {"recovery_task_id", "recovery_task_hash"}
+    request = (
+        {"operation": declared.preview}
+        if not choices
+        else cast(dict[str, object], owner.replan_request(task))
+    )
+    code = task.failure_code
+    if isinstance(code, str) and code.partition(":")[0] == (
+        "portfolio_update.revised_split_basis_requires_review"
+    ):
+        # Reopening the same declaration cannot change an already issued valuation.
+        spec = request.get("spec")
+        package = request.get("strategy_package_id") or (
+            spec.get("strategy_package_id") if isinstance(spec, dict) else None
+        )
+        return refused(code, strategy_package_id=str(package) if package else None, for_stop=True)
+    if task.lifecycle in _STOPPED:
+        # A refused resume leaves its unbound plan read.
+        if code := getattr(owner, "replan_refusal", lambda _: None)(task):
+            refusal = {"failure_code": code, **refusal_words(code)}
+            return {**refusal, "next_requests": {"plan": request}}
+        return {
+            **request,
+            "recovery_task_id": str(task.task_id),
+            "recovery_task_hash": task.record_hash,
+        }
+    return request
 
 
 def _chain_end(

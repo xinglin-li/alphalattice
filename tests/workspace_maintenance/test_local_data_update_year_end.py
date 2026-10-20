@@ -186,8 +186,8 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     )
     baseline = _active_panel_manifest(workspace)
     assert baseline["as_of_session"] == YEAR_END_AS_OF.isoformat()
-    years = [int(chunk["year"]) for chunk in baseline["chunks"]]
-    assert years[0] < 2025 and years[-1] == 2026
+    years = [_span(chunk) for chunk in baseline["chunks"]]  # each partition, by year and part
+    assert years[0][0] < 2025 and years[-1][0] == 2026
     baseline_binding = str(baseline["panel_binding_hash"])
     files_before = {
         chunk["chunk_hash"]: _chunk_file(workspace, chunk).stat().st_mtime_ns
@@ -236,18 +236,18 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
         "reused_partition_count": len(years) - 1,
         "composed_partition_count": 1,
     }
-    baseline_by_year = {int(chunk["year"]): chunk for chunk in baseline["chunks"]}
+    baseline_by_year = {_span(chunk): chunk for chunk in baseline["chunks"]}
     for chunk in day_one["chunks"][:-1]:
-        assert chunk == baseline_by_year[int(chunk["year"])]
+        assert chunk == baseline_by_year[_span(chunk)]
         assert chunk["origin_binding_hash"] == baseline_binding
         assert _chunk_file(workspace, chunk).stat().st_mtime_ns == files_before[chunk["chunk_hash"]]
     current = day_one["chunks"][-1]
     assert int(current["year"]) == 2026
     assert current["origin_binding_hash"] == day_one_binding
-    assert current["chunk_hash"] != baseline_by_year[2026]["chunk_hash"]
+    assert current["chunk_hash"] != baseline_by_year[_span(current)]["chunk_hash"]
     assert current["last_session"] == DAY_ONE.date().isoformat()
     assert (
-        _row_hashes(workspace, baseline_by_year[2026]).items()
+        _row_hashes(workspace, baseline_by_year[_span(current)]).items()
         <= _row_hashes(workspace, current).items()
     )
     origins_one = day_one["safe_summary"]["lineage"]["partition_origins"]
@@ -362,11 +362,13 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
         "reused_partition_count": len(years) - 2,
         "composed_partition_count": 2,
     }
-    day_one_by_year = {int(chunk["year"]): chunk for chunk in day_one["chunks"]}
-    day_two_by_year = {int(chunk["year"]): chunk for chunk in day_two["chunks"]}
+    day_one_by_year = {_span(chunk): chunk for chunk in day_one["chunks"]}
+    day_two_by_year = {_span(chunk): chunk for chunk in day_two["chunks"]}
     for year in years[:-2]:
         assert day_two_by_year[year] == day_one_by_year[year]
-    for year in (2025, 2026):
+    last_2025, first_2026 = years[-2:]  # the corrected session's part, and the new year's
+    assert (last_2025[0], first_2026[0]) == (2025, 2026)
+    for year in (last_2025, first_2026):
         assert day_two_by_year[year]["chunk_hash"] != day_one_by_year[year]["chunk_hash"]
         assert day_two_by_year[year]["origin_binding_hash"] == day_two_binding
     origins_two = day_two["safe_summary"]["lineage"]["partition_origins"]
@@ -382,11 +384,11 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     # The output window is the corrected session onward: every row before it
     # keeps its identity; from it on the corrected listing's rows change, and
     # so do its neighbours' -- the transform is cross-sectional per session.
-    before = _row_hashes(workspace, day_one_by_year[2025]) | _row_hashes(
-        workspace, day_one_by_year[2026]
+    before = _row_hashes(workspace, day_one_by_year[last_2025]) | _row_hashes(
+        workspace, day_one_by_year[first_2026]
     )
-    after = _row_hashes(workspace, day_two_by_year[2025]) | _row_hashes(
-        workspace, day_two_by_year[2026]
+    after = _row_hashes(workspace, day_two_by_year[last_2025]) | _row_hashes(
+        workspace, day_two_by_year[first_2026]
     )
     assert {key for key in before if key[0] < CORRECTED_SESSION} == {
         key for key in after if key[0] < CORRECTED_SESSION
@@ -456,3 +458,8 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     for recipe in (recipe_one, recipe_two):
         result = rematerializer.rematerialize(recipe.recipe_hash)
         assert result.logical_parity is True and result.physical_parity is True
+
+
+def _span(chunk: dict[str, object]) -> tuple[int, int]:
+    """A manifest chunk's partition: its year and its part (0 for a whole year)."""
+    return int(str(chunk["year"])), int(str(chunk.get("part") or 0))

@@ -7,7 +7,7 @@ import json
 import tempfile
 from collections import OrderedDict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import cast
@@ -36,6 +36,7 @@ from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     ordered_value_hash,
 )
 from alphalattice.foundation.feature_engine.panels.closure_contracts import (
+    ExpectedPanelChunk,
     PanelAvailabilityClosure,
     PanelBaseValueClosureManifest,
     PanelDerivationRecipe,
@@ -222,28 +223,27 @@ class ArtifactOnlyPanelRematerializer:
             raise PanelRematerializationMismatch("feature_panel.recipe_input_mismatch")
         prepared: list[PreparedPanelChunk] = []
         evidence: list[RematerializedChunkEvidence] = []
-        temporary_paths: dict[int, Path] = {}
-        base_cache: OrderedDict[int, pd.DataFrame] = OrderedDict()
+        temporary_paths: dict[str, Path] = {}
+        replays = _Replays(_receipt_groups(availability_table))
         with tempfile.TemporaryDirectory(prefix="panel-rematerialization-") as directory:
             temp_root = Path(directory)
             for expected in recipe.expected_chunks:
                 rows, actual_availability = self._rematerialize_year(
                     recipe=recipe,
                     base=base,
-                    year=expected.year,
+                    chunk=expected,
                     sector_history=sector_history,
-                    availability_table=availability_table,
-                    base_cache=base_cache,
+                    replays=replays,
                 )
                 self._verify_availability(
-                    expected_year=expected.year,
+                    bounds=expected.bounds,
                     actual=actual_availability,
                     frozen=availability_table,
                 )
                 raw = self._attach_frozen_receipts(
                     rows=rows,
                     receipt_table=receipt_table,
-                    year=expected.year,
+                    bounds=expected.bounds,
                     factor_ids=recipe.factor_ids,
                 )
                 if recipe.identity_basis == PANEL_ROW_IDENTITY_BY_CROSS_SECTION:
@@ -284,9 +284,7 @@ class ArtifactOnlyPanelRematerializer:
                 # the recipe records as its origin -- the snapshot's own unless
                 # the snapshot reused the partition from an earlier build.
                 origin_binding = expected.origin_binding_hash or recipe.panel_binding_hash
-                chunk_hash = panel_chunk_hash(
-                    hashed, panel_binding_hash=origin_binding, year=expected.year
-                )
+                chunk_hash = _chunk_identity(hashed, origin_binding, expected)
                 if schema_hash != recipe.schema_hash or chunk_hash != expected.chunk_hash:
                     raise PanelRematerializationMismatch(
                         "feature_panel.rematerialization_content_mismatch"
@@ -295,10 +293,10 @@ class ArtifactOnlyPanelRematerializer:
                     b"alphalattice.snapshot_kind": b"FeaturePanelChunk",
                     b"alphalattice.chunk_hash": chunk_hash.encode("ascii"),
                     b"alphalattice.panel_binding_hash": origin_binding.encode("ascii"),
-                    b"alphalattice.calendar_year": str(expected.year).encode("ascii"),
+                    **_calendar(expected),
                     b"alphalattice.schema_hash": schema_hash.encode("ascii"),
                 }
-                output = temp_root / f"{expected.year}.parquet"
+                output = temp_root / f"{expected.chunk_hash}.parquet"
                 pq.write_table(hashed.replace_schema_metadata(metadata), output, compression="zstd")
                 physical_sha = file_sha256(output)
                 metadata_hash = _metadata_hash(output)
@@ -313,7 +311,7 @@ class ArtifactOnlyPanelRematerializer:
                     raise PanelRematerializationMismatch(
                         "feature_panel.rematerialization_physical_mismatch"
                     )
-                temporary_paths[expected.year] = output
+                temporary_paths[chunk_hash] = output
                 prepared.append(
                     PreparedPanelChunk(
                         year=expected.year,
@@ -355,7 +353,7 @@ class ArtifactOnlyPanelRematerializer:
                 ),
                 chunks=prepared,
                 load_table=lambda chunk: pq.read_table(
-                    temporary_paths[chunk.year]
+                    temporary_paths[chunk.chunk_hash]
                 ).replace_schema_metadata(None),
                 availability=availability_rows(availability_table),
             )
@@ -544,12 +542,11 @@ class ArtifactOnlyPanelRematerializer:
         *,
         recipe: PanelDerivationRecipe,
         base: PanelBaseValueClosureManifest,
-        year: int,
+        chunk: ExpectedPanelChunk,
         sector_history: SectorHistory,
-        availability_table: pa.Table,
-        base_cache: OrderedDict[int, pd.DataFrame],
+        replays: _Replays,
     ) -> tuple[pd.DataFrame, list[dict[str, object]]]:
-        year_sessions = tuple(session for session in recipe.sessions if session.year == year)
+        year_sessions = tuple(s for s in recipe.sessions if chunk.holds(s))
         # One row per member of each session, in physical order; a Panel under
         # the binding rule holds the whole axis on every session.
         keys = [
@@ -561,17 +558,9 @@ class ArtifactOnlyPanelRematerializer:
         factor_values: dict[str, np.ndarray] = {
             factor_id: np.full(len(keys), np.nan, dtype=float) for factor_id in recipe.factor_ids
         }
-        frozen_availability = availability_rows(availability_table)
-        by_receipt: dict[str, list[dict[str, object]]] = {}
-        for item in frozen_availability:
-            receipt_hash = str(item["materialization_receipt_hash"])
-            by_receipt.setdefault(receipt_hash, []).append(item)
         actual_availability: list[dict[str, object]] = []
-        for receipt_hash, receipt_rows in sorted(by_receipt.items()):
-            receipt_sessions = tuple(
-                sorted({date.fromisoformat(str(item["session_date"])) for item in receipt_rows})
-            )
-            selected = tuple(session for session in receipt_sessions if session.year == year)
+        for receipt_hash, (receipt_sessions, receipt_rows) in replays.groups.items():
+            selected = tuple(s for s in receipt_sessions if chunk.holds(s))
             if not selected:
                 continue
             receipt_factors = tuple(sorted({str(item["factor_id"]) for item in receipt_rows}))
@@ -583,20 +572,23 @@ class ArtifactOnlyPanelRematerializer:
                 (date.fromisoformat(str(item["session_date"])), str(item["factor_id"]))
                 for item in receipt_rows
             }
-            materialization = self._materialize_receipt(
-                recipe=recipe,
-                base=base,
-                receipt_rows=receipt_rows,
-                sector_history=sector_history,
-                binding=self._receipt_binding(recipe, receipt_rows),
-                base_cache=base_cache,
-            )
-            self._verify_receipt_group(
-                receipt_hash,
-                receipt_rows,
-                materialization=materialization,
-                whole=self._group_is_whole(receipt_hash, receipt_rows),
-            )
+            materialization = replays.done.get(receipt_hash)
+            if materialization is None:
+                materialization = self._materialize_receipt(
+                    recipe=recipe,
+                    base=base,
+                    receipt_rows=receipt_rows,
+                    sector_history=sector_history,
+                    binding=self._receipt_binding(recipe, receipt_rows),
+                    base_cache=replays.base_cache,
+                )
+                self._verify_receipt_group(
+                    receipt_hash,
+                    receipt_rows,
+                    materialization=materialization,
+                    whole=self._group_is_whole(receipt_hash, receipt_rows),
+                )
+                replays.done[receipt_hash] = materialization
             row_sessions = [
                 date.fromisoformat(str(value)) for value in materialization.rows["session_date"]
             ]
@@ -624,7 +616,7 @@ class ArtifactOnlyPanelRematerializer:
             actual_availability.extend(
                 item
                 for item in materialization.availability
-                if date.fromisoformat(str(item["session_date"])).year == year
+                if chunk.holds(date.fromisoformat(str(item["session_date"])))
                 and (date.fromisoformat(str(item["session_date"])), str(item["factor_id"])) in owned
             )
         rows = pd.DataFrame(
@@ -638,6 +630,7 @@ class ArtifactOnlyPanelRematerializer:
         )
         if not actual_availability:
             raise PanelRematerializationMismatch("feature_panel.base_closure_incomplete")
+        replays.release(through=chunk.last_session)
         return rows, actual_availability
 
     def _materialize_receipt(
@@ -917,10 +910,10 @@ class ArtifactOnlyPanelRematerializer:
         *,
         rows: pd.DataFrame,
         receipt_table: pa.Table,
-        year: int,
+        bounds: tuple[date, date],
         factor_ids: tuple[str, ...],
     ) -> pa.Table:
-        mask = pc.equal(pc.year(receipt_table.column("session_date")), pa.scalar(year))
+        mask = _within(receipt_table.column("session_date"), bounds)
         receipts = receipt_table.filter(mask).to_pandas()
         receipts["session_date"] = pd.to_datetime(receipts["session_date"]).dt.date
         frame = rows.copy()
@@ -943,9 +936,9 @@ class ArtifactOnlyPanelRematerializer:
 
     @staticmethod
     def _verify_availability(
-        *, expected_year: int, actual: list[dict[str, object]], frozen: pa.Table
+        *, bounds: tuple[date, date], actual: list[dict[str, object]], frozen: pa.Table
     ) -> None:
-        mask = pc.equal(pc.year(frozen.column("session_date")), pa.scalar(expected_year))
+        mask = _within(frozen.column("session_date"), bounds)
         ArtifactOnlyPanelRematerializer._verifyavailability_rows(
             expected=availability_rows(frozen.filter(mask)), actual=actual
         )
@@ -1064,3 +1057,59 @@ __all__ = [
     "RematerializedChunkEvidence",
     "recipe_sector_history",
 ]
+
+
+def _within(column: pa.ChunkedArray, bounds: tuple[date, date]) -> pa.ChunkedArray:
+    """The rows of a session column inside a chunk's own session range."""
+    as_dates = pc.cast(column, pa.date32())
+    return pc.and_(
+        pc.greater_equal(as_dates, pa.scalar(bounds[0], pa.date32())),
+        pc.less_equal(as_dates, pa.scalar(bounds[1], pa.date32())),
+    )
+
+
+def _calendar(chunk: ExpectedPanelChunk) -> dict[bytes, bytes]:
+    """A chunk file's calendar footer: its year, and its part when it holds one."""
+    found = {b"alphalattice.calendar_year": str(chunk.year).encode("ascii")}
+    if chunk.part:
+        found[b"alphalattice.calendar_part"] = str(chunk.part).encode("ascii")
+    return found
+
+
+def _chunk_identity(hashed: pa.Table, origin_binding: str, chunk: ExpectedPanelChunk) -> str:
+    """The chunk's identity under the binding that wrote it, with its part when it holds one."""
+    return panel_chunk_hash(
+        hashed, panel_binding_hash=origin_binding, year=chunk.year, part=chunk.span[1]
+    )
+
+
+_ReceiptGroup = tuple[tuple[date, ...], list[dict[str, object]]]
+"""A receipt's frozen availability rows and the sessions they hold, in order."""
+
+
+@dataclass
+class _Replays:
+    """Each receipt's frozen group, read once, and its replay while a later chunk reaches it."""
+
+    groups: dict[str, _ReceiptGroup]
+    base_cache: OrderedDict[int, pd.DataFrame] = field(default_factory=OrderedDict)
+    done: dict[str, PanelMaterialization] = field(default_factory=dict)
+
+    def release(self, *, through: date) -> None:
+        """Drop the replays no chunk after ``through`` reaches."""
+        for receipt_hash in [h for h in self.done if self.groups[h][0][-1] <= through]:
+            del self.done[receipt_hash]
+
+
+def _receipt_groups(availability_table: pa.Table) -> dict[str, _ReceiptGroup]:
+    """The frozen availability grouped by the receipt that wrote it, in receipt order."""
+    by_receipt: dict[str, list[dict[str, object]]] = {}
+    for item in availability_rows(availability_table):
+        by_receipt.setdefault(str(item["materialization_receipt_hash"]), []).append(item)
+    return {
+        receipt_hash: (
+            tuple(sorted({date.fromisoformat(str(item["session_date"])) for item in rows})),
+            rows,
+        )
+        for receipt_hash, rows in sorted(by_receipt.items())
+    }

@@ -57,7 +57,8 @@ alphalattice --workspace "workspaces/my-research" serve --no-browser --stop-on-s
 
 Run it in the background on Claude Code. On Codex, where a turn ends its shell's
 children, start it with `serve --no-browser --detach` instead: it returns once the
-Host serves, and the Host outlives the turn. `alphalattice host stop` stops it after its workers
+Host serves, answering STARTED, or ALREADY_SERVING when a Host already serves that workspace
+(use that one), with the workspace and the Host's address, and the Host outlives the turn. `alphalattice host stop` stops it after its workers
 join; where your shell holds its standard input open, `stop` on it does the same,
 and a background shell that gives it none leaves it serving until then. Once it
 serves, its ready lines end with the next action, OPEN_THE_WORKBENCH. The rule: the
@@ -86,10 +87,10 @@ on each command, with nothing to approve. Use the **alphalattice-research** Skil
 
 A project has one first use. A new session reads the project binding and `workspace show`
 first: once the first use is complete with its strategy running forward, a date's sentence is
-the daily road in that same workspace. `first-use prepare` refuses a second first use by name
-(`local_client.first_use_completed`), naming the workspace and offering its `research-update
-plan` for the date. Only when the person asks for separate new research, asked in one line,
-run it again with `--new-research`.
+the daily road in that same workspace. `serve` on a new workspace refuses before it starts,
+and `first-use prepare` refuses a second first use, by name (`local_client.first_use_completed`):
+each names the workspace and offers its `research-update plan`. Only when the person asks for
+separate new research, asked in one line, run it again with `--new-research`.
 
 Start it in the workspace you serve, with the person's exact sentence and the date it names
 for the positions (today's when it names none), as you read it:
@@ -351,6 +352,9 @@ On interruption, stop admitting work and name running Tasks; `task cancel
 <task-id>` stops one, and `task show <task-id>` confirms it. After a timeout or
 lost connection, read the known Task rather than resubmitting its run. Deliberately
 stopped work uses `goal abandon <goal-id> --reason <reason>`.
+Before following a Task, the client prints its id and executable `read`; if the
+tool window ends, send that read. With structured `--output`, it also saves the
+admission and names `output_file` before stage progress; without it, no file is saved.
 
 Complete a goal by its [procedure](.agents/skills/alphalattice-research/references/goals.md)
 with actual criterion answers, references, findings and unresolved work. Report

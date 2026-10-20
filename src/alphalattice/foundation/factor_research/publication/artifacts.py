@@ -168,35 +168,6 @@ class FactorResearchArtifactStore:
             raise ValueError("Factor Research JSON payload hash is invalid")
         return payload
 
-    def publish_pipeline_contract(
-        self,
-        *,
-        artifact_kind: FactorPipelineArtifactKind,
-        payload: Mapping[str, object],
-        content_hash: str,
-    ) -> ArtifactDescriptor:
-        """Publish one admitted contract from the correctness pipeline.
-
-        Args:
-            artifact_kind: Registered contract category and identity field.
-            payload: Contract body including its declared identity.
-            content_hash: Expected content identity.
-
-        Returns:
-            Descriptor for the verified immutable contract.
-
-        Raises:
-            ValueError: If the body or stored artifact has a different identity.
-
-        """
-        category, identity_field = _PIPELINE_ARTIFACTS[artifact_kind]
-        return self._publish_identity_json(
-            category=category,
-            payload=payload,
-            content_hash=content_hash,
-            identity_field=identity_field,
-        )
-
     def load_pipeline_contract(
         self,
         *,

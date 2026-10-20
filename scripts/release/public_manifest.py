@@ -141,6 +141,8 @@ RULES = [
             "tests/alternative_evidence_desk/test_retrieval_product_acceptance.py",
             "tests/feature_engine/test_feature_closure_genesis.py",
             "tests/feature_engine/test_panel_runtime_authority.py",
+            "tests/feature_engine/test_panel_upgrade.py",
+            "tests/feature_engine/panel_upgrade.py",
             "tests/portfolio_strategy_lab/test_frozen_strategy_packages.py",
             "tests/portfolio_strategy_lab/test_native_answer_route_class.py",
             "tests/portfolio_strategy_lab/test_strategy_scoring.py",

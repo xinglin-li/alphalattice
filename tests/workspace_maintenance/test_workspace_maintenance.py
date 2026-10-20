@@ -852,6 +852,7 @@ def test_deferred_market_change_prefix_is_merged_without_losing_sessions() -> No
                 new_sessions=(date(2026, 7, 31),),
                 adjusted_return_change_sessions=(date(2026, 7, 31),),
                 source_receipt_hashes=("a" * 64,),
+                rebase_moved=(("y", (date(2021, 3, 1),)),),
             ),
         ),
         membership_additions=("listing-msft",),
@@ -865,26 +866,21 @@ def test_deferred_market_change_prefix_is_merged_without_losing_sessions() -> No
                 new_sessions=(date(2026, 8, 3),),
                 adjusted_return_change_sessions=(date(2026, 8, 3),),
                 source_receipt_hashes=("b" * 64,),
+                rebase_moved=(("x", (date(2022, 9, 19),)),),
             ),
         ),
         membership_removals=("listing-msft",),
         receipt_hashes=("2" * 64,),
     )
 
-    merged = WorkspaceMaintenanceCoordinator._merge_change_sets(prior, current)
+    merged = MarketDataChangeSet.merged(prior, current)
 
-    assert merged.listing_changes[0].new_session_start == date(2026, 7, 31)
-    assert merged.listing_changes[0].new_sessions == (
-        date(2026, 7, 31),
-        date(2026, 8, 3),
-    )
-    assert merged.listing_changes[0].adjusted_return_change_sessions == (
-        date(2026, 7, 31),
-        date(2026, 8, 3),
-    )
-    assert merged.listing_changes[0].source_receipt_hashes == ("a" * 64, "b" * 64)
-    assert merged.membership_additions == ()
-    assert merged.membership_removals == ("listing-msft",)
+    item, both = merged.listing_changes[0], (date(2026, 7, 31), date(2026, 8, 3))
+    assert item.new_session_start == both[0] and item.new_sessions == both
+    assert item.adjusted_return_change_sessions == both
+    assert item.source_receipt_hashes == ("a" * 64, "b" * 64)
+    assert [f for f, _ in item.rebase_moved] == ["x", "y"]
+    assert (merged.membership_additions, merged.membership_removals) == ((), ("listing-msft",))
     assert merged.receipt_hashes == ("1" * 64, "2" * 64)
 
 
@@ -1663,7 +1659,7 @@ def test_daily_transport_workers_fetch_only_and_main_thread_persists(
     )
     outcome = runner.run(observed_at=NOW)
     assert outcome.status is CurrentUniverseMaintenanceStatus.COMPLETED
-    # An overlap re-sent unchanged, as a real provider does daily, changes only the new session.
+    # An overlap re-sent unchanged, as providers do daily, changes only the new session.
     documents = market_data.current_universe_maintenance_listings(runner.maintenance_id)
     keys = ("new_sessions", "raw_correction_sessions", "adjusted_return_change_sessions")
     assert {tuple(tuple(row.change_document[key]) for key in keys) for row in documents} == {
@@ -2889,8 +2885,8 @@ def test_rolling_action_ambiguity_uses_one_full_history_hydration(
     assert len(provider.starts) == 2
     assert provider.starts[0] > sessions[0]
     assert provider.starts[1] == sessions[0]
-    # The rolling audit is ambiguous in the listing's transaction, which rolls back, and again on
-    # separate commits; only then does the one full-history audit run.
+    # The rolling audit is ambiguous in the listing's rolled-back transaction and again on
+    # separate commits; only then does the full-history audit run.
     assert audits[-1] == sessions[0]
     assert len(audits) == 3 and all(start > sessions[0] for start in audits[:-1])
 

@@ -255,23 +255,6 @@ class RiskArtifactStore:
             raise RiskArtifactError("risk_research.covariance_chunk_tampered")
         return target
 
-    def publish_build_checkpoint(self, checkpoint: HistoricalCovarianceBuildCheckpoint) -> None:
-        """Atomically replace a covariance build checkpoint at its program address.
-
-        Checkpoints record resumable state and can be replaced; this operation does not
-        independently validate chunk payloads.
-
-        Args:
-            checkpoint: Typed checkpoint serialized under its program_hash.
-        """
-        target = self.root / "covariance" / "builds" / f"{checkpoint.program_hash}.json"
-        content = json.dumps(
-            checkpoint.model_dump(mode="json"),
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode()
-        self._atomic_write(target, content)
-
     def load_build_checkpoint(
         self, program_hash: str
     ) -> HistoricalCovarianceBuildCheckpoint | None:

@@ -12882,6 +12882,12 @@
 "workspace_backup.root_unwritable": {
 "owner": "workspace_backup"
 },
+"workspace_backup.source_unreadable": {
+"owner": "workspace_backup"
+},
+"workspace_backup.object_unreadable": {
+"owner": "workspace_backup"
+},
 "workspace_backup.table_not_held": {
 "owner": "workspace_backup"
 },
@@ -13122,6 +13128,9 @@
 "workspace_maintenance.membership_revision_mismatch": {
 "owner": "workspace_maintenance"
 },
+"workspace_maintenance.precision_kept_without_authority": {
+"owner": "workspace_maintenance"
+},
 "workspace_maintenance.semantic_index_handoff_failed": {
 "owner": "workspace_maintenance"
 },
@@ -13241,6 +13250,9 @@
 },
 "workspace_readiness.target_not_available_at_approval": {
 "owner": "workspace_readiness"
+},
+"workspace_runtime.lock_path_invalid": {
+"owner": "workspace_runtime"
 },
 "workspace_runtime.writer_already_owned": {
 "owner": "workspace_runtime"

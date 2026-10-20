@@ -27,11 +27,19 @@ def serve(arguments: list[str]) -> int:
         interpreter_path,
     )
 
+    from .first_use_road import serve_road
     from .web_launcher import main as start
 
     entry = argparse.ArgumentParser(add_help=False)
     entry.add_argument("--workspace", type=Path, required=True)
+    entry.add_argument("--new-research", action="store_true")
     selected, _rest = entry.parse_known_args(arguments)
+    # Before anything starts: the project's completed first use in another workspace is its
+    # daily road, unless the person said yes to separate new research.
+    if not selected.new_research and (road := serve_road(selected.workspace)) is not None:
+        print(json.dumps(road))
+        return 2
+    arguments = [a for a in arguments if a != "--new-research"]
     manifest = (
         read_research_workspace_manifest(selected.workspace)
         if (selected.workspace / RESEARCH_WORKSPACE_MANIFEST_NAME).is_file()
@@ -146,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
                             "install",
                             "--python",
                             sys.executable,
-                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.0",
+                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.1",
                         ]
                     ),
                     "interpreter": sys.executable

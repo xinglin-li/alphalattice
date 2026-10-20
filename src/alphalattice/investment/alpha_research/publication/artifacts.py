@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
+from hashlib import sha256
 from io import BytesIO
+from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -65,13 +69,88 @@ from .contracts import (
     FrozenScoreObservationSnapshot,
     HistoryProofParts,
     SectorHistoryRecord,
+    StoredRebase,
     WorkspaceObservationHistoryHead,
     seal_current_contract,
 )
 from .workspace_history import (
+    RebaseKeep,
     WorkspaceObservationHistoryRetention,
     _WorkspaceObservationHistoryStore,
+    patched,
+    rebased,
 )
+
+_OHLCV = frozenset({"open", "high", "low", "close", "volume"})
+
+
+class _Earlier:
+    """The latest earlier snapshot of the same listings and formulas, found once when first asked.
+
+    A rebase day's cross-sectional values, recomputed from rescaled prices, move by rounding
+    alone; its blocks then stay the earlier ones'. Each snapshot is read once, in name order, so
+    of two as long the same one is found on every machine.
+    """
+
+    def __init__(self, store: Any, source: Any) -> None:
+        self.store, self.source, self.blocks = store, source, cast(tuple[str, ...] | None, None)
+        self.kept: list[int] = []
+
+    def block(self, index: int) -> str | None:
+        if self.blocks is None:
+            sessions, found = self.source.formation_sessions, None
+            folder = self.store.root / "current/frozen-observation-snapshots"
+            for path in sorted(folder.glob("*.json")):
+                value = FrozenScoreObservationSnapshot.model_validate_json(path.read_text("utf-8"))
+                same = (
+                    value.ordered_listing_ids == self.source.ordered_listing_ids
+                    and value.ordered_formula_ids == tuple(sorted(self.source.formula_values))
+                    and value.array_blocks is not None
+                    and len(value.formation_sessions) < len(sessions)
+                    and sessions[: len(value.formation_sessions)] == value.formation_sessions
+                )
+                if same and (
+                    found is None or len(value.formation_sessions) > len(found.formation_sessions)
+                ):
+                    found = value
+            self.blocks = () if found is None else found.array_blocks
+        return self.blocks[index] if index < len(self.blocks) else None
+
+
+def _close(
+    path: Path, payload: Mapping[str, npt.NDArray[Any]], agreement: tuple[float, float]
+) -> bool:
+    """Whether a stored block holds these columns, its floats within the rule's agreement."""
+    with np.load(path, allow_pickle=False) as stored:
+        if set(stored.files) != set(payload):
+            return False
+        for name, values in payload.items():
+            old = stored[name]
+            if old.dtype != values.dtype or old.shape != values.shape:
+                return False
+            if values.dtype.kind != "f" or name in _OHLCV:  # prices as stored, exactly
+                if not np.array_equal(old, values, equal_nan=values.dtype.kind == "f"):
+                    return False
+            elif not np.allclose(old, values, rtol=agreement[0], atol=agreement[1], equal_nan=True):
+                return False
+    return True
+
+
+FROZEN_BLOCK_SESSIONS = 21
+"""Sessions per frozen-observation block: a day rewrites its last block and shares the rest."""
+
+
+def _packed_block(arrays: Mapping[str, npt.NDArray[Any]]) -> bytes:
+    """An npz of `arrays` whose bytes depend on their values alone, so equal blocks share a file."""
+    payload = BytesIO()
+    with zipfile.ZipFile(payload, "w", zipfile.ZIP_STORED) as archive:
+        for name, values in arrays.items():
+            member = BytesIO()
+            np.lib.format.write_array(member, np.ascontiguousarray(values), allow_pickle=False)
+            archive.writestr(
+                zipfile.ZipInfo(f"{name}.npy", (1980, 1, 1, 0, 0, 0)), member.getvalue()
+            )
+    return payload.getvalue()
 
 
 class AlphaCurrentArtifactReadbackError(AlphaDevelopmentArtifactReadbackError):
@@ -132,6 +211,8 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         loaded: tuple[WorkspaceObservationHistoryHead, Mapping[str, npt.NDArray[np.float64]]]
         | None = None,
         proofs: HistoryProofParts | None = None,
+        rebases: tuple[StoredRebase, ...] = (),
+        kept_rows: RebaseKeep = MappingProxyType({}),
     ) -> WorkspaceObservationHistoryHead:
         """Persist float64 Parquet segments and commit the stable slot's marker last.
 
@@ -155,6 +236,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             capacity=capacity,
             loaded=loaded,
             proofs=proofs,
+            rebased=(rebases, kept_rows),
         )
         return cast(WorkspaceObservationHistoryHead, published)
 
@@ -196,9 +278,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             ValueError: Existing identity-addressed payload or snapshot conflicts with this
                 publication.
         """
-        payload = BytesIO()
-        np.savez(
-            payload,
+        arrays: dict[str, npt.NDArray[Any]] = {
             **{
                 name: getattr(source, name)
                 for name in (
@@ -225,10 +305,27 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                 if source.nominal_member_count is not None
                 else {}
             ),
-        )
-        content_hash = self._publish_packed_bytes(
-            category="current/frozen-observation-arrays",
-            payload=payload.getvalue(),
+        }
+        # A rebased listing's kept rows are written as stored, as the kept history writes them,
+        # so a block with no other change keeps its bytes; the rebases scale them when read.
+        listings, kept = source.ordered_listing_ids, source.kept_rows
+        earlier = _Earlier(self, source) if source.rebases else None
+        blocks = tuple(
+            self._block(
+                {
+                    name: patched(
+                        values[start : start + FROZEN_BLOCK_SESSIONS],
+                        f"ohlcv::{name}" if name in _OHLCV else name,
+                        start,
+                        kept,
+                        listings,
+                    )
+                    for name, values in arrays.items()
+                },
+                earlier,
+                start // FROZEN_BLOCK_SESSIONS,
+            )
+            for start in range(0, len(source.formation_sessions), FROZEN_BLOCK_SESSIONS)
         )
         snapshot = seal_current_contract(
             FrozenScoreObservationSnapshot,
@@ -242,7 +339,8 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                     if (record := SectorHistoryRecord.of(source.sector_by_listing_id)) is not None
                     else {}
                 ),
-                "array_content_hash": content_hash,
+                "array_content_hash": canonical_hash(blocks),
+                "array_blocks": blocks,
                 "source_binding_hash": source.source_binding_hash,
                 "reference_eligibility_recorded": source.reference_eligible is not None,
                 "nominal_population_recorded": source.nominal_member_count is not None,
@@ -251,11 +349,36 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                     if source.formula_values
                     else {}
                 ),
+                "rebases": source.rebases,
+                **(
+                    {"kept_blocks": tuple(earlier.kept), "kept_agreement": source.rebase_agreement}
+                    if earlier is not None and earlier.kept
+                    else {}
+                ),
             },
             "snapshot_hash",
         )
         self._publish("frozen-observation-snapshots", snapshot, "snapshot_hash")
         return snapshot
+
+    def _block(
+        self, payload: Mapping[str, npt.NDArray[Any]], earlier: _Earlier | None, index: int
+    ) -> str:
+        """A frozen block's file: the earlier snapshot's at this index when a rebase day's new
+        values differ from it only by rounding, else these values' own."""
+        packed = _packed_block(payload)
+        category = "current/frozen-observation-arrays"
+        if (
+            earlier is not None
+            and not self._path(category, sha256(packed).hexdigest(), "bin").exists()
+        ):
+            block = earlier.block(index)
+            if block is not None and _close(
+                self._path(category, block, "bin"), payload, earlier.source.rebase_agreement
+            ):
+                earlier.kept.append(index)
+                return block
+        return self._publish_packed_bytes(category=category, payload=packed)
 
     def load_frozen_observation_snapshot(self, content_hash: str) -> FrozenScoreObservationSnapshot:
         """Load and validate a frozen observation snapshot by its declared identity.
@@ -293,6 +416,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                 dtypes differ.
         """
         snapshot, arrays, _ = self._frozen_observation_source(content_hash)
+        arrays = rebased(arrays, snapshot.ordered_listing_ids, snapshot.rebases, prefix="")
         return self._frozen_observation_values(snapshot, arrays)
 
     def verify_frozen_observations(self, content_hash: str) -> None:
@@ -320,7 +444,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             ("alpha-current-observation-proof", str(self.root), content_hash),
             (
                 self._path("current/frozen-observation-snapshots", content_hash, "json"),
-                self._path("current/frozen-observation-arrays", snapshot.array_content_hash, "bin"),
+                *(
+                    self._path("current/frozen-observation-arrays", block, "bin")
+                    for block in snapshot.array_files
+                ),
             ),
             check,
             nbytes=0,
@@ -335,9 +462,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             content_hash=content_hash,
             identity_field="snapshot_hash",
         )
-        arrays, file_identity = self._frozen_arrays_with_identity(
-            "frozen-observation-arrays", snapshot.array_content_hash
-        )
+        arrays, file_identity = self._frozen_blocks(snapshot)
         identity = (
             "alpha-current",
             str(self.root),
@@ -349,6 +474,45 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             *file_identity,
         )
         return snapshot, arrays, identity
+
+    def _frozen_blocks(
+        self, snapshot: FrozenScoreObservationSnapshot
+    ) -> tuple[dict[str, npt.NDArray[Any]], tuple[object, ...]]:
+        """The snapshot's arrays, its blocks copied in turn into one array each: one block and
+        the whole are held at once, never every block and a joined copy."""
+        if len(snapshot.array_files) == 1:
+            single, identity = self._frozen_arrays_with_identity(
+                "frozen-observation-arrays", snapshot.array_files[0]
+            )
+            return single, tuple(identity)
+        arrays: dict[str, npt.NDArray[Any]] = {}
+        identities: list[object] = []
+        start, sessions = 0, len(snapshot.formation_sessions)
+        for block in snapshot.array_files:
+            part, identity = self._frozen_arrays_with_identity("frozen-observation-arrays", block)
+            identities.extend(identity)
+            end = start + len(next(iter(part.values())))
+            if (arrays and set(part) != set(arrays)) or end > sessions:
+                raise AlphaCurrentArtifactReadbackError(
+                    "alpha_research.frozen_observation_columns_invalid"
+                )
+            for name, values in part.items():
+                whole = arrays.setdefault(
+                    name, np.empty((sessions, *values.shape[1:]), values.dtype)
+                )
+                if values.dtype != whole.dtype or values.shape[1:] != whole.shape[1:]:
+                    raise AlphaCurrentArtifactReadbackError(
+                        "alpha_research.frozen_observation_dtype_invalid"
+                    )
+                whole[start:end] = values
+            start = end
+        if start != sessions:
+            raise AlphaCurrentArtifactReadbackError(
+                "alpha_research.frozen_observation_columns_invalid"
+            )
+        for whole in arrays.values():
+            whole.setflags(write=False)
+        return arrays, tuple(identities)
 
     @staticmethod
     def _frozen_observation_values(

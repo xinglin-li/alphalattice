@@ -12236,6 +12236,14 @@
         "type": "string"
       }
     },
+    "answer:RESEARCH_INPUT_PLAN.summary": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
+      }
+    },
     "answer:RESEARCH_INPUT_PLAN.task_id": {
       "required": false,
       "schema": {
@@ -38401,6 +38409,12 @@
       "required": false,
       "type": null
     },
+    "option:serve/--new-research": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
     "option:serve/--no-browser": {
       "choices": null,
       "nargs": 0,
@@ -48903,6 +48917,8 @@
     "refusal:workspace_backup.restore_target_not_empty": {},
     "refusal:workspace_backup.root_inside_workspace": {},
     "refusal:workspace_backup.root_unwritable": {},
+    "refusal:workspace_backup.source_unreadable": {},
+    "refusal:workspace_backup.object_unreadable": {},
     "refusal:workspace_backup.table_not_held": {},
     "refusal:workspace_backup.workspace_id_invalid": {},
     "refusal:workspace_backup.workspace_id_required": {},
@@ -49028,6 +49044,7 @@
     "refusal:workspace_readiness.source_verification_failed": {},
     "refusal:workspace_readiness.target_not_available_at_approval": {},
     "refusal:workspace_runtime.writer_already_owned": {},
+    "refusal:workspace_runtime.lock_path_invalid": {},
     "request:Request.after": {
       "required": false,
       "schema": {

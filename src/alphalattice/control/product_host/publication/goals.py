@@ -10,7 +10,13 @@ from threading import RLock
 from typing import cast
 from uuid import UUID
 
-from alphalattice.control.data_platform.data_decision_rule import approved_audits
+from alphalattice.control.data_platform.data_decision_rule import (
+    KeptListing,
+    KeptObservations,
+    approved_audits,
+    kept_listings,
+    kept_observations,
+)
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
@@ -30,6 +36,15 @@ EXPERIENCE_RECORD_WORDS = (
     "the person's corrections in their own words, and the Tasks' readbacks; then tell the "
     "person in one line what was added, merged or deleted."
 )
+
+
+class GoalRefusal(ValueError):
+    """A Goal refusal carrying its already-read revision for an exact recovery offer."""
+
+    def __init__(self, code: str, goal: Goal) -> None:
+        """Keep the refusal's code and already-read revision for its recovery forms."""
+        super().__init__(code)
+        self.goal = goal
 
 
 def session_work_declaration(operation: str, vendor: str) -> dict[str, object]:
@@ -481,6 +496,21 @@ class GoalStore:
             and entry.get("operation") == "DATA_ISSUE_CONFIRM"
             and entry.get("status") == "HELD_BY_RULE"
         )
+
+    @staticmethod
+    def rule_kept(
+        task: str | None, entries: Iterable[Mapping[str, object]]
+    ) -> tuple[KeptListing, ...]:
+        """Each listing whose stored adjusted closes stood under the rule's precision."""
+        ruled = (entry for entry in entries if GoalStore._ruled(task, entry))
+        return tuple(sorted((key, *value) for key, value in kept_listings(ruled).items()))
+
+    @staticmethod
+    def rule_retained(
+        task: str | None, entries: Iterable[Mapping[str, object]]
+    ) -> tuple[KeptObservations, ...]:
+        """Each update's observations kept as stored under the rule's rebase agreement."""
+        return kept_observations(entry for entry in entries if GoalStore._ruled(task, entry))
 
     @staticmethod
     def rule_audits(

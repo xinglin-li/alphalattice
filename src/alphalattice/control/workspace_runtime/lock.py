@@ -10,7 +10,7 @@ from importlib import import_module
 from pathlib import Path
 from threading import Lock
 from types import TracebackType
-from typing import BinaryIO, Literal, cast
+from typing import BinaryIO, Final, Literal, cast
 from uuid import uuid4
 
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
@@ -18,6 +18,8 @@ from alphalattice.kernel.shared_kernel.domain.serialization import canonical_jso
 
 _PROCESS_STARTED_AT = datetime.now(UTC)
 _LOCK_INITIALIZATION_GUARD = Lock()
+LOCK_SUFFIX: Final = ".lock"
+"""Transient ownership files; backups retain their durable records and omit these files."""
 
 
 def _apply_windows_lock(
@@ -37,7 +39,12 @@ class WorkspaceLock:
 
         Args:
             path: Physical file path owned by the caller.
+
+        Raises:
+            ValueError: `workspace_runtime.lock_path_invalid` when its suffix is not registered.
         """
+        if path.suffix != LOCK_SUFFIX:
+            raise ValueError("workspace_runtime.lock_path_invalid")
         self.path = path
         self._file: BinaryIO | None = None
         self.owner_token = uuid4()

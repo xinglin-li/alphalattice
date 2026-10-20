@@ -65,6 +65,7 @@ from alphalattice.interface.local_application.cli_contract import (
     entry,
     envelope,
     flag,
+    host_checked,
     join,
     offered_requests,
     operation_schema,
@@ -232,6 +233,9 @@ class _Parser(argparse.ArgumentParser):
                     detail=refusal.detail,
                     next_action=refusal.next_action,
                     next_requests=repair.pop("next_requests", None),
+                    next_commands={"correct": join(repair["corrected_command"], shell())}
+                    if "corrected_command" in repair
+                    else {"help": repair.get("help", f"{self.prog} --help")},
                     usage_error={
                         "observed": message,
                         "usage": " ".join(self.format_usage().split()),
@@ -246,6 +250,7 @@ class _Parser(argparse.ArgumentParser):
 
 def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
     """The repair a parser's error names, where one is certain (the review's F5)."""
+    help_line = f"{parser.prog} --help"
     if (state := _PARSER_LINE.get()) is not None:
         root, arguments, _ = state
         token = _PARSER_LINE.set((root, arguments, True))
@@ -256,6 +261,7 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                 wrong = bad.partition("=")[0]
                 name = " ".join((root.prog, parsed.noun, getattr(parsed, "verb", ""))).rstrip()
                 owner = next(child for child in _commands_of(root) if child.prog == name)
+                help_line = f"{owner.prog} --help"
                 choices = owner._option_string_actions
             elif "invalid choice: " in message:
                 wrong = message.split("invalid choice: ", 1)[1].split(" (choose from", 1)[0]
@@ -298,6 +304,7 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                     f"Replace {wrong} with {nearest[0]} and send the corrected request."
                 ),
                 "corrected_command": ["alphalattice", *corrected],
+                "help": help_line,
                 "next_requests": {"correct": request},
             }
         except (ValueError, OSError, StopIteration, client.LocalResearchClientError):
@@ -307,11 +314,15 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
     if "--workspace" in message:
         return {
             "repair": "Name the workspace's folder once on the line: alphalattice --workspace "
-            "<dir> <object> <action> ..."
+            "<dir> <object> <action> ...",
+            "help": help_line,
         }
     if "unrecognized arguments" in message:
-        return {"repair": "Read the action's flags in its help; a flag is not the field's name."}
-    return {}
+        return {
+            "repair": "Read the action's flags in its help; a flag is not the field's name.",
+            "help": help_line,
+        }
+    return {"help": help_line}
 
 
 def _answers(child: argparse.ArgumentParser, *, declaration: bool = False) -> None:
@@ -381,6 +392,22 @@ def _section(child: argparse.ArgumentParser, *, wanted: bool = True) -> None:
     )
 
 
+NEW_RESEARCH_HELP = (
+    "Only on the person's yes to separate new research: serve or open a first use even where "
+    "the project's first use is complete (its daily road is offered otherwise)."
+)
+"""The one way past a completed first use's daily road, for `serve` and `first-use prepare`."""
+
+
+def _serve_options(start: argparse.ArgumentParser) -> None:
+    """`serve`'s own options: how the Host runs, and the person's yes to separate research."""
+    start.add_argument("--stop-on-stdin", action="store_true")
+    start.add_argument("--detach", action="store_true")
+    start.add_argument("--no-browser", action="store_true")
+    start.add_argument("--new-research", action="store_true", help=NEW_RESEARCH_HELP)
+    start.add_argument("--port", type=int, default=0)
+
+
 def _first_use_options(child: argparse.ArgumentParser) -> None:
     """`first-use prepare`'s own options: the person's sentence and date, and their yes."""
     child.add_argument(
@@ -397,12 +424,7 @@ def _first_use_options(child: argparse.ArgumentParser) -> None:
         help="The date the sentence names for the positions (YYYY-MM-DD), as you read it; "
         "they are entered on the first session on or after it, decided at the close before.",
     )
-    child.add_argument(
-        "--new-research",
-        action="store_true",
-        help="Only on the person's yes to separate new research: open a first use even "
-        "where the project's first use is complete (its daily road is offered otherwise).",
-    )
+    child.add_argument("--new-research", action="store_true", help=NEW_RESEARCH_HELP)
 
 
 def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> None:
@@ -613,10 +635,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
         dest="noun", required=True, metavar="<object>", help="One of the objects below."
     )
     start = nouns.add_parser("serve", description="Start the Local Web Host on this workspace.")
-    start.add_argument("--stop-on-stdin", action="store_true")
-    start.add_argument("--detach", action="store_true")
-    start.add_argument("--no-browser", action="store_true")
-    start.add_argument("--port", type=int, default=0)
+    _serve_options(start)
     whole = nouns.add_parser(
         "request",
         description="Send one whole request document, or one next request of a saved answer.",
@@ -1169,6 +1188,33 @@ def _sandbox(
     return EXIT_CODES[refusal.outcome]
 
 
+def _model_refused(args: argparse.Namespace, operation: str, started: float, code: str) -> int:
+    """Keep model-command refusals identical on stdout and in saved answers."""
+    refusal = client_refusal(code)
+    refused_body = {
+        "status": "REFUSED",
+        "failure_code": code,
+        "detail": refusal.detail,
+        "next_action": refusal.next_action,
+    }
+    print(
+        answer_json(
+            envelope(
+                operation=operation,
+                outcome=refusal.outcome,
+                body=None,
+                elapsed_seconds=time.perf_counter() - started,
+                status="REFUSED",
+                failure_code=code,
+                detail=refusal.detail,
+                next_action=refusal.next_action,
+                **_saved(args, refused_body),
+            ),
+        )
+    )
+    return EXIT_CODES[refusal.outcome]
+
+
 def _model(args: argparse.Namespace, started: float) -> int:
     """`model scaffold` and `model check`, with no Host: a model's files are the checkout's (EX).
 
@@ -1189,29 +1235,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
             client._write_new(written, declaration_template().encode("utf-8"))
         except client.LocalResearchClientError as error:
             code = public_failure(error, "local_client.output_write_refused")
-            refusal = client_refusal(code)
-            refused_body = {
-                "status": "REFUSED",
-                "failure_code": code,
-                "detail": refusal.detail,
-                "next_action": refusal.next_action,
-            }
-            print(
-                answer_json(
-                    envelope(
-                        operation=operation,
-                        outcome=refusal.outcome,
-                        body=None,
-                        elapsed_seconds=time.perf_counter() - started,
-                        status="REFUSED",
-                        failure_code=code,
-                        detail=refusal.detail,
-                        next_action=refusal.next_action,
-                        **_saved(args, refused_body),
-                    ),
-                )
-            )
-            return EXIT_CODES[refusal.outcome]
+            return _model_refused(args, operation, started, code)
         body = {
             "status": "DECLARATION_WRITTEN",
             "declaration_file": str(written.resolve()),
@@ -1239,29 +1263,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
         code = public_failure(error, "model_extension.refused")
         if scaffold and code == "model_declaration.invalid":
             code += _declaration_fields(Path(str(args.declaration)))
-        refusal = client_refusal(code)
-        refused_body = {
-            "status": "REFUSED",
-            "failure_code": code,
-            "detail": refusal.detail,
-            "next_action": refusal.next_action,
-        }
-        print(
-            answer_json(
-                envelope(
-                    operation=operation,
-                    outcome=refusal.outcome,
-                    body=None,
-                    elapsed_seconds=time.perf_counter() - started,
-                    status="REFUSED",
-                    failure_code=code,
-                    detail=refusal.detail,
-                    next_action=refusal.next_action,
-                    **_saved(args, refused_body),
-                ),
-            )
-        )
-        return EXIT_CODES[refusal.outcome]
+        return _model_refused(args, operation, started, code)
     failed = next((row["code"] for row in answer.get("findings", ()) if row["code"]), None)
     found = client_refusal(failed) if failed else None
     outcome: Outcome = found.outcome if found else "OK"
@@ -1390,11 +1392,17 @@ def main(
     try:
         parser = _parser(_named(arguments))
         args = parser.parse_args(arguments)
+        args.command_line = tuple(arguments)
         form = " ".join(filter(None, (args.noun, getattr(args, "verb", ""))))
         tags = tuple(f"option:{form}/{a.split('=')[0]}" for a in arguments if a.startswith("-"))
         SURFACE_USE.set((f"command:{form}", *tags))
         if getattr(args, "client_command", None) == ("answer", "show"):
             return _saved_answer(args, started)
+        if getattr(args, "client_command", None) in OFFLINE_COMMANDS | {("session", "bind")}:
+            try:
+                client.output_replacement(args.output, line=args.command_line)
+            except client.LocalResearchClientError as error:
+                return _refused(error, started, line=arguments)
         if getattr(args, "client_command", None) in WORKSPACE_FREE:
             return _unbind(args, started)
         # Read anywhere on the line (V412); left out, it is the session's binding's (V568).
@@ -1597,7 +1605,7 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
     through the same format and refusal-retry owner as a live answer.
     """
     try:
-        replace = client.output_replacement(args.output)
+        replace = client.output_replacement(args.output, line=args.command_line)
         body = client.saved_answer(
             args.saved_answer, section=args.section, list_sections=args.list_sections
         )
@@ -1632,7 +1640,7 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
         refusal = client_refusal(str(error))
         diagnostics = {
             name: value
-            for name in ("document_size", "document_location", "sections")
+            for name in ("document_size", "document_location", "sections", "next_commands")
             if (value := getattr(error, name, None)) is not None
         }
         result = envelope(
@@ -1652,16 +1660,22 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
 
 
 def _refused(
-    error: str | client.LocalResearchClientError, started: float, line: Sequence[str] = ()
+    error: str | client.LocalResearchClientError,
+    started: float,
+    line: Sequence[str] = (),
+    workspace: Path | None = None,
 ) -> int:
     """A refusal the client raised before sending anything, in the one envelope (V568).
 
-    A line that named no workspace is shown again with one named, the exact next command.
+    A line that named no workspace is shown again with one named, the exact next command; a
+    no-Host one names the workspace it checked (`host_checked`).
     """
     code = str(error)
     refusal = client_refusal(code)
     context = getattr(error, "binding_context", None)
     detail = str(worded(refusal.detail))
+    if workspace is not None and refusal.outcome == "NO_HOST":
+        detail = host_checked(detail, workspace)
     if line and code == "local_client.workspace_unbound":
         again = join(["alphalattice", "--workspace", "<dir>", *line], shell())
         detail += " " + str(worded("This line with its workspace named: {subject}.")).replace(
@@ -1685,8 +1699,9 @@ def _refused(
                 failure_code=code,
                 detail=detail,
                 next_action=refusal.next_action,
+                next_commands=getattr(error, "next_commands", None),
                 **(
-                    {"binding_context": context, "next_commands": error.next_commands}
+                    {"binding_context": context}
                     if context and isinstance(error, client.LocalResearchClientError)
                     else {}
                 ),
@@ -1788,7 +1803,7 @@ def _bind(args: argparse.Namespace, started: float) -> int:
     try:
         transport = client.LocalResearchClient(Path(args.workspace), timeout=args.request_timeout)
     except client.LocalResearchClientError as error:
-        return _refused(str(error), started)
+        return _refused(str(error), started, workspace=Path(args.workspace))
     session = agent_session(os.environ)
     if session is None:
         return _refused("local_client.session_unnamed", started)
@@ -1799,7 +1814,7 @@ def _bind(args: argparse.Namespace, started: float) -> int:
     except NativeBridgeError as error:
         return _refused(f"local_client.session_bind_refused:{error}", started)
     except client.LocalResearchClientError as error:
-        return _refused(str(error), started)
+        return _refused(str(error), started, workspace=Path(args.workspace))
     except OSError as error:
         bound = files_unavailable(error, project=Path.cwd(), workspace=Path(args.workspace))
     outcome: Outcome = "REFUSED" if bound.get("status") == "REFUSED" else "OK"
@@ -1883,7 +1898,7 @@ def _command(
                 str(args.port),
                 *(
                     "--" + switch.replace("_", "-")
-                    for switch in ("no_browser", "stop_on_stdin", "detach")
+                    for switch in ("no_browser", "stop_on_stdin", "detach", "new_research")
                     if getattr(args, switch)
                 ),
             ]
@@ -1894,6 +1909,7 @@ def _command(
         "request_timeout": args.request_timeout,
         "goal": args.goal,
         "output": args.output,
+        "command_line": args.command_line,
     }
     if getattr(args, "client_command", None) == ("backup", "restore"):
         return _restore(args, started, restore)

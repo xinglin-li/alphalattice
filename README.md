@@ -17,11 +17,7 @@ Every numerical input is bounded by the date's information cutoff, and
 verification runs check for look-ahead. The committee can decline to endorse a
 result. AlphaLattice runs locally and is open source.
 
-It does not need the largest models. Claude Haiku 5.5 in Claude Code and GPT-6
-Luna in Codex, each at high reasoning effort, have led a first use and a daily
-update end to end in our fresh-folder runs. With a Claude or ChatGPT
-subscription, Claude Code and Codex draw on your plan rather than per-token API
-billing; check your provider's terms. To see what a run used, open a session's
+Use Claude Code or Codex as the lead. To see what a run used, open a session's
 **Participants** in the Workbench (**Team**, then **Sessions**): it shows the
 models and tokens each member used.
 
@@ -83,22 +79,38 @@ Give your agent this repository's link and one intent:
   ```bash
   brew install libomp
   ```
-- **Time:** Data preparation, multi-year model fitting and validation, and
-  source review take time. One completed run using prepared public-source data
-  and retained filings, replayed offline with four CPU cores on a shared Windows
-  machine, took about **37 minutes** from the start of the first data preparation
-  Task to writing the delivery report. Installation and live downloads were outside
-  that interval. Data and model-pack downloads add time when needed, depending
-  on your connection. In fresh-folder acceptance runs, a first use including its
-  downloads took about an hour, and a daily update takes less. These are
-  observations, not runtime guarantees.
+- **Time:** In Windows native observations on 2026-10-19 with Codex at extra-high
+  reasoning effort, first use took **74.7 minutes**; its committee proceeded with
+  notes. After an interrupted attempt, the person granted the daily network
+  question; an assisted daily recovery then issued positions and sealed its
+  first backup in **35.3 minutes**.
+  Recorded Host work, including the data update, accounted for about
+  **12.6 minutes**; the remaining **22.7 minutes** included agent turns, tools
+  and waits. The recovery exceeded the 20-minute daily budget.
+  These are observations, not runtime guarantees.
+- **Disk and memory:** The first-use workspace occupied about **8.69 GB**, with
+  about **10.38 GB** across managed installation, workspace, cache and model
+  folders, excluding backup. The authorized daily recovery grew the workspace
+  by about **181 MB**, including the first day's database step; its first backup
+  filled **4.26 GB** once, with later backups incremental. Sampled peak memory
+  across the Host's processes was **8.37 GB** during first use and **9.39 GB**
+  during the recovery. Both runs exceeded the 8 GB budget.
+  Allow headroom for the operating system and your coding app; these
+  observations are not minimum system requirements. The
+  [release notes](docs/public-source/release-notes.md#021) distinguish ordinary
+  daily writes, upgrade and split days, and explicit captures.
+- **Package downloads:** On a machine with an empty package cache, first use
+  asks once for permission to download the retrieval packages. Installing locked
+  packages under the first use's network consent is planned for a later release.
 - **Agent costs:** Your Claude Code or Codex access and usage costs are separate
-  from AlphaLattice, and the lead agent can be a lower-cost model such as Claude
-  Haiku 5.5 or GPT-6 Luna at high reasoning effort; check your provider's terms.
+  from AlphaLattice; check your provider's terms.
 
 See [Getting started](docs/public-source/getting-started.md) and the
 [setup procedure](.agents/skills/alphalattice-research/references/operating.md)
 for installation, downloads and the permissions each step needs.
+
+Already using AlphaLattice? Follow [Upgrading](docs/public-source/upgrading.md)
+before installing a later 0.2.x patch in your existing workspace.
 
 ## Why AlphaLattice
 
@@ -282,8 +294,8 @@ people using AlphaLattice decide what comes after 0.5.
 [Open an issue](https://github.com/xinglin-li/alphalattice/issues) with the command
 you were running, what you expected and the answer you received. Redact private
 data and credentials. For proposed code changes, follow
-[CONTRIBUTING](CONTRIBUTING.md), including its current contribution-opening
-conditions and agreement.
+[CONTRIBUTING](CONTRIBUTING.md): open an issue first for nontrivial work, and sign
+the contributor agreement on your first pull request.
 For a security vulnerability, report privately as described in [SECURITY](SECURITY.md).
 
 ## About
@@ -296,7 +308,7 @@ agent, the software and the person share the work.
 Created and maintained by Xinglin Li: [LinkedIn](https://www.linkedin.com/in/xinglin-li-381571139/)
 or [xinglin789@outlook.com](mailto:xinglin789@outlook.com).
 See [governance](GOVERNANCE.md) for project decisions and contribution credit,
-and [contributing](CONTRIBUTING.md) for the opening condition, agreement and workflow.
+and [contributing](CONTRIBUTING.md) for the agreement and workflow.
 
 ## Verify a source checkout
 

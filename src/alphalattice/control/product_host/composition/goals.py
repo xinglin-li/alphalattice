@@ -30,7 +30,7 @@ from alphalattice.control.data_platform.data_decision_rule import (
     DataDecisionRule,
     held_decisions,
 )
-from alphalattice.control.data_platform.data_decision_rule import audit as audit_rule
+from alphalattice.control.data_platform.data_decision_rule import attach as attach_rule
 from alphalattice.control.product_host.composition.first_use_road import (
     daily_road,
     first_use_command,
@@ -49,6 +49,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.publication.goals import (
     EXPERIENCE_RECORD_WORDS,
+    GoalRefusal,
     GoalStore,
     sessions_of,
 )
@@ -225,16 +226,25 @@ def _usage_metadata(entry: Mapping[str, object]) -> dict[str, object]:
     return metadata
 
 
-def open_assignments(entries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Each bundle prepared under the goal with no accepted answer yet: a reminder (FLOW-1).
-
-    A bundle is the product's own assignment of a question to a specialist; the product
-    accepting its answer closes it. Nothing here blocks the goal's completion.
-    """
+def assignment_records(entries: Sequence[Mapping[str, Any]], goal: Goal) -> list[dict[str, Any]]:
+    """Acceptance completes an exact bundle; closing the Goal archives unanswered work."""
     answered = {
-        entry.get("bundle_reference")
+        entry.get("bundle_reference"): entry
         for entry in entries
-        if entry.get("operation") == "AGENT_ANSWER_SUBMIT" and entry.get("status") in ANSWERED
+        if (entry.get("operation") == "AGENT_ANSWER_SUBMIT" and entry.get("status") in ANSWERED)
+        or (
+            entry.get("event_kind") == MESSAGE_EVENT
+            and (
+                (entry.get("input_channel"), entry.get("message_kind"))
+                == ("PRODUCT_ACCEPTED_ANSWER", "answer")
+                or (
+                    entry.get("input_channel"),
+                    entry.get("message_kind"),
+                    entry.get("authorship_basis"),
+                )
+                == ("PRODUCT_REVIEW", "acceptance", "HOST_ACCEPTED")
+            )
+        )
     }
     prepared: dict[str, dict[str, Any]] = {}
     for entry in entries:
@@ -243,16 +253,24 @@ def open_assignments(entries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
             entry.get("operation") == "AGENT_BUNDLE_PREPARE"
             and entry.get("status") == "AGENT_BUNDLE_READY"
             and isinstance(reference, str)
-            and reference not in answered
         ):
-            prepared.setdefault(
-                reference,
-                {
-                    "bundle_reference": reference,
-                    "agent_role": entry.get("agent_role"),
-                    "task_id": entry.get("task_id"),
-                    "prepared_at": entry.get("recorded_at"),
-                },
+            fields = {key: entry.get(key) for key in ("bundle_reference", "agent_role", "task_id")}
+            prepared.setdefault(reference, {**fields, "prepared_at": entry.get("recorded_at")})
+    for reference, row in prepared.items():
+        answer = answered.get(reference)
+        row["state"] = "COMPLETED" if answer else "ARCHIVED" if goal.state != "OPEN" else "OPEN"
+        if answer:
+            row["receipt"] = {
+                key: answer[key]
+                for key in ("recorded_at", "status", "answer_reference", "observation_id")
+                if key in answer
+            }
+        elif goal.state != "OPEN":
+            row["receipt"] = {"goal_id": str(goal.goal_id), "goal_hash": goal.goal_hash}
+        else:
+            row.update(
+                reason="No accepted answer is recorded.",
+                next_action="Ask the assigned specialist to submit the prepared answer.",
             )
     return list(prepared.values())
 
@@ -802,8 +820,8 @@ class GoalApplication:
             return rule.submission(case, option, str(goal.goal_id), authority=authority)
 
         own = {"task_id": str(task_id), "delegation": delegation, "authority": authority}
-        decide.audit = partial(  # type: ignore[attr-defined]
-            audit_rule,
+        return attach_rule(
+            decide,
             rule,
             live,
             partial(self.store.attributed, goal.goal_id),
@@ -812,7 +830,6 @@ class GoalApplication:
             ),
             str(task_id),
         )
-        return decide
 
     def resume_decided(
         self,
@@ -1260,11 +1277,14 @@ class GoalApplication:
         )
         return session
 
-    def record(self, goal: Goal, *, whole_conversation: bool = False) -> dict[str, Any]:
+    def record(
+        self, goal: Goal, *, whole_conversation: bool = False, head: Goal | None = None
+    ) -> dict[str, Any]:
         """The Host's facts; a waiter reads every message, never only the shown tail."""
         entries = joined_members(self.store.attributed(goal.goal_id))
         requests = [e for e in entries if "operation" in e]
         messages = conversation_entries(entries)
+        assignments = assignment_records(entries, head or goal)
         tasks: list[GoalTaskFact] = []
         for task_id in dict.fromkeys(str(e["task_id"]) for e in requests if e.get("task_id")):
             facts = self.task_facts(UUID(task_id))
@@ -1313,7 +1333,8 @@ class GoalApplication:
             "event_count": len(entries) - len(requests),
             "message_count": len(messages),
             "conversation": messages if whole_conversation else messages[-CONVERSATION_SHOWN:],
-            "open_assignments": open_assignments(entries),
+            "open_assignments": [a for a in assignments if a["state"] == "OPEN"],
+            "closed_assignments": [a for a in assignments if a["state"] != "OPEN"],
             "session_usage": session_usage(entries),
         }
 
@@ -1371,7 +1392,7 @@ class GoalApplication:
             prior = self._selected(request)
             declaration = GoalDeclaration.model_validate(request.goal_declaration)
             if "FIRST_USE" in {prior.declaration.kind, declaration.kind}:
-                # A first use keeps its original sentence, kind and opening time (V452).
+                # A first use keeps its sentence, kind and opening time (V452).
                 raise ValueError("goal.first_use_is_not_revised")
             if prior.declaration.intent() != declaration.intent():
                 # The previous objective's pre-execution timing must not be attributed
@@ -1452,7 +1473,7 @@ class GoalApplication:
             statement = GoalStatement.model_validate(request.goal_statement)
             self._require_references(goal, statement.evidence)
             if statement.disposition in {"SUPPORTS", "DOES_NOT_SUPPORT"} and not statement.evidence:
-                raise ValueError("goal.conclusion_requires_evidence")
+                raise GoalRefusal("goal.conclusion_requires_evidence", goal)
             if statement.responds_to and not any(
                 s.statement_id == statement.responds_to for s in goal.statements
             ):
@@ -1679,12 +1700,7 @@ class GoalApplication:
             **answer,
             "status": "COMPLETE",
             "outcome": submission.outcome,
-            # A prepared bundle with no accepted answer is said, never a reason to refuse.
-            **(
-                {"open_assignments": record["open_assignments"]}
-                if record["open_assignments"]
-                else {}
-            ),
+            "open_assignments": [],
             "claim": "Complete means the record is complete and its evidence verified, not "
             "that the objective was met.",
         }
@@ -2123,7 +2139,7 @@ class GoalApplication:
             "open_choices": [
                 s.model_dump(mode="json") for s in goal.statements if s.disposition == "OPEN"
             ],
-            "record": self.record(goal, whole_conversation=whole_conversation),
+            "record": self.record(goal, whole_conversation=whole_conversation, head=head),
             "next_requests": {
                 **self._next(goal),
                 **(

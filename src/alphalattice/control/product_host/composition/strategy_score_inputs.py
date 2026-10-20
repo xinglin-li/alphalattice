@@ -8,7 +8,7 @@ only resolves their axes and delegates; it publishes no Foundation or book.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from itertools import groupby
 from pathlib import Path
@@ -18,9 +18,14 @@ from typing import Any, NamedTuple
 import numpy as np
 import pandas as pd
 
+from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.maintenance.contracts import (
     WorkspaceDataUpdateBinding,
     WorkspaceInputStatus,
+)
+from alphalattice.control.product_host.composition.research_workspace import (
+    RESEARCH_WORKSPACE_MANIFEST_NAME,
+    read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
@@ -65,6 +70,7 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     RawDailyBar,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.foundation.market_data_ops.storage.rebase import recorded as recorded_rebases
 from alphalattice.foundation.market_data_ops.storage.source_prefix import (
     market_data_source_prefix_proofs,
 )
@@ -79,7 +85,13 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
     assemble_panel_context_arrays,
 )
 from alphalattice.investment.alpha_research.publication.contracts import (
+    StoredRebase,
     WorkspaceObservationHistoryHead,
+)
+from alphalattice.investment.alpha_research.publication.workspace_history import (
+    RebaseKeep,
+    rebase_keep,
+    rebased,
 )
 from alphalattice.investment.alpha_research.targets.component_training import (
     compile_frozen_component_training_targets,
@@ -120,6 +132,12 @@ class PreparedWorkspaceComponentInputs:
     listing_digests: tuple[str, ...] = ()
     listing_closed: tuple[str, ...] = ()
     restated_listing_ids: tuple[str, ...] = ()
+    rebases: tuple[StoredRebase, ...] = ()
+    """Every rebase of the store's bars its kept rows know, with the rows each still needs."""
+    kept_rows: RebaseKeep = MappingProxyType({})
+    """A rebased listing's rows kept as stored, `rebase_keep`'s, for its publishers."""
+    rebase_agreement: tuple[float, float] = (0.0, 0.0)
+    """The data rule's agreement those rows were kept within."""
 
 
 def _market_source_proof(market: MarketDataRepository) -> tuple[tuple[str, str | None], ...]:
@@ -357,7 +375,19 @@ def prepare_workspace_component_inputs(
         history=history,
     )
     assert prepared is not None
-    return prepared
+    with MarketDataRepository(workspace).database.read_transaction() as connection:
+        known = recorded_rebases(connection, prepared.ordered_listing_ids)
+    if not known and (history is None or not history[0].rebases):
+        return prepared
+    held = (workspace / RESEARCH_WORKSPACE_MANIFEST_NAME).exists()  # a data-only one has none
+    rule = (read_research_workspace_manifest(workspace).data_decision_rule if held else None) or (
+        DataDecisionRule()
+    )
+    columns = workspace_observation_history_columns(prepared)
+    agreement = rule.rebase_agreement
+    listings = prepared.ordered_listing_ids
+    entries, keep = rebase_keep(history, listings, columns, known, agreement, rule.rule_hash)
+    return replace(prepared, rebases=entries, kept_rows=keep, rebase_agreement=agreement)
 
 
 def workspace_score_source_identity(workspace: Path) -> str:
@@ -419,7 +449,25 @@ def build_workspace_score_inputs(
         prepared=prepared,
     )
     assert source is not None
-    return source
+    if prepared is None or not prepared.rebases:
+        return source
+    # The frozen observation lists the rebases its own rows and listings still need.
+    rows, listings = len(source.formation_sessions), set(source.ordered_listing_ids)
+    return replace(
+        source,
+        rebases=tuple(
+            item.model_copy(
+                update={
+                    "rows": tuple((a, min(b, rows)) for a, b in item.rows if a < rows)
+                    if item.listing_id in listings
+                    else ()
+                }
+            )
+            for item in prepared.rebases
+        ),
+        kept_rows=prepared.kept_rows,
+        rebase_agreement=prepared.rebase_agreement,
+    )
 
 
 def read_workspace_component_inputs(
@@ -513,21 +561,41 @@ def _rows_since(
     end: date,
     factor_ids: tuple[str, ...],
     connection: object = None,
-) -> list[dict[str, Any]]:
-    """Stored Feature rows of each read (`_reads`)."""
+) -> pd.DataFrame:
+    """Stored Feature rows of each read (`_reads`): their keys and values, one frame."""
     extra = {} if connection is None else {"_connection": connection}
-    return [
-        row
-        for ids, start in reads
-        for row in feature.feature_rows(
+    frames = [
+        feature.feature_rows(
             listing_ids=ids,
             catalog_hash=catalog,
             start=start,
             end=end,
             factor_ids=factor_ids,
+            include_lineage=False,
+            as_frame=True,
             **extra,
         )
+        for ids, start in reads
+        if ids
     ]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def _fill(
+    values: Mapping[str, FloatArray],
+    rows: pd.DataFrame,
+    positions: Mapping[date, int],
+    listings: Mapping[str, int],
+) -> None:
+    """Write each row's values at its session and listing, a missing value as NaN."""
+    if rows.empty:
+        return
+    at = rows["session_date"].map(positions)
+    kept = at.notna().to_numpy()
+    row: IntArray = at.to_numpy()[kept].astype(np.int64)
+    column: IntArray = rows["listing_id"].map(listings).to_numpy()[kept].astype(np.int64)
+    for name, target in values.items():
+        target[row, column] = rows[name].to_numpy(dtype=np.float64, na_value=np.nan)[kept]
 
 
 def _rebuild_listings(
@@ -708,7 +776,7 @@ def _kept_history_reuse(
             _restated(head, kept_prefix, listings, listing_proofs[0]) if listing_ends[1:] else ()
         )
         if whole or restated:
-            restored = _kept_columns(columns, kept)
+            restored = rebased(_kept_columns(columns, kept), listings, head.rebases)
     with span("verify", "history_prefix_proof"):
         proved = _workspace_history_prefix_proof(
             market,
@@ -990,12 +1058,8 @@ def _read_workspace_component_inputs(
         reference_eligible.setflags(write=False)
         nominal.setflags(write=False)
     if prepared is None:
-        for item in observations:
-            if item["session_date"] not in positions:
-                continue
-            row, column = positions[item["session_date"]], listing_positions[item["listing_id"]]
-            for name in observed:
-                observed[name][row, column] = np.nan if item[name] is None else item[name]
+        _fill(observed, observations, positions, listing_positions)
+        del observations
     # This formula's kernel is installed, although the ordinary stored catalog
     # need not materialize its column. Invoke its owner; do not invent an alias
     # or change the workspace's global Feature catalog.
@@ -1065,16 +1129,8 @@ def _read_workspace_component_inputs(
                 for name in stored:
                     formula_values[name][:reused_count] = restored["formula::" + name]
                     formula_values[name][:, restated] = np.nan
-            for stored_row in stored_rows:
-                if stored_row["session_date"] in positions:
-                    row, column = (
-                        positions[stored_row["session_date"]],
-                        listing_positions[stored_row["listing_id"]],
-                    )
-                    for name in stored:
-                        formula_values[name][row, column] = (
-                            np.nan if stored_row[name] is None else stored_row[name]
-                        )
+            _fill(formula_values, stored_rows, positions, listing_positions)
+            del stored_rows
             frame = pd.DataFrame(
                 {
                     "session_date": np.repeat(np.asarray(sessions, dtype=object), len(listings)),

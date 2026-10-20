@@ -31,6 +31,7 @@ from alphalattice.foundation.feature_engine.panels.closure_contracts import (
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
     FeatureClosureLedger,
 )
+from alphalattice.foundation.feature_engine.panels.identity import panel_chunk_order
 from alphalattice.foundation.feature_engine.panels.logical_contracts import (
     LegacyPanelLogicalEquivalenceAttestation,
     PanelDerivationBinding,
@@ -346,35 +347,12 @@ class PanelLogicalIdentityPublisher:
         membership_epochs = _membership_epochs(summary)
         published = self._published_years(dense=membership_epochs is None)
         axis: set[str] = set()
-        ordered_chunks = sorted(
-            chunks,
-            key=lambda item: int(str(cast(dict[str, object], item)["year"])),
-        )
-        for raw_chunk in ordered_chunks:
-            if not isinstance(raw_chunk, dict):
-                raise ValueError("feature_panel.logical_content_mismatch")
-            path = self._resolver.resolve_feature_panel_chunk_ref(
-                uri=str(raw_chunk["uri"]),
-                content_hash=str(raw_chunk["chunk_hash"]),
-                metadata_hash=str(raw_chunk["metadata_hash"]),
-            )
-            names = pq.read_schema(path).names
-            observed_factors = tuple(name for name in names if name not in _RESERVED_COLUMNS)
-            # ``factor_catalog_summary`` is a user-safe projection.  Some legacy
-            # quarantined snapshots contain additional physical factor columns
-            # that were no longer active when the summary was rendered.  The
-            # Parquet schema is the exact machine axis authority; the summary
-            # may only prove that every factor it names is present.
-            if not {str(value) for value in factor_summary}.issubset(observed_factors):
-                raise ValueError("feature_panel.logical_content_mismatch")
-            if factor_ids is None:
-                factor_ids = observed_factors
-            elif observed_factors != factor_ids:
-                raise ValueError("feature_panel.logical_content_mismatch")
+        for year, year_chunks in _by_year(chunks).items():
+            paths, factor_ids = self._year_files(year_chunks, factor_summary, factor_ids)
             annual_item, observed_listings, observed_sessions = _annual_content(
-                path,
-                int(raw_chunk["year"]),
-                published.get((str(raw_chunk["chunk_hash"]), str(raw_chunk["metadata_hash"]))),
+                paths,
+                year,
+                published.get(_parts_key(year_chunks)),
                 factor_ids=factor_ids,
                 expected_listing_ids=listing_ids if membership_epochs is None else None,
                 membership_epochs=membership_epochs,
@@ -385,13 +363,14 @@ class PanelLogicalIdentityPublisher:
             annual.append(annual_item)
             all_sessions.extend(item.session_date for item in observed_sessions)
             session_semantics.extend(observed_sessions)
-            physical_chunks.append(
+            physical_chunks.extend(
                 _physical_chunk(
                     path=path,
                     raw_chunk=raw_chunk,
                     annual=annual_item,
                     schema_hash=str(manifest["schema_hash"]),
                 )
+                for path, raw_chunk in zip(paths, year_chunks, strict=True)
             )
         if factor_ids is None or listing_ids is None:
             raise ValueError("feature_panel.logical_content_mismatch")
@@ -453,7 +432,38 @@ class PanelLogicalIdentityPublisher:
         )
         return logical_manifest, revision, semantic_index, physical
 
-    def _published_years(self, *, dense: bool) -> dict[tuple[str, str], _Year]:
+    def _year_files(
+        self,
+        year_chunks: list[dict[str, object]],
+        factor_summary: Mapping[str, object],
+        factor_ids: tuple[str, ...] | None,
+    ) -> tuple[list[Path], tuple[str, ...]]:
+        """A year's chunk files in order, and the factor axis every one of them holds."""
+        paths = []
+        for raw_chunk in year_chunks:
+            path = self._resolver.resolve_feature_panel_chunk_ref(
+                uri=str(raw_chunk["uri"]),
+                content_hash=str(raw_chunk["chunk_hash"]),
+                metadata_hash=str(raw_chunk["metadata_hash"]),
+            )
+            paths.append(path)
+            names = pq.read_schema(path).names
+            observed_factors = tuple(name for name in names if name not in _RESERVED_COLUMNS)
+            # ``factor_catalog_summary`` is a user-safe projection.  Some legacy
+            # quarantined snapshots contain additional physical factor columns
+            # that were no longer active when the summary was rendered.  The
+            # Parquet schema is the exact machine axis authority; the summary
+            # may only prove that every factor it names is present.
+            if not {str(value) for value in factor_summary}.issubset(observed_factors):
+                raise ValueError("feature_panel.logical_content_mismatch")
+            if factor_ids is None:
+                factor_ids = observed_factors
+            elif observed_factors != factor_ids:
+                raise ValueError("feature_panel.logical_content_mismatch")
+        assert factor_ids is not None
+        return paths, factor_ids
+
+    def _published_years(self, *, dense: bool) -> dict[tuple[tuple[str, str], ...], _Year]:
         """The latest publication's years by their chunk's content and metadata hashes.
 
         Equal bytes give equal logical content, so an unchanged chunk's year is taken as published
@@ -484,13 +494,10 @@ class PanelLogicalIdentityPublisher:
         sessions: dict[int, list[FeaturePanelLogicalSessionSemantic]] = {}
         for item in index.sessions:
             sessions.setdefault(item.session_date.year, []).append(item)
-        return {
-            (chunk.legacy_chunk_hash, chunk.metadata_hash): (
-                annual[chunk.year],
-                tuple(sessions[chunk.year]),
-            )
-            for chunk in physical.physical_chunks
-        }
+        parts: dict[int, list[tuple[str, str]]] = {}
+        for chunk in physical.physical_chunks:
+            parts.setdefault(chunk.year, []).append((chunk.legacy_chunk_hash, chunk.metadata_hash))
+        return {tuple(keys): (annual[year], tuple(sessions[year])) for year, keys in parts.items()}
 
     def _build_derivation(
         self, *, manifest: Mapping[str, object], revision: PanelLogicalRevision
@@ -617,7 +624,7 @@ def _membership_epochs(
 
 
 def _annual_content(
-    path: Path,
+    paths: list[Path],
     year: int,
     published: _Year | None,
     *,
@@ -632,14 +639,14 @@ def _annual_content(
     """A chunk's year: as published for unchanged bytes, rechecked against this Panel, or built."""
     if published is None or published[0].year != year:
         return _build_annual_logical_content(
-            table=pq.read_table(path).combine_chunks(),
+            table=pa.concat_tables(pq.read_table(path) for path in paths).combine_chunks(),
             year=year,
             factor_ids=factor_ids,
             expected_listing_ids=expected_listing_ids,
             membership_epochs=membership_epochs,
         )
     annual, sessions = published
-    column = pq.read_table(path, columns=["listing_id"])["listing_id"]
+    column = pa.concat_tables(pq.read_table(p, columns=["listing_id"]) for p in paths)["listing_id"]
     if membership_epochs is None:
         listing_ids = tuple(
             str(value) for value in column.slice(0, sessions[0].row_count).to_pylist()
@@ -851,7 +858,8 @@ def _physical_chunk(
         uri=str(raw_chunk["uri"]),
         raw_sha256=file_sha256(path),
         byte_count=path.stat().st_size,
-        row_count=annual.row_count,
+        row_count=int(str(raw_chunk["row_count"])),
+        part=int(str(raw_chunk["part"])) if raw_chunk.get("part") else None,
         schema_hash=schema_hash,
         metadata_hash=str(raw_chunk["metadata_hash"]),
         compression_codecs=tuple(sorted(codecs)),
@@ -877,3 +885,22 @@ __all__ = [
     "PanelLogicalIdentityPublisher",
     "logical_session_digest",
 ]
+
+
+def _parts_key(chunks: list[dict[str, object]]) -> tuple[tuple[str, str], ...]:
+    """A year's published key: its chunks' content and metadata hashes, in order."""
+    return tuple((str(item["chunk_hash"]), str(item["metadata_hash"])) for item in chunks)
+
+
+def _by_year(chunks: list[object]) -> dict[int, list[dict[str, object]]]:
+    """A manifest's chunks by year, each year's in part order.
+
+    A year is one logical record however it is stored: a whole-year chunk, or its sub-year
+    parts in session order, read as the one table they concatenate to.
+    """
+    if not all(isinstance(item, dict) for item in chunks):
+        raise ValueError("feature_panel.logical_content_mismatch")
+    by_year: dict[int, list[dict[str, object]]] = {}
+    for item in sorted(cast(list[dict[str, object]], chunks), key=panel_chunk_order):
+        by_year.setdefault(int(str(item["year"])), []).append(item)
+    return by_year

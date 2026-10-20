@@ -159,7 +159,7 @@ const LiveTasks = (() => {
     // R2: a Task the installed code cannot resume shows Resume held, its reason on demand (CT7)
     const cannotResume=!recover.available && r.resume_refusal ? typedBtn(t('Resume this Task'),'task-recovery',r.task_id,'button','The code installed now cannot resume this Task; cancel it and plan the same work again.',held) : '';
     const refusedReplan=S.replanRefused?.id===r.task_id ? refusal({code:S.replanRefused.code,reason:S.replanRefused.detail ? t(S.replanRefused.detail) : explainCode(S.replanRefused.code)},'warning',{word:t('Not done')}) : '';
-    return html`${refusedReplan}<div class="tp-actions"><div class="flow">${r.lifecycle==='SUCCEEDED' && RESULT_PAGES.has(r.task_kind) ? btn(t('Open result'),'task-result',r.task_id,'button primary') : ''}${replanEntry}${sceneEntry}${recover.available ? typedBtn(t('Resume this Task'),'task-recovery',r.task_id,resumable ? 'button primary' : 'button',off(recover),held) : cannotResume}${cancel.available ? typedBtn(t('Request cancel'),'task-cancel',r.task_id,'button',off(cancel),held) : ''}</div>${why}</div>`;
+    return html`${refusedReplan}<div class="tp-actions"><div class="flow">${r.lifecycle==='SUCCEEDED' && RESULT_PAGES.has(r.task_kind) ? btn(t('Open result'),'task-result',r.task_id,'button primary') : ''}${replanEntry}${r.next_requests?.controls ? prerequisiteWays({controls:r.next_requests.controls}) : ''}${sceneEntry}${recover.available ? typedBtn(t('Resume this Task'),'task-recovery',r.task_id,resumable ? 'button primary' : 'button',off(recover),held) : cannotResume}${cancel.available ? typedBtn(t('Request cancel'),'task-cancel',r.task_id,'button',off(cancel),held) : ''}</div>${why}</div>`;
   }
   /* U38: the Task's open incident as Guanyin's supervisor last found it -- its code in words, the owner's
    * detail, when it was found -- with the remedies the Host offers for it, each confirmed against this Task's
@@ -217,14 +217,14 @@ const LiveTasks = (() => {
     // the owner's own words when nothing is offered: its detail, its lawful next actions (codes in words)
     const ways=admits.length ? [] : (answer.next_lawful_actions || []).map((w)=>/^[A-Z][A-Z0-9_]+$/.test(String(w)) ? codeWords(w) : t(String(w)));
     const caption=admits.length ? (step==='preview' ? 'The preview recorded a plan and admitted nothing; its work is admitted as a new Task only when you confirm it.' : 'Nothing runs yet; its work is admitted as a new Task only when you confirm the next step.') : 'The preview recorded a plan and admitted nothing.';
-    openDialog(t('Task · re-PLAN'),t('Declare again (re-PLAN)'),
+    openDialog(t(id ? 'Task · re-PLAN' : 'Portfolio controls'),t(id ? 'Declare again (re-PLAN)' : 'Preview'),
       html`<div class="tp-confirm">${facts}${answer.detail ? html`<p>${t(answer.detail)}</p>` : ''}${ways.length ? html`<ul class="tp-ways">${ways.map((w)=>html`<li>${w}</li>`)}</ul>` : ''}<p class="caption">${t(caption)}</p></div>`,
       html`${admits.map(([name,q])=>btn(t('Confirm: {operation}',{operation:codeWords(q.operation)}),'task-replan-commit',name,'button primary',true))}`);
   }
   async function replanPreview(id) {
     const request=S.view?.task_id===id ? S.view.next_requests?.replan : null;
     if(S.busy || !request || !Data.offers(request.operation)) return;
-    const {operation,...fields}=request;
+    const {operation}=request;
     // a re-PLAN whose operation admits its work directly (the owner says so: `admits`, the saved studies' verification)
     // is no preview: the press asks first, in the owner's words, and sends nothing until confirmed
     const action=(S.view.actions || []).find((a)=>a.action==='REPLAN');
@@ -233,12 +233,20 @@ const LiveTasks = (() => {
       openDialog(t('Task · re-PLAN'),t('Declare again (re-PLAN)'),html`<div class="tp-confirm"><p>${t(action.scope || '')}</p><p class="caption" data-tip="${action.expected_effect}">${effectWords(action)}</p></div>`,btn(t('Confirm: {operation}',{operation:codeWords(operation)}),'task-replan-commit','replan','button primary',true));
       return;
     }
+    await previewRequest(request,id);
+  }
+  async function previewRequest(request,id='') {
+    if(S.busy || !request || !Data.offers(request.operation)) return;
+    const {operation,...fields}=request;
     S.busy=true; S.replanRefused=null;
     try {
       // the route's own method: a preview that reads (EVIDENCE_PREVIEW) takes its fields in the query, an object as JSON
       const answer=await (Data.posts(operation) ? Data.post(Data.route(operation),fields) : Data.readShared(Data.route(operation)+'?'+new URLSearchParams(Object.entries(fields).map(([k,v])=>[k,typeof v==='object' ? JSON.stringify(v) : String(v)]))));
       offerAdmissions(id,operation,answer,'preview');
-    } catch(e) { S.replanRefused={id,code:e.body?.failure_code || String(e.message).split(':')[0],detail:e.body?.detail || ''}; }
+    } catch(e) {
+      if(!id) openDialog(t('Portfolio controls'),t('Not done'),html`${refusal(e.body || {detail:e.message})}${prerequisiteWays(e.body?.next_requests)}`);
+      else S.replanRefused={id,code:e.body?.failure_code || String(e.message).split(':')[0],detail:e.body?.detail || ''};
+    }
     finally { S.busy=false; paint(); }
   }
   async function replanCommit(name) {
@@ -591,5 +599,5 @@ const LiveTasks = (() => {
     window.addEventListener('pageshow',(e)=>{if(e.persisted&&alive())refresh();});
     LiveActivity.bind(); void LiveActivity.refresh();
   }
-  return {follow,page,open,refresh,refreshInspector,currentGroup,subjectContext,preview,commit,previewUnrecoverable,unrecoverableActions,previewRemedy,commitRemedy,replanPreview,replanCommit,turnIncidents,close,openResult,bind,paintActivity:paint,standing,liveness,dismissConfirmation:()=>{S.confirming=null;},toggle:()=>navigate('tasks'),view:()=>S.view,confirming:()=>S.confirming,selected:()=>S.selected};
+  return {follow,page,open,refresh,refreshInspector,currentGroup,subjectContext,preview,commit,previewUnrecoverable,unrecoverableActions,previewRemedy,commitRemedy,replanPreview,previewRequest,replanCommit,turnIncidents,close,openResult,bind,paintActivity:paint,standing,liveness,dismissConfirmation:()=>{S.confirming=null;},toggle:()=>navigate('tasks'),view:()=>S.view,confirming:()=>S.confirming,selected:()=>S.selected};
 })();

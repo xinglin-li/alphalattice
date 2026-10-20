@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import functools
 import json
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Final, Literal, cast
@@ -19,10 +19,15 @@ from alphalattice.control.data_platform.contracts import (
     DataRemediationExecutionSubmission,
 )
 from alphalattice.control.data_platform.data_decision_rule import (
+    ADJUSTMENT_SEGMENTS,
     AUDIT,
+    KEPT,
     QUARANTINE,
+    RAW_REBASES,
     RETAIN,
     DataDecisionRule,
+    KeptListing,
+    KeptObservations,
     rule_receipt,
 )
 from alphalattice.control.data_platform.delegation import DataIssueDelegation
@@ -175,8 +180,51 @@ _RULE_CAVEATS: Final = {
     RETAIN: "An unexplained one-day move is kept as reported; it may be a data error.",
     QUARANTINE: "Set aside until its next recheck; the original inputs are kept.",
     AUDIT: "Its provider back-adjusted its history; its whole history was audited before use.",
+    KEPT: "Its provider re-sent stored adjusted closes within the rule's precision; they stand.",
 }
 """What each choice of the Host's rule means for the research, said beside the listing."""
+_FACTOR_CAVEAT: Final = (
+    "Its provider back-adjusted its history; the stored closes were scaled by its factors, "
+    "so their returns stand."
+)
+"""A kept back-adjustment's caveat, beside its segments: each first and last session and factor."""
+_REBASE_CAVEAT: Final = (
+    "Its provider reported a split and rescaled its history; the stored bars were scaled by the "
+    "split's factor, so their returns and Features stand."
+)
+"""A kept split's caveat, beside its rebases: each ex-date, first and last session rebased, price
+and volume factor and receipt."""
+_KEPT_OBSERVATIONS_CAVEAT: Final = (
+    "After a split, these stored observation rows and blocks kept their bytes: their recomputed "
+    "values differed only within the rule's agreement."
+)
+"""The caveat beside an update's observations kept as stored."""
+
+
+def kept_observation_rows(
+    retained: Sequence[KeptObservations], symbols: Mapping[str, str]
+) -> dict[str, list[dict[str, Any]]]:
+    """Each update's observations kept as stored, named as its delivery shows them; none, none."""
+    return {"kept_observations": rows} if (rows := _kept_rows(retained, symbols)) else {}
+
+
+def _kept_rows(
+    retained: Sequence[KeptObservations], symbols: Mapping[str, str]
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "observation_snapshot_hash": snapshot,
+            "kept_rows": [
+                {"listing_id": listing, "symbol": symbols.get(listing), "receipt_hash": receipt}
+                | {"rows": count, "largest_relative_difference": largest}
+                for listing, receipt, count, largest in rows
+            ],
+            "kept_blocks": list(blocks),
+            "rebase_agreement": list(agreement),
+            "caveat": _KEPT_OBSERVATIONS_CAVEAT,
+        }
+        for snapshot, rows, blocks, agreement in retained
+    ]
 
 
 class WorkspaceDataIssueApplication:
@@ -427,6 +475,8 @@ class WorkspaceDataIssueApplication:
         case_tokens: set[str] | None = None,
         audits: Sequence[tuple[str, str]] | None = None,
         held: Collection[str] | None = None,
+        kept: Sequence[KeptListing] = (),
+        retained: Sequence[KeptObservations] = (),
     ) -> dict[str, Any] | None:
         """The data issues the Host's rule decided, in one line.
 
@@ -435,6 +485,7 @@ class WorkspaceDataIssueApplication:
         preparation and dated books' workspace policy, among open and resolved cases. The same
         move re-raised (history re-acquired, so a new case) folds into its one row. Each
         full-history audit the rule approved is a row too, and the words name whose rule decided.
+        An update's observations kept as stored under the rebase agreement are named beside them.
         """
         if not input_available:
             return None
@@ -476,10 +527,10 @@ class WorkspaceDataIssueApplication:
             decided += self._rule_rows(case, choice, symbols, active, seen)
         configured = self._configured()
         audit_rows, audit_rules, held, unreadable = self._audit_rows(
-            choices, (audits, held), symbols, configured
+            choices, (audits, held, kept), symbols, configured
         )
         decided, rules = decided + audit_rows, rules | audit_rules
-        if not (decided or unreadable):
+        if not (decided or unreadable):  # a split's kept observations come with its kept row
             return None
         names = {item.listing_id for item in manifest.listings}
         source, left = len(names | aside), len(names - aside)
@@ -498,29 +549,41 @@ class WorkspaceDataIssueApplication:
             "rules": origins,
             # A Goal whose record cannot be read is named, never a crash of the data issues.
             **({"unreadable_goals": unreadable} if unreadable else {}),
+            **kept_observation_rows(retained, symbols),
         }
 
     def _audit_rows(
         self,
         choices: Any,
-        given: tuple[Sequence[tuple[str, str]] | None, Collection[str] | None],
+        given: tuple[
+            Sequence[tuple[str, str]] | None,
+            Collection[str] | None,
+            Sequence[KeptListing],
+        ],
         symbols: dict[str, str],
         configured: ResearchWorkspaceManifest | None,
     ) -> tuple[list[dict[str, Any]], set[str], Collection[str], list[dict[str, str]]]:
         """The rule's approved audits as disclosed rows, the rules that approved them, the cases
         that held its decision, and any Goal whose record could not be read: as given (a dated
         update's own Goal), else read from the Goals that hold the rule's decisions."""
-        audits, held, unreadable = (
+        audits, held, unreadable, kept = (
             self._rule_audits(choices, configured)
             if given[0] is None
-            else (given[0], given[1] or (), [])
+            else (given[0], given[1] or (), [], given[2])
         )
         rows = [
             {"listing_id": item, "symbol": symbols.get(item), "option_id": AUDIT}
             | {"caveat": _RULE_CAVEATS[AUDIT]}
             for item, _rule in audits
+        ] + [
+            {"listing_id": item, "symbol": symbols.get(item), "option_id": KEPT}
+            | {"largest_relative_difference": largest, "caveat": _RULE_CAVEATS[KEPT]}
+            | ({ADJUSTMENT_SEGMENTS: segments, "caveat": _FACTOR_CAVEAT} if segments else {})
+            | ({RAW_REBASES: rebases, "caveat": _REBASE_CAVEAT} if rebases else {})
+            for item, _rule, largest, segments, rebases in kept
         ]
-        return rows, {rule for _item, rule in audits}, held, unreadable
+        rules = {rule for _item, rule in audits} | {item[1] for item in kept}
+        return rows, rules, held, unreadable
 
     @staticmethod
     def _rule_bounds(
@@ -590,14 +653,19 @@ class WorkspaceDataIssueApplication:
 
     def _rule_audits(
         self, choices: Any, configured: ResearchWorkspaceManifest | None
-    ) -> tuple[tuple[tuple[str, str], ...], frozenset[str], list[dict[str, str]]]:
-        """The full-history audits the rule approved and the cases that held its decision, read
-        once from the Goals that hold its decisions: those its signed choices name, and the
-        open ones."""
+    ) -> tuple[
+        tuple[tuple[str, str], ...],
+        frozenset[str],
+        list[dict[str, str]],
+        tuple[KeptListing, ...],
+    ]:
+        """The full-history audits the rule approved, the cases that held its decision and the
+        listings whose stored closes stood under its precision, read once from the Goals that
+        hold its decisions: those its signed choices name, and the open ones."""
         from alphalattice.control.product_host.publication.goals import GoalStore
 
         if configured is None:
-            return (), frozenset(), []
+            return (), frozenset(), [], ()
         store = GoalStore(self.session.workspace / "artifacts", configured.workspace_id)
         named = {
             saved["receipt"]["submission"]["proposal"]["rationale"]
@@ -608,6 +676,7 @@ class WorkspaceDataIssueApplication:
         }
         pairs: set[tuple[str, str]] = set()
         held: set[str] = set()
+        stood: set[KeptListing] = set()
         unreadable = []
         for goal in store.goal_ids():
             try:
@@ -615,10 +684,11 @@ class WorkspaceDataIssueApplication:
                     entries = store.attributed(goal)
                     pairs |= set(store.rule_audits(None, entries))
                     held |= store.rule_held(None, entries)
+                    stood |= set(store.rule_kept(None, entries))
             except ValueError as error:
                 failure = public_failure(error, "goal.attribution_invalid")
                 unreadable.append({"goal_id": str(goal), "failure_code": failure})
-        return tuple(sorted(pairs)), frozenset(held), unreadable
+        return tuple(sorted(pairs)), frozenset(held), unreadable, tuple(sorted(stood))
 
     def _escalation(
         self,

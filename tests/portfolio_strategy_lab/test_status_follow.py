@@ -78,9 +78,33 @@ def test_a_waiting_status_answers_when_the_task_moves_on_or_its_wait_ends() -> N
     assert time.monotonic() - begun < 0.05
 
 
-def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch) -> None:
+def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "session-1")
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
+    output = tmp_path / "answer.json"
+    with pytest.raises(KeyboardInterrupt):
+        _wait_with_output(tmp_path, monkeypatch, [KeyboardInterrupt()])
+    first = json.loads(capsys.readouterr().err.splitlines()[0])
+    admission = json.loads(output.read_text("utf-8"))
+    assert first["task_id"] == admission["task_id"] and first["output_file"] == str(output)
+    reads = [dict(admission, status=state, lifecycle=state) for state in ("RUNNING", "SUCCEEDED")]
+    resumed = _Admitting(admission, reads, tmp_path)
+    exchange = resumed.exchange
+
+    def with_receipt(document):
+        receipt = json.loads(capsys.readouterr().err.splitlines()[0])
+        assert receipt["task_id"] == document["task_id"] and "output_file" not in receipt
+        return exchange(document)
+
+    resumed.exchange = with_receipt
+    monkeypatch.setattr(client_module, "LocalResearchClient", lambda *a, **k: resumed)
+    assert main(shlex.split(first["read"])[1:], serve=lambda _: pytest.fail("no serve")) == 0
+    final = json.loads(capsys.readouterr().out)["data"]
+    assert final["lifecycle"] == "SUCCEEDED" and len(resumed.sent) == 2
+    assert all(
+        d["operation"] == "STATUS" and d["task_id"] == admission["task_id"] for d in resumed.sent
+    )
+    assert json.loads(output.read_text("utf-8")) == admission
     task_id = str(uuid4())
     sent: list[dict[str, Any]] = []
     running = dict(
@@ -111,6 +135,7 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
     # Its first line tells the agent this call is the wait, and its host's way to wait for it.
     first, *progress = map(json.loads, capsys.readouterr().err.splitlines())
     assert first["follow"]["operation"] == "STATUS" and "do not poll" in first["returns"]
+    assert first["task_id"] == task_id and "output_file" not in first
     assert "run_in_background" in first["returns"]
     assert [line["current_stage"] for line in progress] == ["input", "features", None]
     assert [line["state"] for line in progress[:2]] == [["RUNNING", 0, 2]] * 2
@@ -624,6 +649,7 @@ def test_a_pending_plan_explains_validation_once_without_changing_json_stdout(
     if overdue:
         message = json.loads(captured.err)
         assert (message["operation"], message["status"]) == (operation, "VALIDATING")
+        assert message["task_id"] is None
         assert message["elapsed_seconds"] >= 0 and message["detail"]
         assert any("\u4e00" <= letter <= "\u9fff" for letter in message["detail"]) is (
             language == "zh"
@@ -638,6 +664,9 @@ class _Admitting(_Stub):
         self.admitted, self.workspace = admitted, workspace
 
     def exchange(self, document: dict[str, Any]) -> tuple[dict[str, Any], bytes]:
+        if document["operation"] == "STATUS":
+            body = self.request(document)
+            return body, json.dumps(body).encode("utf-8")
         self.sent.append(document)
         return dict(self.admitted), json.dumps(self.admitted).encode("utf-8")
 
@@ -1082,8 +1111,19 @@ def test_a_review_of_a_dates_positions_binds_their_publication(
 
     def with_progress(doc, timeout=None):
         if doc["operation"] == "RESEARCH_UPDATE_READBACK":
-            progress = json.loads(capsys.readouterr().err.splitlines()[-1])
-            assert progress == dict(flow="book_review", step="update", operation=doc["operation"])
+            receipt, progress = map(json.loads, capsys.readouterr().err.splitlines())
+            assert receipt["task_id"] == "t-update" and "output_file" not in receipt
+            assert progress == dict(
+                flow="book_review", step="update", operation=doc["operation"], task_id="t-update"
+            )
+        if doc["operation"] == "WAKE_REGISTER":
+            lines = map(json.loads, capsys.readouterr().err.splitlines())
+            receipt = next(line for line in lines if line.get("output_file"))
+            assert (
+                receipt["task_id"]
+                == json.loads(Path(receipt["output_file"]).read_text())["task_id"]
+                == doc["task_id"]
+            )
         return request(doc, timeout)
 
     host.request = with_progress

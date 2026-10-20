@@ -192,6 +192,18 @@ class ResearchInputCaptureApplication:
             raise ValueError("research_input.data_binding_required")
         return describe_input_source(root or self.session.workspace, manifest.data_update)
 
+    def _write_summary(self, *, reused: bool = False) -> dict[str, object]:
+        """Preview snapshot size; a new capture may need two copies, plus other files."""
+        try:
+            size = 0 if reused else (self.session.workspace / "market-data.duckdb").stat().st_size
+        except FileNotFoundError:
+            size = 0
+        return {
+            "database_snapshot_bytes": size,
+            "write_policy": "Preview ceiling: no copy if unchanged, else up to two full databases. "
+            "Identical snapshots are reused. Cost may change; other files add bytes.",
+        }
+
     def plan(self, input_id: str) -> dict[str, object]:
         """Compare exact local sources and reuse or preview an explicit input revision.
 
@@ -227,6 +239,7 @@ class ResearchInputCaptureApplication:
                     "plan_hash": self._of(pending).plan_hash,
                     "resume_task_id": str(pending.task_id),
                     "next_action": "REPAIR_FAILURE_THEN_CONFIRM_RETRY",
+                    "summary": self._write_summary(),
                     "next_requests": {
                         **cast(dict[str, object], read.get("next_requests") or {}),
                         "confirm": {
@@ -254,6 +267,7 @@ class ResearchInputCaptureApplication:
                 "input_id": input_id,
                 "binding_hash": prior,
                 "next_action": "SELECT_INPUT_VERSION",
+                "summary": self._write_summary(reused=True),
             }
         # The answer names this plan, never the owner's last one, which another plan can replace.
         planned = ResearchInputCapturePlan.create(
@@ -271,6 +285,7 @@ class ResearchInputCaptureApplication:
         return {
             "status": "CONFIRMATION_REQUIRED",
             "plan_hash": planned.plan_hash,
+            "summary": self._write_summary(),
             "input_id": input_id,
             "prior_binding_hash": prior,
             "before": old_source.model_dump(mode="json"),

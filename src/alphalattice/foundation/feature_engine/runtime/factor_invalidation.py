@@ -39,6 +39,9 @@ _MEMBERSHIP_PANEL_KINDS = frozenset({"manifest_addition", "manifest_removal"})
 _EVIDENCE_ONLY_KINDS = frozenset(
     {"action_correction", "action_evidence_change", "panel_binding_change"}
 )
+# A new session and an entrant's sessions name their outputs exactly, as a rebase's moved cells,
+# which its early cutoff found past the agreement, are planned: nothing in their windows.
+_EXACT_KINDS = frozenset({"manifest_addition", "normal_new_session"})
 
 
 def compile_listing_plan(
@@ -112,11 +115,7 @@ def compile_listing_plan(
                 targets[factor_id].update(calendar)
             continue
         source_sessions = _source_sessions(item, request=request, calendar=calendar)
-        if item.kind == "manifest_addition":
-            for factor_id in factor_ids:
-                targets[factor_id].update(source_sessions)
-            continue
-        if item.kind == "normal_new_session":
+        if item.kind in _EXACT_KINDS:
             for factor_id in factor_ids:
                 targets[factor_id].update(source_sessions)
             continue

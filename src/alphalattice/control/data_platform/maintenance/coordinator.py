@@ -36,6 +36,7 @@ from alphalattice.control.data_platform.maintenance.contracts import (
     remediation_failure_reason,
 )
 from alphalattice.control.data_platform.maintenance.invalidation import FeatureInvalidationTopology
+from alphalattice.control.data_platform.maintenance.rebase_reach import rebase_reach
 from alphalattice.control.data_platform.preflight import (
     resolve_trading_session_authority,
 )
@@ -524,8 +525,7 @@ class WorkspaceMaintenanceCoordinator:
                 failure_code=readiness.failure_code,
             )
         if readiness.status is WorkspaceReadinessStatus.ONBOARDING_IN_PROGRESS:
-            # First-use onboarding fetches on its own schedule; it runs outside
-            # the hold like every other Provider edge.
+            # First-use onboarding fetches on its own schedule, outside the hold like any fetch.
             hold.release()
             onboarding = self.readiness_gate.resume_onboarding()
             outcome = onboarding.runner.run(
@@ -570,11 +570,9 @@ class WorkspaceMaintenanceCoordinator:
         working = None
         try:
             if request.candidate_data_recheck is not None:
-                # The request carries the recheck for every cycle of the Task.
-                # A recheck that already completed answers from the owner's
-                # memory under this cycle's retained instance; only an
-                # unfinished one reaches the Provider, and nothing is held
-                # across that.
+                # The request carries the recheck for every cycle of the Task. A completed one
+                # answers from the owner's memory; only an unfinished one reaches the Provider,
+                # and nothing is held across that.
                 remembered = self.readiness_gate.candidate_data.completed_if_unchanged(
                     request.candidate_data_recheck, target_session=request.target_market_session
                 )
@@ -776,10 +774,8 @@ class WorkspaceMaintenanceCoordinator:
                 as_of_session=request.target_market_session,
                 observed_at=now,
             )
-            # The runner releases the hold itself right before it reaches
-            # the Provider and takes it again once its last fetch is back, so
-            # this preflight, the runner's own bookkeeping and the cycle's
-            # epilogue share one retained instance around the fetch.
+            # The runner releases the hold around its Provider fetches, so this preflight, its
+            # bookkeeping and the cycle's epilogue share one retained instance around them.
             maintenance_outcome = maintenance.run(
                 observed_at=now,
                 work_budget=maintenance_work_budget,
@@ -803,7 +799,7 @@ class WorkspaceMaintenanceCoordinator:
                     status=MaintenanceStatus.RUNNING,
                     observed_at=now,
                 )
-            maintenance_change_set = self._merge_change_sets(
+            maintenance_change_set = MarketDataChangeSet.merged(
                 maintenance_change_set,
                 self._record_change_set(
                     maintenance_outcome.listing_changes,
@@ -922,11 +918,9 @@ class WorkspaceMaintenanceCoordinator:
                 )
             active_panel = self.panel_state.active_feature_panel(request.market_profile_id)
             # The disclosure is sealed into the Panel at publication, so one published before the
-            # admission reads unqualified: republish from the Feature rows, no rebuild.
-            # Only while the Panel still answers for the current manifest: an
-            # admission that derives a new child revision leaves the Panel stale,
-            # and rebuilding it against that revision belongs to the feature
-            # phase below, which already plans a panel_binding_change.
+            # admission reads unqualified: republish from the Feature rows, no rebuild. Only while
+            # the Panel answers for the current manifest: a new child revision leaves it stale for
+            # the feature phase below, which plans a panel_binding_change.
             if (
                 active_panel is not None
                 and self.snapshot_publisher is not None
@@ -940,7 +934,7 @@ class WorkspaceMaintenanceCoordinator:
 
         if active_panel is not None:
             try:
-                maintenance_change_set = self._merge_change_sets(
+                maintenance_change_set = MarketDataChangeSet.merged(
                     maintenance_change_set,
                     self._unconsumed_feature_source_change_set(
                         active_panel, through=request.target_market_session
@@ -1017,7 +1011,7 @@ class WorkspaceMaintenanceCoordinator:
                 if spy_return_change_sessions:
                     spy_correction_start = min(spy_return_change_sessions)
         change_set = MarketDataChangeSet(
-            listing_changes=maintenance_change_set.listing_changes,
+            listing_changes=rebase_reach(self, cycle, maintenance_change_set, active_panel, now),
             spy_correction_start=spy_correction_start,
             spy_return_change_sessions=spy_return_change_sessions,
             sector_revision_changed=maintenance_change_set.sector_revision_changed,
@@ -1186,12 +1180,12 @@ class WorkspaceMaintenanceCoordinator:
                 effect_receipts=(handed_off,) if handed_off else None,
             )
         if needs_feature_initialization and sector_available:
-            # U0's baseline qualification answers from computed base values.
-            # When an earlier build of this first use (refused at its Panel, or over a membership
-            # governance replaced) materialized every candidate's as-of row, the judgement is made
-            # here, before a Panel is composed for a membership it would leave; an exclusion is
-            # taken from a row only while its materialization still applies to current inputs,
-            # else the build judges, as before. Nothing is published before the judgement.
+            # U0's baseline qualification answers from computed base values. When an earlier build
+            # of this first use (refused at its Panel, or over a membership governance replaced)
+            # materialized every candidate's as-of row, it is judged here, before a Panel is
+            # composed for a membership it would leave; a row excludes only while its
+            # materialization applies to current inputs, else the build judges. Nothing is
+            # published before the judgement.
             qualification = self._qualify_features_for_membership(
                 request=request, observed_at=now, only_when_materialized=True
             )
@@ -2131,14 +2125,14 @@ class WorkspaceMaintenanceCoordinator:
     ) -> CurrentUniverseMaintenance:
         """The maintenance runner for this cycle, kept across its bounded runs.
 
-        A runner holds no per-run state; everything it advances is durable
-        listing state it re-reads on every run. Keeping the instance lets its
-        idempotent admission run once per process instead of once per listing.
-        Any change in what identifies the run -- membership, target session,
-        authorized or required listings, the transport budget -- builds a new
-        runner, exactly as before.
+        A runner holds no per-run state, so keeping it runs its idempotent admission once per
+        process. Any change in what identifies the run (membership, target session, authorized
+        or required listings, transport budget, the data rule's precision and agreement)
+        builds a new runner.
         """
 
+        tolerance = getattr(self.diagnose, "precision", float)()
+        agreement = getattr(self.diagnose, "agreement", lambda: (0.0, 0.0))()
         key: tuple[object, ...] = (
             self.manifest.revision_sha256,
             request.target_market_session,
@@ -2148,6 +2142,8 @@ class WorkspaceMaintenanceCoordinator:
             transport_workers,
             history_start,
             tuple(sorted((retry_grants or {}).items())),
+            tolerance,
+            agreement,
         )
         if self._maintenance_runner is not None and self._maintenance_runner[0] == key:
             return self._maintenance_runner[1]
@@ -2156,9 +2152,7 @@ class WorkspaceMaintenanceCoordinator:
             manifest=self.manifest,
             provider=self.provider,
             as_of_session=request.target_market_session,
-            # Qualification never invents its own calendar: the Host
-            # resolves the axis over the range this workspace actually
-            # holds and injects it.
+            # The Host resolves the calendar over the range this workspace holds and injects it.
             trading_session_authority=self._session_authority(
                 start=history_start,
                 end=request.target_market_session,
@@ -2170,6 +2164,8 @@ class WorkspaceMaintenanceCoordinator:
             authorization_identity_listing_ids=frozenset(requested_full_listing_ids),
             retry_grants=dict(retry_grants or {}),
             max_workers=transport_workers,
+            adjusted_tolerance=tolerance,
+            rebase_agreement=agreement,
             mutation_gate=self.mutation_gate,
             progress_sink=self.feature_foundation.progress_sink,
         )
@@ -2183,6 +2179,8 @@ class WorkspaceMaintenanceCoordinator:
         request: WorkspaceMaintenanceRequest,
         observed_at: datetime,
     ) -> MarketDataChangeSet:
+        if kept := getattr(self.diagnose, "kept", None):
+            kept(documents, self.manifest.listings)
         changes: list[ListingMarketDataChange] = []
         receipts: list[str] = []
         for item in documents:
@@ -2284,85 +2282,6 @@ class WorkspaceMaintenanceCoordinator:
             fallback_listing_ids=tuple(sorted(prior)),
         ).members
         return bool(set_change_explained(changed, through, lambda day: listing_id in held(day)))
-
-    @staticmethod
-    def _merge_change_sets(
-        prior: MarketDataChangeSet,
-        current: MarketDataChangeSet,
-    ) -> MarketDataChangeSet:
-        """Carry a verified market-data prefix across deferred stage resumes."""
-
-        if prior.empty:
-            return current
-        if current.empty or prior.change_set_hash == current.change_set_hash:
-            return prior
-
-        def earliest(left: date | None, right: date | None) -> date | None:
-            values = tuple(value for value in (left, right) if value is not None)
-            return min(values) if values else None
-
-        by_listing: dict[str, ListingMarketDataChange] = {
-            item.listing_id: item for item in prior.listing_changes
-        }
-        for item in current.listing_changes:
-            previous = by_listing.get(item.listing_id)
-            if previous is None:
-                by_listing[item.listing_id] = item
-                continue
-            by_listing[item.listing_id] = ListingMarketDataChange(
-                listing_id=item.listing_id,
-                new_session_start=earliest(previous.new_session_start, item.new_session_start),
-                new_sessions=tuple(sorted(set(previous.new_sessions) | set(item.new_sessions))),
-                raw_correction_start=earliest(
-                    previous.raw_correction_start,
-                    item.raw_correction_start,
-                ),
-                action_correction_start=earliest(
-                    previous.action_correction_start,
-                    item.action_correction_start,
-                ),
-                raw_correction_sessions=tuple(
-                    sorted(
-                        set(previous.raw_correction_sessions) | set(item.raw_correction_sessions)
-                    )
-                ),
-                adjusted_return_change_sessions=tuple(
-                    sorted(
-                        set(previous.adjusted_return_change_sessions)
-                        | set(item.adjusted_return_change_sessions)
-                    )
-                ),
-                source_receipt_hashes=tuple(
-                    sorted(set(previous.source_receipt_hashes) | set(item.source_receipt_hashes))
-                ),
-            )
-
-        additions = set(prior.membership_additions)
-        removals = set(prior.membership_removals)
-        for listing_id in current.membership_additions:
-            removals.discard(listing_id)
-            additions.add(listing_id)
-        for listing_id in current.membership_removals:
-            additions.discard(listing_id)
-            removals.add(listing_id)
-        return MarketDataChangeSet(
-            listing_changes=tuple(by_listing.values()),
-            spy_correction_start=earliest(
-                prior.spy_correction_start,
-                current.spy_correction_start,
-            ),
-            spy_return_change_sessions=tuple(
-                sorted(
-                    set(prior.spy_return_change_sessions) | set(current.spy_return_change_sessions)
-                )
-            ),
-            sector_revision_changed=(
-                prior.sector_revision_changed or current.sector_revision_changed
-            ),
-            membership_additions=tuple(sorted(additions)),
-            membership_removals=tuple(sorted(removals)),
-            receipt_hashes=tuple(sorted(set(prior.receipt_hashes) | set(current.receipt_hashes))),
-        )
 
     def _unconsumed_feature_source_change_set(
         self,
@@ -2677,8 +2596,8 @@ class WorkspaceMaintenanceCoordinator:
         # receipt, ``latest_action_audit_receipts``) and the link sealed for this session in
         # maintenance's scope (a rolling window on an ordinary day, from the change document or
         # the store). The adjusted-close diagnostic is judged over both (the anchor keeps an old
-        # mismatch visible, the link a fresh one), and both governance passes read the same two
-        # receipts, so a listing's evidence identity does not move between them.
+        # mismatch visible, the link a fresh one); both governance passes read the same two
+        # receipts, so its evidence identity does not move between them.
         listing_ids = tuple(listing.listing_id for listing in quality_manifest.listings)
         # One set-scoped read for the whole manifest, then one evaluation per
         # listing over its slice: the same rows, order and evidence identity

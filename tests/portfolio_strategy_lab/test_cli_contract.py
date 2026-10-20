@@ -34,12 +34,14 @@ from alphalattice.interface.local_application.answers import answer_problem
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
+    BOUND_WORKSPACE,
     DECLARATION_OPERATION_EXCEPTIONS,
     MAXIMUM_REQUEST_BODY_BYTES,
     client_refusal,
     command_table,
     entry,
     envelope,
+    host_checked,
     refusal_words,
 )
 from alphalattice.interface.local_application.failure_codes import FAILURE_DETAIL_WITHHELD
@@ -260,6 +262,9 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
         "local_client.usage_invalid",
     )
     assert not body["next_requests"]
+    help_line = shlex.split(body["next_commands"]["help"])
+    with pytest.raises(SystemExit, match=r"^0$"):
+        main(help_line[1:], serve=lambda _: 99)
     code, body, _ = _cli(live.workspace, "task", "list", "--hepl")
     assert (code, body["outcome"]) == (1, "INVALID_INPUT") and not body["next_requests"]
     for value in ("-", "@-"):
@@ -275,6 +280,10 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
     ):
         code, refusal, _ = _cli(live.workspace, *line)
         assert code == 1 and refusal["usage_error"]["repair"]
+        retried, accepted, _ = _cli(
+            live.workspace, *shlex.split(refusal["next_commands"]["correct"])[1:]
+        )
+        assert (retried, accepted["operation"], accepted["outcome"]) == (0, "TASKS", "OK")
         correction = refusal["next_requests"]["correct"]
         assert correction == {"operation": "TASKS"}
         saved.write_text(json.dumps(correction), encoding="utf-8")
@@ -290,32 +299,40 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
 
 
 @pytest.mark.parametrize(
-    "operation",
+    ("operation", "missing"),
     [
-        "DATA_UPDATE_RUN",
-        "RESEARCH_UPDATE_RUN",
-        "COMMITTEE_READ",
-        "TASK_RECOVERY",
-        "RECOVER",
-        "RESEARCH_UPDATE_PLAN",
-    ],
+        (op, missing)
+        for op in (
+            "DATA_UPDATE_RUN",
+            "RESEARCH_UPDATE_RUN",
+            "COMMITTEE_READ",
+            "TASK_RECOVERY",
+            "RECOVER",
+            "RESEARCH_UPDATE_PLAN",
+        )
+        for missing in (False, True)
+    ]
+    + [("COMMITTEE_SUBMIT", False)],
 )
-@pytest.mark.parametrize("missing", [False, True])
 def test_a_missing_or_invalid_selector_offers_an_admitted_discovery_read(
     read_only_live, tmp_path, operation, missing
 ) -> None:
     """A request's field refusal names its rule and offers a read without choosing another plan."""
     saved = tmp_path / "request.json"
     request = {"operation": operation}
-    field = (
-        "strategy_package_id"
-        if operation == "RESEARCH_UPDATE_PLAN"
-        else "task_id"
-        if operation in {"TASK_RECOVERY", "RECOVER"}
-        else "update_task_id"
-        if operation == "COMMITTEE_READ"
-        else "update_plan_hash"
-    )
+    field = {
+        "COMMITTEE_SUBMIT": "committee_role",
+        "RESEARCH_UPDATE_PLAN": "strategy_package_id",
+        "TASK_RECOVERY": "task_id",
+        "RECOVER": "task_id",
+        "COMMITTEE_READ": "update_task_id",
+    }.get(operation, "update_plan_hash")
+    if operation == "COMMITTEE_SUBMIT":
+        request.update(
+            update_task_id=str(uuid4()),
+            committee_role="UNKNOWN",
+            committee_message={"kind": "STANCE", "text": "Support."},
+        )
     if field.endswith("task_id") and not missing:
         request[field] = "?"
     if field == "strategy_package_id" and not missing:
@@ -342,7 +359,9 @@ def test_a_missing_or_invalid_selector_offers_an_admitted_discovery_read(
     assert any("一" <= char <= "鿿" for char in chinese["detail"])
     offer = refusal["next_requests"]["valid_values"]
     assert offer == (
-        {"operation": "WORKSPACE_SHOW"}
+        {"operation": "OPERATION_LIST", "schema_operation": operation}
+        if operation == "COMMITTEE_SUBMIT"
+        else {"operation": "WORKSPACE_SHOW"}
         if field == "strategy_package_id"
         else {"operation": "TASKS"}
         if field.endswith("task_id")
@@ -370,6 +389,17 @@ def test_no_host_is_exit_four_in_its_own_words(
         "NO_HOST",
         "local_client.service_not_running",
     )
+    # It names the workspace it checked and how to serve it; and a Session bound to another
+    # workspace, that one too.
+    assert (
+        str(empty.resolve()) in body["detail"] and "serve --no-browser --detach" in body["detail"]
+    )
+    token = BOUND_WORKSPACE.set(live.workspace.resolve())
+    try:
+        both = host_checked("No Host.", empty)
+    finally:
+        BOUND_WORKSPACE.reset(token)
+    assert str(live.workspace.resolve()) in both and str(empty.resolve()) in both
 
     # A record left behind by a Host that stopped: nothing listens on its port.
     with socket.socket() as probe:

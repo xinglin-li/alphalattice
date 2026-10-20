@@ -228,7 +228,7 @@ def copy_training_observations(
     original = current.load_frozen_observations(observations.observation_hash)
     target._publish("frozen-observation-snapshots", snapshot, "snapshot_hash")
     for category, identity in (
-        ("frozen-observation-arrays", snapshot.array_content_hash),
+        *(("frozen-observation-arrays", block) for block in snapshot.array_files),
         ("lifecycle-arrays", observations.array_file_hash),
     ):
         target.import_packed(source, category=category, content_hash=identity)

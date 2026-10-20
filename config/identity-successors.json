@@ -12755,6 +12755,776 @@
    "successor": "19df5284007339f5a19d91b557387edbc8a72b183b7c8d9325eddbb32a4ad817",
    "change": "the set-based action audit keeps the store's one public audit method",
    "reason": "complete_action_audits is renamed to the store's existing complete_action_audit, which takes one or more observations, so the store's public surface stays as it was; the maintenance runner's progress reads its counts once after a batch and publishes each listing's tick in turn. Only the name and the progress emission change; no value-deciding statement moved. No value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "af05626a6831cf9c0d5e0d0af22f6009967f49c266a3cb5408ca5642f99d10d6",
+   "successor": "d2280284802443d1745e7e5531a5b7b9ef3ba5f206c67708a0eb73b99755c995",
+   "change": "a publication's claim follows its timing: timely research before its entry, post-observed for a replay",
+   "reason": "update_claim selects TIMELY_RESEARCH_NOT_TRADE_ADVICE for positions published before their pending entry's open and keeps POST_OBSERVED_QA_NOT_TIMELY_ADVICE otherwise; a plan's limitation and the update readback follow it. The literal diff changes only the claim's selection; positions and numbers are equal (the test publishes one update before and at its entry open with an identical proposal), and a replay keeps the old value and hash. No position changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "57c20a0e2f6f1020b745cad5e59a67aa264c5ed7c7a692a3b42ab1f4dc82802c",
+   "successor": "3a40c10ee580dcdf6cb63aef876ef6be865a5fbefca28fbde49f4d47ec62d56c",
+   "change": "a publication's claim follows its timing: timely research before its entry, post-observed for a replay",
+   "reason": "update_claim selects TIMELY_RESEARCH_NOT_TRADE_ADVICE for positions published before their pending entry's open and keeps POST_OBSERVED_QA_NOT_TIMELY_ADVICE otherwise; a plan's limitation and the update readback follow it. The literal diff changes only the claim's selection; positions and numbers are equal (the test publishes one update before and at its entry open with an identical proposal), and a replay keeps the old value and hash. No position changes."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "a1ab2c21fc46c4dd0088ff97538dd3ebd204bf1d252279a6831bb2c53545656d",
+   "successor": "d9b08bddcd46831fe1ac7605ac7eaf301f0854f6706851b0df095f182b42e64b",
+   "change": "a publication's claim follows its timing: timely research before its entry, post-observed for a replay",
+   "reason": "update_claim selects TIMELY_RESEARCH_NOT_TRADE_ADVICE for positions published before their pending entry's open and keeps POST_OBSERVED_QA_NOT_TIMELY_ADVICE otherwise; a plan's limitation and the update readback follow it. The literal diff changes only the claim's selection; positions and numbers are equal (the test publishes one update before and at its entry open with an identical proposal), and a replay keeps the old value and hash. No position changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "d2280284802443d1745e7e5531a5b7b9ef3ba5f206c67708a0eb73b99755c995",
+   "successor": "d0464ecb9551d69fd56ee49063207f2c5e31419025391af127d8fb9caf8e8172",
+   "change": "the stored post-observed claim keeps its 0.2.0 words",
+   "reason": "At the Lead's review: POST_OBSERVED_QA_NOT_TIMELY_ADVICE, which every 0.2.0 publication carries, is worded as in 0.2.0 (research positions, not trade advice) instead of replayed; only TIMELY_RESEARCH_NOT_TRADE_ADVICE has new words. Report words only; no claim selection, sealed value or position changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "3a40c10ee580dcdf6cb63aef876ef6be865a5fbefca28fbde49f4d47ec62d56c",
+   "successor": "8d450f9c579a6e251b3af254a9fb3245af2edb778ce10f100683411c5a8e1d8f",
+   "change": "the stored post-observed claim keeps its 0.2.0 words",
+   "reason": "At the Lead's review: POST_OBSERVED_QA_NOT_TIMELY_ADVICE, which every 0.2.0 publication carries, is worded as in 0.2.0 (research positions, not trade advice) instead of replayed; only TIMELY_RESEARCH_NOT_TRADE_ADVICE has new words. Report words only; no claim selection, sealed value or position changes."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "d9b08bddcd46831fe1ac7605ac7eaf301f0854f6706851b0df095f182b42e64b",
+   "successor": "7d6bbd993eb050af41f1043b08ae5a32dc2ef2d064156181c0edbbe7a8698c47",
+   "change": "the stored post-observed claim keeps its 0.2.0 words",
+   "reason": "At the Lead's review: POST_OBSERVED_QA_NOT_TIMELY_ADVICE, which every 0.2.0 publication carries, is worded as in 0.2.0 (research positions, not trade advice) instead of replayed; only TIMELY_RESEARCH_NOT_TRADE_ADVICE has new words. Report words only; no claim selection, sealed value or position changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "8d450f9c579a6e251b3af254a9fb3245af2edb778ce10f100683411c5a8e1d8f",
+   "successor": "26e65ce55a923b308dcc49259f903c80e0967e3b1f924c1c6023cb0d6c8c5a47",
+   "change": "the data rule declares a precision for stored adjusted closes",
+   "reason": "The workspace data rule gains adjusted_precision (relative, default 1e-6, identity-bearing; raw closes stay bit-equal): a provider's re-sent adjusted close for a stored session within it leaves the stored value standing instead of restating the listing's whole history, and each listing kept is recorded on the goal and disclosed with its largest relative difference; past the bound the series restates as before. The adjusted-return comparison moved unchanged into the action audit module. On the plant replay every stored table, the published book and every frozen snapshot are equal before and after. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "f0c3627f745a24d9d890e9b41fac8530712601f44d2e93ea99c60874c4f259c7",
+   "successor": "87d9d0d79fd73b85c29c49ae5bb1c0a8e0e8ae5b11fe33adb3c00ea04d8afbbb",
+   "change": "the data rule declares a precision for stored adjusted closes",
+   "reason": "The workspace data rule gains adjusted_precision (relative, default 1e-6, identity-bearing; raw closes stay bit-equal): a provider's re-sent adjusted close for a stored session within it leaves the stored value standing instead of restating the listing's whole history, and each listing kept is recorded on the goal and disclosed with its largest relative difference; past the bound the series restates as before. The adjusted-return comparison moved unchanged into the action audit module. On the plant replay every stored table, the published book and every frozen snapshot are equal before and after. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "2e0dd1a990c79ad90b1148f25b7caa0b78364777c1460806b8d6cb146dd22b74",
+   "successor": "27da6e182c8f711a8bd127545007d3058e29e3cdb0e086c3378d17f1010079a8",
+   "change": "the data rule declares a precision for stored adjusted closes",
+   "reason": "The workspace data rule gains adjusted_precision (relative, default 1e-6, identity-bearing; raw closes stay bit-equal): a provider's re-sent adjusted close for a stored session within it leaves the stored value standing instead of restating the listing's whole history, and each listing kept is recorded on the goal and disclosed with its largest relative difference; past the bound the series restates as before. The adjusted-return comparison moved unchanged into the action audit module. On the plant replay every stored table, the published book and every frozen snapshot are equal before and after. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "a7e231879770d0a90232d22b72679a3815d1fbf8cd6182f57915292a125f0173",
+   "successor": "bd4fea984c1645e5db7bd447d5d326ff2e7e17ece26d3c5bc09add72ee68a3af",
+   "change": "the data rule declares a precision for stored adjusted closes",
+   "reason": "The workspace data rule gains adjusted_precision (relative, default 1e-6, identity-bearing; raw closes stay bit-equal): a provider's re-sent adjusted close for a stored session within it leaves the stored value standing instead of restating the listing's whole history, and each listing kept is recorded on the goal and disclosed with its largest relative difference; past the bound the series restates as before. The adjusted-return comparison moved unchanged into the action audit module. On the plant replay every stored table, the published book and every frozen snapshot are equal before and after. No value changes."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "19df5284007339f5a19d91b557387edbc8a72b183b7c8d9325eddbb32a4ad817",
+   "successor": "f3c7afba1e0803226c9d2d9f0c579253f0f80a4bc4e90d17113a783a2bd997fa",
+   "change": "the data rule declares a precision for stored adjusted closes",
+   "reason": "The workspace data rule gains adjusted_precision (relative, default 1e-6, identity-bearing; raw closes stay bit-equal): a provider's re-sent adjusted close for a stored session within it leaves the stored value standing instead of restating the listing's whole history, and each listing kept is recorded on the goal and disclosed with its largest relative difference; past the bound the series restates as before. The adjusted-return comparison moved unchanged into the action audit module. On the plant replay every stored table, the published book and every frozen snapshot are equal before and after. No value changes."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "a17144fe83a530f0f18fed58424104f6a590a785fd7f6fb881c8e7380f729b62",
+   "successor": "761a451cbe8d73eeff9f8dd0289b2f1bb4b8fd90917fda258a6d2e9154569d0a",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "d0464ecb9551d69fd56ee49063207f2c5e31419025391af127d8fb9caf8e8172",
+   "successor": "fc8c4325c7752680512789ab186d1f366470a197afde25d02dbde0468d7604a1",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "26e65ce55a923b308dcc49259f903c80e0967e3b1f924c1c6023cb0d6c8c5a47",
+   "successor": "a871c16fda42cbb7ed7471bf05a6172be87be1e7d6f83c67f0071f80239b03d1",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "7d6bbd993eb050af41f1043b08ae5a32dc2ef2d064156181c0edbbe7a8698c47",
+   "successor": "d14629e703f437b2ebf32f8d1d4f34e99dd7383cdfca72a2e99761c6317f2790",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "127aa8765d84f78878cdec76afa304063793ad778ab7f0584270abf42406d79e",
+   "successor": "fe86c8c4f12afb802d9e29e0680bb3581fc55ec6272c3f31a9ac7fea512e3b04",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "1dbdc845b8c2337185c863f61720b315bd8ca590f4b2e178e01b562cfaafb0ef",
+   "successor": "8e23d01456a4e2bc7f8b674053ea0fa9cebc44549a8c81f1c9b815a9609d3f9b",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "8f8cb068d73896253b868fe63a6ed79a7147a5f30575dddba504ddcbb059642e",
+   "successor": "c8fac2556f451f7adae4cc028e7ca16d7e9dc49d6f729dea68afeaa510a06454",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "27da6e182c8f711a8bd127545007d3058e29e3cdb0e086c3378d17f1010079a8",
+   "successor": "d68a2b58df58cc4901307efa789d9801166e6a80a204a7b8ab3e61a73beb6168",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "bd4fea984c1645e5db7bd447d5d326ff2e7e17ece26d3c5bc09add72ee68a3af",
+   "successor": "2e41d4968c085e50e2bea88412b9c027b4af7a3031ff5cf1555f41e317a9fec6",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "a966cbfa67ee32b04389bf3e2002dbfe4052518d6698aa455f80a5b173fefcba",
+   "successor": "f691dba7c867cac895c6c85afa12ed1df49308ed647996a77e0cabc9f9111a8c",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "a966cbfa67ee32b04389bf3e2002dbfe4052518d6698aa455f80a5b173fefcba",
+   "successor": "f691dba7c867cac895c6c85afa12ed1df49308ed647996a77e0cabc9f9111a8c",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "255312306f48d8d294c11cf2dc741a6fe18127d1274fc83d6220c97cea313c96",
+   "successor": "52bbd45bb6f8fbc5ed991b45ac8dee897a477ac68e357be5fa098986ea0dedc3",
+   "change": "frozen observation arrays are kept in shared 21-session blocks",
+   "reason": "A frozen observation snapshot's arrays are written as content-addressed blocks of 21 sessions, so a day writes only its last block and shares the rest; the snapshot names its block list and its array hash is the hash of that list. A stored single-file snapshot keeps its hash and reads as before, and model renewal copies each block. Loaded arrays are bit-equal to the whole-file ones on the plant replay, and every stored table and the published book are equal. No value changes."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "6c3e6dad9c4d28dd0a833408284e61c524b1063b3a6ea95f2d62205d75088a6f",
+   "successor": "fbcad03bd0868febf32f5ab6123e404efe7dbc79ba328da3681f6fb6716e5332",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "47001509fee0cc17228631f0ac8f6efd35a5c73db0b6b95cd6bf52783caecc58",
+   "successor": "e91170ef514a4930489329a2a70c94f3a863254568e0fb70876db79a2c890ab1",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "427b2a9463138f90b032e3d39b703cd90a6945a9c26d9fe289cbc55100eb323e",
+   "successor": "a6dfc2bd31d17f9d2f07d676d87c4466785077e72c0f5ad27d122a97efdab77e",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "dcbb1089d5450d1694acd6c54e8cb9aa08a340a195c8bf268830f9a5219d1fa4",
+   "successor": "a21a07b7f795086d017c369d635e47f486a1a2c3f619582ca9111812f859d1b4",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "0874d563584bc5ae12e2f57727a0b5dcc4e7a2153de396c8990b2bd7f9f4ec4c",
+   "successor": "ad609fd531bcada6c9f95a545804a76b9c2c98f572a46ba874670f6805a2bb4f",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "666307b4bce82a7ef41dc3cc073fb312bc839ae395fd0a03903238f23011bd0d",
+   "successor": "94650417f3b7a8973756e7453d746ac78d6fb18d461565ec4e14cff38f525485",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "ecaf9db7f938387beebf7f81af47e15025303e7ac544dc17bb82119c90f37ca0",
+   "successor": "b24957996fd8ad4a42a514800bf16fe283490b1fae316916360d872b311c51fc",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "012a80ec4b4b2c4f2b73ab4d009686df75eac07765de46ad350b8493f02929cb",
+   "successor": "237dbdb8d6e33b5c9e657cca533821c908ac73721748405962b22736bd7f6bb3",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "36b8762de84c50dfe75d003e883a6dab9945681671a7f484670be872ee9d2bfa",
+   "successor": "497e7a0befe72827d39de166b174bf469e55d2984294d9ce0fc513501e7af860",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "e017b3ecc5e4f62a7f315d3877ce683f5bbee1d19d67c8d802d0f2b620da1808",
+   "successor": "55f105a286ae20e359ea1c080782aafbc03918d6e71c75b96cc9dcb0b9a83f52",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "e017b3ecc5e4f62a7f315d3877ce683f5bbee1d19d67c8d802d0f2b620da1808",
+   "successor": "55f105a286ae20e359ea1c080782aafbc03918d6e71c75b96cc9dcb0b9a83f52",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "c1d27f51a138f4c1b2a908260f7be5802421a1c22a1fbb076852be02922cd6a3",
+   "successor": "5d9e33e4206487f82d36771aadc4e7192baae701415fbbbb03b29b186b7622c2",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "90669a49c11d80502897d4ec85e4d2ee5b1154c917c11c521bc55892b2f82a37",
+   "successor": "f302c7410985087c7b518a616de6b3da8a685ef0d29359f44062e02dd8c97f0e",
+   "change": "a rule declared before the precision keeps its hash, and frozen blocks load once into one array",
+   "reason": "The data rule's hash leaves out the shipped adjusted precision, so the default rule and any rule declared before the precision keep their recorded hash, held decisions and escalated stops; the precision applies only under the rule's live authority and never to a listing whose bar or action moved. An existing packed object is checked by size, as it is named by its bytes' hash and every read re-hashes it, and a snapshot's blocks are copied in turn into one array per column instead of a joined copy. Loaded arrays are bit-equal and no result value changes."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "8edd3a678857947ec1510d8b70affa3a72646270be9e3b266b4bd679b4e120f3",
+   "successor": "ba8ba4f6da60cadc30ca3d4d02efc0c496c6dec1ef5b6d4fad91787e64681d5b",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "3048a0bb7da5cfc62134f38af3cb779d06bef0fdd2346545fd682a3f051126c8",
+   "successor": "2dc4b3cdc7723e915ff8c32a01e9811b6c6f035bb79625057cbd0116f78e68ae",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "fc8c4325c7752680512789ab186d1f366470a197afde25d02dbde0468d7604a1",
+   "successor": "83ac66aa0217263642ed78513bc345463df847ff962187653272b1a9d35f936c",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "d14629e703f437b2ebf32f8d1d4f34e99dd7383cdfca72a2e99761c6317f2790",
+   "successor": "88d5428bf4105761ae68fe4eb3b12826341929706cbeddceff55ad00cc4b2230",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "a3856e63cfeb42faeb8a6a912c52557fb85e6b775c28e9be48f00ce333423827",
+   "successor": "57cfdf4b80e749e27df0096c8e9b58c9633a37dae3b98c4028949d35c6f43170",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "ef67839edb0c8df3377fa9cfdbd94be10140ff0c242482a6ef5e9d19f11f6abb",
+   "successor": "1f6f35fbbc6709cba41e32c2953cb5c3470bec855b7e04f45b38570a9afbb7ca",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "0c0dce72abc68a75f2fc84db57aa2bca432b83808bed52f73f512e1e39cd8490",
+   "successor": "d2c9d02271a8ec55de588f7fd9eca85b6338b9af62e6218018d0457dc4539f2e",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "7d444d7ac28a460eb1ca14a56ca1f59594d55c0a36143f0c18eddd634733976f",
+   "successor": "87ba7781afde777456d4f9d4eb66fb280d90d3e2538946df6feeac42f575c664",
+   "change": "the 0.2.1 merge of quarter Panel parts with the daily-writes change",
+   "reason": "The merged 0.2.1 tree joins FLOW's quarter-part Panel (the reader, closure contracts and rematerialization in these roles' closures) with PERF's precision rule and 21-session frozen blocks, so each role's code closure moved by the merge itself. PERF's plant on the merged candidate ae0d9ab84 against 546c772f7 is ALL EQUAL: store tables, the published book and all 12 frozen snapshots equal; only the Panel manifest's chunk_count differs (11 against 13), from the quarter layout. logical_panel_hash and panel_content_hash are unchanged. No result value changes."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "fbcad03bd0868febf32f5ab6123e404efe7dbc79ba328da3681f6fb6716e5332",
+   "successor": "e6a1c7824b51eecac6f5868ca968af111a5e3641d86f7f7d9751cb7bb437b86d",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "e91170ef514a4930489329a2a70c94f3a863254568e0fb70876db79a2c890ab1",
+   "successor": "035235ca7ee8f765ac433876d9ef78c55573d5064fde243df2b3ef5ee458fae3",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "88d5428bf4105761ae68fe4eb3b12826341929706cbeddceff55ad00cc4b2230",
+   "successor": "e55241c59b27a2bf81e870df575c400cd212fae8350b97d1237ba0993096c13d",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "a6dfc2bd31d17f9d2f07d676d87c4466785077e72c0f5ad27d122a97efdab77e",
+   "successor": "8a79aa82a5f5c98170e8d7709bedc02ce2b23acce89b3ff1502deeefaa1286e0",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "a21a07b7f795086d017c369d635e47f486a1a2c3f619582ca9111812f859d1b4",
+   "successor": "ac953e51b2965025cb8cb67a1499181cbba1ea1ceabc33fc5008e8ee757c9487",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "94650417f3b7a8973756e7453d746ac78d6fb18d461565ec4e14cff38f525485",
+   "successor": "a41dda05495988b82937326bbf0c9e10557cc5adba062e3a9483e74603705c17",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "b24957996fd8ad4a42a514800bf16fe283490b1fae316916360d872b311c51fc",
+   "successor": "de6f56e7a85b5eeaa6e329a30f6675379bba3e090fc24efcac918924b341a492",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "237dbdb8d6e33b5c9e657cca533821c908ac73721748405962b22736bd7f6bb3",
+   "successor": "8c6e1a321c8f384a9c86a5ee6e79c1bdb1125b2cf34facaf8a4a0c7da73a1a71",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "55f105a286ae20e359ea1c080782aafbc03918d6e71c75b96cc9dcb0b9a83f52",
+   "successor": "c239bbb226883fbc90c924a8b7694467891e8841e612f5bafe9044e98d814f88",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "55f105a286ae20e359ea1c080782aafbc03918d6e71c75b96cc9dcb0b9a83f52",
+   "successor": "c239bbb226883fbc90c924a8b7694467891e8841e612f5bafe9044e98d814f88",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "5d9e33e4206487f82d36771aadc4e7192baae701415fbbbb03b29b186b7622c2",
+   "successor": "1fa621396ab49f361a71c4e515491b0d6735495000cf6def86c97066b3d5d765",
+   "change": "a kept history is held once and a cold seal reads Feature rows as one frame",
+   "reason": "A kept observation history loads part by part into whole columns, each part let go once copied, and the previous head's check reads only the parts the current head does not share; its publication keeps a column as given when immutable bytes back it. A cold seal reads stored Feature rows without lineage as one Arrow-backed frame and writes them into the arrays at once instead of as dictionaries. Only memory and the order values are written in change; on the plant every stored table, the published book and all frozen snapshots are equal. No value changes."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "e6a1c7824b51eecac6f5868ca968af111a5e3641d86f7f7d9751cb7bb437b86d",
+   "successor": "1b1439ad950b9fd93c03cceb508261c854cc4a1c6e14e77ffe363ef4d8d23f45",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "035235ca7ee8f765ac433876d9ef78c55573d5064fde243df2b3ef5ee458fae3",
+   "successor": "6dbbf558fda8f08a762888c7f1b98c4987608a77fcc3629a05ce3bc227ad598a",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "8a79aa82a5f5c98170e8d7709bedc02ce2b23acce89b3ff1502deeefaa1286e0",
+   "successor": "32d6ee277ce07073a690e0e42f06ace2458f130b2a885f89f8629f89a251340a",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "ac953e51b2965025cb8cb67a1499181cbba1ea1ceabc33fc5008e8ee757c9487",
+   "successor": "125a916a817715dec2f8b5a52ed1cfb402b7d25bd6b393152f0a9c3bd52caab2",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "a41dda05495988b82937326bbf0c9e10557cc5adba062e3a9483e74603705c17",
+   "successor": "eeafe000460ef0c07c8210b5e1383044be90a8f0662af5e12a9c7036dc8d8f79",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "de6f56e7a85b5eeaa6e329a30f6675379bba3e090fc24efcac918924b341a492",
+   "successor": "d5dea5b744e1341f0523b5b9ce00bcd6fd35f931fe31b46e3c4a63aef2cbd5a8",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "8c6e1a321c8f384a9c86a5ee6e79c1bdb1125b2cf34facaf8a4a0c7da73a1a71",
+   "successor": "f92c669fcf2b72f9e4d2c3dc8237f6b1214e827519f5f447db3a0ad7a3213796",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "c239bbb226883fbc90c924a8b7694467891e8841e612f5bafe9044e98d814f88",
+   "successor": "3c29366693ae721b68765fd27c6666a95f82595c9e28c1379ee8abd032768d78",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "c239bbb226883fbc90c924a8b7694467891e8841e612f5bafe9044e98d814f88",
+   "successor": "3c29366693ae721b68765fd27c6666a95f82595c9e28c1379ee8abd032768d78",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "1fa621396ab49f361a71c4e515491b0d6735495000cf6def86c97066b3d5d765",
+   "successor": "4038f7e723df3f293ec00000017deafde194332789455836249fcbecf03dacb7",
+   "change": "a loaded kept history's columns are backed by immutable bytes again",
+   "reason": "Each loaded column of a kept observation history is copied in turn into immutable bytes after the parts are written into it, so a reader cannot make a shared history writable; the peak stays the history plus one column. The column values are the same float64 bytes. No value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "83ac66aa0217263642ed78513bc345463df847ff962187653272b1a9d35f936c",
+   "successor": "2638eaa5a9c7aef67526c8bc3ecdc1041cbb2e12772787f87a72f8fcc965d0eb",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "6dbbf558fda8f08a762888c7f1b98c4987608a77fcc3629a05ce3bc227ad598a",
+   "successor": "19c6cb0036342174040a041cad314a8036e2d6fa3124003c2936e108bdcc7bba",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "e55241c59b27a2bf81e870df575c400cd212fae8350b97d1237ba0993096c13d",
+   "successor": "d420c007cc97563e847f9f5c87bff8819b7e8555a71e0d8c39e8723ff98d143c",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "eeafe000460ef0c07c8210b5e1383044be90a8f0662af5e12a9c7036dc8d8f79",
+   "successor": "5e0a78ed4ab04fba103538e0538e06d8ab16e488a9bec1508c6505c1bf4f78c4",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "d5dea5b744e1341f0523b5b9ce00bcd6fd35f931fe31b46e3c4a63aef2cbd5a8",
+   "successor": "55f57ea312cad6c4f2981031f60c559e42d62885ebf5185bc565c4c722cd7a78",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "f302c7410985087c7b518a616de6b3da8a685ef0d29359f44062e02dd8c97f0e",
+   "successor": "daa0c1698b48a3f54a949eedfb64b65274adf5c2c41a5370aa32cb97a3e3c61c",
+   "change": "NN01-NN02: Portfolio's uncalled writers removed (0.2.1)",
+   "reason": "Seven uncalled PortfolioResearchArtifactStore methods (publish_attribution_current, publish_recovery_current, publish_regularization_current, publish_risk_calibration_current, publish_baseline_slate, write_ledger_checkpoint, write_review_checkpoint) were removed from portfolio_strategy_lab/publication/artifacts.py; git grep finds no reference to any of them in src, scripts, tests or config. Every surviving method is byte-identical and the module's filtered AST, literals and import initialization are equivalent (INV's proof, run-artifacts inv-nn01-nn02). The roles' code closures moved only by the deletion; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "1b1439ad950b9fd93c03cceb508261c854cc4a1c6e14e77ffe363ef4d8d23f45",
+   "successor": "30457cc904584f3ba69fb60f0f74fca60ae0a16519b7b3ef0488701cae27d204",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "2638eaa5a9c7aef67526c8bc3ecdc1041cbb2e12772787f87a72f8fcc965d0eb",
+   "successor": "c881276277250096b785cffca1e349c9aee69cfd4f251196bcac1555c7d590d1",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "19c6cb0036342174040a041cad314a8036e2d6fa3124003c2936e108bdcc7bba",
+   "successor": "637f91bb9539839dbca559c78515f34de2f46e597d4297ff933491bcb8634a58",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "d420c007cc97563e847f9f5c87bff8819b7e8555a71e0d8c39e8723ff98d143c",
+   "successor": "b109d409cba69415ba1546219af7fe2e9d8d7085101cc3558ef8b3692d31fdfb",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "32d6ee277ce07073a690e0e42f06ace2458f130b2a885f89f8629f89a251340a",
+   "successor": "067e7ebd345852799346c4cb685ab2cd89663d613efbb1887287b745018710c3",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "125a916a817715dec2f8b5a52ed1cfb402b7d25bd6b393152f0a9c3bd52caab2",
+   "successor": "7640282a8d80e95c0f0752802c36c59f427a3ac15d3282e8b1523ea50e084348",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "5e0a78ed4ab04fba103538e0538e06d8ab16e488a9bec1508c6505c1bf4f78c4",
+   "successor": "1f3a18d626dc02e046c5cdfcbabbb70ffd2c35cd3a2ebe0c2b8852abaa18aa3b",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "55f57ea312cad6c4f2981031f60c559e42d62885ebf5185bc565c4c722cd7a78",
+   "successor": "e13f1f2155f8bf15e39d8dcc16644e8725099668ac80916209804b38bbc32c95",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "f92c669fcf2b72f9e4d2c3dc8237f6b1214e827519f5f447db3a0ad7a3213796",
+   "successor": "422d90db8e7911e5aa76cbbeb648c566db26755410705f2e0551fc5d2b2a843a",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "497e7a0befe72827d39de166b174bf469e55d2984294d9ce0fc513501e7af860",
+   "successor": "5333c0a2002f8709b0dc8aab6871937f6dbf3ba1580b7f910d10d23b789d11c8",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "3c29366693ae721b68765fd27c6666a95f82595c9e28c1379ee8abd032768d78",
+   "successor": "a672ddb1e0b79e53749f67b9a416ffb3e692f0f1792c930466f5ab454762036d",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "3c29366693ae721b68765fd27c6666a95f82595c9e28c1379ee8abd032768d78",
+   "successor": "a672ddb1e0b79e53749f67b9a416ffb3e692f0f1792c930466f5ab454762036d",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "4038f7e723df3f293ec00000017deafde194332789455836249fcbecf03dacb7",
+   "successor": "e58218a13b4d9ba5361eb29f34ac740973c1b8f40760b7d393a14b49dbd30b29",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "daa0c1698b48a3f54a949eedfb64b65274adf5c2c41a5370aa32cb97a3e3c61c",
+   "successor": "97c73857b58546d49ca2257956bcfd056aa2001b98b0133f3d8220aa3657e614",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "87ba7781afde777456d4f9d4eb66fb280d90d3e2538946df6feeac42f575c664",
+   "successor": "0876f9769f4e929448bd4cd0745fb055f265f0a83caa3ff86a7c090271f49d4d",
+   "change": "NN04, NN05 and NN11: uncalled Alpha, Factor and Risk writers removed (0.2.1)",
+   "reason": "NN04 removed the uncalled Alpha total-return target writer adapters (publish_total_return_target_binding, _evidence, _surface), NN05 the uncalled Factor correctness-pipeline writer (publish_pipeline_contract), NN11 the uncalled Risk historical checkpoint writer (publish_build_checkpoint); git grep finds no reference to any of them in src, scripts, tests or config, and each retained module's AST equals its base minus only these deletions (the deletion proof in implemented-plans 2026-10-18 nn-small.md). The roles' code closures moved only by the deletions; no result value changes. Merged into 0.2.1 so these moves ride with 0.2.1's own moves of the same roles. NN13-NN14 moved no role."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "5333c0a2002f8709b0dc8aab6871937f6dbf3ba1580b7f910d10d23b789d11c8",
+   "successor": "3bece6af7c2c24693a70a9280e44d7fadeb8aacd0f8084327555f77bbd9a1482",
+   "change": "NN07: the uncalled WorkspaceRuntime adoption factory removed (0.2.1)",
+   "reason": "NN07 removed WorkspaceRuntime.from_operations, the terminal-migration adoption factory, with its unread import alias; git grep finds no caller, import, path, string or registry reader of it in src, scripts, tests, config or the Workbench JS, and the change is deletion only (88 lines, nothing added). The role's code closure moved only by this deletion; no value it computes changes. Merged into 0.2.1 because 0.2.1 already moves this role."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "c881276277250096b785cffca1e349c9aee69cfd4f251196bcac1555c7d590d1",
+   "successor": "2ddc1e80578d2c04fcbfa2e4e004d1e9ce883b30c933dd123279db749e837874",
+   "change": "LATE-SPLIT-WORDS: a late split's stop has words and its way on (0.2.1)",
+   "reason": "LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (an independent review and a re-review, both closed), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "637f91bb9539839dbca559c78515f34de2f46e597d4297ff933491bcb8634a58",
+   "successor": "6a62f85bedf058828155609f0ce46e95e44a9808e6eefefc11f523535e2a6fdc",
+   "change": "LATE-SPLIT-WORDS: a late split's stop has words and its way on (0.2.1)",
+   "reason": "LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (an independent review and a re-review, both closed), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "b109d409cba69415ba1546219af7fe2e9d8d7085101cc3558ef8b3692d31fdfb",
+   "successor": "a6b2173e1fe6a24349d66c2fada73795d29e7f766f9c09cce8ec54007ca6cf90",
+   "change": "LATE-SPLIT-WORDS: a late split's stop has words and its way on (0.2.1)",
+   "reason": "LATE-SPLIT-WORDS (merged 7fe3a718a) changes only a stop's refusal subject, words and offers: the split-basis refusal now names its bounded listing and date, and offers strategy-book controls and the person's newer-book activation in place of a replan. The success paths of conditional decision advancement, Portfolio updates and the public path are AST-identical (an independent review and a re-review, both closed), and their focused controls stay green, so every value these roles compute is unchanged. All three roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "30457cc904584f3ba69fb60f0f74fca60ae0a16519b7b3ef0488701cae27d204",
+   "successor": "e7b65cf232196b8ab3d0f8970f21c55b06939ec5ad763f32bc1c5ae995f985fb",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "2ddc1e80578d2c04fcbfa2e4e004d1e9ce883b30c933dd123279db749e837874",
+   "successor": "0c36f17b5084d70e45190bd59b966ddc7e60bb0b3920f1ef4e3333d7f2f39fa1",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "6a62f85bedf058828155609f0ce46e95e44a9808e6eefefc11f523535e2a6fdc",
+   "successor": "d1cadf362db6de0a01a2b8d85a8408f9dceb79ebc3052216ce1b9983826128b7",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "a6b2173e1fe6a24349d66c2fada73795d29e7f766f9c09cce8ec54007ca6cf90",
+   "successor": "f1894f9820db74f59f44afd34eae070c1a156c86685f95457937ecef481a2c3a",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "067e7ebd345852799346c4cb685ab2cd89663d613efbb1887287b745018710c3",
+   "successor": "a9c18ab7b82657ce28ad74bf3e184404e9955eca75c1649d59e1fdf006d2fa2a",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "7640282a8d80e95c0f0752802c36c59f427a3ac15d3282e8b1523ea50e084348",
+   "successor": "dbce8d57d12fe9cb7e7bd705cfb370edfb834f48ecfe9ae2aa263ee2e63060f9",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "ad609fd531bcada6c9f95a545804a76b9c2c98f572a46ba874670f6805a2bb4f",
+   "successor": "5b245de3c04626aa4ea3e4aad7c27ad0f6de7c2bbbc2b3e07db364720ffc412e",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "1f3a18d626dc02e046c5cdfcbabbb70ffd2c35cd3a2ebe0c2b8852abaa18aa3b",
+   "successor": "24722970230b65b6521566e1d5ed997b01c9b2ccb9bbb9fd62e1441153302dc8",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "e13f1f2155f8bf15e39d8dcc16644e8725099668ac80916209804b38bbc32c95",
+   "successor": "f10b34ca3cfc6da504a13c668c7da0f5a9c284ae0b213d1bc4514f0468e37dad",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "422d90db8e7911e5aa76cbbeb648c566db26755410705f2e0551fc5d2b2a843a",
+   "successor": "c0a14cd20ac9ef117157128e420588999f3377ea53174e7e67f38f6283134947",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "3bece6af7c2c24693a70a9280e44d7fadeb8aacd0f8084327555f77bbd9a1482",
+   "successor": "0e26ba39d0be664ef9ea5c0a3e601d0a454c45e5d6e2a09e2a4540c9b0f40dac",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "a672ddb1e0b79e53749f67b9a416ffb3e692f0f1792c930466f5ab454762036d",
+   "successor": "507a6ecb2e825cb636fddc8df439105a3183eb903fafdc2fa6fdf92251a455d1",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "a672ddb1e0b79e53749f67b9a416ffb3e692f0f1792c930466f5ab454762036d",
+   "successor": "507a6ecb2e825cb636fddc8df439105a3183eb903fafdc2fa6fdf92251a455d1",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "e58218a13b4d9ba5361eb29f34ac740973c1b8f40760b7d393a14b49dbd30b29",
+   "successor": "3e655d913f23ba831ca1b4a90c6e9d13e676c10f8ad6dea9a224084e3a8c1551",
+   "change": "SPLIT-REBASE: dividend factor form, split rebases, option S and cross-cycle carry (0.2.1)",
+   "reason": "The dividend factor form and SPLIT-REBASE (claude/dividend-factor to 358a5d4c4) and option S with cross-cycle carry (7509278ee), merged as e154c9cea. They change how stored bars, kept history, frozen arrays and the Panel are written and read, not the values a research computation yields. On the native upgrade gate from the released 0.2.0 wheel (AX, 8.3M records), every stored record seal-verifies, the first upgraded book is ALL EQUAL to the old tree's, its rerun is REUSED_EXACT, and the second daily equals the old tree's own. On the split plant gates, books are ALL EQUAL, kept Features are within the rule's declared 1e-6 agreement of a cold rebuild, and S makes the rewritten Panel spans equal to cold (max 1.78e-13; outside them a measured 8.25e-8, disclosed). Reviewed independently in several rounds, each finding closed. All 14 roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "0c36f17b5084d70e45190bd59b966ddc7e60bb0b3920f1ef4e3333d7f2f39fa1",
+   "successor": "50d890f818abb00668bda2851f9e3d86c2c66ee03feda1735ab23a656f2d26a0",
+   "change": "PROVIDER-CACHE-FIX: fresh provider history per acquisition (0.2.1)",
+   "reason": "PROVIDER-CACHE-FIX (82b0fa37f, merged as 72ea692da) changes only how the yfinance historical acquisition reaches HTTP: a per-acquisition facade over the native GET replaces the library's process-wide LRU, coalescing only within one acquisition. Requests, price policy, bounds and sealed artifacts are unchanged. A normal daily makes the same number of calls, and a cold acquisition returns the same bytes as before (the uncached controls stay green). Only a catch-up that previously read a stale cached chunk now reads the provider's current history, which is the corrected behaviour. Reviewed independently (PASS), with the test tightenings in 82b0fa37f. All four roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "d1cadf362db6de0a01a2b8d85a8408f9dceb79ebc3052216ce1b9983826128b7",
+   "successor": "cfd02e14238e7a2b037b19cb3a63f26c3354f16fd8431dcfbd7aa729773c5e0c",
+   "change": "PROVIDER-CACHE-FIX: fresh provider history per acquisition (0.2.1)",
+   "reason": "PROVIDER-CACHE-FIX (82b0fa37f, merged as 72ea692da) changes only how the yfinance historical acquisition reaches HTTP: a per-acquisition facade over the native GET replaces the library's process-wide LRU, coalescing only within one acquisition. Requests, price policy, bounds and sealed artifacts are unchanged. A normal daily makes the same number of calls, and a cold acquisition returns the same bytes as before (the uncached controls stay green). Only a catch-up that previously read a stale cached chunk now reads the provider's current history, which is the corrected behaviour. Reviewed independently (PASS), with the test tightenings in 82b0fa37f. All four roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "c0a14cd20ac9ef117157128e420588999f3377ea53174e7e67f38f6283134947",
+   "successor": "5b181b1deab407a9c7223a910a02a0438c1cde5aaf1b862eef6a0421767db15c",
+   "change": "PROVIDER-CACHE-FIX: fresh provider history per acquisition (0.2.1)",
+   "reason": "PROVIDER-CACHE-FIX (82b0fa37f, merged as 72ea692da) changes only how the yfinance historical acquisition reaches HTTP: a per-acquisition facade over the native GET replaces the library's process-wide LRU, coalescing only within one acquisition. Requests, price policy, bounds and sealed artifacts are unchanged. A normal daily makes the same number of calls, and a cold acquisition returns the same bytes as before (the uncached controls stay green). Only a catch-up that previously read a stale cached chunk now reads the provider's current history, which is the corrected behaviour. Reviewed independently (PASS), with the test tightenings in 82b0fa37f. All four roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "0e26ba39d0be664ef9ea5c0a3e601d0a454c45e5d6e2a09e2a4540c9b0f40dac",
+   "successor": "441aa820217d7ffbc19c66ac0713d794ae294a905bd67c73e7d0e8aac298d070",
+   "change": "PROVIDER-CACHE-FIX: fresh provider history per acquisition (0.2.1)",
+   "reason": "PROVIDER-CACHE-FIX (82b0fa37f, merged as 72ea692da) changes only how the yfinance historical acquisition reaches HTTP: a per-acquisition facade over the native GET replaces the library's process-wide LRU, coalescing only within one acquisition. Requests, price policy, bounds and sealed artifacts are unchanged. A normal daily makes the same number of calls, and a cold acquisition returns the same bytes as before (the uncached controls stay green). Only a catch-up that previously read a stale cached chunk now reads the provider's current history, which is the corrected behaviour. Reviewed independently (PASS), with the test tightenings in 82b0fa37f. All four roles are ones 0.2.1 already moves."
+  },
+  {
+   "role": "product_host.research_input_capture",
+   "predecessor": "d7dee472e2a34ed6e2154d9b5d475a1efeb14b5096f7be6834a642b98647f1b3",
+   "successor": "1255522fad5c8d0de17a129defec8f094ab57d192f9f0a5855889ab58503f94f",
+   "change": "887a0584a9c5937e71d1c72149ffb2fdf40b8a3a",
+   "reason": "The input capture module is hashed whole; it gained a byte ceiling stated before the confirm and a refusal when nothing changed. Sealing, copying and verification are unchanged, proven by an equal syntax tree for those functions and by the recovery and readback tests."
+  },
+  {
+   "role": "product_host.research_input_capture",
+   "predecessor": "1255522fad5c8d0de17a129defec8f094ab57d192f9f0a5855889ab58503f94f",
+   "successor": "5a5d1bf029fb5b5c7c30500e7a50d8ad6c1fb073f28273da3b63f1868be09f8c",
+   "change": "15c2c239c17b688dd491fe69c95f86be7318ce0c",
+   "reason": "The input capture's byte ceiling counts a missing live database as zero instead of failing. Sealing, copying, admission and verification are unchanged."
   }
  ]
 }

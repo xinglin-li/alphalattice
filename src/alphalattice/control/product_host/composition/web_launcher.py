@@ -33,6 +33,7 @@ import tempfile
 import threading
 import time
 import webbrowser
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -231,7 +232,7 @@ def _detach(arguments: argparse.Namespace) -> int:
                 arguments, launch.replace(HANDED_KEY, f"key={key}"), host, held, log_path
             )
         if host.poll() is not None:
-            return _exited(host, text, log_path)
+            return _exited(arguments.workspace, host, text, log_path)
         time.sleep(0.2)
     return _refusal(
         "local_web.detached_host_not_ready",
@@ -249,7 +250,11 @@ def _served(
     held: bool,
     log_path: Path,
 ) -> int:
-    """Relay a detached Host's launch line, say how it lives, and name the next step."""
+    """Say plainly that it STARTED, where and at which address; relay the launch line, say how
+    it lives, and name the next step."""
+    address = re.search(r"http://[^/\s?#]+/", launch)
+    workspace = arguments.workspace.resolve()
+    print(f"STARTED: a Host now serves {workspace} at {address[0] if address else 'its link'}.")
     print(launch)
     lives = (
         "started it, but a Job that allows no breakaway still holds it: it ends when that Job "
@@ -267,16 +272,29 @@ def _served(
     return 0
 
 
-def _exited(host: subprocess.Popen[bytes], text: str, log_path: Path) -> int:
-    """A detached Host that ended before it served: a second writer, or its log's reason."""
+def _exited(workspace: Path, host: subprocess.Popen[bytes], text: str, log_path: Path) -> int:
+    """A detached Host that ended before it served: plainly ALREADY_SERVING where another Host
+    serves the workspace (with its address, from its connection record), else its log's reason."""
     if "workspace_runtime.writer_already_owned" in text:
+        from alphalattice.interface.local_application import client
+
         log_path.unlink(missing_ok=True)
-        return _refusal(
-            "local_web.host_already_serving",
-            "A Host already serves this workspace, so no second one started. Reuse it, or "
-            "stop it with `alphalattice host stop` before serving again.",
-            "REUSE_THE_SERVING_HOST",
+        address = None
+        with suppress(client.LocalResearchClientError, OSError):
+            address = client.LocalResearchConnection.read(workspace).url
+        detail = (
+            "A Host already serves this workspace, so no second one started. Use it: your "
+            "Session's first answer to it offers the Workbench (`workbench`); "
+            "`alphalattice host stop` stops it."
         )
+        served = {"workspace": str(workspace.resolve()), "address": address, "detail": detail}
+        print(
+            json.dumps(
+                {"status": "ALREADY_SERVING", "next_action": "USE_THE_SERVING_HOST", **served}
+            ),
+            flush=True,
+        )
+        return 0
     return _refusal(
         "local_web.detached_host_exited",
         f"The detached Host exited (code {host.returncode}) before it served; its log, which "

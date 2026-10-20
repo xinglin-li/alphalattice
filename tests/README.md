@@ -61,7 +61,8 @@ The Workbench parity guard refuses a write without an agent route, an added name
 3. Test at the owner's seam: drive the producer's real output through the real
    consumer. Only `tests/structural` reads source text; elsewhere a test does not
    call `inspect.getsource` or test a private helper whose owner's public call
-   shows the behaviour.
+   shows the behaviour. Prefer the real component to a mock. A mock is not itself
+   asserted on, and it mirrors the real structure completely where one is needed.
 4. Assert the requirement, not the incidental. No snapshot, markup or
    whole-sentence pins outside the declared door words: check words by their key
    and the facts they carry (counts, dates, codes), and a Chinese translation by
@@ -76,12 +77,19 @@ The Workbench parity guard refuses a write without an agent route, an added name
 8. A Workbench behaviour is checked once, in the Node harness. A real-browser
    class checks only what needs real layout: widths, focus, scrolling and motion.
 9. A test file stays under 100 KB, and one already over it only shrinks.
-10. A change's test lines do not grow more than its source lines unless its
-    record names the requirement each new test holds. A test over 10 s names why
+10. A change's test lines do not grow more than its source lines. The
+    maintainer's merge stops one that does. Only the maintainer admits an
+    exception, such as a small fix whose regression case outweighs it, and its
+    reason is recorded. A test over 10 s names why
     in its docstring; one over 60 s needs the maintainer's agreement.
 11. An outdated test is deleted or changed, never loosened. A deleted test names
     its covering test in the change's record; protected classes (boundary rule 5)
     change only how they are built.
+12. A new or changed test fails on the change's base, without its product
+    change, and the maintainer's merge checks this. One that passes there is a
+    declared control for a named behaviour, or it is removed. A test that only an
+    intended change can break (a pinned wording, a private layout) is a change
+    detector, not a requirement.
 
 ## Running tests
 

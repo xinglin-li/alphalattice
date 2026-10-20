@@ -206,6 +206,9 @@ class PanelPhysicalChunk(_Contract):
     metadata_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
     compression_codecs: tuple[str, ...]
     parquet_created_by: str | None = None
+    # The sub-year part the file holds; absent for a whole-year chunk, as every chunk before
+    # sub-year parts was.
+    part: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
 
 
 class PanelPhysicalMaterializationManifest(_Contract):
@@ -220,7 +223,7 @@ class PanelPhysicalMaterializationManifest(_Contract):
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_materialization(self) -> PanelPhysicalMaterializationManifest:
         """Check physical chunk coverage and manifest identity."""
-        years = tuple(item.year for item in self.physical_chunks)
+        years = tuple((item.year, item.part or 0) for item in self.physical_chunks)
         if not years or years != tuple(sorted(set(years))):
             raise ValueError("physical Panel chunks must be sorted and unique")
         _validate_hash(self, "physical_materialization_hash")

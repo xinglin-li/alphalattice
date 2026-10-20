@@ -419,8 +419,8 @@
   "next_action": "INSPECT_WORKSPACE_AND_RESTORE_RECORDED_MANIFEST"
  },
  "goal.closed_open_a_follow_up": {
-  "detail": "The goal this request works for is closed, so nothing more counts toward it; read its standing (`alphalattice goal show`), or open a follow-up goal and work under it.",
-  "next_action": "NAME_AN_OPEN_GOAL_OR_NONE"
+  "detail": "This goal is closed; its sealed record is unchanged. Read the goal with its offered request. Where a retry is offered, send it without the global --goal selector to use the session's own goal. For an operation on the closed goal itself, use the schema to open a follow-up with `parent_goal_id`.",
+  "next_action": "READ_THE_GOAL_OR_OPEN_A_FOLLOW_UP"
  },
  "goal.first_use_after_preparation": {
   "detail": "This workspace is prepared already, so its first use is over: ask the person in one line for each step that is theirs, and relay their yes. Open a goal of another kind for this work (`alphalattice goal schema` prints one to edit).",
@@ -557,6 +557,11 @@
  "portfolio_update.publication_not_bound_to_task": {
   "detail": "The publication named is not one this update Task published, so it was not read; name a publication the Task's readback lists.",
   "next_action": "NAME_A_PUBLICATION_THE_TASK_LISTS"
+ },
+ "portfolio_update.revised_split_basis_requires_review": {
+  "stop_detail": "A split for {subject} reaches issued positions. They stay published; this book stops. Read controls: build a newer reviewed book if absent; ask for Stop if active.",
+  "detail": "A split touches issued positions; they stay published. This book stops. Read `alphalattice strategy-book controls --package <package>`. If no newer reviewed book, build and review one from current data with PLAN preview. If active, ask the person to Stop; reread controls. When offered, ask the person: Activate this newer book? Follow prerequisites. Split: {subject}",
+  "next_action": "ASK_A_PERSON_TO_ACTIVATE_A_NEWER_BOOK"
  },
  "portfolio_update.strategy_package_required": {
   "detail": "This workspace holds Portfolio updates of more than one strategy, so its latest would be one of them by guess: read a strategy's own latest with --package <strategy-package-id> (`next_requests` offers each strategy's, and `strategy_package_ids` names them), or one update with --task.",
@@ -1002,6 +1007,18 @@
   "detail": "The Host cannot create or write the backup root, so no generation was made; the root is the application-data directory unless ALPHALATTICE_BACKUP_ROOT names another. Serve the Host with ALPHALATTICE_BACKUP_ROOT naming a directory it can write, outside the workspace, then back up again.",
   "next_action": "SERVE_WITH_A_WRITABLE_BACKUP_ROOT"
  },
+ "workspace_backup.source_unreadable": {
+  "detail": "A held source record is unreadable; restore its read access and retry `alphalattice backup run`.",
+  "next_action": "RESTORE_FILE_READ_ACCESS_AND_RETRY"
+ },
+ "workspace_backup.object_unreadable": {
+  "detail": "A backup object is unreadable; restore its read access, then retry the backup or use a new empty directory for the restore.",
+  "next_action": "RESTORE_FILE_READ_ACCESS_AND_RETRY"
+ },
+ "workspace_runtime.lock_path_invalid": {
+  "detail": "The lock filename must end in .lock; retry with a name ending in .lock.",
+  "next_action": "USE_A_LOCK_FILENAME"
+ },
  "workspace_data_update.archive_failed": {
   "detail": "The last data update's backup could not be taken, neither while the Host was idle after it nor again when this update started; nothing was changed. Read `alphalattice backup list`, whose last automatic attempt names the cause, resolve it, then run this update again. What the last update published stands.",
   "next_action": "READ_BACKUP_LIST_THEN_RUN_THE_UPDATE_AGAIN"
@@ -1339,7 +1356,7 @@
   "next_action": "READ_LOCAL_READINESS_AND_NAME_THE_WORKSPACE"
  },
  "native_bridge.project_declaration_missing": {
-  "detail": "No configured AlphaLattice project declares this host for this Session: neither the agent project this command runs from nor a folder above the workspace. Run native_research.py configure --host <host> in your agent project (the checkout, or the folder the installed product configured), then run session bind from it; the workspace may be kept anywhere. A workspace or data folder is never the agent project.",
+  "detail": "No configured AlphaLattice project declares this host for this Session: neither the agent project this command runs from nor a folder above the workspace. Run this answer's `commands` in order: this host's configure of your agent project (the checkout, or the folder the installed product configured), then `session bind` from it, naming your workspace, which may be kept anywhere. A workspace or data folder is never the agent project.",
   "next_action": "CONFIGURE_THE_AGENT_PROJECT_THEN_BIND_FROM_IT"
  },
  "goal.assignment_closure_invalid": {
@@ -1726,5 +1743,9 @@
  "research_update.workspace_transition_required": {
   "detail": "The workspace's inputs have an unfinished transition or data decision. The current positions are kept. Follow the offered input owner's request, then plan this date again.",
   "next_action": "SETTLE_INPUTS_THEN_PLAN_THE_DATE"
+ },
+ "goal.conclusion_requires_evidence": {
+  "detail": "A supporting or opposing conclusion needs cited evidence; no note was saved. Read the goal's references and choose relevant attached reference ids for the note, or fill the attach form with an exact owner read before citing it. The offered note keeps your words and leaves the evidence choice empty.",
+  "next_action": "ATTACH_EVIDENCE_AND_CITE_IT"
  }
 }

@@ -117,6 +117,7 @@ def _manifest(composition: PreparedPanelComposition, *, spy_revision: str) -> di
                 "uri": chunk.uri,
                 "origin_binding_hash": chunk.origin_binding_hash,
                 "cross_sections": [item.to_payload() for item in chunk.cross_sections],
+                **({"part": chunk.part} if chunk.part else {}),
             }
             for chunk in composition.chunks
         ],

@@ -136,9 +136,10 @@ const LiveGoals = (() => {
     const primary = !passComplete(b) && !S.verifying ? btn(t('Check reference integrity'), 'goal-verify', '', 'button primary') : isOpen ? btn(t('Add a decision note'), 'goal-note', '', 'button primary') : '';
     const facts = [[t('Kind'), kindWord(d.kind)], [t('Revision'), html`${g.revision}${g.parent_hash ? html` · ${btn(t('previous'), 'goal-open', g.parent_hash, 'inline-link')}` : ''}`], [t('Criteria'), count(d.criteria.length)], [t('Evidence'), evidenceState(b)], ...(gaps.length ? [[t('Missing'), count(gaps.length)]] : []), [t('Recorded'), when(g.recorded_at)], [t('Revision recorded by'), actorWords(g.submitted_by)]];
     const criteria = kv(d.criteria.map((c) => [html`<span class="mono">${c.criterion_id}</span>`, html`<span class="owner-text">${c.text}</span>`]), 'kv-columns');
-    const historical = g.goal_hash !== b.head_hash ? noteLine(t('Current goal'), b.head ? checkLine(b.head) : '', 'warning', btn(t('Open current revision'), 'goal-open', g.goal_id, 'button compact')) : '';
+    const newer = b.head_hash && g.goal_hash !== b.head_hash;
+    const historical = newer ? noteLine(t('A newer revision exists.'), '', 'neutral', btn(t('Open current revision'), 'goal-open', g.goal_id, 'button compact')) : '';
     const missing = gaps.length ? noteLine(t('Missing'), gaps.map((x) => x.stage ? codeWords(x.stage) : x.reference_id).join(' · '), 'warning') : '';
-    return html`${objectHead(t(d.title), html`<p class="lede owner-text">${d.objective}</p>${criteria}`, primary, historical ? stateLine('metadata', {word: t('Historical revision'), next: ''}) : checkLine(b.head || g), tools, {object: true, id: g.goal_hash, facts, scope: {name: t(d.title), href: routeUrl('goal', {goal: addressed()}), self: app.page === 'goal'}})}${historical}${missing}`;
+    return html`${objectHead(t(d.title), html`<p class="lede owner-text">${d.objective}</p>${criteria}`, primary, checkLine(b.head || g), tools, {object: true, id: g.goal_hash, facts, scope: {name: t(d.title), href: routeUrl('goal', {goal: addressed()}), self: app.page === 'goal'}})}${historical}${missing}`;
   }
   function page() {
     if (!selected() && !listing()) return null;
@@ -159,7 +160,9 @@ const LiveGoals = (() => {
   // The rule's full-history audit names its listings: approved, left past its bound, or not admitted by its update.
   const AUDIT_WORDS = {DECIDED_BY_RULE: 'Approved a full-history audit of {names}', ESCALATED: "Left a full-history audit of {names} past the rule's bound", NOT_ADMITTED: 'Approved a full-history audit of {names}; its update did not admit it'};
   const auditWords = (s) => t(AUDIT_WORDS[s.status] || AUDIT_WORDS.DECIDED_BY_RULE, {names: (s.symbols || []).join(', ')});
-  const stepWords = (s) => (s.operation === 'NETWORK_ACCESS_SET' ? t(s.network_enabled ? 'Opened the network' : 'Closed the network') : s.operation === 'FULL_HISTORY_AUDIT' ? auditWords(s) : STEP_WORDS[s.operation] ? t(STEP_WORDS[s.operation]) : codeWords(s.operation));
+  // The rule's precision kept stored adjusted closes the provider re-sent within it: the listings it kept.
+  const keptWords = (s) => t("Kept the stored adjusted closes of {names} within the rule's precision", {names: (s.symbols || []).join(', ')});
+  const stepWords = (s) => (s.operation === 'NETWORK_ACCESS_SET' ? t(s.network_enabled ? 'Opened the network' : 'Closed the network') : s.operation === 'FULL_HISTORY_AUDIT' ? auditWords(s) : s.operation === 'ADJUSTED_PRECISION_KEPT' ? keptWords(s) : STEP_WORDS[s.operation] ? t(STEP_WORDS[s.operation]) : codeWords(s.operation));
   function hoursLeft(delegation) {
     if (!delegation?.ends_at) return '';
     const left = Date.parse(delegation.ends_at) - Date.now();
@@ -207,7 +210,9 @@ const LiveGoals = (() => {
    * the kind a filter (assignments one of them), the open assignments counted. */
   function conversation(b) {
     const r = b.record || {}, messages = [...(r.conversation || [])].reverse(), openAssignments = (r.open_assignments || []).length;
-    if (!messages.length) return emptyState(html`${t(b.goal.state === 'OPEN' ? 'No Team exchange under this goal yet' : 'No recorded conversation under this goal')}${infoMark(t('No Team exchange is retained with this goal\'s explicit binding. Recorded deliverables are in Results; goal changes are in Timeline. Unbound sessions and unobserved native history are not added here.'))}`, html`${btn(t('Results'), 'go', 'goal-results', 'text-btn')}${btn(t('Timeline'), 'go', 'goal', 'text-btn')}`, 'page-empty', 'elsewhere');
+    const pending = r.open_assignments?.[0];
+    const assignments = html`${openAssignments ? noteLine(t('Open assignments'), html`${countText(openAssignments, '{n} assignment not closed', '{n} assignments not closed')}${pending.reason ? html` · ${t(pending.reason)} ${t(pending.next_action)}` : ''}`, 'neutral', codeRef(t('Assignment records'), r.open_assignments)) : ''}${r.closed_assignments?.length ? codeRef(t('Closed assignments'), r.closed_assignments) : ''}`;
+    if (!messages.length) return html`${assignments}${emptyState(html`${t(b.goal.state === 'OPEN' ? 'No Team exchange under this goal yet' : 'No recorded conversation under this goal')}${infoMark(t('No Team exchange is retained with this goal\'s explicit binding. Recorded deliverables are in Results; goal changes are in Timeline. Unbound sessions and unobserved native history are not added here.'))}`, html`${btn(t('Results'), 'go', 'goal-results', 'text-btn')}${btn(t('Timeline'), 'go', 'goal', 'text-btn')}`, openAssignments || r.closed_assignments?.length ? '' : 'page-empty', 'elsewhere')}`;
     // Bound messages supply authors; recipient locators use Team's recorded exact-session binding.
     const sessions = LiveTeam.scene().sessions;
     const nameOf = (id, m, recipient = false) => {
@@ -223,7 +228,7 @@ const LiveGoals = (() => {
       return objectRow({name: m.summary ? messageSummary(m) : codeWords(m.message_kind), to: m.agent_session ? {page: 'team', extra: {team: m.agent_session, actor: '', event: m.observation_id || ''}} : null}, {key: m.message_id || m.observation_id, columns: ['kind', 'actor', 'recipient', 'submitter', 'reply'], props: [accepted ? hint(t('Accepted answer'), t('Accepted structured answer · product record, not a native spoken turn')) : codeWords(m.message_kind), nameOf(m.agent_id, m), m.recipient_id ? html`${t('to')} ${m.recipient_role ? html`<span tabindex="0" data-tip="${m.recipient_id}">${LiveTeam.roleName(m.recipient_role)}</span>` : nameOf(m.recipient_id, m, true)}` : '', accepted ? html`${t('Submitted by')} ${nameOf(m.submitted_by, m)}` : '', m.reply_to ? html`${t('answers')} <span class="mono">${short(m.reply_to)}</span>` : ''], time: acceptedClock(m) ? hint(when(messageTime(m)), `${t(m.source_time_kind === 'PRODUCT_ACCEPTED_AT' ? 'Answer acceptance time' : 'Task admission time')} · ${t('Recorded')} ${whenText(m.recorded_at)}`) : when(messageTime(m))});
     };
     const foot = (r.message_count ?? messages.length) > messages.length ? html`<p class="caption">${t('The newest {n} of {m} messages; the Team session holds them all.', {n: count(messages.length), m: count(r.message_count)})}</p>` : '';
-    return html`${openAssignments ? noteLine(t('Open assignments'), countText(openAssignments, '{n} assignment not closed', '{n} assignments not closed'), 'neutral') : ''}${Lobby.render('goal-conversation', {items: messages, row, axes: [{key: 'time', label: t('Time'), group: (m) => timeGroup(messageTime(m))}],
+    return html`${assignments}${Lobby.render('goal-conversation', {items: messages, row, axes: [{key: 'time', label: t('Time'), group: (m) => timeGroup(messageTime(m))}],
       words: (m) => [m.summary, m.input_channel === 'PRODUCT_OPERATION' ? codeWords(m.summary) : '', m.agent_id, m.role, m.message_kind].join(' '), placeholder: t('Words, agent or kind'),
       filters: kinds.length > 1 ? [{field: 'kind', label: t('Kind'), multiple: true, options: kinds.map((k) => [k, codeWords(k)]), test: (m, one) => m.message_kind === one}] : []})}${foot}`;
   }

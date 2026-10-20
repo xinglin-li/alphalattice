@@ -12,7 +12,7 @@
 
 每项数值输入都受对应日期的信息截止时间约束，验证运行会检查前视偏差。委员会可以不认可某项结果。AlphaLattice 在本地运行，并且开源。
 
-你不必使用最大的模型。在我们的全新文件夹运行中，Claude Code 中的 Claude Haiku 5.5 和 Codex 中的 GPT-6 Luna 均以高推理强度，完整带领过首次使用和每日更新。如果你订阅了 Claude 或 ChatGPT，Claude Code 和 Codex 使用的是订阅方案的额度，而非按 API 的 token 用量计费；具体以提供商的条款为准。要查看一次运行的用量，可以在工作台中依次打开**团队**、**会话**，再查看该会话的**参与者**：其中会列出每位成员使用的模型和 token 数量。
+使用 Claude Code 或 Codex 作为主导代理。要查看一次运行的用量，可以在工作台中依次打开**团队**、**会话**，再查看该会话的**参与者**：其中会列出每位成员使用的模型和 token 数量。
 
 把本仓库的链接和一句研究意图交给代理：
 
@@ -55,10 +55,20 @@
   ```bash
   brew install libomp
   ```
-- **时间：** 数据准备、多年模型拟合与验证、来源审阅都需要时间。一次已完成的运行使用准备好的公开来源数据和保留的文件，在一台同时承担其他工作的 Windows 机器上，以四个 CPU 核心离线重放，从第一个数据准备任务开始到写出交付报告，用了约 **37 分钟**。安装和实时下载不在这段时间内。需要下载数据和模型包时，还要根据网络连接增加时间。在全新文件夹的验收运行中，包含下载的首次使用约需一小时，每日更新则更短。这些是观测结果，不是运行时间保证。
-- **代理费用：** Claude Code 或 Codex 的使用权限和用量费用独立于 AlphaLattice，具体以提供商条款为准；主导代理也可以使用成本较低的模型，例如以高推理强度运行的 Claude Haiku 5.5 或 GPT-6 Luna。
+- **时间：** 在 2026-10-19 的 Windows 原生运行观测中，Codex 使用超高推理强度，首次使用耗时 **74.7 分钟**，委员会决定附带说明后继续。一次尝试中断后，用户同意了每日联网问题；随后经过协助的每日恢复运行发布了研究持仓，并在 **35.3 分钟**内封存了首次备份。其中记录到的 Host 工作（包括数据更新）约为 **12.6 分钟**；其余 **22.7 分钟**包括代理回合、工具调用和等待。这次恢复运行超过了每日 20 分钟的预算。这些是观测结果，不是运行时间保证。
+- **磁盘和内存：** 首次使用的工作区约占 **8.69 GB**；受管理的安装、工作区、缓存和模型目录合计约占 **10.38 GB**，不含备份。经过授权的每日恢复运行使工作区增长约 **181 MB**，其中包含首日的数据库步骤；首次备份一次性写入约 **4.26 GB**，之后的备份按变化增量写入。抽样观测到的 Host 进程合计内存峰值在首次使用时为 **8.37 GB**，恢复运行时为 **9.39 GB**。两次运行都超过了 8 GB 的预算。请为操作系统和编程应用留出余量；这些观测值不是最低配置要求。[发行说明（英文）](docs/public-source/release-notes.md#021)区分了普通每日写入、升级日、拆股日和显式输入捕获的开销。
+- **依赖包下载：** 在软件包缓存为空的机器上，首次使用会单独询问一次是否允许下载检索依赖包。后续版本计划在首次使用的联网许可下安装锁定的依赖包。
+- **代理费用：** Claude Code 或 Codex 的使用权限和用量费用独立于 AlphaLattice，具体以提供商条款为准。
 
 安装、下载和各步骤所需的权限，见[入门指南](docs/public-source/getting-started.md)和[设置流程](.agents/skills/alphalattice-research/references/operating.md)。
+
+## 升级
+
+从 0.2.0 升级到后续 0.2.x 补丁，请按[升级指南（英文）](docs/public-source/upgrading.md)操作。
+先备份代理项目中的 `.alphalattice/user/`，记下研究工作区的绝对路径，再用 `alphalattice host stop` 停止该工作区的 Host，等运行中的任务结束。
+源代码安装先更新代码，再同步锁定依赖、运行 doctor，并按其回答修复设置或重新配置代理项目；wheel 安装使用新包自带的运行依赖和约束。
+升级后仍在原代理项目和工作区中继续每日更新。第一次更新可能需要一次重建；此前封存的目标和报告仍可验证。
+如果命令拒绝且按提示仍无法解决，先用 `alphalattice problem report --output "<out>/report.json"` 生成报告，检查后再提交 GitHub issue。代理发送前会先征得你的同意。
 
 <a id="why-alphalattice"></a>
 
@@ -183,7 +193,7 @@
 
 ## 告诉我们你在哪里遇到了问题
 
-[提交 issue](https://github.com/xinglin-li/alphalattice/issues)，附上运行的命令、预期行为和收到的回答。请隐去私人数据与凭据。提议修改代码前，请遵循 [CONTRIBUTING](CONTRIBUTING.md)，包括当前开放贡献的条件和协议。安全漏洞请按 [SECURITY](SECURITY.md) 的说明私下报告。
+[提交 issue](https://github.com/xinglin-li/alphalattice/issues)，附上运行的命令、预期行为和收到的回答。请隐去私人数据与凭据。欢迎贡献代码：较大的改动请先开 issue 讨论范围，第一次提交 PR 时需在线签署贡献者协议，详见 [CONTRIBUTING](CONTRIBUTING.md)。安全漏洞请按 [SECURITY](SECURITY.md) 的说明私下报告。
 
 <a id="about"></a>
 
@@ -193,7 +203,7 @@
 
 [设计原则](docs/public-source/design-principles.md)解释了代理、软件和用户如何分工。
 
-由 Xinglin Li 创建并维护：[LinkedIn](https://www.linkedin.com/in/xinglin-li-381571139/) 或 [xinglin789@outlook.com](mailto:xinglin789@outlook.com)。项目决策和贡献署名见[治理说明](GOVERNANCE.md)，开放贡献的条件、协议与流程见[贡献指南](CONTRIBUTING.md)。
+由 Xinglin Li 创建并维护：[LinkedIn](https://www.linkedin.com/in/xinglin-li-381571139/) 或 [xinglin789@outlook.com](mailto:xinglin789@outlook.com)。项目决策和贡献署名见[治理说明](GOVERNANCE.md)，贡献协议与流程见[贡献指南](CONTRIBUTING.md)。
 
 <a id="verify-a-source-checkout"></a>
 

@@ -2509,7 +2509,10 @@ class LocalPortfolioResearchService:
             spec,
             report=self.report_of(result),
             program=self._program_of(result_hash),
-            originating_task=self._optional_task(result_hash),
+            # An unwired lineage remains optional for export.
+            originating_task=(
+                None if self._lineage is None else self._lineage.originating_task(result_hash)
+            ),
         )
 
     def _refuse_unless_this_results_spec(
@@ -2529,16 +2532,6 @@ class LocalPortfolioResearchService:
     def _program_of(self, result_hash: str) -> PortfolioExecutionProgram | None:
         """The Program record when that port is wired, and `None` when it is not."""
         return None if self._programs is None else self._programs.program(result_hash)
-
-    def _optional_task(self, result_hash: str) -> UUID | None:
-        """The lineage when one is wired, and `None` when one is not.
-
-        `originating_task` refuses an unwired lineage, which is right for a
-        caller that asked for the task. Export never did: it publishes `None`
-        for that field, and a service built with nothing but an application must
-        keep exporting.
-        """
-        return None if self._lineage is None else self._lineage.originating_task(result_hash)
 
     def export_manifest_from(
         self,

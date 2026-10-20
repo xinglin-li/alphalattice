@@ -68,6 +68,7 @@ from alphalattice.control.product_host.composition.feature_trials import (
     FeatureTrials,
     trial_reads_once,
 )
+from alphalattice.control.product_host.composition.goal_check import goal_refusal
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.pending_decisions import (
     all_data_issues,
@@ -100,6 +101,7 @@ from alphalattice.control.product_host.composition.portfolio_updates import (
 from alphalattice.control.product_host.composition.portfolio_updates import (
     PortfolioUpdateApplication,
     PortfolioUpdateCommand,
+    update_refusal,
 )
 from alphalattice.control.product_host.composition.research_experiments import (
     LEDGER_READ_OPERATIONS,
@@ -162,6 +164,7 @@ from alphalattice.control.product_host.composition.task_recovery import (
     build_task_recovery_view,
     cancellation_pending,
     finished_stop,
+    replan_offer,
     resolved_read,
     stop_detail,
     task_facts,
@@ -209,7 +212,10 @@ from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
     read_workspace_inputs,
 )
-from alphalattice.control.product_host.publication.goals import GoalStore, session_work_declaration
+from alphalattice.control.product_host.publication.goals import (
+    GoalStore,
+    session_work_declaration,
+)
 from alphalattice.control.product_host.research_authoring.feature_research import (
     ResearchFeatureDefinitions,
 )
@@ -842,10 +848,13 @@ class PortfolioResearchOperations:
             code = public_failure(error, "goal.refused")
             return worded_refusal(
                 {
-                    "status": "REFUSED",
-                    "failure_code": code,
                     "refused": code,
                     "next_action": "NAME_AN_OPEN_GOAL_OR_NONE",
+                    **goal_refusal(
+                        error,
+                        request,
+                        attributed_goal_id=provenance.goal_id if provenance else None,
+                    ),
                 }
             )
         try:
@@ -1673,15 +1682,14 @@ class PortfolioResearchOperations:
                         plan.data_plan,
                     )
                 except (ValueError, KeyError, FileNotFoundError) as error:
-                    failure = located_failure(error, "research_update.refused")
-                    body = refused(
-                        str(failure["failure_code"]),
+                    body = update_refusal(
+                        error,
+                        "research_update.refused",
                         installed_packages=tuple(self._packages),
                         strategy_package_id=request.strategy_package_id,
                     )
-                    body = {**failure, **body}
                     if (
-                        failure["failure_code"] == "portfolio_update.not_installed"
+                        body["failure_code"] == "portfolio_update.not_installed"
                         and request.strategy_package_id is not None
                         and request.strategy_package_id in self._packages
                         and self.activations is not None
@@ -1726,15 +1734,13 @@ class PortfolioResearchOperations:
                         "failure_code": admitted.refusal_detail,
                     }
                 except FileNotFoundError:
-                    return {
-                        "status": "REFUSED",
-                        "failure_code": "portfolio_update.artifact_missing",
-                    }
+                    return refused("portfolio_update.artifact_missing")
                 except (ValueError, KeyError) as error:
-                    return {
-                        "status": "REFUSED",
-                        **located_failure(error, "portfolio_update.refused"),
-                    }
+                    return update_refusal(
+                        error,
+                        "portfolio_update.refused",
+                        strategy_package_id=request.strategy_package_id,
+                    )
             case (
                 "STRATEGY_CALIBRATION_PLAN"
                 | "STRATEGY_CALIBRATION_RUN"
@@ -4528,30 +4534,7 @@ class PortfolioResearchOperations:
                 **refusal_words(code),
                 "next_requests": {"issues": {"operation": "DATA_ISSUES"}},
             }
-        owned = self._task_replan_owner(task)
-        if owned is None:
-            return None
-        declared, owner = owned
-        if declared.preview is None:
-            return None
-        _required, allowed = PortfolioResearchOperationRequest.field_contract(declared.preview)
-        choices = allowed - {"recovery_task_id", "recovery_task_hash"}
-        request = (
-            {"operation": declared.preview}
-            if not choices
-            else cast(dict[str, object], cast(Any, owner).replan_request(task))
-        )
-        if task.lifecycle in _RECOVERY_SOURCES:
-            # A refused resume leaves its unbound plan read.
-            if code := getattr(owner, "replan_refusal", lambda _: None)(task):
-                refused = {"failure_code": code, **refusal_words(code)}
-                return {**refused, "next_requests": {"plan": request}}
-            return {
-                **request,
-                "recovery_task_id": str(task.task_id),
-                "recovery_task_hash": task.record_hash,
-            }
-        return request
+        return cast(dict[str, object] | None, replan_offer(task, self._task_replan_owner(task)))
 
     def _offers_replan(self, task: TaskRecord) -> bool:
         return "operation" in (self._task_replan(task) or {})
@@ -6298,45 +6281,6 @@ class PortfolioResearchOperations:
         if result.spec_hash != durable.spec.spec_hash:
             raise LocalApplicationError("local_application.result_task_spec_mismatch")
         return durable.spec
-
-
-def goal_refusal(error: Exception, request: PortfolioResearchOperationRequest) -> dict[str, object]:
-    """A goal operation's refusal, in words where the Host has them.
-
-    A closed goal names its standing, read by the goal the request named or the session's own
-    (V391), beside the follow-up's start; the refusal and the sealed record stay (V437).
-
-    Args:
-        error: What the goal owner raised.
-        request: The request it refused.
-
-    Returns:
-        The refusal, its words and the requests that go on from it.
-    """
-    failure = located_failure(error, "goal.refused")
-    code = str(failure["failure_code"])
-    answer: dict[str, object] = {"status": "REFUSED", **failure, **explain(code)}
-    if code.partition(":")[0] == "goal.closed_open_a_follow_up":
-        named = {
-            name: str(value)
-            for name, value in (("goal_id", request.goal_id), ("goal_hash", request.goal_hash))
-            if value is not None
-        }
-        offered = cast(dict[str, object], answer.get("next_requests") or {})
-        answer["next_requests"] = {"show": {"operation": "GOAL_SHOW", **named}, **offered}
-    elif code == "goal.reference_not_found" and request.goal_hash is not None:
-        answer["next_requests"] = {
-            "narrative": {"operation": "GOAL_NARRATIVE", "goal_hash": request.goal_hash}
-        }
-    elif code == "goal.revision_conflict_read_latest" and request.goal_id is not None:
-        # The goal's latest revision, by its id alone: the request's hash names the revision
-        # another session replaced, and the session's own goal may be another (V527).
-        offered = cast(dict[str, object], answer.get("next_requests") or {})
-        answer["next_requests"] = {
-            "show": {"operation": "GOAL_SHOW", "goal_id": str(request.goal_id)},
-            **offered,
-        }
-    return answer
 
 
 def reused_read(

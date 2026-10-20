@@ -24,7 +24,7 @@ digit. `--seen` takes a message's number: the answer's `seen`, so message M7 is 
 | UNRULED | The verdict came while a challenge stands unruled. | Send the offered `kind: RULING`, `reply_to: M5`, `outcome: REJECT` with your words, then the VERDICT. |
 | FACTS | A RESERVE cites none of the floor's facts for this member's questions. | `positions: {T2: RESERVE}` with text that cites `S3`. |
 | NUMBER | A digit typed outside an alias. | `text: H3 carries the most of T1's risk.`, not `AAPL carries 12% of the risk.` |
-| AGENDA | Positions keyed outside the agenda, or by a fact alias. | `positions: {T1: SUPPORT}` or `{H3: OBJECT}`, never `{S2: SUPPORT}`: an S alias is cited in the text. The PM may raise one below-line point through a REPLY's positions. |
+| AGENDA | Positions keyed outside the agenda, or by a fact alias; a text naming a below-line point is the author's to revise, and `agenda_points` lists the points it may name. | `positions: {T1: SUPPORT}` or `{H3: OBJECT}`, never `{S2: SUPPORT}`: an S alias is cited in the text. The PM may raise one below-line point through a REPLY's positions. |
 | MEMBER | A member's submit came without its key, or from another session. | Run the command under Your route in the bundle's README.md as it stands: it carries `--key` and the key. A lead starts the member with its bundle instead. |
 | KEY | The key belongs to another member or bundle. | Use the key in this member's own bundle; the PM's is the open's `pm_key`. |
 | ENDED | The member's thread has ended. | Return the receipt it gave to your lead. |

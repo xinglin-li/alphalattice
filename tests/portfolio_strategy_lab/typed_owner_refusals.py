@@ -183,6 +183,9 @@ def make_owner_exception(cls: type[Exception]) -> tuple[Exception, str]:
             "alternative_evidence.minimum_entity_coverage_not_met:"
             "0 of 1 issuers hold a source, 1 needed"
         )
+    if name == "GoalRefusal":
+        # Handlers read only the code; the revision is goal_check's, for its recovery offer.
+        return cls(CODE, object()), CODE
     if name == "TaskRecordAuthorityError":
         return cls(()), "task_control.database_authority_unreadable"
     if name == "TaskQueueHeadAuthorityError":
@@ -217,6 +220,11 @@ def make_owner_exception(cls: type[Exception]) -> tuple[Exception, str]:
     if name == "DataTargetSessionLag":
         day = date(2026, 1, 2)
         return cls(target=day, reaching=0, total=1, minimum=1, latest=day), cls.failure_code
+    if name == "SplitBasisRevision":
+        action = module.CorporateActionEvent("listing", "fixture", date(2026, 1, 2), "SPLIT", 2.0)
+        return cls((), (action,)), (
+            "portfolio_update.revised_split_basis_requires_review:listing effective 2026-01-02"
+        )
 
     # Inherited builtin exception constructors accept arbitrary args, not keyword
     # fields. A class-owned code (SplitAdjustedPriceIntegrityError) must survive a

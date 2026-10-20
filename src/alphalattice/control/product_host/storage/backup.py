@@ -23,12 +23,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import tempfile
 from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, Literal, Self
+from typing import Any, BinaryIO, Final, Literal, Self
 
 import duckdb
 import pyarrow as pa
@@ -48,6 +48,7 @@ from alphalattice.control.workspace_runtime.database import (
     WorkspaceDatabase,
     open_workspace_database,
 )
+from alphalattice.control.workspace_runtime.lock import LOCK_SUFFIX
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.evidence.alternative_evidence.runtime.execution import below_normal_thread
 from alphalattice.interface.local_application.cli_contract import refusal_words
@@ -61,6 +62,7 @@ MARKET_TABLES: Final[tuple[str, ...]] = (
     "bar_revision",
     "corporate_action_revision",
     "provider_adjusted_series_revision",
+    "raw_bar_rebase",
     # The universe history.
     "universe_manifest",
     "universe_manifest_listing",
@@ -212,20 +214,56 @@ def default_backup_root(workspace_id: str) -> Path:
     return base / workspace_id
 
 
-def _digest_file(path: Path) -> str:
+type _ReadKind = Literal["source", "object"]
+
+
+def _unreadable(kind: _ReadKind) -> WorkspaceBackupError:
+    """Name the file class whose read failed."""
+    return WorkspaceBackupError(
+        "workspace_backup.source_unreadable"
+        if kind == "source"
+        else "workspace_backup.object_unreadable"
+    )
+
+
+def _read_block(stream: BinaryIO, kind: _ReadKind) -> bytes:
+    """Read one block without exposing source paths in the refusal."""
+    try:
+        return stream.read(1 << 20)
+    except OSError as error:
+        raise _unreadable(kind) from error
+
+
+def _copy_file(source: Path, destination: Path, *, kind: _ReadKind = "source") -> None:
+    """Classify source reads; destination open/write failures keep their own cause."""
+    with ExitStack() as stack:
+        try:
+            reader = stack.enter_context(open(source, "rb"))
+        except OSError as error:
+            raise _unreadable(kind) from error
+        with destination.open("wb") as writer:
+            for block in iter(lambda: _read_block(reader, kind), b""):
+                writer.write(block)
+
+
+def _digest_file(path: Path, *, kind: _ReadKind = "source") -> str:
     sha = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            sha.update(block)
+    try:
+        with path.open("rb") as handle:
+            for block in iter(lambda: _read_block(handle, kind), b""):
+                sha.update(block)
+    except OSError as error:
+        raise _unreadable(kind) from error
     return sha.hexdigest()
 
 
 def _files(root: Path) -> Iterator[Path]:
     if root.is_file():
-        yield root
+        if root.suffix != LOCK_SUFFIX:
+            yield root
         return
     for path in sorted(root.rglob("*")):
-        if path.is_file() and "__pycache__" not in path.parts:
+        if path.suffix != LOCK_SUFFIX and path.is_file() and "__pycache__" not in path.parts:
             yield path
 
 
@@ -261,8 +299,8 @@ class _Objects:
         if not target.is_file():
             target.parent.mkdir(parents=True, exist_ok=True)
             staged = target.with_suffix(".partial")
-            shutil.copyfile(source, staged)
-            if _digest_file(staged) != digest:
+            _copy_file(source, staged)
+            if _digest_file(staged, kind="object") != digest:
                 staged.unlink()
                 raise WorkspaceBackupError("workspace_backup.object_changed_while_copied")
             os.replace(staged, target)
@@ -622,25 +660,27 @@ class WorkspaceBackups:
         target.mkdir(parents=True, exist_ok=True)
         files = tables = 0
         task_control: list[BackupEntry] = []
+        held_tables: set[str] = set()
         for entry in chosen.entries:
             if entry.kind == "LISTED":
                 continue
             source = self.objects.path(entry.digest)
-            if not source.is_file() or _digest_file(source) != entry.digest:
+            if not source.is_file() or _digest_file(source, kind="object") != entry.digest:
                 raise WorkspaceBackupError("workspace_backup.object_invalid")
             if entry.kind == "FILE":
                 written = target / entry.path
                 written.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, written)
+                _copy_file(source, written, kind="object")
                 files += 1
                 continue
+            held_tables.add(entry.path)
             store, table = entry.path.split("/", 1)
             if store == "task-control":
                 task_control.append(entry)
             else:
                 written = target / "held-state" / store / f"{table}.parquet"
                 written.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, written)
+                _copy_file(source, written, kind="object")
             tables += 1
         if task_control:
             self._restore_task_control(target, task_control)
@@ -655,6 +695,18 @@ class WorkspaceBackups:
             "target": str(target),
             "files": files,
             "tables": tables,
+            "absent": sorted(
+                set(chosen.absent)
+                | {
+                    f"{store}/{table}"
+                    for store, names in (
+                        ("market", MARKET_TABLES),
+                        ("task-control", TASK_CONTROL_TABLES),
+                    )
+                    for table in names
+                    if f"{store}/{table}" not in held_tables
+                }
+            ),
             "listed": [
                 entry.model_dump(mode="json") for entry in chosen.entries if entry.kind == "LISTED"
             ],

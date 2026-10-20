@@ -512,13 +512,28 @@ def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_ap
         "disposition": "INSUFFICIENT",
     }
     _calls.clear()
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        goal_refusal,
+    )
+    from alphalattice.interface.local_application.cli_contract import refusal_words
+
+    unsupported = Request(
+        operation="GOAL_NOTE",
+        goal_hash=attached["goal_hash"],
+        change_reason="File attributed review",
+        goal_statement={**note, "disposition": "SUPPORTS", "evidence": []},
+    )
+    with pytest.raises(ValueError, match=r"goal\.conclusion_requires_evidence") as stop:
+        app.operate(unsupported, "EXTERNAL_AUTOMATION")
+    refusal = goal_refusal(stop.value, unsupported)
+    assert refusal["detail"] == refusal_words("goal.conclusion_requires_evidence")["detail"]
+    assert refusal["next_action"] == "ATTACH_EVIDENCE_AND_CITE_IT"
+    assert refusal["expected"]["attached_reference_ids"] == ["alpha"]
+    retry = refusal["next_requests"]["note"]
+    assert retry["goal_statement"] == {**unsupported.goal_statement, "evidence": None}
+    retry["goal_statement"]["evidence"] = ["alpha"]
     accepted = app.operate(
-        Request(
-            operation="GOAL_NOTE",
-            goal_hash=attached["goal_hash"],
-            change_reason="File attributed review",
-            goal_statement=note,
-        ),
+        PortfolioResearchRequestDocument.model_validate(retry).to_operation_request(),
         "EXTERNAL_AUTOMATION",
     )
     assert app.store.load(accepted["goal_hash"]).statements[0].text == note["text"]
@@ -569,7 +584,10 @@ def _bundle(app, goal, operation, status, bundle_reference, *, role="ALPHA"):
     )
 
 
-def test_team_events_and_product_facts_are_filed_under_the_goal_their_session_holds(goal_app):
+@pytest.mark.parametrize("channel", ("PRODUCT_ACCEPTED_ANSWER", "PRODUCT_REVIEW"))
+def test_team_events_and_product_facts_are_filed_under_the_goal_their_session_holds(
+    goal_app, channel
+):
     """Team events and product facts are filed under the goal their session holds."""
 
     app, opened, _calls, _body, _tasks = goal_app
@@ -585,14 +603,11 @@ def test_team_events_and_product_facts_are_filed_under_the_goal_their_session_ho
     goal = app.store.head(UUID(int=1))
     _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", "a" * 64)
     record = app.record(app.store.head(UUID(int=1)))
-    assert record["open_assignments"] == [
-        {
-            "bundle_reference": "a" * 64,
-            "agent_role": "ALPHA",
-            "task_id": None,
-            "prepared_at": record["open_assignments"][0]["prepared_at"],
-        }
-    ]
+    (assignment,) = record["open_assignments"]
+    fields = ("bundle_reference", "agent_role", "task_id", "state")
+    assert [assignment[k] for k in fields] == ["a" * 64, "ALPHA", None, "OPEN"]
+    assert assignment["prepared_at"] == NOW.isoformat()
+    assert assignment["reason"] and assignment["next_action"]
     _bundle(app, goal, "AGENT_ANSWER_SUBMIT", "CORRECT", "a" * 64)
     assert len(app.record(app.store.head(UUID(int=1)))["open_assignments"]) == 1
     _bundle(app, goal, "AGENT_ANSWER_SUBMIT", "ACCEPTED", "a" * 64)
@@ -600,24 +615,28 @@ def test_team_events_and_product_facts_are_filed_under_the_goal_their_session_ho
     _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", "b" * 64, role="RISK")
     record = app.record(app.store.head(UUID(int=1)))
     kinds = [m["message_kind"] for m in record["conversation"]]
-    assert kinds == [
-        "decision",
-        "AGENT_BUNDLE_PREPARE",
-        "AGENT_ANSWER_SUBMIT",
-        "AGENT_ANSWER_SUBMIT",
-        "AGENT_BUNDLE_PREPARE",
-    ]
+    prepare, submit = "AGENT_BUNDLE_PREPARE", "AGENT_ANSWER_SUBMIT"
+    assert kinds == ["decision", prepare, submit, submit, prepare]
     operations = [m for m in record["conversation"] if m["input_channel"] == "PRODUCT_OPERATION"]
     assert {m["agent_session"] for m in operations} == {SESSION.session}
-    assert [m["summary"] for m in operations] == [
-        "AGENT_BUNDLE_READY",
-        "CORRECT",
-        "ACCEPTED",
-        "AGENT_BUNDLE_READY",
-    ]
+    ready = "AGENT_BUNDLE_READY"
+    assert [m["summary"] for m in operations] == [ready, "CORRECT", "ACCEPTED", ready]
     assert record["message_count"] == 5 and record["request_count"] == 4
     page = app.operate(Request(operation="GOAL_EXPORT", goal_id=UUID(int=1)), "HUMAN")["html"]
     assert "<h2>Conversation</h2>" in page and "Costs first." in page
+    review = channel == "PRODUCT_REVIEW"
+    _filed(
+        app,
+        _team_event(
+            10,
+            message_kind="acceptance" if review else "answer",
+            input_channel=channel,
+            bundle_reference="b" * 64,
+            answer_reference="c" * 64,
+            authorship_basis="HOST_ACCEPTED" if review else "NOT_OBSERVED",
+            **lead,
+        ),
+    )
     follow_up = app.operate(
         Request(
             operation="GOAL_OPEN",
@@ -633,13 +652,22 @@ def test_team_events_and_product_facts_are_filed_under_the_goal_their_session_ho
         _team_event(5, message_kind="plan", message_id="plan-1", **lead), None
     )
     assert held is not None and str(held.goal_id) == follow_up["goal_id"]
+    _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", "e" * 64, role="CRO")
+    pending = app.record(goal)
+    assert [a["bundle_reference"] for a in pending["open_assignments"]] == ["e" * 64]
+    completed = {a["bundle_reference"]: a for a in pending["closed_assignments"]}
+    assert completed["b" * 64]["state"] == "COMPLETED"
+    assert completed["b" * 64]["receipt"]["answer_reference"] == "c" * 64
     sealed = app.operate(
         Request(operation="GOAL_SUBMIT", goal_id=UUID(int=1), goal_submission=_submission()),
         "EXTERNAL_AUTOMATION",
     )
-    # The open Risk bundle is said beside the sealed goal; it refused nothing.
-    assert sealed["status"] == "COMPLETE"
-    assert [row["bundle_reference"] for row in sealed["open_assignments"]] == ["b" * 64]
+    assert sealed["status"] == "COMPLETE" and sealed["open_assignments"] == []
+    shown = app.operate(Request(operation="GOAL_SHOW", goal_hash=opened["goal_hash"]), "HUMAN")
+    assert shown["record"]["open_assignments"] == []
+    archived = next(a for a in shown["record"]["closed_assignments"] if a["state"] == "ARCHIVED")
+    assert archived["bundle_reference"] == "e" * 64
+    assert archived["receipt"] == {"goal_id": sealed["goal_id"], "goal_hash": sealed["goal_hash"]}
     with pytest.raises(ValueError, match="closed_open_a_follow_up"):
         app.file_event(
             _team_event(6, message_kind="plan", message_id="plan-2", **lead),
@@ -1731,6 +1759,18 @@ def test_a_session_takes_a_goal_and_its_requests_are_recorded_under_it(
     assert shown["data"]["record"]["request_count"] == 1
     code, named = _cli(live, "--goal", goal_id, "strategy-book", "preview", "--file", str(spec))
     assert code == 2 and named["data"]["failure_code"] == "goal.closed_open_a_follow_up"
+    from alphalattice.interface.local_application.cli import request_of
+    from alphalattice.interface.local_application.client import LocalResearchClient
+
+    offers = named["data"]["next_requests"]
+    assert offers["show"] == {"operation": "GOAL_SHOW", "goal_id": goal_id}
+    retry = offers["retry"]
+    assert retry == request_of(["strategy-book", "preview", "--file", str(spec)])
+    continued = LocalResearchClient(live.workspace).request(retry)
+    assert (continued["spec_hash"], continued["admission_hash"]) == (
+        _planned["data"]["spec_hash"],
+        _planned["data"]["admission_hash"],
+    )
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
     code, refused = _cli(live, "goal", "take", goal_id)
     assert code == 2 and refused["data"]["failure_code"] == "goal.closed_open_a_follow_up"

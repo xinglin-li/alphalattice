@@ -28,7 +28,14 @@ from alphalattice.foundation.feature_engine.producers.factors.session_observatio
     session_observation_factor_specs,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.investment.alpha_research.experiments.development_contracts import (
+    seal_current_contract,
+)
+from alphalattice.investment.alpha_research.publication import artifacts
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
+from alphalattice.investment.alpha_research.publication.contracts import (
+    FrozenScoreObservationSnapshot,
+)
 from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT
 from tests.researcher_methodology_surface.session_fixtures import (
     offline_execution_environment,
@@ -46,7 +53,7 @@ def daily_workspace(real_risk_workspace, tmp_path):
     return copy_workspace(real_risk_workspace.workspace, tmp_path / "daily")
 
 
-def _publish(store, prepared, reuse=None):
+def _publish(store, prepared, reuse=None, **rebased):
     assert prepared.dependency_prefix_hash is not None
     return store.publish_workspace_observation_history(
         scope_hash="1" * 64,
@@ -59,14 +66,15 @@ def _publish(store, prepared, reuse=None):
         reuse=reuse,
         capacity=lambda count: None,
         proofs=(prepared.axes_proof, prepared.listing_digests, prepared.listing_closed),
+        **rebased,
     )
 
 
-def _capture(workspace, through, features=(), history=None):
+def _capture(workspace, through, features=(), history=None, observed_at=OBSERVED_AT):
     return prepare_workspace_component_inputs(
         workspace,
         through=through,
-        observed_at=OBSERVED_AT,
+        observed_at=observed_at,
         expected_source_hash=workspace_score_source_identity(workspace),
         ordered_feature_ids=features,
         history=history,
@@ -471,3 +479,159 @@ def test_a_head_without_listing_proofs_keeps_its_seal_and_reuses_whole(daily_wor
     assert history is not None and history[0] == head
     appended = _capture(daily_workspace, LAST, WIDE[:1], history)
     assert appended.reused_history_hash == head.head_hash and not appended.restated_listing_ids
+
+
+def _legacy(store, snapshot):
+    """The record the release before blocks wrote: one whole npz and no block list."""
+    record = snapshot.model_dump(mode="json", exclude={"snapshot_hash", "array_blocks"})
+    legacy = seal_current_contract(
+        FrozenScoreObservationSnapshot,
+        {**record, "array_content_hash": snapshot.array_files[0]},
+        "snapshot_hash",
+    )
+    store._publish("frozen-observation-snapshots", legacy, "snapshot_hash")
+    return legacy
+
+
+@pytest.mark.parametrize("upgraded", [False, True])
+def test_three_consecutive_days_write_only_their_last_frozen_block(
+    daily_workspace, monkeypatch, upgraded
+):
+    store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
+    folder = store.root / "current/frozen-observation-arrays"
+    days = (date(2026, 7, 29), date(2026, 7, 30), date(2026, 7, 31))
+    written = []
+    for day in days:
+        before = set(folder.glob("*.bin")) if folder.exists() else set()
+        source = build_workspace_score_inputs(
+            daily_workspace,
+            formation=day,
+            observed_at=OBSERVED_AT,
+            expected_source_hash=workspace_score_source_identity(daily_workspace),
+            ordered_feature_ids=(),
+        )
+        # Upgraded: the first day's snapshot is a stored whole-history file, as before blocks.
+        legacy = upgraded and day == days[0]
+        with monkeypatch.context() as patch:
+            if legacy:
+                patch.setattr(artifacts, "FROZEN_BLOCK_SESSIONS", len(source.formation_sessions))
+            snapshot = store.publish_frozen_observations(source, disposition="RECORDED_INPUT_QA")
+        if legacy:
+            snapshot = _legacy(store, snapshot)
+            assert snapshot.array_blocks is None and "array_blocks" not in snapshot.model_dump()
+            store.verify_frozen_observations(snapshot.snapshot_hash)
+        written.append(set(folder.glob("*.bin")) - before)
+        loaded = store.load_frozen_observations(snapshot.snapshot_hash)
+        for name in ("open", "close", "volume", "market_context_values", "sector_trend_values"):
+            assert getattr(loaded, name).tobytes() == getattr(source, name).tobytes()
+    # The first day of blocks (the upgrade's first day, after a stored whole file) writes every
+    # block once; each later day only its last, the rest shared: about one block's bytes.
+    first = int(upgraded)
+    size = [sum(path.stat().st_size for path in w) for w in written]
+    assert len(written[first]) == len(snapshot.array_files)
+    assert [len(w) for w in written[first + 1 :]] == [1] * (2 - first)
+    assert max(size[first + 1 :]) * len(snapshot.array_files) <= 2 * size[first]
+
+
+@pytest.fixture(scope="module")
+def split_history(tmp_path_factory):
+    from alphalattice.control.workspace_runtime.reader_threads import apply_reader_threads
+    from tests.researcher_methodology_surface.real_workspace import build_real_risk_workspace
+
+    apply_reader_threads(4)
+    return build_real_risk_workspace(
+        tmp_path_factory.mktemp("split-chain"), symbols=("AAA", "BBB", "CCC", "DDD", "EEE")
+    )
+
+
+def test_a_split_reaches_the_kept_history_the_frozen_read_and_the_next_day_as_stored(split_history):
+    """Three acquisitions reach advancing frozen readers as cold captures do; qualification and
+    sealed ten-year chunk readback make this composition control take over ten seconds.
+    """
+    from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
+    from alphalattice.foundation.market_data_ops.runtime.universe_maintenance import (
+        CurrentUniverseMaintenance,
+        CurrentUniverseMaintenanceStatus,
+    )
+    from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
+    from alphalattice.foundation.market_data_ops.sources.manifest import (
+        build_quality_filtered_research_manifest,
+    )
+    from alphalattice.foundation.market_data_ops.storage.rebase import recorded
+    from tests.workspace_maintenance.local_data_provider import HeldDataProvider
+
+    daily_workspace = split_history.workspace
+    store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
+    first = _capture(daily_workspace, FIRST, WIDE)
+    _publish(store, first)
+    listing, market = first.ordered_listing_ids[1], MarketDataRepository(daily_workspace)
+    acquisition = build_quality_filtered_research_manifest(
+        split_history.manifest, eligible_listing_ids=(listing,)
+    )
+    provider = HeldDataProvider(daily_workspace, through=date(2026, 8, 5), window_days=4000)
+    split_day = date(2026, 7, 30)
+    for step, (ratio, noise, ex_date, through) in enumerate(
+        ((3.0, 0.0, split_day, split_day), (1.0, 1e-7, split_day, LAST), (0.5, 0.0, LAST, LAST)),
+        1,
+    ):
+        clock = OBSERVED_AT + timedelta(days=step, hours=23)  # after the acquired session closes
+        provider.bars[listing] = [
+            (
+                day,
+                *(v / ratio * (1 + noise) if day < ex_date else v for v in values[:4]),
+                int(np.floor(values[4] * ratio + 0.5)) if day < ex_date else values[4],
+            )
+            for day, *values in provider.bars[listing]
+        ]
+        provider.adjusted[listing] = {
+            day: value / ratio * (1 + noise) if day < ex_date else value
+            for day, value in provider.adjusted[listing].items()
+        }
+        if ratio != 1:
+            provider.actions[listing] += (
+                CorporateActionEvent(listing, provider.name, ex_date, "SPLIT", ratio),
+            )
+        revisions = market.revision_count(listing)
+        outcome = CurrentUniverseMaintenance(
+            market,
+            acquisition,
+            provider,
+            clock.date(),
+            max_workers=1,
+            adjusted_tolerance=1e-6,
+            rebase_agreement=(1e-6, 1e-12),
+            full_history_escalation_listing_ids=frozenset() if noise else frozenset({listing}),
+        ).run(observed_at=clock)
+        assert (outcome.status, outcome.failed) == (CurrentUniverseMaintenanceStatus.COMPLETED, 0)
+        if noise:
+            assert market.revision_count(listing) == revisions  # zero noisy-day bar revisions
+        with market.database.read_transaction() as connection:
+            receipts = recorded(connection, (listing,))
+        assert len(receipts) == (1 if step < 3 else 2)
+        with market.database.retain(read_only=True):
+            history = store.load_workspace_observation_history("1" * 64)
+            prepared = _capture(daily_workspace, through, WIDE, history, clock)
+            assert [item.receipt_hash for item in prepared.rebases] == [
+                item.receipt_hash for item in receipts
+            ]
+            # No research manifest declares a rule here: the shipped rule kept the rows, by name.
+            assert prepared.rebases[-1].kept_rule_hash == DataDecisionRule().rule_hash
+            _publish(store, prepared, rebases=prepared.rebases, kept_rows=prepared.kept_rows)
+            request = dict(
+                formation=through,
+                observed_at=clock,
+                expected_source_hash=workspace_score_source_identity(daily_workspace),
+                ordered_feature_ids=WIDE,
+            )
+            cold = build_workspace_score_inputs(daily_workspace, **request)
+            kept = build_workspace_score_inputs(daily_workspace, **request, prepared=prepared)
+            snapshot = store.publish_frozen_observations(kept, disposition="RECORDED_INPUT_QA")
+            read = store.load_frozen_observations(snapshot.snapshot_hash)
+            for name in ("open", "high", "low", "close", "volume"):
+                assert getattr(read, name).tobytes() == getattr(cold, name).tobytes()  # as stored
+                with pytest.raises(ValueError):
+                    getattr(read, name).setflags(write=True)
+            for name, values in cold.formula_values.items():
+                np.testing.assert_allclose(read.formula_values[name], values, rtol=1e-6, atol=1e-12)
+    column = first.ordered_listing_ids.index(listing)
+    assert read.close[0, column] == (first.ohlcv["close"][0, column] * (1 / 3)) * 2

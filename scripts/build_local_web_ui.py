@@ -72,6 +72,7 @@ APP_FILES = [
     "js/app/pages-kit.js",
     "js/app/live-views.js",
     "js/app/live-workarea.js",
+    "js/app/input-summary.js",
     "js/app/live-workspace.js",
     "js/app/live-research.js",
     "js/app/live-features.js",

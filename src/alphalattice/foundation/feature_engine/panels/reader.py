@@ -368,6 +368,7 @@ class FeaturePanelReader:
                 expected_schema_hash=schema_hash,
                 panel_binding_hash=str(origin) if origin is not None else panel_binding_hash,
                 year=int(item["year"]),
+                part=int(item.get("part") or 0),
                 expected_row_count=int(item["row_count"]),
                 row_hash_factor_ids=row_hash_factor_ids,
             )
@@ -433,6 +434,7 @@ class FeaturePanelReader:
         expected_schema_hash: str,
         panel_binding_hash: str,
         year: int,
+        part: int = 0,
         expected_row_count: int,
         row_hash_factor_ids: tuple[str, ...] | None,
     ) -> None:
@@ -446,7 +448,11 @@ class FeaturePanelReader:
         # The identity the writer sealed, computed by its owner over the
         # chunk's row hashes and whole schema.
         actual = panel_chunk_hash(
-            identity, panel_binding_hash=panel_binding_hash, year=year, schema=parquet.schema_arrow
+            identity,
+            panel_binding_hash=panel_binding_hash,
+            year=year,
+            schema=parquet.schema_arrow,
+            part=part,
         )
         if actual != expected_chunk_hash:
             raise ValueError("feature panel chunk logical content hash mismatch")

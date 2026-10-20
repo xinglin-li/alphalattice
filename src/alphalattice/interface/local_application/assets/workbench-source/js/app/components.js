@@ -1766,8 +1766,7 @@ function pctText(s, threshold = null) {
   return shown;
 }
 // a fraction of one (0.6 -> "60%")
-/* ---- reading helpers: an owner's code in words (the code itself stays on hover and in the
-   exports). Owner strings stay in the details; displayed meanings change no value. */
+/* Owner codes read in words; hover and exports keep exact codes. Wording changes no value. */
 const CODE_WORDS = {
   'alternative_evidence.scoped_refresh': 'Refresh Evidence',
   'evidence_review.retrieval_environment_not_loaded': 'Retrieval environment not loaded',
@@ -1801,6 +1800,7 @@ const CODE_WORDS = {
   "ACCEPTED": "Accepted",
   "ACTIVATED": "Activated",
   "ACTIVE": "Active",
+  "ARCHIVED": "Archived",
   "AGENT_BUNDLE_READY": "Ready",
   "ALL_SLEEVES": "All sleeves",
   "BOUND": "Bound",
@@ -2131,15 +2131,15 @@ const CODE_WORDS = {
   market_reference_derived: 'Market reference derived', provider_daily_bars: 'Provider daily bars',
   sector_aggregate_derived: 'Sector aggregate derived', verified_panel_child: 'Verified panel child',
   'task_control.ledger_rebuilt': 'Task control ledger rebuilt', WORKSPACE_DEFAULT: 'Workspace default',
-  CLOSE_T: 'At the formation session\'s close', // the position clock's decision phase (portfolio_result_context)
-  POST_OBSERVED_QA_NOT_TIMELY_ADVICE: 'Research positions, not trade advice',
+  CLOSE_T: 'At the formation session\'s close', // decision phase (portfolio_result_context)
+  TIMELY_RESEARCH_NOT_TRADE_ADVICE: 'Timely research positions, not trade advice', POST_OBSERVED_QA_NOT_TIMELY_ADVICE: 'Research positions, not trade advice',
   'alternative_evidence.answer_problems': 'Returned by the evidence owner',
   'chief_risk_officer.answer_problems': 'Returned by the review owner',
-  'chief_risk_officer.portfolio-evidence-review': 'CRO portfolio evidence review', // the review route's policy (codeCell)
-  // an installed book's Risk role, as its strategy package declares it (the formula kept as written)
+  'chief_risk_officer.portfolio-evidence-review': 'CRO portfolio evidence review', // review policy (codeCell)
+  // an installed book's Risk role, as its package declares it (formula as written)
   REPORT_ONLY_DFD_PRIME_PLUS_E_NEVER_USED_FOR_WEIGHTS: 'Report only (DFD′ + E); never used for weights',
   POLICY_CONSUMED_RISK_ALLOCATION_PLUS_REPORT_ONLY_DFD_PRIME_PLUS_E: 'Risk allocation consumed by the policy; DFD′ + E report only',
-  // the owner's comparison (installed and authored): its disposition and its dimensions, in words
+  // the owner's comparison (installed and authored): disposition and dimensions
   DECLARED_PATH_COMPARISON_NO_SELECTION: 'Declared paths compared; nothing is selected', HOLDINGS: 'Holdings', CONCENTRATION: 'Concentration', COST: 'Cost', TURNOVER: 'Turnover', PERFORMANCE: 'Performance', LIMITATIONS: 'Limitations',
   DEVELOPMENT_EVIDENCE_ONLY: 'Development evidence only', DEVELOPMENT_EVIDENCE_ONLY_NEVER_PUBLISHED: 'Development evidence only · never published',
   NO_FOUNDATION_OR_STRATEGY_ACTIVATION: 'No Foundation or strategy is activated', NO_INDEPENDENT_SCIENTIFIC_VALIDATION: 'No independent scientific validation',
@@ -2149,7 +2149,7 @@ const CODE_WORDS = {
   NO_CAPACITY_OR_IMPACT_ESTIMATE: 'No capacity or impact estimate', NO_STRATEGY_ACTIVATION: 'No strategy is activated', NO_DATA_API_KEY: 'No data API key',
   DETERMINISTIC_LINEAR_METHOD_NOT_A_SEED_ENSEMBLE: 'Deterministic linear method · not a seed ensemble', DEVELOPMENT_EVALUATED: 'Development evaluated',
   POSITIVE_OOS_EVIDENCE: 'Positive out-of-sample evidence', MIXED_OOS_EVIDENCE: 'Mixed out-of-sample evidence', NO_DETECTABLE_EFFECT: 'No detectable effect', NEGATIVE_OOS_EVIDENCE: 'Negative out-of-sample evidence', INSUFFICIENT_EVIDENCE: 'Insufficient evidence',
-  // a factor's out-of-sample reason (oos_evidence.py): BY is the Benjamini–Yekutieli family, never the word "by"
+  // a factor's out-of-sample reason (oos_evidence.py): BY is Benjamini–Yekutieli, not "by"
   DIRECTIONALLY_POSITIVE_BY_CONFIRMED: 'Positive in direction · confirmed under Benjamini–Yekutieli FDR', DIRECTIONALLY_POSITIVE_NOT_BY_CONFIRMED: 'Positive in direction · not confirmed under Benjamini–Yekutieli FDR',
   DIRECTIONALLY_NEGATIVE_BY_CONFIRMED: 'Negative in direction · confirmed under Benjamini–Yekutieli FDR', NONPOSITIVE_DIRECTION_NOT_BY_CONFIRMED: 'Not positive in direction · not confirmed under Benjamini–Yekutieli FDR',
   MIXED_OOS_DIRECTION: 'Mixed direction out of sample', NONPOSITIVE_DIRECTION_NOT_HOLM_CONFIRMED: 'Not positive in direction · not confirmed under Holm',
@@ -2360,14 +2360,13 @@ const methodWords = (token) => labelOf(token) ? labelWords(labelOf(token)) : MET
 /* The words with the code on hover: a reader who needs the exact token still has it. */
 // A code the catalog knows is said in words; a sentence the owner already wrote stays words; only a bare token is shown as one.
 const coded = (code) => html`<span class="coded" data-tip="${code ?? ''}">${codeWords(code)}</span>`;
-/* What a flow needs before it runs (U60, V367): the owner's sentence, the completed results it reads on its input (newest
- * first, at most five of each, each opening its page), what is missing, and the owner's next requests as the ways this
- * page already has. `input` is the input the block is for ({id, binding}), which a handoff's draft names. */
+/* Prerequisites and offered routes, retaining each input's {id, binding} and the owner's selectors. */
 const PREREQ_RESULTS = {FACTOR_STUDY: 'Factor studies', ALPHA_STUDY: 'Alpha studies', RISK_STUDY: 'Risk studies', BOOK: 'Books'};
 const PREREQ_MISSING = {CURATED_FACTOR_STUDY: 'a curated Factor study', ALPHA_STUDY: 'a completed Alpha study', BOOK: 'a completed book'};
 const PREREQ_KINDS = {'factor.screening-development': 'Start a Factor study on this input', 'risk.covariance-development': 'Start a Risk study on this input'};
 function prerequisiteWays(next, input = null) {
   const ways = Object.values(next || {}).map((r) => {
+    if (r.operation === 'CONTROLS') return btn(t('Portfolio controls'), 'book-controls', JSON.stringify(r), 'button compact');
     if (r.operation === 'MODEL_EXTENSIONS') return link(t('Models'), 'models', 'button compact');
     if (r.operation === 'EXPERIMENT_CONTROLS' && PREREQ_KINDS[r.experiment_kind]) return link(t(PREREQ_KINDS[r.experiment_kind]), 'lab', 'button compact', {experiment_kind: r.experiment_kind, research_input: r.research_input_id, input_binding: r.input_binding_hash, origin: '', plan: '', draft_source: ''});
     if (r.operation === 'EXPERIMENT_CURATION') return btn(t('Curate the Factor study'), 'task-result', r.task_id, 'button compact');

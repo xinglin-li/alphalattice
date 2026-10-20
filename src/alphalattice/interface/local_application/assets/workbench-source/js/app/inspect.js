@@ -1,19 +1,7 @@
 /* Inspection without leaving the page: Focus mode, the read-only proof lens, Quick Open,
- * declaration differences, chart observations and the research map. */
+ * chart observations and the research map. */
 const Inspect = (() => {
-  const S = {baseline: clone(defaults()), observation: Data.series().length - 1, window: null, focus: false, lens: null, lensReturn: null, commandIndex: 0};
-
-  /* ---- declaration difference (initial fixture draft → current declaration) ---- */
-  const DIFF_FIELDS = [['kind', 'Experiment type'], ['input', 'Research input'], ['names', 'Names per sleeve'], ['sleeves', 'Sleeve count'], ['exit', 'Exit rank'], ['cost', 'Cost · bps / side'], ['seed', 'Deterministic seed']];
-  function diffValues(d) {
-    return DIFF_FIELDS.filter(([k]) => d.kind.startsWith('portfolio') || !['names', 'sleeves', 'exit', 'cost'].includes(k)).map(([key, label]) => ({key, label, before: S.baseline[key], after: d[key], changed: String(S.baseline[key]) !== String(d[key])}));
-  }
-  function declarationDiff(d) {
-    const rows = diffValues(d);
-    const changes = rows.filter((x) => x.changed);
-    const shown = changes.length ? changes : rows.filter((x) => ['input', 'names', 'exit'].includes(x.key));
-    return html`<div class="diff-header"><span class="diff-kind">${t('Declaration difference')}</span><span class="diff-count">${I18N.plural(changes.length, '{n} edit', '{n} edits')}</span></div><h3>${changes.length ? t('Parameter changes') : t('No parameter changes')}</h3><p class="diff-reference">${t('Initial fixture draft → current declaration.')}</p><div class="diff-column-labels"><span>${t('Parameter')}</span><span>${t('Starting → Current')}</span></div><div class="diff-rows">${shown.map((x) => html`<div class="diff-row ${x.changed ? 'changed' : ''}"><span>${(t(x.label))}</span><span class="diff-values"><span class="diff-before">${(x.before ?? t('Not set'))}</span><span class="diff-arrow" aria-label="${t('to')}">→</span><strong>${(x.after ?? t('Not set'))}</strong></span></div>`)}</div>${changes.length ? '' : html`<p class="diff-empty">${t('No parameter changes. Confirmation still submits a new Task.')}</p>`}<p class="diff-boundary">${t('Parameter comparison only · no predicted outcome.')}</p>`;
-  }
+  const S = {observation: Data.series().length - 1, window: null, focus: false, lens: null, lensReturn: null, commandIndex: 0};
 
   /* ---- chart window and observation cursor (portfolio) ----
    * The navigator under the chart is the whole published series in miniature with the reader's
@@ -554,9 +542,7 @@ const Inspect = (() => {
     get observation() {
       return S.observation;
     },
-    baseline: S.baseline,
-    diffValues,
-    declarationDiff, recordIcon: (x) => RECORD_ICONS[x.raw?.kind] || 'file',
+    recordIcon: (x) => RECORD_ICONS[x.raw?.kind] || 'file',
     observationDock, presetsFor,
     syncObservation,
     selectObservation,

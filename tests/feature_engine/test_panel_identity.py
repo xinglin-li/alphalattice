@@ -149,6 +149,7 @@ def _manifest(composition) -> dict[str, object]:
                 "chunk_hash": chunk.chunk_hash,
                 "metadata_hash": chunk.metadata_hash,
                 "uri": chunk.uri,
+                **({"part": chunk.part} if chunk.part else {}),
             }
             for chunk in composition.chunks
         ],
@@ -265,6 +266,53 @@ def test_full_tail_and_sparse_composition_are_bounded_by_year(tmp_path: Path) ->
     after = pq.read_table(corrected_path).to_pandas().set_index(["session_date", "listing_id"])
     assert after["factor_b"].equals(prior["factor_b"])
     assert tuple(after.loc[(date(2026, 1, 2),), "factor_a"]) == (500.0, 501.0)
+
+
+def test_a_daily_rewrites_only_its_years_open_quarter(tmp_path: Path) -> None:
+    """requirement (PANEL-SUB-YEAR-CHUNKS): a daily on a December-sized year writes only the open
+    quarter's part, about a quarter of the year's bytes; closed parts keep their files."""
+    resolver = ArtifactResolver(tmp_path / "artifacts")
+    owner = PanelArtifactCompositionOwner(resolver)
+    listings = tuple(f"listing-{n:02d}" for n in range(40))
+    year = [
+        date(2026, 1, 1).fromordinal(d)
+        for d in range(date(2026, 1, 2).toordinal(), date(2026, 12, 23).toordinal())
+    ]
+    sessions = (date(2025, 12, 31), *(d for d in year if d.weekday() < 5))
+    daily = (*sessions, date(2026, 12, 23))
+
+    def build(axis, base, name):
+        session = owner.begin(
+            operation_id=name,
+            binding=_binding(as_of_session=axis[-1]),
+            base_manifest=base,
+            sessions=axis,
+            listing_ids=listings,
+        )
+        fresh = axis if base is None else axis[-1:]
+        session.stage_patch(
+            rows=_rows(fresh, listings, offset=float(len(axis))),
+            factor_ids=("factor_a", "factor_b"),
+            materialization_receipt_hash="a" * 64,
+        )
+        return session.finalize(availability=_availability(axis))
+
+    first = build(sessions, None, "first")
+    after = build(daily, _manifest(first), "daily")
+    parts = [c for c in after.chunks if c.year == 2026]
+    assert (after.reused_chunk_count, after.written_chunk_count) == (4, 1), after.chunks
+    assert len(parts) == 4 and parts[:3] == [c for c in first.chunks if c.year == 2026][:3]
+
+    def size(chunk):
+        return (
+            resolver.resolve_feature_panel_chunk_ref(
+                uri=chunk.uri, content_hash=chunk.chunk_hash, metadata_hash=chunk.metadata_hash
+            )
+            .stat()
+            .st_size
+        )
+
+    assert size(parts[-1]) <= 0.3 * sum(map(size, parts))  # the open quarter, not the year
 
 
 def _manifest_with_lineage(

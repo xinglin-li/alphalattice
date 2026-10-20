@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
 import numpy as np
 import pandas as pd
@@ -70,6 +70,19 @@ class PanelCompositionBinding:
             raise ValueError("Panel composition row identity basis is unknown")
 
 
+PANEL_PARTS_PER_YEAR: Final = 4
+"""The parts a year is written in (quarters), so a daily rewrites only its open part. The one
+storage form; values, row hashes and the logical Panel are the same in any."""
+Span = tuple[int, int]
+"""A partition's (year, part): part 0 is a whole year, 1.. a part of it."""
+_MONTHS: Final = 12
+
+
+def _part_of(session: date) -> int:
+    """The quarter of its year a session falls in: its part, from 1."""
+    return (session.month - 1) * PANEL_PARTS_PER_YEAR // _MONTHS + 1
+
+
 @dataclass(frozen=True)
 class PreparedPanelChunk:
     """Describe an immutable annual chunk and the binding that wrote it."""
@@ -91,6 +104,9 @@ class PreparedPanelChunk:
     # sessions was computed over, with its member count. Empty for a chunk
     # under the binding rule, whose rows all share the binding's identity.
     cross_sections: tuple[PanelCrossSectionRange, ...] = ()
+    # The sub-year part (a quarter, 1-4) the file holds; 0 for a whole-year chunk, which
+    # every chunk written before sub-year parts is and stays.
+    part: int = 0
 
 
 @dataclass(frozen=True)
@@ -164,7 +180,7 @@ class PreparedPanelComposition:
 
 @dataclass(frozen=True)
 class _PatchFragment:
-    year: int
+    year: Span  # the partition the fragment lands in
     factor_ids: tuple[str, ...]
     table: pa.Table
 
@@ -424,11 +440,12 @@ class PanelCompositionSession:
         elif membership is not None and not membership.is_uniform:
             raise ValueError("Panel composition under the binding rule holds one member set")
         self._fragments: list[_PatchFragment] = []
-        self._active_patch_year: int | None = None
-        self._prepared_by_year: dict[int, PreparedPanelChunk] = {}
+        self._active_patch_year: Span | None = None
+        self._prepared_by_year: dict[Span, PreparedPanelChunk] = {}
         self._reused_years: list[int] = []
-        self._base_axes: dict[int, tuple[date, ...]] = {}
+        self._base_axes: dict[str, tuple[date, ...]] = {}
         self._identity_tables: dict[str, pa.Table] = {}
+        self._spans: dict[Span, tuple[date, ...]] | None = None
 
     def members(self, session: date) -> tuple[str, ...]:
         """The listings whose rows the session holds, in physical (sorted) order."""
@@ -436,9 +453,43 @@ class PanelCompositionSession:
             return self._listing_ids
         return tuple(sorted(self.membership.members(session)))
 
-    def cross_sections(self, year: int) -> tuple[PanelCrossSectionRange, ...]:
-        """Return the cross-section ranges recorded for a year."""
-        return self._cross_sections_by_year.get(year, ())
+    def cross_sections(self, span: Span) -> tuple[PanelCrossSectionRange, ...]:
+        """Return the cross-section ranges recorded for a span: its year's, clipped to it."""
+        sessions = self.spans()[span]
+        return tuple(
+            replace(
+                item,
+                first_session=max(item.first_session, sessions[0]),
+                last_session=min(item.last_session, sessions[-1]),
+            )
+            for item in self._cross_sections_by_year.get(span[0], ())
+            if item.first_session <= sessions[-1] and item.last_session >= sessions[0]
+        )
+
+    def spans(self) -> dict[Span, tuple[date, ...]]:
+        """Each partition's sessions, in calendar order.
+
+        A year whose whole-year base partition still serves it whole stays one span (part 0):
+        every chunk written before sub-year parts is reused as it is. Any other year is split
+        into quarters, so a daily rewrites only its open part and
+        shares the closed ones by content address.
+        """
+        if self._spans is None:
+            spans: dict[Span, list[date]] = {}
+            for year, sessions in self._sessions_by_year.items():
+                if sessions and self._year_prefix(year) == len(sessions):
+                    spans[(year, 0)] = list(sessions)
+                    continue
+                for session in sessions:
+                    spans.setdefault((year, _part_of(session)), []).append(session)
+            self._spans = {span: tuple(values) for span, values in spans.items()}
+        return self._spans
+
+    def _span_of(self, session: date) -> Span:
+        """The partition a session's row lands in."""
+        if (session.year, 0) in self.spans():
+            return (session.year, 0)
+        return (session.year, _part_of(session))
 
     def all_cross_sections(self) -> tuple[PanelCrossSectionRange, ...]:
         """Every session's cross-section over the whole calendar, as ranges."""
@@ -475,8 +526,8 @@ class PanelCompositionSession:
         frame["materialization_receipt_hash"] = materialization_receipt_hash
         if frame.duplicated(["session_date", "listing_id"]).any():
             raise ValueError("Panel composition patch contains duplicate rows")
-        for year, year_frame in frame.groupby(frame["session_date"].map(lambda value: value.year)):
-            year = int(year)
+        for span, year_frame in frame.groupby(frame["session_date"].map(self._span_of)):
+            year = cast(Span, span)
             if self._active_patch_year is not None and year < self._active_patch_year:
                 raise ValueError("Panel composition patches must be staged chronologically")
             if self._active_patch_year is not None and year > self._active_patch_year:
@@ -500,22 +551,23 @@ class PanelCompositionSession:
         if self._active_patch_year is not None:
             self._seal_patch_year(self._active_patch_year)
             self._active_patch_year = None
+        self._split_whole_years()
         base_chunks = self._base_chunks()
         prepared: list[PreparedPanelChunk] = []
         schema_hash: str | None = None
         reused = 0
         written = len(self._prepared_by_year)
-        work_years = tuple(year for year, values in self._sessions_by_year.items() if values)
-        reusable = set(self.reusable_years())
+        work_years = tuple(self.spans())
+        reusable = set(self._reusable_spans())
         for completed, year in enumerate(work_years, start=1):
             chunk = self._prepared_by_year.get(year)
             base = base_chunks.get(year)
             if chunk is None:
                 if base is None or year not in reusable:
-                    raise ValueError(f"Panel composition has no source for year {year}")
+                    raise ValueError(f"Panel composition has no source for {year}")
                 chunk = base
                 reused += 1
-                self._reused_years.append(year)
+                self._reused_years.append(year[0])
             prepared.append(chunk)
             # Finalization judges a partition by its identity columns and its
             # schema; the factor columns are decoded by no step here, so the
@@ -532,13 +584,14 @@ class PanelCompositionSession:
                     panel_chunk_hash(
                         table,
                         panel_binding_hash=chunk.origin_binding_hash,
-                        year=year,
+                        year=chunk.year,
                         schema=self._chunk_schema(chunk),
+                        part=chunk.part,
                     )
                     != chunk.chunk_hash
                 ):
                     raise ValueError(f"Panel composition base chunk for {year} failed identity")
-                if _session_axis(table) != self._sessions_by_year[year]:
+                if _session_axis(table) != self.spans()[year]:
                     raise ValueError(
                         f"Panel composition base chunk for {year} does not hold the calendar"
                     )
@@ -547,7 +600,7 @@ class PanelCompositionSession:
             elif schema_hash != current_schema_hash:
                 raise ValueError("Panel composition annual schemas differ")
             if progress is not None:
-                progress(completed, len(work_years), year)
+                progress(completed, len(work_years), year[0])
         if not prepared or schema_hash is None:
             raise ValueError("Panel composition produced no chunks")
         content = panel_content_identity(
@@ -576,7 +629,7 @@ class PanelCompositionSession:
             chunks=tuple(prepared),
             reused_chunk_count=reused,
             written_chunk_count=written,
-            reused_years=tuple(self._reused_years),
+            reused_years=tuple(dict.fromkeys(self._reused_years)),  # once per year, not part
             partition_origins=origins,
             membership=self.membership,
             listing_ids=self._listing_ids,
@@ -636,21 +689,23 @@ class PanelCompositionSession:
                 )
         return origins
 
-    def _seal_patch_year(self, year: int) -> None:
+    def _seal_patch_year(self, span: Span) -> None:
         fragments = tuple(self._fragments)
-        if not fragments or any(item.year != year for item in fragments):
+        if not fragments or any(item.year != span for item in fragments):
             raise ValueError("Panel composition patch-year state is invalid")
-        # A year the base cannot serve even as a merge base (another calendar
+        self._seal_span(span, fragments)
+        self._fragments.clear()
+
+    def _seal_span(self, span: Span, fragments: Sequence[_PatchFragment]) -> None:
+        """Write a span's partition: its base's rows, then its fragments' over them."""
+        # A span the base cannot serve even as a merge base (another calendar
         # or membership) is composed from its fragments alone; the plan forced
         # every one of its sessions, so no row is left for the base to supply.
+        year, part = span
         table = self._compose_year(
             year=year,
-            sessions=self._sessions_by_year[year],
-            base=(
-                self._base_chunks().get(year)
-                if self._base_prefix_length(year) is not None
-                else None
-            ),
+            sessions=self.spans()[span],
+            base=self._span_base(span) if self._base_prefix_length(span) is not None else None,
             fragments=fragments,
         )
         current_schema_hash = panel_schema_hash(table.schema)
@@ -658,6 +713,7 @@ class PanelCompositionSession:
             table,
             panel_binding_hash=self.binding.panel_binding_hash,
             year=year,
+            part=part,
         )
         descriptor = self.owner.resolver.publish_feature_panel_chunk(
             table=table,
@@ -665,11 +721,12 @@ class PanelCompositionSession:
             metadata={
                 "panel_binding_hash": self.binding.panel_binding_hash,
                 "calendar_year": str(year),
+                **({"calendar_part": str(part)} if part else {}),
                 "schema_hash": current_schema_hash,
             },
         )
         chunk_sessions = cast(list[date], table.column("session_date").to_pylist())
-        self._prepared_by_year[year] = PreparedPanelChunk(
+        self._prepared_by_year[span] = PreparedPanelChunk(
             year=year,
             first_session=min(chunk_sessions),
             last_session=max(chunk_sessions),
@@ -678,9 +735,17 @@ class PanelCompositionSession:
             metadata_hash=descriptor.metadata_hash,
             uri=descriptor.uri,
             origin_binding_hash=self.binding.panel_binding_hash,
-            cross_sections=self.cross_sections(year),
+            cross_sections=self.cross_sections(span),
+            part=part,
         )
-        self._fragments.clear()
+
+    def _split_whole_years(self) -> None:
+        """Write each unpatched part a whole-year base partition holds: the upgrade's one
+        split of the year, so the parts publish and later dailies rewrite only their own."""
+        held = self._prepared_by_year.keys() | self._base_chunks().keys()
+        for span, sessions in self.spans().items():
+            if span[1] and span not in held and self._base_prefix_length(span) == len(sessions):
+                self._seal_span(span, ())
 
     @property
     def base_compatible(self) -> bool:
@@ -738,13 +803,24 @@ class PanelCompositionSession:
         return frozenset(self.binding.factor_ids) - frozenset(self.extension.factor_ids)
 
     def reusable_years(self) -> tuple[int, ...]:
-        """Years whose base partition holds exactly the current calendar and membership."""
+        """Years every partition of which its own base partition serves whole."""
+        spans, reusable = self.spans(), set(self._reusable_spans())
+        years = {year for year, _part in spans}
+        return tuple(sorted(y for y in years if all(s in reusable for s in spans if s[0] == y)))
+
+    def _reusable_spans(self) -> tuple[Span, ...]:
+        """Spans whose own base partition holds exactly the current calendar and membership.
+
+        A part a whole-year partition serves as a merge base is written, not reused: the
+        upgrade's one split of the open year.
+        """
         if self.base_extended:
             return ()
+        chunks = self._base_chunks()
         return tuple(
-            year
-            for year, sessions in self._sessions_by_year.items()
-            if sessions and self._base_prefix_length(year) == len(sessions)
+            span
+            for span, sessions in self.spans().items()
+            if span in chunks and self._base_prefix_length(span) == len(sessions)
         )
 
     def unreusable_years(self) -> tuple[int, ...]:
@@ -757,10 +833,12 @@ class PanelCompositionSession:
         takes effect in -- is not among them: its base partition is merged
         with the sessions beyond the prefix.
         """
+        spans = self.spans()
         return tuple(
             year
             for year, sessions in self._sessions_by_year.items()
-            if sessions and self._base_prefix_length(year) is None
+            if sessions
+            and all(self._base_prefix_length(span) is None for span in spans if span[0] == year)
         )
 
     def unreusable_sessions(self) -> tuple[date, ...]:
@@ -770,14 +848,42 @@ class PanelCompositionSession:
         year that lie beyond its base prefix.
         """
         forced: list[date] = []
-        for year, sessions in self._sessions_by_year.items():
-            if not sessions:
-                continue
-            held = self._base_prefix_length(year)
+        for span, sessions in self.spans().items():
+            held = self._base_prefix_length(span)
             forced.extend(sessions if held is None else sessions[held:])
         return tuple(forced)
 
-    def _base_prefix_length(self, year: int) -> int | None:
+    def _base_prefix_length(self, span: Span) -> int | None:
+        """How many leading sessions of the span its base serves; ``None`` for none.
+
+        Its own part's prefix, or, where a whole-year partition is its base, the year's prefix
+        cut to the span.
+        """
+        year, part = span
+        sessions = self.spans()[span]
+        own = self._base_chunks().get(span)
+        if part == 0 or own is not None:
+            return self._prefix(own, sessions)
+        held = self._year_prefix(year)
+        if held is None:
+            return None
+        year_sessions = self._sessions_by_year[year]
+        offset = year_sessions.index(sessions[0])
+        inside = min(max(held - offset, 0), len(sessions))
+        return inside or None
+
+    def _span_base(self, span: Span) -> PreparedPanelChunk | None:
+        """The partition a span is merged with: its own part, else its year's whole chunk."""
+        chunks = self._base_chunks()
+        return chunks.get(span) or chunks.get((span[0], 0))
+
+    def _year_prefix(self, year: int) -> int | None:
+        """How many leading sessions of the year its whole-year base partition serves."""
+        return self._prefix(
+            self._base_chunks().get((year, 0)), self._sessions_by_year.get(year, ())
+        )
+
+    def _prefix(self, base: PreparedPanelChunk | None, sessions: Sequence[date]) -> int | None:
         """How many leading sessions of the year's calendar the base partition serves.
 
         Decided on the partition's actual session axis, not on the endpoints
@@ -793,11 +899,9 @@ class PanelCompositionSession:
         ``None`` means no partition can serve the year even as the base of a
         merge.
         """
-        base = self._base_chunks().get(year)
-        sessions = self._sessions_by_year.get(year, ())
         if base is None or not sessions:
             return None
-        axis = self._base_axis(year, base)
+        axis = self._base_axis(base)
         if axis != sessions[: len(axis)]:
             return None
         if self.binding.row_identity_basis == PANEL_ROW_IDENTITY_BY_BINDING:
@@ -821,7 +925,7 @@ class PanelCompositionSession:
             held += 1
         return held if held else None
 
-    def _base_axis(self, year: int, base: PreparedPanelChunk) -> tuple[date, ...]:
+    def _base_axis(self, base: PreparedPanelChunk) -> tuple[date, ...]:
         """The sessions a base partition holds, read once from its bytes.
 
         The same column projection the recovery binding reads at publication;
@@ -830,8 +934,8 @@ class PanelCompositionSession:
         file it names: a partition whose bytes disagree with its recorded
         endpoints or row count is refused, not silently recomputed.
         """
-        if year in self._base_axes:
-            return self._base_axes[year]
+        if base.chunk_hash in self._base_axes:
+            return self._base_axes[base.chunk_hash]
         path = self.owner.resolver.resolve_feature_panel_chunk_ref(
             uri=base.uri, content_hash=base.chunk_hash, metadata_hash=base.metadata_hash
         )
@@ -843,19 +947,21 @@ class PanelCompositionSession:
             or axis[0] != base.first_session
             or axis[-1] != base.last_session
         ):
-            raise ValueError(f"Panel composition base chunk for {year} contradicts its manifest")
-        self._base_axes[year] = axis
+            raise ValueError(
+                f"Panel composition base chunk for {base.year} contradicts its manifest"
+            )
+        self._base_axes[base.chunk_hash] = axis
         return axis
 
-    def _base_chunks(self) -> dict[int, PreparedPanelChunk]:
+    def _base_chunks(self) -> dict[Span, PreparedPanelChunk]:
         if not self.base_compatible:
             return {}
         assert self.base_manifest is not None
         default_origin = str(self.base_manifest["panel_binding_hash"])
-        result: dict[int, PreparedPanelChunk] = {}
+        result: dict[Span, PreparedPanelChunk] = {}
         for item in cast(list[dict[str, object]], self.base_manifest.get("chunks", [])):
             chunk = prepared_chunk(item, default_origin=default_origin)
-            result[chunk.year] = chunk
+            result[(chunk.year, chunk.part)] = chunk
         return result
 
     def _chunk_path(self, chunk: PreparedPanelChunk) -> Path:
@@ -969,7 +1075,7 @@ class PanelCompositionSession:
             factor_id: np.zeros(size, dtype=bool) for factor_id in sorted(added)
         }
         if base is not None:
-            base_table = self._load_base_table(base)
+            base_table = _within(self._load_base_table(base), sessions)
             base_axis = _session_axis(base_table)
             if base_axis != tuple(sessions)[: len(base_axis)]:
                 raise ValueError(f"Panel composition base chunk for {year} is not a prefix")
@@ -1163,6 +1269,8 @@ def _chunk_payload(chunk: PreparedPanelChunk) -> dict[str, object]:
     if chunk.origin_binding_hash is None:
         raise ValueError("Panel composition chunk has no origin binding")
     payload = asdict(chunk)
+    if not chunk.part:
+        del payload["part"]  # a whole-year chunk's payload as before parts
     payload["first_session"] = chunk.first_session.isoformat()
     payload["last_session"] = chunk.last_session.isoformat()
     payload["cross_sections"] = [item.to_payload() for item in chunk.cross_sections]
@@ -1211,6 +1319,7 @@ def prepared_chunk(item: Mapping[str, object], *, default_origin: str) -> Prepar
             PanelCrossSectionRange.from_payload(cast(Mapping[str, object], entry))
             for entry in recorded
         ),
+        part=int(cast(int, item.get("part") or 0)),
     )
 
 
@@ -1393,3 +1502,14 @@ __all__ = [
     "panel_content_identity",
     "prepared_chunk",
 ]
+
+
+def _within(table: pa.Table, sessions: Sequence[date]) -> pa.Table:
+    """A base partition's rows on a span's sessions: a whole-year one serving one part holds
+    the rest of its year too."""
+    at = table.column("session_date")
+    inside = pc.and_(
+        pc.greater_equal(at, pa.scalar(sessions[0], pa.date32())),
+        pc.less_equal(at, pa.scalar(sessions[-1], pa.date32())),
+    )
+    return table if pc.all(inside).as_py() else table.filter(inside)

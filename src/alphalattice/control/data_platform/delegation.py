@@ -198,31 +198,6 @@ class DataIssueDelegation:
         self.ledger.revoke_feature_input_delegation(grant_hash, now)
         return {"status": "REVOKED", "grant_hash": grant_hash}
 
-    def permits_choice(
-        self,
-        grant_hash: str,
-        case: FeatureInputAgentCase,
-        option: RemediationOption,
-        *,
-        now: datetime,
-    ) -> bool:
-        """Validate an active grant and compare its exact remediation choice.
-
-        Args:
-            grant_hash: Canonical identity of the delegation grant.
-            case: Current Feature input case with its evidence and policy bindings.
-            option: Exact admitted remediation option and its typed policy arguments.
-            now: Clock used to assess the active delegation or deadline.
-
-        Returns:
-            Whether the case, policy arguments, option and listing scope match.
-
-        Raises:
-            ValueError: The grant cannot be read and validated at the supplied clock.
-        """
-        grant = self.read(grant_hash, now=now)
-        return self.matches_choice(grant, case, option)
-
     @staticmethod
     def matches_choice(
         grant: dict[str, Any], case: FeatureInputAgentCase, option: RemediationOption

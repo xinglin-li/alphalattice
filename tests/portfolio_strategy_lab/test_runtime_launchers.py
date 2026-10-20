@@ -185,13 +185,17 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
     launch = ["--workspace", str(workspace), "serve", "--no-browser", "--detach"]
     out = _end_turn_after(launch, root, temp)
     assert "Portfolio Research workspace:" in out and "outlives it" in out
+    started = out.splitlines()[0]  # plainly STARTED, with the workspace and the address
+    assert started.startswith("STARTED") and str(workspace.resolve()) in started
     assert out.rstrip().endswith(OPEN_THE_WORKBENCH)  # the step right after the launch
     key = out.split("key=", 1)[1].split("#", 1)[0]
     logs = list(temp.glob("alphalattice-host-*.log"))
     assert len(logs) == 1 and key not in logs[0].read_text(encoding="utf-8")
-    LocalResearchConnection.read(workspace)  # a later client finds the Host
-    second = json.loads(_end_turn_after(launch, root, temp))
-    assert second["failure_code"] == "local_web.host_already_serving"
+    address = LocalResearchConnection.read(workspace).url  # a later client finds the Host
+    assert address in started
+    second = json.loads(_end_turn_after(launch, root, temp))  # plainly ALREADY_SERVING
+    assert second["status"] == "ALREADY_SERVING" and second["workspace"] in started
+    assert (second["address"], second["next_action"]) == (address, "USE_THE_SERVING_HOST")
     assert list(temp.glob("alphalattice-host-*.log")) == logs
     assert main(["--workspace", str(workspace), "host", "stop"]) == 0
     connection = LocalResearchConnection.path(workspace)

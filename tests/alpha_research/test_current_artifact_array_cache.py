@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from collections import Counter
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -140,9 +140,7 @@ def test_immutable_artifacts_reuse_across_opted_in_scopes_with_unbroken_os_lease
     load_calls = 0
     watched_paths = {
         (
-            store.root
-            / "current/frozen-observation-arrays"
-            / f"{observation.array_content_hash}.bin"
+            store.root / "current/frozen-observation-arrays" / f"{observation.array_files[-1]}.bin"
         ).resolve(): "arrays",
         (
             store.root / "current/frozen-feature-arrays" / f"{preparation.array_content_hash}.bin"
@@ -282,7 +280,7 @@ def test_observation_admission_proof_refuses_current_bytes_tampered_after_verifi
     with verified_model_read_scope(reuse_verified=True):
         store.verify_frozen_observations(observation.snapshot_hash)
 
-    path = store._path("current/frozen-observation-arrays", observation.array_content_hash, "bin")
+    path = store._path("current/frozen-observation-arrays", observation.array_files[-1], "bin")
     before = path.stat()
     damaged = bytearray(path.read_bytes())
     damaged[len(damaged) // 2] ^= 1
@@ -301,7 +299,7 @@ def test_observation_admission_proof_skips_unchanged_packed_bytes_in_a_new_scope
     current_artifacts, monkeypatch
 ):
     store, observation, _ = current_artifacts
-    path = store._path("current/frozen-observation-arrays", observation.array_content_hash, "bin")
+    path = store._path("current/frozen-observation-arrays", observation.array_files[-1], "bin")
     open_file = Path.open
     reads = 0
 
@@ -322,7 +320,7 @@ def test_observation_admission_proof_skips_unchanged_packed_bytes_in_a_new_scope
 def test_cached_payload_read_still_refuses_tampering_with_restored_mtime(kind, current_artifacts):
     store, observation, preparation = current_artifacts
     category, identity = (
-        ("current/frozen-observation-arrays", observation.array_content_hash)
+        ("current/frozen-observation-arrays", observation.array_files[-1])
         if kind == "observation"
         else ("current/frozen-feature-arrays", preparation.array_content_hash)
     )
@@ -396,3 +394,63 @@ def test_json_commitment_is_rechecked_after_a_cached_reconstruction(kind, curren
         path.write_bytes(original)
         os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
         read()
+
+
+def test_a_split_day_keeps_earlier_frozen_blocks_and_reads_the_rebase(tmp_path, monkeypatch):
+    """requirement: a split day's frozen blocks stay the earlier ones' when only its rows as
+    stored and rounding moved, of two as long the first by name, each read once."""
+    from alphalattice.investment.alpha_research.publication.contracts import StoredRebase
+
+    store = AlphaCurrentArtifactStore(tmp_path)
+    days = tuple(date(2026, 1, 1) + timedelta(days=n) for n in range(43))
+    base = np.arange(86, dtype=np.float64).reshape(43, 2) + 10.0
+    names = ("open", "high", "low", "close", "volume")
+
+    def source(rows, ohlcv, trend, **extra):  # type: ignore[no-untyped-def]
+        return FrozenPriceVolumeInputs(
+            formation_sessions=days[:rows], ordered_listing_ids=("QA-A", "QA-B"),
+            sector_by_listing_id={"QA-A": "Technology", "QA-B": "Technology"},
+            **{n: ohlcv[n][:rows] for n in names}, market_context_values=np.ones((rows, 3)),
+            sector_trend_values=trend[:rows], source_binding_hash=canonical_hash("source"),
+            formula_values={"momentum": np.full((rows, 2), 0.02)}, **extra,
+        )  # fmt: skip
+
+    trend = np.full((43, 1), 0.01)
+    before, twin = (
+        store.publish_frozen_observations(
+            source(42, {n: base for n in names}, trend * scale), disposition="SYNTHETIC_INPUT_QA"
+        )
+        for scale in (1.0, 1 + 2e-15)
+    )
+    before = min((before, twin), key=lambda item: item.snapshot_hash)  # the tie's first by name
+    listed, reads = Path.glob, []
+    monkeypatch.setattr(Path, "glob", lambda self, pattern: reversed(sorted(listed(self, pattern))))
+    monkeypatch.setattr(Path, "read_text", lambda self, *a, **k: reads.append(self.name) or (
+        self.read_bytes().decode(*a, **k)))  # fmt: skip
+    split = {n: base.copy() for n in names}
+    for n in names:
+        split[n][:42, 1] *= 3.0 if n == "volume" else 1 / 3
+    kept = {"QA-B": (np.ones(42, dtype=np.bool_), {f"ohlcv::{n}": base[:42, 1] for n in names})}
+    rebase = StoredRebase(
+        listing_id="QA-B", receipt_hash=canonical_hash("split"), price_factor=1 / 3,
+        volume_factor=3.0, rows=((0, 42),),
+    )  # fmt: skip
+    after = store.publish_frozen_observations(
+        source(
+            43,
+            split,
+            trend * (1 + 1e-15),
+            rebases=(rebase,),
+            kept_rows=kept,
+            rebase_agreement=(1e-6, 1e-12),
+        ),
+        disposition="SYNTHETIC_INPUT_QA",
+    )
+    monkeypatch.undo()
+    assert after.array_blocks[:2] == before.array_blocks[:2] and after.rebases == (rebase,)
+    earlier = {f"{item.snapshot_hash}.json" for item in (before, twin)}
+    assert sorted(name for name in reads if name in earlier) == sorted(earlier)  # each once
+    assert (after.kept_blocks, after.kept_agreement) == (
+        (0, 1),
+        (1e-6, 1e-12),
+    )  # named, with its rule

@@ -433,6 +433,7 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
             # Same through-date; corrected source journals must still rotate capture identity.
             current = source.model_copy(update={"data_revision_hash": str(index + 4) * 64})
             preview = app.plan("factor")
+            assert preview["summary"]["database_snapshot_bytes"] == 0
             plan = app.last_plan
             assert preview["status"] == "CONFIRMATION_REQUIRED" and plan is not None
             assert preview["next_requests"]["confirm"] == {
@@ -613,7 +614,9 @@ def test_a_bundle_damaged_before_its_publication_leaves_no_receipt(tmp_path: Pat
         )
         current = source.model_copy(update={"data_revision_hash": "5" * 64})
         monkeypatch.setattr(app, "_source", lambda root=None: source if root else current)
-        assert app.plan("factor")["status"] == "CONFIRMATION_REQUIRED"
+        preview = app.plan("factor")
+        assert preview["status"] == "CONFIRMATION_REQUIRED"
+        assert preview["summary"]["database_snapshot_bytes"] == 0
         plan = app.last_plan
         assert plan is not None
 

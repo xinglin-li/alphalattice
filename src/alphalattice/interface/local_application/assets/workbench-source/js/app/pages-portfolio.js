@@ -525,7 +525,6 @@ const Portfolio = (() => {
   }
   function chartData() {
     return LiveViews.chartData();
-    openDialog(t('Chart · synthetic data'), t('Underlying values'), html`<p class="caption">${t('Generated design series, not historical market observations or product performance. The chart uses the same rows.')}</p>${table([t('Date'), t('Daily %'), t('Index'), t('Benchmark index')], Data.series().slice(-30).map((x) => tr([x.date, x.daily.toFixed(3), x.value.toFixed(2), x.benchmark.toFixed(2)])), t('Last 30 rows shown; export JSON for the complete 180-row fixture.'))}`, html`${btn(t('Export series JSON'), 'export-series', '', 'button primary')}`, true, () => chartData());
   }
 
   /* ---- pages ---- */
@@ -601,7 +600,7 @@ const Portfolio = (() => {
     ],'performance-tabs');
     const noForwardObservations=forward && Data.series().length===0;
     if (forward) {
-      const claim = proof.claim === 'POST_OBSERVED_QA_NOT_TIMELY_ADVICE' ? codeWords(proof.claim) : '';
+      const claim = ['TIMELY_RESEARCH_NOT_TRADE_ADVICE', 'POST_OBSERVED_QA_NOT_TIMELY_ADVICE'].includes(proof.claim) ? codeWords(proof.claim) : '';
       const execution = proof.execution_basis === 'DAILY_BAR_QA_NOT_VERIFIED_VENUE_EXECUTION' ? t('Daily bar QA returns; not verified venue execution.') : '';
       const dates = proof.observed_through && proof.published_at
         ? t('Observed through {date}; published {published}', {date:proof.observed_through,published:proof.published_at})

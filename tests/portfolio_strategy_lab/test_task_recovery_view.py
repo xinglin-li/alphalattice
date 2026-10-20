@@ -60,6 +60,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_exe
     EligiblePoolShort,
 )
 from tests.portfolio_strategy_lab.local_web_support import (
+    TEST_PACKAGE,
     _InterruptsOnce,
     _json,
     _manifest,
@@ -474,12 +475,10 @@ def test_cancellation_requested_is_shown_apart_from_acknowledged(
 
 
 def test_a_queued_task_cancelled_before_execution_reads_cancelled_while_its_command_returns(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    live, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     """A queued task cancelled before execution reads cancelled while its command returns."""
 
-    live = _service(tmp_path, _Resolver(_resolved()), "qa-gap")
-    live.start()
     run_next = TaskControlRunner.run_next
     inside: list[dict[str, Any]] = []
 
@@ -490,43 +489,47 @@ def test_a_queued_task_cancelled_before_execution_reads_cancelled_while_its_comm
         return run_next(runner, **kwargs)
 
     monkeypatch.setattr(TaskControlRunner, "run_next", cancel_before_claim)
-    try:
-        task_id = _json(live, "/api/run", method="POST", payload={})["task_id"]
-        live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
-        (gap,) = inside
-        assert gap["operation_running"] is True, "read while the command had not returned"
-        assert gap["lifecycle"] == "CANCELLED" and gap["cancellation"] == "ACKNOWLEDGED"
-        assert gap["stop"]["code"] == "TASK_CANCELLED_BEFORE_START"
-        assert gap["health"]["status"] == "TERMINAL_BLOCKED"
-        assert gap["liveness"]["status"] == "NOT_APPLICABLE"
-        assert gap["status"]["task_record_hash"] == gap["task_record_hash"]
-        assert _actions(gap)["CANCEL"]["available"] is False
-        assert _actions(gap)["RECOVER"]["available"] is False
-        final = _view(live, task_id)
-        assert final["lifecycle"] == "CANCELLED" and final["operation_running"] is False
-        assert _json(live, "/api/results")["results"] == []
-        from alphalattice.interface.local_application.cli import main
+    task_id = _json(live, "/api/run", method="POST", payload={})["task_id"]
+    live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
+    (gap,) = inside
+    assert gap["operation_running"] is True, "read while the command had not returned"
+    assert gap["lifecycle"] == "CANCELLED" and gap["cancellation"] == "ACKNOWLEDGED"
+    assert gap["stop"]["code"] == "TASK_CANCELLED_BEFORE_START"
+    assert gap["health"]["status"] == "TERMINAL_BLOCKED"
+    assert gap["liveness"]["status"] == "NOT_APPLICABLE"
+    assert gap["status"]["task_record_hash"] == gap["task_record_hash"]
+    assert _actions(gap)["CANCEL"]["available"] is False
+    assert _actions(gap)["RECOVER"]["available"] is False
+    final = _view(live, task_id)
+    assert final["lifecycle"] == "CANCELLED" and final["operation_running"] is False
+    assert _json(live, "/api/results")["results"] == []
+    from alphalattice.interface.local_application.cli import main
 
-        code = main(
-            [f"--workspace={live.workspace}", "--view=full", "activity", "wait", "--task", task_id],
-            serve=lambda _: 99,
-        )
-        waited = json.loads(capsys.readouterr().out)["data"]
-        assert code == 2 and waited["lifecycle"] == "CANCELLED"
-        cancelled = _json(live, "/api/cancel", method="POST", payload={"task_id": task_id})
-        for answer in (waited, _json(live, f"/api/status?task_id={task_id}"), cancelled):
-            assert (
-                answer["lifecycle"] == "CANCELLED"
-                and answer.get("next_action") == "REPORT_THE_STOP"
-                and answer["detail"] == CANCELLATION_REPLAN
-            ), answer
-            assert answer["next_requests"]["replan"] == final["next_requests"]["replan"]
-    finally:
-        live.stop()
+    code = main(
+        [f"--workspace={live.workspace}", "--view=full", "activity", "wait", "--task", task_id],
+        serve=lambda _: 99,
+    )
+    waited = json.loads(capsys.readouterr().out)["data"]
+    assert code == 2 and waited["lifecycle"] == "CANCELLED"
+    cancelled = _json(live, "/api/cancel", method="POST", payload={"task_id": task_id})
+    for answer in (waited, _json(live, f"/api/status?task_id={task_id}"), cancelled):
+        assert (
+            answer["lifecycle"] == "CANCELLED"
+            and answer.get("next_action") == "REPORT_THE_STOP"
+            and answer["detail"] == CANCELLATION_REPLAN
+        ), answer
+        assert answer["next_requests"]["replan"] == final["next_requests"]["replan"]
 
 
+@pytest.mark.parametrize(
+    "code",
+    [
+        "portfolio_application.no_admissible_candidate",
+        "portfolio_update.revised_split_basis_requires_review:qa-000 effective 2026-09-07",
+    ],
+)
 def test_an_owner_stop_remains_a_stop_and_admits_no_resume(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    live, monkeypatch: pytest.MonkeyPatch, code: str
 ) -> None:
     """A stage the domain owner refuses to complete blocks the Task: the view says so with
     the owner's code, offers no recovery, and RECOVER answers without touching it."""
@@ -534,66 +537,72 @@ def test_an_owner_stop_remains_a_stop_and_admits_no_resume(
     def refuse(self: Any, **kwargs: Any) -> StageExecutionResult:
         return StageExecutionResult(
             disposition=StageDisposition.BLOCKED,
-            failure_code="portfolio_application.no_admissible_candidate",
+            failure_code=code,
         )
 
     monkeypatch.setattr(PortfolioResearchTaskAdapter, "execute_stage", refuse)
-    live = _service(tmp_path, _Resolver(_resolved()), "qa-stop")
-    live.start()
-    try:
-        admitted = _json(live, "/api/run", method="POST", payload={})
-        task_id = admitted["task_id"]
-        live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
-        view = _view(live, task_id)
-        assert view["lifecycle"] == "BLOCKED"
-        assert view["stop"]["code"] == "portfolio_application.no_admissible_candidate"
-        assert view["stop"]["recoverable"] is False
+    task_id = _json(live, "/api/run", method="POST", payload={})["task_id"]
+    live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
+    view = _view(live, task_id)
+    assert view["lifecycle"] == "BLOCKED"
+    assert view["stop"]["code"] == code
+    assert view["stop"]["recoverable"] is False
+    newer_book = code.startswith("portfolio_update.revised_split_basis_requires_review:")
+    if newer_book:
+        assert "qa-000" in view["stop"]["detail"]
+    else:
         assert "Nothing was retried" in view["stop"]["detail"]
-        assert view["health"]["status"] == "TERMINAL_BLOCKED"
-        assert [i["incident_code"] for i in view["incidents"]] == [
-            "portfolio_application.no_admissible_candidate"
-        ]
-        actions = _actions(view)
-        assert actions["RECOVER"]["available"] is False
-        assert actions["CANCEL"]["available"] is False
+    assert view["health"]["status"] == "TERMINAL_BLOCKED"
+    assert [i["incident_code"] for i in view["incidents"]] == [code]
+    actions = _actions(view)
+    assert actions["RECOVER"]["available"] is False
+    assert actions["CANCEL"]["available"] is False
+    if newer_book:
+        assert actions["REPLAN"]["available"] is False
+        assert view["next_action"] == "ASK_A_PERSON_TO_ACTIVATE_A_NEWER_BOOK"
+        assert view["next_requests"] == {
+            "controls": {
+                "operation": "CONTROLS",
+                "strategy_package_id": TEST_PACKAGE.strategy_id,
+            }
+        }
+    else:
         assert actions["REPLAN"]["available"] is True
-        from alphalattice.interface.local_application.cli_contract import outcome_of
+    from alphalattice.interface.local_application.cli_contract import outcome_of
 
-        # The read of the stop is admitted, its stop data; its way on leads (feedback row 3).
-        assert outcome_of(view) == "OK" and view["next_action"] and view["next_requests"]["replan"]
-        # The PM's one read of every unfinished Task carries the same facts (GY, V78).
-        guardian = _json(live, "/api/tasks/guardian")
-        (entry,) = [item for item in guardian["tasks"] if item["task_id"] == task_id]
-        assert entry["health"]["status"] == "TERMINAL_BLOCKED" and entry["lifecycle"] == "BLOCKED"
-        assert [i["incident_code"] for i in entry["incidents"]] == [
-            "portfolio_application.no_admissible_candidate"
-        ]
-        assert [action["action"] for action in entry["actions"]] == ["REPLAN"]
-        assert entry["progress"]["total_stage_count"] == view["total_stage_count"]
-        assert entry["next_requests"]["recovery"] == {
-            "operation": "TASK_RECOVERY",
-            "task_id": task_id,
-        }
-        # A read of the blocked Task answers REFUSED, so it says why and where it goes on, as a
-        # refusal does (V424, AX14: it named neither).
-        status = _json(live, f"/api/status?task_id={task_id}")
-        assert outcome_of(status) == "REFUSED"
-        assert status["failure_code"] == "portfolio_application.no_admissible_candidate"
-        assert isinstance(status["detail"], str) and status["detail"], status
-        assert status["next_requests"]["recovery"] == {
-            "operation": "TASK_RECOVERY",
-            "task_id": task_id,
-        }
-        answer = _json(live, "/api/recover", method="POST", payload={"task_id": task_id})
-        assert answer["disposition"] == "NOT_RECOVERY_REQUIRED" and answer["lifecycle"] == "BLOCKED"
-        assert _json(live, "/api/results")["results"] == []
-        assert _view(live, task_id)["task_record_hash"] == view["task_record_hash"]
-    finally:
-        live.stop()
+    # The read of the stop is admitted, its stop data; its way on leads (feedback row 3).
+    assert outcome_of(view) == "OK" and view["next_action"]
+    if not newer_book:
+        assert view["next_requests"]["replan"]
+    # The PM's one read of every unfinished Task carries the same facts (GY, V78).
+    guardian = _json(live, "/api/tasks/guardian")
+    (entry,) = [item for item in guardian["tasks"] if item["task_id"] == task_id]
+    assert entry["health"]["status"] == "TERMINAL_BLOCKED" and entry["lifecycle"] == "BLOCKED"
+    assert [i["incident_code"] for i in entry["incidents"]] == [code]
+    assert [action["action"] for action in entry["actions"]] == ([] if newer_book else ["REPLAN"])
+    assert entry["progress"]["total_stage_count"] == view["total_stage_count"]
+    assert entry["next_requests"]["recovery"] == {
+        "operation": "TASK_RECOVERY",
+        "task_id": task_id,
+    }
+    # A read of the blocked Task answers REFUSED, so it says why and where it goes on, as a
+    # refusal does (V424, AX14: it named neither).
+    status = _json(live, f"/api/status?task_id={task_id}")
+    assert outcome_of(status) == "REFUSED"
+    assert status["failure_code"] == code
+    assert isinstance(status["detail"], str) and status["detail"], status
+    assert status["next_requests"]["recovery"] == {
+        "operation": "TASK_RECOVERY",
+        "task_id": task_id,
+    }
+    answer = _json(live, "/api/recover", method="POST", payload={"task_id": task_id})
+    assert answer["disposition"] == "NOT_RECOVERY_REQUIRED" and answer["lifecycle"] == "BLOCKED"
+    assert _json(live, "/api/results")["results"] == []
+    assert _view(live, task_id)["task_record_hash"] == view["task_record_hash"]
 
 
 def test_a_stage_the_memory_check_blocked_is_offered_and_takes_its_recovery(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    live, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """requirement (PERF-1): the runner's memory block, read through the recovery view, offers
     RECOVER bound to its version; once memory is free the same Task resumes and completes."""
@@ -607,38 +616,30 @@ def test_a_stage_the_memory_check_blocked_is_offered_and_takes_its_recovery(
         "stage_refusal",
         lambda self, task: resource_estimates.MEMORY_INSUFFICIENT if short[0] else None,
     )
-    live = _service(tmp_path, _Resolver(_resolved()), "qa-memory")
-    live.start()
-    try:
-        # A Host Task the session's runner executes (the sweep; heavy Tasks run the same way).
-        sweep = _json(live, "/api/experiments/verify-all", method="POST", payload={})
-        task_id = sweep["task_id"]
-        live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
-        status = _json(live, f"/api/status?task_id={task_id}")
-        assert status["failure_code"] == resource_estimates.MEMORY_INSUFFICIENT, status
-        assert status["detail"] == refusal_words(resource_estimates.MEMORY_INSUFFICIENT)["detail"]
-        assert status["next_requests"]["recovery"] == {
-            "operation": "TASK_RECOVERY",
-            "task_id": task_id,
-        }
-        view = _view(live, task_id)
-        assert view["lifecycle"] == "BLOCKED" and view["verified_stage_count"] == 0
-        recover = _actions(view)["RECOVER"]
-        assert recover["available"] and "memory check runs again" in recover["reason"]
-        assert view["next_requests"]["recover"] == {
-            "operation": "RECOVER",
-            "task_id": task_id,
-            "expected_task_hash": view["task_record_hash"],
-        }
-        short[0] = False
-        resumed = _json(
-            live, "/api/recover", method="POST", payload=view["next_requests"]["recover"]
-        )
-        assert resumed["resumed_task_ids"] == [task_id]
-        live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
-        assert _view(live, task_id)["lifecycle"] == "SUCCEEDED"
-    finally:
-        live.stop()
+    # A Host Task the session's runner executes (the sweep; heavy Tasks run the same way).
+    task_id = _json(live, "/api/experiments/verify-all", method="POST", payload={})["task_id"]
+    live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
+    status = _json(live, f"/api/status?task_id={task_id}")
+    assert status["failure_code"] == resource_estimates.MEMORY_INSUFFICIENT, status
+    assert status["detail"] == refusal_words(resource_estimates.MEMORY_INSUFFICIENT)["detail"]
+    assert status["next_requests"]["recovery"] == {
+        "operation": "TASK_RECOVERY",
+        "task_id": task_id,
+    }
+    view = _view(live, task_id)
+    assert view["lifecycle"] == "BLOCKED" and view["verified_stage_count"] == 0
+    recover = _actions(view)["RECOVER"]
+    assert recover["available"] and "memory check runs again" in recover["reason"]
+    assert view["next_requests"]["recover"] == {
+        "operation": "RECOVER",
+        "task_id": task_id,
+        "expected_task_hash": view["task_record_hash"],
+    }
+    short[0] = False
+    resumed = _json(live, "/api/recover", method="POST", payload=view["next_requests"]["recover"])
+    assert resumed["resumed_task_ids"] == [task_id]
+    live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
+    assert _view(live, task_id)["lifecycle"] == "SUCCEEDED"
 
 
 def test_a_strategy_book_too_short_for_a_rebalance_stops_before_its_walk_in_words(

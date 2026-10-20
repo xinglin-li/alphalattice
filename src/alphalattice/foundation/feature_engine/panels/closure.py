@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
@@ -57,6 +58,7 @@ from alphalattice.foundation.feature_engine.panels.closure_source import (
     PanelClosureSourceRepository,
     PanelSnapshotSource,
 )
+from alphalattice.foundation.feature_engine.panels.identity import panel_chunk_order
 from alphalattice.foundation.feature_engine.panels.rematerialization import (
     ArtifactOnlyPanelRematerializer,
     availability_rows,
@@ -577,30 +579,7 @@ class PanelClosurePublisher:
                     content_hash=str(item["chunk_hash"]),
                     metadata_hash=str(item["metadata_hash"]),
                 )
-                origin = item.get("origin_binding_hash")
-                recorded_ranges = item.get("cross_sections") or None
-                expected.append(
-                    ExpectedPanelChunk(
-                        year=int(item["year"]),
-                        first_session=item["first_session"],
-                        last_session=item["last_session"],
-                        row_count=int(item["row_count"]),
-                        chunk_hash=str(item["chunk_hash"]),
-                        metadata_hash=str(item["metadata_hash"]),
-                        physical_sha256=file_sha256(path),
-                        byte_count=path.stat().st_size,
-                        uri=str(item["uri"]),
-                        origin_binding_hash=str(origin) if origin is not None else None,
-                        cross_sections=(
-                            tuple(
-                                PanelCrossSectionRecord.model_validate(entry)
-                                for entry in recorded_ranges
-                            )
-                            if isinstance(recorded_ranges, list)
-                            else None
-                        ),
-                    )
-                )
+                expected.append(_expected_chunk(item, path))
             panel_content_hash = str(snapshot.manifest["panel_content_hash"])
             panel_binding_hash = str(snapshot.manifest["panel_binding_hash"])
             sealed_lineage = cast(dict[str, object], safe_summary_lineage(snapshot.manifest))
@@ -872,3 +851,27 @@ __all__ = [
     "PanelClosurePublication",
     "PanelClosurePublisher",
 ]
+
+
+def _expected_chunk(item: Mapping[str, object], path: Path) -> ExpectedPanelChunk:
+    """A manifest chunk entry as the recipe expects its file: identity, bytes and origin."""
+    origin = item.get("origin_binding_hash")
+    recorded_ranges = item.get("cross_sections") or None
+    return ExpectedPanelChunk(
+        year=int(cast(int, item["year"])),
+        first_session=item["first_session"],
+        last_session=item["last_session"],
+        row_count=int(cast(int, item["row_count"])),
+        chunk_hash=str(item["chunk_hash"]),
+        metadata_hash=str(item["metadata_hash"]),
+        physical_sha256=file_sha256(path),
+        byte_count=path.stat().st_size,
+        uri=str(item["uri"]),
+        origin_binding_hash=str(origin) if origin is not None else None,
+        part=panel_chunk_order(item)[1] or None,
+        cross_sections=(
+            tuple(PanelCrossSectionRecord.model_validate(entry) for entry in recorded_ranges)
+            if isinstance(recorded_ranges, list)
+            else None
+        ),
+    )

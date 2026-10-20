@@ -20,6 +20,10 @@
 "class": "METHOD",
 "count": 1
 },
+"src/alphalattice/investment/alpha_research/publication/workspace_history.py::HISTORY_PART_SESSIONS::21": {
+"class": "LIMIT",
+"count": 1
+},
 "src/alphalattice/investment/alpha_research/publication/workspace_history.py::retention::2": {
 "class": "METHOD",
 "count": 1
@@ -2688,6 +2692,14 @@
 "class": "METHOD",
 "count": 1
 },
+"src/alphalattice/foundation/feature_engine/panels/artifacts.py::PANEL_PARTS_PER_YEAR::4": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/foundation/feature_engine/panels/artifacts.py::_MONTHS::12": {
+"class": "METHOD",
+"count": 1
+},
 "src/alphalattice/foundation/feature_engine/panels/closure_artifacts.py::_validate_hash::64": {
 "class": "METHOD",
 "count": 1
@@ -4468,7 +4480,7 @@
 "class": "LIMIT",
 "count": 1
 },
-"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::_provider_adjusted_return_changes::1e-12": {
+"src/alphalattice/foundation/market_data_ops/storage/action_audit.py::adjusted_return_changes::1e-12": {
 "class": "METHOD",
 "count": 1
 },
@@ -7714,6 +7726,10 @@
 },
 "src/alphalattice/investment/portfolio_strategy_lab/application/decision_updates.py::binding::10000": {
 "class": "METHOD",
+"count": 1
+},
+"src/alphalattice/investment/portfolio_strategy_lab/application/decision_updates.py::limit::140": {
+"class": "LIMIT",
 "count": 1
 },
 "src/alphalattice/investment/portfolio_strategy_lab/application/decision_updates.py::costs::10": {
@@ -11057,6 +11073,26 @@
 "count": 1
 },
 "src/alphalattice/oversight/model_validation/protected_gate.py::claim_hash::64": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/investment/alpha_research/publication/artifacts.py::FROZEN_BLOCK_SESSIONS::21": {
+"class": "LIMIT",
+"count": 1
+},
+"src/alphalattice/investment/alpha_research/publication/artifacts.py::_packed_block::1980": {
+"class": "LIMIT",
+"count": 1
+},
+"src/alphalattice/control/data_platform/data_decision_rule.py::SHIPPED_REBASE_FLOOR::1e-12": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/foundation/market_data_ops/storage/rebase.py::HALF::0.5": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/control/data_platform/data_decision_rule.py::SHIPPED_REBASE_PRECISION::1e-06": {
 "class": "METHOD",
 "count": 1
 }

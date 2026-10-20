@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 from hashlib import sha256
+from types import SimpleNamespace
 
 import numpy as np
 import pyarrow.parquet as pq
@@ -103,6 +104,27 @@ def test_source_correction_requires_fresh_publication_and_holds_stable_prefix_pa
     fresh = _publish(store, corrected, stable=3)
     assert fresh.parts[0].content_hash != first.parts[0].content_hash
     assert store.load_workspace_observation_history(canonical_hash("slot"))[0] == fresh
+
+
+def test_a_restatement_from_a_recent_session_rewrites_only_its_parts(tmp_path):
+    """requirement: a listing restated from a recent session (a new dividend) rewrites the stable
+    parts holding its changed sessions; every earlier part is kept as it is."""
+    store = AlphaCurrentArtifactStore(tmp_path)
+    first = _publish(store, _columns(200), stable=190)
+    assert [(part.start, part.stop) for part in first.parts][-3:] == [
+        (168, 189),
+        (189, 190),
+        (190, 200),
+    ]
+    restated = _columns(200)
+    restated["formula::value"][180, 1] += 1.0
+    before = set(_files(store))
+    fresh = _publish(store, restated, stable=190)
+    assert fresh.parts[:-3] == first.parts[:-3] and fresh.parts[-2:] == first.parts[-2:]
+    written = {path.name for path in set(_files(store)) - before if path.suffix == ".parquet"}
+    assert written == {f"{fresh.parts[-3].content_hash}.parquet"}
+    loaded = store.load_workspace_observation_history(canonical_hash("slot"))[1]
+    assert loaded["formula::value"].tobytes() == restated["formula::value"].tobytes()
 
 
 def test_semantic_rotations_keep_one_bounded_slot_and_govern_old_head_roots(tmp_path):
@@ -252,3 +274,52 @@ def test_public_history_writer_requires_explicit_capacity_admission(tmp_path):
             columns=_columns(2),
         )
     assert not _files(store)
+
+
+def test_a_split_keeps_every_part_and_lists_its_rebase_for_the_reader(tmp_path):
+    """requirement: a split's rebased rows keep their stored bytes and parts; the head lists the
+    rebase, and a reader that applies it reads the store's rebased values exactly."""
+    from alphalattice.investment.alpha_research.publication.workspace_history import rebase_keep
+
+    store = AlphaCurrentArtifactStore(tmp_path)
+    names = ("open", "high", "low", "close", "volume")
+    old = {f"ohlcv::{name}": _columns(200)["open"] + 7.0 for name in names}
+    old["formula::value"] = _columns(200)["formula::value"] * 1e-3
+    first = _publish(store, old, stable=190)
+    slot = canonical_hash("slot")
+    split = SimpleNamespace(
+        listing_id="B", receipt_hash=canonical_hash("split"), ex_date=date(2026, 7, 20),
+        price_factor=0.5, volume_factor=2.0,
+    )  # fmt: skip
+    fresh = {name: np.vstack([values, values[-1:] + 1.0]) for name, values in old.items()}
+    for name in names:
+        fresh[f"ohlcv::{name}"][:200, 1] *= 2.0 if name == "volume" else 0.5
+    fresh["formula::value"][:200, 1] *= 1 + 1e-15  # the scale-free values, recomputed
+    rebases, kept = rebase_keep(
+        store.load_workspace_observation_history(slot), ("A", "B"), fresh, (split,), (1e-6, 1e-12)
+    )
+    # Every row is kept; the recomputed scale-free values differed, within the agreement.
+    assert [(item.listing_id, item.rows, item.kept_within) for item in rebases] == [
+        ("B", ((0, 200),), 200)
+    ]
+    moved = {**fresh, "formula::value": fresh["formula::value"].copy()}
+    moved["formula::value"][:200, 1] = old["formula::value"][:, 1] * (1 + 4e-7)
+    floorless = rebase_keep(
+        store.load_workspace_observation_history(slot), ("A", "B"), moved, (split,), (1e-6, 0.0)
+    )[0]
+    assert floorless[0].kept_largest == pytest.approx(4e-7, rel=1e-5)  # relative, below 1 too
+    short = {name: values[:150] for name, values in fresh.items()}  # a capture short of the head
+    head = store.load_workspace_observation_history(slot)
+    assert rebase_keep(head, ("A", "B"), short, (split,), (1e-6, 1e-12))[0][0].rows == ((0, 150),)
+    before = set(_files(store))
+    second = store.publish_workspace_observation_history(
+        scope_hash=slot, selection_hash=canonical_hash("selection"),
+        dependency_prefix_hash=canonical_hash("after"), formation_sessions=_sessions(201),
+        ordered_listing_ids=("A", "B"), stable_session_count=190, columns=fresh,
+        capacity=lambda _bytes: None, rebases=rebases, kept_rows=kept,
+    )  # fmt: skip
+    assert second.parts[:-2] == first.parts[:-2] and second.rebases == rebases
+    written = {path for path in set(_files(store)) - before if path.suffix == ".parquet"}
+    assert len(written) == 1  # the open part alone
+    _head, stored = store.load_workspace_observation_history(slot)
+    assert stored["formula::value"][:200].tobytes() == old["formula::value"].tobytes()
