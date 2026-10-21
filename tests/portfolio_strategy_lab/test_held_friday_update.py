@@ -44,7 +44,8 @@ def test_prior_positions_keep_the_updates_own_next_requests(
     monkeypatch, status, broken, fake_host, tmp_path, capsys
 ):
     """adding the previous publication's review must keep the stop's way on."""
-    from alphalattice.control.product_host.composition import portfolio_research_operations as ops
+    from alphalattice.control.product_host.composition import portfolio_result_context as ops
+    from alphalattice.oversight.chief_risk_officer.decision import book_evidence
 
     publication = SimpleNamespace(content_hash="a" * 64)
     monkeypatch.setattr(ops.PortfolioUpdatePublication, "model_validate", lambda _doc: publication)
@@ -72,14 +73,14 @@ def test_prior_positions_keep_the_updates_own_next_requests(
     }
     failure = "product_host.evidence_review_export_subject_mismatch"
 
-    def review_standing(_self, selector):
+    def review_standing(_self, selector, *, read_update=None):
         selectors.append(selector)
         if broken:
-            raise ops.PortfolioEvidenceReviewError(failure)
+            raise book_evidence.PortfolioEvidenceReviewError(failure)
         return standing
 
     monkeypatch.setattr(ops.EvidenceReviewDelivery, "review_standing", review_standing)
-    answer = ops._position_rows(
+    answer = ops.position_rows(
         {
             "status": status,
             "task_id": str(UUID(int=8)),

@@ -456,8 +456,7 @@ def test_a_stopped_research_update_retains_the_selected_package_and_target(tmp_p
 
 @pytest.mark.parametrize("preprocess", [False, True])
 def test_a_stopped_feature_build_retains_its_authored_definition(tmp_path, preprocess):
-    """regression (TE12): raw and prepared builds re-plan their exact authored edit,
-    reason and input revision, without rechecking the current numerical implementation."""
+    """Control: Stopped feature build retains its authored definition."""
     from alphalattice.control.product_host.research_authoring.feature_research import (
         CATEGORY,
         ResearchFeatureDefinitions,

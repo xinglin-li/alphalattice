@@ -1,7 +1,7 @@
 # AlphaLattice first release
 Date: 2026-10-08
 
-The `0.1.0` first release is a local equity research workstation for a person and a Codex or Claude Code agent. Factor evidence and curation lead to Alpha; Risk runs on the same input. Portfolio consumes Alpha and only uses Risk when its allocation reads it. Evidence and the CRO review the exact book and retain coverage gaps. A report-only Risk association does not mean weights used a Risk model.
+The `0.1.0` first release is a local equity research workstation for a person and a Claude Code or Codex agent. Factor evidence and curation lead to Alpha; Risk runs on the same input. Portfolio consumes Alpha and only uses Risk when its allocation reads it. Evidence and the CRO review the exact book and retain coverage gaps. A report-only Risk association does not mean weights used a Risk model.
 
 ## Included capabilities
 
@@ -472,3 +472,69 @@ In the release-tree native observation, the first-use workspace occupied about 8
 - On a machine with an empty package cache, first use asks once for permission to download the retrieval packages. Installing locked packages under the first use's network consent is planned for a later release.
 - An explicit capture still copies the whole market database, about 1 GB at 472 listings. If the immutable snapshot alias cannot be linked, it can need a second full copy. The preview discloses that ceiling and that other files add bytes. Block-based captures remain future work.
 - Outside the spans rewritten after a split that is not a power of two, Panel values derived from kept Features differed from a fresh rebuild by a measured 8.3e-8. Rewritten spans are rebuilt exactly; checking every remaining Panel cell is planned for 0.2.2. Such split days still rewrite whole older parts and are exceptions to the 50 MB ordinary-day write budget.
+
+## 0.2.2
+
+0.2.2 reduces repeated book writes, checks the whole Panel after a split repair and improves setup and recovery. It also removes unused code and consolidates tests that checked the same requirement.
+
+### Added
+
+- [The record is the lever](design-principles.md#19-the-record-is-the-lever) explains how recorded decisions and outcomes let agents investigate recurring problems and propose checked improvements, within the person's scope.
+
+### Changed
+
+- Book publication and history write records in proportion to the day's change, preserving earlier stored parts. Books written with 0.2.1 remain readable, and retrying an unchanged write adds nothing. This removes the repeated book-history writes behind 0.2.1's two-dividend write-budget exception; the release measurements below distinguish daily growth from the initial fill.
+- Locked retrieval packages install under the first use's network consent, including on a machine with an empty package cache. The consent covers that installation, so it needs no separate download question.
+- Derived caches have declared size bounds. Unused code and duplicate test setup have been removed while retaining the requirements checked.
+- Product source contains **357 fewer net lines than 0.2.1**.
+
+**Measured budgets**
+
+The Windows observations below used a four-core execution budget. The public-data first use and its next daily ran with Claude Code and Haiku; the earlier 0.2.1 observation used Codex at extra-high effort. Different agents, dates and workloads prevent treating their elapsed times as a controlled speed comparison. Both new books were reviewed: 92 positions after the first use and 95 after the daily, with 472 supporting listings verified in each component. These are research positions, published as conditional estimates.
+
+| Case and workload | Elapsed time | Host memory peak | Retained storage and daily growth |
+| --- | --- | --- | --- |
+| Public-data first use, 472 supporting listings per component | 121.8 minutes; 50.75 minutes of recorded Host work | 9.32 GB | 8.70 GB workspace; the first backup had not yet been filled. |
+| First daily in that workspace, same support size | 43.6 minutes; 19.65 minutes of recorded Host work | 9.25 GB | 8.88 GB workspace; 180 MB of workspace growth, plus a separate 4.27 GB first backup fill. |
+| Daily on released 0.2.1, controlled 120-listing upgrade scenario | 185.9 seconds, Host route and controller | Not established | 41.11 MB workspace growth and 1.24 MB backup growth. |
+| First daily after upgrading that workspace to 0.2.2 | 356.8 seconds, Host route and controller | Not established | 40.85 MB workspace growth and 1.34 MB backup growth. |
+| Retry of that daily | 208.7 seconds, Host route and controller | Not established | 0.115 MB of operational growth; the book remained exact and backup growth was zero. |
+| Second daily after upgrading, 120 listings | 513.6 seconds, Host route and controller | Not established | 7.86 MB workspace growth and 1.43 MB backup growth. |
+| Full-system run over five consecutive days | Not run | Not established | Not established. |
+
+MB and GB use decimal units. Daily growth is retained-file growth, with backup objects shown separately; it is not a measurement of physical disk I/O. The 180 MB native daily includes 119 MB of market-database growth. Its new or changed files totaled 1.09 GB in final size, a different measure. The first backup's 4.27 GB is a one-time fill, rather than a routine daily increment. The upgrade scenario began with a 4.01 GB workspace and a separate 1.13 GB backup fill; its timings include the controller and no agent turns.
+
+Memory peaks are sampled private commit for identified Host processes, with ownership checked against the listening Host. Unidentified transient processes are excluded. Recorded Host time combines request and retained Task-stage intervals without counting overlaps twice. It includes validation and locking waits, omits unrecorded work and is a lower bound, rather than CPU time. One first-use experiment was interrupted when the agent's background hosting command reached its time limit, then resumed as the same Task. No operator intervention or numerical rerun was used to improve the reported figures.
+
+**Controlled first-use comparison.** The first-use release criterion uses the same generated 120-listing workspace, attached references, fixed clock and Goal submission across fresh Hosts. Peak Host private commit was 1.170 GiB on 0.2.1 and 1.175 GiB on the 0.2.2 candidate, an increase of 0.41%, within the 5% bound. Each submission completed. This isolates source changes under one locked environment; the driver, client and child processes are excluded. It measures reference verification, not the whole first-use peak. No valid preparation-peak comparison was obtained. The separate native observations of 9.32 GB and 0.2.1's 8.37 GB used different leads and have no matched earlier peak stage, so their difference is not attributed to this release's code.
+
+The upgrade checks reopened a workspace made by released 0.2.1, continued on 0.2.2 and retained equal published values. The managed first-use footprint was at least 9.88 GB, excluding semantic-model aliases; a complete installation footprint and a full-year footprint against the 50 GB ceiling remain unmeasured. The native browser comparison was not established; deterministic Workbench checks passed.
+
+### Deprecated
+
+- None.
+
+### Removed
+
+- None.
+
+### Fixed
+
+- Every Panel cell is checked after a split repair, including cells outside the rewritten spans. This closes the measured 8.3e-8 difference from a fresh rebuild recorded in 0.2.1.
+- Readiness advice offers commands that parse against the command grammar, in English and Chinese.
+- A failed read no longer leaves a stale cached result for the next attempt. Retrying reads the input afresh.
+- A missing stored portfolio observation is reported as missing even when the storage error supplies no detail.
+
+### Previews
+
+- None.
+
+### Known limits
+
+- The native daily took 43.6 minutes against the 20-minute budget, with 19.65 minutes of recorded Host work. The smaller readbacks and fewer finishing steps promised in 0.2.1 for 0.2.2 have moved to 0.2.4. No wall-time improvement is claimed here.
+- Host memory remains above the 8 GB budget: 9.32 GB in the native first use and 9.25 GB in its daily. Memory limits and controls are planned for 0.2.6. The controlled first-use comparison above does not remove this absolute limit.
+- The first daily after a first use grew the workspace by 180 MB against the 50 MB ordinary-day budget, with its initial backup fill counted separately. The two upgrade dailies grew their workspaces by about 41 MB and 8 MB. Reducing the first daily's excess is planned for 0.2.7.
+- The full-system five-day storage scenario was not run. It is planned for 0.2.5's replay checks; no annual projection substitutes for it.
+- An explicit input capture still copies the whole market database, about 1 GB at 472 listings in the 0.2.1 measurement, and may need a second full copy when the immutable snapshot alias cannot be linked. Captures that store changed chunks are planned for 0.2.10.
+- Split days can still rewrite whole older parts and exceed the 50 MB ordinary-day write budget, even though every Panel cell is now checked. Reducing these writes is considered for 0.2.10 if replay measurements justify it. A full-year footprint against the 50 GB ceiling remains unmeasured.
+- Browser parity in the native run remains unproven. The passing deterministic Workbench cases do not establish that separate result.

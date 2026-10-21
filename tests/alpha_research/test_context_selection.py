@@ -443,6 +443,7 @@ def test_selected_mode_checks_every_provided_observation_even_when_its_lane_is_u
 def test_selection_keeps_original_source_and_reference_axis_refusals(
     context_source, name, shape, dtype, code, selected
 ):
+    """Control: Selection keeps original source and reference axis refusals."""
     source = {**context_source, name: np.zeros(shape, dtype=dtype)}
     selection = (
         {
@@ -459,6 +460,7 @@ def test_selection_keeps_original_source_and_reference_axis_refusals(
 
 @pytest.mark.parametrize("selected", (False, True))
 def test_selection_keeps_original_holding_clock_axis_refusal(context_source, selected):
+    """Control: Selection keeps original holding clock axis refusal."""
     source = {**context_source, "holding_end_sessions": context_source["holding_end_sessions"][:-1]}
     selection = (
         {

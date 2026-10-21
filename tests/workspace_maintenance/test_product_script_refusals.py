@@ -20,8 +20,12 @@ import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from typing import Any
+from zipfile import ZipFile
 
 import pytest
 
@@ -76,12 +80,48 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
 
 
 def test_the_retrieval_environment_setup_answers_its_failure_in_words(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The retrieval environment setup answers its failure in words."""
+    """Locked setup fills an empty uv cache locally; failures retain actionable owner answers."""
 
     from scripts import create_gpu_environment as gpu
     from scripts import create_retrieval_environment as setup
+
+    cache, venv = tmp_path / "uv-cache", tmp_path / "venv"
+    cache.mkdir()
+    monkeypatch.setenv("UV_CACHE_DIR", str(cache))
+    with ZipFile(tmp_path / "click-8.5.0-py3-none-any.whl", "w") as wheel:
+        for name, content in {
+            "click/__init__.py": "",
+            "click-8.5.0.dist-info/METADATA": "Metadata-Version: 2.1\nName: click\nVersion: 8.5.0",
+            "click-8.5.0.dist-info/WHEEL": "Wheel-Version: 1.0\nTag: py3-none-any\n",
+            "click-8.5.0.dist-info/RECORD": "",
+        }.items():
+            wheel.writestr(name, content)
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(tmp_path))
+    )
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with monkeypatch.context() as local:
+            subprocess.run(["uv", "venv", "--python", sys.executable, str(venv)], check=True)
+            python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+            pins = tmp_path / "requirements-retrieval.lock"
+            pins.write_text("click==8.5.0\n", encoding="utf-8")
+            local.setattr(setup, "PLAYPEN", tmp_path)
+            local.setattr(setup, "ADDITIONS", pins)
+            local.setattr(sys, "executable", str(python))
+            local.setenv("UV_NO_INDEX", "1")
+            local.setenv("UV_FIND_LINKS", f"http://127.0.0.1:{server.server_port}/")
+            local.setattr(sys, "argv", setup.fill_command()[2:])
+            assert setup.main() == 0
+            subprocess.run([str(python), "-c", "import click"], check=True)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+    capsys.readouterr()
 
     def exits(command: tuple[str, ...], **_options: object) -> None:
         raise subprocess.CalledProcessError(1, command)
@@ -91,9 +131,8 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
     assert setup.main() == 2
     refusal = _refusal(capsys)
     assert refusal["failure_code"] == "retrieval_environment.setup_failed:uv sync exited 1"
-    assert refusal["next_action"] == "RUN_THE_NETWORK_SETUP_WITH_DOWNLOAD_PERMISSION"
-    assert "without --offline" in refusal["detail"]
-    assert refusal["environment"] == str(setup.ENVIRONMENT)
+    assert refusal["next_action"] == "RUN_LOCKED_DEPENDENCY_SETUP"
+    assert refusal["next_commands"]["setup"] == setup.fill_command()
     assert gpu.main() == 2
     assert _refusal(capsys)["failure_code"] == "gpu_environment.setup_failed:uv sync exited 1"
 
@@ -551,8 +590,7 @@ def test_every_setup_refusal_word_names_its_way_on_and_only_places_every_setup_c
 
 
 def test_a_denied_store_reports_the_os_cause_before_any_download(monkeypatch, capsys, tmp_path):
-    """regression: the original PermissionError route names the selected external store and
-    sanitized errno/WinError, and keeps the writable-store preflight before network reads."""
+    """Control: Unwritable stores report sanitized OS causes before any download."""
     from scripts import install_retrieval_pack as setup
 
     def denied(**_kwargs):

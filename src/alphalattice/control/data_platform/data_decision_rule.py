@@ -31,6 +31,8 @@ Feature reproduces within it, and a provider's whole-share rounding of a rescale
 dollar volume by a few parts in 10^7."""
 SHIPPED_REBASE_FLOOR = 1e-12
 """The shipped `rebase_floor`, outside a rule's identity as `adjusted_precision` is."""
+SHIPPED_PANEL_PRECISION, SHIPPED_PANEL_FLOOR = 2e-6, 1e-12
+"""Agreement after the Panel's cross-section preprocessing; defaults preserve old rule hashes."""
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -85,6 +87,19 @@ class DataDecisionRule:
         exclude_if=lambda value: value == SHIPPED_REBASE_FLOOR,
     )
     version: Literal["data-decision-rule/1"] = "data-decision-rule/1"
+    panel_precision: float = Field(
+        default=SHIPPED_PANEL_PRECISION, ge=0, le=2e-6, strict=True, allow_inf_nan=False,
+        exclude_if=lambda value: value == SHIPPED_PANEL_PRECISION,
+    )  # fmt: skip
+    panel_floor: float = Field(
+        default=SHIPPED_PANEL_FLOOR, ge=0, le=1e-9, strict=True, allow_inf_nan=False,
+        exclude_if=lambda value: value == SHIPPED_PANEL_FLOOR,
+    )  # fmt: skip
+
+    @property
+    def panel_agreement(self) -> tuple[float, float]:
+        """The relative and absolute bound on kept Panel cells after a rebase."""
+        return self.panel_precision, self.panel_floor
 
     @property
     def rebase_agreement(self) -> tuple[float, float]:
@@ -289,6 +304,8 @@ ADJUSTED_PRECISION = "ADJUSTED_PRECISION_KEPT"
 """The Goal entry recording listings whose stored adjusted closes stood under the precision."""
 OBSERVATIONS_KEPT = "OBSERVATIONS_KEPT"
 """The Goal entry naming the observation rows and blocks an update kept as stored."""
+PANEL_KEPT = "PANEL_CELLS_KEPT"
+"""The Goal entry naming the count and agreement of Panel cells kept outside rewritten spans."""
 
 
 def rule_receipt(saved: Mapping[str, Any]) -> tuple[str, str] | None:
@@ -421,10 +438,23 @@ def attach(
 
     The records name the closes that stood and the observations an update kept as stored.
     """
+
+    def panel_kept(listing_id: str, count: int) -> None:
+        """Disclose the cells kept outside rewritten spans, under the Goal's live rule."""
+        if (goal := live()) is not None and count:
+            record({
+                "operation": PANEL_KEPT, "status": "KEPT_BY_RULE", "decided_by": "RULE",
+                "listing_id": listing_id, "kept_cells": count,
+                "panel_agreement": list(rule.panel_agreement),
+                "rule_hash": rule.rule_hash, "goal_hash": goal.goal_hash,
+            })  # fmt: skip
+
     granted: list[Any] = []
     decide.audit = partial(audit, rule, live, entries, record, task)
     decide.precision = partial(precision, rule, live, granted)
     decide.agreement = partial(agreement, rule, live)
+    decide.panel_agreement = partial(agreement, rule, live, panel=True)
+    decide.panel_kept = panel_kept
     decide.kept = partial(kept, rule, granted, record)
     decide.retained = partial(retained, rule, live, record)
     return cast(Callable[..., Any], decide)
@@ -441,12 +471,12 @@ def precision(rule: DataDecisionRule, live: Callable[[], Any], granted: list[Any
     return 0.0 if goal is None else rule.adjusted_precision
 
 
-def agreement(rule: DataDecisionRule, live: Callable[[], Any]) -> tuple[float, float]:
-    """The agreement a maintenance cycle may rebase stored bars under.
-
-    The rule's while its Goal's authority holds; else none, and a split's listing restates.
-    """
-    return rule.rebase_agreement if live() is not None else (0.0, 0.0)
+def agreement(
+    rule: DataDecisionRule, live: Callable[[], Any], *, panel: bool = False
+) -> tuple[float, float]:
+    """The live Goal's Feature or Panel agreement; no authority keeps no numerical gap."""
+    bound = rule.panel_agreement if panel else rule.rebase_agreement
+    return bound if live() is not None else (0.0, 0.0)
 
 
 def kept(

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -41,10 +40,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     BoundAlphaPredictionInput,
     BoundAlphaTrainingInput,
 )
-from alphalattice.foundation.research_foundation.contracts import (
-    ResearchDeskExecutionOutcomeRef,
-    ResearchFoundationBinding,
-)
+from alphalattice.foundation.research_foundation.contracts import ResearchFoundationBinding
 from alphalattice.investment.alpha_research.candidates.contracts import (
     AlphaExperimentBatch,
     AlphaResearchProgram,
@@ -70,135 +66,24 @@ from alphalattice.investment.alpha_research.experiments.mandate import (
     AlphaResearchModelMandate,
     build_current_alpha_research_model_mandate,
 )
-from alphalattice.investment.alpha_research.inputs.folds import (
-    AlphaCurrentRefitArrays,
-    AlphaFoldArrayPlan,
-    AlphaFoldArrays,
-)
+from alphalattice.investment.alpha_research.inputs.folds import AlphaFoldArrayPlan
 from alphalattice.investment.alpha_research.inputs.training import (
     AlphaTrainingInputAuthorityError,
     AlphaTrainingInputBinding,
     bind_alpha_model_inputs,
-    build_alpha_training_input_binding,
 )
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
 from alphalattice.investment.alpha_research.scores.refit import (
     fit_and_assess_current_model,
     fit_and_assess_current_regularized_linear,
 )
-from alphalattice.kernel.shared_kernel.domain.enums import DataValidityClass
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.validation.enums import RebalanceFrequency
-from tests.alpha_research.fixtures import (
-    FIXTURE_FACTOR_IDS,
-    synthetic_prepared_arrays,
-    synthetic_request,
-)
-
-
-def _readonly(value: np.ndarray) -> np.ndarray:
-    result = np.asarray(value)
-    result.setflags(write=False)
-    return result
-
-
-def _foundation() -> ResearchFoundationBinding:
-    execution = ResearchDeskExecutionOutcomeRef.model_construct(
-        research_cadence=RebalanceFrequency.DAILY,
-        snapshot_hash="d" * 64,
-        schedule_hash="e" * 64,
-        development_content_hash="f" * 64,
-        sealed_holdout_content_hash="0" * 64,
-        marker_hash="1" * 64,
-        market_as_of="2026-07-31",
-        data_validity_class=DataValidityClass.CURRENT_UNIVERSE_RESEARCH_ONLY,
-    )
-    return ResearchFoundationBinding.model_construct(
-        research_cadence=RebalanceFrequency.DAILY,
-        feature_panel_snapshot_hash="2" * 64,
-        logical_panel_hash="a" * 64,
-        logical_semantic_index_hash="c" * 64,
-        factor_training_outcome_snapshot_hash="3" * 64,
-        factor_screening_result_hash="4" * 64,
-        factor_candidate_slate_hash="5" * 64,
-        research_desk_factor_input_hash="b" * 64,
-        execution_outcome=execution,
-        ordered_factor_ids=FIXTURE_FACTOR_IDS,
-        downstream_factor_research_forbidden=True,
-        secondary_feature_preprocessing_forbidden=True,
-        foundation_hash="9" * 64,
-    )
-
-
-def _bound_fold(fold: AlphaFoldArrays, foundation: ResearchFoundationBinding) -> AlphaFoldArrays:
-    training_row_sessions = tuple(
-        session
-        for session in fold.training_sessions
-        for _listing in sorted(set(fold.training_listing_ids))
-    )
-    training_feature_hashes = tuple(
-        canonical_hash(("feature", session, listing))
-        for session, listing in zip(training_row_sessions, fold.training_listing_ids, strict=True)
-    )
-    training_outcome_hashes = tuple(
-        canonical_hash(("outcome", session, listing))
-        for session, listing in zip(training_row_sessions, fold.training_listing_ids, strict=True)
-    )
-    training_economic = _readonly(fold.training_targets.copy())
-    validation_economic = _readonly(fold.validation_targets.copy())
-    binding = build_alpha_training_input_binding(
-        scope="DEVELOPMENT_FOLD",
-        foundation_hash=foundation.foundation_hash,
-        feature_panel_snapshot_hash=foundation.feature_panel_snapshot_hash,
-        causal_outcome_snapshot_hash=foundation.execution_outcome.snapshot_hash,
-        target_policy=None,
-        ordered_feature_ids=fold.ordered_factor_ids,
-        feature_context_hash=None,
-        training_row_sessions=training_row_sessions,
-        training_row_listing_ids=fold.training_listing_ids,
-        prediction_row_sessions=fold.validation_row_sessions,
-        prediction_row_listing_ids=fold.validation_listing_ids,
-        training_features=fold.training_features,
-        training_targets=fold.training_targets,
-        training_mask=fold.training_model_mask,
-        prediction_features=fold.validation_features,
-        prediction_targets=fold.validation_targets,
-        prediction_mask=fold.validation_feature_complete,
-        training_feature_row_hashes=training_feature_hashes,
-        training_outcome_row_hashes=training_outcome_hashes,
-        prediction_feature_row_hashes=fold.validation_feature_row_hashes,
-        prediction_outcome_row_hashes=fold.validation_outcome_row_hashes,
-        training_economic_returns=training_economic,
-        prediction_economic_returns=validation_economic,
-        training_cutoff=fold.training_sessions[-1],
-        outcome_maturity_session=fold.training_sessions[-1],
-        prediction_anchor=fold.validation_sessions[0],
-        fold_commitment_hash=fold.commitment.commitment_hash,
-    )
-    return replace(
-        fold,
-        training_economic_returns=training_economic,
-        validation_economic_returns=validation_economic,
-        training_row_sessions=training_row_sessions,
-        training_feature_row_hashes=training_feature_hashes,
-        training_outcome_row_hashes=training_outcome_hashes,
-        training_input_binding=binding,
-    )
-
-
-class _ArrayWorkspace:
-    def __init__(self, folds: tuple[AlphaFoldArrays, ...]) -> None:
-        self.folds = folds
-
-    @contextmanager
-    def fold_lease(self, fold_index: int):
-        yield self.folds[fold_index]
-
-    def load_fold(self, fold_index: int) -> AlphaFoldArrays:
-        return self.folds[fold_index]
-
-    def prepare_current_refit(self):
-        raise AssertionError("current refit is outside this fixture")
+from tests.alpha_research.fixtures import _ArrayWorkspace as _ArrayWorkspace
+from tests.alpha_research.fixtures import _bound_fold as _bound_fold
+from tests.alpha_research.fixtures import _current_refit_fixture as _current_refit_fixture
+from tests.alpha_research.fixtures import _foundation as _foundation
+from tests.alpha_research.fixtures import _plan_and_workspace as _plan_and_workspace
+from tests.alpha_research.fixtures import _readonly as _readonly
 
 
 def _program(
@@ -265,23 +150,6 @@ def _batch(program: AlphaResearchProgram) -> AlphaExperimentBatch:
         },
         "batch_hash",
     )
-
-
-def _plan_and_workspace() -> tuple[AlphaFoldArrayPlan, _ArrayWorkspace]:
-    request, _inventory = synthetic_request()
-    prepared = synthetic_prepared_arrays()
-    foundation = _foundation()
-    plan = AlphaFoldArrayPlan(
-        foundation=foundation,
-        ordered_listing_ids=request.ordered_listing_ids,
-        feature_reader=object(),  # type: ignore[arg-type]
-        outcome_reader=object(),  # type: ignore[arg-type]
-        feature_panel_manifest_ref="playpen://fixture/panel",
-        causal_outcome_manifest_ref="playpen://fixture/outcome",
-        split_plan=prepared.split_plan,
-    )
-    folds = tuple(_bound_fold(value, foundation) for value in prepared.folds)
-    return plan, _ArrayWorkspace(folds)
 
 
 @pytest.mark.parametrize(
@@ -554,6 +422,7 @@ class _SyntheticMeanAdapter:
 
 
 def test_synthetic_adapter_completes_generic_development_execution(tmp_path: Path) -> None:
+    """Control: Synthetic adapter completes generic development execution."""
     plan, workspace = _plan_and_workspace()
     adapter = _SyntheticMeanAdapter()
     catalog = AlphaModelCatalog((adapter,))
@@ -885,6 +754,7 @@ def test_goal_development_reuse_requires_complete_model_sidecar(
     tmp_path: Path,
     mutation: str,
 ) -> None:
+    """Control: Goal development reuse requires complete model sidecar."""
     plan, workspace = _plan_and_workspace()
     program = _program(plan.foundation, plan)
     batch = _batch(program)
@@ -988,71 +858,6 @@ def _development_state(
         },
         "state_hash",
     )
-
-
-def _current_refit_fixture() -> tuple[AlphaFoldArrays, AlphaCurrentRefitArrays]:
-    """A fold of the synthetic plan and the current window its validation rows open."""
-
-    plan, workspace = _plan_and_workspace()
-    fold = workspace.folds[0]
-    assert fold.training_input_binding is not None
-    listing_count = len(set(fold.validation_listing_ids))
-    current_features = fold.validation_features[:listing_count]
-    current_complete = fold.validation_feature_complete[:listing_count]
-    current_listings = fold.validation_listing_ids[:listing_count]
-    current_sessions = fold.validation_row_sessions[:listing_count]
-    current_feature_hashes = fold.validation_feature_row_hashes[:listing_count]
-    current_targets = _readonly(np.full(listing_count, np.nan, dtype=np.float64))
-    current_economic = _readonly(np.full(listing_count, np.nan, dtype=np.float64))
-    assert fold.training_economic_returns is not None
-    binding = build_alpha_training_input_binding(
-        scope="CURRENT_REFIT",
-        foundation_hash=plan.foundation.foundation_hash,
-        feature_panel_snapshot_hash=plan.foundation.feature_panel_snapshot_hash,
-        causal_outcome_snapshot_hash=plan.foundation.execution_outcome.snapshot_hash,
-        target_policy=None,
-        ordered_feature_ids=fold.ordered_factor_ids,
-        feature_context_hash=None,
-        training_row_sessions=fold.training_row_sessions,
-        training_row_listing_ids=fold.training_listing_ids,
-        prediction_row_sessions=current_sessions,
-        prediction_row_listing_ids=current_listings,
-        training_features=fold.training_features,
-        training_targets=fold.training_targets,
-        training_mask=fold.training_model_mask,
-        prediction_features=current_features,
-        prediction_targets=current_targets,
-        prediction_mask=current_complete,
-        training_feature_row_hashes=fold.training_feature_row_hashes,
-        training_outcome_row_hashes=fold.training_outcome_row_hashes,
-        prediction_feature_row_hashes=current_feature_hashes,
-        prediction_outcome_row_hashes=(None,) * listing_count,
-        training_economic_returns=fold.training_economic_returns,
-        prediction_economic_returns=current_economic,
-        training_cutoff=fold.training_sessions[-1],
-        outcome_maturity_session=fold.validation_sessions[0],
-        prediction_anchor=fold.validation_sessions[0],
-        fold_commitment_hash=None,
-    )
-    arrays = AlphaCurrentRefitArrays(
-        ordered_factor_ids=fold.ordered_factor_ids,
-        ordered_listing_ids=current_listings,
-        training_sessions=fold.training_sessions,
-        training_cutoff=fold.training_sessions[-1],
-        formation_session=fold.validation_sessions[0],
-        training_features=fold.training_features,
-        training_targets=fold.training_targets,
-        training_mask=fold.training_model_mask,
-        current_features=current_features,
-        current_feature_complete=current_complete,
-        training_row_sessions=fold.training_row_sessions,
-        training_feature_row_hashes=fold.training_feature_row_hashes,
-        training_outcome_row_hashes=fold.training_outcome_row_hashes,
-        current_feature_row_hashes=current_feature_hashes,
-        training_economic_returns=fold.training_economic_returns,
-        training_input_binding=binding,
-    )
-    return fold, arrays
 
 
 def test_goal_current_refit_uses_same_adapter_without_numerical_drift() -> None:

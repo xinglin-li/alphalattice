@@ -111,7 +111,7 @@ def test_a_support_refusal_names_its_cause_and_where_it_holds():
 
 
 def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores(tmp_path):
-
+    """Control: Authored replay segments preserve holds state and refuse changed scores."""
     from alphalattice.capabilities.portfolio_backtesting.contracts import (
         MARKED_TO_MARKET_AT_CLOSE_T,
     )
@@ -376,7 +376,7 @@ def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores
 
 
 def test_a_rebalance_never_selects_from_a_pool_smaller_than_the_book(tmp_path):
-    """A rebalance never selects from a pool smaller than the book."""
+    """Control: Rebalance never selects from pool smaller than book."""
 
     from alphalattice.capabilities.portfolio_backtesting.contracts import (
         MARKED_TO_MARKET_AT_CLOSE_T,

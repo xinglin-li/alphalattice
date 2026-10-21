@@ -310,6 +310,20 @@ def _source_loader_for(symbols: Sequence[str]):  # type: ignore[no-untyped-def]
     return load
 
 
+def _sector_revision(workspace: RealRiskWorkspace) -> str:
+    from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
+        PanelClosureArtifactStore,
+    )
+    from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
+
+    store = PanelClosureArtifactStore(ArtifactResolver(workspace.artifact_root))
+    paths = sorted((store.root / "sector-maps").glob("*.json"))
+    assert paths, "the shared workspace publishes a sector revision map"
+    return store.load_model(
+        category="sector-maps", content_hash=paths[0].stem, model=SectorRevisionMap
+    ).sector_revision
+
+
 def publish_causal_outcomes(
     workspace: RealRiskWorkspace, *, at: datetime = OBSERVED_AT, recipe_id: str | None = None
 ) -> tuple[str, str]:

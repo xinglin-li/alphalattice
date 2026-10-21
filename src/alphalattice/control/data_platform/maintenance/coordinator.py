@@ -25,7 +25,6 @@ from alphalattice.control.data_platform.maintenance.contracts import (
     AgentExecutionBudget,
     DataRemediationFailureReceipt,
     ListingMarketDataChange,
-    MaintenanceFreshnessProjection,
     MaintenancePhase,
     MaintenanceStatus,
     MarketDataChangeSet,
@@ -1851,30 +1850,6 @@ class WorkspaceMaintenanceCoordinator:
             reference_hash=admission.admission_hash,
         )
         return None
-
-    def freshness_projection(
-        self, request: WorkspaceMaintenanceRequest
-    ) -> MaintenanceFreshnessProjection:
-        """Project cycle state beside current panel freshness and workspace readiness.
-
-        Args:
-            request: Sealed request whose scope this operation executes or projects.
-
-        Returns:
-            The target/current session and recorded maintenance/readiness state.
-        """
-        cycle_id = canonical_hash(["workspace-maintenance", request.request_hash])
-        cycle = self.registry.cycle(cycle_id)
-        panel = self.panel_state.active_feature_panel(request.market_profile_id)
-        return MaintenanceFreshnessProjection(
-            target_market_session=request.target_market_session,
-            current_market_session=(panel["as_of_session"] if panel is not None else None),
-            phase=cycle.phase,
-            status=cycle.status,
-            readiness=(self.market_data.readiness.load(request.market_profile_id).status),
-            retry_after_at=cycle.retry_after_at,
-            failure_code=cycle.failure_code,
-        )
 
     def _audit_stop(
         self,

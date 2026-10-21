@@ -22,10 +22,7 @@ from uuid import UUID
 import pytest
 
 from alphalattice.evidence.alternative_evidence.contracts import (
-    AlternativeEvidenceClass,
-    AlternativeEvidenceMode,
     AlternativeEvidenceRequest,
-    AlternativeEvidenceSourcePolicy,
     seal_contract,
 )
 from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
@@ -54,6 +51,7 @@ from tests.alternative_evidence_desk.document_intelligence_support import (
     _corpus_passes,
     _counted_runtime,
     _registry,
+    _request_at,
 )
 from tests.alternative_evidence_desk.planted_corpus import _NOW, _recorded_document
 
@@ -69,20 +67,6 @@ def _release(*args: Any, **kwargs: Any) -> Any:
 
 
 _QUERY = "operating"
-
-
-def _request_at(cutoff: Any) -> AlternativeEvidenceRequest:
-    return seal_contract(
-        AlternativeEvidenceRequest,
-        "request_hash",
-        ordered_entity_ids=("AAPL",),
-        evidence_as_of=cutoff,
-        acquisition_deadline=cutoff + timedelta(hours=1),
-        evidence_classes=(AlternativeEvidenceClass.ISSUER_OFFICIAL_RECORDED,),
-        source_policy=AlternativeEvidenceSourcePolicy(),
-        ttl_seconds=86_400,
-        mode=AlternativeEvidenceMode.RECORDED,
-    )
 
 
 def _prepare(runtime: Any, request: AlternativeEvidenceRequest, documents: tuple[Any, ...]) -> Any:

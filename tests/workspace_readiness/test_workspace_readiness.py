@@ -44,6 +44,7 @@ from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from tests.workspace_maintenance.local_data_provider import flat_adjusted_close_history
 
 _SIMPLE_NAMESPACE = SimpleNamespace
 
@@ -90,19 +91,7 @@ class FixtureProvider:
         del listing_id, provider_symbol, start, end
         return ()
 
-    def fetch_adjusted_close_history(
-        self, *, listing_id: str, provider_symbol: str, start: date, end: date
-    ):
-        return tuple(
-            ProviderAdjustedClosePoint(
-                listing_id=listing_id,
-                provider=self.name,
-                session_date=session,
-                adjusted_close=100.0,
-            )
-            for session in self.sessions
-            if start <= session <= end
-        )
+    fetch_adjusted_close_history = flat_adjusted_close_history
 
 
 class ShortHistoryAdditionProvider(FixtureProvider):
@@ -183,7 +172,37 @@ def _bootstrap(symbols: tuple[str, ...], *, observed_at: datetime) -> CurrentUni
     )
 
 
+def _readiness_gate(tmp_path: Path, provider: FixtureProvider):
+    market_data = MarketDataRepository(tmp_path / "workspace")
+    gate = WorkspaceReadinessGate(
+        market_data=market_data,
+        feature_state=FeatureStateRepository(market_data.database, market_data=market_data),
+        panel_state=PanelStateRepository(market_data.database, market_data=market_data),
+        profile_path=PROFILE,
+        provider=provider,
+    )
+    return market_data, gate
+
+
+def _initial_onboarding(gate: WorkspaceReadinessGate):
+    initial = _bootstrap(("AAPL",), observed_at=STARTED_AT)
+    gate.refresh_sources_if_due(
+        observed_at=STARTED_AT, source_loader=lambda *, observed_at: initial
+    )
+    onboarding = gate.start_approved_onboarding(
+        WorkspaceReadinessConsent(
+            consent_id=uuid4(),
+            market_profile_id="us-current-index-research",
+            action=WorkspaceConsentAction.INITIALIZE,
+            approved_at=STARTED_AT,
+        ),
+        source_loader=lambda *, observed_at: initial,
+    )
+    return initial, onboarding
+
+
 def test_readiness_gates_initialization_and_activates_only_completed_transitions(tmp_path) -> None:
+    """Control: Readiness gates initialization and activates only completed transitions."""
     schedule = materialize_calendar_schedule(
         ("XNAS",),
         start=date(2016, 8, 3),
@@ -191,16 +210,7 @@ def test_readiness_gates_initialization_and_activates_only_completed_transitions
         as_of_timestamp=STARTED_AT,
     )
     provider = FixtureProvider(tuple(row["session_date"] for row in schedule.to_pylist()))
-    market_data = MarketDataRepository(tmp_path / "workspace")
-    feature_state = FeatureStateRepository(market_data.database, market_data=market_data)
-    panel_state = PanelStateRepository(market_data.database, market_data=market_data)
-    gate = WorkspaceReadinessGate(
-        market_data=market_data,
-        feature_state=feature_state,
-        panel_state=panel_state,
-        profile_path=PROFILE,
-        provider=provider,
-    )
+    market_data, gate = _readiness_gate(tmp_path, provider)
     initial = _bootstrap(("AAPL", "MSFT"), observed_at=STARTED_AT)
 
     assert (
@@ -461,6 +471,7 @@ def test_readiness_failure_clock_reads_legacy_schema_and_survives_other_updates(
 def test_source_change_with_short_history_addition_keeps_active_set_and_avoids_rebuild(
     tmp_path,
 ) -> None:
+    """Control: Source change with short history addition keeps active set and avoids rebuild."""
     changed_at = STARTED_AT + timedelta(days=8)
     schedule = materialize_calendar_schedule(
         ("XNAS",),
@@ -471,29 +482,8 @@ def test_source_change_with_short_history_addition_keeps_active_set_and_avoids_r
     provider = ShortHistoryAdditionProvider(
         tuple(row["session_date"] for row in schedule.to_pylist())
     )
-    market_data = MarketDataRepository(tmp_path / "workspace")
-    feature_state = FeatureStateRepository(market_data.database, market_data=market_data)
-    panel_state = PanelStateRepository(market_data.database, market_data=market_data)
-    gate = WorkspaceReadinessGate(
-        market_data=market_data,
-        feature_state=feature_state,
-        panel_state=panel_state,
-        profile_path=PROFILE,
-        provider=provider,
-    )
-    initial = _bootstrap(("AAPL",), observed_at=STARTED_AT)
-    gate.refresh_sources_if_due(
-        observed_at=STARTED_AT, source_loader=lambda *, observed_at: initial
-    )
-    onboarding = gate.start_approved_onboarding(
-        WorkspaceReadinessConsent(
-            consent_id=uuid4(),
-            market_profile_id="us-current-index-research",
-            action=WorkspaceConsentAction.INITIALIZE,
-            approved_at=STARTED_AT,
-        ),
-        source_loader=lambda *, observed_at: initial,
-    )
+    market_data, gate = _readiness_gate(tmp_path, provider)
+    initial, onboarding = _initial_onboarding(gate)
     initial_outcome = onboarding.runner.run(observed_at=STARTED_AT)
     original = gate.complete_onboarding(onboarding, initial_outcome, observed_at=STARTED_AT)
     assert original.manifest is not None
@@ -654,7 +644,7 @@ class RecoveringHistoryProvider(ShortHistoryAdditionProvider):
 
 
 def test_feature_recheck_scope_resolves_only_across_the_request_own_raw_transition(tmp_path):
-    """Feature recheck scope resolves only across the request's own raw transition."""
+    """Control: Feature recheck scope resolves only across request own raw transition."""
 
     from alphalattice.foundation.feature_engine.inputs.contracts import FeatureCandidateRecheck
     from alphalattice.foundation.market_data_ops.sources.manifest import (
@@ -667,27 +657,8 @@ def test_feature_recheck_scope_resolves_only_across_the_request_own_raw_transiti
         ("XNAS",), start=date(2016, 8, 3), end=changed_at.date(), as_of_timestamp=changed_at
     )
     provider = RecoveringHistoryProvider(tuple(row["session_date"] for row in schedule.to_pylist()))
-    market_data = MarketDataRepository(tmp_path / "workspace")
-    gate = WorkspaceReadinessGate(
-        market_data=market_data,
-        feature_state=FeatureStateRepository(market_data.database, market_data=market_data),
-        panel_state=PanelStateRepository(market_data.database, market_data=market_data),
-        profile_path=PROFILE,
-        provider=provider,
-    )
-    initial = _bootstrap(("AAPL",), observed_at=STARTED_AT)
-    gate.refresh_sources_if_due(
-        observed_at=STARTED_AT, source_loader=lambda *, observed_at: initial
-    )
-    onboarding = gate.start_approved_onboarding(
-        WorkspaceReadinessConsent(
-            consent_id=uuid4(),
-            market_profile_id="us-current-index-research",
-            action=WorkspaceConsentAction.INITIALIZE,
-            approved_at=STARTED_AT,
-        ),
-        source_loader=lambda *, observed_at: initial,
-    )
+    market_data, gate = _readiness_gate(tmp_path, provider)
+    initial, onboarding = _initial_onboarding(gate)
     original = gate.complete_onboarding(
         onboarding, onboarding.runner.run(observed_at=STARTED_AT), observed_at=STARTED_AT
     )
@@ -1091,7 +1062,7 @@ class UnawareZone(tzinfo):
 
 @pytest.mark.parametrize("zone", [None, UnawareZone()])
 def test_daily_source_finality_refuses_an_unaware_close_by_name(zone):
-    """a missing offset cannot be assigned UTC meaning at the finality boundary."""
+    """Control: Daily-source finality refuses closes without a usable timezone offset."""
     with pytest.raises(
         ValueError, match=r"^workspace_readiness\.session_close_timestamp_not_timezone_aware$"
     ):

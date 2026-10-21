@@ -8,6 +8,7 @@ character ranges without a query or a model call."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text,
@@ -23,17 +24,10 @@ _DEBT = (
 )
 
 
-def _two_filings() -> tuple[str, str]:
+def _open_two_filings(tmp_path: Path) -> tuple[Any, ...]:
     legal = _filing(note_lines=[BOILERPLATE, _matter(1), _matter(2)])
     debt = legal.replace("NOTE 8. SEGMENT INFORMATION", _DEBT + "NOTE 8. SEGMENT INFORMATION")
-    return legal, debt
-
-
-def test_a_scoped_search_scores_and_returns_only_the_scoped_chunks(tmp_path: Path) -> None:
-    """A scoped search scores and returns only the scoped chunks."""
-
-    legal, debt = _two_filings()
-    runtime, request, _registry, _snapshot, document_set, generation = _open_recorded(
+    return _open_recorded(
         tmp_path,
         entities=("AAPL", "MSFT"),
         documents=(
@@ -41,6 +35,12 @@ def test_a_scoped_search_scores_and_returns_only_the_scoped_chunks(tmp_path: Pat
             _document_with_text("MSFT", text=debt, form="10-Q", revision="msft-10q"),
         ),
     )
+
+
+def test_a_scoped_search_scores_and_returns_only_the_scoped_chunks(tmp_path: Path) -> None:
+    """Control: Scoped search scores and returns only scoped chunks."""
+
+    runtime, request, _registry, _snapshot, document_set, generation = _open_two_filings(tmp_path)
     try:
         session = runtime.retrieval.open_session(
             document_set=document_set, generation=generation, evidence_as_of=request.evidence_as_of
@@ -79,18 +79,9 @@ def test_a_scoped_search_scores_and_returns_only_the_scoped_chunks(tmp_path: Pat
 
 
 def test_scope_for_names_the_chunks_that_overlap_the_ranges(tmp_path: Path) -> None:
-    """A range inside one chunk names that chunk; adjacent chunks merge into
-    one entry; a document with no overlapping chunk contributes nothing."""
+    """Control: Scope for names chunks overlap ranges."""
 
-    legal, debt = _two_filings()
-    runtime, request, _registry, _snapshot, document_set, generation = _open_recorded(
-        tmp_path,
-        entities=("AAPL", "MSFT"),
-        documents=(
-            _document_with_text("AAPL", text=legal, form="10-Q", revision="aapl-10q"),
-            _document_with_text("MSFT", text=debt, form="10-Q", revision="msft-10q"),
-        ),
-    )
+    runtime, request, _registry, _snapshot, document_set, generation = _open_two_filings(tmp_path)
     try:
         session = runtime.retrieval.open_session(
             document_set=document_set, generation=generation, evidence_as_of=request.evidence_as_of

@@ -59,7 +59,7 @@ def test_all_three_held_bounds_include_the_target_only_when_research_ready(bound
 
 
 def test_zero_gap_refresh_planner_retains_overlap_but_does_not_decide_a_fetch():
-    """the coordinator decides whether to invoke this refresh planner."""
+    """Control: Zero-gap refresh plans retain overlap without authorizing a fetch."""
     from alphalattice.foundation.market_data_ops.runtime.refresh import normal_refresh_plan
 
     day = date(2026, 10, 2)

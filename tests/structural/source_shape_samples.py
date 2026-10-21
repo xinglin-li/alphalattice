@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import inspect
 import re
+import subprocess
 from pathlib import Path
 
 _OPTION_CASES = {
@@ -340,3 +341,18 @@ def generated_evidence_sentences():
         values = iter((state.value, "100.000%", "44.000%", "not recorded", "not recorded"))
         said.append(re.sub(r"\{subject\}", lambda _, values=values: next(values), coverage))
     return said
+
+
+def tracked_python_files(root: Path) -> tuple[Path, ...]:
+    """Read the current Python files for package-cutover consumers."""
+    return tuple(
+        root / value
+        for value in subprocess.run(
+            ("git", "ls-files", "--cached", "--others", "--exclude-standard", "*.py"),
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        if value and (root / value).is_file()
+    )

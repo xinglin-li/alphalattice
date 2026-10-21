@@ -102,7 +102,10 @@ alphalattice --workspace "workspaces/my-research" first-use prepare --sentence "
 It first checks the setup a first use cannot run without, and opens nothing while
 it is missing: the bare `alphalattice` command your specialists' routes run in their
 own fresh shells, and the retrieval environment. Run each `missing` item's `commands`,
-disclosing them (a person's item is asked once, in one line), then the same command
+disclosing them (a person's item is asked once, in one line). Download and install
+`config/requirements-retrieval.lock` packages as your act, without repeating first-use
+network consent, even with an empty cache; say `disclosure` in one line and ask no
+second question. Software outside the lock still needs the person's permission. Run the same command
 again. It then opens the workspace's one `FIRST_USE` goal, prepares the data under the
 goal's delegation and follows each Task. The goal is this session's; the same sentence and
 date reuse it from another session, and a shell with no agent session puts

@@ -3,7 +3,6 @@
 import hashlib
 import json
 import re
-import subprocess
 from collections import Counter
 from pathlib import Path
 from unittest.mock import Mock
@@ -156,7 +155,7 @@ def test_generate_walks_development_labels_once_and_merges_its_findings(monkeypa
     blobs = {
         "census/entry_reach.json": b'{"modules": []}',
         INTERNAL_ID_BASELINE: b'{"cards": [], "lines": [], "occurrences": {}}',
-        "README.md": b"V" + b"900\n",
+        "README.md": b"V" + b"900\n",  # Positive detector fixture; avoid public self-scan.
         "scripts/probe_panel_identity.py": b"print('demo')\n",
     }
     manifest, audit = generate("a" * 40, blobs, dict.fromkeys(blobs, "100644"))
@@ -172,7 +171,7 @@ def test_public_manifest_records_locations_without_copying_disclosures():
     text = "\n".join(
         [
             secret,
-            "D:/" + "AI Agent/private/file",
+            "D:/" + "AI Agent/private/file",  # Disclosure negative fixture; avoid self-scan.
             "session=" + session,
             "contact=person@private.invalid",
             "experience/one.md",
@@ -200,7 +199,7 @@ def test_public_manifest_records_locations_without_copying_disclosures():
 def test_development_label_ratchet_pins_each_public_files_count_and_spelling():
     owner = "src/public.py"
     private = "experience/private.md"
-    labels = [
+    labels = [  # Required detector inputs; assembled to avoid public self-scan.
         "V" + "509",
         "U" + "112",
         "Round" + " 12",
@@ -250,44 +249,11 @@ def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary
     ] == [ux, perf, fix, cards[6], cards[4]]
 
 
-@pytest.fixture
-def synthetic_history(tmp_path):
-    def git(*args):
-        return subprocess.check_output(
-            [
-                "git",
-                "-c",
-                "user.name=Synthetic Author",
-                "-c",
-                "user.email=synthetic@example.test",
-                "-c",
-                "core.hooksPath=",
-                "-c",
-                "core.autocrlf=false",
-                "-C",
-                str(tmp_path),
-                *args,
-            ],
-            text=True,
-        ).strip()
-
-    def commit(message, *, advance=True):
-        git("add", "--all")
-        if not advance:
-            return git("commit-tree", git("write-tree"), "-p", "HEAD", "-m", message)
-        git("commit", "-q", "-m", message)
-
-    git("init", "-q")
-    (tmp_path / "README.md").write_text("Synthetic tree\n", encoding="utf-8", newline="\n")
-    commit("Start synthetic history")
-    return git, commit
-
-
 def test_committed_development_label_allowance_cannot_grow_or_reset(tmp_path, synthetic_history):
     _git, commit = synthetic_history
     with pytest.raises(ValueError, match="no frozen internal-label policy"):
         validate_internal_id_history(tmp_path, "HEAD")
-    owner, label = "src/demo.py", "V" + "901"
+    owner, label = "src/demo.py", "V" + "901"  # Required history-control label; avoid self-scan.
     policy = {
         "cards": ["UI", "IS", "LEAD", "SYNTHETIC-CARD"],
         "lines": [],

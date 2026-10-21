@@ -267,7 +267,25 @@ def test_the_installer_lets_the_stores_typed_refusal_through(
     assert printed["failure_code"] == "model_store.pack_not_installed:bge-small-en-v1.5:TAMPERED"
 
 
+def test_derived_memos_keep_falsy_values_and_evict_lru_with_a_machine_budget(monkeypatch) -> None:
+    """Derived memos preserve falsy values, clear atomically and scale their LRU budget."""
+    from alphalattice.kernel.shared_kernel import bounded_memo
+
+    memo = bounded_memo.BoundedMemo[str, int | None](capacity=2)
+    memo.update(a=0, b=None)
+    assert "b" in memo and memo["a"] == 0
+    memo["c"] = 1
+    assert "b" not in memo and dict(memo) == {"a": 0, "c": 1}
+    memo.clear()
+    assert not memo
+    monkeypatch.setattr(bounded_memo, "cpu_count", lambda: 1)
+    small = bounded_memo.BoundedMemo().capacity
+    monkeypatch.setattr(bounded_memo, "cpu_count", lambda: 2)
+    assert bounded_memo.BoundedMemo().capacity > small
+
+
 def test_pair_scores_are_answered_from_a_bounded_cache() -> None:
+    """Pair scores preserve order and successful reuse; failed inference is never cached."""
     cache = embeddings.PairScoreCache(limit=3)
     calls: list[list[str]] = []
 

@@ -6,15 +6,17 @@ import gc
 import hashlib
 import importlib
 import importlib.metadata
+import os
 import sqlite3
 import struct
+from collections import OrderedDict
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import CancelledError
 from contextlib import AbstractContextManager, closing, contextmanager
 from pathlib import Path
 from threading import Condition, Lock, get_ident, local
 from time import monotonic
-from typing import Any, cast
+from typing import Any, Final, cast
 
 from alphalattice.kernel.knowledge.hybrid_contracts import (
     EMBEDDING_CANARIES,
@@ -29,6 +31,7 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     safe_intra_op_threads,
 )
 from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.domain.serialization import canonical_json_bytes, sha256_hex
 
 BGE_QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
@@ -249,27 +252,15 @@ MODEL_WORK = ModelWorkLedger()
 """The process's ledger; the retrieval owner reports it beside its own counts."""
 
 
-class PairScoreCache:
-    """Scores of exact (query, passage) pairs under one reranker, held in the
-    process and bounded.
+class PairScoreCache(BoundedMemo[str, float]):
+    """Exact query/passage scores under one pinned reranker, held with an owner limit.
 
-    A pair's score is a function of the model, the query text and the
-    passage text alone -- measured, a batch of eight and a batch of
-    thirty-two return the same scores to the last digit -- so a score once
-    computed serves any later request for the same pair: the program's
-    twenty questions over an unchanged generation ask for the same pairs,
-    and a repeat costs the candidate SQL rather than the cross-encoder. The
-    key is the hash of both texts; the value is the rounded score the
-    adapter returned. Nothing else is remembered: no eligibility, no result
-    list, no candidate set, which are regenerated every time. Cancelled or
-    failed work leaves nothing behind. The oldest entries leave first.
+    Keys hash both texts; only successful rounded inference enters the memo.
+    Eligibility and result lists are rebuilt for each request.
     """
 
-    __slots__ = ("_entries", "_limit")
-
     def __init__(self, limit: int = 250_000) -> None:
-        self._entries: dict[str, float] = {}
-        self._limit = limit
+        super().__init__(capacity=limit)
 
     @staticmethod
     def key(query: str, passage: str) -> str:
@@ -277,23 +268,8 @@ class PairScoreCache:
             len(query).to_bytes(4, "big") + query.encode("utf-8") + passage.encode("utf-8")
         ).hexdigest()
 
-    def get(self, key: str) -> float | None:
-        value = self._entries.get(key)
-        if value is not None:
-            # Refresh: the dict keeps insertion order, so the oldest is first.
-            del self._entries[key]
-            self._entries[key] = value
-        return value
-
     def put(self, key: str, value: float) -> None:
-        if key in self._entries:
-            del self._entries[key]
-        elif len(self._entries) >= self._limit:
-            del self._entries[next(iter(self._entries))]
-        self._entries[key] = value
-
-    def __len__(self) -> int:
-        return len(self._entries)
+        self[key] = value
 
 
 def score_with_cache(
@@ -503,7 +479,7 @@ class VerifiedPackRegistry:
     grown, touched, added or removed file -- makes the request prove again.
     Up to `sessions_per_pack` sessions per (root, spec) are held -- one
     unless a Host that runs work items at once raises it -- so a process
-    holds one pack's sessions, not a history of them: a lease takes a held
+    bounds idle pack keys separately from active leases: a lease takes a held
     session no other lease holds, loads another while fewer than that many
     are held, and otherwise shares the least-leased one, its calls waiting
     for each other. Each is the same pinned pack under the same session
@@ -516,10 +492,11 @@ class VerifiedPackRegistry:
     it is released, never under a consumer still using it.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, capacity: int | None = None) -> None:
         self._lock = Lock()
-        self._entries: dict[tuple[str, ...], _Held] = {}
-        self._pools: dict[tuple[str, ...], list[_Held]] = {}
+        self.capacity: Final = max(1, capacity if capacity is not None else os.cpu_count() or 1)
+        self._entries: BoundedMemo[tuple[str, ...], _Held] = BoundedMemo(capacity=self.capacity)
+        self._pools: OrderedDict[tuple[str, ...], list[_Held]] = OrderedDict()
         self.sessions_per_pack = 1
         self.session_threads: int | None = None
         """The intra-op threads a model session this process loads is given: the
@@ -640,6 +617,8 @@ class VerifiedPackRegistry:
         facts = pack_facts(consumed)
         with self._lock:
             pool = self._pools.setdefault(key, [])
+            self._pools.move_to_end(key)
+            self._trim_pools(key)
             for held in list(pool):
                 if held.facts != facts or (usable is not None and not usable(held.value)):
                     self._retire_locked(key, held)
@@ -661,6 +640,15 @@ class VerifiedPackRegistry:
             held.leases += 1
         return PackLease(self, held, reused=reused)
 
+    def _trim_pools(self, keep: tuple[str, ...] | None = None) -> None:
+        for key, pool in tuple(self._pools.items()):
+            if len(self._pools) <= self.capacity:
+                break
+            if key != keep and not any(held.leases for held in pool):
+                for held in tuple(pool):
+                    self._retire_locked(key, held)
+                del self._pools[key]
+
     def _retire_locked(self, key: tuple[str, ...], held: _Held) -> None:
         held.retired = True
         pool = self._pools.get(key, [])
@@ -673,6 +661,7 @@ class VerifiedPackRegistry:
         with self._lock:
             held.leases -= 1
             close = held.retired and held.leases == 0
+            self._trim_pools()
         if close:
             _close_value(held.value)
 
@@ -915,12 +904,6 @@ class LocalOnnxEmbeddingAdapter:
                 "semantic tokenizer or ONNX session is unavailable",
                 cause=exc,
             ) from exc
-
-    @property
-    def session_options(self) -> Any:
-        """Expose private options for adapter-level deterministic tests."""
-
-        return self._session_options
 
     @property
     def closed(self) -> bool:

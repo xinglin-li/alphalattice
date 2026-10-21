@@ -33,6 +33,8 @@ from alphalattice.control.workspace_runtime.verified_facts import (
 )
 from alphalattice.foundation.market_data_ops.publication.projection import (
     ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH,
+    _bar_hash,
+    _canonical_hash,
     action_set_hash,
     provider_adjusted_close_evidence_hash,
 )
@@ -142,13 +144,6 @@ def _membership_digest(listing_ids: Iterable[str]) -> str:
     return _canonical_hash(sorted(set(listing_ids)))
 
 
-def _canonical_hash(value: object) -> str:
-    payload = json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
 class _SourcePrefixHashSink(RawIOBase):
     """Hash the original IPC writes without retaining another complete table buffer."""
 
@@ -184,73 +179,6 @@ def _utc_naive(value: datetime) -> datetime:
 def _utc_aware(value: datetime) -> datetime:
     """Project stored UTC wall time back into an absolute runtime contract."""
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
-
-
-def _plain_number(value: object) -> str | None:
-    """How `_canonical_hash` spells a finite float or an int; None for anything else."""
-    if type(value) is float:
-        return repr(value) if math.isfinite(value) else None
-    if type(value) is int:
-        return repr(value)
-    return None
-
-
-@functools.cache
-def _plain_text(value: str) -> str | None:
-    """How `_canonical_hash` spells a string it writes unescaped; None for one it escapes.
-
-    With ``ensure_ascii=False`` the encoder escapes only a quote, a backslash and a
-    control character (one below the space). Cached: a store's listing and provider
-    names, a few thousand short strings, repeat on every bar.
-    """
-    if '"' in value or "\\" in value or any(character < " " for character in value):
-        return None
-    return f'"{value}"'
-
-
-def _bar_hash(bar: RawDailyBar) -> str:
-    """A raw bar's payload hash: `_canonical_hash` of its eight fields.
-
-    For the shapes a sanitized bar holds -- plain strings, a date, finite floats, an int
-    -- the encoder's bytes are written directly rather than by building and encoding a
-    mapping per bar (1.25M of them at first use); any other shape is encoded by
-    `_canonical_hash` itself.
-    """
-    listing = _plain_text(bar.listing_id) if type(bar.listing_id) is str else None
-    provider = _plain_text(bar.provider) if type(bar.provider) is str else None
-    close = _plain_number(bar.close)
-    high = _plain_number(bar.high)
-    low = _plain_number(bar.low)
-    open_ = _plain_number(bar.open)
-    volume = _plain_number(bar.volume)
-    if (
-        listing is None
-        or provider is None
-        or type(bar.session_date) is not date
-        or close is None
-        or high is None
-        or low is None
-        or open_ is None
-        or volume is None
-    ):
-        return _canonical_hash(
-            {
-                "listing_id": bar.listing_id,
-                "provider": bar.provider,
-                "session_date": bar.session_date,
-                "open": bar.open,
-                "high": bar.high,
-                "low": bar.low,
-                "close": bar.close,
-                "volume": bar.volume,
-            }
-        )
-    payload = (
-        f'{{"close":{close},"high":{high},"listing_id":{listing},"low":{low},'
-        f'"open":{open_},"provider":{provider},'
-        f'"session_date":"{bar.session_date.isoformat()}","volume":{volume}}}'
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _action_hash(event: CorporateActionEvent) -> str:

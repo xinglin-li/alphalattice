@@ -48,13 +48,14 @@ from alphalattice.evidence.alternative_evidence.retrieval.session import (
     MAXIMUM_SPAN_READS,
     MAXIMUM_TYPED_SPAN_READS,
 )
-from alphalattice.evidence.alternative_evidence.sources.recorded import RecordedEvidenceDocument
 from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
+from tests.alternative_evidence_desk.document_intelligence_support import (
+    _document_with_text as _document,
+)
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _obligation,
     _open_recorded,
 )
-from tests.alternative_evidence_desk.planted_corpus import _recorded_document
 
 DCP = TypedDisclosureFamily.DISCLOSURE_CONTROLS_CONCLUSION.value
 SALES = TypedDisclosureFamily.UNREGISTERED_EQUITY_SALES.value
@@ -906,19 +907,6 @@ def test_two_same_day_sales_stay_two_assertions_and_a_change_to_one_cannot_disap
 
 # --------------------------------------------------------------------------
 # The owning path: verified spans, the receipt, the packet and the budget.
-
-
-def _document(
-    entity_id: str = "AAPL", *, text: str, form: str = "10-Q", revision: str | None = None
-) -> RecordedEvidenceDocument:
-    base = _recorded_document(entity_id)
-    return base.model_copy(
-        update={
-            "text": text,
-            "document_type": form,
-            "revision": revision if revision is not None else f"{form}-2026".lower(),
-        }
-    )
 
 
 def test_typed_spans_are_verified_reads_and_the_receipt_accounts_for_them(tmp_path: Path) -> None:

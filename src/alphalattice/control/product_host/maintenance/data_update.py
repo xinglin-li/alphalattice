@@ -118,9 +118,11 @@ from alphalattice.foundation.market_data_ops.runtime.universe_maintenance import
 from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
     CurrentUniverseOnboardingStatus,
 )
+from alphalattice.foundation.market_data_ops.sources.manifest import read_market_profile
 from alphalattice.foundation.market_data_ops.sources.providers import (
     MarketDataProvider,
     YFinanceMarketDataProvider,
+    market_provider,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     CurrentUniverseMaintenanceListing,
@@ -673,7 +675,9 @@ class WorkspaceDataUpdateApplication:
         """
         self.session, self.clock = session, clock
         self._manifests = held(manifest)
-        self.provider, self.source_loader = provider, source_loader
+        source = read_market_profile(PROFILE).provider if provider is None else ""
+        self.provider = market_provider(session.workspace, source, provider)
+        self.source_loader = source_loader
         self.last_plan: WorkspaceDataUpdatePlan | None = None
         self.changes = WorkspaceDataChanges(session.workspace, session.mutation_gate)
         self._previews: PreviewRegistry[WorkspaceDataUpdatePlan] = PreviewRegistry(
@@ -1534,13 +1538,7 @@ class WorkspaceDataUpdateApplication:
                     if not needed <= covered:
                         continue
                     try:
-                        self.changes.verified_valuation(
-                            original,
-                            self.provider
-                            or YFinanceMarketDataProvider(
-                                self.session.workspace / "yfinance-cache"
-                            ),
-                        )
+                        self.changes.verified_valuation(original, self.provider)
                     except ValueError:
                         continue
                     return receipt
@@ -2051,9 +2049,7 @@ class WorkspaceDataUpdateApplication:
             readiness = market.readiness.load(plan.binding.market_profile_id)
             assert readiness is not None and readiness.active_manifest_id is not None
             manifest = market.load_universe_manifest(readiness.active_manifest_id)
-            provider = self.provider or YFinanceMarketDataProvider(
-                self.session.workspace / "yfinance-cache"
-            )
+            provider = self.provider
             if plan.change is not None and plan.change.action == "UNIVERSE":
                 gate = self._readiness(market)
                 state = gate.assess(observed_at=self.clock())
@@ -2260,11 +2256,7 @@ class WorkspaceDataUpdateApplication:
                     transition_receipt_hash=None
                     if plan.change is None
                     else self.changes.capture_execution(plan, after.manifest_revision).content_hash,
-                    valuation_receipt_hashes=self.changes.verified_valuation(
-                        plan,
-                        self.provider
-                        or YFinanceMarketDataProvider(self.session.workspace / "yfinance-cache"),
-                    ),
+                    valuation_receipt_hashes=self.changes.verified_valuation(plan, self.provider),
                     removed_member_tails=self.changes.removed_member_tails(plan),
                 )
                 self._registry().publish_data_update_receipt(receipt)
@@ -2333,11 +2325,7 @@ class WorkspaceDataUpdateApplication:
             content = plan.content_hash
         elif stage == _STAGES[1]:
             content = self._completion(plan).completion_hash
-            self.changes.verified_valuation(
-                plan,
-                self.provider
-                or YFinanceMarketDataProvider(self.session.workspace / "yfinance-cache"),
-            )
+            self.changes.verified_valuation(plan, self.provider)
         elif stage == _STAGES[2]:
             receipt = self._receipt(plan.content_hash)
             if receipt is None:

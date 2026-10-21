@@ -33,7 +33,7 @@ from tests.alpha_research.fixtures import (
 )
 
 
-def _candidate_results():
+def _viability_inputs():
     request, _inventory = synthetic_request()
     prepared = synthetic_prepared_arrays()
     results = []
@@ -80,7 +80,15 @@ def _candidate_results():
                 "report_hash",
             )
         )
-    return request, prepared, tuple(results)
+    target = _rows_for_predictions("target", np.zeros(600, dtype=np.float64)).targets
+    rows = {
+        "benchmark.historical-mean": _rows_for_predictions(
+            "benchmark.historical-mean", np.zeros(600, dtype=np.float64)
+        ),
+        "model.ridge.alpha-1p0": _rows_for_predictions("model.ridge.alpha-1p0", target.copy()),
+        "model.ridge.alpha-10p0": _rows_for_predictions("model.ridge.alpha-10p0", target * 0.999),
+    }
+    return request, prepared, tuple(results), rows
 
 
 def _rows_for_predictions(candidate_id: str, predictions: np.ndarray) -> AlphaValidationRows:
@@ -107,15 +115,8 @@ def _rows_for_predictions(candidate_id: str, predictions: np.ndarray) -> AlphaVa
 
 
 def test_viability_uses_directional_dm_and_dynamic_holm_family() -> None:
-    request, prepared, results = _candidate_results()
-    target = _rows_for_predictions("target", np.zeros(600, dtype=np.float64)).targets
-    rows = {
-        "benchmark.historical-mean": _rows_for_predictions(
-            "benchmark.historical-mean", np.zeros(600, dtype=np.float64)
-        ),
-        "model.ridge.alpha-1p0": _rows_for_predictions("model.ridge.alpha-1p0", target.copy()),
-        "model.ridge.alpha-10p0": _rows_for_predictions("model.ridge.alpha-10p0", target * 0.999),
-    }
+    """Control: Viability uses directional dm and dynamic holm family."""
+    request, prepared, results, rows = _viability_inputs()
     assessment = assess_alpha_model_viability(
         request_hash=request.request_hash,
         surface_hash="a" * 64,
@@ -150,18 +151,8 @@ def test_viability_uses_directional_dm_and_dynamic_holm_family() -> None:
 
 
 def test_a_refused_candidate_names_the_checks_it_failed() -> None:
-    """Regression: a significant candidate a positivity check refuses carries that
-    check's code, so its qualification record holds the evidence and the qualification seals
-    its end instead of stopping on a record without failure evidence."""
-    request, prepared, results = _candidate_results()
-    target = _rows_for_predictions("target", np.zeros(600, dtype=np.float64)).targets
-    rows = {
-        "benchmark.historical-mean": _rows_for_predictions(
-            "benchmark.historical-mean", np.zeros(600, dtype=np.float64)
-        ),
-        "model.ridge.alpha-1p0": _rows_for_predictions("model.ridge.alpha-1p0", target.copy()),
-        "model.ridge.alpha-10p0": _rows_for_predictions("model.ridge.alpha-10p0", target * 0.999),
-    }
+    """Control: Refused candidate names checks it failed."""
+    request, prepared, results, rows = _viability_inputs()
     spreads = {
         "model.ridge.alpha-1p0": (0.01, 0.02, 0.03, 0.04, 0.05, 0.06),
         "model.ridge.alpha-10p0": (-0.06, -0.05, -0.04, -0.03, -0.02, -0.01),

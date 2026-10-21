@@ -6510,7 +6510,7 @@
 },
 "src/alphalattice/investment/alpha_research/publication/artifacts.py::metadata_hash::64": {
 "class": "METHOD",
-"count": 2
+"count": 1
 },
 "src/alphalattice/investment/alpha_research/publication/contracts.py::max_length::120": {
 "class": "LIMIT",
@@ -11080,6 +11080,10 @@
 "class": "LIMIT",
 "count": 1
 },
+"src/alphalattice/kernel/shared_kernel/bounded_memo.py::BoundedMemo.default_capacity::1024": {
+"class": "LIMIT",
+"count": 1
+},
 "src/alphalattice/investment/alpha_research/publication/artifacts.py::_packed_block::1980": {
 "class": "LIMIT",
 "count": 1
@@ -11093,6 +11097,14 @@
 "count": 1
 },
 "src/alphalattice/control/data_platform/data_decision_rule.py::SHIPPED_REBASE_PRECISION::1e-06": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/control/data_platform/data_decision_rule.py::DataDecisionRule.panel_precision::2e-06": {
+"class": "METHOD",
+"count": 1
+},
+"src/alphalattice/control/data_platform/data_decision_rule.py::DataDecisionRule.panel_floor::1e-12": {
 "class": "METHOD",
 "count": 1
 }

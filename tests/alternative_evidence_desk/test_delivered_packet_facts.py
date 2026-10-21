@@ -96,6 +96,7 @@ def test_a_quiet_issuer_keeps_its_places_beside_a_verbose_one(tmp_path: Path) ->
 
 
 def test_compliance_and_non_compliance_are_two_facts(tmp_path: Path) -> None:
+    """Control: Delivered facts preserve both compliance and noncompliance assertions."""
     document = _document(
         "AAPL",
         (
@@ -113,6 +114,7 @@ def test_compliance_and_non_compliance_are_two_facts(tmp_path: Path) -> None:
 
 
 def test_two_amounts_on_two_dates_are_two_facts(tmp_path: Path) -> None:
+    """Control: Delivered facts preserve distinct amounts tied to their respective dates."""
     document = _document(
         "AAPL",
         (

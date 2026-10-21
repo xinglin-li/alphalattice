@@ -566,7 +566,7 @@ def _assert_session_observation_bytes(actual: pd.Series, expected: pd.Series) ->
 def test_every_owned_session_recipe_appends_exact_finite_values_on_the_original_axis(
     specification: FactorSpec, prefix_days: int
 ) -> None:
-    """requirement: a source-proved prefix needs only the owner's finite warmup and new rows."""
+    """Control: Every owned session recipe appends exact finite values on original axis."""
 
     source = _session_observation_source()
     original = source.copy(deep=True)
@@ -625,7 +625,7 @@ def test_finite_session_tails_preserve_missing_nonfinite_and_zero_source_values(
 def test_an_unproved_or_nonprefix_observation_axis_uses_the_ordinary_full_reader(
     previous_kind: str,
 ) -> None:
-    """requirement: the finite owner never fills a malformed prefix by approximation."""
+    """Control: Unproved or nonprefix observation axis uses ordinary full reader."""
 
     source = _session_observation_source()
     registry = default_extension_kernel_registry()
@@ -660,7 +660,7 @@ def test_an_unproved_or_nonprefix_observation_axis_uses_the_ordinary_full_reader
     "changed", ["minimum_observations", "window_sessions", "absolute_tolerance", "formula"]
 )
 def test_a_changed_session_recipe_keeps_the_original_full_registry_route(changed: str) -> None:
-    """requirement: finite support belongs to the exact owned declaration."""
+    """Control: Changed session recipe keeps original full registry route."""
 
     source = _session_observation_source()
     registry = default_extension_kernel_registry()

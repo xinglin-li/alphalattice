@@ -55,10 +55,6 @@ from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment impo
     alpha_model_numerical_scope,
     resolve_alpha_model_numerical_environment,
 )
-from alphalattice.foundation.research_foundation.contracts import (
-    ResearchDeskExecutionOutcomeRef,
-    ResearchFoundationBinding,
-)
 from alphalattice.investment.alpha_research.experiments.contracts import (
     AlphaFoldCommitment,
 )
@@ -73,15 +69,15 @@ from alphalattice.investment.alpha_research.inputs.folds import (
 from alphalattice.investment.alpha_research.inputs.training import (
     build_alpha_training_input_binding,
 )
-from alphalattice.kernel.shared_kernel.domain.enums import DataValidityClass
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.validation.contracts import (
     RebalanceEvidencePoint,
     ResearchSplitSpec,
     ValidationTimeline,
 )
-from alphalattice.kernel.validation.enums import RebalanceFrequency, SplitMode
+from alphalattice.kernel.validation.enums import SplitMode
 from alphalattice.kernel.validation.splitting import build_research_split
+from tests.alpha_research.fixtures import research_foundation_binding
 
 FACTOR_IDS = ("nonlinear-a", "nonlinear-b", "size", "trend")
 LISTING_IDS = tuple(f"listing-{index}" for index in range(4))
@@ -91,34 +87,6 @@ def _readonly(value: np.ndarray) -> np.ndarray:
     result = np.asarray(value)
     result.setflags(write=False)
     return result
-
-
-def _foundation() -> ResearchFoundationBinding:
-    execution = ResearchDeskExecutionOutcomeRef.model_construct(
-        research_cadence=RebalanceFrequency.DAILY,
-        snapshot_hash="d" * 64,
-        schedule_hash="e" * 64,
-        development_content_hash="f" * 64,
-        sealed_holdout_content_hash="0" * 64,
-        marker_hash="1" * 64,
-        market_as_of="2026-07-31",
-        data_validity_class=DataValidityClass.CURRENT_UNIVERSE_RESEARCH_ONLY,
-    )
-    return ResearchFoundationBinding.model_construct(
-        research_cadence=RebalanceFrequency.DAILY,
-        feature_panel_snapshot_hash="2" * 64,
-        logical_panel_hash="a" * 64,
-        logical_semantic_index_hash="c" * 64,
-        factor_training_outcome_snapshot_hash="3" * 64,
-        factor_screening_result_hash="4" * 64,
-        factor_candidate_slate_hash="5" * 64,
-        research_desk_factor_input_hash="b" * 64,
-        execution_outcome=execution,
-        ordered_factor_ids=FACTOR_IDS,
-        downstream_factor_research_forbidden=True,
-        secondary_feature_preprocessing_forbidden=True,
-        foundation_hash="9" * 64,
-    )
 
 
 def _matrix(
@@ -207,7 +175,7 @@ def _plan_and_workspace() -> tuple[AlphaFoldArrayPlan, _ArrayWorkspace]:
     validation_outcome_hashes = tuple(
         canonical_hash(("outcome", *value)) for value in validation_keys
     )
-    foundation = _foundation()
+    foundation = research_foundation_binding(FACTOR_IDS)
     commitment: AlphaFoldCommitment = build_alpha_fold_commitment(window)
     binding = build_alpha_training_input_binding(
         scope="DEVELOPMENT_FOLD",

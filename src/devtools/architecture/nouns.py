@@ -1,7 +1,7 @@
 """A mapped noun's decisions made outside its owner (G2; G1's owner map; LAWS.md OW1, OW6, OP12).
 
-A noun's owner defines it: its types, its state and its decisions. Another package may import the
-noun's types and read them; it does not make the noun's decisions. A decision is recognised by what
+A noun's owner defines its types, state and decisions. Others may read its types or construct
+registered input contracts, but may not seal or subclass them. A decision is recognised by what
 it makes, not by the file it sits in: a class the owner's defining modules export whose name says
 it is decided -- a receipt, a marker, a pointer, an admission, a decision, a publication, a
 recommendation, a dossier -- constructed, sealed or subclassed outside the owner. The splits the
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 import json
+from collections.abc import Callable
 from functools import cache
 from pathlib import Path
 
@@ -30,18 +31,22 @@ DECISION_SUFFIXES = (
 
 _BUILDERS = frozenset({"create", "model_construct"})
 
+type _Decision = tuple[str, tuple[str, ...], bool]
+type _Resolved = tuple[str, str, tuple[str, ...], bool]
+
 
 @cache
-def _decision_types(root: Path) -> dict[str, dict[str, tuple[str, tuple[str, ...]]]]:
+def _decision_types(root: Path) -> dict[str, dict[str, _Decision]]:
     """By defining module: each decision type's noun and the owner packages it belongs to."""
 
     path = root / "config/registries/owners-map.json"
     if not path.is_file():  # a tree without an owner map maps no noun
         return {}
     document = json.loads(path.read_text("utf-8"))
-    found: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {}
+    found: dict[str, dict[str, _Decision]] = {}
     for noun, row in document["nouns"].items():
         owners = (row["owner"], *row.get("with", ()))
+        inputs = frozenset(row.get("input_contracts", ()))
         for module in row["defined_by"]:
             base = root.joinpath("src", *module.split("."))
             source = base.with_suffix(".py")
@@ -55,7 +60,7 @@ def _decision_types(root: Path) -> dict[str, dict[str, tuple[str, tuple[str, ...
                     and not node.name.startswith("_")
                     and node.name.endswith(DECISION_SUFFIXES)
                 ):
-                    found.setdefault(module, {})[node.name] = (noun, owners)
+                    found.setdefault(module, {})[node.name] = (noun, owners, node.name in inputs)
     return found
 
 
@@ -66,6 +71,43 @@ def _module_of(relative: str) -> str:
 
 def _inside(module: str, owners: tuple[str, ...]) -> bool:
     return any(module == owner or module.startswith(owner + ".") for owner in owners)
+
+
+def _resolver(root: Path, tree: ast.AST) -> Callable[[ast.expr], _Resolved | None]:
+    """Resolve imported noun types once for the decision walk."""
+
+    types = _decision_types(root)
+    by_package = {
+        (defining, name): value
+        for defining, names in types.items()
+        for name, value in names.items()
+    }
+    named: dict[str, _Resolved] = {}  # local name -> (Type, noun, owners, caller input)
+    modules: dict[str, str] = {}  # local name -> a defining module imported whole
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            for alias in node.names:
+                for (defining, name), (noun, owners, input_contract) in by_package.items():
+                    if alias.name == name and (
+                        node.module == defining or _inside(node.module, owners)
+                    ):
+                        named[alias.asname or alias.name] = (name, noun, owners, input_contract)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in types:
+                    modules[alias.asname or alias.name] = alias.name
+
+    def resolve(node: ast.expr) -> _Resolved | None:
+        if isinstance(node, ast.Name):
+            return named.get(node.id)
+        if isinstance(node, ast.Attribute):
+            owner_module = _dotted(node.value)
+            defining = modules.get(owner_module or "") or owner_module
+            value = types.get(defining or "", {}).get(node.attr)
+            return None if value is None else (node.attr, *value)
+        return None
+
+    return resolve
 
 
 def definitions(root: Path, relative: str, tree: ast.AST) -> set[str]:
@@ -82,51 +124,24 @@ def definitions(root: Path, relative: str, tree: ast.AST) -> set[str]:
     if not relative.startswith("src/alphalattice/"):
         return set()
     module = _module_of(relative)
-    types = _decision_types(root)
-    by_package = {
-        (defining, name): value
-        for defining, names in types.items()
-        for name, value in names.items()
-    }
-    named: dict[str, tuple[str, str, tuple[str, ...]]] = {}  # local name -> (Type, noun, owners)
-    modules: dict[str, str] = {}  # local name -> a defining module imported whole
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            for alias in node.names:
-                for (defining, name), (noun, owners) in by_package.items():
-                    if alias.name == name and (
-                        node.module == defining or _inside(node.module, owners)
-                    ):
-                        named[alias.asname or alias.name] = (name, noun, owners)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name in types:
-                    modules[alias.asname or alias.name] = alias.name
+    resolve = _resolver(root, tree)
     made: set[str] = set()
 
-    def resolve(node: ast.expr) -> tuple[str, str, tuple[str, ...]] | None:
-        if isinstance(node, ast.Name):
-            return named.get(node.id)
-        if isinstance(node, ast.Attribute):
-            owner_module = _dotted(node.value)
-            defining = modules.get(owner_module or "") or owner_module
-            value = types.get(defining or "", {}).get(node.attr)
-            return None if value is None else (node.attr, *value)
-        return None
-
     for node in ast.walk(tree):
-        found: tuple[str, str, tuple[str, ...]] | None = None
+        found: _Resolved | None = None
+        input_construction = False
         if isinstance(node, ast.ClassDef):
             for base in node.bases:
                 found = resolve(base) or found
         elif isinstance(node, ast.Call):
             func = node.func
             found = resolve(func)
+            input_construction = found is not None and found[3]
             if found is None and isinstance(func, ast.Attribute) and func.attr in _BUILDERS:
                 found = resolve(func.value)
             if found is None and node.args and _called_name(func).startswith("seal"):
                 found = resolve(node.args[0])
-        if found is not None and not _inside(module, found[2]):
+        if found is not None and not _inside(module, found[2]) and not input_construction:
             made.add(f"{relative}::{found[1]}::{found[0]}")
     return made
 

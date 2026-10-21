@@ -51,7 +51,9 @@ false`; the delegation ends with its goal and never answers it."""
 FIRST_USE_ASK_NOW: Final = (
     "Unless this workspace's Evidence is set up already, the review of the date's positions "
     "acquires recent SEC filings within the default budget under the first use's delegation, and "
-    "downloads the retrieval model at the size its setup states: say so in one line now. Then "
+    "downloads the retrieval model at the size its setup states; the agent also installs "
+    "the locked retrieval packages under this consent without another question: "
+    "say so in one line now. Then "
     "ask the person once, in these words, and carry on. On their yes, run each command after the "
     "question once, their words verbatim in place of `<their words>`; the delegation never "
     "answers it:",

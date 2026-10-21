@@ -214,7 +214,7 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
 
 
 def test_every_research_strategy_refusal_has_its_owner_words():
-    """Every research strategy refusal in the owner has its declared door words."""
+    """Control: Every research strategy refusal has its owner words."""
     from alphalattice.interface.local_application.cli_contract import refusal_words
 
     source = (

@@ -796,9 +796,7 @@ def _directory_link(link: Path, target: Path) -> None:
 
 
 def test_a_directory_link_repointed_after_the_first_read_reverifies_and_refuses(tmp_path):
-    """regression: the identity check reads the path's resolution and file from one
-    handle; a junction (a symlink elsewhere) repointed after the first verified read is a
-    changed path even with the same size and time, so the read verifies again and refuses."""
+    """Control: Repointed directory links reverify changed bytes and never cache failed reads."""
     sealed, other, link = tmp_path / "sealed", tmp_path / "other", tmp_path / "link"
     sealed.mkdir()
     other.mkdir()
@@ -1059,6 +1057,20 @@ def test_a_file_fact_outlives_its_process_for_the_lease_holders_workspace(
         facts.release_file_facts(workspace)
         facts.keep_file_facts(workspace)
         assert facts.file_fact(target, "columns") == "a" * 64
+        facts.configure_file_facts(capacity=1)
+        try:
+            for _ in range(2):
+                facts.file_sha256(target)
+                facts.record_file_fact(target, "columns", "a" * 64)
+                assert facts.file_fact(target, "sha256") is None
+                assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
+                facts.release_file_facts(workspace)
+            journal = (workspace / facts.FILE_FACTS).read_bytes()
+            facts.keep_file_facts(workspace)
+            assert (workspace / facts.FILE_FACTS).read_bytes() == journal
+            assert facts.file_fact(target, "sha256") == hashlib.sha256(b"one").hexdigest()
+        finally:
+            facts.configure_file_facts()
 
 
 def test_a_change_to_the_file_ends_its_fact(tmp_path: Path) -> None:

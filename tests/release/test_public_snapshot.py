@@ -68,7 +68,7 @@ def _manifest(repository: Path, path: Path, files: list[str]) -> str:
 def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
     private: Path, tmp_path: Path
 ) -> None:
-    """A user-created snapshot holds every manifest file from one committed revision."""
+    """Control: Public snapshots contain exact manifest bytes and one commit by the user."""
 
     manifest = tmp_path / "manifest.json"
     source = _manifest(private, manifest, ["LICENSE", "src/tool.py"])

@@ -244,3 +244,5 @@ src/alphalattice/control/product_host/composition/retrieval_pack_setup.py
 src/alphalattice/control/product_host/composition/evidence_authority_setup.py
 src/alphalattice/control/product_host/composition/foundation_summary.py
 src/alphalattice/capabilities/causal_inputs/availability.py
+src/alphalattice/kernel/shared_kernel/bounded_memo.py
+src/alphalattice/investment/alpha_research/experiments/development_chunk_identity.py

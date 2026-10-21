@@ -226,7 +226,12 @@ def _canonical_digest(value: object) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def test_bar_payload_hash_is_the_canonical_json_digest() -> None:
+def test_bar_payload_hash_is_the_canonical_json_digest(request) -> None:
+    """Eviction preserves canonical digests across supported bar payload shapes."""
+    from alphalattice.foundation.market_data_ops.publication import projection as owner
+
+    request.addfinalizer(owner.configure_text_memo)
+    owner.configure_text_memo(capacity=1)
     fields = ("listing_id", "provider", "session_date", "open", "high", "low", "close", "volume")
     bar = RawDailyBar(
         "listing-aapl", "yfinance", date(2026, 1, 2), 100.0, 101.25, 99.5, 100.75, 1_000
@@ -250,9 +255,10 @@ def test_bar_payload_hash_is_the_canonical_json_digest() -> None:
         replace(bar, provider="y\nfinance"),
         replace(bar, session_date=datetime(2026, 1, 2, 21, 30)),
     )
-    for shape in shapes:
+    for shape in (*shapes, *shapes):
         expected = _canonical_digest({name: getattr(shape, name) for name in fields})
         assert _bar_hash(shape) == expected, shape
+        assert owner._plain_text.cache_info().currsize == 1
 
 
 class _Cache:

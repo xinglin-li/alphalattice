@@ -719,19 +719,20 @@ def test_a_finished_wait_replaces_the_admission_with_its_final_answer(
     assert json.loads(capsys.readouterr().out)["output_file"] == str(output.resolve())
 
 
+def _goal_narrative(task: str, state: str) -> dict[str, Any]:
+    return {
+        "status": "GOAL_NARRATIVE",
+        "state": "OPEN",
+        "record": {"tasks": [{"task_id": task, "state": state}], "conversation": []},
+    }
+
+
 def test_a_goal_wait_ends_on_a_task_that_turned_blocked(monkeypatch) -> None:
-    """A goal wait ends on a task that turned blocked."""
+    """Control: Goal wait ends on task turned blocked."""
 
     goal, task = str(uuid4()), str(uuid4())
 
-    def narrative(state: str) -> dict[str, Any]:
-        return {
-            "status": "GOAL_NARRATIVE",
-            "state": "OPEN",
-            "record": {"tasks": [{"task_id": task, "state": state}], "conversation": []},
-        }
-
-    stub = _Stub([narrative("RUNNING"), narrative("BLOCKED")])
+    stub = _Stub([_goal_narrative(task, "RUNNING"), _goal_narrative(task, "BLOCKED")])
     monkeypatch.setattr(client_module.time, "sleep", lambda _s: None)
     final = client_module._wait_for_goal(stub, goal, None)  # type: ignore[arg-type]
     event = final["wait_event"]
@@ -740,23 +741,16 @@ def test_a_goal_wait_ends_on_a_task_that_turned_blocked(monkeypatch) -> None:
 
 
 def test_a_goal_wait_wakes_on_a_task_stopped_again_after_its_recovery(monkeypatch) -> None:
-    """A goal wait wakes on a task stopped again after its recovery."""
+    """Control: Goal wait wakes on task stopped again after its recovery."""
 
     goal, task = str(uuid4()), str(uuid4())
 
-    def narrative(state: str) -> dict[str, Any]:
-        return {
-            "status": "GOAL_NARRATIVE",
-            "state": "OPEN",
-            "record": {"tasks": [{"task_id": task, "state": state}], "conversation": []},
-        }
-
     stub = _Stub(
         [
-            narrative("RECOVERY_REQUIRED"),
-            narrative("RECOVERY_REQUIRED"),
-            narrative("RUNNING"),
-            narrative("RECOVERY_REQUIRED"),
+            _goal_narrative(task, "RECOVERY_REQUIRED"),
+            _goal_narrative(task, "RECOVERY_REQUIRED"),
+            _goal_narrative(task, "RUNNING"),
+            _goal_narrative(task, "RECOVERY_REQUIRED"),
         ]
     )
     monkeypatch.setattr(client_module.time, "sleep", lambda _s: None)
@@ -1538,7 +1532,7 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     tool, runtime = refused["missing"]["installed_leg"], refused["missing"]["retrieval_runtime"]
     assert (tool["who_decides"], runtime["who_decides"]) == ("AGENT", "AGENT")
     assert tool["commands"][-1].startswith("uv tool install") and "--bin" in tool["words"]
-    assert "retrieval_environment --offline" in runtime["commands"][0]
+    assert "--offline" not in runtime["commands"][0]
     assert runtime["network_commands"] and host.sent == []
     held.mkdir()  # uv holds the command where this PATH does not reach
     for name, text in (("uv", f"#!/bin/sh\necho {held}\n"), ("uv.cmd", f"@echo {held}\n")):

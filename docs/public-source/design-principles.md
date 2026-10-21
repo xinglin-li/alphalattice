@@ -226,4 +226,14 @@ Commands, answer fields, codes and message kinds are versioned interfaces. We ta
 
 A command being retired names its replacement while the old form still works. Guidance and release notes carry the change together, so the next session can follow it deliberately.
 
+## 19. The record is the lever
+
+An agent system improves at the speed its history can be read. AlphaLattice keeps that history in one append-only ledger: each request, decision and result, who made it and on what evidence, with sealed results an agent can verify. Codes for each kind of question and links from a decision to its later outcome are being added to that record patch by patch.
+
+Agents can then do the analysis a person once did by hand. They find recurring exceptions, slow paths and offers that fail, and propose a rule, a change of words or a change of code. A decision agents make the same way on the same evidence, again and again, becomes a declared rule, so its next occurrence costs nobody a turn.
+
+A proposal changes nothing on its own. It passes the same checks as any change, a changed policy is a disclosed successor, and the person keeps the scope. The measure is the outcome, not a falling count of questions.
+
+The maintainer's experience building AlphaLattice with agents is that how history is recorded decides how fast the system improves. Development follows the same loop: a defect that escapes review is recorded against the change that introduced it, and a review finding against the question that should have caught it. The record gives the next agent a cause to investigate and a check to improve.
+
 the maintainer

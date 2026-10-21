@@ -570,8 +570,7 @@ def test_child_handles_end_with_their_parent_and_the_instance_is_released(
 def test_an_instance_of_this_process_still_letting_go_is_waited_for(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, engine_form: str
 ) -> None:
-    """An instance of this process still letting go is waited for, in either form the engine
-    refuses it: its file lock or its unique file handle (AX of 2026-10-15)."""
+    """Control: Instance of this process still letting go is waited for."""
 
     from alphalattice.control.workspace_runtime import database as broker
 
@@ -695,7 +694,7 @@ def test_an_instance_of_this_process_still_letting_go_is_waited_for(
 def test_the_attached_path_refuses_another_process_by_name_and_waits_finitely(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The attached path refuses another process by name and waits finitely."""
+    """Control: Attached path refuses another process by name and waits finitely."""
 
     from alphalattice.control.workspace_runtime import database as broker
 
@@ -829,7 +828,7 @@ def test_a_closing_instance_is_untracked_first_and_openers_wait_for_the_close(
 def test_the_handle_leaves_the_books_and_the_file_is_marked_closing_in_one_step(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Closing a handle atomically untracks it and marks its database instance as closing."""
+    """Control: Handle leaves books and file is marked closing in one step."""
 
     from alphalattice.control.workspace_runtime import database as owner
 
@@ -902,7 +901,7 @@ def test_the_handle_leaves_the_books_and_the_file_is_marked_closing_in_one_step(
 def test_two_handles_closing_at_once_keep_the_file_marked_until_the_last_close_returns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Two handles closing at once keep the file marked until the last close returns."""
+    """Control: Two handles closing at once keep file marked until last close returns."""
 
     from alphalattice.control.workspace_runtime import database as owner
 

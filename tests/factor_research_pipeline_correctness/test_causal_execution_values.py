@@ -59,6 +59,7 @@ def _bar(price: float, volume: int) -> RawDailyBar:
 def test_inference_return_keeps_the_evidence_rows_exact_value_and_eligibility(
     entry, holding, entry_venue, holding_venue, eligible, dividend
 ):
+    """Control: Inference returns match evidence-row eligibility and exact numerical values."""
     point = CausalExecutionSchedulePoint(
         sequence=1,
         formation_session=date(2026, 1, 2),
@@ -91,6 +92,7 @@ def test_inference_return_keeps_the_evidence_rows_exact_value_and_eligibility(
 @pytest.mark.parametrize("dividend", [-1.0, float("nan"), float("inf")])
 @pytest.mark.parametrize("bar", [None, _bar(100.0, 0), _bar(100.0, 10)])
 def test_invalid_dividends_are_refused_even_when_the_bar_cannot_execute(bar, dividend):
+    """Control: Invalid dividends are refused before checking execution eligibility."""
     with pytest.raises(ValueError, match=r"^causal execution dividend is invalid$"):
         causal_execution_simple_return(
             entry_bar=bar, holding_bar=bar, period_dividend_split_adjusted=dividend

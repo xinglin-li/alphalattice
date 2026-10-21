@@ -93,6 +93,12 @@ The Workbench parity guard refuses a write without an agent route, an added name
 
 ## Running tests
 
+The shared fixture confines first-use discovery without changing the process cwd. Project and
+workspace reads outside the declared temporary scope fail by name. QA Host launches and default
+golden caches use that scope; consumers read the producer's scoped receipt. Existing managed
+producers pass their validated run root explicitly. Source paths and offered source commands
+use the owning checkout.
+
 1. While working, run the nodes you changed or that fail, with one or two
    workers, plus a test file you changed. Never a directory or the whole suite.
 2. Every affected file runs whole once, in the integration set before a merge;

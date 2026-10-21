@@ -193,18 +193,8 @@ def _task_contract(plan: CalibrationPlan) -> tuple[TaskInputEnvelope, ResearchGo
         deliverable_kind="PreparedPortfolioComponentInput",
         summary="Prepare causal sizing input, not positions.",
     )
-    workflow = ResearchPlan.create(
-        goal_hash=goal.goal_hash,
-        workflow_definition_hash=canonical_hash(STAGES),
-        verifier_catalog_hash=canonical_hash(STAGES),
-        work_items=tuple(
-            WorkItemDefinition.create(
-                stage_id=stage,
-                dependency_ids=STAGES[:i],
-                verifier_id=f"portfolio_calibration.{stage}",
-            )
-            for i, stage in enumerate(STAGES)
-        ),
+    workflow = ResearchPlan.from_stages(
+        goal_hash=goal.goal_hash, stages=STAGES, verifier_namespace="portfolio_calibration"
     )
     return envelope, goal, workflow
 

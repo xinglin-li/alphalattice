@@ -122,3 +122,12 @@ def refusal_codes():
         "read_whole": read_whole,
         "open_family": open_family,
     }
+
+
+def rerun_refusal_codes() -> set[str]:
+    """Read refusal declarations that offer another plan run."""
+    return {
+        code
+        for code, entry in door_words().items()
+        if re.search(r"\b(run the plan|confirm) again\b|\bplan runs again\b", str(entry["detail"]))
+    }

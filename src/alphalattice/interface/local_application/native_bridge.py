@@ -1595,7 +1595,12 @@ def agent_setup() -> dict[str, dict[str, Any]]:
     The one readiness source the doctor (`host_readiness`) and a first use's gate both read: the
     `alphalattice` command its specialists run (`tool_setup`) and the retrieval runtime.
     """
-    from alphalattice.interface.local_application.retrieval_environment import fill_command, load
+    from alphalattice.interface.local_application.retrieval_environment import (
+        LOCKED_SETUP_DISCLOSURE,
+        LOCKED_SETUP_WORDS,
+        fill_command,
+        load,
+    )
 
     retrieval: dict[str, Any] = {"present": True}
     if not load():
@@ -1604,8 +1609,9 @@ def agent_setup() -> dict[str, dict[str, Any]]:
             "who_decides": "AGENT",
             "commands": [join(fill_command(), shell())],
             "network_commands": [join(fill_command(offline=False), shell())],
-            "words": "Fill it offline, disclosing it; on a cold package cache that fails, and "
-            "the network form resolves the lock's dependencies online, disclosed too.",
+            "offline_commands": [join(fill_command(offline=True), shell())],
+            "words": LOCKED_SETUP_WORDS,
+            "disclosure": LOCKED_SETUP_DISCLOSURE,
         }
     return {"installed_leg": tool_setup() or {"present": True}, "retrieval_runtime": retrieval}
 

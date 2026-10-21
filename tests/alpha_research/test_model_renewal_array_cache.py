@@ -281,6 +281,7 @@ def test_byte_bounds_rebuild_rejected_and_evicted_values(reuse_verified):
 
 
 def test_discard_only_npz_proof_rehashes_and_binds_each_store(tmp_path, monkeypatch):
+    """Control: Discard only npz proof rehashes and binds each store."""
     payload = _payload()
     store, identity = _store_with_arrays(tmp_path / "one", payload)
     other, same_hash = _store_with_arrays(tmp_path / "two", payload)
@@ -311,6 +312,7 @@ def test_discard_only_npz_proof_rehashes_and_binds_each_store(tmp_path, monkeypa
 
 
 def test_discard_only_npz_proof_cannot_cache_failed_member_decode(tmp_path, monkeypatch):
+    """Control: Discard only npz proof cannot cache failed member decode."""
     stream = BytesIO()
     np.savez(stream, untrusted=np.array([{"object": "must refuse"}], dtype=object))
     store, identity = _store_with_arrays(tmp_path / "one", stream.getvalue())

@@ -36,6 +36,7 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     SecEdgarSource,
     SecOfficialResponse,
 )
+from tests.alternative_evidence_desk.document_intelligence_support import live_admission
 from tests.alternative_evidence_desk.sec_fixture_transport import NOW, SecFixtureTransport
 
 
@@ -208,18 +209,6 @@ class _PartiallyFailingSecTransport(SecFixtureTransport):
         return super().get(url, maximum_bytes=maximum_bytes)
 
 
-def _live_admission(request: AlternativeEvidenceRequest) -> AlternativeEvidenceAdmission:
-    return seal_contract(
-        AlternativeEvidenceAdmission,
-        "admission_hash",
-        request_hash=request.request_hash,
-        network_consent=True,
-        admit_live_official=True,
-        admit_model_review=False,
-        admitted_at=NOW,
-    )
-
-
 def test_sec_acquisition_requires_explicit_consent_and_preserves_cutoff(tmp_path: Path) -> None:
     request = _request(mode=AlternativeEvidenceMode.LIVE_OFFICIAL)
     service = AlternativeEvidenceAcquisitionService(artifact_root=tmp_path)
@@ -243,7 +232,7 @@ def test_sec_acquisition_requires_explicit_consent_and_preserves_cutoff(tmp_path
 
     registry, snapshot, _documents = service.build_live_evidence(
         request=request,
-        admission=_live_admission(request),
+        admission=live_admission(request, admitted_at=NOW),
         source=SecEdgarSource(SecFixtureTransport()),
         published_at=NOW,
         clock=lambda: NOW,
@@ -254,7 +243,7 @@ def test_sec_acquisition_requires_explicit_consent_and_preserves_cutoff(tmp_path
 
     _, partial, _ = service.build_live_evidence(
         request=request,
-        admission=_live_admission(request),
+        admission=live_admission(request, admitted_at=NOW),
         source=SecEdgarSource(_PartiallyFailingSecTransport()),
         registry=registry,
         published_at=NOW,
@@ -273,7 +262,7 @@ def test_live_calls_follow_the_admitted_evidence_classes(tmp_path: Path) -> None
     filings_transport = SecFixtureTransport()
     service.build_live_evidence(
         request=filings,
-        admission=_live_admission(filings),
+        admission=live_admission(filings, admitted_at=NOW),
         source=SecEdgarSource(filings_transport),
         published_at=NOW,
         clock=lambda: NOW,
@@ -287,7 +276,7 @@ def test_live_calls_follow_the_admitted_evidence_classes(tmp_path: Path) -> None
     facts_transport = SecFixtureTransport()
     service.build_live_evidence(
         request=facts,
-        admission=_live_admission(facts),
+        admission=live_admission(facts, admitted_at=NOW),
         source=SecEdgarSource(facts_transport),
         published_at=NOW,
         clock=lambda: NOW,

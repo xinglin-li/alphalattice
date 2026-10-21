@@ -30,6 +30,7 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     SecIssuerRegistrySnapshot,
     seal_contract,
 )
+from alphalattice.evidence.alternative_evidence.runtime.coverage import UNIT_LIMIT, coverage_units
 from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     EVIDENCE_REQUIRED_CHECKS,
@@ -181,6 +182,13 @@ def _scope(
 # ============================================== the Portfolio-to-Evidence scope
 
 
+def _wide_rows() -> tuple[tuple[str, str, float, float], ...]:
+    return tuple(
+        (f"{ticker}-XNAS", ticker, 0.02 + 0.001 * index, 0.02)
+        for index, ticker in enumerate(WIDE_TICKERS)
+    )
+
+
 def test_the_scope_selects_by_the_canonical_lexicographic_rule() -> None:
     """Opened and increased first, then unchanged holds, then what shrank."""
 
@@ -229,19 +237,9 @@ def test_a_ticker_outside_the_registry_is_a_different_gap() -> None:
 
 
 def test_every_mapped_issuer_is_in_scope_and_eight_is_only_a_unit() -> None:
-    """requirement: a book wider than one evidence request names every mapped
-    issuer in priority order; the request axis (eight) cuts execution units,
-    never the scope, and priority decides unit order, never membership."""
+    """Control: Every mapped issuer is in scope and eight is only unit."""
 
-    from alphalattice.evidence.alternative_evidence.runtime.coverage import (
-        UNIT_LIMIT,
-        coverage_units,
-    )
-
-    rows = tuple(
-        (f"{ticker}-XNAS", ticker, 0.02 + 0.001 * index, 0.02)
-        for index, ticker in enumerate(WIDE_TICKERS)
-    )
+    rows = _wide_rows()
     scope = _scope(rows, registry=_registry(WIDE_ISSUERS))
 
     assert len(scope.selected_issuers) == len(WIDE_TICKERS) == 11
@@ -279,18 +277,11 @@ def test_every_mapped_issuer_is_in_scope_and_eight_is_only_a_unit() -> None:
 
 
 def test_units_are_packed_from_each_issuer_s_own_source_count() -> None:
-    """Units are packed from each issuer's own source count."""
+    """Control: Units are packed from each issuer s own source count."""
 
     from alphalattice.evidence.alternative_evidence.contracts import ADMITTED_DOCUMENT_CAPACITY
-    from alphalattice.evidence.alternative_evidence.runtime.coverage import (
-        UNIT_LIMIT,
-        coverage_units,
-    )
 
-    rows = tuple(
-        (f"{ticker}-XNAS", ticker, 0.02 + 0.001 * index, 0.02)
-        for index, ticker in enumerate(WIDE_TICKERS)
-    )
+    rows = _wide_rows()
     scope = _scope(rows, registry=_registry(WIDE_ISSUERS))
     entities = scope.ordered_entity_ids
     weight = {issuer.entity_id: issuer.weight_rank for issuer in scope.selected_issuers}
@@ -390,10 +381,7 @@ def test_a_run_of_many_units_carries_a_plan_task_control_admits() -> None:
     assert RUN_UNIT_LIMIT * len(_STAGES) <= PLAN_WORK_ITEM_LIMIT
     assert bound(ResearchPlan, "work_items") == PLAN_WORK_ITEM_LIMIT
     assert bound(TaskRecoveryView, "stages") == PLAN_WORK_ITEM_LIMIT
-    rows = tuple(
-        (f"{ticker}-XNAS", ticker, 0.02 + 0.001 * index, 0.02)
-        for index, ticker in enumerate(WIDE_TICKERS)
-    )
+    rows = _wide_rows()
     scope = _scope(rows, registry=_registry(WIDE_ISSUERS))
     policy = AdmittedEvidencePolicy()
     as_of = datetime(2026, 9, 19, 4, 58, 49, tzinfo=UTC)
@@ -1676,15 +1664,10 @@ def test_a_resolution_past_the_answer_bound_is_corrected_by_its_author() -> None
 
 
 def test_every_bound_a_specialist_answer_sets_is_screened_and_stated() -> None:
-    """Every bound a specialist answer sets is screened and stated."""
+    """Control: Every bound specialist answer sets is screened and stated."""
 
-    from alphalattice.evidence.alternative_evidence.analysis import views as analyst_views
     from alphalattice.evidence.alternative_evidence.analysis.contracts import (
         AlternativeEvidenceAnalystAnswer,
-    )
-    from alphalattice.oversight.chief_risk_officer.decision import views as cro_views
-    from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
-        PortfolioReviewAnswer,
     )
 
     def bounds(model: Any) -> dict[str, int]:
@@ -1696,9 +1679,9 @@ def test_every_bound_a_specialist_answer_sets_is_screened_and_stated() -> None:
         }
 
     cro, analyst = specialist_answer_bound_samples()
-    for model, screened, _views in (
-        (PortfolioReviewAnswer, cro, cro_views),
-        (AlternativeEvidenceAnalystAnswer, analyst, analyst_views),
+    for model, screened in (
+        (PortfolioReviewAnswer, cro),
+        (AlternativeEvidenceAnalystAnswer, analyst),
     ):
         assert bounds(model) == {name: number for name, (_, number) in screened.items()}, model
 

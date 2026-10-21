@@ -183,7 +183,7 @@ def test_execution_refuses_an_adapter_that_is_not_the_one_admitted(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """Execution refuses an adapter that is not the one admitted."""
+    """Control: Execution refuses adapter is not one admitted."""
 
     authority, _requested = _bounded_authority(real_risk_workspace, count=3)
     input_binding, bounded = resolve_development_input_binding(

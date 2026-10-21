@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -62,9 +60,7 @@ from alphalattice.interface.local_application.native_setup import declare_projec
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, _request
-
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
+from tests.portfolio_strategy_lab.local_web_support import _cli, _json, _request
 
 
 def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task(tmp_path):
@@ -406,25 +402,6 @@ def test_native_usage_callback_failure_is_isolated_from_recording_health(tmp_pat
             assert "PRIVATE-NATIVE-CALLBACK-EXCEPTION" not in json.dumps(state)
     finally:
         observer.close()
-
-
-def _cli(live: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str, Any]]:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--workspace",
-            str(live.workspace),
-            "--view",
-            "full",
-            *arguments,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    assert live.web.application.external_token not in result.stdout  # type: ignore[union-attr]
-    return result.returncode, json.loads(result.stdout)
 
 
 def _items(page: dict[str, Any], **where: object) -> list[dict[str, Any]]:
@@ -1699,4 +1676,4 @@ def test_task_join_reads_only_the_referenced_projections(
     assert page["tasks"][absent]["failure_code"] == "task_control.projection_unavailable"
     assert "lifecycle" not in page["tasks"][absent]
     assert page["read_cost"]["projections"] == 1
-    assert registry.safe_projections_for(()) == ()
+    assert ((b := registry.projection_collection(())).projections, b.refused_task_ids) == ((), ())

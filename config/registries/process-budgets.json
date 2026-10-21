@@ -14,6 +14,621 @@
       "most": "RuntimeCapacityRequest.maximum_kept_workers spread workers and the Task's own",
       "idle_retire": "KEPT_WORKER_IDLE_SECONDS",
       "spread_commit_gib": 0.25
+    },
+    "codex_wake_queue": {
+      "defined_by": "src/alphalattice/control/product_host/composition/workspace_activity.py::_queue_wake",
+      "spawn_sites": [
+        {
+          "file": "src/alphalattice/control/product_host/composition/workspace_activity.py",
+          "line": 1361,
+          "symbol": "_queue_wake",
+          "call": "subprocess.run(\n            [codex, \"queue\", \"--thread\", thread, \"--message\", message],\n            check=True,\n            capture_output=True,\n            timeout=60,\n        )"
+        }
+      ],
+      "requests": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "limits": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": {
+          "value": 60,
+          "source": "src/alphalattice/control/product_host/composition/workspace_activity.py:1365",
+          "scope": "One Codex queue command; subprocess.run timeout, not the lifetime of its target thread or an OS Job limit.",
+          "semantics": "subprocess.run timeout bounds this command invocation; it is not an OS Job lifetime limit or a bound for all invocations of the family."
+        }
+      },
+      "execution_controls": [
+        {
+          "control": "subprocess_timeout",
+          "limit_ref": "limits.wall_time_seconds"
+        },
+        {
+          "control": "sender_threads",
+          "value": 1,
+          "source": "src/alphalattice/control/product_host/composition/workspace_activity.py:264",
+          "scope": "Wake queue sender ThreadPoolExecutor(max_workers=1)."
+        }
+      ],
+      "note": "Queues one Codex wake line. A zero exit stores the line; it does not prove model receipt or next-turn delivery.",
+      "resource_semantics": "Memory and CPU requests or quotas remain undeclared. Explicit subprocess.run timeouts are command-scoped wall-time limits in limits.wall_time_seconds; absent command timeouts remain undeclared. Pool width, affinity and wait/cancel are separate execution controls. No enforcement is added; 0.2.4 owns measurement.",
+      "owner_status": "RESOLVED",
+      "owner_basis": "Current package defines the spawning function.",
+      "owner": "src/alphalattice/control/product_host/composition/workspace_activity.py",
+      "owner_package": "alphalattice.control.product_host.composition",
+      "consumers": {
+        "import": [
+          "src/alphalattice/control/product_host/composition/local_web_session.py:117",
+          "tests/portfolio_strategy_lab/test_committee.py:32",
+          "tests/portfolio_strategy_lab/test_native_lead_usage.py:17",
+          "tests/portfolio_strategy_lab/test_workspace_activity.py:42"
+        ],
+        "path": [
+          "config/registries/host-modules.json:61"
+        ],
+        "string": [
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:327"
+        ]
+      },
+      "consumer_basis": {
+        "source_commit": "42491202b3973f62dda18203fa620aa3661f46ba",
+        "method": "Static defining-module imports/path references and distinctive symbol matches; includes tests/declarations, not runtime proof.",
+        "scope": "Public static references; private maintainer reader evidence is tracked separately."
+      }
+    },
+    "causal_derivation_worker": {
+      "defined_by": "src/alphalattice/foundation/causal_outcomes/execution/publication.py::CausalExecutionOutcomePublisher.publish_daily",
+      "spawn_sites": [
+        {
+          "file": "src/alphalattice/foundation/causal_outcomes/execution/publication.py",
+          "line": 485,
+          "symbol": "CausalExecutionOutcomePublisher.publish_daily",
+          "call": "ProcessPoolExecutor(\n                        max_workers=workers,\n                        initializer=_initialize_derivation_worker,\n                        initargs=(derivation,),\n                    )"
+        }
+      ],
+      "requests": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "limits": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "execution_controls": [
+        {
+          "control": "worker_processes",
+          "expression": "min(_derivation_workers(self.derivation_workers), len(listings))",
+          "source": [
+            "src/alphalattice/foundation/causal_outcomes/execution/publication.py:453",
+            "src/alphalattice/foundation/causal_outcomes/execution/publication.py:483",
+            "src/alphalattice/foundation/causal_outcomes/execution/publication.py:486"
+          ],
+          "scope": "Pool width; no per-child CPU-time quota."
+        },
+        {
+          "control": "worker_ceiling",
+          "value": 4,
+          "source": "src/alphalattice/foundation/causal_outcomes/execution/publication.py:200",
+          "expression": "max(1, min(DERIVATION_WORKER_CEILING, configured if configured is not None else (os.cpu_count() or 1)))",
+          "expression_source": "src/alphalattice/foundation/causal_outcomes/execution/publication.py:219",
+          "scope": "Admission width only; do not invent a machine-specific default."
+        },
+        {
+          "control": "affinity",
+          "value": "inherited from parent",
+          "source": "src/alphalattice/foundation/causal_outcomes/execution/publication.py:214",
+          "scope": "Documented inherited affinity; no separate affinity assignment or CPU quota at the pool spawning site."
+        },
+        {
+          "control": "in_flight_window",
+          "expression": "workers * DERIVATION_WINDOW_PER_WORKER",
+          "source": "src/alphalattice/foundation/causal_outcomes/execution/publication.py:492",
+          "constant": 4,
+          "constant_source": "src/alphalattice/foundation/causal_outcomes/execution/publication.py:206"
+        },
+        {
+          "control": "shutdown",
+          "expression": "pool.shutdown(wait=True, cancel_futures=True)",
+          "source": "src/alphalattice/foundation/causal_outcomes/execution/publication.py:532"
+        }
+      ],
+      "note": "Large daily publications derive listing rows in a ProcessPoolExecutor; the serial path creates no child. The configured allowance is bounded by pool width and listing count.",
+      "resource_semantics": "Memory and CPU requests or quotas remain undeclared. Explicit subprocess.run timeouts are command-scoped wall-time limits in limits.wall_time_seconds; absent command timeouts remain undeclared. Pool width, affinity and wait/cancel are separate execution controls. No enforcement is added; 0.2.4 owns measurement.",
+      "owner_status": "RESOLVED",
+      "owner_basis": "Current defining package; canonical owners-map noun owner used for causal outcomes rather than its execution subpackage.",
+      "owner": "src/alphalattice/foundation/causal_outcomes/execution/publication.py",
+      "owner_package": "alphalattice.foundation.causal_outcomes",
+      "consumers": {
+        "import": [
+          "src/alphalattice/control/product_host/research_authoring/factor_inputs.py:43",
+          "tests/researcher_methodology_surface/real_workspace.py:53",
+          "tests/researcher_methodology_surface/test_causal_outcome_publication.py:32",
+          "tests/researcher_methodology_surface/test_causal_outcome_publication.py:326",
+          "tests/researcher_methodology_surface/test_causal_outcome_publication.py:414",
+          "tests/researcher_methodology_surface/test_causal_outcome_publication.py:555"
+        ],
+        "path": [
+          "config/registries/parameters.json:2327",
+          "config/registries/parameters.json:2331",
+          "config/registries/parameters.json:2335",
+          "config/registries/parameters.json:2339"
+        ],
+        "string": []
+      },
+      "consumer_basis": {
+        "source_commit": "42491202b3973f62dda18203fa620aa3661f46ba",
+        "method": "Static defining-module imports/path references and distinctive symbol matches; includes tests/declarations, not runtime proof.",
+        "scope": "Public static references; private maintainer reader evidence is tracked separately."
+      }
+    },
+    "dependency_command_probe": {
+      "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::command_readiness",
+      "spawn_sites": [
+        {
+          "file": "src/alphalattice/interface/local_application/native_bridge.py",
+          "line": 72,
+          "symbol": "command_readiness",
+          "call": "subprocess.run(\n            [executable, *command[1:]], capture_output=True, timeout=timeout, check=False\n        )"
+        }
+      ],
+      "requests": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "limits": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": {
+          "expression": "timeout",
+          "default": 30,
+          "source": [
+            "src/alphalattice/interface/local_application/native_bridge.py:65",
+            "src/alphalattice/interface/local_application/native_bridge.py:73"
+          ],
+          "scope": "A caller-overridable command execution timeout.",
+          "semantics": "subprocess.run timeout bounds this command invocation; it is not an OS Job lifetime limit or a bound for all invocations of the family.",
+          "caller_overrides": [
+            {
+              "value": 5,
+              "source": "src/alphalattice/interface/local_application/native_bridge.py:109",
+              "scope": "codex_queue_readiness explicitly narrows its --help probe."
+            }
+          ]
+        }
+      },
+      "execution_controls": [
+        {
+          "control": "subprocess_timeout",
+          "limit_ref": "limits.wall_time_seconds"
+        }
+      ],
+      "note": "Runs an executable readiness probe without installing or changing it. The current base default is 30 seconds; the older census summary of 5 seconds applied only to the Codex queue help caller.",
+      "resource_semantics": "Memory and CPU requests or quotas remain undeclared. Explicit subprocess.run timeouts are command-scoped wall-time limits in limits.wall_time_seconds; absent command timeouts remain undeclared. Pool width, affinity and wait/cancel are separate execution controls. No enforcement is added; 0.2.4 owns measurement.",
+      "owner_status": "RESOLVED",
+      "owner_basis": "Current package defines the spawning function.",
+      "owner": "src/alphalattice/interface/local_application/native_bridge.py",
+      "owner_package": "alphalattice.interface.local_application",
+      "consumers": {
+        "import": [
+          "src/alphalattice/control/product_host/composition/committee.py:83",
+          "src/alphalattice/control/product_host/composition/first_use_road.py:33",
+          "src/alphalattice/control/product_host/composition/goals.py:86",
+          "src/alphalattice/control/product_host/composition/local_web_session.py:199",
+          "src/alphalattice/control/product_host/composition/native_usage_reader.py:20",
+          "src/alphalattice/control/product_host/composition/native_usage_reader.py:23",
+          "src/alphalattice/control/product_host/composition/portfolio_research_operations.py:334",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:100",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:103",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:1156",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:1349",
+          "src/alphalattice/interface/local_application/activity.py:36",
+          "src/alphalattice/interface/local_application/cli.py:1528",
+          "src/alphalattice/interface/local_application/cli.py:1722",
+          "src/alphalattice/interface/local_application/cli.py:1765",
+          "src/alphalattice/interface/local_application/cli.py:1795",
+          "src/alphalattice/interface/local_application/client.py:2585",
+          "src/alphalattice/interface/local_application/client.py:266",
+          "src/alphalattice/interface/local_application/client.py:2963",
+          "src/alphalattice/interface/local_application/client.py:663",
+          "src/alphalattice/interface/local_application/native_setup.py:28",
+          "tests/portfolio_strategy_lab/test_accepted_answer_conversation.py:65",
+          "tests/portfolio_strategy_lab/test_local_web_service.py:38",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:198",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:26",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:691",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:898",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:982",
+          "tests/portfolio_strategy_lab/test_native_lead_usage.py:21",
+          "tests/portfolio_strategy_lab/test_native_lead_usage.py:28",
+          "tests/portfolio_strategy_lab/test_native_session_binding.py:22",
+          "tests/portfolio_strategy_lab/test_native_usage.py:14",
+          "tests/portfolio_strategy_lab/test_native_usage.py:17",
+          "tests/portfolio_strategy_lab/test_native_usage.py:887",
+          "tests/portfolio_strategy_lab/test_native_usage.py:925",
+          "tests/portfolio_strategy_lab/test_workspace_activity.py:57",
+          "tests/portfolio_strategy_lab/test_workspace_activity.py:58",
+          "tests/release/test_wheel_runtime.py:24"
+        ],
+        "path": [
+          "scripts/release/public_outputs.py:12",
+          "tests/structural/test_public_closure.py:274"
+        ],
+        "string": [
+          "scripts/release/public_outputs.py:327",
+          "src/alphalattice/interface/local_application/native_bridge.py:109",
+          "src/alphalattice/interface/local_application/native_setup.py:455",
+          "src/alphalattice/interface/local_application/native_setup.py:637",
+          "tests/portfolio_strategy_lab/test_cli_contract.py:108",
+          "tests/portfolio_strategy_lab/web_refusal_support.py:487",
+          "tests/structural/test_public_closure.py:286"
+        ]
+      },
+      "consumer_basis": {
+        "source_commit": "42491202b3973f62dda18203fa620aa3661f46ba",
+        "method": "Static defining-module imports/path references and distinctive symbol matches; includes tests/declarations, not runtime proof.",
+        "scope": "Public static references; private maintainer reader evidence is tracked separately."
+      }
+    },
+    "codex_queue_reach_probe": {
+      "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::codex_queue_reach",
+      "spawn_sites": [
+        {
+          "file": "src/alphalattice/interface/local_application/native_bridge.py",
+          "line": 156,
+          "symbol": "codex_queue_reach",
+          "call": "subprocess.run(\n            [command, \"queue\", \"--thread\", CODEX_REACH_THREAD, \"--message\", \"reach probe\"],\n            capture_output=True,\n            timeout=30,\n            check=False,\n        )"
+        }
+      ],
+      "requests": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "limits": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": {
+          "value": 30,
+          "source": "src/alphalattice/interface/local_application/native_bridge.py:159",
+          "scope": "A sentinel-thread Codex queue store-reach probe, not wake delivery.",
+          "semantics": "subprocess.run timeout bounds this command invocation; it is not an OS Job lifetime limit or a bound for all invocations of the family."
+        }
+      },
+      "execution_controls": [
+        {
+          "control": "subprocess_timeout",
+          "limit_ref": "limits.wall_time_seconds"
+        }
+      ],
+      "note": "Runs the sentinel-thread queue command and checks whether the refusal names the sentinel. A present result proves store reach from this process only.",
+      "resource_semantics": "Memory and CPU requests or quotas remain undeclared. Explicit subprocess.run timeouts are command-scoped wall-time limits in limits.wall_time_seconds; absent command timeouts remain undeclared. Pool width, affinity and wait/cancel are separate execution controls. No enforcement is added; 0.2.4 owns measurement.",
+      "owner_status": "RESOLVED",
+      "owner_basis": "Current package defines the spawning function.",
+      "owner": "src/alphalattice/interface/local_application/native_bridge.py",
+      "owner_package": "alphalattice.interface.local_application",
+      "consumers": {
+        "import": [
+          "src/alphalattice/control/product_host/composition/committee.py:83",
+          "src/alphalattice/control/product_host/composition/first_use_road.py:33",
+          "src/alphalattice/control/product_host/composition/goals.py:86",
+          "src/alphalattice/control/product_host/composition/local_web_session.py:199",
+          "src/alphalattice/control/product_host/composition/native_usage_reader.py:20",
+          "src/alphalattice/control/product_host/composition/native_usage_reader.py:23",
+          "src/alphalattice/control/product_host/composition/portfolio_research_operations.py:334",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:100",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:103",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:1156",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:1349",
+          "src/alphalattice/interface/local_application/activity.py:36",
+          "src/alphalattice/interface/local_application/cli.py:1528",
+          "src/alphalattice/interface/local_application/cli.py:1722",
+          "src/alphalattice/interface/local_application/cli.py:1765",
+          "src/alphalattice/interface/local_application/cli.py:1795",
+          "src/alphalattice/interface/local_application/client.py:2585",
+          "src/alphalattice/interface/local_application/client.py:266",
+          "src/alphalattice/interface/local_application/client.py:2963",
+          "src/alphalattice/interface/local_application/client.py:663",
+          "src/alphalattice/interface/local_application/native_setup.py:28",
+          "tests/portfolio_strategy_lab/test_accepted_answer_conversation.py:65",
+          "tests/portfolio_strategy_lab/test_local_web_service.py:38",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:198",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:26",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:691",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:898",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:982",
+          "tests/portfolio_strategy_lab/test_native_lead_usage.py:21",
+          "tests/portfolio_strategy_lab/test_native_lead_usage.py:28",
+          "tests/portfolio_strategy_lab/test_native_session_binding.py:22",
+          "tests/portfolio_strategy_lab/test_native_usage.py:14",
+          "tests/portfolio_strategy_lab/test_native_usage.py:17",
+          "tests/portfolio_strategy_lab/test_native_usage.py:887",
+          "tests/portfolio_strategy_lab/test_native_usage.py:925",
+          "tests/portfolio_strategy_lab/test_workspace_activity.py:57",
+          "tests/portfolio_strategy_lab/test_workspace_activity.py:58",
+          "tests/release/test_wheel_runtime.py:24"
+        ],
+        "path": [
+          "scripts/release/public_outputs.py:12",
+          "tests/structural/test_public_closure.py:274"
+        ],
+        "string": [
+          "scripts/release/public_outputs.py:327",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:1168",
+          "tests/portfolio_strategy_lab/web_refusal_support.py:487",
+          "tests/structural/test_public_closure.py:286"
+        ]
+      },
+      "consumer_basis": {
+        "source_commit": "42491202b3973f62dda18203fa620aa3661f46ba",
+        "method": "Static defining-module imports/path references and distinctive symbol matches; includes tests/declarations, not runtime proof.",
+        "scope": "Public static references; private maintainer reader evidence is tracked separately."
+      }
+    },
+    "uv_tool_bin_probe": {
+      "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::_tool_bin",
+      "spawn_sites": [
+        {
+          "file": "src/alphalattice/interface/local_application/native_bridge.py",
+          "line": 1568,
+          "symbol": "_tool_bin",
+          "call": "subprocess.run(\n            [uv, \"tool\", \"dir\", \"--bin\"], capture_output=True, text=True, timeout=10, check=False\n        )"
+        }
+      ],
+      "requests": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "limits": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": {
+          "value": 10,
+          "source": "src/alphalattice/interface/local_application/native_bridge.py:1569",
+          "scope": "One uv tool dir --bin command.",
+          "semantics": "subprocess.run timeout bounds this command invocation; it is not an OS Job lifetime limit or a bound for all invocations of the family."
+        }
+      },
+      "execution_controls": [
+        {
+          "control": "subprocess_timeout",
+          "limit_ref": "limits.wall_time_seconds"
+        }
+      ],
+      "note": "Queries uv tool dir --bin as a PATH fallback and confirms that alphalattice resolves in that directory.",
+      "resource_semantics": "Memory and CPU requests or quotas remain undeclared. Explicit subprocess.run timeouts are command-scoped wall-time limits in limits.wall_time_seconds; absent command timeouts remain undeclared. Pool width, affinity and wait/cancel are separate execution controls. No enforcement is added; 0.2.4 owns measurement.",
+      "owner_status": "RESOLVED",
+      "owner_basis": "Current package defines the spawning function.",
+      "owner": "src/alphalattice/interface/local_application/native_bridge.py",
+      "owner_package": "alphalattice.interface.local_application",
+      "consumers": {
+        "import": [
+          "src/alphalattice/control/product_host/composition/committee.py:83",
+          "src/alphalattice/control/product_host/composition/first_use_road.py:33",
+          "src/alphalattice/control/product_host/composition/goals.py:86",
+          "src/alphalattice/control/product_host/composition/local_web_session.py:199",
+          "src/alphalattice/control/product_host/composition/native_usage_reader.py:20",
+          "src/alphalattice/control/product_host/composition/native_usage_reader.py:23",
+          "src/alphalattice/control/product_host/composition/portfolio_research_operations.py:334",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:100",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:103",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:1156",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py:1349",
+          "src/alphalattice/interface/local_application/activity.py:36",
+          "src/alphalattice/interface/local_application/cli.py:1528",
+          "src/alphalattice/interface/local_application/cli.py:1722",
+          "src/alphalattice/interface/local_application/cli.py:1765",
+          "src/alphalattice/interface/local_application/cli.py:1795",
+          "src/alphalattice/interface/local_application/client.py:2585",
+          "src/alphalattice/interface/local_application/client.py:266",
+          "src/alphalattice/interface/local_application/client.py:2963",
+          "src/alphalattice/interface/local_application/client.py:663",
+          "src/alphalattice/interface/local_application/native_setup.py:28",
+          "tests/portfolio_strategy_lab/test_accepted_answer_conversation.py:65",
+          "tests/portfolio_strategy_lab/test_local_web_service.py:38",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:198",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:26",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:691",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:898",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:982",
+          "tests/portfolio_strategy_lab/test_native_lead_usage.py:21",
+          "tests/portfolio_strategy_lab/test_native_lead_usage.py:28",
+          "tests/portfolio_strategy_lab/test_native_session_binding.py:22",
+          "tests/portfolio_strategy_lab/test_native_usage.py:14",
+          "tests/portfolio_strategy_lab/test_native_usage.py:17",
+          "tests/portfolio_strategy_lab/test_native_usage.py:887",
+          "tests/portfolio_strategy_lab/test_native_usage.py:925",
+          "tests/portfolio_strategy_lab/test_workspace_activity.py:57",
+          "tests/portfolio_strategy_lab/test_workspace_activity.py:58",
+          "tests/release/test_wheel_runtime.py:24"
+        ],
+        "path": [
+          "scripts/release/public_outputs.py:12",
+          "tests/structural/test_public_closure.py:274"
+        ],
+        "string": [
+          "scripts/release/public_outputs.py:327",
+          "src/alphalattice/interface/local_application/native_bridge.py:1521",
+          "tests/portfolio_strategy_lab/web_refusal_support.py:487",
+          "tests/structural/test_public_closure.py:286"
+        ]
+      },
+      "consumer_basis": {
+        "source_commit": "42491202b3973f62dda18203fa620aa3661f46ba",
+        "method": "Static defining-module imports/path references and distinctive symbol matches; includes tests/declarations, not runtime proof.",
+        "scope": "Public static references; private maintainer reader evidence is tracked separately."
+      }
+    },
+    "retrieval_environment_setup": {
+      "defined_by": "src/alphalattice/interface/local_application/retrieval_environment.py::create",
+      "spawn_sites": [
+        {
+          "file": "src/alphalattice/interface/local_application/retrieval_environment.py",
+          "line": 92,
+          "symbol": "create",
+          "call": "subprocess.run(\n            (\n                _uv(),\n                \"pip\",\n                \"install\",\n                \"--python\",\n                sys.executable,\n                \"-r\",\n                str(ADDITIONS),\n                *((\"--offline\",) if offline else ()),\n            ),\n            check=True,\n        )"
+        },
+        {
+          "file": "src/alphalattice/interface/local_application/retrieval_environment.py",
+          "line": 111,
+          "symbol": "create",
+          "call": "subprocess.run(\n        (\n            _uv(),\n            \"sync\",\n            \"--project\",\n            str(PLAYPEN),\n            \"--locked\",\n            \"--all-extras\",\n            \"--group\",\n            \"dev\",\n            *offline_flag,\n        ),\n        check=True,\n        cwd=PLAYPEN,\n        env=environment,\n    )"
+        },
+        {
+          "file": "src/alphalattice/interface/local_application/retrieval_environment.py",
+          "line": 127,
+          "symbol": "create",
+          "call": "subprocess.run(\n        (\n            _uv(),\n            \"pip\",\n            \"install\",\n            \"--python\",\n            str(interpreter),\n            \"-r\",\n            str(ADDITIONS),\n            *offline_flag,\n        ),\n        check=True,\n        cwd=PLAYPEN,\n        env=environment,\n    )"
+        }
+      ],
+      "requests": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "limits": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "execution_controls": [
+        {
+          "control": "sequence",
+          "value": "synchronous subprocess.run(check=True)",
+          "source": [
+            "src/alphalattice/interface/local_application/retrieval_environment.py:92",
+            "src/alphalattice/interface/local_application/retrieval_environment.py:111",
+            "src/alphalattice/interface/local_application/retrieval_environment.py:127"
+          ],
+          "scope": "Installed-distribution pip addition or checkout locked uv sync followed by pinned additions."
+        },
+        {
+          "control": "offline",
+          "expression": "offline argument adds --offline",
+          "source": [
+            "src/alphalattice/interface/local_application/retrieval_environment.py:101",
+            "src/alphalattice/interface/local_application/retrieval_environment.py:110"
+          ],
+          "scope": "Dependency-resolution control; the registry adds no permission."
+        }
+      ],
+      "note": "Creates or updates the retrieval interpreter environment with uv. No timeout, per-child CPU/memory quota or priority is declared at these calls.",
+      "resource_semantics": "Memory and CPU requests or quotas remain undeclared. Explicit subprocess.run timeouts are command-scoped wall-time limits in limits.wall_time_seconds; absent command timeouts remain undeclared. Pool width, affinity and wait/cancel are separate execution controls. No enforcement is added; 0.2.4 owns measurement.",
+      "owner_status": "RESOLVED",
+      "owner_basis": "Current package defines the spawning function.",
+      "owner": "src/alphalattice/interface/local_application/retrieval_environment.py",
+      "owner_package": "alphalattice.interface.local_application",
+      "consumers": {
+        "import": [
+          "scripts/create_retrieval_environment.py:10",
+          "src/alphalattice/control/product_host/composition/entry.py:25",
+          "src/alphalattice/control/product_host/composition/evidence_authority_setup.py:129",
+          "src/alphalattice/control/product_host/composition/evidence_source_ways.py:142",
+          "src/alphalattice/interface/local_application/native_bridge.py:1598",
+          "tests/alternative_evidence_desk/test_evidence_review_workspace.py:1165",
+          "tests/alternative_evidence_desk/test_evidence_review_workspace.py:282",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:21",
+          "tests/portfolio_strategy_lab/test_status_follow.py:29",
+          "tests/setup_support.py:12"
+        ],
+        "path": [
+          "tests/structural/test_product_scripts_answer_their_writes.py:187"
+        ],
+        "string": [
+          "src/alphalattice/interface/local_application/retrieval_environment.py:230",
+          "tests/structural/test_product_scripts_answer_their_writes.py:23"
+        ]
+      },
+      "consumer_basis": {
+        "source_commit": "42491202b3973f62dda18203fa620aa3661f46ba",
+        "method": "Static defining-module imports/path references and distinctive symbol matches; includes tests/declarations, not runtime proof.",
+        "scope": "Public static references; private maintainer reader evidence is tracked separately."
+      }
+    },
+    "model_store_windows_junction": {
+      "defined_by": "src/alphalattice/kernel/knowledge/model_store.py::_link_directory",
+      "spawn_sites": [
+        {
+          "file": "src/alphalattice/kernel/knowledge/model_store.py",
+          "line": 543,
+          "symbol": "_link_directory",
+          "call": "subprocess.run(\n            [\"cmd\", \"/c\", \"mklink\", \"/J\", str(link), str(target)],\n            check=True,\n            capture_output=True,\n        )"
+        }
+      ],
+      "requests": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "limits": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "execution_controls": [
+        {
+          "control": "platform",
+          "value": "Windows only",
+          "source": "src/alphalattice/kernel/knowledge/model_store.py:542",
+          "scope": "Other platforms use Path.symlink_to directly and spawn no process."
+        },
+        {
+          "control": "command",
+          "value": [
+            "cmd",
+            "/c",
+            "mklink",
+            "/J",
+            "<link>",
+            "<target>"
+          ],
+          "source": "src/alphalattice/kernel/knowledge/model_store.py:544",
+          "scope": "Synchronous subprocess.run(check=True, capture_output=True), with no explicit timeout."
+        }
+      ],
+      "note": "Creates the Windows junction used by model-store runtime views; the code declares no process CPU/memory/wall-time budget.",
+      "resource_semantics": "Memory and CPU requests or quotas remain undeclared. Explicit subprocess.run timeouts are command-scoped wall-time limits in limits.wall_time_seconds; absent command timeouts remain undeclared. Pool width, affinity and wait/cancel are separate execution controls. No enforcement is added; 0.2.4 owns measurement.",
+      "owner_status": "RESOLVED",
+      "owner_basis": "Current package defines the spawning function.",
+      "owner": "src/alphalattice/kernel/knowledge/model_store.py",
+      "owner_package": "alphalattice.kernel.knowledge",
+      "consumers": {
+        "import": [
+          "src/alphalattice/control/product_host/composition/evidence_authority_setup.py:133",
+          "src/alphalattice/control/product_host/composition/evidence_review_application.py:576",
+          "src/alphalattice/control/product_host/composition/evidence_source_ways.py:22",
+          "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py:36",
+          "src/alphalattice/control/product_host/storage/input_references.py:79",
+          "src/alphalattice/interface/local_application/native_setup.py:418",
+          "tests/portfolio_strategy_lab/test_native_bridge.py:39",
+          "tests/workspace_maintenance/test_model_store.py:20",
+          "tests/workspace_maintenance/test_research_input_storage.py:911"
+        ],
+        "path": [
+          "tests/structural/test_source_identity.py:441"
+        ],
+        "string": [
+          "src/alphalattice/kernel/knowledge/model_store.py:595",
+          "src/alphalattice/kernel/knowledge/model_store.py:596",
+          "src/alphalattice/kernel/knowledge/model_store.py:652",
+          "src/alphalattice/kernel/knowledge/model_store.py:655",
+          "tests/portfolio_strategy_lab/typed_owner_refusals.py:31",
+          "tests/workspace_maintenance/test_workspace_path_confinement.py:118",
+          "tests/workspace_maintenance/test_workspace_path_confinement.py:126",
+          "tests/workspace_maintenance/test_workspace_path_confinement.py:59",
+          "tests/workspace_maintenance/test_workspace_path_confinement.py:71"
+        ]
+      },
+      "consumer_basis": {
+        "source_commit": "42491202b3973f62dda18203fa620aa3661f46ba",
+        "method": "Static defining-module imports/path references and distinctive symbol matches; includes tests/declarations, not runtime proof.",
+        "scope": "Public static references; private maintainer reader evidence is tracked separately."
+      }
     }
   },
   "console_windows": 0,

@@ -13,6 +13,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -85,6 +86,8 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
+
 _HASH = "a" * 64
 
 TEST_PACKAGE = FrozenStrategyPackage.create(
@@ -149,6 +152,25 @@ class InstalledAgent:
         except (ValueError, KeyError) as error:
             answer = {"refused": public_failure(error, "local_application.request_refused")}
         return json.dumps(answer, default=str, sort_keys=True, separators=(",", ":"))
+
+
+def _cli(live: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str, Any]]:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--workspace",
+            str(live.workspace),
+            "--view",
+            "full",
+            *arguments,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert live.web.application.external_token not in result.stdout  # type: ignore[union-attr]
+    return result.returncode, json.loads(result.stdout)
 
 
 def _policy_identity(recipe: TrancheBookRecipe) -> tuple[str, str, str]:
@@ -702,6 +724,7 @@ def run_node(
     *,
     missing: str = "Node.js development runtime required",
     required: bool = False,
+    pinned_browser: bool = False,
     **kwargs: Any,
 ) -> subprocess.CompletedProcess[Any] | None:
     """Run one Node invocation with its caller's availability policy and process options."""
@@ -712,6 +735,14 @@ def run_node(
         pytest.skip(missing)
     if arguments is None:
         return None
+    if pinned_browser:
+        root = Path(kwargs.get("cwd") or Path(__file__).resolve().parents[2])
+        kwargs["env"] = {
+            **os.environ,
+            **kwargs.get("env", {}),
+            "NODE_PATH": str(root / "third_party/playwright/node_modules"),
+            "PLAYWRIGHT_BROWSERS_PATH": str(root / "third_party/playwright/.browsers"),
+        }
     return subprocess.run([node, *arguments], **kwargs)
 
 

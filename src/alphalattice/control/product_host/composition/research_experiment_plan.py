@@ -17,6 +17,12 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceExperimentInput,
     ResearchWorkspaceModelTrainingInput,
 )
+from alphalattice.control.task_control.contracts import (
+    ResearchGoal,
+    ResearchPlan,
+    TaskInputEnvelope,
+    TaskRecord,
+)
 from alphalattice.foundation.factor_research.experiments.authoring import FACTOR_EXPERIMENT_KIND
 from alphalattice.investment.alpha_research.experiments.authoring import ALPHA_EXPERIMENT_KIND
 from alphalattice.investment.alpha_research.experiments.family_qualification import (
@@ -31,12 +37,16 @@ from alphalattice.investment.portfolio_strategy_lab.application.research_experim
 from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.sealing import seal_model
+from alphalattice.protocols.actor_execution.contracts import ActorSubmissionBinding
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,
     ResolvedResearchAuthority,
     SealedResearchProgram,
 )
+
+TASK_KIND = "research_experiment"
+STAGES = ("execute_sealed_experiment", "verify_experiment_evidence")
 
 
 class AlphaExperimentSource(BaseModel):  # type: ignore[misc]
@@ -145,4 +155,63 @@ class ExperimentPlan(BaseModel):  # type: ignore[misc]
         return self
 
 
-__all__ = ["AlphaExperimentSource", "ExperimentPlan"]
+def _task_contract(
+    plan: ExperimentPlan, actor: ActorSubmissionBinding
+) -> tuple[TaskInputEnvelope, ResearchGoal, ResearchPlan]:
+    if actor.submission_hash != plan.program.program_hash:
+        raise AuthoringError("research_experiment.actor_program_mismatch")
+    envelope = TaskInputEnvelope.create(
+        task_kind=TASK_KIND,
+        input_schema_id="research-experiment-task-input",
+        payload={"plan": plan.model_dump(mode="json"), "actor": actor.model_dump(mode="json")},
+    )
+    # Each summary is bytes of every stored Task's goal, which `checked_task_plan` rebuilds and
+    # compares by equality: rewriting a summary refused every stored Task of its kind and
+    # was reverted, so the texts are pinned with their reason in the tests.
+    goal = ResearchGoal.create(
+        goal_kind="EXECUTE_RESEARCH_EXPERIMENT",
+        input_hash=envelope.input_hash,
+        deliverable_kind="ResearchExecutionEvidence",
+        summary={
+            FACTOR_EXPERIMENT_KIND: (
+                "Run an admitted Factor experiment, not a strategy or current publication."
+            ),
+            ALPHA_EXPERIMENT_KIND: (
+                "Run an admitted Alpha development experiment, "
+                "not a strategy or current publication."
+            ),
+            PORTFOLIO_EXPERIMENT_KIND: (
+                "Replay selected Alpha evidence through an EW research book; no activation."
+            ),
+            RISK_EXPERIMENT_KIND: (
+                "Run installed Risk diagnostics over a sealed research input; "
+                "no allocation or activation."
+            ),
+        }[plan.program.kind],
+    )
+    workflow = ResearchPlan.from_stages(
+        goal_hash=goal.goal_hash, stages=STAGES, verifier_namespace="research_experiment"
+    )
+    return envelope, goal, workflow
+
+
+def checked_task_plan(
+    task: TaskRecord, *, workspace_id: str
+) -> tuple[ExperimentPlan, ActorSubmissionBinding]:
+    """Check a retained Task against its exact plan, actor and workspace contract."""
+    if task.task_kind != TASK_KIND:
+        raise AuthoringError("research_experiment.task_kind_mismatch")
+    plan = ExperimentPlan.model_validate(task.input.payload.get("plan"))
+    actor = ActorSubmissionBinding.model_validate(task.input.payload.get("actor"))
+    envelope, goal, workflow = _task_contract(plan, actor)
+    if (
+        task.input != envelope
+        or task.goal != goal
+        or task.plan != workflow
+        or plan.workspace_id != workspace_id
+    ):
+        raise AuthoringError("research_experiment.task_binding_mismatch")
+    return plan, actor
+
+
+__all__ = ["STAGES", "TASK_KIND", "AlphaExperimentSource", "ExperimentPlan", "checked_task_plan"]

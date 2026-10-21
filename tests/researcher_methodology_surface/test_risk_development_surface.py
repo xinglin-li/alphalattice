@@ -145,7 +145,7 @@ def test_a_recipe_that_disagrees_with_the_program_fails_before_any_estimate(
     real_risk_workspace: RealRiskWorkspace,
     tmp_path: Path,
 ) -> None:
-    """A recipe that disagrees with the program fails before any estimate."""
+    """Control: Recipe disagrees with program fails before any estimate."""
 
     authority, _requested = _bounded_authority(real_risk_workspace, count=3)
     input_binding, bounded = resolve_development_input_binding(

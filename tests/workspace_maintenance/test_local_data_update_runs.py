@@ -52,9 +52,16 @@ from tests.researcher_methodology_surface.real_workspace import (
 )
 from tests.researcher_methodology_surface.session_workspace import copy_workspace, session_workspace
 from tests.workspace_maintenance.data_update_support import (
+    _activate,
     _active_panel_manifest,
+    _formula,
+    _run_data_update,
     _seed_foundation,
+    data_update_session,
     set_parallel_test_budget,
+)
+from tests.workspace_maintenance.data_update_support import (
+    activated_seed as activated_seed,
 )
 from tests.workspace_maintenance.local_data_provider import (
     NOW,
@@ -1441,84 +1448,6 @@ def test_plan_and_binding_refusals_preserve_portfolio(qualified, tmp_path):
         service.stop()
 
 
-def _formula(factor_id: str, formula: str):
-    from alphalattice.foundation.feature_engine.producers.factors.formula import (
-        formula_specification,
-    )
-    from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
-
-    return formula_specification(
-        FactorSpec(
-            factor_id=factor_id,
-            family=FactorFamily.PRICE_LEVEL_TREND,
-            formula_ref="factor.formula",
-            formula=formula,
-            window_sessions=1,
-            lag_sessions=0,
-            return_convention="as declared",
-            required_fields=("close_split_adjusted",),
-            literature_sources=("research-local note",),
-            minimum_observations=1,
-            absolute_tolerance=1e-10,
-            relative_tolerance=1e-10,
-            track=FactorTrack.MODEL,
-        )
-    )
-
-
-def _activate(workspace: Path, *specs) -> None:
-    """A person's activations, recorded as the Host records them."""
-    from alphalattice.control.product_host.research_authoring.feature_activations import (
-        FeatureActivation,
-        FeatureExtensionRegistry,
-    )
-
-    FeatureExtensionRegistry(
-        active=tuple(
-            FeatureActivation(
-                factor_id=spec.factor_id,
-                specification=spec,
-                preprocessing_recipe="ROBUST_UNIVERSE_Z",
-                feature_plan_hash="a" * 64,
-                trial_id="b" * 64,
-                methodology_hash="c" * 64,
-                packet_hash="d" * 64,
-                activated_at=NOW,
-            )
-            for spec in specs
-        )
-    ).write(workspace)
-
-
-def _run_data_update(workspace: Path) -> None:
-    manifest = bind_existing_data_workspace(workspace)
-    service = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=manifest,
-        resolver=_Resolver(_resolved()),
-        data_provider=recording_provider(),
-        data_source_loader=unchanged_membership_source(SYMBOLS),
-        clock=lambda: NOW,
-    )
-    service.start()
-    try:
-        planned = _json(service, "/api/data-update/plan", method="POST", payload={})
-        assert planned["status"] == "PLANNED", planned
-        response = _json(
-            service,
-            "/api/data-update/run",
-            method="POST",
-            payload={"update_plan_hash": planned["plan_hash"]},
-        )
-        assert response["status"] == "ADMITTED", response
-        service.dispatcher.drain_for_tests()
-        status = _json(service, f"/api/status?task_id={response['task_id']}")
-        # Whole, as text: a stop keeps its cause where saferepr would cut the dict (V602).
-        assert status["lifecycle"] == "SUCCEEDED", json.dumps(status, indent=1, default=str)
-    finally:
-        service.stop()
-
-
 def _feature_rows(workspace: Path, catalog) -> dict[tuple[str, date], dict[str, object]]:
     from alphalattice.foundation.feature_engine.storage.repositories import (
         FeatureStateRepository,
@@ -1557,7 +1486,7 @@ def _same_value(old: object, new: object) -> bool:
 
 
 def test_an_activation_computes_its_column_and_the_update_carries_every_other_value(
-    qualified, tmp_path, monkeypatch
+    qualified, activated_seed, tmp_path, monkeypatch
 ):
     """An activation computes its column and the update carries every other value."""
 
@@ -1575,19 +1504,17 @@ def test_an_activation_computes_its_column_and_the_update_carries_every_other_va
     )
 
     layered, whole = tmp_path / "layered", tmp_path / "whole"
-    shutil.copytree(qualified, layered)
+    shutil.copytree(activated_seed, layered)
     shutil.copytree(qualified, whole)
     shipped = FeatureCatalog.load()
-    before = _feature_rows(layered, shipped)
+    before = _feature_rows(qualified, shipped)
     assert before
     spec = _formula("formula_reversal_5", "close / lag(close, 5) - 1")
-    _activate(layered, spec)
     _activate(whole, spec)
     extended = workspace_feature_catalog(layered)
     layer = FeatureCatalogLayer.over(extended)
     assert layer.layered and layer.base.binding.catalog_hash == shipped.binding.catalog_hash
     column = layer.columns[0].binding.catalog_hash
-    _run_data_update(layered)
     with monkeypatch.context() as unlayered:
         # The whole build an unlayered store makes, for the equivalence below.
         unlayered.setattr(
@@ -1632,7 +1559,7 @@ def test_an_activation_computes_its_column_and_the_update_carries_every_other_va
     ]
 
 
-def test_a_layer_grows_by_an_activation_and_shrinks_by_a_deactivation(qualified, tmp_path):
+def test_a_layer_grows_by_an_activation_and_shrinks_by_a_deactivation(activated_seed, tmp_path):
     """requirement (V92): a second activation computes its own column and holds the first; a
     deactivation drops its column catalog's rows and computes nothing, the shipped catalog's
     rows held throughout, and each update publishes the Panel of the catalog it installed."""
@@ -1644,12 +1571,10 @@ def test_a_layer_grows_by_an_activation_and_shrinks_by_a_deactivation(qualified,
     from alphalattice.foundation.feature_engine.catalog.layer import FeatureCatalogLayer
 
     workspace = tmp_path / "workspace"
-    shutil.copytree(qualified, workspace)
+    shutil.copytree(activated_seed, workspace)
     shipped = FeatureCatalog.load()
     reversal = _formula("formula_reversal_5", "close / lag(close, 5) - 1")
     drift = _formula("formula_drift_10", "close / lag(close, 10) - 1")
-    _activate(workspace, reversal)
-    _run_data_update(workspace)
     first = FeatureCatalogLayer.over(workspace_feature_catalog(workspace))
     base = _feature_rows(workspace, shipped)
     reversal_rows = {
@@ -1746,8 +1671,7 @@ def test_transient_source_failure_resumes_captured_update(qualified, tmp_path):
 def test_a_failed_backup_stops_the_next_update_by_name_and_its_rerun_resumes(
     qualified, tmp_path, monkeypatch
 ):
-    """requirement: the next update's first stage retries the backup the last one deferred; a
-    failure stops it by name as recoverable, and its plan run again resumes the same Task."""
+    """Control: Failed backup stops next update by name and its rerun resumes."""
     from alphalattice.control.product_host.storage.backup import defer_automatic_backup
 
     workspace = tmp_path / "workspace"
@@ -1757,14 +1681,7 @@ def test_a_failed_backup_stops_the_next_update_by_name_and_its_rerun_resumes(
     wall.write_text("a file, not a directory", encoding="utf-8")
     monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(wall / "store"))
     defer_automatic_backup(workspace, at=NOW)
-    service = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=manifest,
-        resolver=_Resolver(_resolved()),
-        data_provider=recording_provider(),
-        data_source_loader=unchanged_membership_source(SYMBOLS),
-        clock=lambda: NOW,
-    )
+    service = data_update_session(workspace, manifest)
     service.start()
     try:
         planned = _json(service, "/api/data-update/plan", method="POST", payload={})
@@ -1856,8 +1773,7 @@ RECONCILIATION = "workspace_maintenance.feature_source_reconciliation_failed"
 def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
     qualified, tmp_path, monkeypatch, stop
 ):
-    """A feature build that failed names its cause beside its code, as does a source change it
-    cannot reconcile, with the listing and its words."""
+    """Control: Feature build failed names its cause beside its code."""
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
@@ -1905,14 +1821,7 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
         monkeypatch.setattr(
             MarketDataRepository, "provider_adjusted_semantic_deltas_since", unexplained
         )
-    service = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=manifest,
-        resolver=_Resolver(_resolved()),
-        data_provider=recording_provider(),
-        data_source_loader=unchanged_membership_source(SYMBOLS),
-        clock=lambda: NOW,
-    )
+    service = data_update_session(workspace, manifest)
     service.start()
     try:
         planned = _json(service, "/api/data-update/plan", method="POST", payload={})
@@ -1951,7 +1860,7 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
 def test_honoured_cancel_marks_the_cycle_and_a_new_plan_reuses_its_listing_progress(
     qualified, tmp_path, monkeypatch
 ):
-    """Honoured cancel marks the cycle and a new plan reuses its listing progress."""
+    """Control: Honoured cancel marks cycle and new plan reuses its listing progress."""
 
     from alphalattice.control.data_platform.maintenance.contracts import (
         MaintenanceStatus,
@@ -1966,14 +1875,7 @@ def test_honoured_cancel_marks_the_cycle_and_a_new_plan_reuses_its_listing_progr
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
     provider = recording_provider()
-    service = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=manifest,
-        resolver=_Resolver(_resolved()),
-        data_provider=provider,
-        data_source_loader=unchanged_membership_source(SYMBOLS),
-        clock=lambda: NOW,
-    )
+    service = data_update_session(workspace, manifest, provider=provider)
     service.start()
     try:
         owner = service.operations.data_update
@@ -2116,6 +2018,7 @@ def test_update_authority_and_missing_input_refuse_before_work(qualified, tmp_pa
 
 
 def test_published_update_survives_process_death(qualified, tmp_path):
+    """Control: Published update survives process death."""
     from tests.portfolio_strategy_lab.process_death import forced_process
 
     workspace = tmp_path / "workspace"
@@ -2126,14 +2029,7 @@ def test_published_update_survives_process_death(qualified, tmp_path):
     ) as stopped:
         pass
     provider = recording_provider()
-    service = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=manifest,
-        resolver=_Resolver(_resolved()),
-        data_provider=provider,
-        data_source_loader=unchanged_membership_source(SYMBOLS),
-        clock=lambda: NOW,
-    )
+    service = data_update_session(workspace, manifest, provider=provider)
     service.start()
     try:
         service.dispatcher.drain_for_tests()

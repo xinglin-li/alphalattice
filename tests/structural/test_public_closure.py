@@ -138,6 +138,7 @@ def test_markdown_directory_link_requires_a_public_descendant():
 
 
 def test_copytree_requires_every_source_file_even_when_the_directory_is_public():
+    """Control: Copytree closure requires every file beneath a public directory."""
     reader = "scripts/check.py"
     blobs = {
         reader: (
@@ -238,6 +239,7 @@ def test_a_missing_private_rule_target_is_not_an_optional_cache():
 
 
 def test_a_document_command_glob_requires_all_its_matching_files():
+    """Control: Document command globs require every matching public file."""
     reader = "docs/guide.md"
     blobs = {
         reader: b"Run `pytest tests/kit/*.py`.\n",

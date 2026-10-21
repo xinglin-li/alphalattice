@@ -61,6 +61,14 @@ def numerical():
     return build_numerical()
 
 
+def _fields_without_hash(value, **changes):
+    return {
+        field: getattr(value, field)
+        for field in type(value).model_fields
+        if field != "content_hash"
+    } | changes
+
+
 def test_qa_price_coverage_requires_explicit_retention_and_resolved_identifiers():
     from alphalattice.foundation.causal_outcomes.execution.readers import _qa_source_manifest
 
@@ -525,12 +533,12 @@ def test_unheld_ineligible_coverage_needs_no_price_but_held_exposure_still_does(
     listing = n.checkpoint.ordered_listing_ids[index]
     base = prepared_for(n, n.first)
     prepared = PreparedPortfolioComponentInput.create(
-        **{
-            **{key: getattr(base, key) for key in type(base).model_fields if key != "content_hash"},
-            "decision_eligible": tuple(
+        **_fields_without_hash(
+            base,
+            decision_eligible=tuple(
                 value and i != index for i, value in enumerate(base.decision_eligible)
             ),
-        }
+        )
     )
 
     def without(snapshot, missing):
@@ -574,10 +582,9 @@ def test_an_update_too_short_for_a_rebalance_is_refused_before_it_proposes(numer
     assert len(eligible) >= selected
     kept = set(eligible[: selected - 1])
     prepared = PreparedPortfolioComponentInput.create(
-        **{
-            **{key: getattr(base, key) for key in type(base).model_fields if key != "content_hash"},
-            "decision_eligible": tuple(i in kept for i in range(len(base.decision_eligible))),
-        }
+        **_fields_without_hash(
+            base, decision_eligible=tuple(i in kept for i in range(len(base.decision_eligible)))
+        )
     )
     with pytest.raises(ValueError) as refused:
         make_proposal(
@@ -601,7 +608,7 @@ def test_a_persons_activation_names_its_time_and_book_and_a_qa_admission_neither
     assert checkpoint.purpose == "POST_OBSERVED_QA_NOT_FORWARD_ADMISSION"
     sealed = checkpoint.model_dump(mode="json")
     assert "activated_at" not in sealed and "book_task_id" not in sealed
-    raw = {k: getattr(checkpoint, k) for k in type(checkpoint).model_fields if k != "content_hash"}
+    raw = _fields_without_hash(checkpoint)
     book = UUID("4d9c3ad6-3c4b-4d1c-9a55-8e1f2b5f0c11")
     forward = PortfolioDecisionCheckpoint.create(
         **{
@@ -721,10 +728,7 @@ def test_publication_commit_recovers_an_orphan_and_retains_exact_html(numerical,
         published_at=NOW,
     )
     page, _ = store.publish_html(render_decision_update(n.checkpoint, (value,)))
-    fields = {
-        name: getattr(value, name) for name in type(value).model_fields if name != "content_hash"
-    }
-    value = PortfolioUpdatePublication.create(**{**fields, "html_hash": page})
+    value = PortfolioUpdatePublication.create(**_fields_without_hash(value, html_hash=page))
     store.publish_decision_update(value)
     path = store.root / "decision-updates" / f"{value.content_hash}.json"
     original = path.read_bytes()
@@ -747,8 +751,11 @@ def test_publication_commit_recovers_an_orphan_and_retains_exact_html(numerical,
         store.decision_history(n.checkpoint.content_hash)
 
 
-def test_exact_reuse_revalidates_observation_and_html_children(numerical, tmp_path, monkeypatch):
-    """Task admission is supplied here; both artifact readers are the real store."""
+@pytest.mark.parametrize("parts", [False, True])
+def test_exact_reuse_revalidates_observation_and_html_children(
+    numerical, tmp_path, monkeypatch, parts
+):
+    """Real lost and damaged children stay distinct with or without error details."""
     from alphalattice.control.product_host.composition.portfolio_updates import (
         TASK_KIND,
         PortfolioUpdateApplication,
@@ -758,9 +765,18 @@ def test_exact_reuse_revalidates_observation_and_html_children(numerical, tmp_pa
     n = numerical
     store = PortfolioLedgerStore(tmp_path)
     observed = snapshot_for(n, n.first)
-    store.content.publish_model(
-        category="decision-observations", value=observed, identity_field="content_hash"
-    )
+    if parts:
+        (uri,) = store.publish_decision_observations(observed)
+        source_paths = (
+            store.root / "decision-observation-heads" / uri.rsplit("/", 1)[-1],
+            next((store.root / "decision-observation-parts").glob("*.json")),
+            store.root / "index/decision-observations" / f"{observed.content_hash}.json",
+        )
+    else:
+        store.content.publish_model(
+            category="decision-observations", value=observed, identity_field="content_hash"
+        )
+        source_paths = (store.root / "decision-observations" / f"{observed.content_hash}.json",)
     html_hash, _ = store.publish_html("<p>verified QA report</p>")
     plan = SimpleNamespace(
         market_hash=observed.content_hash,
@@ -776,17 +792,25 @@ def test_exact_reuse_revalidates_observation_and_html_children(numerical, tmp_pa
     monkeypatch.setattr(app, "_publication", lambda plan: publication)
     monkeypatch.setattr(app, "_plan_of", lambda task, current=False: plan)
     assert app.reusable(plan) is publication
-    for path in (
-        store.root / "html" / f"{html_hash}.html",
-        store.root / "decision-observations" / f"{observed.content_hash}.json",
-    ):
+    for path in (store.root / "html" / f"{html_hash}.html", *source_paths):
         original = path.read_bytes()
-        path.write_bytes(b"tampered")
-        try:
-            with pytest.raises(ValueError, match="artifact_tampered"):
-                app.reusable(plan)
-        finally:
-            path.write_bytes(original)
+        for missing in (False, True):
+            if missing:
+                path.unlink()
+            else:
+                path.write_bytes(b"tampered")
+            try:
+                code = "artifact_missing" if missing else "artifact_tampered"
+                with pytest.raises(ValueError, match=code) as caught:
+                    app.reusable(plan)
+                with monkeypatch.context() as patch:
+                    patch.setattr(type(caught.value), "__str__", lambda e: e.args[0].split(":")[0])
+                    with pytest.raises(ValueError, match=code):
+                        app.reusable(plan)
+                if missing:
+                    assert not path.exists()  # verification never repairs a missing child
+            finally:
+                path.write_bytes(original)
     assert app.reusable(plan) is publication
 
 
@@ -824,12 +848,7 @@ def test_captured_prefix_and_tail_first_publication(numerical, tmp_path):
             published_at=NOW,
         )
         html, _ = store.publish_html(render_decision_update(n.checkpoint, (*branch, value)))
-        value = PortfolioUpdatePublication.create(
-            **{
-                **{k: getattr(value, k) for k in type(value).model_fields if k != "content_hash"},
-                "html_hash": html,
-            }
-        )
+        value = PortfolioUpdatePublication.create(**_fields_without_hash(value, html_hash=html))
         branch.append(value)
         previous = value
     for value in reversed(branch[1:]):
@@ -1105,14 +1124,9 @@ def test_daily_performance_reads_only_realized_outcomes_and_pins_the_issued_pref
     assert provenance["sortino_downside_threshold"] == 0
     assert pinned == _performance_projection(n, tmp_path, prefix[:4])
     alien = PortfolioUpdatePublication.create(
-        **{
-            **{
-                name: getattr(prefix[-1], name)
-                for name in type(prefix[-1]).model_fields
-                if name != "content_hash"
-            },
-            "checkpoint_hash": canonical_hash("another strategy's checkpoint"),
-        }
+        **_fields_without_hash(
+            prefix[-1], checkpoint_hash=canonical_hash("another strategy's checkpoint")
+        )
     )
     with pytest.raises(ValueError, match="performance_history_binding_invalid"):
         _performance_projection(n, tmp_path, [*prefix[:-1], alien])
@@ -1138,44 +1152,24 @@ def test_daily_performance_names_absence_instead_of_annualizing_an_invalid_axis(
         events = []
         for event in value.events:
             if event.phase == "OUTCOME_SETTLED":
-                values = {
-                    name: getattr(event, name)
-                    for name in type(event).model_fields
-                    if name != "content_hash"
-                }
+                values = _fields_without_hash(event)
                 if condition in {"no_downside", "nonfinite_metric"}:
                     amount = (0.1 if condition == "no_downside" else 1e6) * (offset - 1)
                     values.update(
                         gross_return=amount, net_return_5bps=amount, net_return_10bps=amount
                     )
                 if condition == "long_span":
-                    entry = {
-                        name: getattr(event.entry, name)
-                        for name in type(event.entry).model_fields
-                        if name != "content_hash"
-                    }
+                    entry = _fields_without_hash(event.entry)
                     entry["schedule"] = type(event.entry.schedule).model_validate(
                         {**event.entry.schedule.model_dump(), "actual_session_span": 3}
                     )
                     values["entry"] = type(event.entry).create(**entry)
                 if condition == "overlap" and offset == 3:
-                    repeated = prefix[-1].events[0]
-                    values = {
-                        name: getattr(repeated, name)
-                        for name in type(repeated).model_fields
-                        if name != "content_hash"
-                    }
+                    values = _fields_without_hash(prefix[-1].events[0])
                 event = type(event).create(**values)
             events.append(event)
         value = PortfolioUpdatePublication.create(
-            **{
-                **{
-                    name: getattr(value, name)
-                    for name in type(value).model_fields
-                    if name != "content_hash"
-                },
-                "events": tuple(events),
-            }
+            **_fields_without_hash(value, events=tuple(events))
         )
         prefix.append(value)
         previous = value

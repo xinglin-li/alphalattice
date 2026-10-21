@@ -14,12 +14,13 @@ from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.panels.artifacts import (
     PanelArtifactCompositionOwner,
     PanelCompositionBinding,
+    PreparedPanelComposition,
 )
 from alphalattice.foundation.feature_engine.panels.identity import (
-    hash_panel_rows,
     panel_chunk_hash,
     panel_schema_hash,
 )
+from tests.feature_engine.panel_workspace import identity_panel_table
 
 CASE_ROOT = Path(__file__).resolve().parent
 PLAYPEN_ROOT = CASE_ROOT.parents[1]
@@ -38,14 +39,8 @@ def _raw_panel_table() -> pa.Table:
 
 
 def test_ephemeral_duckdb_preserves_legacy_row_hash_golden() -> None:
-    table = hash_panel_rows(
-        _raw_panel_table(),
-        manifest_revision="1" * 64,
-        sector_revision="2" * 64,
-        catalog_hash="3" * 64,
-        policy_hash="4" * 64,
-        factor_ids=("factor_a", "factor_b"),
-    )
+    """Control: Ephemeral duckdb preserves legacy row hash golden."""
+    table = identity_panel_table(_raw_panel_table())
 
     assert table.column_names == [
         "manifest_revision",
@@ -66,14 +61,8 @@ def test_ephemeral_duckdb_preserves_legacy_row_hash_golden() -> None:
 
 
 def test_annual_parquet_rewrite_is_byte_stable(tmp_path: Path) -> None:
-    table = hash_panel_rows(
-        _raw_panel_table(),
-        manifest_revision="1" * 64,
-        sector_revision="2" * 64,
-        catalog_hash="3" * 64,
-        policy_hash="4" * 64,
-        factor_ids=("factor_a", "factor_b"),
-    )
+    """Control: Annual parquet rewrite is byte stable."""
+    table = identity_panel_table(_raw_panel_table())
     schema_hash = panel_schema_hash(table.schema)
     chunk_hash = panel_chunk_hash(table, panel_binding_hash="5" * 64, year=2026)
     metadata = {
@@ -365,15 +354,9 @@ def _rows(sessions, listings, *, offset: float = 0.0):
     ]
 
 
-def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
-    tmp_path: Path,
-) -> None:
-    """A compatible base under a new binding reuses closed years by origin."""
-
-    resolver = ArtifactResolver(tmp_path / "artifacts")
-    owner = PanelArtifactCompositionOwner(resolver)
-    listings = ("listing-a", "listing-b")
-    day_one = (date(2025, 12, 31), date(2026, 1, 2))
+def _published_two_year_panel(
+    owner: PanelArtifactCompositionOwner, day_one: tuple[date, ...], listings: tuple[str, ...]
+) -> PreparedPanelComposition:
     first = owner.begin(
         operation_id="day-one",
         binding=_binding(as_of_session=day_one[-1]),
@@ -387,7 +370,19 @@ def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
         factor_ids=("factor_a", "factor_b"),
         materialization_receipt_hash="a" * 64,
     )
-    day_one_panel = first.finalize(availability=_availability(day_one))
+    return first.finalize(availability=_availability(day_one))
+
+
+def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
+    tmp_path: Path,
+) -> None:
+    """Control: Compatible base under new binding reuses closed years by origin."""
+
+    resolver = ArtifactResolver(tmp_path / "artifacts")
+    owner = PanelArtifactCompositionOwner(resolver)
+    listings = ("listing-a", "listing-b")
+    day_one = (date(2025, 12, 31), date(2026, 1, 2))
+    day_one_panel = _published_two_year_panel(owner, day_one, listings)
     assert {key: value.spy_revision for key, value in day_one_panel.partition_origins.items()} == {
         "5" * 64: "a" * 64
     }
@@ -578,26 +573,13 @@ def test_a_partition_under_another_calendar_is_recomputed_not_reused(
 def test_a_reused_partition_that_no_longer_proves_its_identity_is_refused(
     tmp_path: Path,
 ) -> None:
-    """requirement: reuse names bytes only after they still prove the recorded identity."""
+    """Control: Reused partition no longer proves its identity is refused."""
 
     resolver = ArtifactResolver(tmp_path / "artifacts")
     owner = PanelArtifactCompositionOwner(resolver)
     listings = ("listing-a", "listing-b")
     day_one = (date(2025, 12, 31), date(2026, 1, 2))
-    first = owner.begin(
-        operation_id="day-one",
-        binding=_binding(as_of_session=day_one[-1]),
-        base_manifest=None,
-        sessions=day_one,
-        listing_ids=listings,
-        spy_revision="a" * 64,
-    )
-    first.stage_patch(
-        rows=_rows(day_one, listings),
-        factor_ids=("factor_a", "factor_b"),
-        materialization_receipt_hash="a" * 64,
-    )
-    day_one_panel = first.finalize(availability=_availability(day_one))
+    day_one_panel = _published_two_year_panel(owner, day_one, listings)
     base = _manifest_with_lineage(day_one_panel, spy_revision="a" * 64)
     # The base manifest claims a different row-content identity for 2025 than
     # the file proves under its origin binding.
@@ -690,23 +672,22 @@ def test_an_interrupted_composition_retried_under_the_same_binding_keeps_its_fil
     assert not reachability.incomplete_publication
 
 
-def test_reader_validates_each_chunk_under_the_binding_that_wrote_it(tmp_path: Path) -> None:
+def test_reader_validates_each_chunk_under_the_binding_that_wrote_it(
+    tmp_path: Path, request
+) -> None:
     """Reader validates each chunk under the binding that wrote it."""
 
+    from alphalattice.foundation.feature_engine.panels import reader as owner
     from alphalattice.foundation.feature_engine.panels.reader import (
         FeaturePanelReader,
         FeaturePanelReadRequest,
     )
 
+    request.addfinalizer(owner.configure_panel_proof_memo)
+    owner.configure_panel_proof_memo(capacity=1)
+
     resolver = ArtifactResolver(tmp_path / "artifacts")
-    table = hash_panel_rows(
-        _raw_panel_table(),
-        manifest_revision="1" * 64,
-        sector_revision="2" * 64,
-        catalog_hash="3" * 64,
-        policy_hash="4" * 64,
-        factor_ids=("factor_a", "factor_b"),
-    )
+    table = identity_panel_table(_raw_panel_table())
     schema_hash = panel_schema_hash(table.schema)
     chunk_hash = panel_chunk_hash(table, panel_binding_hash="5" * 64, year=2026)
     descriptor = resolver.publish_feature_panel_chunk(
@@ -751,6 +732,12 @@ def test_reader_validates_each_chunk_under_the_binding_that_wrote_it(tmp_path: P
     # A value moved under its kept row hash is refused before use (EV2): the row
     # hashes still bind, so only recomputing them from the values finds it.
     (path,) = paths(binding="5" * 64, origin=None)
+    original, first = Path(path).read_bytes(), next(iter(owner._VALUES_VERIFIED))
+    pq.write_table(pq.read_table(path), path, compression="NONE")
+    assert paths(binding="5" * 64, origin=None)
+    assert len(owner._VALUES_VERIFIED) == 1 and first not in owner._VALUES_VERIFIED
+    Path(path).write_bytes(original)
+    assert paths(binding="5" * 64, origin=None)
     moved = pq.read_table(path)
     moved = moved.set_column(
         moved.schema.get_field_index("factor_b"), "factor_b", pa.array([0.0, 99.0], pa.float64())

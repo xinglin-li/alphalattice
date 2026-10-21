@@ -601,7 +601,7 @@ def test_total_return_target_is_installed_with_whole_universe_not_sector_authori
 
 
 def test_dispersion_forecast_takes_its_lag_from_the_sealed_outcome_method() -> None:
-    """Dispersion forecast takes its lag from the sealed outcome method."""
+    """Control: Dispersion forecast takes its lag from sealed outcome method."""
 
     from alphalattice.investment.alpha_research.scaling.execution import (
         compile_cross_sectional_dispersion_forecast,
@@ -651,7 +651,7 @@ def test_dispersion_forecast_takes_its_lag_from_the_sealed_outcome_method() -> N
 
 
 def test_dispersion_forecast_refuses_mismatched_authority_before_computing() -> None:
-    """Every same-shaped substitution is refused, and refused early."""
+    """Control: Dispersion forecast refuses mismatched authority before computing."""
 
     from alphalattice.investment.alpha_research.scaling.contracts import (
         CrossSectionalScalingError,

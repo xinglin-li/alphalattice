@@ -81,7 +81,8 @@ def _baseline(n, prefix, base_last):
     )
 
 
-def test_two_updates_append_only_head_projects_the_verified_chain(rolling_fixture):
+@pytest.fixture
+def rolling_chain(rolling_fixture):
     n, prefix, base_last = rolling_fixture
     baseline = _baseline(n, prefix, base_last)
     publications = prefix[2:7]
@@ -95,6 +96,12 @@ def test_two_updates_append_only_head_projects_the_verified_chain(rolling_fixtur
             checkpoint=n.checkpoint,
         )
         heads.append(previous)
+    return n, baseline, publications, heads
+
+
+def test_two_updates_append_only_head_projects_the_verified_chain(rolling_chain):
+    """Control: Two updates append only head projects verified chain."""
+    n, baseline, publications, heads = rolling_chain
 
     body = project_rolling_report(
         baseline=baseline,
@@ -137,20 +144,9 @@ def test_two_updates_append_only_head_projects_the_verified_chain(rolling_fixtur
     assert heads[1].previous_head_hash == heads[0].head_hash
 
 
-def test_rolling_head_detects_tampered_earlier_increment(rolling_fixture):
-    n, prefix, base_last = rolling_fixture
-    baseline = _baseline(n, prefix, base_last)
-    publications = prefix[2:7]
-    heads = []
-    previous = None
-    for publication in publications:
-        previous = append_rolling_report_head(
-            baseline=baseline,
-            previous_head=previous,
-            publication=publication,
-            checkpoint=n.checkpoint,
-        )
-        heads.append(previous)
+def test_rolling_head_detects_tampered_earlier_increment(rolling_chain):
+    """Control: Rolling head detects tampered earlier increment."""
+    n, baseline, publications, heads = rolling_chain
 
     original = publications[1]
     event = original.events[0]

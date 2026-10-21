@@ -13,17 +13,10 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import pytest
 
-from alphalattice.evidence.alternative_evidence.contracts import (
-    AlternativeEvidenceClass,
-    AlternativeEvidenceMode,
-    AlternativeEvidenceRequest,
-    AlternativeEvidenceSourcePolicy,
-    seal_contract,
-)
+from alphalattice.evidence.alternative_evidence.contracts import seal_contract
 from alphalattice.evidence.alternative_evidence.sources.contracts import (
     SOURCE_OBJECT_ROOT,
     AcquiredEvidenceDocumentSet,
@@ -33,23 +26,10 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _counted_runtime,
     _registry,
+    _request_at,
 )
 from tests.alternative_evidence_desk.issuer_listing import _registry as dated_registry
 from tests.alternative_evidence_desk.planted_corpus import _NOW, _recorded_document
-
-
-def _request_at(cutoff: Any) -> AlternativeEvidenceRequest:
-    return seal_contract(
-        AlternativeEvidenceRequest,
-        "request_hash",
-        ordered_entity_ids=("AAPL",),
-        evidence_as_of=cutoff,
-        acquisition_deadline=cutoff + timedelta(hours=1),
-        evidence_classes=(AlternativeEvidenceClass.ISSUER_OFFICIAL_RECORDED,),
-        source_policy=AlternativeEvidenceSourcePolicy(),
-        ttl_seconds=86_400,
-        mode=AlternativeEvidenceMode.RECORDED,
-    )
 
 
 def _objects(tmp_path: Path) -> list[Path]:

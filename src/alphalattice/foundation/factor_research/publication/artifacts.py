@@ -388,29 +388,6 @@ class FactorResearchArtifactStore:
             raise ValueError("Factor Research prerequisite projection is invalid")
         return payload
 
-    def publish_research_desk_input(
-        self, *, payload: Mapping[str, object], input_hash: str
-    ) -> ArtifactDescriptor:
-        """Publish an immutable Research Desk input.
-
-        Args:
-            payload: Artifact body containing its declared identity field.
-            input_hash: Expected identity of the Research Desk input.
-
-        Returns:
-            Descriptor for the verified immutable artifact.
-
-        Raises:
-            ValueError: If the payload or stored identity is invalid.
-
-        """
-        return self._publish_identity_json(
-            category="research-desk/inputs",
-            payload=payload,
-            content_hash=input_hash,
-            identity_field="input_hash",
-        )
-
     def load_research_desk_input(self, uri: str) -> dict[str, object]:
         """Load and verify a Research Desk input.
 

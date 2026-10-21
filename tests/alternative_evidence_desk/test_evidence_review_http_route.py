@@ -57,18 +57,20 @@ from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewPublication,
 )
+from alphalattice.oversight.chief_risk_officer.decision.views import render_review_bundle
 from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
     PortfolioReviewTaskAdapter,
 )
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, answer_slot
 from alphalattice.protocols.actor_execution.bundles import bundle_slot
-from tests.alternative_evidence_desk.planted_corpus import _NOW
+from tests.alternative_evidence_desk.planted_corpus import _NOW, _CitingActor
 from tests.alternative_evidence_desk.review_dossiers import controlled_answer
 from tests.alternative_evidence_desk.review_http_support import (
     _raise_interruption,
     _Service,
     _service,
     build_authority,
+    external_analysis,
     start_service,
 )
 from tests.alternative_evidence_desk.review_package import _package
@@ -127,17 +129,9 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
 ):
 
     from alphalattice.interface.local_application.cli import main
-    from alphalattice.interface.local_application.client import LocalResearchClient
-    from tests.alternative_evidence_desk.planted_corpus import _CitingActor
 
     review_risks = service.review.review_actor.risks
-    adapter = service.review.evidence_task_adapter
-    topics = adapter.resources.analysis_actor.topics
-    adapter.resources = replace(adapter.resources, analysis_actor=None)
-    service.review.model_authority_admitted = False
-    service.review.review_actor = None
-    client = LocalResearchClient(service.session.workspace)
-    selected = {"result_hash": service.result_hash()}
+    adapter, topics, client, selected = external_analysis(service)
     count = len(service.registry.tasks())
     assert (
         service.post("/api/evidence-refresh", selected)["disposition"]
@@ -705,21 +699,9 @@ def test_a_third_answer_with_problems_is_done_and_its_valid_part_admitted(servic
 
 
 def test_a_dropped_analyst_item_reaches_the_review_as_a_gap(service):
-    """A finding the Host dropped from the Analyst's third answer is not
-    silently absent: the published analysis carries it as its first gap, and
-    the CRO's bundle names it before the other gaps."""
+    """Control: Dropped analyst item reaches review as gap."""
 
-    from alphalattice.interface.local_application.client import LocalResearchClient
-    from alphalattice.oversight.chief_risk_officer.decision.views import render_review_bundle
-    from tests.alternative_evidence_desk.planted_corpus import _CitingActor
-
-    adapter = service.review.evidence_task_adapter
-    topics = adapter.resources.analysis_actor.topics
-    adapter.resources = replace(adapter.resources, analysis_actor=None)
-    service.review.model_authority_admitted = False
-    service.review.review_actor = None
-    client = LocalResearchClient(service.session.workspace)
-    selected = {"result_hash": service.result_hash()}
+    adapter, topics, client, selected = external_analysis(service)
     preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
     prepared = client.request(preview["next_requests"]["prepare"])
     service.drain()
@@ -750,21 +732,12 @@ def test_a_dropped_analyst_item_reaches_the_review_as_a_gap(service):
 
 
 def test_findings_past_three_an_issuer_are_counted_in_the_receipt_and_the_cros_bundle(service):
-    """The Host reads three findings an issuer; the rest are left out by count, never silently."""
+    """Control: Findings past three issuer are counted in receipt and cros bundle."""
     from alphalattice.control.product_host.composition.evidence_review_application import (
         agent_answer_result,
     )
-    from alphalattice.interface.local_application.client import LocalResearchClient
-    from alphalattice.oversight.chief_risk_officer.decision.views import render_review_bundle
-    from tests.alternative_evidence_desk.planted_corpus import _CitingActor
 
-    adapter = service.review.evidence_task_adapter
-    topics = adapter.resources.analysis_actor.topics
-    adapter.resources = replace(adapter.resources, analysis_actor=None)
-    service.review.model_authority_admitted = False
-    service.review.review_actor = None
-    client = LocalResearchClient(service.session.workspace)
-    selected = {"result_hash": service.result_hash()}
+    adapter, topics, client, selected = external_analysis(service)
     preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
     prepared = client.request(preview["next_requests"]["prepare"])
     service.drain()
@@ -1924,7 +1897,8 @@ def test_no_analyst_is_credited_with_another_bundles_answer(
 
 
 def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> None:
-    """A specialist's receipt names its task's state so a wait follows it."""
+    """Control: Specialist receipts expose Task lifecycle independently of the accepted
+    verdict."""
 
     from alphalattice.interface.local_application.cli_contract import outcome_of
 
@@ -1960,19 +1934,11 @@ def test_a_specialists_receipt_names_its_tasks_state_so_a_wait_follows_it() -> N
 def test_review_continue_carries_a_real_book_from_its_analyst_to_its_published_review(
     service, tmp_path, capsys
 ):
-    """Review continue carries a real book from its analyst to its published review."""
+    """Control: Review continue carries real book from its analyst to its published review."""
 
     from alphalattice.interface.local_application.cli import main
-    from alphalattice.interface.local_application.client import LocalResearchClient
-    from tests.alternative_evidence_desk.planted_corpus import _CitingActor
 
-    adapter = service.review.evidence_task_adapter
-    topics = adapter.resources.analysis_actor.topics
-    adapter.resources = replace(adapter.resources, analysis_actor=None)
-    service.review.model_authority_admitted = False
-    service.review.review_actor = None
-    client = LocalResearchClient(service.session.workspace)
-    selected = {"result_hash": service.result_hash()}
+    adapter, topics, client, selected = external_analysis(service)
     workspace = ("--workspace", str(service.session.workspace))
     prepared = client.request(
         client.request({"operation": "EVIDENCE_PREVIEW", **selected})["next_requests"]["prepare"]

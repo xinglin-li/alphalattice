@@ -220,13 +220,30 @@ def alpha_authority(
     return alpha_authority_for(real_risk_workspace, tmp_path_factory.mktemp("factor-run"))
 
 
+@pytest.fixture
+def fold_leases(monkeypatch: pytest.MonkeyPatch) -> Callable[[], list[int]]:
+    def start() -> list[int]:
+        leased: list[int] = []
+        original_lease = AlphaProgramArrayWorkspace.fold_lease
+
+        def _counted(self: AlphaProgramArrayWorkspace, fold_index: int) -> Any:
+            leased.append(fold_index)
+            return original_lease(self, fold_index)
+
+        monkeypatch.setattr(AlphaProgramArrayWorkspace, "fold_lease", _counted)
+        return leased
+
+    return start
+
+
 def test_an_authored_alpha_document_reaches_the_real_model_runtime(
     real_risk_workspace: RealRiskWorkspace,
     alpha_authority: tuple[str, tuple[str, ...], Path],
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    fold_leases: Callable[[], list[int]],
 ) -> None:
-    """An authored alpha document reaches the real model runtime."""
+    """Control: Authored alpha document reaches real model runtime."""
 
     handle, factor_ids, evidence_root = alpha_authority
     declared = factor_ids[:8]
@@ -243,14 +260,7 @@ def test_an_authored_alpha_document_reaches_the_real_model_runtime(
     # batch leased them all again -- so under a bounded budget, proving what ran
     # re-read the Feature and Outcome surfaces and re-ran the target
     # transformation for the whole split.
-    leased: list[int] = []
-    original_lease = AlphaProgramArrayWorkspace.fold_lease
-
-    def _counted(self: AlphaProgramArrayWorkspace, fold_index: int) -> Any:
-        leased.append(fold_index)
-        return original_lease(self, fold_index)
-
-    monkeypatch.setattr(AlphaProgramArrayWorkspace, "fold_lease", _counted)
+    leased = fold_leases()
 
     evidence, binding = workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="researcher")
 
@@ -453,9 +463,9 @@ def test_a_lightgbm_policy_without_a_stated_partition_is_refused_before_arrays(
     real_risk_workspace: RealRiskWorkspace,
     alpha_authority: tuple[str, tuple[str, ...], Path],
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    fold_leases: Callable[[], list[int]],
 ) -> None:
-    """A LightGBM policy without a stated partition is refused before arrays."""
+    """Control: Lightgbm policy without stated partition is refused before arrays."""
 
     handle, factor_ids, evidence_root = alpha_authority
     parameters = {**_lightgbm_parameters(), "training_policy": "L2_EARLY_STOPPING"}
@@ -469,14 +479,7 @@ def test_a_lightgbm_policy_without_a_stated_partition_is_refused_before_arrays(
     workflow = _workflow(
         real_risk_workspace, document, evidence_root=evidence_root, workspace_root=tmp_path
     )
-    leased: list[int] = []
-    original_lease = AlphaProgramArrayWorkspace.fold_lease
-
-    def _counted(self: AlphaProgramArrayWorkspace, fold_index: int) -> Any:
-        leased.append(fold_index)
-        return original_lease(self, fold_index)
-
-    monkeypatch.setattr(AlphaProgramArrayWorkspace, "fold_lease", _counted)
+    leased = fold_leases()
     with pytest.raises(AuthoringError, match="development_training_policy_not_installed"):
         workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="researcher")
     assert leased == []
@@ -676,6 +679,7 @@ def test_a_receipt_cannot_pair_one_recipe_with_another_recipes_values() -> None:
 
 def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     tmp_path: Path,
+    request: pytest.FixtureRequest,
 ) -> None:
     """Requirement: a chunk whose content hash a process derived once is served for the
     same file bytes, so each read still hashes the file: bytes changed after a read are refused,
@@ -684,10 +688,13 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    from alphalattice.investment.alpha_research.experiments.development_artifacts import (
-        AlphaDevelopmentArtifactReadbackError,
-        AlphaDevelopmentArtifactStore,
+    from alphalattice.investment.alpha_research.experiments import development_artifacts as owner
+    from alphalattice.investment.alpha_research.experiments import (
+        development_chunk_identity as proof,
     )
+
+    request.addfinalizer(proof.configure_chunk_proof_memo)
+    proof.configure_chunk_proof_memo(capacity=1)
 
     store = AlphaDevelopmentArtifactStore(tmp_path)
     table = pa.table(
@@ -697,8 +704,7 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
             "availability": pa.array([True, True, False]),
         }
     )
-    reference = store.publish_numerical_score_chunk(
-        table,
+    identity = dict(
         execution_binding_hash="a" * 64,
         development_surface_binding_hash="b" * 64,
         candidate_id="C1",
@@ -706,6 +712,12 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
         fold_index=0,
         fold_commitment_hash="d" * 64,
     )
+    reference = store.publish_numerical_score_chunk(table, **identity)
+    assert store.resolve_numerical_score_chunk(reference).equals(table)
+    first = next(iter(proof._VERIFIED_CHUNKS))
+    other = store.publish_numerical_score_chunk(table, **{**identity, "candidate_id": "other"})
+    assert store.resolve_numerical_score_chunk(other).equals(table)
+    assert len(proof._VERIFIED_CHUNKS) == 1 and first not in proof._VERIFIED_CHUNKS
     assert store.resolve_numerical_score_chunk(reference).equals(table)
     path = next(tmp_path.rglob(f"{reference.content_hash}.parquet"))
     original = path.read_bytes()
@@ -713,7 +725,7 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     pq.write_table(
         changed.replace_schema_metadata(pq.read_schema(path).metadata), path, compression="zstd"
     )
-    with pytest.raises(AlphaDevelopmentArtifactReadbackError, match="content changed"):
+    with pytest.raises(owner.AlphaDevelopmentArtifactReadbackError, match="content changed"):
         store.resolve_numerical_score_chunk(reference)
     path.write_bytes(original)
     assert store.resolve_numerical_score_chunk(reference).equals(table)
@@ -1491,7 +1503,7 @@ def test_saved_alpha_comparison_refuses_mismatched_input_binding(
     alpha_authority: tuple[str, tuple[str, ...], Path],
     tmp_path: Path,
 ) -> None:
-    """Stored metrics never bridge different declared Alpha inputs."""
+    """Control: Stored comparisons require matching inputs and each side's verified graph."""
 
     handle, factor_ids, evidence_root = alpha_authority
     document = _document(
@@ -1517,25 +1529,6 @@ def test_saved_alpha_comparison_refuses_mismatched_input_binding(
             right_graph=graph,
         )
 
-
-def test_a_side_without_an_alpha_graph_is_reported_not_compared(
-    real_risk_workspace: RealRiskWorkspace,
-    alpha_authority: tuple[str, tuple[str, ...], Path],
-    tmp_path: Path,
-) -> None:
-    """A Task that published no Alpha graph carries no graph: refused by name, never
-    read from the store behind the comparison's back."""
-
-    handle, factor_ids, evidence_root = alpha_authority
-    document = _document(
-        handle=handle,
-        feature_ids=factor_ids[:8],
-        model_parameters={"family": "ridge", "alpha": 1.0},
-    )
-    reader = AlphaDevelopmentReceiptReader(_ALPHA_STORE_ROOT(tmp_path))
-    left, left_candidate_id, graph = _saved_alpha_side(
-        real_risk_workspace, document, evidence_root=evidence_root, tmp_path=tmp_path, reader=reader
-    )
     with pytest.raises(AuthoringError, match="saved_comparison_receipt_unavailable"):
         compare_saved_alpha_candidates(
             left=left,

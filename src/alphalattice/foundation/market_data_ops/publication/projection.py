@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import math
@@ -17,8 +18,10 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     ProviderAdjustedClosePoint,
     RawDailyBar,
 )
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 
 DailyPriceBasis = Literal["unadjusted", "split_adjusted"]
+_RAW_BAR_FIELDS: Final = tuple(item.name for item in fields(RawDailyBar))
 
 ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH = hashlib.sha256(
     json.dumps(
@@ -81,6 +84,76 @@ class ProviderAdjustedRatioDiagnostic:
     provider_gross_return: float
     internal_gross_return: float
     difference_bps: float
+
+
+def _canonical_hash(value: object) -> str:
+    payload = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _plain_number(value: object) -> str | None:
+    """How `_canonical_hash` spells a finite float or an int; None for anything else."""
+    if type(value) is float:
+        return repr(value) if math.isfinite(value) else None
+    if type(value) is int:
+        return repr(value)
+    return None
+
+
+@functools.lru_cache(maxsize=BoundedMemo.default_capacity())
+def _plain_text(value: str) -> str | None:
+    """How `_canonical_hash` spells a string it writes unescaped; None for one it escapes.
+
+    With ``ensure_ascii=False`` the encoder escapes only a quote, a backslash and a
+    control character (one below the space). Cached: a store's listing and provider
+    names, a few thousand short strings, repeat on every bar.
+    """
+    if '"' in value or "\\" in value or any(character < " " for character in value):
+        return None
+    return f'"{value}"'
+
+
+def configure_text_memo(*, capacity: int | None = None) -> None:
+    """Set the raw-store owner's spelling memo capacity; no spelling changes on a miss."""
+    global _plain_text
+    bound = BoundedMemo.default_capacity() if capacity is None else max(1, capacity)
+    _plain_text = functools.lru_cache(maxsize=bound)(_plain_text.__wrapped__)
+
+
+def _bar_hash(bar: RawDailyBar) -> str:
+    """A raw bar's payload hash: `_canonical_hash` of its eight fields.
+
+    For the shapes a sanitized bar holds -- plain strings, a date, finite floats, an int
+    -- the encoder's bytes are written directly rather than by building and encoding a
+    mapping per bar (1.25M of them at first use); any other shape is encoded by
+    `_canonical_hash` itself.
+    """
+    listing = _plain_text(bar.listing_id) if type(bar.listing_id) is str else None
+    provider = _plain_text(bar.provider) if type(bar.provider) is str else None
+    close = _plain_number(bar.close)
+    high = _plain_number(bar.high)
+    low = _plain_number(bar.low)
+    open_ = _plain_number(bar.open)
+    volume = _plain_number(bar.volume)
+    if (
+        listing is None
+        or provider is None
+        or type(bar.session_date) is not date
+        or close is None
+        or high is None
+        or low is None
+        or open_ is None
+        or volume is None
+    ):
+        return _canonical_hash({name: getattr(bar, name) for name in _RAW_BAR_FIELDS})
+    payload = (
+        f'{{"close":{close},"high":{high},"listing_id":{listing},"low":{low},'
+        f'"open":{open_},"provider":{provider},'
+        f'"session_date":"{bar.session_date.isoformat()}","volume":{volume}}}'
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def action_set_hash(actions: Iterable[CorporateActionEvent]) -> str:

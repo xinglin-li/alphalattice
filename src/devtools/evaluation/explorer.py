@@ -326,6 +326,7 @@ class Explorer:
     mutation_owners: dict[str, str] = field(default_factory=dict)
     read_operations: set[str] = field(default_factory=set)
     mutation_budget: float = 0.0
+    mutation_limit: int | None = None
     mutation_seconds: float = 0.0
     mutation_checks: list[dict[str, Any]] = field(default_factory=list)
     mutation_kinds: set[str] | None = None
@@ -334,6 +335,15 @@ class Explorer:
     observe: Callable[[dict[str, Any]], None] = lambda _: None
     terminal: Callable[[dict[str, Any]], bool] = lambda _: False
     terminal_reached: bool = False
+
+    @property
+    def _mutating(self) -> bool:
+        return bool(self.mutation_budget if self.mutation_limit is None else self.mutation_limit)
+
+    def _mutation_room(self, elapsed: float = 0.0) -> bool:
+        if self.mutation_limit is not None:
+            return len(self.mutation_checks) < self.mutation_limit
+        return self.mutation_seconds + elapsed < self.mutation_budget
 
     def inject(
         self,
@@ -344,7 +354,7 @@ class Explorer:
         fields: set[str] | None = None,
     ) -> dict[str, Any] | None:
         """Probe offered-request mistakes; cancelled writes are findings before any CLI call."""
-        if self.mutation_seconds >= self.mutation_budget:
+        if not self._mutation_room():
             return None
         started = time.monotonic()
         operation = str(request["operation"])
@@ -371,7 +381,7 @@ class Explorer:
             for v in variants
             if (kinds is None or v[0] in kinds) and (fields is None or v[2] in fields)
         ):
-            if self.mutation_seconds + time.monotonic() - started >= self.mutation_budget:
+            if not self._mutation_room(time.monotonic() - started):
                 break
             document = self.work / f"mistake-{len(self.events)}.json"
             document.write_text(json.dumps(changed), encoding="utf-8")
@@ -742,7 +752,7 @@ class Explorer:
     ) -> None:
         """A refused plan cannot offer a confirmation that re-admits its work."""
         if (
-            self.mutation_budget
+            self._mutating
             and answer.get("outcome") == "REFUSED"
             and sent.get("outcome") == "PENDING"
             and isinstance(step, dict)
@@ -846,7 +856,7 @@ class Explorer:
         document.write_text(json.dumps(step), encoding="utf-8")
         corrected = None
         path = where + " > " + name
-        if self.mutation_budget and json.dumps(step, sort_keys=True) not in self.mutated:
+        if self._mutating and json.dumps(step, sort_keys=True) not in self.mutated:
             self.mutated.add(json.dumps(step, sort_keys=True))
             corrected = self.inject(step, path, kinds=self.mutation_kinds)
         if corrected is not None:
@@ -855,7 +865,7 @@ class Explorer:
                 self.events[-1].attributes["alphalattice.corrected_original"] = True
         sent = corrected or self._send(["request", "--file", str(document)], path)
         if (
-            self.mutation_budget
+            self._mutating
             and sent.get("outcome") not in {"REFUSED", "FAILED"}
             and not self._cancelled_write(step, sent)
             and not self.events[-1].attributes.get("alphalattice.retired_offer")

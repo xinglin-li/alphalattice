@@ -191,11 +191,13 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
     return state
 
 
-def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, monkeypatch):
+def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, monkeypatch, request):
     """A wider or differently ordered book never borrows another book's cached label axis."""
     from alphalattice.control.product_host.research_authoring import execution, factor_inputs
     from alphalattice.kernel.quant.sector_history import SectorHistory
 
+    context.configure_projection_memos(capacity=1)
+    request.addfinalizer(context.configure_projection_memos)
     body = {
         "portfolio_source": {
             "input_binding_hash": uuid4().hex * 2,
@@ -221,11 +223,12 @@ def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, mon
         "panel_sector_labels",
         lambda _store, _manifest, _panel, listings: (history.subset(listings), None),
     )
-    for axis in (["one"], ["one", "two"], ["two", "one"]):
+    for axis in (["one"], ["one", "two"], ["two", "one"], ["one"]):
         body["portfolio_source"]["ordered_listing_ids"] = axis
         labels = context.book_sectors(tmp_path, body)["by_listing"]
         assert labels == {key: history.current[key] for key in axis}
         assert list(labels) == axis
+        assert len(context._SECTOR_CACHE) == 1
 
 
 @pytest.mark.parametrize("last_eligible", (False, True), ids=("all-excluded", "one-scored"))
@@ -272,7 +275,7 @@ def test_ineligible_pending_scores_are_excluded_from_materials_and_update_readba
     answer = {**readback, "publication": published.model_dump(mode="json")}
     answer["date_risk"] = risk_source.risk(answer, portfolio_update_positions(published))
     assert answer["date_risk"]["risk_status"] == "EVALUATED"
-    held = committee.holdings(answer)
+    held = committee.holdings(answer)  # C<n> floor alias; scanner false positive; fix in plan.
     rows = {row["listing_id"]: row for row in held}
     assert [rows[k]["scores"] for k in names] == [{}, {}, {f"C{1}": -0.25} if last_eligible else {}]
     facts = committee.facts(answer, EVIDENCE, held)
@@ -292,10 +295,13 @@ def test_ineligible_pending_scores_are_excluded_from_materials_and_update_readba
 def test_a_dates_risk_stands_at_its_formation_or_dated_at_the_surfaces_next_session(
     risk_source: Any,
     readback: dict[str, Any],
+    request,
 ) -> None:
     """requirement: dated Risk follows its return history, corrections and recipe; without later
     returns it stands at the session after the surface ends."""
     s = risk_source
+    context.configure_projection_memos(capacity=1)
+    request.addfinalizer(context.configure_projection_memos)
     inside = s.risk()
     assert inside["risk_as_of"] == s.days[s.k].isoformat()
     assert inside["sessions_before_the_positions"] == 1 and inside["covered_weight"] == 1.0
@@ -310,6 +316,10 @@ def test_a_dates_risk_stands_at_its_formation_or_dated_at_the_surfaces_next_sess
     carried = s.risk()
     assert {**carried, "source_hash": None} == {**inside, "source_hash": None}
     assert s.risk() == carried
+    assert len(context._DATE_RISK) == 1
+    s.sessions = s.days
+    assert s.risk() == inside
+    s.sessions = s.days[: s.k - 2]
     largest = int(np.argmax(np.abs(s.positions.weights)))
     s.table[s.k - 1, largest] += 0.1
     corrected = s.risk()

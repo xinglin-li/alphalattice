@@ -406,12 +406,6 @@ def _read(writer: Any, *records: Any) -> Said:
         return []
 
 
-def _fraction(value: Any) -> float:
-    """A weight as the Evidence projection gives it: a fraction, or a percentage as text."""
-    text = str(value or 0).strip()
-    return float(text[:-1]) / 100 if text.endswith("%") else float(text)
-
-
 def _pm_values(readback: Mapping[str, Any], view: Mapping[str, Any]) -> Said:
     """What changed against its settled median, and the cash and misses."""
     past, proposal, (c5, c10) = view["settled"], view.get("proposal"), view["cost"]
@@ -641,11 +635,6 @@ def issue_lines(evidence: Mapping[str, Any], held: Sequence[Mapping[str, Any]]) 
         f"{c.get('cro_inference')} Severity if true: {c.get('severity_if_true')}."
         for c in evidence.get("issue_cards") or ()
     ]
-
-
-def _turnovers(view: Mapping[str, Any]) -> list[float]:
-    """The settled sessions' one-way turnovers, smallest first."""
-    return list(view.get("settled") or ())
 
 
 def sufficiency(floor: Any) -> dict[str, list[str]]:

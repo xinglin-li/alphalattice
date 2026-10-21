@@ -33,7 +33,6 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import
 )
 from alphalattice.foundation.feature_engine.panels.identity import panel_chunk_order
 from alphalattice.foundation.feature_engine.panels.logical_contracts import (
-    LegacyPanelLogicalEquivalenceAttestation,
     PanelDerivationBinding,
     PanelLogicalAnnualContent,
     PanelLogicalContentManifest,
@@ -280,44 +279,6 @@ class PanelLogicalIdentityPublisher:
         self._validate_publication(marker)
         self.semantic_index(marker)
         return marker
-
-    def publish_equivalence_attestation(
-        self, marker: PanelPublicationMarker
-    ) -> LegacyPanelLogicalEquivalenceAttestation:
-        """Attest the exact physical rows used to derive a native logical authority."""
-        derivation = self._store.load_model(
-            "derivation-bindings",
-            marker.derivation_binding_hash,
-            PanelDerivationBinding,
-        )
-        revision = self._store.load_model(
-            "revisions", marker.logical_panel_hash, PanelLogicalRevision
-        )
-        manifest = self._store.load_model(
-            "content-manifests",
-            revision.logical_manifest_hash,
-            PanelLogicalContentManifest,
-        )
-        annual_hashes = tuple(
-            canonical_hash(item.model_dump(mode="json")) for item in manifest.annual_content
-        )
-        attestation = _identified(
-            LegacyPanelLogicalEquivalenceAttestation,
-            {
-                "legacy_snapshot_hash": marker.legacy_snapshot_hash,
-                "legacy_panel_content_hash": derivation.legacy_panel_content_hash,
-                "logical_panel_hash": marker.logical_panel_hash,
-                "axes_equal": True,
-                "ieee_values_and_null_masks_equal": True,
-                "availability_semantics_equal": True,
-                "verified_annual_hashes": annual_hashes,
-            },
-            "attestation_hash",
-        )
-        self._store.publish_model(
-            "equivalence-attestations", attestation.attestation_hash, attestation
-        )
-        return attestation
 
     def _build_logical_authorities(
         self, manifest: Mapping[str, object]

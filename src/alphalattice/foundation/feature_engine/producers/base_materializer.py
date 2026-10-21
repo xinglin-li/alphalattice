@@ -34,7 +34,6 @@ from alphalattice.kernel.quant.factor_formulas import (
     REASON_INSUFFICIENT_HISTORY,
     REASON_MARKET_ALIGNMENT,
     REASON_ZERO_DENOMINATOR,
-    FormulaResult,
 )
 
 _REQUIRED_COLUMNS: Final = (
@@ -874,71 +873,3 @@ class BaseFeatureMaterializer:
             )
         )
         return MaterializedFeatureBlock(output, ineligibility)
-
-    def oracle_at(
-        self,
-        *,
-        factor_id: str,
-        feature_session: date,
-        projected_bars: pd.DataFrame,
-        market_bars: pd.DataFrame,
-    ) -> FormulaResult:
-        """Compatibility probe for callers migrating from the formal oracle.
-
-        The desktop formulas deliberately differ from the tracked 60-item
-        registry.  Independent scalar/NumPy references live in tests; this
-        method only projects the local contract into the old ``FormulaResult``
-        shape for existing diagnostic callers.
-
-        Args:
-            factor_id: Catalog factor to project through the compatibility probe.
-            feature_session: Feature observation session to inspect.
-            projected_bars: Listing history supplied to the local materializer.
-            market_bars: Market-reference history supplied to the local materializer.
-
-        Returns:
-            Legacy result projection of the local feature value or its ineligibility reason.
-
-        Raises:
-            KeyError: A required history column or requested catalog factor is absent.
-            ValueError: Source history or an extension fails materialization qualification.
-        """
-        asset = projected_bars.loc[
-            pd.to_datetime(projected_bars["session_date"]).dt.date <= feature_session
-        ]
-        market = market_bars.loc[
-            pd.to_datetime(market_bars["session_date"]).dt.date <= feature_session
-        ]
-        block = self.materialize_listing(
-            listing_id="oracle",
-            projected_bars=asset,
-            market_bars=market,
-        )
-        row = block.values.loc[block.values["session_date"] == feature_session]
-        if row.empty:
-            return FormulaResult(
-                value=None, reason=REASON_INSUFFICIENT_HISTORY, observation_count=0
-            )
-        value = row.iloc[-1][factor_id]
-        if pd.notna(value):
-            return FormulaResult(
-                value=float(value),
-                reason=None,
-                observation_count=len(asset),
-            )
-        fact = block.ineligibility.loc[
-            (block.ineligibility["session_date"] == feature_session)
-            & (block.ineligibility["factor_id"] == factor_id)
-        ]
-        if fact.empty:
-            return FormulaResult(
-                value=None,
-                reason=REASON_ZERO_DENOMINATOR,
-                observation_count=len(asset),
-            )
-        latest = fact.iloc[-1]
-        return FormulaResult(
-            value=None,
-            reason=str(latest["reason"]),
-            observation_count=int(latest["observation_count"]),
-        )

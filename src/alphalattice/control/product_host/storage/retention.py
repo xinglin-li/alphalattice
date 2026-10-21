@@ -11,12 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from alphalattice.control.product_host.storage.contracts import (
-    CurrentStateStorageInventory,
     PhysicalAvailability,
-    StorageBudgetResolution,
     StorageEvictionPlan,
-    StorageRetentionRoot,
-    StorageRootKind,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
@@ -26,13 +22,6 @@ EVIDENCE_VECTOR_PREFIX = "runtime/evidence-knowledge/.system/knowledge-vectors/"
 """Where the evidence index payloads live, relative to the workspace: the one
 evidence root an approved plan may release, through the index owner's own
 eviction so a marker stays where the file was."""
-_LARGE_PANEL_DIRS = {
-    "chunks",
-    "base-keys",
-    "base-values",
-    "availability",
-    "row-receipts",
-}
 
 
 def require_available_input(workspace: Path, relative: str) -> None:
@@ -114,86 +103,6 @@ class BoundedStorageRetentionOwner:
         self.workspace = workspace.resolve()
         self.artifact_root = self.workspace / "artifacts"
         self.governance_root = self.artifact_root / "storage-governance"
-
-    def build_plan(
-        self,
-        *,
-        inventory: CurrentStateStorageInventory,
-        budget: StorageBudgetResolution,
-        migrated_database_bytes: int,
-        user_pins: tuple[StorageRetentionRoot, ...] = (),
-    ) -> StorageEvictionPlan:
-        """Publish exact retention scope for current, rollback and pinned Panel roots.
-
-        Publish an exact retention plan protecting current, rollback and explicit pinned Panel
-        roots.
-
-        Args:
-            inventory: Exact captured storage inventory.
-            budget: Exact owner-derived managed cap.
-            migrated_database_bytes: Explicit post-migration database size estimate.
-            user_pins: Explicit admitted byte-bound human retention roots.
-
-        Returns:
-            Sealed plan with unprotected large/staging Panel candidates and final byte estimates; no
-            file is removed.
-        """
-        roots = [
-            StorageRetentionRoot(
-                root_kind=StorageRootKind.CURRENT_ACTIVE,
-                root_id=inventory.current_head_hash,
-                head_hash=inventory.current_head_hash,
-                panel_snapshot_hash=inventory.panel_snapshot_hash,
-            )
-        ]
-        if inventory.previous_head_hash is not None:
-            roots.append(
-                StorageRetentionRoot(
-                    root_kind=StorageRootKind.PREVIOUS_ROLLBACK,
-                    root_id=inventory.previous_head_hash,
-                    head_hash=inventory.previous_head_hash,
-                    panel_snapshot_hash=self._head_panel(inventory.previous_head_hash),
-                )
-            )
-        roots.extend(user_pins)
-        protected_panels = {
-            root.panel_snapshot_hash for root in roots if root.panel_snapshot_hash is not None
-        }
-        protected = self._reachable_large_panel_files(protected_panels)
-        candidates: list[Path] = []
-        panel_root = self.artifact_root / "feature-panel"
-        for path in panel_root.rglob("*"):
-            if not path.is_file():
-                continue
-            relative_parts = path.relative_to(panel_root).parts
-            large = bool(set(relative_parts).intersection(_LARGE_PANEL_DIRS))
-            abandoned = any(
-                "staging" in part.lower() for part in relative_parts
-            ) or path.name.startswith(".")
-            if (large or abandoned) and path not in protected:
-                candidates.append(path)
-        evict_paths = tuple(
-            sorted(path.relative_to(self.workspace).as_posix() for path in candidates)
-        )
-        evict_bytes = sum(path.stat().st_size for path in candidates)
-        artifact_after = max(0, inventory.artifact_bytes - evict_bytes)
-        expected_final = migrated_database_bytes + artifact_after
-        retained_bytes = expected_final
-        values = {
-            "operation_id": inventory.operation_id,
-            "inventory_hash": inventory.inventory_hash,
-            "roots": tuple(roots),
-            "evict_paths": evict_paths,
-            "evict_bytes": evict_bytes,
-            "retained_bytes": retained_bytes,
-            "expected_final_bytes": expected_final,
-        }
-        identity = StorageEvictionPlan.model_construct(**values, plan_hash="").model_dump(
-            mode="json", exclude={"plan_hash", "managed_cap_bytes"}
-        )
-        plan = StorageEvictionPlan(**values, plan_hash=canonical_hash(identity))
-        self._publish("plans", plan.plan_hash, plan.model_dump(mode="json"))
-        return plan
 
     def apply(self, plan: StorageEvictionPlan) -> int:
         """Apply a supplied retention plan to existing confined targets and record availability.
@@ -378,81 +287,6 @@ class BoundedStorageRetentionOwner:
         index_hash = str(canonical_hash(identity))
         self._publish("availability", index_hash, {**identity, "index_hash": index_hash})
         return index_hash
-
-    def _head_panel(self, head_hash: str) -> str:
-        path = self.artifact_root / "pre-research-revisions" / "heads" / f"{head_hash}.json"
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        panel_hash = str(payload.get("panel_snapshot_hash", ""))
-        if not _HASH.fullmatch(panel_hash):
-            raise StorageRetentionError(
-                "storage.retention_root_mismatch", "Previous rollback HEAD has no valid Panel."
-            )
-        return panel_hash
-
-    def _reachable_large_panel_files(self, panel_hashes: set[str]) -> set[Path]:
-        panel_root = self.artifact_root / "feature-panel"
-        by_hash: dict[str, list[Path]] = {}
-        for path in panel_root.rglob("*"):
-            if not path.is_file():
-                continue
-            if _HASH.fullmatch(path.stem):
-                by_hash.setdefault(path.stem, []).append(path)
-        seeds: set[Path] = set()
-        for panel_hash in panel_hashes:
-            manifest = panel_root / "manifests" / f"{panel_hash}.json"
-            if not manifest.is_file():
-                raise StorageRetentionError(
-                    "storage.retention_root_mismatch", "Protected Panel manifest is missing."
-                )
-            seeds.add(manifest)
-            seeds.update(self._verified_recipe_seeds(panel_hash))
-        reachable = set(seeds)
-        pending = list(seeds)
-        while pending:
-            path = pending.pop()
-            if path.suffix != ".json":
-                continue
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as error:
-                raise StorageRetentionError(
-                    "storage.retention_root_mismatch", "Protected Panel closure is unreadable."
-                ) from error
-            for reference in _artifact_references(payload):
-                for child in by_hash.get(reference, []):
-                    if child not in reachable:
-                        reachable.add(child)
-                        pending.append(child)
-        return reachable
-
-    def _verified_recipe_seeds(self, panel_hash: str) -> set[Path]:
-        """Resolve declared recovery recipes without treating metadata mentions as roots."""
-        assessment_root = self.artifact_root / "feature-panel" / "closure" / "retention-assessments"
-        recipe_root = self.artifact_root / "feature-panel" / "closure" / "recipes"
-        seeds: set[Path] = set()
-        for path in assessment_root.glob("*.json"):
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            if payload.get("snapshot_hash") != panel_hash:
-                continue
-            if payload.get("disposition") != "REMATERIALIZATION_VERIFIED_CURRENT_ENVIRONMENT":
-                continue
-            recipe_hash = str(payload.get("recipe_hash", ""))
-            if not _HASH.fullmatch(recipe_hash):
-                raise StorageRetentionError(
-                    "storage.retention_root_mismatch",
-                    "A verified Panel retention assessment has no valid recipe.",
-                )
-            recipe = recipe_root / f"{recipe_hash}.json"
-            if not recipe.is_file():
-                raise StorageRetentionError(
-                    "storage.retention_root_mismatch",
-                    "A verified Panel retention recipe is missing.",
-                )
-            seeds.add(recipe)
-        return seeds
 
     def _publish(self, category: str, identity: str, payload: dict[str, object]) -> None:
         target = self.governance_root / category / f"{identity}.json"

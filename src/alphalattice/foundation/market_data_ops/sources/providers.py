@@ -590,3 +590,12 @@ class YFinanceMarketDataProvider:
                 json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")
             ).hexdigest(),
         )
+
+
+def market_provider(
+    workspace: Path, source: str, provider: MarketDataProvider | None = None
+) -> MarketDataProvider:
+    """Compose the declared source profile while retaining an explicitly supplied provider."""
+    if provider is not None:
+        return provider
+    return {"yfinance": YFinanceMarketDataProvider}[source](workspace / "yfinance-cache")

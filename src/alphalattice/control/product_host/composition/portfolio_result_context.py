@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from bisect import bisect_left
-from collections.abc import Mapping
-from datetime import date
+from collections.abc import Callable, Mapping
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 from uuid import UUID
@@ -43,6 +43,7 @@ from alphalattice.interface.local_application.activity import refusal_code, retu
 from alphalattice.interface.local_application.failure_codes import (
     FAILURE_DETAIL_WITHHELD,
     owner_failure_code,
+    public_failure,
     safe_failure_code,
 )
 from alphalattice.interface.local_application.portfolio_research import (
@@ -58,6 +59,8 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
 )
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     PortfolioUpdatePositions,
+    PortfolioUpdatePublication,
+    portfolio_update_positions,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.resolution import (
     _risk_surface,
@@ -78,7 +81,10 @@ from alphalattice.investment.portfolio_strategy_lab.policies.lifecycle_research 
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
 )
-from alphalattice.investment.portfolio_strategy_lab.reporting.static import PortfolioReportContext
+from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
+    PortfolioReportContext,
+    position_row_groups,
+)
 from alphalattice.investment.risk_research.contracts import CausalRiskReturnSurface
 from alphalattice.investment.risk_research.surfaces.producer import (
     RiskDecompositionInputs,
@@ -90,7 +96,78 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnSurfaceError,
     listing_returns,
 )
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
+
+from .evidence_review_application import EvidenceReviewApplication
+from .evidence_review_delivery import EvidenceReviewDelivery
+from .research_experiments import review_requests
+from .strategy_activation import position_basis
+
+
+def position_rows(
+    body: dict[str, object],
+    *,
+    review: EvidenceReviewApplication | None = None,
+    risk: Callable[[dict[str, object], PortfolioUpdatePositions], dict[str, Any]] | None = None,
+    now: datetime | None = None,
+    read_update: Callable[[UUID, str], dict[str, object]] | None = None,
+) -> dict[str, object]:
+    """Project dated position rows and review standing from the verified publication."""
+    raw = body.get("publication")
+    if isinstance(raw, dict):
+        value = PortfolioUpdatePublication.model_validate(raw)
+        history = tuple(
+            PortfolioUpdatePublication.model_validate(v)
+            for v in cast(list[object], body.get("history", []))
+        )
+        positions = portfolio_update_positions(value, history)
+        body["schedule"] = positions.schedule.model_dump(mode="json")
+        labels = cast(dict[str, str], body["listing_labels"])
+        groups = position_row_groups(
+            positions,
+            labels,
+            basis=position_basis(positions.basis, positions.schedule.entry_open_at, now),
+        )
+        body.update(groups)
+        body["summary"] = position_summary(
+            positions, labels, groups["position_rows"] + groups["exit_rows"]
+        )
+        body["review_selector"] = {
+            "update_task_id": body["task_id"],
+            "update_publication_hash": value.content_hash,
+            "position_basis": positions.basis,
+        }
+        body["next_requests"] = {
+            **cast(dict[str, object], body.get("next_requests") or {}),
+            **review_requests(cast(dict[str, str], body["review_selector"])),
+        }
+        if risk is not None:
+            # Report-only date Risk.
+            body["date_risk"] = risk(body, positions)
+        if review is not None:
+            try:
+                standing = EvidenceReviewDelivery(review).review_standing(
+                    BookSelector(
+                        update_task_id=UUID(str(body["task_id"])),
+                        update_publication_hash=value.content_hash,
+                        position_basis=positions.basis,
+                    ),
+                    read_update=read_update,
+                )
+            except Exception as error:
+                # Broken review lineage cannot hide sealed positions.
+                standing = {
+                    "status": "UNREADABLE",
+                    "detail": "Review standing unreadable.",
+                    "failure_code": public_failure(error, "evidence_review.standing_unreadable"),
+                }
+            body["review_standing"] = standing
+            later = cast(dict[str, object], standing.get("next_requests") or {}).get("review")
+            if later is not None:
+                cast(dict[str, object], body["next_requests"])["published_review"] = later
+    return body
 
 
 def position_summary(
@@ -702,7 +779,14 @@ def read_portfolio(
     )
 
 
-_SECTOR_CACHE: dict[tuple[str, ...], dict[str, Any]] = {}
+_SECTOR_CACHE: BoundedMemo[tuple[str, ...], dict[str, Any]] = BoundedMemo()
+
+
+def configure_projection_memos(*, capacity: int | None = None) -> None:
+    """Set retained entries per pure Portfolio projection, or use the machine-derived default."""
+    global _SECTOR_CACHE, _DATE_RISK
+    _SECTOR_CACHE = BoundedMemo(capacity=capacity)
+    _DATE_RISK = BoundedMemo(capacity=capacity)
 
 
 def book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
@@ -782,7 +866,7 @@ def book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
     return value
 
 
-_DATE_RISK: dict[tuple[str, ...], dict[str, Any]] = {}
+_DATE_RISK: BoundedMemo[tuple[str, ...], dict[str, Any]] = BoundedMemo()
 """Each publication's Risk, bound to its authority, recipe, positions and current carried rows."""
 
 
@@ -868,8 +952,9 @@ def _date_risk(
         positions.position_hash,
         source,
     )
-    if key in _DATE_RISK:
-        return _DATE_RISK[key]
+    cached = _DATE_RISK.get(key)
+    if cached is not None:
+        return cached
     model = producer.produce(
         RiskDecompositionInputs.at(
             formation,

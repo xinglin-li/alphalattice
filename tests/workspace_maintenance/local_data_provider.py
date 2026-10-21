@@ -297,3 +297,18 @@ __all__ = [
     "recording_provider",
     "unchanged_membership_source",
 ]
+
+
+def flat_adjusted_close_history(
+    self, *, listing_id: str, provider_symbol: str, start: date, end: date
+):
+    return tuple(
+        ProviderAdjustedClosePoint(
+            listing_id=listing_id,
+            provider=self.name,
+            session_date=session,
+            adjusted_close=100.0,
+        )
+        for session in self.sessions
+        if start <= session <= end
+    )

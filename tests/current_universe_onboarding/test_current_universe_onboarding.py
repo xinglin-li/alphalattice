@@ -41,6 +41,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from tests.workspace_maintenance.audit_workspace import audit_one
+from tests.workspace_maintenance.local_data_provider import flat_adjusted_close_history
 
 AS_OF = date(2026, 7, 31)
 OBSERVED_AT = datetime(2026, 8, 2, tzinfo=UTC)
@@ -50,6 +51,14 @@ PROFILE = (
     / "market-profiles"
     / "us-current-index-research.yaml"
 )
+
+
+@pytest.fixture(scope="module")
+def session_dates() -> tuple[date, ...]:
+    schedule = materialize_calendar_schedule(
+        ("XNAS",), start=date(2016, 7, 31), end=AS_OF, as_of_timestamp=OBSERVED_AT
+    )
+    return tuple(row["session_date"] for row in schedule.to_pylist())
 
 
 def test_bulk_calendar_preserves_scalar_clocks_hashes_and_cutoff(monkeypatch):
@@ -170,19 +179,7 @@ class FixtureProvider:
         del listing_id, provider_symbol, start, end
         return ()
 
-    def fetch_adjusted_close_history(
-        self, *, listing_id: str, provider_symbol: str, start: date, end: date
-    ):
-        return tuple(
-            ProviderAdjustedClosePoint(
-                listing_id=listing_id,
-                provider=self.name,
-                session_date=session,
-                adjusted_close=100.0,
-            )
-            for session in self.sessions
-            if start <= session <= end
-        )
+    fetch_adjusted_close_history = flat_adjusted_close_history
 
 
 class HydrationFixtureProvider(FixtureProvider):
@@ -663,14 +660,10 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
 
 def test_membership_revision_hydrates_only_additions_and_reuses_retained_history(
     tmp_path,
+    session_dates,
 ) -> None:
-    schedule = materialize_calendar_schedule(
-        ("XNAS",),
-        start=date(2016, 7, 31),
-        end=AS_OF,
-        as_of_timestamp=OBSERVED_AT,
-    )
-    sessions = tuple(row["session_date"] for row in schedule.to_pylist())
+    """Control: Membership revision hydrates only additions and reuses retained history."""
+    sessions = session_dates
     store = MarketDataRepository(tmp_path / "workspace")
     initial_provider = HydrationFixtureProvider(sessions, provider_wide_failures=0)
     initial = CurrentUniverseOnboarding(
@@ -1038,14 +1031,9 @@ def test_scoped_candidate_onboarding_preserves_scope_and_does_not_refetch_other_
         resumed.run(observed_at=OBSERVED_AT)
 
 
-def test_short_history_addition_is_hydrated_once_then_quarantined(tmp_path) -> None:
-    schedule = materialize_calendar_schedule(
-        ("XNAS",),
-        start=date(2016, 7, 31),
-        end=AS_OF,
-        as_of_timestamp=OBSERVED_AT,
-    )
-    sessions = tuple(row["session_date"] for row in schedule.to_pylist())
+def test_short_history_addition_is_hydrated_once_then_quarantined(tmp_path, session_dates) -> None:
+    """Control: Short history addition is hydrated once then quarantined."""
+    sessions = session_dates
     store = MarketDataRepository(tmp_path / "workspace")
     initial = CurrentUniverseOnboarding(
         store=store,
@@ -1159,19 +1147,16 @@ def test_provider_wide_deferred_degrades_only_on_resume_and_keeps_successes(
 
 
 def test_audit_fallback_and_resumed_units_hold_nothing_across_the_provider(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, session_dates
 ) -> None:
-    """Audit fallback and resumed units hold nothing across the provider."""
+    """Control: Audit fallback and resumed units hold nothing across the provider."""
 
     from alphalattice.control.workspace_runtime.database import (
         live_workspace_connections,
         open_workspace_database,
     )
 
-    schedule = materialize_calendar_schedule(
-        ("XNAS",), start=date(2016, 7, 31), end=AS_OF, as_of_timestamp=OBSERVED_AT
-    )
-    sessions = tuple(row["session_date"] for row in schedule.to_pylist())
+    sessions = session_dates
     store = MarketDataRepository(tmp_path / "workspace")
     blocked_in_fallback = threading.Event()
     checked = threading.Event()
@@ -1249,21 +1234,18 @@ def test_audit_fallback_and_resumed_units_hold_nothing_across_the_provider(
     assert live_workspace_connections(store.path) is None
 
 
-def test_resumed_quality_eligible_unit_audits_through_the_provider_holding_nothing(
+def test_resumed_quality_audit_holds_no_writable_connection(
     tmp_path,
+    session_dates,
 ) -> None:
-    """A resumed quality-eligible unit releases its store instance while auditing through the
-    provider."""
+    """Control: Resumed quality audit releases writers across provider calls."""
 
     from alphalattice.control.workspace_runtime.database import (
         live_workspace_connections,
         open_workspace_database,
     )
 
-    schedule = materialize_calendar_schedule(
-        ("XNAS",), start=date(2016, 7, 31), end=AS_OF, as_of_timestamp=OBSERVED_AT
-    )
-    sessions = tuple(row["session_date"] for row in schedule.to_pylist())
+    sessions = session_dates
     store = MarketDataRepository(tmp_path / "workspace")
     blocked_in_fallback = threading.Event()
     checked = threading.Event()

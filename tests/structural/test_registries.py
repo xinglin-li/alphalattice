@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 
+from devtools.architecture.registries import main as registry_main
 from devtools.architecture.registries import private_test_growth, problems, shrink, tracked
 from devtools.architecture.where import main, where
 
@@ -19,9 +21,7 @@ def test_the_tree_adds_nothing_to_a_registry_without_registering_it() -> None:
 
 
 def test_each_kind_of_new_entry_is_refused_by_its_registry(tmp_path: Path) -> None:
-    """requirement (G0): a new literal, code, schema, private test import and unregistered owner are
-    each refused with the registry that takes it; registering them clears the refusal, and a
-    baseline never grows by shrinking."""
+    """Registering clears named refusals; shrinking cannot admit new entries."""
 
     (tmp_path / "config" / "registries").mkdir(parents=True)
     shutil.copy(ROOT / "config" / "package-architecture.json", tmp_path / "config")
@@ -59,10 +59,126 @@ def test_each_kind_of_new_entry_is_refused_by_its_registry(tmp_path: Path) -> No
     }
 
 
+def test_staged_registry_census_refuses_new_unregistered_items(
+    tmp_path, synthetic_history, capsys, monkeypatch
+):
+    monkeypatch.delenv("ALPHALATTICE_REGISTRY_BASELINE", raising=False)
+    assert registry_main(["--staged"]) == 0 and "not configured" in capsys.readouterr().out
+    git, commit = synthetic_history
+
+    def write(relative, value):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value if isinstance(value, str) else json.dumps(value), encoding="utf-8")
+
+    def stage():
+        git("-c", "core.longpaths=true", "add", "--all")
+
+    def check(expected, *extra):
+        try:
+            code = registry_main(["--root", str(tmp_path), "--staged", *extra])
+        except SystemExit as error:
+            code = error.code
+        captured = capsys.readouterr()
+        assert code == expected, captured.out + captured.err
+        return captured.out
+
+    namespace = "alphalattice.interface.local_application"
+    architecture = {
+        "packages": [{"package_id": "local_application", "physical_namespace_target": namespace}]
+    }
+    owners = {"nouns": {namespace: {"owner": namespace, "defined_by": [], "folds_in": []}}}
+    owners["nouns"]["census_registered_alias"] = owners["nouns"][namespace]
+    client = "src/alphalattice/interface/local_application"
+    operations = client + "/operations.json"
+    refusals = "config/registries/refusals.json"
+    legacy = client + "/legacy.py"
+    baseline = "fixture-baseline.json"
+    monkeypatch.setenv("ALPHALATTICE_REGISTRY_BASELINE", str(tmp_path / baseline))
+    write("config/package-architecture.json", architecture)
+    write("config/registries/owners-map.json", owners)
+    write(refusals, {"entries": {}})
+    write(operations, {"fields": {}, "purposes": {}, "commands": {}})
+    write(legacy, "raise ValueError('census.legacy')\n")
+    facts = {legacy: {"message-kinds|census.legacy": 1}}
+    allowed = {"message-kinds|census.legacy": legacy + ":1"}
+    declared = sorted(owners["nouns"])
+    write(baseline, dict(by_file=facts, automatic_gaps=allowed, registered_nouns=declared))
+    commit("Registered fixture baseline with one declared gap")
+    check(0, "--baseline", baseline)
+    fresh = "alphalattice.investment.census_noun"
+    architecture["packages"].append(
+        {"package_id": "census_noun", "physical_namespace_target": fresh}
+    )
+    write("config/package-architecture.json", architecture)
+    module = "src/alphalattice/investment/census_noun/__init__.py"
+    request = client + "/portfolio_research.py"
+    sources = {
+        module: "class CensusNoun: pass\ndef refuse(): raise ValueError('census.unregistered')\n",
+        request: "type PortfolioResearchOperation = Literal['CENSUS_OPERATION']\n",
+    }
+    for path, text in sources.items():
+        write(path, text)
+    stage()
+    for path in sources:
+        write(path, "")
+    owners["nouns"][fresh] = {"owner": fresh, "defined_by": [], "folds_in": []}
+    registrations = {
+        "config/registries/owners-map.json": owners,
+        refusals: {"entries": {"census.unregistered": {"owner": fresh}}},
+        operations: {"fields": {"CENSUS_OPERATION": {}}, "purposes": {}, "commands": {}},
+    }
+    for path, value in registrations.items():
+        write(path, value)
+    output = check(1)
+    for dimension, name, target, form in (
+        ("nouns", "census_noun", "config/registries/owners-map.json", "nouns"),
+        ("operations", "CENSUS_OPERATION", "operations.json", "fields"),
+        ("message-kinds", "census.unregistered", refusals, "entries"),
+    ):
+        assert any(
+            all(part in line for part in (dimension, name, target, form))
+            and re.search(r"(?:src|config)/[^:\s]+\.(?:py|json):\d+", line)
+            for line in output.splitlines()
+        ), (dimension, name, output)
+    for path, text in sources.items():
+        write(path, text)
+    stage()
+    check(0, "--update")
+    stage()
+    write(refusals, {"entries": {}})
+    write(module, "raise ValueError('census.physical')\n")
+    check(0)
+    for path, text in sources.items():
+        write(path, text)
+    write(refusals, registrations[refusals])
+    stage()
+    git("-c", "core.longpaths=true", "commit", "-qm", "Registered source facts")
+    owners["nouns"].pop("census_registered_alias")
+    write("config/registries/owners-map.json", owners)
+    stage()
+    assert "census_registered_alias" in check(1)
+    write(refusals, {"entries": {}})
+    stage()
+    assert "census.unregistered" in check(1)
+    write(refusals, registrations[refusals])
+    write(legacy, "raise ValueError('census.swap')\n")
+    stage()
+    assert "census.swap" in check(1)
+    write(legacy, "")
+    stage()
+    assert baseline in check(1)
+    check(0, "--update")
+    stage()
+    check(0)
+    architecture["packages"].pop()
+    write("config/package-architecture.json", architecture)
+    stage()
+    assert "packages[] with package_id and physical_namespace_target=" in check(1)
+
+
 def test_the_tests_ratchet_refuses_an_entry_its_base_did_not_hold() -> None:
-    """regression (LAWS.md TE5): five private imports passed the gate on 2026-09-30, each
-    registered by hand beside its test; against the registry a change starts from, a new entry
-    or a raised count is refused, and an entry kept or lowered is not."""
+    """Private-access counts can fall or move, while new or duplicated accesses fail."""
 
     base = {"tests/test_a.py::import _kept": 2, "tests/test_b.py::patch _gone": 1}
     assert private_test_growth(base, {"tests/test_a.py::import _kept": 1}) == []
@@ -81,8 +197,7 @@ def test_the_tests_ratchet_refuses_an_entry_its_base_did_not_hold() -> None:
 
 
 def test_a_format_that_names_no_reader_or_a_missing_one_is_refused(tmp_path: Path) -> None:
-    """requirement (LAWS.md DA6): a persisted format names its version, its readers and
-    its upgraders; an entry that names none, or a reader that is not a file, is refused."""
+    """Formats name versions, readers and upgraders; missing contracts or files fail."""
 
     registries = tmp_path / "config" / "registries"
     registries.mkdir(parents=True)
@@ -91,20 +206,15 @@ def test_a_format_that_names_no_reader_or_a_missing_one_is_refused(tmp_path: Pat
     reader.parent.mkdir(parents=True)
     reader.write_text("", encoding="utf-8")
     entries = {
-        "task_kind:named": {
-            "owner": "task_kind:named",
-            "version": ["named-input"],
-            "readers": ["src/alphalattice/desk.py"],
+        f"task_kind:{name}": {
+            "owner": f"task_kind:{name}",
+            "version": [f"{name}-input"],
+            "readers": [f"src/alphalattice/{file}"],
             "upgraders": [],
-        },
-        "task_kind:bare": {"owner": "task_kind:bare"},
-        "task_kind:gone": {
-            "owner": "task_kind:gone",
-            "version": ["gone-input"],
-            "readers": ["src/alphalattice/gone.py"],
-            "upgraders": [],
-        },
+        }
+        for name, file in (("named", "desk.py"), ("gone", "gone.py"))
     }
+    entries["task_kind:bare"] = {"owner": "task_kind:bare"}
     (registries / "formats.json").write_text(json.dumps({"entries": entries}), encoding="utf-8")
     refused = problems(tmp_path, [])
     assert not any("task_kind:named" in line for line in refused), refused
@@ -146,9 +256,7 @@ def test_where_answers_a_noun_from_the_registries(tmp_path: Path) -> None:
 
 
 def test_the_owner_map_names_what_the_tree_has() -> None:
-    """requirement (G1): the owner map names only what exists -- each owner inside a registered
-    package, or created by the card it names, and each module it lists -- so a move that leaves
-    the map behind fails here rather than in G2's gate."""
+    """The owner map names existing registered owner packages and defining modules."""
 
     document = json.loads((ROOT / "config/registries/owners-map.json").read_text(encoding="utf-8"))
     namespaces = {
@@ -186,7 +294,7 @@ def _owner_tree(root: Path) -> None:
     shutil.copy(ROOT / "config" / "package-architecture.json", root / "config")
     contracts = root / "src" / "alphalattice" / "investment" / "lab" / "contracts.py"
     contracts.parent.mkdir(parents=True)
-    contracts.write_text("class StrategyAdmission:\n    pass\n", encoding="utf-8")
+    contracts.write_bytes(b"class StrategyAdmission: pass\nclass InputAdmission: pass\n")
     document = {
         "schema": "alphalattice.playpen.registry.owners-map",
         "version": 1,
@@ -196,6 +304,7 @@ def _owner_tree(root: Path) -> None:
                 "covers": "strategies",
                 "owner": "alphalattice.investment.lab",
                 "defined_by": ["alphalattice.investment.lab.contracts"],
+                "input_contracts": ["InputAdmission"],
                 "folds_in": [],
             }
         },
@@ -206,19 +315,17 @@ def _owner_tree(root: Path) -> None:
 
 
 def test_a_decision_is_refused_outside_its_owner_naming_the_owner(tmp_path: Path) -> None:
-    """requirement (G2,; LAWS.md OW1, OP12): a Portfolio admission added to an existing Risk
-    module, its imports otherwise unchanged, is refused by the decision it makes, naming the
-    owner to write it in; in the owner it passes, and reading the type anywhere is a use."""
+    """Refuse foreign decisions and seals; permit caller inputs, owner work and reads."""
 
     _owner_tree(tmp_path)
     risk = tmp_path / "src" / "alphalattice" / "investment" / "risk" / "model.py"
     risk.parent.mkdir(parents=True)
-    risk.write_text(
+    producer = (
         "from alphalattice.investment.lab.contracts import StrategyAdmission\n\n\n"
         "def admit_strategy():\n"
-        "    return StrategyAdmission()\n",
-        encoding="utf-8",
+        "    return StrategyAdmission()\n"
     )
+    risk.write_text(producer, encoding="utf-8")
     files = ["src/alphalattice/investment/risk/model.py"]
     refused = problems(tmp_path, files)
     assert any(
@@ -234,19 +341,22 @@ def test_a_decision_is_refused_outside_its_owner_naming_the_owner(tmp_path: Path
     )
     assert not any("StrategyAdmission" in line for line in problems(tmp_path, files))
     lab = tmp_path / "src" / "alphalattice" / "investment" / "lab" / "admission.py"
-    lab.write_text(
-        "from alphalattice.investment.lab.contracts import StrategyAdmission\n\n\n"
-        "def admit_strategy():\n"
-        "    return StrategyAdmission()\n",
-        encoding="utf-8",
-    )
+    lab.write_text(producer, encoding="utf-8")
     lab_file = ["src/alphalattice/investment/lab/admission.py"]
     assert not any("StrategyAdmission" in line for line in problems(tmp_path, lab_file))
+    uses = "from alphalattice.investment.lab.contracts import InputAdmission\n"
+    for statement, refused in (
+        ("value = InputAdmission()", False),
+        ("value = InputAdmission.create()", True),
+        ("value = seal(InputAdmission)", True),
+        ("class Foreign(InputAdmission): pass", True),
+    ):
+        risk.write_text(uses + statement + "\n", encoding="utf-8")
+        assert any("makes InputAdmission" in x for x in problems(tmp_path, files)) is refused
 
 
 def test_a_new_host_module_is_refused_unless_registered_as_composition(tmp_path: Path) -> None:
-    """requirement (G2; LAWS.md OW6): the Host keeps composition only, so a module added to it is
-    refused until it is registered as the Host's composition."""
+    """The Host admits a new module only when registered as composition."""
 
     _owner_tree(tmp_path)
     host = tmp_path / "src" / "alphalattice" / "control" / "product_host" / "composition"

@@ -79,6 +79,7 @@ def current_artifacts(tmp_path):
 def test_frozen_observations_and_feature_preparation_reuse_npz_with_fresh_shells(
     current_artifacts, monkeypatch
 ):
+    """Control: Frozen arrays share scoped payloads while isolating mutable shells."""
     store, observation, preparation = current_artifacts
     load = np.load
     load_calls = 0
@@ -298,6 +299,8 @@ def test_observation_admission_proof_refuses_current_bytes_tampered_after_verifi
 def test_observation_admission_proof_skips_unchanged_packed_bytes_in_a_new_scope(
     current_artifacts, monkeypatch
 ):
+    """Control: Unchanged packed observation bytes reuse verification across independent
+    scopes."""
     store, observation, _ = current_artifacts
     path = store._path("current/frozen-observation-arrays", observation.array_files[-1], "bin")
     open_file = Path.open
@@ -361,6 +364,7 @@ def test_cached_payload_read_still_refuses_tampering_with_restored_mtime(kind, c
 @pytest.mark.parametrize("kind", ("observation", "feature"))
 def test_json_commitment_is_rechecked_after_a_cached_reconstruction(kind, current_artifacts):
     store, observation, preparation = current_artifacts
+    assert not hasattr(store, "publish_current_score_chunk")
     if kind == "observation":
         path = store._path(
             "current/frozen-observation-snapshots", observation.snapshot_hash, "json"
@@ -371,7 +375,6 @@ def test_json_commitment_is_rechecked_after_a_cached_reconstruction(kind, curren
         def read():
             return store.load_frozen_observations(observation.snapshot_hash)
 
-        refusal = "Alpha JSON payload hash is invalid"
     else:
         path = store._path(
             "current/frozen-feature-preparations", preparation.preparation_hash, "json"
@@ -382,7 +385,7 @@ def test_json_commitment_is_rechecked_after_a_cached_reconstruction(kind, curren
         def read():
             return store.load_frozen_feature_preparation(preparation.preparation_hash)
 
-        refusal = "Alpha JSON payload hash is invalid"
+    refusal = "Alpha JSON payload hash is invalid"
     assert damaged != original
     stat = path.stat()
     with verified_model_read_scope(reuse_verified=True), verified_lifecycle_admissions():

@@ -1113,13 +1113,13 @@ def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tm
     assert len(admitted) == 2 and first.audit({"L5": "EEE"}, 470, admit)
     # An ordinary ex-dividend day on 470 names: six more payers stay within the audits' own
     # 2% bound; three after them make ten, past it, and are left to the person.
-    assert first.audit({f"P{n}": f"P{n}" for n in range(6)}, 470, admit)
+    assert first.audit({f"PAYER{n}": f"PAYER{n}" for n in range(6)}, 470, admit)
     assert first.audit({f"Q{n}": f"Q{n}" for n in range(3)}, 470, admit) is None
     head = app.store.head(first_use)
     steps = app.record(head)["delegated_steps"]
     assert [(s["status"], s["symbols"]) for s in steps if s["operation"] == FULL_HISTORY] == [
         ("DECIDED_BY_RULE", ["EEE"]),
-        ("DECIDED_BY_RULE", [f"P{n}" for n in range(6)]),
+        ("DECIDED_BY_RULE", [f"PAYER{n}" for n in range(6)]),
         ("ESCALATED", ["Q0", "Q1", "Q2"]),
     ]
     owned = [e for e in app.store.attributed(first_use) if e.get("operation") == FULL_HISTORY]

@@ -1154,6 +1154,7 @@ def test_runner_applies_adapter_cancellation_at_internal_safe_checkpoint(
     tmp_path: Path,
     ready: bool,
 ) -> None:
+    """Control: Checkpoints cancel."""
     now = datetime(2026, 8, 10, 17, tzinfo=UTC)
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
@@ -1186,7 +1187,7 @@ def test_runner_applies_adapter_cancellation_at_internal_safe_checkpoint(
 def test_a_cancel_between_the_runner_s_read_and_its_claim_is_applied_at_the_claim(
     tmp_path: Path,
 ) -> None:
-    """A cancel between the runner's read and its claim is applied at the claim."""
+    """Control: Claim races cancel."""
 
     now = datetime(2026, 8, 10, 18, tzinfo=UTC)
     registry = DuckDbTaskControlRegistry(
@@ -1420,8 +1421,7 @@ class _DeferringThenRaisingAdapter(_FixtureTaskAdapter):
 def test_deferrals_spend_none_of_a_stages_raises_and_a_raised_block_reopens(
     tmp_path: Path,
 ) -> None:
-    """Deferrals consume no stage retry allowance and a raised block reopens through its
-    recovery."""
+    """Control: Deferrals preserve retries and raised blocks reopen."""
 
     from alphalattice.control.task_control.runner import REPEATED_STAGE_RAISES
 
@@ -1606,7 +1606,7 @@ def test_dispatcher_finishes_deferred_cancel_only_after_command_returns(
 def test_a_held_recovery_reads_as_queued_and_a_stopped_admission_never_as_running(
     tmp_path: Path,
 ) -> None:
-    """A held recovery reads as queued and a stopped admission never as running."""
+    """Control: Held recoveries read queued; stopped admissions never read running."""
 
     now = datetime.now(UTC)
     held, release = Event(), Event()

@@ -20,6 +20,7 @@ import pyarrow as pa
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
+from alphalattice.foundation.feature_engine.catalog.layer import FeatureCatalogLayer
 from alphalattice.foundation.feature_engine.contracts import (
     FeatureBuildOutcome,
     FeatureBuildRequest,
@@ -41,6 +42,7 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_coordinator i
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
     FeatureClosureLedger,
 )
+from alphalattice.foundation.feature_engine.panels.identity import hash_panel_rows
 from alphalattice.foundation.feature_engine.panels.logical_identity import (
     PanelLogicalArtifactStore,
     PanelLogicalIdentityPublisher,
@@ -67,9 +69,6 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
     FeatureStateRepository,
     PanelStateRepository,
 )
-from alphalattice.foundation.market_data_ops.sources.contracts import (
-    ProviderAdjustedClosePoint,
-)
 from alphalattice.foundation.market_data_ops.sources.manifest import (
     ManifestListing,
     MarketProfile,
@@ -78,22 +77,56 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
 from alphalattice.foundation.market_data_ops.sources.price_integrity import (
     build_trading_session_authority,
 )
-from alphalattice.foundation.market_data_ops.sources.providers import (
-    ProviderFetchError,
-    SectorObservation,
-)
 from alphalattice.foundation.market_data_ops.sources.sanitization import (
     sanitize_payload,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
+from alphalattice.kernel.quant.factor_contracts import FactorSpec
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider
 
 NOW = datetime(2026, 8, 3, 22, tzinfo=UTC)
 
 
 SESSIONS = tuple(pd.bdate_range("2018-01-02", periods=1_600).date)
+
+
+def extended_formula_layer(
+    shipped: FeatureCatalog,
+) -> tuple[FeatureCatalog, FeatureCatalogLayer, FeatureCatalog, FactorSpec]:
+    from alphalattice.foundation.feature_engine.producers.factors.formula import (
+        formula_specification,
+    )
+    from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorTrack
+
+    spec = formula_specification(
+        FactorSpec(
+            factor_id="formula_reversal_5",
+            family=FactorFamily.PRICE_LEVEL_TREND,
+            formula_ref="factor.formula",
+            formula="close / lag(close, 5) - 1",
+            window_sessions=1,
+            lag_sessions=0,
+            return_convention="as declared",
+            required_fields=("close_split_adjusted",),
+            literature_sources=("research-local note",),
+            minimum_observations=1,
+            absolute_tolerance=1e-10,
+            relative_tolerance=1e-10,
+            track=FactorTrack.MODEL,
+        )
+    )
+    payload = shipped.to_payload()
+    payload["factors"] = sorted(
+        [*payload["factors"], spec.model_dump(mode="json")],
+        key=lambda value: str(value["factor_id"]),
+    )
+    extended = FeatureCatalog.from_payload(payload)
+    layer = FeatureCatalogLayer.over(extended)
+    (column,) = layer.columns
+    return extended, layer, column, spec
 
 
 def fixture_session_authority(*, calendar_ids, start, end, as_of_timestamp):
@@ -188,34 +221,12 @@ class FixtureProvider:
         del listing_id, provider_symbol, start, end
         return ()
 
-    def fetch_adjusted_close_history(self, *, listing_id, provider_symbol, start, end):
-        payload = self.fetch_daily((provider_symbol,), start=start, end=end)[provider_symbol]
-        return tuple(
-            ProviderAdjustedClosePoint(
-                listing_id=listing_id,
-                provider=self.name,
-                session_date=date.fromisoformat(str(item["session_date"])),
-                adjusted_close=float(item["close"]),
-            )
-            for item in payload
-        )
+    fetch_adjusted_close_history = SeededWalkProvider.fetch_adjusted_close_history
 
-    def fetch_current_sector(self, *, provider_symbol):
-        if provider_symbol not in self.sectors:
-            raise ProviderFetchError(
-                "sector.missing_current_sector", "fixture missing sector", retryable=False
-            )
-        sector = self.sectors[provider_symbol]
-        return SectorObservation(
-            provider=self.name,
-            provider_symbol=provider_symbol,
-            sector_name=sector,
-            sector_key=sector.casefold(),
-            payload_hash=(sector.encode().hex() * 16)[:64],
-        )
+    fetch_current_sector = SeededWalkProvider.fetch_current_sector
 
 
-def fixture_manifest() -> UniverseManifest:
+def fixture_manifest(*, listing_count: int = 15) -> UniverseManifest:
     profile = MarketProfile(
         "fixture-feature-market",
         "Fixture feature market",
@@ -229,7 +240,7 @@ def fixture_manifest() -> UniverseManifest:
     )
     listings = tuple(
         ManifestListing(f"listing-{index:02d}", f"T{index:02d}", "XNYS", f"T{index:02d}")
-        for index in range(15)
+        for index in range(listing_count)
     )
     return UniverseManifest("fixture-feature-manifest", profile, listings, "f" * 64)
 
@@ -437,4 +448,16 @@ def new_session_invalidations(manifest: UniverseManifest, session: date):
             source_receipt_hash=canonical_hash([item.listing_id, session.isoformat()]),
         )
         for item in manifest.listings
+    )
+
+
+def identity_panel_table(raw: pa.Table) -> pa.Table:
+    """Hash a fresh fixture table under the declared golden panel identity."""
+    return hash_panel_rows(
+        raw,
+        manifest_revision="1" * 64,
+        sector_revision="2" * 64,
+        catalog_hash="3" * 64,
+        policy_hash="4" * 64,
+        factor_ids=("factor_a", "factor_b"),
     )

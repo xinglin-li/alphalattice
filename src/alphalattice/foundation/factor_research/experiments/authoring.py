@@ -326,10 +326,6 @@ class FactorExperimentCompiler:
 
         return self._inventory
 
-    @property
-    def inventory_entries(self) -> tuple[FactorInventoryEntry, ...]:
-        return self._entries
-
     def compile_desk_program(
         self,
         *,

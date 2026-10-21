@@ -31,7 +31,12 @@ from tests.researcher_methodology_surface.real_workspace import (
     SYMBOLS,
 )
 from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
-from tests.workspace_maintenance.audit_workspace import audit_one, build_audit_workspace
+from tests.workspace_maintenance.audit_workspace import (
+    audit_one,
+    build_audit_workspace,
+    receipt_context,
+    seed_action_audit_rows,
+)
 from tests.workspace_maintenance.data_update_support import _provider
 from tests.workspace_maintenance.local_data_provider import (
     NOW,
@@ -45,8 +50,6 @@ def audit_source(tmp_path_factory):
 
 
 def test_action_audit_reuse_does_not_order_equal_time_revisions_by_hash(audit_source, tmp_path):
-
-    from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 
     workspace = tmp_path / "workspace"
     shutil.copytree(audit_source[0], workspace)
@@ -151,8 +154,6 @@ def test_child_rebinding_replaces_a_stale_bound_receipt_and_then_costs_nothing(
     audit_source, tmp_path, monkeypatch
 ):
     """Child rebinding replaces a stale bound receipt and then costs nothing."""
-
-    from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 
     workspace = tmp_path / "workspace"
     shutil.copytree(audit_source[0], workspace)
@@ -280,7 +281,7 @@ def test_child_rebinding_replaces_a_stale_bound_receipt_and_then_costs_nothing(
 def test_older_ancestor_receipt_that_proves_the_current_bytes_is_not_pruned_by_its_instant(
     audit_source, tmp_path, monkeypatch
 ):
-    """Older ancestor receipt that proves the current bytes is not pruned by its instant."""
+    """Control: Older ancestor receipt proves current bytes is not pruned by its instant."""
 
     workspace = tmp_path / "workspace"
     shutil.copytree(audit_source[0], workspace)
@@ -317,39 +318,7 @@ def test_older_ancestor_receipt_that_proves_the_current_bytes_is_not_pruned_by_i
         revision_sha256="d" * 64,
         listings=(listing,),
     )
-    market.bootstrap(child)
-
-    def bind(now):
-        return market.bind_available_action_audit_receipts_to_manifest(
-            child, requested_as_of=AS_OF, now=now
-        )
-
-    def full_history_answer(now):
-        return market.reusable_action_audit_receipt(
-            child,
-            listing_id=listing.listing_id,
-            provider="yfinance",
-            requested_as_of=AS_OF,
-            now=now,
-        )
-
-    def verifies(receipt, now):
-        connection = market._connect(read_only=True)
-        try:
-            return (
-                market._rebindable_action_audit_receipt(
-                    connection,
-                    listing_id=listing.listing_id,
-                    provider="yfinance",
-                    requested_as_of=AS_OF,
-                    now=now,
-                    manifest_revision=parent.revision_sha256,
-                    receipt_hash=receipt.receipt_hash,
-                )
-                is not None
-            )
-        finally:
-            connection.close()
+    bind, full_history_answer, verifies = receipt_context(market, parent, child, listing)
 
     # 1. Evidence A at t1: the ancestor's full-history receipt; the child holds nothing.
     t1, t2, t3 = NOW, NOW + timedelta(hours=1), NOW + timedelta(hours=2)
@@ -407,7 +376,7 @@ def test_older_ancestor_receipt_that_proves_the_current_bytes_is_not_pruned_by_i
 def test_a_later_full_audit_over_the_same_range_does_not_supersede_an_older_valid_one(
     audit_source, tmp_path, monkeypatch
 ):
-    """A later full audit over the same range does not supersede an older valid one."""
+    """Control: Later full audit over same range never supersede older valid one."""
 
     workspace = tmp_path / "workspace"
     shutil.copytree(audit_source[0], workspace)
@@ -445,39 +414,7 @@ def test_a_later_full_audit_over_the_same_range_does_not_supersede_an_older_vali
         revision_sha256="c" * 64,
         listings=(listing,),
     )
-    market.bootstrap(child)
-
-    def bind(now):
-        return market.bind_available_action_audit_receipts_to_manifest(
-            child, requested_as_of=AS_OF, now=now
-        )
-
-    def full_history_answer(now):
-        return market.reusable_action_audit_receipt(
-            child,
-            listing_id=listing.listing_id,
-            provider="yfinance",
-            requested_as_of=AS_OF,
-            now=now,
-        )
-
-    def verifies(receipt, now):
-        connection = market._connect(read_only=True)
-        try:
-            return (
-                market._rebindable_action_audit_receipt(
-                    connection,
-                    listing_id=listing.listing_id,
-                    provider="yfinance",
-                    requested_as_of=AS_OF,
-                    now=now,
-                    manifest_revision=parent.revision_sha256,
-                    receipt_hash=receipt.receipt_hash,
-                )
-                is not None
-            )
-        finally:
-            connection.close()
+    bind, full_history_answer, verifies = receipt_context(market, parent, child, listing)
 
     t1, t2, t3 = NOW, NOW + timedelta(hours=1), NOW + timedelta(hours=2)
     full_a = audit(t1, start=bars[0].session_date, tail_scale=1.0)
@@ -546,8 +483,6 @@ def test_a_later_full_audit_over_the_same_range_does_not_supersede_an_older_vali
 
 def test_child_binding_carries_the_parent_receipt_in_its_recorded_scope(audit_source, tmp_path):
     """Child binding carries the parent receipt in its recorded scope."""
-
-    from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 
     workspace = tmp_path / "workspace"
     shutil.copytree(audit_source[0], workspace)
@@ -877,6 +812,7 @@ def test_valuation_audit_permission_never_reenters_the_candidate_request(qualifi
 
 
 def test_rolling_action_audit_ignores_actions_outside_declared_scope(tmp_path: Path) -> None:
+    """Control: Rolling action audit ignores actions outside declared scope."""
     manifest = build_quality_filtered_research_manifest(
         acquisition_manifest(), eligible_listing_ids=("listing-aapl",)
     )
@@ -888,23 +824,7 @@ def test_rolling_action_audit_ignores_actions_outside_declared_scope(tmp_path: P
         date(2026, 7, 29),
         date(2026, 7, 30),
     )
-    rows = tuple(
-        {
-            "session_date": session.isoformat(),
-            "open": 100.0,
-            "high": 101.0,
-            "low": 99.0,
-            "close": 100.0,
-            "volume": 1_000_000,
-        }
-        for session in sessions
-    )
-    market_data.apply_validated_batch(
-        manifest,
-        sanitize_payload(manifest, "fixture", {"AAPL": rows}, ("AAPL",)),
-        ingestion_id="initial",
-        observed_at=NOW,
-    )
+    seed_action_audit_rows(market_data, manifest, sessions, observed_at=NOW)
     historical_dividend = CorporateActionEvent(
         listing_id="listing-aapl",
         provider="fixture",

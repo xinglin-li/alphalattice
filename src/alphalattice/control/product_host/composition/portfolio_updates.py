@@ -431,12 +431,7 @@ class PortfolioUpdateApplication:
         """
         if previous is None:
             return current
-        old = self.store.content.load_model(
-            category="decision-observations",
-            content_hash=previous.source_snapshot_hash,
-            model=LocalQAMarketSnapshot,
-            identity_field="content_hash",
-        )
+        old = self.store.load_decision_observation(previous.source_snapshot_hash)
         raw = self.raw_basis(previous)
         return continue_issued_observations(old, current, raw_previous=raw)
 
@@ -455,12 +450,7 @@ class PortfolioUpdateApplication:
         plan = self._load_plan(previous.plan_hash)
         if plan.raw_market_hash is None and previous.source_revision is not None:
             raise ValueError("portfolio_update.previous_raw_basis_missing")
-        return self.store.content.load_model(
-            category="decision-observations",
-            content_hash=plan.raw_market_hash or plan.market_hash,
-            model=LocalQAMarketSnapshot,
-            identity_field="content_hash",
-        )
+        return self.store.load_decision_observation(plan.raw_market_hash or plan.market_hash)
 
     def revision_impact(
         self, current: LocalQAMarketSnapshot, previous: PortfolioUpdatePublication | None
@@ -860,17 +850,14 @@ class PortfolioUpdateApplication:
             history = self.history(plan.checkpoint_hash)
             previous = history[-1] if history else None
             observed = self.continued_market(raw, previous)
-            if plan.raw_market_hash is not None:
-                if raw.content_hash != plan.raw_market_hash:
-                    raise ValueError("portfolio_update.market_snapshot_changed")
-                self.store.content.publish_model(
-                    category="decision-observations", value=raw, identity_field="content_hash"
-                )
-            if observed.content_hash != plan.market_hash:
+            if plan.raw_market_hash is not None and raw.content_hash != plan.raw_market_hash:
                 raise ValueError("portfolio_update.market_snapshot_changed")
-            self.store.content.publish_model(
-                category="decision-observations", value=observed, identity_field="content_hash"
-            )
+            if observed.content_hash != plan.market_hash:
+                if plan.raw_market_hash is not None:
+                    self.store.publish_decision_observations(raw)
+                raise ValueError("portfolio_update.market_snapshot_changed")
+            sources = (raw, observed) if plan.raw_market_hash is not None else (observed,)
+            self.store.publish_decision_observations(*sources)
             content = observed.content_hash
         elif stage == STAGES[2]:
             value = self._publication(plan)
@@ -897,11 +884,8 @@ class PortfolioUpdateApplication:
                     ),
                     revised_source_hash=plan.raw_market_hash,
                     source_revision=self.revision_impact(
-                        self.store.content.load_model(
-                            category="decision-observations",
-                            content_hash=plan.raw_market_hash or plan.market_hash,
-                            model=LocalQAMarketSnapshot,
-                            identity_field="content_hash",
+                        self.store.load_decision_observation(
+                            plan.raw_market_hash or plan.market_hash
                         ),
                         previous,
                     ),
@@ -933,38 +917,18 @@ class PortfolioUpdateApplication:
         return StageExecutionResult(StageDisposition.READY, evidence=self._evidence(stage, content))
 
     def _observed(self, plan: PortfolioUpdatePlan) -> LocalQAMarketSnapshot:
-        value = self.store.content.load_model(
-            category="decision-observations",
-            content_hash=plan.market_hash,
-            model=LocalQAMarketSnapshot,
-            identity_field="content_hash",
-        )
+        value = self.store.load_decision_observation(plan.market_hash)
         if value.through != plan.observed_through:
             raise ValueError("portfolio_update.observation_binding_invalid")
         if plan.raw_market_hash is not None:
-            raw = self.store.content.load_model(
-                category="decision-observations",
-                content_hash=plan.raw_market_hash,
-                model=LocalQAMarketSnapshot,
-                identity_field="content_hash",
-            )
+            raw = self.store.load_decision_observation(plan.raw_market_hash)
             if plan.prior_market_hash is None:
                 raise ValueError("portfolio_update.continuation_parent_missing")
-            old = self.store.content.load_model(
-                category="decision-observations",
-                content_hash=plan.prior_market_hash,
-                model=LocalQAMarketSnapshot,
-                identity_field="content_hash",
-            )
+            old = self.store.load_decision_observation(plan.prior_market_hash)
             factual = (
                 None
                 if plan.prior_raw_market_hash is None
-                else self.store.content.load_model(
-                    category="decision-observations",
-                    content_hash=plan.prior_raw_market_hash,
-                    model=LocalQAMarketSnapshot,
-                    identity_field="content_hash",
-                )
+                else self.store.load_decision_observation(plan.prior_raw_market_hash)
             )
             if continue_issued_observations(old, raw, raw_previous=factual) != value:
                 raise ValueError("portfolio_update.continuation_evidence_invalid")

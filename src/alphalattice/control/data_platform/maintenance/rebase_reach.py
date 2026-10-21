@@ -10,7 +10,10 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
-from alphalattice.foundation.feature_engine.runtime.rebase_cutoff import panel_spans, rebase_moved
+from alphalattice.foundation.feature_engine.runtime.rebase_cutoff import (
+    panel_inputs,
+    rebase_moved,
+)
 from alphalattice.foundation.market_data_ops.storage.rebase import ex_date_deltas
 
 from .contracts import (
@@ -63,11 +66,16 @@ def rebase_reach(
         if rebased
         else {}
     )
-    spans = panel_spans(coordinator.feature_foundation) if rebased else ()
+    panel_agreement = getattr(coordinator.diagnose, "panel_agreement", lambda: None)()
+    spans, panel_values = panel_inputs(
+        coordinator.feature_foundation, sorted(rebased) if panel_agreement is not None else ()
+    ) if rebased else ((), None)  # fmt: skip
     for listing_id in sorted(rebased):
         moved = rebase_moved(
             coordinator.feature_foundation, listing_id, as_of_session=through,
             observed_at=observed_at, agreement=agreement, spans=spans,
+            panel_values=panel_values, panel_agreement=panel_agreement,
+            kept=getattr(coordinator.diagnose, "panel_kept", None),
         )  # fmt: skip
         moved = gathered_cells(owed.get(listing_id, ()), moved)
         if moved:

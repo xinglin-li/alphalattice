@@ -75,7 +75,7 @@ def test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap(
     tmp_path: Path,
     at_cutoff: bool,
 ) -> None:
-    """Date-bound previews, admission and acquisition retain one plan/Task at either storage cap."""
+    """Control: Operator storage caps leave preparation identity and dated admission unchanged."""
     from alphalattice.control.workspace_runtime.storage.capacity import StorageCapStore
     from tests.workspace_maintenance.local_data_provider import recording_provider
 

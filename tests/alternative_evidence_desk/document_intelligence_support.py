@@ -7,7 +7,7 @@ or evidence.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ from alphalattice.evidence.alternative_evidence.analysis.contracts import (
 from alphalattice.evidence.alternative_evidence.contracts import (
     INTEGRATED_FAMILY_SPELLING,
     MATTER_SELECTION_INTEGRATED,
+    AlternativeEvidenceAdmission,
     AlternativeEvidenceClass,
     AlternativeEvidenceMode,
     AlternativeEvidenceRequest,
@@ -76,6 +77,20 @@ def _request(
         ttl_seconds=86_400,
         mode=AlternativeEvidenceMode.RECORDED,
         **({} if matter_selection is None else {"matter_selection": matter_selection}),
+    )
+
+
+def _request_at(cutoff: Any) -> AlternativeEvidenceRequest:
+    return seal_contract(
+        AlternativeEvidenceRequest,
+        "request_hash",
+        ordered_entity_ids=("AAPL",),
+        evidence_as_of=cutoff,
+        acquisition_deadline=cutoff + timedelta(hours=1),
+        evidence_classes=(AlternativeEvidenceClass.ISSUER_OFFICIAL_RECORDED,),
+        source_policy=AlternativeEvidenceSourcePolicy(),
+        ttl_seconds=86_400,
+        mode=AlternativeEvidenceMode.RECORDED,
     )
 
 
@@ -269,4 +284,18 @@ def _receipt_with(
         span_read_call_count=session_counts[1],
         span_groups=program.span_groups,
         litigation_matters=record,
+    )
+
+
+def live_admission(
+    request: AlternativeEvidenceRequest, *, admitted_at: datetime
+) -> AlternativeEvidenceAdmission:
+    return seal_contract(
+        AlternativeEvidenceAdmission,
+        "admission_hash",
+        request_hash=request.request_hash,
+        network_consent=True,
+        admit_live_official=True,
+        admit_model_review=False,
+        admitted_at=admitted_at,
     )
