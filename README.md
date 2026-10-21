@@ -260,21 +260,22 @@ measured time, disk and memory against a stated budget:
   each message, carries a stable code beside its words.
 - **0.2.4: a smoother daily update.** A shorter wrap-up for the agent, a measured time
   for each stage, and a background service that stays up between sessions.
-- **0.2.5: an evaluation flywheel.** One runner and fixed gates check every patch
-  from the product's own records.
-- **0.2.6: realistic replay and data checks.** Replay real-world events (corporate
-  actions, late reports, provider outages) and check data health every day.
-- **0.2.7: a first result in ten minutes.** A short trial on a small sample, labelled
-  as a trial.
-- **0.2.8: memory within budget.** Bring first use and daily updates within 8 GB.
-- **0.2.9: nothing stored twice.** A storage data model; upgrades reuse unchanged data.
-- **0.2.10: caching and checking, done once.** Hash once, verify at trust boundaries
+- **0.2.5: realistic replay and data checks.** Replay real-world events (corporate
+  actions, late reports, provider outages) and check data health every day. Each
+  later speed and memory change is measured on this replay.
+- **0.2.6: memory within budget.** Bring first use and daily updates within 8 GB.
+- **0.2.7: nothing stored twice.** A storage data model; upgrades reuse unchanged data.
+- **0.2.8: caching and checking, done once.** Hash once, verify at trust boundaries
   and recompute only what changed, borrowing from Git's index and Bazel's action
   cache.
-- **0.2.11: history you can query by date.** Ask what was known, tried and decided on
-  a past date, with nothing learned after it.
-- **0.2.12: less waiting on the program.** The program prepares likely next steps
+- **0.2.9: less waiting on the program.** The program prepares likely next steps
   while the agent is thinking.
+- **0.2.10: history you can query by date.** Ask what was known, tried and decided on
+  a past date, with nothing learned after it.
+- **0.2.11: an evaluation flywheel.** One runner and fixed gates check every patch
+  from the product's own records.
+- **0.2.12: a first result in ten minutes.** A short trial on a small sample, labelled
+  as a trial.
 - **0.2.13: ground for daily supervision.** A store for the forward record of
   positions.
 
