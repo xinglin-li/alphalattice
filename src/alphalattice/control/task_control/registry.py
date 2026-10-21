@@ -2763,31 +2763,6 @@ class DuckDbTaskControlRegistry:
             )
         )
 
-    def safe_projections_for(self, task_ids: Iterable[UUID]) -> tuple[TaskSafeProjection, ...]:
-        """The stored projections of exactly these Tasks; absent ones are simply absent.
-
-        A bounded reader (one page of activity, a watch list) must not load the
-        whole projection table to keep a handful of rows. A Task with no row
-        yet is not an error here: the caller reads it from `safe_projection`.
-        """
-        wanted = sorted({str(task_id) for task_id in task_ids})
-        if not wanted:
-            return ()
-        placeholders = ",".join("?" for _ in wanted)
-        return self._read(
-            lambda connection: tuple(
-                TaskSafeProjection.model_validate_json(row[0])
-                for row in connection.execute(
-                    f"""
-                    SELECT projection_json FROM workspace_task_projection
-                    WHERE task_id IN ({placeholders})
-                    ORDER BY updated_at DESC, task_id
-                    """,
-                    wanted,
-                ).fetchall()
-            )
-        )
-
     def projection_collection(self, task_ids: Iterable[UUID]) -> TaskProjectionBatch:
         """Read a bounded projection page, rebuilding one damaged derived row at a time.
 

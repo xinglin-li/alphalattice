@@ -47,8 +47,8 @@ from tests.feature_input_gateway.gateway_support import (
 def test_the_rule_retains_an_isolated_move_quarantines_the_rest_and_escalates_past_its_cap(
     failed: set[int], code: str, sessions: int, chosen: str
 ) -> None:
-    """requirement: one verified move on one session is kept with its caveat, any other case
-    set aside, and more than 2% of the names at once left to the agent, each by evidence only."""
+    """Control: Data rules bind decisions, escalation caps and corrections to recorded
+    evidence."""
     manifest = _manifest(100)
     moved = tuple(date(2026, 6, day) for day in range(1, sessions + 1))
     evidence = tuple(
@@ -165,6 +165,9 @@ def test_a_rule_declared_before_the_precision_keeps_its_identity_decisions_and_s
     rule = DataDecisionRule(max_cases=3)
     assert rule.rule_hash == canonical_hash(declared)
     assert DataDecisionRule(max_cases=3, adjusted_precision=1e-5).rule_hash != rule.rule_hash
+    assert rule.panel_agreement == (2e-6, 1e-12)
+    assert DataDecisionRule(max_cases=3, panel_precision=1e-6).rule_hash != rule.rule_hash
+    assert DataDecisionRule(max_cases=3, panel_floor=0.0).rule_hash != rule.rule_hash
     manifest = ResearchWorkspaceManifest.create(
         workspace_id="w",
         default_strategy_package_id=None,
@@ -240,3 +243,13 @@ def test_the_rule_keeps_stored_closes_only_while_its_goal_holds_and_records_each
     assert kept_observations(json.loads(json.dumps(item)) for item in recorded) == (
         ("5" * 64, (("L1", "h", 3, 4e-7),), (0, 2), (1e-6, 1e-12)),
     )
+    decide.panel_kept("L1", 3)  # type: ignore[attr-defined]
+    entry = recorded[-1]
+    assert entry["listing_id"] == "L1" and entry["kept_cells"] == 3
+    assert entry["panel_agreement"] == [2e-6, 1e-12]
+    assert entry["rule_hash"] == DataDecisionRule().rule_hash
+    assert entry["goal_hash"] == goal.goal_hash
+    holding[0] = None
+    assert decide.panel_agreement() == (0.0, 0.0)  # type: ignore[attr-defined]
+    decide.panel_kept("L1", 4)  # type: ignore[attr-defined]
+    assert recorded[-1] == entry  # no keep is authorized after the Goal closes

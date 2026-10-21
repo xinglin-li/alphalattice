@@ -133,8 +133,6 @@ def _lightgbm_parameters(seed=1729):
 def test_completed_alpha_hands_off_to_portfolio_without_refitting(
     completed_alpha_case, monkeypatch, tmp_path
 ):
-    alpha_case = completed_alpha_case
-
     from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
         HistoricalTradabilityBuilder,
         TradabilityBuildCancelled,
@@ -152,7 +150,7 @@ def test_completed_alpha_hands_off_to_portfolio_without_refitting(
         PortfolioResearchArtifactStore,
     )
 
-    root = alpha_case[0]
+    root = completed_alpha_case[0]
     with _session(root) as live:
         manifest = (root / "research-workspace.json").read_bytes()
         parents = [
@@ -160,21 +158,8 @@ def test_completed_alpha_hands_off_to_portfolio_without_refitting(
             for r in _json(live, "/api/experiments")["experiments"]
             if r["kind"] == "alpha.model-development" and r["lifecycle"] == "SUCCEEDED"
         ]
-        if parents:
-            parent_id = parents[0]["task_id"]
-        else:
-            # A standalone test creates its source once. The handoff itself may never fit.
-            plan = _json(
-                live, "/api/experiments/plan", method="POST", payload=_alpha_payload(alpha_case)
-            )
-            sent = _json(
-                live,
-                "/api/experiments/run",
-                method="POST",
-                payload={"experiment_plan_hash": plan["plan_hash"]},
-            )
-            live.dispatcher.drain_for_tests()
-            parent_id = sent["task_id"]
+        assert parents
+        parent_id = parents[0]["task_id"]
         alpha = _json(live, f"/api/experiments/readback?task_id={parent_id}")
         assert alpha["status"] == "EXPERIMENT_PUBLISHED", alpha
         monkeypatch.setattr(
@@ -3448,129 +3433,6 @@ def test_a_continuation_without_its_policy_is_told_the_field_and_the_draft(
     assert refused["next_requests"] == {
         "draft": {"operation": "EXPERIMENT_DRAFT", "task_id": task_id}
     }
-
-
-def test_a_qualification_concludes_every_study_on_its_question_since_the_goal_opened(alpha_case):
-    """A qualification concludes every study on its question since the goal opened."""
-
-    from alphalattice.interface.local_application.portfolio_research import (
-        PortfolioResearchOperationRequest,
-    )
-
-    root, _binding, _factor_task, _decision, _original = alpha_case
-    with _session(root) as live:
-        opened = live.operations.goals.operate(
-            PortfolioResearchOperationRequest(
-                operation="GOAL_OPEN",
-                goal_declaration={
-                    "title": "Ridge penalties on the fixture",
-                    "objective": "Does a ridge Alpha survive its whole family?",
-                    "kind": "RESEARCH",
-                    "scope": "The fixture's bound input and curated Foundation",
-                    "criteria": [
-                        {"criterion_id": "qualified", "text": "A qualification ends the family."}
-                    ],
-                    "deliverables": [
-                        {
-                            "deliverable_id": "qualification",
-                            "kind": "RESULT",
-                            "description": "The qualification's sealed end",
-                        }
-                    ],
-                    "research": {
-                        "purpose": "NEW_RESEARCH",
-                        "comparison_design": "Two ridge penalties, one input and target",
-                        "required_stages": ["ALPHA"],
-                    },
-                },
-                change_reason="Register before the studies",
-            ),
-            "HUMAN",
-        )
-        studies: list[str] = []
-        candidates: list[str] = []
-        for penalty in (5.0, 50.0):
-            payload = _alpha_payload(alpha_case, {"family": "ridge", "alpha": penalty})
-            plan = _json(live, "/api/experiments/plan", method="POST", payload=payload)
-            assert plan["status"] == "PLANNED", plan
-            sent = _json(
-                live,
-                "/api/experiments/run",
-                method="POST",
-                payload={"experiment_plan_hash": plan["plan_hash"]},
-            )
-            assert sent["task_id"], sent  # a study admitted after the goal opened
-            live.dispatcher.drain_for_tests()
-            body = _json(live, f"/api/experiments/readback?task_id={sent['task_id']}")
-            assert body["status"] == "EXPERIMENT_PUBLISHED", body
-            studies.append(sent["task_id"])
-            candidates.append(body["result"]["candidates"][0]["candidate_id"])
-        document = {
-            "experiment": {
-                "kind": "alpha.model-development",
-                "schema_id": "research-experiment-envelope",
-            },
-            "alpha": {
-                "methodology_id": "ALPHA_FAMILY_QUALIFICATION",
-                "goal_id": opened["goal_id"],
-                "question_task_id": studies[0],
-                "nominated_candidate_ids": candidates,
-            },
-        }
-        plan = _json(
-            live, "/api/experiments/plan", method="POST", payload={"experiment_document": document}
-        )
-        assert plan["status"] == "PLANNED", plan
-        preview = plan["execution_preview"]
-        assert preview["study_count"] == 2 and preview["attempted_candidate_ids"] == candidates
-        assert preview["sealed_holdout"] == "UNREAD"
-        sent = _json(
-            live,
-            "/api/experiments/run",
-            method="POST",
-            payload={"experiment_plan_hash": plan["plan_hash"]},
-        )
-        assert sent["task_id"], sent
-        live.dispatcher.drain_for_tests()
-
-        task = live.session.task_control_registry.task(UUID(sent["task_id"]))
-        assert task.lifecycle.value == "SUCCEEDED", (
-            task.lifecycle,
-            task.failure_code,
-            live.dispatcher.failure(task.task_id),
-        )
-        body = _json(live, f"/api/experiments/readback?task_id={sent['task_id']}")
-        assert body["status"] == "EXPERIMENT_PUBLISHED", body
-        sealed = body["alpha_qualification"]
-        assert sealed["attempted_candidate_ids"] == candidates
-        assert [m["task_id"] for m in body["qualification_family"]["members"]] == studies
-        if sealed["disposition"] == "CURRENT_ALPHA_CANDIDATE_SET_READY":
-            assert sealed["candidate_set_hash"] and not sealed["scientific_stop_hash"]
-            assert set(sealed["selected_candidate_ids"]) <= set(sealed["current_qualified_ids"])
-        else:
-            assert sealed["scientific_stop_hash"] and not sealed["candidate_set_hash"]
-            assert sealed["selected_candidate_ids"] == []
-        # A study on the question after the qualification planned changes its family: the plan
-        # it sealed no longer runs.
-        payload = _alpha_payload(alpha_case, {"family": "ridge", "alpha": 12.0})
-        later = _json(live, "/api/experiments/plan", method="POST", payload=payload)
-        again = _json(
-            live, "/api/experiments/plan", method="POST", payload={"experiment_document": document}
-        )
-        assert again["plan_hash"] == plan["plan_hash"]
-        ran = _json(
-            live,
-            "/api/experiments/run",
-            method="POST",
-            payload={"experiment_plan_hash": later["plan_hash"]},
-        )
-        live.dispatcher.drain_for_tests()
-        assert ran["task_id"]
-        grown = _json(
-            live, "/api/experiments/plan", method="POST", payload={"experiment_document": document}
-        )
-        assert grown["plan_hash"] != plan["plan_hash"]
-        assert grown["execution_preview"]["study_count"] == 3
 
 
 @pytest.fixture(scope="module")

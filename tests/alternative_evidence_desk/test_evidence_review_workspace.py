@@ -484,7 +484,7 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
             setup.materialize(args)
     # Its way on fills the runtime and reads the packs, never the same check again.
     ways = setup.setup_refusal(args, raised.value, now=datetime.now(UTC))["next_commands"]
-    assert set(ways) == {"environment", "packs"} and "--offline" in ways["environment"]
+    assert set(ways) == {"environment", "packs"} and "--offline" not in ways["environment"]
     assert transport.calls == []
     args.preflight = False
     with pytest.raises(ValueError, match="explicit_sec_network_consent_required"):
@@ -1220,8 +1220,8 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
 
     missing = json.loads(capsys.readouterr().out)
     assert missing["next_action"] == "CREATE_DECLARED_RETRIEVAL_ENVIRONMENT"
-    assert missing["setup_command"] == [*missing["network_setup_command"], "--offline"]
-    assert "dependency-download permission" in missing["explanation"]
+    assert missing["setup_command"] == missing["network_setup_command"]
+    assert "--offline" not in missing["setup_command"] and missing["disclosure"]
     assert len(spawned) == 2
     # An uninitialized workspace must still reach the ordinary initializer.
     started = []

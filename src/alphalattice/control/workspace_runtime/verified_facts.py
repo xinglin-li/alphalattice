@@ -28,6 +28,8 @@ from threading import Lock
 
 import duckdb
 
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
+
 FILE_FACTS = Path("runtime") / "verified-files.jsonl"
 RACY_SECONDS = 2.0
 """How old a file's modification time must be before a reader's digest of it is kept."""
@@ -35,9 +37,9 @@ RACY_SECONDS = 2.0
 _Key = tuple[str, str]
 _Entry = tuple[tuple[int, int, int], str]
 _LOCK = Lock()
-_KEPT: dict[Path, dict[_Key, _Entry]] = {}
+_KEPT: dict[Path, BoundedMemo[_Key, _Entry]] = {}
 """Per workspace whose writer lease this process holds: its file facts by path and kind."""
-_PROCESS: dict[_Key, _Entry] = {}
+_PROCESS: BoundedMemo[_Key, _Entry] = BoundedMemo()
 """File facts outside a kept workspace, by absolute path and kind, for this process."""
 _HELD: weakref.WeakKeyDictionary[duckdb.DuckDBPyConnection, bool] = weakref.WeakKeyDictionary()
 """Connections that have seen the year-fact table: one catalog read each, not one per call."""
@@ -139,6 +141,19 @@ def forget_year_facts(
         )
 
 
+def configure_file_facts(*, capacity: int | None = None) -> None:
+    """Bound retained RAM facts, preserving active writer leases and the persistent journals."""
+    global _PROCESS
+    with _LOCK:
+        for root, previous in [(None, _PROCESS), *_KEPT.items()]:
+            retained = BoundedMemo[_Key, _Entry](capacity=capacity)
+            retained.update(previous)
+            if root is None:
+                _PROCESS = retained
+            else:
+                _KEPT[root] = retained
+
+
 def keep_file_facts(workspace: Path) -> None:
     """Keep file facts for `workspace` across processes; its writer lease's holder calls this."""
     root = Path(os.path.abspath(workspace))
@@ -163,7 +178,9 @@ def keep_file_facts(workspace: Path) -> None:
         except OSError:
             staged.unlink(missing_ok=True)
     with _LOCK:
-        _KEPT[root] = entries
+        retained = BoundedMemo[_Key, _Entry](capacity=_PROCESS.capacity)
+        retained.update(entries)
+        _KEPT[root] = retained
 
 
 def release_file_facts(workspace: Path) -> None:
@@ -224,7 +241,7 @@ def _holds(path: Path, entry: _Entry) -> bool:
     return (stat.st_size, stat.st_mtime_ns, stat.st_ino) == entry[0]
 
 
-def _place(path: Path, kind: str) -> tuple[dict[_Key, _Entry], _Key]:
+def _place(path: Path, kind: str) -> tuple[BoundedMemo[_Key, _Entry], _Key]:
     absolute = Path(os.path.abspath(path))
     with _LOCK:
         for root, entries in _KEPT.items():

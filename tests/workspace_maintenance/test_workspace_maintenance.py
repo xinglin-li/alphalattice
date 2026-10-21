@@ -98,8 +98,15 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
-from tests.workspace_maintenance.audit_workspace import audit_one
+from tests.workspace_maintenance.audit_workspace import (
+    audit_one,
+    full_action_audit_anchor,
+    seed_action_audit_rows,
+)
 from tests.workspace_maintenance.bounded_provider_support import RecordingBoundedProvider
+from tests.workspace_maintenance.data_update_support import (
+    maintenance_workspace as _maintenance_workspace,
+)
 
 CASE_ROOT = Path(__file__).resolve().parent
 PLAYPEN_ROOT = CASE_ROOT.parents[1]
@@ -146,22 +153,6 @@ def test_a_sealed_request_changes_with_its_candidate_scopes_kept() -> None:
         candidate_recheck=feature,
         candidate_data_recheck=data,
     )
-
-
-def _maintenance_workspace(
-    tmp_path: Path,
-    *,
-    eligible_listing_ids: tuple[str, ...] = ("listing-aapl",),
-    acquisition: UniverseManifest | None = None,
-) -> tuple[UniverseManifest, MarketDataRepository, FeatureStateRepository, PanelStateRepository]:
-    manifest = build_quality_filtered_research_manifest(
-        acquisition or acquisition_manifest(), eligible_listing_ids=eligible_listing_ids
-    )
-    market_data = MarketDataRepository(tmp_path / "workspace")
-    feature_state = FeatureStateRepository(market_data.database, market_data=market_data)
-    panel_state = PanelStateRepository(market_data.database, market_data=market_data)
-    market_data.bootstrap(manifest)
-    return manifest, market_data, feature_state, panel_state
 
 
 def test_dogfood_provider_allows_only_explicit_listing_scoped_history(tmp_path: Path) -> None:
@@ -257,23 +248,8 @@ def test_three_month_absence_is_incremental_but_historical_gap_needs_approval() 
 
 
 def test_action_audit_receipts_chain_rolling_windows_to_full_anchor() -> None:
-    full = ActionAuditChainReceipt.create(
-        listing_id="listing-aapl",
-        provider="fixture",
-        audit_scope=ActionAuditScope.FULL,
-        previous_receipt_hash=None,
-        full_anchor_receipt_hash=None,
-        history_start=date(2016, 1, 4),
-        history_end=date(2026, 7, 31),
-        covered_through_session=date(2026, 7, 31),
-        window_action_hash="a" * 64,
-        action_set_hash="a" * 64,
-        raw_evidence_hash="b" * 64,
-        mapping_revision="c" * 64,
-        data_policy_hash="d" * 64,
-        provider_receipt_hash="e" * 64,
-        observed_at=NOW,
-    )
+    """Control: Action audit receipts chain rolling windows to full anchor."""
+    full = full_action_audit_anchor(observed_at=NOW)
     rolling = ActionAuditChainReceipt.create(
         listing_id=full.listing_id,
         provider=full.provider,
@@ -314,32 +290,14 @@ def test_action_audit_receipts_chain_rolling_windows_to_full_anchor() -> None:
 
 
 def test_an_action_audit_receipt_changed_in_place_is_refused_when_read(tmp_path: Path) -> None:
-    """regression (V258, SC4, EV2): the registry rebuilt a receipt from its stored JSON without
-    its hash, so one whose coverage moved later, its old hash kept, read back accepted and the
-    coordinator reused the chain by that date. A receipt checks its hash when built or read."""
+    """Control: Action audit receipt changed in place is refused when read."""
 
     import duckdb
 
     registry = DuckDbWorkspaceMaintenanceRegistry(
         tmp_path / "market-data.duckdb", gate=WorkspaceMutationGate()
     )
-    full = ActionAuditChainReceipt.create(
-        listing_id="listing-aapl",
-        provider="fixture",
-        audit_scope=ActionAuditScope.FULL,
-        previous_receipt_hash=None,
-        full_anchor_receipt_hash=None,
-        history_start=date(2016, 1, 4),
-        history_end=date(2026, 7, 31),
-        covered_through_session=date(2026, 7, 31),
-        window_action_hash="a" * 64,
-        action_set_hash="a" * 64,
-        raw_evidence_hash="b" * 64,
-        mapping_revision="c" * 64,
-        data_policy_hash="d" * 64,
-        provider_receipt_hash="e" * 64,
-        observed_at=NOW,
-    )
+    full = full_action_audit_anchor(observed_at=NOW)
     assert registry.record_action_audit(full)
     assert registry.latest_action_audit("listing-aapl", "fixture") == full
     with pytest.raises(ValueError, match="receipt hash is invalid"):
@@ -496,6 +454,7 @@ def test_registry_reconciles_only_stale_orphaned_running_cycles(tmp_path: Path) 
 def test_early_resume_is_rejected_before_any_readiness_or_provider_work(
     tmp_path: Path,
 ) -> None:
+    """Control: Early resume is rejected before any readiness or provider work."""
     registry = DuckDbWorkspaceMaintenanceRegistry(
         tmp_path / "market-data.duckdb", gate=WorkspaceMutationGate()
     )
@@ -515,14 +474,9 @@ def test_early_resume_is_rejected_before_any_readiness_or_provider_work(
         def refresh_sources_if_due(self, **_kwargs):
             raise AssertionError("early resume reached durable readiness")
 
-    manifest = build_quality_filtered_research_manifest(
-        acquisition_manifest(),
-        eligible_listing_ids=("listing-aapl", "listing-msft"),
+    manifest, market_data, feature_state, panel_state = _maintenance_workspace(
+        tmp_path, eligible_listing_ids=("listing-aapl", "listing-msft")
     )
-    market_data = MarketDataRepository(tmp_path / "workspace")
-    feature_state = FeatureStateRepository(market_data.database, market_data=market_data)
-    panel_state = PanelStateRepository(market_data.database, market_data=market_data)
-    market_data.bootstrap(manifest)
     coordinator = WorkspaceMaintenanceCoordinator(
         market_data=market_data,
         feature_state=feature_state,
@@ -622,16 +576,11 @@ def test_stale_candidate_membership_cannot_bypass_active_quarantine_child(
 def test_cycle_blocked_inside_quality_governance_resumes_it_when_run_again(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Cycle blocked inside quality governance resumes it when run again."""
+    """Control: Cycle blocked inside quality governance resumes it when run again."""
 
-    manifest = build_quality_filtered_research_manifest(
-        acquisition_manifest(),
-        eligible_listing_ids=("listing-aapl", "listing-msft"),
+    manifest, market_data, feature_state, panel_state = _maintenance_workspace(
+        tmp_path, eligible_listing_ids=("listing-aapl", "listing-msft")
     )
-    market_data = MarketDataRepository(tmp_path / "workspace")
-    feature_state = FeatureStateRepository(market_data.database, market_data=market_data)
-    panel_state = PanelStateRepository(market_data.database, market_data=market_data)
-    market_data.bootstrap(manifest)
     mutation_gate = WorkspaceMutationGate()
     registry = DuckDbWorkspaceMaintenanceRegistry(market_data.path, gate=mutation_gate)
     coordinator = WorkspaceMaintenanceCoordinator(
@@ -692,15 +641,11 @@ def test_cycle_blocked_inside_quality_governance_resumes_it_when_run_again(
         assert seen[-1] == (status, phase, expected), seen[-1]
 
 
-def test_snapshot_publication_gets_one_idempotent_transient_retry(tmp_path: Path) -> None:
-    manifest = build_quality_filtered_research_manifest(
-        acquisition_manifest(),
-        eligible_listing_ids=("listing-aapl", "listing-msft"),
+def test_snapshot_publication_retries_one_transient_failure(tmp_path: Path) -> None:
+    """Control: A transient publish error retries once, then succeeds."""
+    manifest, market_data, feature_state, panel_state = _maintenance_workspace(
+        tmp_path, eligible_listing_ids=("listing-aapl", "listing-msft")
     )
-    market_data = MarketDataRepository(tmp_path / "workspace")
-    feature_state = FeatureStateRepository(market_data.database, market_data=market_data)
-    panel_state = PanelStateRepository(market_data.database, market_data=market_data)
-    market_data.bootstrap(manifest)
 
     class Publisher:
         def __init__(self) -> None:
@@ -738,14 +683,10 @@ def test_snapshot_publication_gets_one_idempotent_transient_retry(tmp_path: Path
 def test_snapshot_publication_clock_cannot_precede_active_panel_cutoff(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    manifest = build_quality_filtered_research_manifest(
-        acquisition_manifest(),
-        eligible_listing_ids=("listing-aapl", "listing-msft"),
+    """Control: Snapshot publication clock cannot precede active panel cutoff."""
+    manifest, market_data, feature_state, panel_state = _maintenance_workspace(
+        tmp_path, eligible_listing_ids=("listing-aapl", "listing-msft")
     )
-    market_data = MarketDataRepository(tmp_path / "workspace")
-    feature_state = FeatureStateRepository(market_data.database, market_data=market_data)
-    panel_state = PanelStateRepository(market_data.database, market_data=market_data)
-    market_data.bootstrap(manifest)
     active_cutoff = NOW + timedelta(minutes=5)
     monkeypatch.setattr(
         panel_state,
@@ -788,14 +729,10 @@ def test_snapshot_publication_clock_cannot_precede_active_panel_cutoff(
 def test_blocked_partial_maintenance_does_not_publish_adjusted_revision(
     tmp_path: Path,
 ) -> None:
-    manifest = build_quality_filtered_research_manifest(
-        acquisition_manifest(),
-        eligible_listing_ids=("listing-aapl", "listing-msft"),
+    """Control: Blocked partial maintenance never publish adjusted revision."""
+    manifest, market_data, feature_state, panel_state = _maintenance_workspace(
+        tmp_path, eligible_listing_ids=("listing-aapl", "listing-msft")
     )
-    market_data = MarketDataRepository(tmp_path / "workspace")
-    feature_state = FeatureStateRepository(market_data.database, market_data=market_data)
-    panel_state = PanelStateRepository(market_data.database, market_data=market_data)
-    market_data.bootstrap(manifest)
     mutation_gate = WorkspaceMutationGate()
     registry = DuckDbWorkspaceMaintenanceRegistry(market_data.path, gate=mutation_gate)
     request = _request()
@@ -1665,7 +1602,7 @@ def test_daily_transport_workers_fetch_only_and_main_thread_persists(
     assert {tuple(tuple(row.change_document[key]) for key in keys) for row in documents} == {
         (("2026-07-31",), (), ("2026-07-31",))
     }
-    assert len(provider.worker_ids) == 2
+    assert len(provider.worker_ids) == 2 and not hasattr(runner, "_refresh_listing")
     assert main_thread not in provider.worker_ids
     assert all(
         market_data.raw_bars(item.listing_id)[-1].session_date == date(2026, 7, 31)
@@ -1674,12 +1611,10 @@ def test_daily_transport_workers_fetch_only_and_main_thread_persists(
     # The session-only projection the Feature build plans on is the same
     # ordered axis as the bars, with and without the through bound.
     for item in manifest.listings:
-        bars = market_data.raw_bars(item.listing_id)
-        assert market_data.raw_bar_sessions(item.listing_id) == tuple(
-            bar.session_date for bar in bars
-        )
+        days = tuple(bar.session_date for bar in market_data.raw_bars(item.listing_id))
+        assert market_data.raw_bar_sessions(item.listing_id) == days
         assert market_data.raw_bar_sessions(item.listing_id, through=date(2026, 7, 30)) == tuple(
-            bar.session_date for bar in bars if bar.session_date <= date(2026, 7, 30)
+            day for day in days if day <= date(2026, 7, 30)
         )
     assert market_data.manifest_raw_through(manifest) == date(2026, 7, 31)
     assert market_data.manifest_provider_adjusted_through(manifest) == date(2026, 7, 31)
@@ -1989,23 +1924,10 @@ def test_failed_listing_gets_one_new_bounded_attempt_then_exactly_reuses(
 
 
 def test_failed_listing_stops_after_two_bounded_attempts(tmp_path: Path) -> None:
+    """Control: Failed listing stops after two bounded attempts."""
     manifest, market_data, _, _ = _maintenance_workspace(tmp_path)
-    rows = tuple(
-        {
-            "session_date": session.isoformat(),
-            "open": 100.0,
-            "high": 101.0,
-            "low": 99.0,
-            "close": 100.0,
-            "volume": 1_000_000,
-        }
-        for session in (date(2026, 7, 29), date(2026, 7, 30))
-    )
-    market_data.apply_validated_batch(
-        manifest,
-        sanitize_payload(manifest, "fixture", {"AAPL": rows}, ("AAPL",)),
-        ingestion_id="initial",
-        observed_at=NOW,
+    seed_action_audit_rows(
+        market_data, manifest, (date(2026, 7, 29), date(2026, 7, 30)), observed_at=NOW
     )
 
     class InvalidProvider:
@@ -2395,23 +2317,10 @@ def test_a_table_written_before_grants_reads_without_one_and_is_not_migrated_by_
 
 
 def test_full_history_requirement_never_becomes_fetch_authority(tmp_path: Path) -> None:
+    """Control: Full history requirement never becomes fetch authority."""
     manifest, market_data, _, _ = _maintenance_workspace(tmp_path)
-    rows = tuple(
-        {
-            "session_date": session.isoformat(),
-            "open": 100.0,
-            "high": 101.0,
-            "low": 99.0,
-            "close": 100.0,
-            "volume": 1_000_000,
-        }
-        for session in (date(2026, 7, 29), date(2026, 7, 30))
-    )
-    market_data.apply_validated_batch(
-        manifest,
-        sanitize_payload(manifest, "fixture", {"AAPL": rows}, ("AAPL",)),
-        ingestion_id="initial",
-        observed_at=NOW,
+    seed_action_audit_rows(
+        market_data, manifest, (date(2026, 7, 29), date(2026, 7, 30)), observed_at=NOW
     )
 
     class ExplodingProvider:
@@ -2607,6 +2516,7 @@ def test_reused_change_document_does_not_advance_action_audit_chain(
 def test_rolling_provider_receipt_cannot_be_laundered_into_full_audit_anchor(
     tmp_path: Path,
 ) -> None:
+    """Control: Rolling provider receipt cannot be laundered into full audit anchor."""
     manifest, market_data, feature_state, panel_state = _maintenance_workspace(tmp_path)
     sessions = (
         date(2026, 7, 1),
@@ -2614,23 +2524,7 @@ def test_rolling_provider_receipt_cannot_be_laundered_into_full_audit_anchor(
         date(2026, 7, 29),
         date(2026, 7, 30),
     )
-    rows = tuple(
-        {
-            "session_date": session.isoformat(),
-            "open": 100.0,
-            "high": 101.0,
-            "low": 99.0,
-            "close": 100.0,
-            "volume": 1_000_000,
-        }
-        for session in sessions
-    )
-    market_data.apply_validated_batch(
-        manifest,
-        sanitize_payload(manifest, "fixture", {"AAPL": rows}, ("AAPL",)),
-        ingestion_id="initial",
-        observed_at=NOW,
-    )
+    seed_action_audit_rows(market_data, manifest, sessions, observed_at=NOW)
     rolling_receipt, _counts = audit_one(
         market_data,
         manifest,
@@ -2728,27 +2622,11 @@ def test_rolling_provider_receipt_cannot_be_laundered_into_full_audit_anchor(
 
 
 def test_a_batched_action_audit_keeps_every_per_event_outcome(tmp_path: Path) -> None:
-    """A first audit inserts as one relation; the other outcomes are still judged per event."""
+    """Control: Batched action audit keeps every per event outcome."""
 
     manifest, market_data, _, _ = _maintenance_workspace(tmp_path)
     sessions = tuple(date(2026, 7, 20) + timedelta(days=offset) for offset in range(5))
-    rows = tuple(
-        {
-            "session_date": session.isoformat(),
-            "open": 100.0,
-            "high": 101.0,
-            "low": 99.0,
-            "close": 100.0,
-            "volume": 1_000_000,
-        }
-        for session in sessions
-    )
-    market_data.apply_validated_batch(
-        manifest,
-        sanitize_payload(manifest, "fixture", {"AAPL": rows}, ("AAPL",)),
-        ingestion_id="initial",
-        observed_at=NOW,
-    )
+    seed_action_audit_rows(market_data, manifest, sessions, observed_at=NOW)
     adjusted = tuple(
         ProviderAdjustedClosePoint(
             listing_id="listing-aapl", provider="fixture", session_date=s, adjusted_close=100.0

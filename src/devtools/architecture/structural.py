@@ -911,6 +911,8 @@ def _logical_module_name(module: str) -> str:
         parts = parts[2:]
     elif len(parts) >= 2 and parts[:2] == ["devtools", "architecture"]:
         parts = ["playpen_governance", *parts[2:]]
+    elif len(parts) >= 2 and parts[:2] == ["devtools", "evaluation"]:
+        parts = ["evaluation", *parts[2:]]
     return ".".join(parts)
 
 

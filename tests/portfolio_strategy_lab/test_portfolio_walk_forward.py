@@ -9,7 +9,7 @@ from dataclasses import field as dataclass_field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import pyarrow as pa
@@ -524,19 +524,24 @@ def _publish_operational_tradability(  # type: ignore[no-untyped-def]
     return store, bundle, decision, execution
 
 
-def test_a_future_entry_open_cannot_move_the_real_rebalance_decision() -> None:
-    """A future entry open cannot move the real rebalance decision."""
-
+@pytest.fixture
+def policy_provider() -> Any:
     from alphalattice.investment.portfolio_strategy_lab.evaluation.walk_forward import (
         PortfolioPolicyDecisionProvider,
     )
 
-    provider = PortfolioPolicyDecisionProvider(
+    return PortfolioPolicyDecisionProvider(
         workspace=_workspace(),
         candidate_id="candidate",
         score_mode=PortfolioScoreMode.STOCK_ONLY,
         policy=TopKEqualWeightPolicy(top_k=4, maximum_weight=0.25),
     )
+
+
+def test_a_future_entry_open_cannot_move_the_real_rebalance_decision(policy_provider: Any) -> None:
+    """Control: Future entry open cannot move real rebalance decision."""
+
+    provider = policy_provider
     reference = np.full(8, 1.0 / 8.0)
     quiet = np.full(8, 1.0 / 8.0)
     violent = np.array([0.9, 0.02, 0.02, 0.02, 0.01, 0.01, 0.01, 0.01])
@@ -561,19 +566,10 @@ def test_a_future_entry_open_cannot_move_the_real_rebalance_decision() -> None:
     assert not np.array_equal(quiet, violent)
 
 
-def test_a_hold_makes_no_decision_and_no_forecast() -> None:
-    """A hold makes no decision and no forecast."""
+def test_a_hold_makes_no_decision_and_no_forecast(policy_provider: Any) -> None:
+    """Control: Hold makes no decision and no forecast."""
 
-    from alphalattice.investment.portfolio_strategy_lab.evaluation.walk_forward import (
-        PortfolioPolicyDecisionProvider,
-    )
-
-    provider = PortfolioPolicyDecisionProvider(
-        workspace=_workspace(),
-        candidate_id="candidate",
-        score_mode=PortfolioScoreMode.STOCK_ONLY,
-        policy=TopKEqualWeightPolicy(top_k=4, maximum_weight=0.25),
-    )
+    provider = policy_provider
     drifted = np.array([0.3, 0.3, 0.2, 0.2, 0.0, 0.0, 0.0, 0.0])
     before = provider.decided_count
     decision = provider(

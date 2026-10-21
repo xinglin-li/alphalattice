@@ -6,8 +6,10 @@ import json
 import shutil
 from dataclasses import asdict
 from datetime import date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -33,6 +35,7 @@ from tests.researcher_methodology_surface.real_workspace import (
     _bootstrap,
 )
 from tests.researcher_methodology_surface.session_workspace import copy_workspace, session_workspace
+from tests.workspace_maintenance import data_update_support
 from tests.workspace_maintenance.data_update_support import _provider, one_sector_seed
 from tests.workspace_maintenance.local_data_provider import (
     NOW,
@@ -405,6 +408,7 @@ def test_a_partial_membership_update_reopens_its_exact_approved_task(
 def test_new_source_member_is_feature_qualified_before_entry_and_its_history_stays_out(
     entrant_seed, tmp_path, monkeypatch, candidate_features_available
 ):
+    """Control: New source member is feature qualified before entry and its history stays out."""
     from alphalattice.control.task_control.child import ChildCalls
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
     from alphalattice.foundation.market_data_ops.sources.manifest import (
@@ -643,7 +647,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
 def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_feature_work(
     qualified, tmp_path, monkeypatch
 ):
-    """A stale member on the entrant recheck day is governed before any feature work."""
+    """Control: Stale member on entrant recheck day is governed before any feature work."""
 
     from alphalattice.control.task_control.child import ChildCalls
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
@@ -1448,35 +1452,33 @@ def test_an_unknown_accumulated_listing_is_still_refused(current_member_seed, tm
 
 
 def test_the_data_stage_opens_the_market_store_once(qualified, tmp_path):
-    """The data stage opens the market store once."""
-    workspace = tmp_path / "daily"
-    shutil.copytree(qualified, workspace)
+    """One injected root serves all five consumers while both write stages open once."""
+    from alphalattice.foundation.market_data_ops.sources import providers
+
+    workspace = copy_workspace(qualified, tmp_path / "daily")
     binding = bind_existing_data_workspace(workspace)
+    provider = _provider()
 
-    def unavailable_source(**_):
-        raise RuntimeError("fixture candidate source unavailable")
-
-    with LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=binding,
-        resolver=_Resolver(_resolved()),
-        data_provider=_provider(),
-        data_source_loader=unavailable_source,
-        clock=lambda: NOW,
-    ) as live:
-        plan = _json(live, "/api/data-update/plan", method="POST", payload={})
+    cache = workspace / "yfinance-cache"
+    with (
+        patch.object(type(provider), "__bool__", return_value=False, create=True),
+        patch.object(providers, "YFinanceMarketDataProvider", return_value=provider) as build,
+        data_update_support.data_update_session(workspace, binding, provider=None) as live,
+    ):
+        assert (owner := live.operations.data_update).provider is provider
+        post = partial(_json, live, method="POST")
+        plan = post("/api/data-update/plan", payload={})
         assert plan["status"] == "PLANNED" and plan["change"] is None, plan
-        run = _json(
-            live,
-            "/api/data-update/run",
-            method="POST",
-            payload={"update_plan_hash": plan["plan_hash"]},
-        )
+        run = post("/api/data-update/run", payload={"update_plan_hash": plan["plan_hash"]})
         live.dispatcher.drain_for_tests(timeout=300)
         status = _json(live, "/api/status?task_id=" + run["task_id"])
         assert status["lifecycle"] == "SUCCEEDED", status
         assert _json(live, "/api/data-update")["inputs"]["panel_through"] == NOW.date().isoformat()
-    opens = {
+        assert owner.reusable(owner.prepare(plan["plan_hash"])) is not None
+        assert providers.market_provider(workspace, "", provider) is provider
+        assert build.called and all(c.args == (cache,) for c in build.call_args_list)
+    expected = {"maintain_data_feature": 1, "publish_update_receipt": 1}
+    assert {
         stage["stage_id"]: sum(
             row["count"]
             for phase in stage["phases"]
@@ -1485,6 +1487,5 @@ def test_the_data_stage_opens_the_market_store_once(qualified, tmp_path):
             if (row["category"], row["detail"]) == ("read", "duckdb_instance_open")
         )
         for stage in status["timing"]["stages"]
-    }
-    assert opens["maintain_data_feature"] == 1
-    assert opens["publish_update_receipt"] == 1
+        if stage["stage_id"] in expected
+    } == expected

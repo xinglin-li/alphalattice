@@ -765,7 +765,7 @@ def test_a_builds_own_priming_opens_without_deriving_the_corpus_again(
 def test_pair_scores_are_served_only_under_a_sealed_commitment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Pair scores are served only under a sealed commitment."""
+    """Control: Pair scores are served only under sealed commitment."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     scored: list[int] = []
@@ -912,7 +912,7 @@ def test_pair_scores_are_served_only_under_a_sealed_commitment(
 def test_the_runtime_commits_the_blocks_a_session_scored_and_the_receipt_names_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The runtime commits the blocks a session scored and the receipt names it."""
+    """Control: Runtime commits blocks session scored and receipt names it."""
 
     runtime, _passes = _counted_runtime(tmp_path)
     scored: list[int] = []

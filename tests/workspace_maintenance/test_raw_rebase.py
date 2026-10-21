@@ -326,6 +326,123 @@ def test_a_split_rebuilds_exactly_the_feature_cells_its_rescale_moves(tmp_path: 
     )
 
 
+def test_a_kept_feature_gap_cannot_escape_through_a_low_dispersion_panel(tmp_path, monkeypatch):
+    """One share of re-rounding is within Feature agreement but amplifies in a narrow Panel.
+    Real stored history, cold publication and repair cost over ten seconds."""
+    from types import SimpleNamespace
+
+    import numpy as np
+    import pandas as pd
+    import pyarrow.parquet as pq
+
+    from alphalattice.control.data_platform.maintenance import contracts, invalidation, rebase_reach
+    from tests.feature_engine import panel_workspace as fixture
+
+    manifest, day = fixture.fixture_manifest(), fixture.SESSIONS[300]
+    listing, factor = manifest.listings[0].listing_id, "volume_zscore_21"
+    volumes = pd.DataFrame(
+        [
+            (item.listing_id, session, 10**12 + (j % 31) * 10**10 + i * (j % 11) * 2)
+            for i, item in enumerate(manifest.listings)
+            for j, session in enumerate(fixture.SESSIONS[:301])
+        ],
+        columns=["listing_id", "session_date", "volume"],
+    )
+    spaces = [fixture.panel_workspace(tmp_path / name, manifest, end=day, spy="a" * 64)
+              for name in ("kept", "cold")]  # fmt: skip
+    for space in spaces:
+        with space.market_data.database.transaction() as db:
+            db.register("narrow", volumes)
+            db.execute(
+                "UPDATE raw_daily_bar_current b SET volume = n.volume FROM narrow n"
+                " WHERE b.listing_id = n.listing_id AND b.session_date = n.session_date"
+            )
+            db.unregister("narrow")
+    space, cold = spaces
+    service = space.service
+    build = dict(spy="a" * 64, as_of=day, observed_at=fixture.NOW, refresh_sector=True)
+    _, held = fixture.build_and_publish(space, manifest, **build)
+    for target in spaces:
+        with target.market_data.database.transaction() as db:
+            db.execute(
+                "UPDATE raw_daily_bar_current SET volume = volume + 1"
+                " WHERE listing_id = ? AND session_date = ?",
+                [listing, day],
+            )
+    _, fresh = fixture.build_and_publish(cold, manifest, **build)
+
+    def value(target, published):
+        chunk = next(
+            c
+            for c in published["chunks"]
+            if c["first_session"] <= day.isoformat() <= c["last_session"]
+        )
+        chunks = target.market_data.workspace / "artifacts/feature-panel/chunks"
+        table = pq.read_table(
+            chunks / f"{chunk['chunk_hash']}.parquet",
+            columns=[factor],
+            filters=[("listing_id", "=", listing), ("session_date", "=", day)],
+        )
+        return table.column(factor)[0].as_py(), target.feature_state.feature_rows(
+            listing_ids=(listing,), catalog_hash=service.catalog.binding.catalog_hash,
+            start=day, end=day, factor_ids=(factor,),
+        )[0][factor]  # fmt: skip
+
+    expected, expected_feature = value(cold, fresh)
+    assert not np.isclose(value(space, held)[0], expected, rtol=2e-6, atol=1e-12)
+    assert (
+        rebase_reach.rebase_moved(
+            service, listing, as_of_session=day, observed_at=fixture.NOW, agreement=(1e-6, 1e-12)
+        )
+        == ()
+    )  # the Feature-only cutoff lawfully keeps every cell
+    reads, saved = [], []
+    original = space.feature_state.feature_rows
+
+    def read(**kwargs):
+        if len(kwargs["listing_ids"]) > 1:
+            reads.append(kwargs["listing_ids"])
+        return original(**kwargs)
+
+    monkeypatch.setattr(space.feature_state, "feature_rows", read)
+    monkeypatch.setattr(rebase_reach, "ex_date_deltas", lambda *args: [(listing,)])
+    diagnose = SimpleNamespace(
+        agreement=lambda: (1e-6, 1e-12),
+        panel_agreement=lambda: (2e-6, 1e-12),
+        panel_kept=lambda *args: saved.append(args),
+    )
+    owner = SimpleNamespace(
+        diagnose=diagnose,
+        market_data=space.market_data,
+        manifest=manifest,
+        feature_foundation=service,
+        registry=SimpleNamespace(
+            rebase_moved_since=lambda *args, **kwargs: {}, update=lambda *args, **kwargs: None
+        ),
+    )
+    cycle = SimpleNamespace(cycle_id="c", request=SimpleNamespace(target_market_session=day))
+    active = space.panel_state.active_feature_panel(manifest.profile.market_profile_id)
+    changes = rebase_reach.rebase_reach(
+        owner, cycle, contracts.MarketDataChangeSet(), active, fixture.NOW
+    )
+    assert changes
+    assert day in dict(next(c for c in changes if c.listing_id == listing).rebase_moved)[factor]
+    assert len(reads) == 1 and saved
+    effects = (
+        invalidation.FeatureInvalidationTopology(service.catalog)
+        .plan(
+            contracts.MarketDataChangeSet(changes),
+            history_start=fixture.SESSIONS[0],
+            as_of_session=day,
+        )
+        .invalidations
+    )
+    _, repaired = fixture.build_and_publish(
+        space, manifest, **build | {"refresh_sector": False}, invalidations=effects
+    )
+    assert value(space, repaired) == (expected, expected_feature)
+
+
 def test_a_splits_moved_cells_are_owed_across_a_crash_until_the_panel_holds_them(
     tmp_path: Path,
     monkeypatch,

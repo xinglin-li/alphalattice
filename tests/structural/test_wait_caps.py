@@ -8,7 +8,10 @@ from pathlib import Path
 
 def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:
     """TE12: discover capped owners and polling sleeps, so a new waiter needs class review."""
-    path = Path("src/alphalattice/interface/local_application/client.py")
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "src/alphalattice/interface/local_application/client.py"
+    )
     tree = ast.parse(path.read_text(encoding="utf-8"))
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     capped = set()
@@ -57,7 +60,7 @@ def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:
 
 def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
     """Discover deadline owners in Host/transport/storage, including nested lock waits."""
-    base = Path("src/alphalattice")
+    base = Path(__file__).resolve().parents[2] / "src/alphalattice"
     found = set()
     for root in (
         "interface/local_application",

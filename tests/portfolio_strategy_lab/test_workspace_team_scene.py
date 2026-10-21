@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
-import sys
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -19,34 +17,14 @@ import pytest
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, _request, run_node
+from tests.portfolio_strategy_lab.local_web_support import _cli, _json, _request, run_node
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 MODULES = (
     Path(__file__).resolve().parents[2]
     / "src/alphalattice/interface/local_application/assets/workbench-source/js/app"
 )
 SESSION = "019a0b1c-parent-session"
 SCOPE = sha256(b"parent-session|workspace").hexdigest()
-
-
-def _cli(live: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str, Any]]:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--workspace",
-            str(live.workspace),
-            "--view",
-            "full",
-            *arguments,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    assert live.web.application.external_token not in result.stdout  # type: ignore[union-attr]
-    return result.returncode, json.loads(result.stdout)
 
 
 class _Producer:

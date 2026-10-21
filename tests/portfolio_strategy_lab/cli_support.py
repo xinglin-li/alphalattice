@@ -9,13 +9,17 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 
 from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.cli import request_of
 from alphalattice.interface.local_application.native_setup import declare_project
+from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchOperation,
+    PortfolioResearchOperationRequest,
+)
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 
@@ -109,3 +113,13 @@ def _inprocess_cli(
         code = int(stopped.code or 0)
     stdout = capsys.readouterr().out
     return code, json.loads(stdout.strip().splitlines()[-1]), stdout
+
+
+def strategy_readback_operations() -> set[str]:
+    """Read the declared operations whose plans name a strategy."""
+    contract = PortfolioResearchOperationRequest.field_contract
+    return {
+        operation.replace("_PLAN", "_READBACK")
+        for operation in get_args(PortfolioResearchOperation.__value__)
+        if operation.endswith("_PLAN") and "strategy_package_id" in contract(operation)[0]
+    }

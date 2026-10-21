@@ -8,7 +8,7 @@ receive only its already-activated manifest projection.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import InitVar, dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from functools import partial
@@ -40,6 +40,7 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
     build_current_index_acquisition_manifest,
     build_quality_filtered_research_manifest,
     current_index_profile_id,
+    read_market_profile,
 )
 from alphalattice.foundation.market_data_ops.sources.membership import (
     UniverseSourceObservation,
@@ -48,7 +49,7 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
 )
 from alphalattice.foundation.market_data_ops.sources.providers import (
     MarketDataProvider,
-    YFinanceMarketDataProvider,
+    market_provider,
 )
 from alphalattice.foundation.market_data_ops.sources.universe import (
     CurrentUniverseBootstrap,
@@ -180,14 +181,14 @@ def build_workspace_readiness(
     source_loader: SourceLoader | None = None,
 ) -> WorkspaceReadinessGate:
     """One composition for CLI, initial preparation and subsequent updates."""
+    profile = read_market_profile(profile_path)
     return WorkspaceReadinessGate(
         market_data=market,
         feature_state=FeatureStateRepository(market.database, market_data=market),
         panel_state=PanelStateRepository(market.database, market_data=market),
         profile_path=profile_path,
-        provider=provider
-        if provider is not None
-        else YFinanceMarketDataProvider(market.workspace / "yfinance-cache"),
+        provider=market_provider(market.workspace, profile.provider, provider),
+        _profile_id=profile.market_profile_id,
         source_loader=source_loader
         if source_loader is not None
         else partial(guarded_membership_source, workspace=market.workspace),
@@ -320,10 +321,12 @@ class WorkspaceReadinessGate:
     scheduled assessment always fell back to the live network fetch.
     """
 
-    def __post_init__(self) -> None:
+    _profile_id: InitVar[str | None] = None
+
+    def __post_init__(self, _profile_id: str | None) -> None:
         """Resolve the installed profile and the candidate Data requalification owner."""
         self.profile_path = Path(self.profile_path)
-        self.market_profile_id = self._market_profile_id()
+        self.market_profile_id = _profile_id or current_index_profile_id(self.profile_path)
         self.candidate_data = CandidateDataRequalification(
             market_data=self.market_data,
             market_profile_id=self.market_profile_id,
@@ -1054,7 +1057,3 @@ class WorkspaceReadinessGate:
         if record is None:
             raise AssertionError("workspace readiness write was not durable")
         return record
-
-    def _market_profile_id(self) -> str:
-        # The profile's owner reads it, by its contract and the one loader.
-        return str(current_index_profile_id(self.profile_path))

@@ -412,7 +412,7 @@ def _canonical_materialization(
             ),
         }
     )
-    sector_by_listing_id = {value: f"S{index % 2}" for index, value in enumerate(sorted(listings))}
+    sectors = {value: f"SECTOR{index % 2}" for index, value in enumerate(sorted(listings))}
     recipe = build_canonical_alpha_target_recipe(
         execution_outcome_recipe_id="one-session-open-to-open",
         sector_revision="a" * 64,
@@ -420,7 +420,7 @@ def _canonical_materialization(
         minimum_sector_sample=2,
     )
     surface = compile_canonical_alpha_target_surface(
-        source_table=table, recipe=recipe, sector_by_listing_id=sector_by_listing_id
+        source_table=table, recipe=recipe, sector_by_listing_id=sectors
     )
     binding = CanonicalAlphaTargetRecipeBinding.create(
         recipe=recipe,

@@ -23,6 +23,8 @@ def serve(arguments: list[str]) -> int:
         read_research_workspace_manifest,
     )
     from alphalattice.interface.local_application.retrieval_environment import (
+        LOCKED_SETUP_DISCLOSURE,
+        LOCKED_SETUP_WORDS,
         fill_command,
         interpreter_path,
     )
@@ -62,9 +64,9 @@ def serve(arguments: list[str]) -> int:
                         "next_action": "CREATE_DECLARED_RETRIEVAL_ENVIRONMENT",
                         "setup_command": fill_command(),
                         "network_setup_command": fill_command(offline=False),
-                        "explanation": "Offline setup requires cached pinned packages. "
-                        "Use network_setup_command only with dependency-download permission; "
-                        "neither command supplies model or issuer authority.",
+                        "offline_setup_command": fill_command(offline=True),
+                        "explanation": LOCKED_SETUP_WORDS,
+                        "disclosure": LOCKED_SETUP_DISCLOSURE,
                     }
                 )
             )
@@ -154,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
                             "install",
                             "--python",
                             sys.executable,
-                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.1",
+                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.2",
                         ]
                     ),
                     "interpreter": sys.executable

@@ -12,11 +12,12 @@ workspace at all.
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 import threading
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from io import StringIO
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
@@ -33,19 +34,14 @@ from alphalattice.control.product_host.composition.research_workspace import (
     publish_research_workspace_manifest,
     read_research_workspace_manifest,
 )
-from alphalattice.control.product_host.research_authoring.factor_inputs import bind_factor_inputs
 from alphalattice.control.product_host.storage.plan_previews import (
     PREVIEW_CAPACITY,
     PREVIEW_TTL,
     PreviewRegistry,
 )
+from alphalattice.interface.local_application.cli import main
 from tests.portfolio_strategy_lab.local_web_support import _json, _manifest, _resolved, _Resolver
-from tests.researcher_methodology_surface.real_workspace import (
-    build_real_risk_workspace,
-    publish_causal_outcomes,
-)
-
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
+from tests.researcher_methodology_surface.session_workspace import copy_workspace
 
 
 class _Clock:
@@ -59,20 +55,17 @@ class _Clock:
 
 
 @pytest.fixture(scope="module")
-def research_root(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, str, str]:
+def research_root(
+    input_seed: Path, tmp_path_factory: pytest.TempPathFactory
+) -> tuple[Path, str, str]:
     """A real Factor research workspace: root, admitted input id and binding hash."""
 
-    source = build_real_risk_workspace(
-        tmp_path_factory.mktemp("context-source"),
-        symbols=tuple(f"F{i:03d}" for i in range(120)),
+    root = copy_workspace(input_seed, tmp_path_factory.mktemp("context-web") / "workspace")
+    bindings = read_research_workspace_manifest(root).experiment_inputs
+    publish_research_workspace_manifest(
+        root, _manifest("shared-context").with_bindings(experiment_inputs=bindings)
     )
-    root = tmp_path_factory.mktemp("context-web") / "workspace"
-    root.mkdir()
-    publish_research_workspace_manifest(root, _manifest("shared-context"))
-    outcome, _ref = publish_causal_outcomes(source, at=datetime(2026, 8, 2, tzinfo=UTC))
-    binding = bind_factor_inputs(
-        workspace=root, source=source.workspace, outcome_snapshot_hash=outcome
-    )
+    (binding,) = bindings
     return root, binding.input_id, binding.binding_hash
 
 
@@ -98,22 +91,15 @@ def host(research_root: tuple[Path, str, str], clock: _Clock):  # type: ignore[n
 
 
 def _cli(host: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str, Any]]:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--workspace",
-            str(host.workspace),
-            "--view",
-            "full",
-            *arguments,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    assert host.web.application.external_token not in result.stdout  # type: ignore[union-attr]
-    return result.returncode, json.loads(result.stdout)
+    output = StringIO()
+    with redirect_stdout(output):
+        code = main(
+            ["--workspace", str(host.workspace), "--view", "full", *arguments],
+            serve=lambda _: pytest.fail("unexpected Host start"),
+        )
+    stdout = output.getvalue()
+    assert host.web.application.external_token not in stdout  # type: ignore[union-attr]
+    return code, json.loads(stdout)
 
 
 def _binding(host: LocalPortfolioWebSession) -> tuple[str, str]:

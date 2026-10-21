@@ -726,53 +726,6 @@ def _load_outcome_surface(
     return result
 
 
-def _matrix_for_keys(
-    keys: tuple[tuple[date, str], ...],
-    feature: _FeatureSurface,
-    outcome: _OutcomeSurface | None,
-    *,
-    factor_count: int,
-    outcome_available_through: date | None = None,
-    copy_values: bool = False,
-    include_hashes: bool = True,
-) -> tuple[
-    FloatArray,
-    FloatArray,
-    BoolArray,
-    BoolArray,
-    tuple[str | None, ...],
-    tuple[str | None, ...],
-    FloatArray,
-]:
-    """The matrices of rows named by (session, listing) keys, resolved on each surface."""
-
-    sessions = pa.array([key[0] for key in keys], pa.date32())
-    listings = pa.array([key[1] for key in keys], pa.string())
-    feature_indices = _positions(
-        sessions, listings, session_index=feature.session_index, listing_index=feature.listing_index
-    )
-    outcome_indices = (
-        None
-        if outcome is None
-        else _positions(
-            sessions,
-            listings,
-            session_index=outcome.session_index,
-            listing_index=outcome.listing_index,
-        )
-    )
-    return _matrix_for_rows(
-        feature_indices,
-        outcome_indices,
-        feature,
-        outcome,
-        factor_count=factor_count,
-        outcome_available_through=outcome_available_through,
-        copy_values=copy_values,
-        include_hashes=include_hashes,
-    )
-
-
 def _matrix_for_rows(
     feature_indices: IntArray,
     outcome_indices: IntArray | None,

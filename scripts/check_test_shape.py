@@ -18,6 +18,9 @@ from difflib import SequenceMatcher
 from functools import lru_cache
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from devtools.architecture.git_inputs import read_blobs as _blobs
+
 ROOT = Path(__file__).resolve().parents[1]
 CAP_BYTES = 100 * 1024
 SLEEP = re.compile(r"\bsleep\(\s*(\d+(?:\.\d+)?)\s*\)")
@@ -400,25 +403,6 @@ def _git(*args: str, root: Path = ROOT) -> subprocess.CompletedProcess[str]:
         encoding="utf-8",
         errors="replace",
     )
-
-
-def _blobs(specs: list[str], root: Path = ROOT) -> dict[str, str]:
-    result = subprocess.run(
-        ["git", "cat-file", "--batch"],
-        input=("\n".join(specs) + "\n").encode(),
-        cwd=root,
-        capture_output=True,
-        check=True,
-    )
-    stream, found = io.BytesIO(result.stdout), {}
-    for spec in specs:
-        header = stream.readline().split()
-        if header[-1:] == [b"missing"]:
-            continue
-        data = stream.read(int(header[-1]))
-        stream.read(1)
-        found[spec] = data.decode("utf-8", errors="surrogateescape")
-    return found
 
 
 def weekly_report(root: Path = ROOT) -> dict:

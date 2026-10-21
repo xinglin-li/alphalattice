@@ -23,7 +23,10 @@ from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from alphalattice.interface.local_application.cli_contract import BINDING_NOTICE
+from alphalattice.interface.local_application.cli_contract import (
+    BINDING_NOTICE,
+    command,
+)
 from alphalattice.interface.local_application.failure_codes import safe_failure_code, setup_failure
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_DIRECTORY,
@@ -50,6 +53,8 @@ from alphalattice.interface.local_application.native_bridge import (
     session_project,
 )
 from alphalattice.interface.local_application.native_usage import codex_thread_spawn
+from alphalattice.interface.local_application.retrieval_environment import LOCKED_SETUP_WORDS
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import (
     offline,
     package_versions,
@@ -134,7 +139,8 @@ HOST_DEPENDENCIES = {
         "Resolve the clean alphalattice command",
         "Run uv sync --locked and the documented tool install; disclose it. "
         "Check an unproved PATH owner first. A first use opens nothing until a fresh shell "
-        "runs `alphalattice`; off PATH, `uv tool update-shell` and a restart are the person's.",
+        "runs `alphalattice storage cap --help`; off PATH, "
+        "`uv tool update-shell` and a restart are the person's.",
         "AGENT",
     ),
     "workbench_build": (
@@ -145,8 +151,8 @@ HOST_DEPENDENCIES = {
     ),
     "retrieval_runtime": (
         "Read Evidence with its retrieval recipe",
-        "Use the retrieval environment setup and install_retrieval_pack "
-        "--install hybrid-v2-minilm; disclose the pinned repair. Keep packs outside "
+        LOCKED_SETUP_WORDS + " Then use install_retrieval_pack "
+        "--install hybrid-v2-minilm. Keep packs outside "
         "the workspace; network acquisition still needs its permission.",
         "AGENT",
     ),
@@ -159,19 +165,24 @@ HOST_DEPENDENCIES = {
     ),
     "disk": (
         "Keep admitted data within disk and storage capacity",
-        "Read storage cap show and storage plan; ask once before cleanup or changing "
-        "the cap. Bind/start the Host to measure its cap; free space cannot prove it fits.",
+        f"Read `{command({'operation': 'STORAGE_CAP_SHOW'})}` "
+        f"and `{command({'operation': 'STORAGE_PLAN'})}`; "
+        "ask once before cleanup or changing the cap. "
+        "Bind/start the Host to measure its cap; "
+        "free space cannot prove it fits.",
         "PERSON",
     ),
     "cpu": (
         "Budget Task workers",
-        "Read cpu-budget show; the agent sets workers and tasks_waiting within "
+        f"Read `{command({'operation': 'CPU_BUDGET_SHOW'})}`; "
+        "the agent sets workers and tasks_waiting within "
         "the reported machine budget.",
         "AGENT",
     ),
     "network": (
         "Know whether acquisition is admitted",
-        "Read network-access show; relay the person's permission before opening "
+        f"Read `{command({'operation': 'NETWORK_ACCESS'})}`; "
+        "relay the person's permission before opening "
         "the network. A closed network remains a valid offline setting.",
         "PERSON",
     ),
@@ -1156,15 +1167,19 @@ def autobind_session(
     root = autobind_root(workspace)
     bind_session(root, host=host, session_id=lead, workspace=workspace, roles=tuple(_roles(host)))
     if project is not None:  # kept here because the agent's sandbox refused the project
-        _IN_WORKSPACE.add((host, session_id, workspace.resolve()))
+        _BINDING_MEMO[(host, session_id, workspace.resolve())] = True
         BINDING_NOTICE.set(binding_notice("BOUND_IN_WORKSPACE"))
     return root, lead
 
 
-_IN_WORKSPACE: set[tuple[str, str, Path]] = set()
-"""Sessions this process found bound in the workspace's own folder beside a configured project;
-each of their answers repeats the notice, so a later answer never drops it."""
-_REMINDED: set[tuple[str, str, Path]] = set()
+_BINDING_MEMO: BoundedMemo[tuple[str, str, Path], bool] = BoundedMemo()
+"""Checked Sessions and whether their durable workspace binding needs its notice."""
+
+
+def configure_binding_memo(*, capacity: int | None = None) -> None:
+    """Bound reminder entries; the default is machine-derived and a miss rereads bindings."""
+    global _BINDING_MEMO
+    _BINDING_MEMO = BoundedMemo(capacity=capacity)
 
 
 def _sandboxed_binding(error: OSError, project: Path) -> bool:
@@ -1205,18 +1220,25 @@ def unbound(error: Exception) -> None:
 def remind_binding(host: str, session_id: str, workspace: Path) -> None:
     """Repeat, on this answer, the notice of a Session bound in the workspace's own folder.
 
-    Only beside a configured project; checked once per Session in this process.
+    Only beside a configured project; a forgotten memo entry rereads the durable binding.
     """
     key = (host, session_id, workspace.resolve())
-    if key not in _REMINDED:
-        _REMINDED.add(key)
-        with suppress(NativeBridgeError, OSError):
-            project = session_project(key[2], host)
-            if session_binding(project, None, (host, session_id)) is None and session_binding(
-                None, key[2], (host, session_id)
-            ):
-                _IN_WORKSPACE.add(key)
-    if key in _IN_WORKSPACE and BINDING_NOTICE.get() is None:
+    held = _BINDING_MEMO.get(key)
+    if held is None:
+        try:
+            try:
+                project = session_project(key[2], host)
+                needs_workspace = session_binding(project, None, (host, session_id)) is None
+            except NativeBridgeError as error:
+                if str(error) != "native_bridge.binding_unreadable":
+                    raise
+                needs_workspace = True
+            held = needs_workspace and bool(session_binding(None, key[2], (host, session_id)))
+        except (NativeBridgeError, OSError):
+            # Failed reads establish neither presence nor absence; retry after access recovers.
+            return
+        _BINDING_MEMO[key] = held
+    if held and BINDING_NOTICE.get() is None:
         BINDING_NOTICE.set(binding_notice("BOUND_IN_WORKSPACE"))
 
 
@@ -1262,7 +1284,7 @@ def bound_in_workspace(
         return {"status": "REFUSED", "failure_code": code, **refusal_words(code)}
     except OSError as refused:
         return files_unavailable(refused, project=project, workspace=workspace)
-    _IN_WORKSPACE.add((host, session.session, workspace.resolve()))
+    _BINDING_MEMO[(host, session.session, workspace.resolve())] = True
     notice = binding_notice("BOUND_IN_WORKSPACE")
     words = {k: notice[k] for k in ("detail", "next_action")}
     return {**bound, **words, "session_binding": notice}

@@ -151,6 +151,7 @@ RULES = [
             "tests/portfolio_strategy_lab/workbench_stack_census.cjs",
             "tests/portfolio_strategy_lab/test_workbench_goal_follow_browser.py",
             "tests/portfolio_strategy_lab/test_workbench_owner_words.py",
+            "tests/portfolio_strategy_lab/test_daily_book_records_gate.py",
             "tests/portfolio_strategy_lab/test_team_scene_producers.py",
             "tests/portfolio_strategy_lab/test_workbench_goal_request_words.py",
             "tests/portfolio_strategy_lab/test_workbench_usage_reading.py",
@@ -196,6 +197,9 @@ RULES = [
         "path_reasons": {
             "tests/alternative_evidence_desk/test_evidence_review_route.py": (
                 "runs the private Review publication harness for exact admitted Task subjects"
+            ),
+            "tests/portfolio_strategy_lab/test_daily_book_records_gate.py": (
+                "needs the private served-Host fixture and first-use write meter"
             ),
             "tests/portfolio_strategy_lab/test_team_scene_producers.py": (
                 "runs the private UI QA Team scene producers"

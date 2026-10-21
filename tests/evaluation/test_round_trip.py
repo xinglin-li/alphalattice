@@ -49,7 +49,7 @@ def test_recovery_offers_are_sent_verbatim_once_per_scope(code):
 
 
 def test_untyped_faults_are_reported_as_system_failures_without_leaking_scopes():
-    """A fault is classified once and the next observation scope starts empty."""
+    """Control: Untyped faults report one system failure and clear the next observation scope."""
     observer = RoundTripObserver()
     observer.raised(
         "STATUS",

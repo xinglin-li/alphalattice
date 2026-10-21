@@ -228,12 +228,8 @@ def test_hash_decoding_can_be_omitted_for_numerical_only_consumers(
         raise AssertionError("row hashes must not be decoded")
 
     monkeypatch.setattr(surface_module, "_decode_hashes", forbidden)
-    rows = surface_module._matrix_for_keys(
-        ((session, "A"),),
-        feature,
-        None,
-        factor_count=1,
-        include_hashes=False,
+    rows = surface_module._matrix_for_rows(
+        np.asarray([0], dtype=np.int64), None, feature, None, factor_count=1, include_hashes=False
     )
 
     assert rows[4] == rows[5] == ()

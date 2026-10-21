@@ -253,6 +253,7 @@ def test_pending_quality_case_reopens_exactly_and_changed_evidence_supersedes_it
 def test_data_issue_readback_refuses_one_missing_case_manifest_without_hiding_healthy_case(
     tmp_path,
 ):
+    """Control: Missing case manifests are refused without hiding healthy cases."""
     from alphalattice.control.product_host.composition.application_session import (
         WorkspaceApplicationSession,
     )
@@ -260,10 +261,7 @@ def test_data_issue_readback_refuses_one_missing_case_manifest_without_hiding_he
         WorkspaceDataIssueApplication,
     )
 
-    manifest = _manifest(20)
-    manifest = replace(
-        manifest, profile=replace(manifest.profile, market_profile_id="us-current-index-research")
-    )
+    manifest = _manifest(20, market_profile_id="us-current-index-research")
     with WorkspaceApplicationSession.acquire(tmp_path / "workspace") as session:
         market = MarketDataRepository(session.workspace)
         panel = PanelStateRepository(market.database, market_data=market)
@@ -368,7 +366,7 @@ def test_data_issue_readback_refuses_one_missing_case_manifest_without_hiding_he
 
 
 def test_human_raw_move_choice_is_consumed_as_a_caveat_not_source_truth(tmp_path):
-
+    """Control: Human raw move choice is consumed as caveat not source truth."""
     from alphalattice.control.data_platform.maintenance.coordinator import (
         WorkspaceMaintenanceCoordinator,
     )
@@ -379,10 +377,7 @@ def test_human_raw_move_choice_is_consumed_as_a_caveat_not_source_truth(tmp_path
         WorkspaceDataIssueApplication,
     )
 
-    manifest = _manifest(20)
-    manifest = replace(
-        manifest, profile=replace(manifest.profile, market_profile_id="us-current-index-research")
-    )
+    manifest = _manifest(20, market_profile_id="us-current-index-research")
     with WorkspaceApplicationSession.acquire(tmp_path / "workspace") as session:
         market = MarketDataRepository(session.workspace)
         panel = PanelStateRepository(market.database, market_data=market)

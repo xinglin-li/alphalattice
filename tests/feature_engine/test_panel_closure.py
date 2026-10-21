@@ -1119,11 +1119,12 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
         admission_receipts=gap_receipt,
     )
     assert first.kind == "DevelopmentFeatureOverlayManifest"
-    reusable = service.find_reusable(
+    reusable = service.find_exact(
         output_root=tmp_path,
         base_panel_snapshot_hash="6" * 64,
         source_identity="7" * 64,
         panel_binding=binding,
+        admission_receipts=gap_receipt,
     )
     assert reusable is not None and reusable.overlay_hash == first.overlay_hash
     called: list[str] = []

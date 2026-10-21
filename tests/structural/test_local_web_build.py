@@ -108,7 +108,8 @@ def _test_checkout(
     scripts = checkout / "scripts"
     tests.mkdir(parents=True)
     scripts.mkdir()
-    shutil.copyfile(ROOT / "tests/conftest.py", tests / "conftest.py")
+    for name in ("__init__.py", "conftest.py", "pytest_environment.py", "setup_support.py"):
+        shutil.copyfile(ROOT / "tests" / name, tests / name)  # the conftest imports its siblings
     (checkout / "pyproject.toml").write_text(
         "[tool.pytest.ini_options]\naddopts = '-p no:cacheprovider'\n",
         encoding="utf-8",
@@ -148,7 +149,7 @@ def _test_checkout(
     )
     env = {key: value for key, value in os.environ.items() if not key.startswith("PYTEST_")}
     env.update(
-        PYTHONPATH=str(ROOT / "src"),
+        PYTHONPATH=os.pathsep.join((str(checkout), str(ROOT / "src"))),
         PYTHONIOENCODING="utf-8",
         PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
         ALPHALATTICE_NETWORK_DISABLED="1",

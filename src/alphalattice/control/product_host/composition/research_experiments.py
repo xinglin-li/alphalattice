@@ -32,8 +32,18 @@ from alphalattice.control.product_host.composition.research_authoring import (
     build_research_program_workflow,
 )
 from alphalattice.control.product_host.composition.research_experiment_plan import (
+    STAGES as STAGES,
+)
+from alphalattice.control.product_host.composition.research_experiment_plan import (
+    TASK_KIND as TASK_KIND,
+)
+from alphalattice.control.product_host.composition.research_experiment_plan import (
     AlphaExperimentSource,
     ExperimentPlan,
+    checked_task_plan,
+)
+from alphalattice.control.product_host.composition.research_experiment_plan import (
+    _task_contract as _task_contract,
 )
 from alphalattice.control.product_host.composition.research_experiment_projection import (
     SAMPLE_SCHEME_SUPERSEDED,
@@ -132,12 +142,9 @@ from alphalattice.control.research_program.authoring.document import (
 from alphalattice.control.research_program.authoring.workflow import ResearchProgramWorkflow
 from alphalattice.control.task_control.child import run_in_child
 from alphalattice.control.task_control.contracts import (
-    ResearchGoal,
-    ResearchPlan,
     TaskEvidence,
     TaskExecution,
     TaskExecutionCompatibility,
-    TaskInputEnvelope,
     TaskLifecycle,
     TaskRecord,
     TaskReplan,
@@ -264,6 +271,7 @@ from alphalattice.investment.risk_research.experiments.replay_identity import (
     replay_follows_recorded_moves,
 )
 from alphalattice.investment.risk_research.experiments.verification import RiskEvidenceVerifier
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
@@ -281,9 +289,6 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResearchExperimentEnvelope,
     ResolvedResearchAuthority,
 )
-
-TASK_KIND = "research_experiment"
-STAGES = ("execute_sealed_experiment", "verify_experiment_evidence")
 
 RETRYABLE_ARTIFACT_BLOCKS: frozenset[str] = frozenset(
     {
@@ -579,56 +584,6 @@ def refuse_authored_identity(section: Mapping[str, object]) -> None:
         raise AuthoringError("research_authoring.schema_id_not_installed")
 
 
-def _task_contract(
-    plan: ExperimentPlan, actor: ActorSubmissionBinding
-) -> tuple[TaskInputEnvelope, ResearchGoal, ResearchPlan]:
-    if actor.submission_hash != plan.program.program_hash:
-        raise AuthoringError("research_experiment.actor_program_mismatch")
-    envelope = TaskInputEnvelope.create(
-        task_kind=TASK_KIND,
-        input_schema_id="research-experiment-task-input",
-        payload={"plan": plan.model_dump(mode="json"), "actor": actor.model_dump(mode="json")},
-    )
-    # Each summary is bytes of every stored Task's goal, which `_checked_plan` rebuilds and
-    # compares by equality: a changed one refuses every stored Task of its kind (V518 was
-    # reverted for it), so the texts are pinned with their reason in the tests.
-    goal = ResearchGoal.create(
-        goal_kind="EXECUTE_RESEARCH_EXPERIMENT",
-        input_hash=envelope.input_hash,
-        deliverable_kind="ResearchExecutionEvidence",
-        summary={
-            FACTOR_EXPERIMENT_KIND: (
-                "Run an admitted Factor experiment, not a strategy or current publication."
-            ),
-            ALPHA_EXPERIMENT_KIND: (
-                "Run an admitted Alpha development experiment, "
-                "not a strategy or current publication."
-            ),
-            PORTFOLIO_EXPERIMENT_KIND: (
-                "Replay selected Alpha evidence through an EW research book; no activation."
-            ),
-            RISK_EXPERIMENT_KIND: (
-                "Run installed Risk diagnostics over a sealed research input; "
-                "no allocation or activation."
-            ),
-        }[plan.program.kind],
-    )
-    workflow = ResearchPlan.create(
-        goal_hash=goal.goal_hash,
-        workflow_definition_hash=canonical_hash(STAGES),
-        verifier_catalog_hash=canonical_hash(STAGES),
-        work_items=tuple(
-            WorkItemDefinition.create(
-                stage_id=stage,
-                dependency_ids=STAGES[:i],
-                verifier_id=f"research_experiment.{stage}",
-            )
-            for i, stage in enumerate(STAGES)
-        ),
-    )
-    return envelope, goal, workflow
-
-
 class ResearchExperimentApplication:
     """Own explicit previews, admitted experiment tasks and exact durable study readback."""
 
@@ -651,6 +606,7 @@ class ResearchExperimentApplication:
         manifest: ResearchWorkspaceManifest | ResearchWorkspaceManifestHolder,
         dispatcher: LocalBackgroundDispatcher,
         clock: Callable[[], datetime],
+        task_plan_capacity: int | None = None,
     ):
         """Wire retained workspace, manifest, dispatcher and bounded preview ownership.
 
@@ -662,6 +618,7 @@ class ResearchExperimentApplication:
             manifest: Held workspace declaration.
             dispatcher: Bounded local task dispatcher.
             clock: Explicit observed-time source.
+            task_plan_capacity: Checked-plan entries retained, or the machine-derived default.
         """
         self.session, self.dispatcher, self.clock = session, dispatcher, clock
         self._manifests = held(manifest)
@@ -685,9 +642,9 @@ class ResearchExperimentApplication:
         # The evidence a running Task's own checks verified, once per execution attempt.
         self._attempt_evidence: dict[UUID, ResearchExecutionEvidence] = {}
         # Each Task's plan as its own contract checked it, keyed by that contract (`_of`).
-        self._task_plans: dict[
+        self._task_plans: BoundedMemo[
             tuple[UUID, str, str, str], tuple[ExperimentPlan, ActorSubmissionBinding]
-        ] = {}
+        ] = BoundedMemo(capacity=task_plan_capacity)
         self._ledger: dict[tuple[UUID, bool], _VerifiedStudy] = {}
         self._ledger_lock = Lock()
         # Each study role's installed implementation, asked once: the code this Host serves.
@@ -2352,7 +2309,7 @@ class ResearchExperimentApplication:
         }
 
     def _of(self, task: TaskRecord) -> tuple[ExperimentPlan, ActorSubmissionBinding]:
-        """A Task's plan and actor, checked against the Task's own contract once per Task.
+        """A Task's plan and actor, checked against its own contract while held.
 
         A Task's input, goal and plan never change, so their hashes key the check: a listing
         re-parsed and re-hashed every Task's plan on every call (W10, measured: a third of a
@@ -2362,24 +2319,9 @@ class ResearchExperimentApplication:
         held = self._task_plans.get(key)
         if held is not None:
             return held
-        checked = self._checked_plan(task)
+        checked = checked_task_plan(task, workspace_id=self.manifest.workspace_id)
         self._task_plans[key] = checked
         return checked
-
-    def _checked_plan(self, task: TaskRecord) -> tuple[ExperimentPlan, ActorSubmissionBinding]:
-        if task.task_kind != TASK_KIND:
-            raise AuthoringError("research_experiment.task_kind_mismatch")
-        plan = ExperimentPlan.model_validate(task.input.payload.get("plan"))
-        actor = ActorSubmissionBinding.model_validate(task.input.payload.get("actor"))
-        envelope, goal, workflow = _task_contract(plan, actor)
-        if (
-            task.input != envelope
-            or task.goal != goal
-            or task.plan != workflow
-            or plan.workspace_id != self.manifest.workspace_id
-        ):
-            raise AuthoringError("research_experiment.task_binding_mismatch")
-        return plan, actor
 
     def _current(  # type: ignore[no-untyped-def]
         self, plan: ExperimentPlan, *, task_id: UUID | None = None, replay: bool = False

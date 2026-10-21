@@ -407,11 +407,23 @@ class DecisionAdvancementApplication:
     def _load[M: BaseModel](
         self, category: str, identity: str, model: type[M], field: str = "content_hash"
     ) -> M:
+        if (
+            category == "market-inputs"
+            and field == "content_hash"
+            and model is LocalQAMarketSnapshot
+        ):
+            return cast(M, self.ledger.load_decision_observation(identity))
         return self.ledger.content.load_model(
             category=category, content_hash=identity, model=model, identity_field=field
         )
 
     def _save(self, category: str, value: BaseModel, field: str = "content_hash") -> str:
+        if (
+            category == "market-inputs"
+            and field == "content_hash"
+            and isinstance(value, LocalQAMarketSnapshot)
+        ):
+            return self.ledger.publish_decision_observations(value)[0]
         return self.ledger.content.publish_model(
             category=category, value=value, identity_field=field
         )
@@ -1176,10 +1188,10 @@ class DecisionAdvancementApplication:
                     if held is None and component.weight_rule == "mu.iv0":
                         if market_rows is None:
                             with span("materialize", "calibration_rows"):
-                                market_rows = PreparedLocalQASnapshotRows.from_artifact(
-                                    source_root=self.ledger.root,
-                                    source_category="market-inputs",
-                                    content_hash=captured.products[0],
+                                market_rows = PreparedLocalQASnapshotRows(
+                                    self._load(
+                                        "market-inputs", captured.products[0], LocalQAMarketSnapshot
+                                    ),
                                     artifact_root=self.session.workspace / "artifacts",
                                     capacity=lambda size: require_storage_capacity(
                                         self.session.workspace, additional_bytes=size
@@ -1294,15 +1306,9 @@ class DecisionAdvancementApplication:
                         through=day,
                         start=checkpoint.initial_book.schedule.formation_session,
                     )
-                    self.updates.store.content.publish_model(
-                        category="decision-observations", value=raw, identity_field="content_hash"
-                    )
+                    self.updates.store.publish_decision_observations(raw)
                     prefix = self.updates.continued_market(raw, previous)
-                    self.updates.store.content.publish_model(
-                        category="decision-observations",
-                        value=prefix,
-                        identity_field="content_hash",
-                    )
+                    self.updates.store.publish_decision_observations(prefix)
                     prepared = by_day.get(day)
                     dp = PortfolioUpdatePlan.create(
                         strategy_package_id=plan.package_id,

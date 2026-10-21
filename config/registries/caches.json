@@ -1,0 +1,3572 @@
+{
+  "schema": "alphalattice.playpen.registry.caches",
+  "note": "Source-declared cache keys, bounds and rebuild conditions. Unbounded is literal; per-context limits are not aggregate quotas. Drop safety is conditional documentation, not deletion authority. Fixed successors name their own commits when this base predates them.",
+  "entries": {
+    "src/alphalattice/control/product_host/research_authoring/timing.py::installed_price_basis::module-installed-price-basis": {
+      "owner": "alphalattice.control.product_host",
+      "defined_by": [
+        "src/alphalattice/control/product_host/research_authoring/timing.py::installed_price_basis"
+      ],
+      "definition_line": 45,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory installed_price_basis in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/factor_research/research_loop/decisions.py::_policy_hash_for::module-policy-hash-for": {
+      "owner": "alphalattice.foundation.factor_research",
+      "defined_by": [
+        "src/alphalattice/foundation/factor_research/research_loop/decisions.py::_policy_hash_for"
+      ],
+      "definition_line": 105,
+      "key": "root",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _policy_hash_for in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/catalog/contracts.py::_resource_payload::module-resource-payload": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/catalog/contracts.py::_resource_payload"
+      ],
+      "definition_line": 40,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _resource_payload in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/producers/arithmetic_identity.py::control_arithmetic_content_hash::module-control-arithmetic-content-hash": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/producers/arithmetic_identity.py::control_arithmetic_content_hash"
+      ],
+      "definition_line": 225,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory control_arithmetic_content_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/producers/arithmetic_identity.py::method_family_rule_identity::module-method-family-rule-identity": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/producers/arithmetic_identity.py::method_family_rule_identity"
+      ],
+      "definition_line": 242,
+      "key": "method_family, owners",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory method_family_rule_identity in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/producers/arithmetic_identity.py::method_family_content_hash::module-method-family-content-hash": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/producers/arithmetic_identity.py::method_family_content_hash"
+      ],
+      "definition_line": 268,
+      "key": "method_family, owners",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory method_family_content_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/producers/factors/formula.py::reference_value.at::reference-value-at": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/producers/factors/formula.py::reference_value.at"
+      ],
+      "definition_line": 525,
+      "key": "node, row",
+      "dependency_coverage": "Scoped: AST node,row; series captured by one reference_value call",
+      "invalidation_rule": "reference_value closure release",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory reference_value.at in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/producers/preprocessing/adapters.py::_robust_sector_neutral_z_content_hash::module-robust-sector-neutral-z-content-hash": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/producers/preprocessing/adapters.py::_robust_sector_neutral_z_content_hash"
+      ],
+      "definition_line": 61,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _robust_sector_neutral_z_content_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/producers/preprocessing/adapters.py::_development_preprocessing_content_hash::module-development-preprocessing-content-hash": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/producers/preprocessing/adapters.py::_development_preprocessing_content_hash"
+      ],
+      "definition_line": 81,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _development_preprocessing_content_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/producers/preprocessing/joint_primary.py::_relative_content_hash::module-relative-content-hash": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/producers/preprocessing/joint_primary.py::_relative_content_hash"
+      ],
+      "definition_line": 475,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _relative_content_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/producers/preprocessing/joint_primary.py::_interaction_content_hash::module-interaction-content-hash": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/producers/preprocessing/joint_primary.py::_interaction_content_hash"
+      ],
+      "definition_line": 486,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _interaction_content_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/producers/preprocessing/robust_universe.py::_content_hash::module-content-hash": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/producers/preprocessing/robust_universe.py::_content_hash"
+      ],
+      "definition_line": 44,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _content_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/market_data_ops/sources/membership.py::_membership_clocks::module-membership-clocks": {
+      "owner": "alphalattice.foundation.market_data_ops",
+      "defined_by": [
+        "src/alphalattice/foundation/market_data_ops/sources/membership.py::_membership_clocks"
+      ],
+      "definition_line": 42,
+      "key": "start, end",
+      "dependency_coverage": "Scoped: dates; exchange/calendar version is process namespace",
+      "invalidation_rule": "new date range or process restart",
+      "size_bound": "32 entries",
+      "bound_scope": "32 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _membership_clocks in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/market_data_ops/storage/duckdb.py::_plain_text::module-plain-text": {
+      "owner": "alphalattice.foundation.market_data_ops",
+      "defined_by": [
+        "src/alphalattice/foundation/market_data_ops/storage/duckdb.py::_plain_text"
+      ],
+      "definition_line": 194,
+      "key": "value",
+      "dependency_coverage": "Yes: complete input string",
+      "invalidation_rule": "none needed for pure string result",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _plain_text in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/market_data_ops/storage/source_prefix.py::market_data_source_prefix_proofs.listings::market-data-source-prefix-proofs-listings": {
+      "owner": "alphalattice.foundation.market_data_ops",
+      "defined_by": [
+        "src/alphalattice/foundation/market_data_ops/storage/source_prefix.py::market_data_source_prefix_proofs.listings"
+      ],
+      "definition_line": 157,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "Scoped: zero-arg closure captures one fetched set and scope",
+      "invalidation_rule": "source-prefix call closure release",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory market_data_source_prefix_proofs.listings in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/cli.py::_parser::module-parser": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/cli.py::_parser"
+      ],
+      "definition_line": 620,
+      "key": "named",
+      "dependency_coverage": "Scoped: selected operation set; installed operations/schema resources not keyed",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _parser in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/cli_contract.py::agent_surface_manifest::module-agent-surface-manifest": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/cli_contract.py::agent_surface_manifest"
+      ],
+      "definition_line": 41,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory agent_surface_manifest in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/cli_contract.py::_zh::module-zh": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/cli_contract.py::_zh"
+      ],
+      "definition_line": 1810,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _zh in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/cli_contract.py::_zh_templates::module-zh-templates": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/cli_contract.py::_zh_templates"
+      ],
+      "definition_line": 1850,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _zh_templates in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/cli_contract.py::command_table::module-command-table": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/cli_contract.py::command_table"
+      ],
+      "definition_line": 1912,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory command_table in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/cli_contract.py::declaration_contracts::module-declaration-contracts": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/cli_contract.py::declaration_contracts"
+      ],
+      "definition_line": 1935,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory declaration_contracts in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/labels.py::label_table::module-label-table": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/labels.py::label_table"
+      ],
+      "definition_line": 62,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory label_table in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/labels.py::_by_id::module-by-id": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/labels.py::_by_id"
+      ],
+      "definition_line": 69,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _by_id in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/experiments/campaign_evidence.py::_policy_hash_for::module-policy-hash-for": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/experiments/campaign_evidence.py::_policy_hash_for"
+      ],
+      "definition_line": 402,
+      "key": "root",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _policy_hash_for in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/scaling/adapters.py::_implementation_content_hash::module-implementation-content-hash": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/scaling/adapters.py::_implementation_content_hash"
+      ],
+      "definition_line": 45,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _implementation_content_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/portfolio_strategy_lab/application/strategy_package.py::_value_moves::module-value-moves": {
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "defined_by": [
+        "src/alphalattice/investment/portfolio_strategy_lab/application/strategy_package.py::_value_moves"
+      ],
+      "definition_line": 103,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _value_moves in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/risk_research/estimators/covariance.py::_implementation_content_hash::module-implementation-content-hash": {
+      "owner": "alphalattice.investment.risk_research",
+      "defined_by": [
+        "src/alphalattice/investment/risk_research/estimators/covariance.py::_implementation_content_hash"
+      ],
+      "definition_line": 54,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _implementation_content_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/risk_research/estimators/covariance.py::_numerical_backends::module-numerical-backends": {
+      "owner": "alphalattice.investment.risk_research",
+      "defined_by": [
+        "src/alphalattice/investment/risk_research/estimators/covariance.py::_numerical_backends"
+      ],
+      "definition_line": 67,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No: loaded backend set can change after later imports",
+      "invalidation_rule": "none; restart only",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Conditional: recomputation can change environment identity after imports/install; equal only for the identical environment snapshot",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _numerical_backends in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/risk_research/estimators/covariance.py::numerical_environment_hash::module-numerical-environment-hash": {
+      "owner": "alphalattice.investment.risk_research",
+      "defined_by": [
+        "src/alphalattice/investment/risk_research/estimators/covariance.py::numerical_environment_hash"
+      ],
+      "definition_line": 104,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No: package/backend environment is read only on first call",
+      "invalidation_rule": "none; restart only",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Conditional: recomputation can change environment identity after imports/install; equal only for the identical environment snapshot",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory numerical_environment_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/risk_research/estimators/diagonal.py::_implementation_content_hash::module-implementation-content-hash": {
+      "owner": "alphalattice.investment.risk_research",
+      "defined_by": [
+        "src/alphalattice/investment/risk_research/estimators/diagonal.py::_implementation_content_hash"
+      ],
+      "definition_line": 114,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _implementation_content_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/risk_research/estimators/fast_slow.py::_implementation_content_hash::module-implementation-content-hash": {
+      "owner": "alphalattice.investment.risk_research",
+      "defined_by": [
+        "src/alphalattice/investment/risk_research/estimators/fast_slow.py::_implementation_content_hash"
+      ],
+      "definition_line": 110,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entries",
+      "bound_scope": "1 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _implementation_content_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/shared_kernel/environment.py::_installed_version::module-installed-version": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/environment.py::_installed_version"
+      ],
+      "definition_line": 77,
+      "key": "name",
+      "dependency_coverage": "No: package installation/version at same name can change (hot retrieval setup)",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Conditional: recomputation can change environment identity after imports/install; equal only for the identical environment snapshot",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _installed_version in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/shared_kernel/environment.py::_module_lister::module-module-lister": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/environment.py::_module_lister"
+      ],
+      "definition_line": 118,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "Yes for the process OS API handle; no mutable research input",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _module_lister in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/shared_kernel/identity_successors.py::recorded_moves::module-recorded-moves": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/identity_successors.py::recorded_moves"
+      ],
+      "definition_line": 48,
+      "key": "root",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory recorded_moves in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/shared_kernel/project_layout.py::runtime_json::module-runtime-json": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/project_layout.py::runtime_json"
+      ],
+      "definition_line": 15,
+      "key": "relative",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory runtime_json in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/shared_kernel/source_identity.py::number_deciding_rule::module-number-deciding-rule": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/source_identity.py::number_deciding_rule"
+      ],
+      "definition_line": 415,
+      "key": "root",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory number_deciding_rule in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/shared_kernel/source_identity.py::identity_switch::module-identity-switch": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/source_identity.py::identity_switch"
+      ],
+      "definition_line": 498,
+      "key": "root",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory identity_switch in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/protocols/actor_execution/projections.py::_cl100k::module-cl100k": {
+      "owner": "alphalattice.protocols.actor_execution",
+      "defined_by": [
+        "src/alphalattice/protocols/actor_execution/projections.py::_cl100k"
+      ],
+      "definition_line": 38,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "Scoped: bundled ranks and explicit SHA-256 constant; checked on first load",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _cl100k in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/devtools/architecture/nouns.py::_decision_types::module-decision-types": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "src/devtools/architecture/nouns.py::_decision_types"
+      ],
+      "definition_line": 35,
+      "key": "root",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _decision_types in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/shared_kernel/source_identity.py::<module>._PARSED::source-ast-import-memo-parsed": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/source_identity.py::_PARSED"
+      ],
+      "definition_line": 93,
+      "key": "SHA-256(source bytes), package",
+      "dependency_coverage": "Yes: bytes and relative-import package",
+      "invalidation_rule": "new byte hash; no removal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _PARSED in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/paths.py::<module>._ROOT_IDENTITY_LIMIT::workspace-root-resolution-root-identities": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/paths.py::_root_identities"
+      ],
+      "definition_line": 52,
+      "key": "given path + validated lstat(dev,inode,attributes)",
+      "dependency_coverage": "Scoped: directory identity is rechecked",
+      "invalidation_rule": "root identity changes/link refused",
+      "size_bound": "64 entries",
+      "bound_scope": "64 entries",
+      "eviction": "Whole-map clear before inserting a cache miss when 64 entries are already held; not LRU.",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "Module-level _root_identities dictionary in src/alphalattice/control/workspace_runtime/paths.py"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_MODEL_SCOPE::verified-model-request-scope": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_MODEL_SCOPE"
+      ],
+      "definition_line": 50,
+      "key": "store/category/hash/model + verified file identity/bytes",
+      "dependency_coverage": "Yes: exact payload/stamp and type checked",
+      "invalidation_rule": "scope exit/reset",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "scope exit",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED_MODEL_SCOPE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_MODEL_CACHE::verified-model-process-lru": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_MODEL_CACHE"
+      ],
+      "definition_line": 56,
+      "key": "same typed content + payload SHA/file identity",
+      "dependency_coverage": "Yes: fresh bytes read before parse reuse",
+      "invalidation_rule": "new identity; opt-in scope",
+      "size_bound": "128 entries (no byte cap)",
+      "bound_scope": "128 entries (no byte cap)",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED_MODEL_CACHE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_ARRAY_SCOPE::verified-array-request-scope": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_ARRAY_SCOPE"
+      ],
+      "definition_line": 61,
+      "key": "caller identity tuple; immutable/copy policy",
+      "dependency_coverage": "Conditional: caller must supply complete identity",
+      "invalidation_rule": "scope exit or replacement",
+      "size_bound": "512 MiB",
+      "bound_scope": "512 MiB",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes for immutable values",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED_ARRAY_SCOPE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_ARRAY_CACHE::verified-array-process-lru": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_ARRAY_CACHE"
+      ],
+      "definition_line": 70,
+      "key": "caller identity; source paths + valid read leases where used",
+      "dependency_coverage": "Conditional: exact identity + valid held OS proof",
+      "invalidation_rule": "lease break/identity mismatch/replacement",
+      "size_bound": "512 MiB",
+      "bound_scope": "512 MiB",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes through owner, close leases",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED_ARRAY_CACHE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_SOURCE_LEASES::source-read-lease-proof-reuse": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_SOURCE_LEASES"
+      ],
+      "definition_line": 74,
+      "key": "file-read-lease + logical identity + absolute source paths",
+      "dependency_coverage": "Yes only while all path/OS read leases unchanged",
+      "invalidation_rule": "oplock break, replacement, eviction, release",
+      "size_bound": "512 handles",
+      "bound_scope": "512 handles",
+      "eviction": "LRU coupled to array entries",
+      "safe_to_drop": "Conditional: close handles via owner",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED_SOURCE_LEASES in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_PROOF_SCOPE::verified-proof-request-set": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_PROOF_SCOPE"
+      ],
+      "definition_line": 91,
+      "key": "caller proof identity tuple",
+      "dependency_coverage": "Conditional: caller-supplied identity",
+      "invalidation_rule": "scope exit",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "scope exit",
+      "safe_to_drop": "Yes: full proof repeated",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED_PROOF_SCOPE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_PROOF_CACHE::verified-proof-process-lru": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_PROOF_CACHE"
+      ],
+      "definition_line": 94,
+      "key": "exact immutable proof identity",
+      "dependency_coverage": "Conditional: producer proof contract",
+      "invalidation_rule": "new identity/process end",
+      "size_bound": "4096 entries",
+      "bound_scope": "4096 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED_PROOF_CACHE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._KEPT::held-workspace-file-fact-maps-kept": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/verified_facts.py::_KEPT"
+      ],
+      "definition_line": 38,
+      "key": "workspace, relative path,kind; size/mtime/inode + digest",
+      "dependency_coverage": "Metadata-bound, owner writes refresh; not full-byte key",
+      "invalidation_rule": "writer refresh/identity mismatch/lease release",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "workspace release; stale facts replaced",
+      "safe_to_drop": "Yes: rehash, quiescent owner",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _KEPT in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._PROCESS::other-process-file-facts-process": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/verified_facts.py::_PROCESS"
+      ],
+      "definition_line": 40,
+      "key": "absolute path,kind + size/mtime/inode",
+      "dependency_coverage": "Metadata-bound; 2-second racy-read exclusion",
+      "invalidation_rule": "stamp changes; none for untouched keys",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes: full-byte digest",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _PROCESS in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._HELD::year-fact-schema-presence-held": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/verified_facts.py::_HELD"
+      ],
+      "definition_line": 42,
+      "key": "connection object",
+      "dependency_coverage": "Scoped: owner schema lifetime",
+      "invalidation_rule": "weak-key garbage collection",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "weak-key GC",
+      "safe_to_drop": "Yes: catalog read",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _HELD in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/database.py::<module>._EPOCHS::database-instance-seal-epoch-resource-pool": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/database.py::_EPOCHS"
+      ],
+      "definition_line": 55,
+      "key": "workspace DB path; active instance/epoch",
+      "dependency_coverage": "Resource identity, not a result proof",
+      "invalidation_rule": "last owner close and seal lifecycle",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "owner close/refcounts",
+      "safe_to_drop": "No while active; coordinated close/reopen only",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _EPOCHS in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/storage/inventory.py::<module>._measured_data::last-physical-size-sample-measured-data": {
+      "owner": "alphalattice.control.product_host",
+      "defined_by": [
+        "src/alphalattice/control/product_host/storage/inventory.py::_measured_data"
+      ],
+      "definition_line": 58,
+      "key": "workspace path",
+      "dependency_coverage": "Partial mutable size; intentionally last complete sample",
+      "invalidation_rule": "next managed inventory sample",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes: walk metadata again",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _measured_data in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/storage/inventory.py::<module>._StageMeasure::stage-inventory-memo-trees-files": {
+      "owner": "alphalattice.control.product_host",
+      "defined_by": [
+        "src/alphalattice/control/product_host/storage/inventory.py::_StageMeasure"
+      ],
+      "definition_line": 63,
+      "key": "workspace + managed-tree path; stage namespace",
+      "dependency_coverage": "Scoped: stage writes accounted; later deletions next walk",
+      "invalidation_rule": "storage_capacity_scope exit",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "stage exit",
+      "safe_to_drop": "Conditional: recount under gate",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _StageMeasure in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/storage/plan_previews.py::PreviewRegistry.__init__.self._entries::previewregistry-in-memory-plans": {
+      "owner": "alphalattice.control.product_host",
+      "defined_by": [
+        "src/alphalattice/control/product_host/storage/plan_previews.py::PreviewRegistry.__init__.self._entries"
+      ],
+      "definition_line": 83,
+      "key": "sealed plan hash",
+      "dependency_coverage": "Yes: sealed plan validates own hash; expiry checked",
+      "invalidation_rule": "expiry/single replacement/owner lifetime",
+      "size_bound": "capacity 8 default; TTL 60 minutes",
+      "bound_scope": "capacity 8 default; TTL 60 minutes",
+      "eviction": "oldest-write FIFO; not read-LRU",
+      "safe_to_drop": "Conditional: durable plans reload; memory-only pending plan lost",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PreviewRegistry.__init__.self._entries in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/task_control/registry.py::DuckDbTaskControlRegistry.__init__.self._answers::task-registry-read-answer-memo": {
+      "owner": "alphalattice.control.task_control",
+      "defined_by": [
+        "src/alphalattice/control/task_control/registry.py::DuckDbTaskControlRegistry.__init__.self._answers"
+      ],
+      "definition_line": 340,
+      "key": "request key + DB/WAL file stamp",
+      "dependency_coverage": "Partial: file stamps fence mutable DB; no content digest",
+      "invalidation_rule": "stamp change; registry disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "replace per key; none overall",
+      "safe_to_drop": "Yes: read database again",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory DuckDbTaskControlRegistry.__init__.self._answers in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/task_control/registry.py::DuckDbTaskControlRegistry.__init__.self._read_scopes::task-registry-nested-read-connection-reuse": {
+      "owner": "alphalattice.control.task_control",
+      "defined_by": [
+        "src/alphalattice/control/task_control/registry.py::DuckDbTaskControlRegistry.__init__.self._read_scopes"
+      ],
+      "definition_line": 339,
+      "key": "DB path + calling-thread read scope",
+      "dependency_coverage": "Scoped: one read-only connection in held lock",
+      "invalidation_rule": "outer read scope exit",
+      "size_bound": "1 connection per thread/scope",
+      "bound_scope": "1 connection per thread/scope",
+      "eviction": "close on scope exit",
+      "safe_to_drop": "No during transaction; owner close",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory DuckDbTaskControlRegistry.__init__.self._read_scopes in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/native_usage_reader.py::NativeUsageReader.__init__.self._read_at::nativeusagereader-refresh-memo": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/native_usage_reader.py::NativeUsageReader.__init__.self._read_at"
+      ],
+      "definition_line": 121,
+      "key": "host,session within fixed workspace; _read_at/_sessions/_progress",
+      "dependency_coverage": "10-second freshness for active host/session; native source validation occurs on refresh",
+      "invalidation_rule": "10-second refresh; _retain removes inactive bindings; usage OFF clears",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "replace latest per active binding; removed binding discarded",
+      "safe_to_drop": "Yes if native logs remain; refresh may show newer totals",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory NativeUsageReader.__init__.self._read_at in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/native_setup.py::<module>._IN_WORKSPACE::native-sandbox-binding-reminder-memo": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/native_setup.py::_IN_WORKSPACE"
+      ],
+      "definition_line": 1164,
+      "key": "host,session,resolved workspace; _IN_WORKSPACE/_REMINDED",
+      "dependency_coverage": "No binding-file generation; first check retained",
+      "invalidation_rule": "none; process end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Conditional: reset/recheck; notices can change",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _IN_WORKSPACE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/portfolio_result_context.py::<module>._SECTOR_CACHE::portfolio-book-sector-projection-sector-cache": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/portfolio_result_context.py::_SECTOR_CACHE"
+      ],
+      "definition_line": 705,
+      "key": "input binding,panel snapshot,shown session",
+      "dependency_coverage": "Partial: requested listing axis/revision/workspace not explicit",
+      "invalidation_rule": "new key only; process restart",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes by recomputation; verify complete key first",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _SECTOR_CACHE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "fixed_successor": {
+        "source_commit": "54d07ca82edf638e4076217c7576ba226717815a",
+        "defined_by": "src/alphalattice/control/product_host/composition/portfolio_result_context.py::book_sectors",
+        "key": "(str(binding), str(snapshot), str(revision), str(shown), canonical_hash(tuple(str(v) for v in listings)))",
+        "scope": "module/process",
+        "size_bound": "unbounded",
+        "invalidation_rule": "Changed binding, snapshot, universe revision, shown session or ordered listing axis; process end.",
+        "installed_in_this_base": false
+      }
+    },
+    "src/alphalattice/control/product_host/composition/portfolio_result_context.py::<module>._DATE_RISK::dated-risk-projection-date-risk": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/portfolio_result_context.py::_DATE_RISK"
+      ],
+      "definition_line": 779,
+      "key": "publication content hash,risk surface hash",
+      "dependency_coverage": "Scoped immutable publication; other authority/carried-source inputs not explicit",
+      "invalidation_rule": "only successful full-coverage current formation retained; new key",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes via owner; same source generation required",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _DATE_RISK in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "fixed_successor": {
+        "source_commit": "54d07ca82edf638e4076217c7576ba226717815a",
+        "defined_by": "src/alphalattice/control/product_host/composition/portfolio_result_context.py::_date_risk",
+        "key": "(str(readback['publication']['content_hash']), authority.authority_hash, recipe.recipe_hash, positions.position_hash, source)",
+        "scope": "module/process",
+        "size_bound": "unbounded",
+        "invalidation_rule": "Changed publication, authority, recipe, positions, or canonical_hash({'surface': surface.surface_hash, 'carried': hashes}); process end.",
+        "installed_in_this_base": false
+      }
+    },
+    "src/alphalattice/control/product_host/composition/committee.py::<module>._PROOFS::committee-claim-proof-memo-proofs": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/committee.py::_PROOFS"
+      ],
+      "definition_line": 1366,
+      "key": "store root + digest(key,thread,reference,role,spoke)",
+      "dependency_coverage": "Scoped: claims and immutable floor keys",
+      "invalidation_rule": "claim digest change; wholesale clear at threshold",
+      "size_bound": "1025 entries maximum",
+      "bound_scope": "1025 entries maximum",
+      "eviction": "clear-all on next new entry; not LRU",
+      "safe_to_drop": "Yes: owner re-proves claim",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _PROOFS in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/evidence_review_application.py::EvidenceReviewApplication._unit_obligation_cache::evidence-unit-obligation-memo": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/evidence_review_application.py::EvidenceReviewApplication._unit_obligation_cache"
+      ],
+      "definition_line": 1167,
+      "key": "issuer scope hash,evidence cutoff; policy fixed per application",
+      "dependency_coverage": "Scoped: approved families are application invariant",
+      "invalidation_rule": "fresh run clears map",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "fresh-run clear",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory EvidenceReviewApplication._unit_obligation_cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/research_experiments.py::<module>._VERIFIED_EVIDENCE::experiment-verified-evidence-request-scope": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/research_experiments.py::_VERIFIED_EVIDENCE"
+      ],
+      "definition_line": 322,
+      "key": "typed evidence/store/identity keys",
+      "dependency_coverage": "Scoped immutable graph; full verification boundaries retained",
+      "invalidation_rule": "request/stage scope exit",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "scope exit",
+      "safe_to_drop": "Yes: verify graph again",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED_EVIDENCE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._attempt_evidence::experiment-attempt-evidence-memo": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._attempt_evidence"
+      ],
+      "definition_line": 686,
+      "key": "Task UUID + current attempt scope",
+      "dependency_coverage": "Scoped execution attempt; no cross-attempt proof",
+      "invalidation_rule": "execute-finally pops",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "attempt completion",
+      "safe_to_drop": "Conditional: never discard under active verification",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory ResearchExperimentApplication.__init__.self._attempt_evidence in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._task_plans::experiment-checked-plan-memo": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._task_plans"
+      ],
+      "definition_line": 688,
+      "key": "Task UUID + version/contract/binding tuple",
+      "dependency_coverage": "Yes: checked contract in key",
+      "invalidation_rule": "new Task/contract key; Host end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes: reload/check task plan",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory ResearchExperimentApplication.__init__.self._task_plans in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._installed::experiment-installed-role-memo": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._installed"
+      ],
+      "definition_line": 694,
+      "key": "study role",
+      "dependency_coverage": "No source/installation generation in key; fixed-code Host assumption",
+      "invalidation_rule": "none; restart",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes only under same installed code",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory ResearchExperimentApplication.__init__.self._installed in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._ledger::experiment-verification-ledger-memory": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._ledger"
+      ],
+      "definition_line": 691,
+      "key": "Task UUID,recorded/current; record/fingerprint/implementation revalidated",
+      "dependency_coverage": "Yes subject to entry validation and read-operation admission",
+      "invalidation_rule": "fingerprint/implementation/currency checks; full trust-boundary reads",
+      "size_bound": "8 entries",
+      "bound_scope": "8 entries",
+      "eviction": "oldest insertion",
+      "safe_to_drop": "Yes: full graph verification",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory ResearchExperimentApplication.__init__.self._ledger in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/feature_trials.py::<module>._TRIAL_READS::feature-trial-request-memo": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/feature_trials.py::_TRIAL_READS"
+      ],
+      "definition_line": 842,
+      "key": "completed trial identity",
+      "dependency_coverage": "Scoped: one request; own sealed identity checked",
+      "invalidation_rule": "request scope exit",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "scope exit",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _TRIAL_READS in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/goals.py::GoalReferenceReadScope._responses::goal-reference-owner-response-memo": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/goals.py::GoalReferenceReadScope._responses"
+      ],
+      "definition_line": 370,
+      "key": "canonical owner document; caller/reader fixed by request",
+      "dependency_coverage": "Scoped: document digest; do not reuse scope across callers/requests",
+      "invalidation_rule": "scope object disposal; __exit__ closes artifacts, not map",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "object lifetime",
+      "safe_to_drop": "Yes by new request/full verification",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory GoalReferenceReadScope._responses in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/publication/artifacts.py::<module>._VERIFIED_RECORDS::evidence-verified-record-request-scope": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/publication/artifacts.py::_VERIFIED_RECORDS"
+      ],
+      "definition_line": 48,
+      "key": "store/category/identity/model tuple",
+      "dependency_coverage": "Yes for frozen content-addressed records in operation",
+      "invalidation_rule": "outer operation exit",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "scope exit",
+      "safe_to_drop": "Yes: full verification",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED_RECORDS in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/retrieval/session.py::AlternativeEvidenceRetrievalSession.__init__.self._originals::evidence-retrieval-original-structure-text-span-views": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/retrieval/session.py::AlternativeEvidenceRetrievalSession.__init__.self._originals"
+      ],
+      "definition_line": 280,
+      "key": "document ID or span/table handle; fixed document-set/session",
+      "dependency_coverage": "Scoped: document set/revision/context owned by session",
+      "invalidation_rule": "session close/replacement",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "session lifetime",
+      "safe_to_drop": "Conditional: reconstruct reader; ephemeral delivered handles need owner",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AlternativeEvidenceRetrievalSession.__init__.self._originals in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedExcerpts.__init__.self._by_key::evidence-sealed-excerpt-index": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedExcerpts.__init__.self._by_key"
+      ],
+      "definition_line": 233,
+      "key": "selection/document identity keys",
+      "dependency_coverage": "Scoped immutable committed sets",
+      "invalidation_rule": "reuse-helper lifecycle",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none in helper",
+      "safe_to_drop": "Yes with retained source/receipt graph",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory SealedExcerpts.__init__.self._by_key in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedCanonicals.__init__.self._sources::evidence-sealed-canonical-source-indexes": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedCanonicals.__init__.self._sources"
+      ],
+      "definition_line": 306,
+      "key": "source snapshot hash and document selection keys",
+      "dependency_coverage": "Scoped exact source/commitment IDs",
+      "invalidation_rule": "helper lifecycle; new source keys",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes with retained sealed source graph",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory SealedCanonicals.__init__.self._sources in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedSelections.__init__.self._by_key::evidence-access-receipt-selection-index": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedSelections.__init__.self._by_key"
+      ],
+      "definition_line": 431,
+      "key": "SelectionKey -> admitted retrieval receipt",
+      "dependency_coverage": "Scoped retained receipt corpus",
+      "invalidation_rule": "helper lifecycle",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes: reread/revalidate committed receipts",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory SealedSelections.__init__.self._by_key in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/service.py::VerifiedSourceLookup.__init__.self._by_accession::verified-sec-source-lookup-indexes": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/service.py::VerifiedSourceLookup.__init__.self._by_accession"
+      ],
+      "definition_line": 341,
+      "key": "accession, revision/content digest, deferral resource key",
+      "dependency_coverage": "Scoped committed source set; complete resource keys",
+      "invalidation_rule": "runtime generation/new commitments",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "runtime lifetime",
+      "safe_to_drop": "Yes from original committed source records",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory VerifiedSourceLookup.__init__.self._by_accession in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::AlternativeEvidenceDocumentTaskAdapter.__init__.self._receipts::evidence-task-receipt-memo": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::AlternativeEvidenceDocumentTaskAdapter.__init__.self._receipts"
+      ],
+      "definition_line": 612,
+      "key": "Task UUID + Task version",
+      "dependency_coverage": "Yes: version tested on hit",
+      "invalidation_rule": "Task version replacement; adapter end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "replace each Task entry",
+      "safe_to_drop": "Yes from Task/receipt owner",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AlternativeEvidenceDocumentTaskAdapter.__init__.self._receipts in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/storage/inventory.py::EvidenceStorageInventory.__init__.self._proofs::evidence-inventory-committed-payload-proof-memo": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/storage/inventory.py::EvidenceStorageInventory.__init__.self._proofs"
+      ],
+      "definition_line": 109,
+      "key": "index/vector commitment pair",
+      "dependency_coverage": "Scoped immutable commitments and one inventory",
+      "invalidation_rule": "inventory object lifetime",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes: recompute graph proof",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory EvidenceStorageInventory.__init__.self._proofs in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/service.py::AlternativeEvidenceDocumentIntelligenceRuntime.__init__.self.pair_score_facts::evidence-runtime-pair-score-facts": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/service.py::AlternativeEvidenceDocumentIntelligenceRuntime.__init__.self.pair_score_facts"
+      ],
+      "definition_line": 734,
+      "key": "reranker context/committed score block identities",
+      "dependency_coverage": "Scoped pinned recipe + sealed admission",
+      "invalidation_rule": "runtime lifecycle; admission advances",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "runtime lifetime",
+      "safe_to_drop": "Conditional: retained committed blocks/model needed",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AlternativeEvidenceDocumentIntelligenceRuntime.__init__.self.pair_score_facts in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/causal_outcomes/execution/readers.py::CausalExecutionOutcomePolicyHoldoutReader.__init__.self._verified_tables::holdout-causal-outcome-verified-tables": {
+      "owner": "alphalattice.foundation.causal_outcomes",
+      "defined_by": [
+        "src/alphalattice/foundation/causal_outcomes/execution/readers.py::CausalExecutionOutcomePolicyHoldoutReader.__init__.self._verified_tables"
+      ],
+      "definition_line": 1062,
+      "key": "chunk content hash within fixed store",
+      "dependency_coverage": "Scoped immutable chunk; path/frame verified on miss",
+      "invalidation_rule": "reader lifecycle",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes with retained chunks",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory CausalExecutionOutcomePolicyHoldoutReader.__init__.self._verified_tables in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/factor_research/evaluation/oos_evidence.py::<module>._SessionRanks::factor-session-rank-mask-memo": {
+      "owner": "alphalattice.foundation.factor_research",
+      "defined_by": [
+        "src/alphalattice/foundation/factor_research/evaluation/oos_evidence.py::_SessionRanks"
+      ],
+      "definition_line": 375,
+      "key": "factor,orientation / mask key; session vectors fixed",
+      "dependency_coverage": "Scoped to one session and immutable input vectors",
+      "invalidation_rule": "session evaluator disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "session lifetime",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _SessionRanks in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/reader.py::<module>._VALUES_VERIFIED::panel-raw-value-proof-set-values-verified": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/panels/reader.py::_VALUES_VERIFIED"
+      ],
+      "definition_line": 23,
+      "key": "whole Parquet byte SHA-256",
+      "dependency_coverage": "Partial: row_hash_factor_ids validator argument omitted from set key",
+      "invalidation_rule": "new file bytes; process end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes: repeat value/hash validation",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VALUES_VERIFIED in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._identity_by_session::panel-composition-identity-cross-section-indexes": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._identity_by_session"
+      ],
+      "definition_line": 422,
+      "key": "session/year within fixed binding, axis, membership, Sector history",
+      "dependency_coverage": "Scoped constructor inputs",
+      "invalidation_rule": "composition-session disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "session lifetime",
+      "safe_to_drop": "Yes by reconstructing same composition",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PanelCompositionSession.__init__.self._identity_by_session in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._base_axes::panel-base-chunk-session-axes": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._base_axes"
+      ],
+      "definition_line": 446,
+      "key": "base chunk hash",
+      "dependency_coverage": "Scoped immutable base chunks",
+      "invalidation_rule": "composition-session disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PanelCompositionSession.__init__.self._base_axes in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._identity_tables::panel-identity-table-reads": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._identity_tables"
+      ],
+      "definition_line": 447,
+      "key": "chunk hash",
+      "dependency_coverage": "Scoped immutable chunk",
+      "invalidation_rule": "identity tables cleared during finish; session end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "phase clear",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PanelCompositionSession.__init__.self._identity_tables in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/feature_closure_coordinator.py::FeatureBaseClosureCoordinator.__init__.self._digest_states::feature-closure-running-digest-states": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/panels/feature_closure_coordinator.py::FeatureBaseClosureCoordinator.__init__.self._digest_states"
+      ],
+      "definition_line": 78,
+      "key": "catalog hash + current head hash",
+      "dependency_coverage": "Yes: head equality checked before reuse",
+      "invalidation_rule": "transition updates head; coordinator lifecycle",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "replace per catalog",
+      "safe_to_drop": "Conditional: reload head/digest state, not active first-load state",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory FeatureBaseClosureCoordinator.__init__.self._digest_states in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/producers/consumption_audit.py::_CoreEvaluator.__init__.self._cache::core-feature-evaluator-memo": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/producers/consumption_audit.py::_CoreEvaluator.__init__.self._cache"
+      ],
+      "definition_line": 315,
+      "key": "probe(depth/token); bound input frame/factor context",
+      "dependency_coverage": "Scoped evaluation inputs",
+      "invalidation_rule": "evaluator disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "evaluation end",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _CoreEvaluator.__init__.self._cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/producers/consumption_audit.py::_ExtensionEvaluator.__init__.self._cache::extension-feature-evaluator-memo": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/producers/consumption_audit.py::_ExtensionEvaluator.__init__.self._cache"
+      ],
+      "definition_line": 343,
+      "key": "probe(depth/token); extension/input context fixed",
+      "dependency_coverage": "Scoped evaluator inputs",
+      "invalidation_rule": "evaluator disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "evaluation end",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _ExtensionEvaluator.__init__.self._cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/storage/repositories.py::FeatureStateRepository.__init__.self._feature_factor_ids_by_catalog::feature-catalog-factor-id-memo": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/storage/repositories.py::FeatureStateRepository.__init__.self._feature_factor_ids_by_catalog"
+      ],
+      "definition_line": 425,
+      "key": "catalog hash",
+      "dependency_coverage": "Yes: immutable catalog identity",
+      "invalidation_rule": "new catalog key; repository lifetime",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes from sealed catalog",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory FeatureStateRepository.__init__.self._feature_factor_ids_by_catalog in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/runtime/service.py::<module>._WORKER_KERNELS::feature-worker-kernel-registry-memo": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/runtime/service.py::_WORKER_KERNELS"
+      ],
+      "definition_line": 160,
+      "key": "installed kernel capability hash",
+      "dependency_coverage": "Yes: rebuilt registry capability checked",
+      "invalidation_rule": "worker process end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _WORKER_KERNELS in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/runtime/service.py::<module>._WORKER_CUTOFF_SETS::feature-worker-cutoff-set-memo": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/runtime/service.py::_WORKER_CUTOFF_SETS"
+      ],
+      "definition_line": 162,
+      "key": "factor axis -> per-session cutoff-set map",
+      "dependency_coverage": "Scoped exact factor axis and per-session data",
+      "invalidation_rule": "worker end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes from rows/source cutoff inputs",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _WORKER_CUTOFF_SETS in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/runtime/service.py::<module>._WORKER_PANELS::feature-worker-panel-materializers": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/runtime/service.py::_WORKER_PANELS"
+      ],
+      "definition_line": 244,
+      "key": "catalog hash,implementation binding",
+      "dependency_coverage": "Yes for materializer; chunk inputs passed on each call",
+      "invalidation_rule": "worker end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _WORKER_PANELS in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/rematerialization.py::_Replays.base_cache::artifact-replay-base-year-frame-cache": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/panels/rematerialization.py::_Replays.base_cache"
+      ],
+      "definition_line": 1095,
+      "key": "year; replay source/binding fixed in operation",
+      "dependency_coverage": "Scoped immutable replay inputs",
+      "invalidation_rule": "operation exit; replace same year",
+      "size_bound": "3 year frames",
+      "bound_scope": "3 year frames",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _Replays.base_cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/rematerialization.py::_Replays.done::artifact-replay-completed-materializations": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/panels/rematerialization.py::_Replays.done"
+      ],
+      "definition_line": 1096,
+      "key": "source receipt hash",
+      "dependency_coverage": "Scoped frozen receipt groups",
+      "invalidation_rule": "release through last reachable session",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "reachability/window release",
+      "safe_to_drop": "Yes with retained source receipts",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _Replays.done in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/rematerialization.py::ArtifactOnlyPanelRematerializer.base_closure_probe_matches.cache::artifact-base-closure-probe-frame-memo": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/panels/rematerialization.py::ArtifactOnlyPanelRematerializer.base_closure_probe_matches.cache"
+      ],
+      "definition_line": 427,
+      "key": "year; same probe source",
+      "dependency_coverage": "Scoped base-closure probe",
+      "invalidation_rule": "probe call exit",
+      "size_bound": "3 year frames",
+      "bound_scope": "3 year frames",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory ArtifactOnlyPanelRematerializer.base_closure_probe_matches.cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::CurrentUniverseOnboarding.__post_init__.self._calendar_cache::onboarding-calendar-memo": {
+      "owner": "alphalattice.foundation.market_data_ops",
+      "defined_by": [
+        "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::CurrentUniverseOnboarding.__post_init__.self._calendar_cache"
+      ],
+      "definition_line": 326,
+      "key": "calendar ID; history start/through captured by acquisition manifest",
+      "dependency_coverage": "Scoped fixed acquisition request; observed_at not in dictionary key",
+      "invalidation_rule": "none; onboarding object disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "object lifetime",
+      "safe_to_drop": "Yes from same calendar/version/cutoff",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory CurrentUniverseOnboarding.__post_init__.self._calendar_cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::<module>._VERIFIED_CHUNKS::alpha-verified-development-chunk-hashes": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::_VERIFIED_CHUNKS"
+      ],
+      "definition_line": 269,
+      "key": "SHA-256(file bytes),canonical identity hash",
+      "dependency_coverage": "Yes",
+      "invalidation_rule": "new bytes/identity; process end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED_CHUNKS in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::<module>._SIDECAR_SCOPE::alpha-model-fit-sidecar-operation-scope": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::_SIDECAR_SCOPE"
+      ],
+      "definition_line": 278,
+      "key": "store,operation/sidecar identity; receipts/leases checked",
+      "dependency_coverage": "Scoped exact verified sidecar",
+      "invalidation_rule": "formation/block scope exit",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "scope exit",
+      "safe_to_drop": "Yes, reverify; fresh estimator copy",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _SIDECAR_SCOPE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/experiments/dynamic_panel_artifacts.py::DynamicPanelArtifactStore.__init__.self._surface_cache::alpha-dynamicpanel-surface-manifest-memo": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/experiments/dynamic_panel_artifacts.py::DynamicPanelArtifactStore.__init__.self._surface_cache"
+      ],
+      "definition_line": 177,
+      "key": "manifest content hash within fixed artifact store",
+      "dependency_coverage": "Scoped immutable surface; validation on miss",
+      "invalidation_rule": "store object lifetime",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes with retained source artifacts",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory DynamicPanelArtifactStore.__init__.self._surface_cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/inputs/surfaces.py::AlphaProgramArrayWorkspace.__init__.self._fold_cache::alpha-program-fold-arrays": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/inputs/surfaces.py::AlphaProgramArrayWorkspace.__init__.self._fold_cache"
+      ],
+      "definition_line": 1022,
+      "key": "fold index within sealed program/inputs/budget object",
+      "dependency_coverage": "Scoped immutable program + exact axes",
+      "invalidation_rule": "lease/release/close; bound failure removes new value",
+      "size_bound": "budget.peak_rss_limit_bytes admission",
+      "bound_scope": "budget.peak_rss_limit_bytes admission",
+      "eviction": "reject over budget; explicit release (not LRU)",
+      "safe_to_drop": "Yes via exact same sealed sources",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AlphaProgramArrayWorkspace.__init__.self._fold_cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/inputs/surfaces.py::AlphaProgramArrayWorkspace.__init__.self._current_cache::alpha-current-refit-arrays": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/inputs/surfaces.py::AlphaProgramArrayWorkspace.__init__.self._current_cache"
+      ],
+      "definition_line": 1023,
+      "key": "one current-refit key implicit in program workspace",
+      "dependency_coverage": "Scoped fixed program inputs",
+      "invalidation_rule": "close/release",
+      "size_bound": "1 array bundle + surface budget admission",
+      "bound_scope": "1 array bundle + surface budget admission",
+      "eviction": "replace/close",
+      "safe_to_drop": "Yes with same inputs",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AlphaProgramArrayWorkspace.__init__.self._current_cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/scores/product_replay.py::AdmittedProductEvidence._axis_cache::alpha-evidence-prediction-axis-cache": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/scores/product_replay.py::AdmittedProductEvidence._axis_cache"
+      ],
+      "definition_line": 392,
+      "key": "vintage within admitted manifest/source root",
+      "dependency_coverage": "Scoped immutable admitted source",
+      "invalidation_rule": "drop(vintage)/object disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "explicit drop",
+      "safe_to_drop": "Yes: reverify axis",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AdmittedProductEvidence._axis_cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/scores/product_replay.py::AdmittedProductEvidence._model_cache::alpha-evidence-fitted-model-cache": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/scores/product_replay.py::AdmittedProductEvidence._model_cache"
+      ],
+      "definition_line": 393,
+      "key": "vintage,seed within admitted manifest",
+      "dependency_coverage": "Scoped exact model/adapter manifest",
+      "invalidation_rule": "drop(vintage,seed)/object disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "explicit drop",
+      "safe_to_drop": "Yes from exact verified model bytes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AdmittedProductEvidence._model_cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/scores/heterogeneous_replay.py::AdmittedHeterogeneousCurrentClosure._surfaces::alpha-heterogeneous-component-feature-surfaces": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/scores/heterogeneous_replay.py::AdmittedHeterogeneousCurrentClosure._surfaces"
+      ],
+      "definition_line": 595,
+      "key": "component ID,surface identity",
+      "dependency_coverage": "Scoped admitted component manifest",
+      "invalidation_rule": "evidence-source disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes from immutable surface",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AdmittedHeterogeneousCurrentClosure._surfaces in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/scores/model_renewal.py::<module>._VERIFIED::alpha-lifecycle-admission-verification-scope": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/scores/model_renewal.py::_VERIFIED"
+      ],
+      "definition_line": 101,
+      "key": "store,path,expected hash / model-set publication hash",
+      "dependency_coverage": "Yes within one verification scope",
+      "invalidation_rule": "operation/stage scope exit",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "scope exit",
+      "safe_to_drop": "Yes, full verification",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/experiments/panel_alpha_fold_execution.py::_compute_fold.provider.role_cache::alpha-fold-materialization-role-memo": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/experiments/panel_alpha_fold_execution.py::_compute_fold.provider.role_cache"
+      ],
+      "definition_line": 220,
+      "key": "role; fold,program,train/transform boundary captured",
+      "dependency_coverage": "Scoped exact outer fold/boundary",
+      "invalidation_rule": "explicit provider release",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "release clears role map",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _compute_fold.provider.role_cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/experiments/panel_alpha_fold_execution.py::_compute_fold.provider.current::alpha-fold-last-projection-memo": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/experiments/panel_alpha_fold_execution.py::_compute_fold.provider.current"
+      ],
+      "definition_line": 221,
+      "key": "installed view ID within same boundary",
+      "dependency_coverage": "Scoped fixed fold/plan/program",
+      "invalidation_rule": "new view replaces; release clears",
+      "size_bound": "1 projection",
+      "bound_scope": "1 projection",
+      "eviction": "replace",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _compute_fold.provider.current in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::<module>._DATASET_CACHE::lightgbm-binned-dataset-scope": {
+      "owner": "alphalattice.capabilities.alpha_modeling",
+      "defined_by": [
+        "src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::_DATASET_CACHE"
+      ],
+      "definition_line": 48,
+      "key": "feature/target/weight byte identities,feature names,params,reference key",
+      "dependency_coverage": "Yes: construction-default inputs and reference included",
+      "invalidation_rule": "outer-fold scope exit",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "scope clear",
+      "safe_to_drop": "Yes with exact pinned runtime/inputs",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _DATASET_CACHE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::<module>._BOOSTER_CACHE::lightgbm-parsed-booster-scope": {
+      "owner": "alphalattice.capabilities.alpha_modeling",
+      "defined_by": [
+        "src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::_BOOSTER_CACHE"
+      ],
+      "definition_line": 59,
+      "key": "exact model text",
+      "dependency_coverage": "Scoped same installed LightGBM runtime; read-only predictions",
+      "invalidation_rule": "scoring-loop scope exit",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "scope clear",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _BOOSTER_CACHE in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/risk_research/surfaces/returns.py::CausalRiskReturnReader.__init__.self._verified_chunks::risk-verified-chunk-paths": {
+      "owner": "alphalattice.investment.risk_research",
+      "defined_by": [
+        "src/alphalattice/investment/risk_research/surfaces/returns.py::CausalRiskReturnReader.__init__.self._verified_chunks"
+      ],
+      "definition_line": 621,
+      "key": "chunk content hash + chunk equality; fixed store",
+      "dependency_coverage": "Scoped immutable execution chunks; path existence on hit",
+      "invalidation_rule": "reader/execution disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes with retained chunks",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory CausalRiskReturnReader.__init__.self._verified_chunks in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/risk_research/surfaces/returns.py::CausalRiskReturnReader.__init__.self._available_cache::risk-available-session-axis": {
+      "owner": "alphalattice.investment.risk_research",
+      "defined_by": [
+        "src/alphalattice/investment/risk_research/surfaces/returns.py::CausalRiskReturnReader.__init__.self._available_cache"
+      ],
+      "definition_line": 622,
+      "key": "surface hash",
+      "dependency_coverage": "Yes for immutable verified surface",
+      "invalidation_rule": "surface replacement/reader close",
+      "size_bound": "1 surface axis",
+      "bound_scope": "1 surface axis",
+      "eviction": "replace",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory CausalRiskReturnReader.__init__.self._available_cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/risk_research/surfaces/returns.py::CausalRiskReturnReader.__init__.self._window_cache::risk-read-window-matrix": {
+      "owner": "alphalattice.investment.risk_research",
+      "defined_by": [
+        "src/alphalattice/investment/risk_research/surfaces/returns.py::CausalRiskReturnReader.__init__.self._window_cache"
+      ],
+      "definition_line": 623,
+      "key": "surface + exact window/axis subset",
+      "dependency_coverage": "Scoped verified surface/window",
+      "invalidation_rule": "new window/reader close",
+      "size_bound": "64 MiB cached matrix",
+      "bound_scope": "64 MiB cached matrix",
+      "eviction": "replace/reject oversize",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory CausalRiskReturnReader.__init__.self._window_cache in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._templates::osqp-ordinary-templates": {
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "defined_by": [
+        "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._templates"
+      ],
+      "definition_line": 1139,
+      "key": "top_k; capacity=2*top_k",
+      "dependency_coverage": "Scoped code/solver settings; numeric data set per solve",
+      "invalidation_rule": "optimizer disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Conditional: rebuild/reset solver through owner; this audit ran no numerical equality canary",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PortfolioOptimizer.__init__.self._templates in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._wide_templates::osqp-wide-templates": {
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "defined_by": [
+        "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._wide_templates"
+      ],
+      "definition_line": 1140,
+      "key": "capacity",
+      "dependency_coverage": "Scoped fixed solver construction",
+      "invalidation_rule": "optimizer disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Conditional: same solver/reset contract",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PortfolioOptimizer.__init__.self._wide_templates in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._capped_templates::osqp-capped-templates": {
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "defined_by": [
+        "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._capped_templates"
+      ],
+      "definition_line": 1141,
+      "key": "capacity; capped route separate map",
+      "dependency_coverage": "Scoped fixed solver construction",
+      "invalidation_rule": "optimizer disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Conditional: same solver/reset contract",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PortfolioOptimizer.__init__.self._capped_templates in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._banded::osqp-banded-templates": {
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "defined_by": [
+        "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._banded"
+      ],
+      "definition_line": 1142,
+      "key": "top_k,sector_count",
+      "dependency_coverage": "Scoped fixed solver construction",
+      "invalidation_rule": "optimizer disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Conditional: same solver/reset contract",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PortfolioOptimizer.__init__.self._banded in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/knowledge/_embeddings.py::PairScoreCache.__init__.self._entries::reranker-in-memory-pair-scores": {
+      "owner": "alphalattice.kernel.knowledge",
+      "defined_by": [
+        "src/alphalattice/kernel/knowledge/_embeddings.py::PairScoreCache.__init__.self._entries"
+      ],
+      "definition_line": 271,
+      "key": "SHA-256(length(query),query,passage); one adapter/context",
+      "dependency_coverage": "Scoped: model/rerank spec fixed on adapter",
+      "invalidation_rule": "adapter replacement/disposal",
+      "size_bound": "250000 pairs default",
+      "bound_scope": "250000 pairs default",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes for same pinned model/spec; deterministic rounding",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PairScoreCache.__init__.self._entries in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._entries::verified-model-pack-proof-report-registry": {
+      "owner": "alphalattice.kernel.knowledge",
+      "defined_by": [
+        "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._entries"
+      ],
+      "definition_line": 521,
+      "key": "root,spec/context + consumed-file/dir lstat facts",
+      "dependency_coverage": "Partial metadata validation; pack byte hashes on load",
+      "invalidation_rule": "stat/fits/usable change; release",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "replace per key; release all",
+      "safe_to_drop": "Conditional: full pack verification with same pinned bytes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory VerifiedPackRegistry.__init__.self._entries in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._pools::leased-model-session-pools": {
+      "owner": "alphalattice.kernel.knowledge",
+      "defined_by": [
+        "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._pools"
+      ],
+      "definition_line": 522,
+      "key": "pack root,spec/context; fits thread count; lstat facts",
+      "dependency_coverage": "Scoped pack/context; global number of keys not capped",
+      "invalidation_rule": "changed facts/failed session; retire after leases; release",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded globally; sessions_per_pack=1 default per key",
+      "eviction": "retire bad/non-fitting idle session; no global LRU",
+      "safe_to_drop": "Conditional: close through registry after leases, reload pinned pack and canary",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory VerifiedPackRegistry.__init__.self._pools in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/knowledge/_reranking.py::PairScoreStore.__init__.self._blocks::pair-score-pending-in-process-batch": {
+      "owner": "alphalattice.kernel.knowledge",
+      "defined_by": [
+        "src/alphalattice/kernel/knowledge/_reranking.py::PairScoreStore.__init__.self._pending"
+      ],
+      "definition_line": 318,
+      "key": "query/passage digest within reranker context + admitted block IDs",
+      "dependency_coverage": "Yes: pinned context/rounding, full blocks verified",
+      "invalidation_rule": "seal at close; session disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "successful seal removes pending; reader close",
+      "safe_to_drop": "Conditional: repeat inference from retained texts/model; never discard committed proof",
+      "location": {
+        "scope": "process",
+        "path_expression": "PairScoreStore instance self._pending mapping from pair digest to score awaiting sealing."
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/knowledge/hybrid.py::WorkspaceHybridKnowledgeRetriever.__init__.self._chunks::hybrid-reader-verified-chunks-vectors": {
+      "owner": "alphalattice.kernel.knowledge",
+      "defined_by": [
+        "src/alphalattice/kernel/knowledge/hybrid.py::WorkspaceHybridKnowledgeRetriever.__init__.self._chunks"
+      ],
+      "definition_line": 2594,
+      "key": "chunk ID within exact committed generation",
+      "dependency_coverage": "Yes: generation/spec/commitment checked on open",
+      "invalidation_rule": "reader close/new generation",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded by cache bytes; generation-sized",
+      "eviction": "reader close",
+      "safe_to_drop": "Yes with committed source/vector blocks; requires valid reader reopen",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory WorkspaceHybridKnowledgeRetriever.__init__.self._chunks in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/knowledge/hybrid.py::<module>.READER_PAGE_CACHE_KIB::hybrid-sqlite-connection-page-cache": {
+      "owner": "alphalattice.kernel.knowledge",
+      "defined_by": [
+        "src/alphalattice/kernel/knowledge/hybrid.py::READER_PAGE_CACHE_KIB"
+      ],
+      "definition_line": 715,
+      "key": "SQLite database page + connection generation",
+      "dependency_coverage": "Yes under read-only verified connection",
+      "invalidation_rule": "connection close/SQLite pager invalidation",
+      "size_bound": "64 MiB per open reader",
+      "bound_scope": "64 MiB per open reader",
+      "eviction": "SQLite pager policy",
+      "safe_to_drop": "Yes, page reread",
+      "location": {
+        "scope": "process",
+        "path_expression": "SQLite page cache on each kept reader connection, configured by _verify_projection(keep_open=True) and owned by WorkspaceHybridKnowledgeRetriever._connection."
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::AlternativeEvidenceDocumentTaskAdapter.__init__.self._completed_units::evidence-review-child-unit-receipt-progress-memo": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::AlternativeEvidenceDocumentTaskAdapter.__init__.self._completed_units"
+      ],
+      "definition_line": 603,
+      "key": "intent -> Task/receipt; absent key (intent, requesting Task UUID)",
+      "dependency_coverage": "Task-scoped negative result; no publication generation in completed/absent lookup",
+      "invalidation_rule": "adapter disposal/new intent or requesting Task key; no explicit map clear",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "adapter lifetime",
+      "safe_to_drop": "Conditional: completed-unit accounting must be reconstructed from sealed receipts",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AlternativeEvidenceDocumentTaskAdapter.__init__.self._completed_units in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._held::cro-issuer-register-read-writeback-memo-held": {
+      "owner": "alphalattice.oversight.chief_risk_officer",
+      "defined_by": [
+        "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._held"
+      ],
+      "definition_line": 231,
+      "key": "review publication hash",
+      "dependency_coverage": "Scoped exact Task/commitment identity",
+      "invalidation_rule": "service disposal; register changes update held entry",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "owner lifecycle",
+      "safe_to_drop": "Conditional: flush _unwritten first, then reload sealed register",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PortfolioReviewPublicationService.__init__.self._held in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/service.py::AlternativeEvidenceDocumentIntelligenceRuntime.__init__.self._set_revisions::evidence-selected-source-set-revision-memo": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/service.py::AlternativeEvidenceDocumentIntelligenceRuntime.__init__.self._set_revisions"
+      ],
+      "definition_line": 773,
+      "key": "document-set ID and its resolved revision",
+      "dependency_coverage": "Scoped exact Task/commitment identity",
+      "invalidation_rule": "runtime end/new revision",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "runtime lifetime",
+      "safe_to_drop": "Yes from committed source sets",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AlternativeEvidenceDocumentIntelligenceRuntime.__init__.self._set_revisions in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/assets/workbench-source/js/app/data.js::reads::data-unfinished-get-coalescer": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/assets/workbench-source/js/app/data.js::reads"
+      ],
+      "definition_line": 48,
+      "key": "exact path/query in one Host/browser transport",
+      "dependency_coverage": "Scoped owner generation/installed page; explicit keys shown",
+      "invalidation_rule": "settled response or last subscriber abort",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "settle/delete; no response retained",
+      "safe_to_drop": "Yes: next GET starts a new wire",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory reads in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/assets/workbench-source/js/app/data.js::workspace::data-current-owner-readback-snapshots": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/assets/workbench-source/js/app/data.js::workspace"
+      ],
+      "definition_line": 14,
+      "key": "collection generation / selected Task,session,comparison",
+      "dependency_coverage": "Scoped owner generation/installed page; explicit keys shown",
+      "invalidation_rule": "owner events, resync, selection generation",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "replace/current object; paged history may accumulate",
+      "safe_to_drop": "Yes: refetch owner; preserve person draft state separately",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory workspace in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-research.js::controlsRead::research-controls-result-memo": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-research.js::controlsRead"
+      ],
+      "definition_line": 269,
+      "key": "kind/input-binding/read key; revision fences",
+      "dependency_coverage": "Scoped owner generation/installed page; explicit keys shown",
+      "invalidation_rule": "forget/reset clears; stale generation rejected",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "clear on draft/context reset",
+      "safe_to_drop": "Yes: owner controls reread",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory controlsRead in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-tasks.js::subjects::task-admission-subject-memo": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-tasks.js::subjects"
+      ],
+      "definition_line": 16,
+      "key": "Task UUID",
+      "dependency_coverage": "Scoped owner generation/installed page; explicit keys shown",
+      "invalidation_rule": "refresh by admitted receipts",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "no explicit overall cap",
+      "safe_to_drop": "Yes from owner admission context",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory subjects in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-team.js::S::team-resolved-owner-fact-memo-person-question-selections-excluded": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-team.js::S"
+      ],
+      "definition_line": 51,
+      "key": "exact written/verified owner reference",
+      "dependency_coverage": "Scoped owner generation/installed page; explicit keys shown",
+      "invalidation_rule": "new verification replaces outcome; page disposal",
+      "size_bound": "64 outcomes",
+      "bound_scope": "64 outcomes",
+      "eviction": "oldest insertion/update removed above MAX_RESOLVED=64",
+      "safe_to_drop": "Yes: reread owner facts",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory S in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-team.js::X::team-external-session-metadata-projection": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-team.js::X"
+      ],
+      "definition_line": 16,
+      "key": "observation/event IDs, epoch, session; more-history requests expand keep",
+      "dependency_coverage": "Scoped owner generation/installed page; explicit keys shown",
+      "invalidation_rule": "external epoch/session refresh",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "epoch reset; requested older pages increase keep, no fixed overall cap",
+      "safe_to_drop": "Yes from retained observations",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory X in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/assets/workbench-source/js/app/i18n.js::seen::i18n-dictionary-load-asked-key-memo": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/assets/workbench-source/js/app/i18n.js::seen"
+      ],
+      "definition_line": 14,
+      "key": "language and literal key",
+      "dependency_coverage": "Scoped owner generation/installed page; explicit keys shown",
+      "invalidation_rule": "locale load/reload; page process end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "browser page lifetime",
+      "safe_to_drop": "Conditional: installed dictionary fixed; coverage counters reset",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory seen in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/reference_prefixes.py::ReferenceLedger.__init__.self._values::compact-reference-ledger-in-memory": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/reference_prefixes.py::ReferenceLedger.__init__.self._values"
+      ],
+      "definition_line": 36,
+      "key": "whole hash/UUID; fixed workspace",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "source append updates; cap rewrites",
+      "size_bound": "200000 values",
+      "bound_scope": "200000 values",
+      "eviction": "newest insertion retained",
+      "safe_to_drop": "Conditional: reload ledger; old compact references may need full values",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory ReferenceLedger.__init__.self._values in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._index::cro-publication-placement-index": {
+      "owner": "alphalattice.oversight.chief_risk_officer",
+      "defined_by": [
+        "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._index"
+      ],
+      "definition_line": 230,
+      "key": "publication hash -> cutoff/date, source root fixed",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "new publication note/update; service end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes from sealed register/publication records",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PortfolioReviewPublicationService.__init__.self._index in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._policy::cro-installed-policy-scalar": {
+      "owner": "alphalattice.oversight.chief_risk_officer",
+      "defined_by": [
+        "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._policy"
+      ],
+      "definition_line": 229,
+      "key": "unit key; installed policy provider fixed",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "service/process restart",
+      "size_bound": "1 policy value",
+      "bound_scope": "1 policy value",
+      "eviction": "replace on new service",
+      "safe_to_drop": "Yes under fixed installed policy",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PortfolioReviewPublicationService.__init__.self._policy in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::RecordDays.__init__.self._known::evidence-record-day-index-in-memory": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::RecordDays.__init__.self._known"
+      ],
+      "definition_line": 129,
+      "key": "sealed identity -> UTC date; category/store fixed",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "note(new seal) updates; helper end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes from sealed records, missing day is learned",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory RecordDays.__init__.self._known in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedReadings.__init__.self._by_entity::evidence-carried-analysis-issuer-index": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedReadings.__init__.self._by_entity"
+      ],
+      "definition_line": 777,
+      "key": "entity + expected bindings + since window",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "earlier since widens/rebuilds; helper lifecycle",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "replace on wider window",
+      "safe_to_drop": "Yes from sealed publications and bindings",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory SealedReadings.__init__.self._by_entity in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::AlternativeEvidenceDocumentTaskAdapter.__init__.self._carried_runs::evidence-task-carried-run-and-issuer-registry-snapshots": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::AlternativeEvidenceDocumentTaskAdapter.__init__.self._carried_runs"
+      ],
+      "definition_line": 593,
+      "key": "run hash / Task UUID / inventory cutoff",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "Task or cutoff replacement; adapter lifecycle",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "scope replacement",
+      "safe_to_drop": "Yes from sealed coverage and issuer snapshots",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AlternativeEvidenceDocumentTaskAdapter.__init__.self._carried_runs in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/factor_research/experiments/verification.py::FactorEvidenceVerifier.__init__.self.verified_readback::factor-verifier-last-readback": {
+      "owner": "alphalattice.foundation.factor_research",
+      "defined_by": [
+        "src/alphalattice/foundation/factor_research/experiments/verification.py::FactorEvidenceVerifier.__init__.self.verified_readback"
+      ],
+      "definition_line": 90,
+      "key": "one verifier execution/receipt",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "cleared before verification; new verified receipt",
+      "size_bound": "1 readback bundle",
+      "bound_scope": "1 readback bundle",
+      "eviction": "replace/reset",
+      "safe_to_drop": "Conditional: repeat full verification before reuse",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory FactorEvidenceVerifier.__init__.self.verified_readback in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/portfolio_strategy_lab/application/research_experiment.py::PortfolioExperimentVerifier.__init__.self.verified_readback::portfolio-verifier-last-readback": {
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "defined_by": [
+        "src/alphalattice/investment/portfolio_strategy_lab/application/research_experiment.py::PortfolioExperimentVerifier.__init__.self.verified_readback"
+      ],
+      "definition_line": 1372,
+      "key": "one verifier execution/receipt",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "cleared before verification",
+      "size_bound": "1 readback bundle",
+      "bound_scope": "1 readback bundle",
+      "eviction": "replace/reset",
+      "safe_to_drop": "Conditional: repeat full verification",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PortfolioExperimentVerifier.__init__.self.verified_readback in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/risk_research/experiments/verification.py::RiskEvidenceVerifier.__init__.self._verified_key::risk-verifier-current-verified-key": {
+      "owner": "alphalattice.investment.risk_research",
+      "defined_by": [
+        "src/alphalattice/investment/risk_research/experiments/verification.py::RiskEvidenceVerifier.__init__.self._verified_key"
+      ],
+      "definition_line": 99,
+      "key": "resolved output root + exact evidence/readback key",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "reset before/after distinct verification",
+      "size_bound": "1 verified key",
+      "bound_scope": "1 verified key",
+      "eviction": "replace/reset",
+      "safe_to_drop": "Yes: full verification again",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory RiskEvidenceVerifier.__init__.self._verified_key in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._spans::panel-composition-span-index": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._spans"
+      ],
+      "definition_line": 448,
+      "key": "span -> session axis; fixed binding",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "composition session disposal",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes from immutable source/binding",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory PanelCompositionSession.__init__.self._spans in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/development_input.py::CompositeDevelopmentFeatureReader.__init__.self._listing_ids::panel-development-input-listing-axis": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/panels/development_input.py::CompositeDevelopmentFeatureReader.__init__.self._listing_ids"
+      ],
+      "definition_line": 162,
+      "key": "one fixed input/manifest axis",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "input object disposal",
+      "size_bound": "1 listing-axis tuple",
+      "bound_scope": "1 listing-axis tuple",
+      "eviction": "object disposal",
+      "safe_to_drop": "Yes from same bound input",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory CompositeDevelopmentFeatureReader.__init__.self._listing_ids in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/retrieval/session.py::AlternativeEvidenceRetrievalSession.__init__.self._chunk_index::goal-evidence-retrieval-committed-chunk-position-index": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/retrieval/session.py::AlternativeEvidenceRetrievalSession.__init__.self._chunk_index"
+      ],
+      "definition_line": 298,
+      "key": "chunk ID -> citation positions; committed generation",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "session close/new generation",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "session disposal",
+      "safe_to_drop": "Yes from committed source/generation",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory AlternativeEvidenceRetrievalSession.__init__.self._chunk_index in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/shared_kernel/spans.py::SpanLedger.__init__.self.readout_value::final-span-ledger-metric-readout": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/spans.py::SpanLedger.__init__.self.readout_value"
+      ],
+      "definition_line": 83,
+      "key": "one finalized ledger",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "replaced at readout finalization; ledger disposal",
+      "size_bound": "1 readout dictionary",
+      "bound_scope": "1 readout dictionary",
+      "eviction": "replace",
+      "safe_to_drop": "Conditional: rebuild from same ledger; active timing state is not disposable",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory SpanLedger.__init__.self.readout_value in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/web.py::LocalWebApplication.assets::host-cached-built-asset-bytes": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/web.py::LocalWebApplication.assets"
+      ],
+      "definition_line": 244,
+      "key": "asset URL; installed content-hashed build/ETag",
+      "dependency_coverage": "Scoped pinned store/operation/installed generation",
+      "invalidation_rule": "Host/bundle reconstruction",
+      "size_bound": "finite built asset set (no byte cap)",
+      "bound_scope": "finite built asset set (no byte cap)",
+      "eviction": "Host lifetime",
+      "safe_to_drop": "Yes from same built manifest; restart for upgrade",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory LocalWebApplication.assets in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>.FILE_FACTS::persistent-verified-file-digests": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/verified_facts.py::FILE_FACTS"
+      ],
+      "definition_line": 31,
+      "key": "path,kind + size/mtime/inode + digest",
+      "dependency_coverage": "Metadata plus writer refresh; not a full-byte key",
+      "invalidation_rule": "stamp mismatch/owner write; load-time compaction",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "compact when lines >2*live keys+1024; no key quota",
+      "safe_to_drop": "Yes: rehash under held owner/lease",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "<workspace>/runtime/verified-files.jsonl"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>.ensure_year_fact_schema::verified-year-fact-table": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/verified_facts.py::ensure_year_fact_schema"
+      ],
+      "definition_line": 46,
+      "key": "kind,scope,year; basis and seal epoch validated",
+      "dependency_coverage": "Yes under owned writer invalidation and seal epoch",
+      "invalidation_rule": "touched years forgotten/renewed; epoch change invalidates",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "replace primary-key rows; explicit forget",
+      "safe_to_drop": "Yes via owner; rederive from retained store facts",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "Verified year-fact table in the workspace market-data database"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._module::yfinance-timezone-cache": {
+      "owner": "alphalattice.foundation.market_data_ops",
+      "defined_by": [
+        "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._module"
+      ],
+      "definition_line": 202,
+      "key": "ticker -> timezone (pinned yfinance cache.py)",
+      "dependency_coverage": "No timezone-generation field; delegated provider policy",
+      "invalidation_rule": "manual replacement/provider lifecycle; no product TTL",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "upstream/manual; no product LRU",
+      "safe_to_drop": "Conditional: quiescent provider + network/cache source available",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "YFinanceMarketDataProvider.cache_root/tkr-tz.db",
+        "source": "src/alphalattice/foundation/market_data_ops/sources/providers.py:183,216-227"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._module::yfinance-cookie-cache": {
+      "owner": "alphalattice.foundation.market_data_ops",
+      "defined_by": [
+        "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._module"
+      ],
+      "definition_line": 202,
+      "key": "cookie strategy + upstream cookie age",
+      "dependency_coverage": "Provider auth freshness, not research-result identity",
+      "invalidation_rule": "upstream age/refetch; no product byte quota",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "upstream replacement",
+      "safe_to_drop": "Conditional: active handles closed; re-auth/fetch permitted",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "YFinanceMarketDataProvider.cache_root/cookies.db",
+        "source": "src/alphalattice/foundation/market_data_ops/sources/providers.py:183,216-227"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._module::yfinance-isin-cache": {
+      "owner": "alphalattice.foundation.market_data_ops",
+      "defined_by": [
+        "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._module"
+      ],
+      "definition_line": 202,
+      "key": "provider symbol/ISIN lookup",
+      "dependency_coverage": "Delegated upstream cache identity",
+      "invalidation_rule": "upstream lookup replacement",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "upstream/manual",
+      "safe_to_drop": "Conditional: source lookup available",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "YFinanceMarketDataProvider.cache_root/isin-tkr.db",
+        "source": "src/alphalattice/foundation/market_data_ops/sources/providers.py:183,216-227"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/native_bridge.py::_reading.cache::native-usage-incremental-checkpoints": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/native_bridge.py::_reading.cache"
+      ],
+      "definition_line": 1160,
+      "key": "exact source file/host/session/schema + prefix/boundary/checksum",
+      "dependency_coverage": "Yes: replacement/shrink/changed boundary/checksum reset; source logs required",
+      "invalidation_rule": "source/checkpoint mismatch; usage OFF and unbind clear checkpoints",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "replace per source; owner switch/unbind cleanup; no fixed overall byte quota",
+      "safe_to_drop": "Conditional: same native source logs still retained",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "<workspace>/runtime/native-usage"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication._ledger_path::experiment-verification-ledger-files": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication._ledger_path"
+      ],
+      "definition_line": 3112,
+      "key": "Task UUID + recorded/current; entry record/fingerprint/implementation",
+      "dependency_coverage": "Entry dependencies revalidated; trust-boundary reads full",
+      "invalidation_rule": "invalid fingerprint/currentness read rejects/removes",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "per-read invalidation; no aggregate quota",
+      "safe_to_drop": "Yes: full graph verification when source graph retained",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "<workspace>/runtime/verification-ledger"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/storage/plan_previews.py::PreviewRegistry._seal::durable-unadmitted-plan-previews": {
+      "owner": "alphalattice.control.product_host",
+      "defined_by": [
+        "src/alphalattice/control/product_host/storage/plan_previews.py::PreviewRegistry._seal"
+      ],
+      "definition_line": 153,
+      "key": "sealed plan hash + expiry",
+      "dependency_coverage": "Yes sealed identity; expiry differs from retention",
+      "invalidation_rule": "single replacement; expired files removed on next remember",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "lazy TTL 60 min default; no total count/byte quota",
+      "safe_to_drop": "Conditional: only expired/unadmitted; pending exact request may need it",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "<workspace>/runtime/plan-previews"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/reference_prefixes.py::ReferenceLedger._values::compact-reference-ledger-file": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/reference_prefixes.py::ReferenceLedger._values"
+      ],
+      "definition_line": 36,
+      "key": "whole UUID/hash strings in fixed workspace",
+      "dependency_coverage": "Yes for already-served references",
+      "invalidation_rule": "append; rewrite newest LIMIT on overflow",
+      "size_bound": "200000 values",
+      "bound_scope": "200000 values",
+      "eviction": "oldest insertion removed",
+      "safe_to_drop": "Conditional: whole-value commands work; compact-reference convenience can be lost",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "<workspace>/runtime/reference-ledger.txt"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::RecordDays.__init__.self._records::evidence-record-day-side-index": {
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "defined_by": [
+        "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::RecordDays.__init__.self._records"
+      ],
+      "definition_line": 126,
+      "key": "sealed record identity -> sealing date, category/root",
+      "dependency_coverage": "Yes from immutable original record; missing dates learned",
+      "invalidation_rule": "note(new record) adds/updates; no age collection",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes: owner rereads records and learns missing day",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "<workspace>/runtime/artifacts/alternative-evidence/record-days"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._index::cro-register-day-placement-side-index": {
+      "owner": "alphalattice.oversight.chief_risk_officer",
+      "defined_by": [
+        "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._index"
+      ],
+      "definition_line": 230,
+      "key": "publication/register hash -> day placement under fixed store/category",
+      "dependency_coverage": "Derived from retained sealed CRO register; register itself is authority",
+      "invalidation_rule": "publication/register write updates; read fallback learns",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none",
+      "safe_to_drop": "Yes: owner learns placement from retained sealed register; never drop the register or pending writeback",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "<workspace>/runtime/artifacts/alternative-evidence/cro-review-register/days"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/investment/alpha_research/publication/workspace_history.py::<module>._PARTS::workspace-observation-history-prepared-reuse": {
+      "owner": "alphalattice.investment.alpha_research",
+      "defined_by": [
+        "src/alphalattice/investment/alpha_research/publication/workspace_history.py::_PARTS"
+      ],
+      "definition_line": 37,
+      "key": "scope/layout + implementation/source/axis/content hashes",
+      "dependency_coverage": "Yes: marker/current/previous heads and part identities verified",
+      "invalidation_rule": "new scope/layout publishes new files; old scopes retained",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "explicit rooted retention only; no automatic whole-history cap",
+      "safe_to_drop": "No generic drop: current/previous/referenced heads/parts protected; cold rebuild needs exact sources/implementation",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "<workspace>/artifacts/alpha-research/current/workspace-observation-history"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/knowledge/hybrid.py::<module>.committed_database_relative::hybrid-sqlite-retrieval-projections": {
+      "owner": "alphalattice.kernel.knowledge",
+      "defined_by": [
+        "src/alphalattice/kernel/knowledge/hybrid.py::committed_database_relative"
+      ],
+      "definition_line": 436,
+      "key": "corpus hash + logical index spec + schema version",
+      "dependency_coverage": "Yes: committed rows/vectors/spec verified whole on open",
+      "invalidation_rule": "new corpus/spec/schema creates generation; no automatic GC",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "explicit owner eviction marker, leases/pins/commitments checked",
+      "safe_to_drop": "Conditional: closed unpinned generation, explicit rebuild from retained commitments",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "<workspace>/runtime/evidence-knowledge/.system/knowledge-indexes"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/knowledge/hybrid.py::<module>._commitment_for::committed-vector-blocks-reused-across-index-generations": {
+      "owner": "alphalattice.kernel.knowledge",
+      "defined_by": [
+        "src/alphalattice/kernel/knowledge/hybrid.py::_commitment_for"
+      ],
+      "definition_line": 652,
+      "key": "payload byte SHA + model/spec/corpus commitments",
+      "dependency_coverage": "Yes: canonical payload and exact commitment",
+      "invalidation_rule": "new content; historical/pinned blocks retained",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "only owner/reference-aware retention",
+      "safe_to_drop": "No generic drop: becomes sealed input authority; exact source/model generation must survive",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "<workspace>/runtime/evidence-knowledge/.system/knowledge-vectors"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/knowledge/_reranking.py::<module>.PAIR_SCORE_STORE_CAP_BYTES::sealed-reranker-pair-score-blocks": {
+      "owner": "alphalattice.kernel.knowledge",
+      "defined_by": [
+        "src/alphalattice/kernel/knowledge/_reranking.py::PAIR_SCORE_STORE_CAP_BYTES"
+      ],
+      "definition_line": 236,
+      "key": "reranker context + SHA(query,passage) + rounded score block hash",
+      "dependency_coverage": "Yes: only admitted committed blocks used; conflicts refuse",
+      "invalidation_rule": "new reranker context; immutable blocks",
+      "size_bound": "unbounded",
+      "bound_scope": "64 MiB per context; aggregate contexts unbounded",
+      "eviction": "new sealing refused when full; no LRU",
+      "safe_to_drop": "Conditional: no retained receipt pin/lease and exact reranker/text inputs available",
+      "location": {
+        "scope": "workspace",
+        "path_expression": "<workspace>/runtime/evidence-knowledge/.system/knowledge-scores"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/playwright.ps1::<script>::playwright-pinned-browser-binaries": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "scripts/playwright.ps1::<script>"
+      ],
+      "definition_line": 5,
+      "key": "package-lock/browser manifest revision/platform",
+      "dependency_coverage": "Yes when exact declared manifest/platform pinned",
+      "invalidation_rule": "new pinned browser revision; setup replaces/installs",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded across revisions",
+      "eviction": "explicit setup/remove; no product LRU",
+      "safe_to_drop": "Conditional: no active browser + same pinned downloads/cache available",
+      "location": {
+        "scope": "installation",
+        "path_expression": "third_party/playwright/.browsers",
+        "source": "scripts/playwright.ps1:4-5"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/retrieval_environment.py::<module>.create::uv-package-download-build-cache": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/retrieval_environment.py::create"
+      ],
+      "definition_line": 87,
+      "key": "artifact URL/digest, wheel/ABI/build context; lock constrains selected values",
+      "dependency_coverage": "Delegated uv cache; no product-owned generation namespace",
+      "invalidation_rule": "upstream validation, uv cache prune/clean",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "manual upstream pruning, no application byte cap",
+      "safe_to_drop": "Conditional: quiescent users; exact lock/Python/runtime artifacts available",
+      "location": {
+        "scope": "outside",
+        "path_expression": "uv-managed cache root, delegated to uv configuration"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/knowledge/model_store.py::<module>.pack_directory::pinned-retrieval-embedding-reranker-model-packs": {
+      "owner": "alphalattice.kernel.knowledge",
+      "defined_by": [
+        "src/alphalattice/kernel/knowledge/model_store.py::pack_directory"
+      ],
+      "definition_line": 242,
+      "key": "repository + immutable revision + exact expected file SHA",
+      "dependency_coverage": "Yes: verify exact required files/digests, staged atomic publication",
+      "invalidation_rule": "new revision/root; partial resume and explicit owner install",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded across revisions",
+      "eviction": "none; remembered root pointer is configuration",
+      "safe_to_drop": "Conditional: no leases/retained pins; same pinned pack bytes obtainable",
+      "location": {
+        "scope": "outside",
+        "path_expression": "pack_directory(default_model_store(...), spec), selected model-store root"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/interface/local_application/web.py::<module>.IMMUTABLE_CACHE::browser-immutable-asset-http-cache": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/web.py::IMMUTABLE_CACHE"
+      ],
+      "definition_line": 121,
+      "key": "content-hashed asset URL and HTTP response validators",
+      "dependency_coverage": "Yes for immutable built assets; browser profile not recorded",
+      "invalidation_rule": "new hashed URL; max-age 31536000 s; browser eviction",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded by product; browser quota delegated",
+      "eviction": "browser policy; no application LRU/quota",
+      "safe_to_drop": "Yes: refetch same asset; no person preference clearing",
+      "location": {
+        "scope": "outside",
+        "path_expression": "Browser-owned HTTP cache for content-hashed asset URLs; product does not select physical profile"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/kernel/knowledge/_reranking.py::PairScoreStore.__init__.self.cap_bytes::hybrid-loaded-pair-score-blocks": {
+      "owner": "alphalattice.kernel.knowledge",
+      "defined_by": [
+        "src/alphalattice/kernel/knowledge/_reranking.py::PairScoreStore.__init__.self._blocks"
+      ],
+      "definition_line": 317,
+      "key": "admitted block hashes + reranker context",
+      "dependency_coverage": "whole block/header/order/conflicts verified on load",
+      "invalidation_rule": "reader close/new admission",
+      "size_bound": "unbounded",
+      "bound_scope": "New sealed block payloads are limited by configured cap_bytes (64 MiB default) per context. load() reads all admitted blocks without a separate byte admission; no hard in-memory or aggregate-context quota is enforced.",
+      "eviction": "reader close; no across-context cap",
+      "safe_to_drop": "Yes from admitted immutable blocks",
+      "location": {
+        "scope": "process",
+        "path_expression": "PairScoreStore instance self._blocks tuple of verified admitted score blocks, loaded by PairScoreStore.load."
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider.fetch_daily.frame::yfinance-historical-http-responses-delegated": {
+      "owner": "alphalattice.foundation.market_data_ops",
+      "defined_by": [
+        "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider.fetch_daily.frame"
+      ],
+      "definition_line": 250,
+      "key": "YfData singleton, URL, frozen params, timeout",
+      "dependency_coverage": "No provider revision, request observation time or TTL; past-range history uses cache_get",
+      "invalidation_rule": "LRU replacement/process end; no product clear caller",
+      "size_bound": "64 responses",
+      "bound_scope": "64 responses",
+      "eviction": "LRU",
+      "safe_to_drop": "Conditional: refetch permitted; provider can return corrected values, so equal values are not guaranteed",
+      "location": {
+        "scope": "process",
+        "path_expression": "Delegated yfinance YfData.cache_get historical-response LRU shared in the measured base; fetch_daily.frame is its materialized return value."
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "fixed_successor": {
+        "source_commit": "cdbb72ee6e3e3aff3e3ebc49202b5f452788ad49",
+        "defined_by": "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._ticker",
+        "key": "yf.data.lru_cache_freezeargs(cache(ticker._data.get)); acquisition-local bound GET arguments (URL, frozen params, timeout and supplied GET arguments)",
+        "scope": "one acquisition ticker, never shared across later acquisitions",
+        "size_bound": "unbounded",
+        "invalidation_rule": "Each _ticker construction creates a fresh cache; entries live only with that acquisition cache, no LRU quota.",
+        "installed_in_this_base": false
+      }
+    },
+    "src/alphalattice/kernel/data/calendar.py::materialize_calendar_schedule.calendar::exchange-calendar-dispatcher-schedule-reuse-delegated": {
+      "owner": "alphalattice.kernel.data",
+      "defined_by": [
+        "src/alphalattice/kernel/data/calendar.py::materialize_calendar_schedule.calendar"
+      ],
+      "definition_line": 85,
+      "key": "resolved calendar name plus equality of start/end/side kwargs",
+      "dependency_coverage": "Scoped installed calendar rules; implicit default horizon is construction-time state",
+      "invalidation_rule": "different kwargs replaces same name; process restart",
+      "size_bound": "2 calendar names in supported product domain; schedules have no byte cap",
+      "bound_scope": "2 calendar names in supported product domain; schedules have no byte cap",
+      "eviction": "replace per name; no read-LRU",
+      "safe_to_drop": "Yes for same library, calendar rules and explicit materialization cutoff",
+      "location": {
+        "scope": "process",
+        "path_expression": "Delegated exchange_calendars process dispatcher and retained calendar schedules reached through get_calendar(calendar_id); the local calendar variable is the returned object."
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/task_control/child.py::<module>._SHARED::kept-child-worker-shared-input-values-shared": {
+      "owner": "alphalattice.control.task_control",
+      "defined_by": [
+        "src/alphalattice/control/task_control/child.py::_SHARED"
+      ],
+      "definition_line": 64,
+      "key": "call-set namespace, supplied content key",
+      "dependency_coverage": "Conditional: caller content key must cover complete value; carried flag ships once per worker",
+      "invalidation_rule": "ChildCalls.close orders _forget after calls; worker death clears",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded within live call sets",
+      "eviction": "call-set close; no LRU",
+      "safe_to_drop": "No during calls that omit already-carried bytes; close owner then rebuild same values",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _SHARED in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/task_control/child.py::<module>._WORKERS::kept-child-worker-executor-pool-workers": {
+      "owner": "alphalattice.control.task_control",
+      "defined_by": [
+        "src/alphalattice/control/task_control/child.py::_WORKERS"
+      ],
+      "definition_line": 59,
+      "key": "configured worker position",
+      "dependency_coverage": "Scoped configured worker positions; concurrent call sets share positions; no fixed global byte budget",
+      "invalidation_rule": "broken worker or idle timeout 180 s",
+      "size_bound": "configured worker-position count; no byte bound on worker process",
+      "bound_scope": "configured worker-position count; no byte bound on worker process",
+      "eviction": "idle retirement, no LRU",
+      "safe_to_drop": "Conditional: no active/queued calls; owner shutdown then fresh worker",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _WORKERS in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/product_host/composition/resource_estimates.py::<module>._GATES::workspace-resourcegate-reuse-gates": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/resource_estimates.py::_GATES"
+      ],
+      "definition_line": 316,
+      "key": "resolved workspace path",
+      "dependency_coverage": "Resource identity; live reservation maps are state, not memo results",
+      "invalidation_rule": "none; process end",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded workspace keys",
+      "eviction": "none",
+      "safe_to_drop": "No while reservations exist; coordinate owner close before rebuilding",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _GATES in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/control/task_control/registry.py::<module>._CONNECTION_LOCKS::task-database-lock-object-weak-pool": {
+      "owner": "alphalattice.control.task_control",
+      "defined_by": [
+        "src/alphalattice/control/task_control/registry.py::_CONNECTION_LOCKS"
+      ],
+      "definition_line": 61,
+      "key": "database Path",
+      "dependency_coverage": "Resource identity; weak values retained only while owners hold lock",
+      "invalidation_rule": "last strong reference released",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded active database paths",
+      "eviction": "weak-value garbage collection",
+      "safe_to_drop": "No while any transaction/owner holds lock; duplicate locks would break exclusion",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _CONNECTION_LOCKS in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._runtime_module::yfinance-loaded-provider-runtime-module": {
+      "owner": "alphalattice.foundation.market_data_ops",
+      "defined_by": [
+        "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._runtime_module"
+      ],
+      "definition_line": 185,
+      "key": "unit key; provider module in one process",
+      "dependency_coverage": "Fixed installed module and first cache-location initialization",
+      "invalidation_rule": "none; process restart",
+      "size_bound": "1 module pointer",
+      "bound_scope": "1 module pointer",
+      "eviction": "process end",
+      "safe_to_drop": "Conditional: quiescent provider, reinitialize same workspace cache location",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory YFinanceMarketDataProvider._runtime_module in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/check_alpha_verification_impact.py::_case_file_facts_for::module-case-file-facts-for": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "scripts/check_alpha_verification_impact.py::_case_file_facts_for"
+      ],
+      "definition_line": 484,
+      "key": "root",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _case_file_facts_for in its process/call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/check_alpha_verification_impact.py::_product_graph::module-product-graph": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "scripts/check_alpha_verification_impact.py::_product_graph"
+      ],
+      "definition_line": 633,
+      "key": "root",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _product_graph in its process/call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/check_alpha_verification_impact.py::_parent_tree::module-parent-tree": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "scripts/check_alpha_verification_impact.py::_parent_tree"
+      ],
+      "definition_line": 777,
+      "key": "revision",
+      "dependency_coverage": "Conditional: immutable commit SHA is complete; movable ref text is not",
+      "invalidation_rule": "new revision key/process exit; TemporaryDirectory cleanup",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _parent_tree in its process/call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/check_test_shape.py::_code_lines::module-code-lines": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "scripts/check_test_shape.py::_code_lines"
+      ],
+      "definition_line": 227,
+      "key": "path, text",
+      "dependency_coverage": "Yes for code text/path; token rules fixed in installed script",
+      "invalidation_rule": "new text/path key",
+      "size_bound": "64 entries",
+      "bound_scope": "64 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _code_lines in its process/call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/materialize_claude_host.py::_cli_reference::module-cli-reference": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "scripts/materialize_claude_host.py::_cli_reference"
+      ],
+      "definition_line": 496,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _cli_reference in its process/call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/check_playpen.py::<module>.main::mypy-incremental-analysis-cache-from-shipped-gate": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "scripts/check_playpen.py::main"
+      ],
+      "definition_line": 455,
+      "key": "tool/Python version, options, source/dependency metadata",
+      "dependency_coverage": "Delegated mypy versioned dependency cache",
+      "invalidation_rule": "tool/source/options invalidation",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "upstream replacement; no product quota",
+      "safe_to_drop": "Yes: cold full analysis",
+      "location": {
+        "scope": "workspace",
+        "path_expression": ".mypy_cache"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/check_playpen.py::<module>.main::ruff-validation-cache-from-shipped-gate": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "scripts/check_playpen.py::main"
+      ],
+      "definition_line": 455,
+      "key": "tool/config/source file identity",
+      "dependency_coverage": "Delegated Ruff invalidation; no research result reused",
+      "invalidation_rule": "tool/config/source change",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "upstream replacement; no product quota",
+      "safe_to_drop": "Yes: rerun lint/format",
+      "location": {
+        "scope": "workspace",
+        "path_expression": ".ruff_cache"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/playwright.ps1::<script>::npm-package-cache-used-by-shipped-playwright-setup": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "scripts/playwright.ps1::<script>"
+      ],
+      "definition_line": 67,
+      "key": "npm integrity/URL/package-lock revision/platform",
+      "dependency_coverage": "Delegated npm content-addressed cache",
+      "invalidation_rule": "npm own validation/clean",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "upstream/manual; no product byte cap",
+      "safe_to_drop": "Conditional: exact lock artifacts available and setup idle",
+      "location": {
+        "scope": "outside",
+        "path_expression": "NPM configured cache root; npm ci uses NPM configuration without a product cache override"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "lifecycle_owner": "NPM; the product owns this declared invocation, not the shared tool cache lifecycle."
+    },
+    "scripts/run_playpen_precommit.py::_prepare_environment.cache_root::shipped-pre-commit-uv-cache": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "scripts/run_playpen_precommit.py::_prepare_environment.cache_root"
+      ],
+      "definition_line": 18,
+      "key": "uv package/lock/environment context under TEMP",
+      "dependency_coverage": "Delegated uv cache in explicit hook profile",
+      "invalidation_rule": "upstream invalidation; TEMP may differ by host",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "no product cleanup for global default hook root",
+      "safe_to_drop": "Conditional: no active hook, pinned cache or downloads available",
+      "location": {
+        "scope": "outside",
+        "path_expression": "shared_default_hook_temp"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/run_playpen_precommit.py::_prepare_environment.pre_commit_home::shipped-pre-commit-tool-repository-cache": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "scripts/run_playpen_precommit.py::_prepare_environment.pre_commit_home"
+      ],
+      "definition_line": 19,
+      "key": "pre-commit config/repository revision/environment",
+      "dependency_coverage": "Delegated pre-commit dependency identity",
+      "invalidation_rule": "config/revision changes",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "pre-commit GC/manual; no product quota",
+      "safe_to_drop": "Conditional: no running hook; rebuild same pinned hook environment",
+      "location": {
+        "scope": "outside",
+        "path_expression": "shared_default_hook_temp"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/check_alpha_verification_impact.py::_parent_tree.holder::shipped-impact-check-parent-tree-memo-files": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "scripts/check_alpha_verification_impact.py::_parent_tree.holder"
+      ],
+      "definition_line": 783,
+      "key": "Git revision -> TemporaryDirectory source archive",
+      "dependency_coverage": "Complete for resolved immutable SHA; mutable ref text is conditional",
+      "invalidation_rule": "process exit removes TemporaryDirectory; crash orphan possible",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded during process",
+      "eviction": "temporary context/process cleanup",
+      "safe_to_drop": "Yes from same Git commit; no active reader",
+      "location": {
+        "scope": "outside",
+        "path_expression": "unknown: native TEMP/impact-parent-*"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/release/public_closure.py::_python.optional_cache::shipped-closure-optional-import-scan-memo": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "scripts/release/public_closure.py::_python.optional_cache"
+      ],
+      "definition_line": 206,
+      "key": "AST node identity",
+      "dependency_coverage": "Parsed AST and enclosing try/except ancestry within one _python(path, text, files) invocation.",
+      "invalidation_rule": "Discarded when the _python invocation returns; a newly parsed AST gets a fresh cache.",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "End of one _python invocation.",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _python.optional_cache in its process/call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    },
+    "scripts/release/public_manifest.py::validate_internal_id_history.cache::shipped-public-label-history-tree-memo": {
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "scripts/release/public_manifest.py::validate_internal_id_history.cache"
+      ],
+      "definition_line": 635,
+      "key": "resolved commit/tree identity",
+      "dependency_coverage": "immutable Git object IDs",
+      "invalidation_rule": "history-validation call exit",
+      "size_bound": "unbounded",
+      "bound_scope": "unbounded",
+      "eviction": "call lifetime",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory validate_internal_id_history.cache in its process/call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+    }
+  }
+}

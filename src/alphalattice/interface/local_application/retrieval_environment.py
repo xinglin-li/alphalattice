@@ -35,6 +35,15 @@ PLAYPEN: Path = resolve_playpen_root(Path(__file__))
 LOCK = PLAYPEN / "uv.lock"
 ENVIRONMENT = PLAYPEN / ".venv-retrieval"
 ADDITIONS = PLAYPEN / "config" / "requirements-retrieval.lock"
+LOCKED_SETUP_DISCLOSURE = (
+    "I will install the retrieval packages pinned in config/requirements-retrieval.lock, "
+    "downloading any missing packages as part of this setup."
+)
+LOCKED_SETUP_WORDS = (
+    "Run the locked retrieval setup online as the agent's act, disclosing it in one line. "
+    "An empty cache needs no second person question or renewed first-use network consent. "
+    "Only software outside the lock needs the person's permission."
+)
 
 
 def _uv() -> str:
@@ -49,12 +58,12 @@ def interpreter_path() -> Path:
     return ENVIRONMENT / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 
-def fill_command(*, offline: bool = True) -> list[str]:
+def fill_command(*, offline: bool = False) -> list[str]:
     """The agent's fill of this product's retrieval runtime, typed from any folder.
 
     A checkout builds the declared environment beside its lock; an installed distribution takes
     the pinned additions into its own environment. Either is the lock's own dependency; offline
-    reads the local cache only, and the network form needs the download permission.
+    reads the local cache only. Locked downloads are the agent's disclosed setup act.
     """
     module = "alphalattice.interface.local_application.retrieval_environment"
     return [sys.executable, "-m", module, *(["--offline"] if offline else [])]
@@ -182,6 +191,12 @@ def refusal(
         next_action = (
             "RUN_THE_NETWORK_SETUP_WITH_DOWNLOAD_PERMISSION" if offline else "RESOLVE_AND_RUN_AGAIN"
         )
+        if kind == "retrieval_environment" and offline:
+            detail = (
+                f"uv could not build {place} from its local cache. Run the same setup "
+                "without --offline. " + LOCKED_SETUP_WORDS
+            )
+            next_action = "RUN_LOCKED_DEPENDENCY_SETUP"
     elif missing:
         code, next_action = f"{kind}.lock_missing", "RESTORE_THE_CHECKOUT"
         detail = (
@@ -216,7 +231,19 @@ def refusal(
         "detail": detail,
         "next_action": next_action,
         "environment": str(environment),
-        "next_commands": {"help": _help_command(kind)},
+        "next_commands": {
+            "help": _help_command(kind),
+            **(
+                {"setup": fill_command()}
+                if kind == "retrieval_environment" and next_action == "RUN_LOCKED_DEPENDENCY_SETUP"
+                else {}
+            ),
+        },
+        **(
+            {"who_decides": "AGENT", "disclosure": LOCKED_SETUP_DISCLOSURE}
+            if kind == "retrieval_environment" and isinstance(error, subprocess.CalledProcessError)
+            else {}
+        ),
     }
 
 
@@ -241,6 +268,8 @@ def main() -> int:
         help="resolve the lock and the additions from the local uv cache only",
     )
     arguments = parser.parse_args()
+    if not arguments.offline:
+        print(LOCKED_SETUP_DISCLOSURE, file=sys.stderr)
     try:
         interpreter = create(offline=arguments.offline)
     except Exception as error:

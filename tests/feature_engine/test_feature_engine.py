@@ -83,6 +83,7 @@ from tests.feature_engine.panel_workspace import (
     SESSIONS,
     FixtureProvider,
     build_and_publish,
+    extended_formula_layer,
     fixture_manifest,
     fixture_session_authority,
     insert_fixture_bars,
@@ -129,7 +130,7 @@ def test_current_feature_storage_preserves_exact_catalog_axis() -> None:
 
 
 def test_a_build_after_an_added_column_computes_it_and_carries_every_held_value(tmp_path) -> None:
-    """A build after an added column computes it and carries every held value."""
+    """Control: Build after added column computes it and carries every held value."""
 
     from alphalattice.foundation.feature_engine.contracts import FeatureInvalidation
     from alphalattice.foundation.feature_engine.inputs.closure_source import (
@@ -155,16 +156,12 @@ def test_a_build_after_an_added_column_computes_it_and_carries_every_held_value(
     from alphalattice.foundation.feature_engine.producers.factors.catalog import (
         default_extension_kernel_registry,
     )
-    from alphalattice.foundation.feature_engine.producers.factors.formula import (
-        formula_specification,
-    )
     from alphalattice.foundation.feature_engine.publication.snapshots import (
         FeaturePanelSnapshotPublisher,
     )
     from alphalattice.foundation.feature_engine.runtime.closure_genesis import (
         FeatureClosureGenesisService,
     )
-    from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
     manifest = fixture_manifest()
     as_of = SESSIONS[300]
@@ -181,31 +178,7 @@ def test_a_build_after_an_added_column_computes_it_and_carries_every_held_value(
         end=as_of,
         include_lineage=False,
     )
-    spec = formula_specification(
-        FactorSpec(
-            factor_id="formula_reversal_5",
-            family=FactorFamily.PRICE_LEVEL_TREND,
-            formula_ref="factor.formula",
-            formula="close / lag(close, 5) - 1",
-            window_sessions=1,
-            lag_sessions=0,
-            return_convention="as declared",
-            required_fields=("close_split_adjusted",),
-            literature_sources=("research-local note",),
-            minimum_observations=1,
-            absolute_tolerance=1e-10,
-            relative_tolerance=1e-10,
-            track=FactorTrack.MODEL,
-        )
-    )
-    payload = shipped.to_payload()
-    payload["factors"] = sorted(
-        [*payload["factors"], spec.model_dump(mode="json")],
-        key=lambda value: str(value["factor_id"]),
-    )
-    extended = FeatureCatalog.from_payload(payload)
-    layer = FeatureCatalogLayer.over(extended)
-    (column,) = layer.columns
+    extended, layer, column, spec = extended_formula_layer(shipped)
     assert layer.base.binding.catalog_hash == shipped.binding.catalog_hash
     source = FeatureClosureSourceRepository(held.market_data.database.path)
     genesis = FeatureClosureGenesisService(
@@ -352,7 +325,7 @@ def test_a_build_after_an_added_column_computes_it_and_carries_every_held_value(
 def test_an_interrupted_first_load_is_discarded_and_its_column_built_again(
     tmp_path, monkeypatch
 ) -> None:
-    """An interrupted first load is discarded and its column built again."""
+    """Control: Interrupted first load is discarded and its column built again."""
 
     from alphalattice.foundation.feature_engine.inputs.closure_source import (
         FeatureClosureSourceRepository,
@@ -360,13 +333,9 @@ def test_an_interrupted_first_load_is_discarded_and_its_column_built_again(
     from alphalattice.foundation.feature_engine.panels.feature_closure_coordinator import (
         FeatureLayerClosures,
     )
-    from alphalattice.foundation.feature_engine.producers.factors.formula import (
-        formula_specification,
-    )
     from alphalattice.foundation.feature_engine.runtime.closure_genesis import (
         FeatureClosureGenesisService,
     )
-    from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
     manifest = fixture_manifest()
     as_of = SESSIONS[300]
@@ -375,31 +344,7 @@ def test_an_interrupted_first_load_is_discarded_and_its_column_built_again(
         held, manifest, spy="a" * 64, as_of=as_of, observed_at=NOW, refresh_sector=True
     )
     shipped = FeatureCatalog.load()
-    spec = formula_specification(
-        FactorSpec(
-            factor_id="formula_reversal_5",
-            family=FactorFamily.PRICE_LEVEL_TREND,
-            formula_ref="factor.formula",
-            formula="close / lag(close, 5) - 1",
-            window_sessions=1,
-            lag_sessions=0,
-            return_convention="as declared",
-            required_fields=("close_split_adjusted",),
-            literature_sources=("research-local note",),
-            minimum_observations=1,
-            absolute_tolerance=1e-10,
-            relative_tolerance=1e-10,
-            track=FactorTrack.MODEL,
-        )
-    )
-    payload = shipped.to_payload()
-    payload["factors"] = sorted(
-        [*payload["factors"], spec.model_dump(mode="json")],
-        key=lambda value: str(value["factor_id"]),
-    )
-    extended = FeatureCatalog.from_payload(payload)
-    layer = FeatureCatalogLayer.over(extended)
-    (column,) = layer.columns
+    extended, layer, column, _spec = extended_formula_layer(shipped)
     column_hash = column.binding.catalog_hash
     source = FeatureClosureSourceRepository(held.market_data.database.path)
     FeatureClosureGenesisService(
@@ -1094,7 +1039,7 @@ def test_amihud_averages_the_sessions_with_volume_and_a_zero_volume_bar_never_bl
 
 
 def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_path: Path) -> None:
-    """A source absence is not an uncomputed row or a permanent membership exit."""
+    """Control: Missing daily market observation keeps other members usable."""
 
     from alphalattice.foundation.feature_engine.panels.closure import PanelClosurePublisher
     from alphalattice.foundation.feature_engine.panels.closure_source import (
@@ -1103,15 +1048,8 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
     from alphalattice.foundation.feature_engine.panels.rematerialization import (
         ArtifactOnlyPanelRematerializer,
     )
-    from alphalattice.foundation.market_data_ops.sources.manifest import ManifestListing
 
-    manifest = replace(
-        fixture_manifest(),
-        listings=tuple(
-            ManifestListing(f"listing-{index:02d}", f"T{index:02d}", "XNYS", f"T{index:02d}")
-            for index in range(60)
-        ),
-    )
+    manifest = fixture_manifest(listing_count=60)
     prior, today = SESSIONS[400:402]
     workspace = panel_workspace(tmp_path / "partial", manifest, end=prior, spy="a" * 64)
     workspace.provider.sectors = {
@@ -1825,17 +1763,9 @@ def test_a_build_writes_the_same_bytes_whatever_its_workers(tmp_path, monkeypatc
 
 
 def test_a_panel_is_the_same_whatever_its_workers(tmp_path) -> None:
-    """A panel is the same whatever its workers."""
+    """Control: Panel is same whatever its workers."""
 
-    from alphalattice.foundation.market_data_ops.sources.manifest import ManifestListing
-
-    manifest = replace(
-        fixture_manifest(),
-        listings=tuple(
-            ManifestListing(f"listing-{index:02d}", f"T{index:02d}", "XNYS", f"T{index:02d}")
-            for index in range(60)
-        ),
-    )
+    manifest = fixture_manifest(listing_count=60)
     as_of = SESSIONS[400]
     written: dict[int, tuple[object, ...]] = {}
     for workers in (1, 3):
@@ -1992,7 +1922,7 @@ def test_a_stale_panel_is_judged_by_feature_alone_and_its_projection_follows(
 
 
 def test_an_activation_holds_the_base_and_retires_rows_outside_its_layer(tmp_path) -> None:
-    """An activation holds the base and retires rows outside its layer."""
+    """Control: Activation holds base and retires rows outside its layer."""
 
     from alphalattice.foundation.feature_engine.contracts import FeatureInvalidation
     from alphalattice.foundation.feature_engine.inputs.closure_source import (
@@ -2008,16 +1938,12 @@ def test_an_activation_holds_the_base_and_retires_rows_outside_its_layer(tmp_pat
     from alphalattice.foundation.feature_engine.panels.recovery_binding import (
         PanelRecoveryBindingPublisher,
     )
-    from alphalattice.foundation.feature_engine.producers.factors.formula import (
-        formula_specification,
-    )
     from alphalattice.foundation.feature_engine.publication.snapshots import (
         FeaturePanelSnapshotPublisher,
     )
     from alphalattice.foundation.feature_engine.runtime.closure_genesis import (
         FeatureClosureGenesisService,
     )
-    from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
     manifest = fixture_manifest()
     as_of = SESSIONS[300]
@@ -2040,31 +1966,7 @@ def test_an_activation_holds_the_base_and_retires_rows_outside_its_layer(tmp_pat
         )
     finally:
         connection.close()
-    spec = formula_specification(
-        FactorSpec(
-            factor_id="formula_reversal_5",
-            family=FactorFamily.PRICE_LEVEL_TREND,
-            formula_ref="factor.formula",
-            formula="close / lag(close, 5) - 1",
-            window_sessions=1,
-            lag_sessions=0,
-            return_convention="as declared",
-            required_fields=("close_split_adjusted",),
-            literature_sources=("research-local note",),
-            minimum_observations=1,
-            absolute_tolerance=1e-10,
-            relative_tolerance=1e-10,
-            track=FactorTrack.MODEL,
-        )
-    )
-    payload = shipped.to_payload()
-    payload["factors"] = sorted(
-        [*payload["factors"], spec.model_dump(mode="json")],
-        key=lambda value: str(value["factor_id"]),
-    )
-    extended = FeatureCatalog.from_payload(payload)
-    layer = FeatureCatalogLayer.over(extended)
-    (column,) = layer.columns
+    extended, layer, column, _spec = extended_formula_layer(shipped)
     source = FeatureClosureSourceRepository(held.market_data.database.path)
     FeatureClosureGenesisService(
         panel_state=held.panel_state, source=source, ledger=held.ledger

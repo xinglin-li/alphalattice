@@ -15,6 +15,7 @@ import math
 import re
 import shutil
 import urllib.parse
+from collections.abc import Iterator
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -67,7 +68,11 @@ from tests.alternative_evidence_desk.review_dossiers import (
     _submission,
     answer_from_issues,
 )
-from tests.alternative_evidence_desk.review_http_support import _raise_interruption
+from tests.alternative_evidence_desk.review_http_support import (
+    _raise_interruption,
+    _service,
+    build_workspace,
+)
 
 _run_one = run_one
 _http = http_body
@@ -94,6 +99,12 @@ def book(built_book: Any, tmp_path: Path) -> Any:
 
 def _embedding_passes(service: Any) -> int:
     return int(service.review.evidence_task_adapter.runtime.retrieval.passage_embedding_pass_count)
+
+
+@pytest.fixture
+def single_service(tmp_path: Path) -> Iterator[Any]:
+    workspace, report = build_workspace(tmp_path)
+    yield from _service(tmp_path, workspace, report, with_runtime=True, with_actor=True)
 
 
 @pytest.mark.parametrize(
@@ -1143,120 +1154,99 @@ def test_an_interrupted_run_resumes_after_restart_without_repeating_completed_un
         second.session.stop()
 
 
-def test_a_single_unit_book_is_a_run_of_one_unit(tmp_path: Path) -> None:
-    """A single unit book is a run of one unit."""
+def test_a_single_unit_book_is_a_run_of_one_unit(single_service: Any) -> None:
+    """Control: Single unit book is run of one unit."""
 
-    from tests.alternative_evidence_desk.review_http_support import (
-        build_authority,
-        build_workspace,
-        start_service,
+    service = single_service
+    preview = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+    assert preview["coverage"]["unit_count"] == 1
+    (planned,) = preview["coverage"]["units"]
+    assert (
+        preview["next_requests"]["prepare"]["preparation_binding_hash"]
+        == (preview["preparation_binding_hash"])
     )
-
-    workspace, report = build_workspace(tmp_path)
-    authority = build_authority(tmp_path=tmp_path, report=report)
-    service = start_service(workspace, authority, tmp_path)
-    try:
-        preview = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
-        assert preview["coverage"]["unit_count"] == 1
-        (planned,) = preview["coverage"]["units"]
-        assert (
-            preview["next_requests"]["prepare"]["preparation_binding_hash"]
-            == (preview["preparation_binding_hash"])
-        )
-        section = service.evidence_cro()
-        assert section["coverage_progress"] is None
-        prepared = _run_one(service, preview["next_requests"]["prepare"])
-        service.drain()
-        task = service.registry.task(UUID(prepared["task_id"]))
-        assert task.input.payload["purpose"] == COVERAGE_RUN_PURPOSE
-        assert task.input.payload["unit_count"] == 1
-        (run,) = service.review.artifacts.values(
-            "evidence-coverage-runs", AlternativeEvidenceCoverageRun
-        )
-        (unit,) = run.units
-        assert unit.preparation_intent_hash == planned["preparation_intent_hash"]
-        packets = [
-            value
-            for value in prepared["next_requests"].values()
-            if value.get("operation") == "EVIDENCE_PACKET"
-        ]
-        assert packets == [prepared["next_requests"][f"packet_{unit.unit_id}"]]
-        assert packets[0]["task_id"] == prepared["task_id"]
-        assert packets[0]["evidence_unit_id"] == unit.unit_id
-        adapter = service.review.evidence_task_adapter
-        assert adapter.completed_unit(unit.preparation_intent_hash) == (task.task_id, unit.unit_id)
-        again = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
-        assert again["source_check"] == again["coverage"]["units"][0]["source_check"]
-        assert again["prepared_task_id"] == prepared["task_id"]
-    finally:
-        service.session.stop()
+    section = service.evidence_cro()
+    assert section["coverage_progress"] is None
+    prepared = _run_one(service, preview["next_requests"]["prepare"])
+    service.drain()
+    task = service.registry.task(UUID(prepared["task_id"]))
+    assert task.input.payload["purpose"] == COVERAGE_RUN_PURPOSE
+    assert task.input.payload["unit_count"] == 1
+    (run,) = service.review.artifacts.values(
+        "evidence-coverage-runs", AlternativeEvidenceCoverageRun
+    )
+    (unit,) = run.units
+    assert unit.preparation_intent_hash == planned["preparation_intent_hash"]
+    packets = [
+        value
+        for value in prepared["next_requests"].values()
+        if value.get("operation") == "EVIDENCE_PACKET"
+    ]
+    assert packets == [prepared["next_requests"][f"packet_{unit.unit_id}"]]
+    assert packets[0]["task_id"] == prepared["task_id"]
+    assert packets[0]["evidence_unit_id"] == unit.unit_id
+    adapter = service.review.evidence_task_adapter
+    assert adapter.completed_unit(unit.preparation_intent_hash) == (task.task_id, unit.unit_id)
+    again = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+    assert again["source_check"] == again["coverage"]["units"][0]["source_check"]
+    assert again["prepared_task_id"] == prepared["task_id"]
 
 
 def test_a_preparation_admitted_before_every_book_was_a_run_is_carried_into_the_run(
-    tmp_path: Path,
+    single_service: Any,
 ) -> None:
-    """A preparation admitted before every book was a run is carried into the run."""
+    """Control: Preparation admitted before every book was run is carried into run."""
 
     from alphalattice.control.product_host.composition.evidence_review_application import (
         AlternativeEvidenceRefreshCommand,
     )
-    from tests.alternative_evidence_desk.review_http_support import (
-        build_authority,
-        build_workspace,
-        start_service,
+
+    service = single_service
+    review = service.review
+    chosen = review.default_selector(None)
+    now = review.clock()
+    coverage = review.resolve_coverage(chosen, evidence_as_of=now, prepare_only=True)
+    (unit,) = coverage.run.units
+    # Exactly the Task a pre-C2 build admitted for a one-unit book.
+    policy = replace(review.evidence_policy, admit_model_review=False)
+    legacy = AlternativeEvidenceRefreshCommand(
+        application=review,
+        obligation=unit.obligation,
+        request=unit.request,
+        admission=policy.admission(request=unit.request, admitted_at=now),
+        prepare_only=True,
     )
+    legacy_task = service.session.dispatcher.submit(legacy).task_id
+    service.drain()
+    single = service.registry.task(legacy_task)
+    assert single.lifecycle is TaskLifecycle.SUCCEEDED
+    assert single.input.payload["purpose"] == "PREPARE_PACKET"
+    adapter = review.evidence_task_adapter
+    assert adapter.completed_unit(unit.preparation_intent_hash) == (legacy_task, None)
+    passes = _embedding_passes(service)
 
-    workspace, report = build_workspace(tmp_path)
-    authority = build_authority(tmp_path=tmp_path, report=report)
-    service = start_service(workspace, authority, tmp_path)
-    try:
-        review = service.review
-        chosen = review.default_selector(None)
-        now = review.clock()
-        coverage = review.resolve_coverage(chosen, evidence_as_of=now, prepare_only=True)
-        (unit,) = coverage.run.units
-        # Exactly the Task a pre-C2 build admitted for a one-unit book.
-        policy = replace(review.evidence_policy, admit_model_review=False)
-        legacy = AlternativeEvidenceRefreshCommand(
-            application=review,
-            obligation=unit.obligation,
-            request=unit.request,
-            admission=policy.admission(request=unit.request, admitted_at=now),
-            prepare_only=True,
-        )
-        legacy_task = service.session.dispatcher.submit(legacy).task_id
-        service.drain()
-        single = service.registry.task(legacy_task)
-        assert single.lifecycle is TaskLifecycle.SUCCEEDED
-        assert single.input.payload["purpose"] == "PREPARE_PACKET"
-        adapter = review.evidence_task_adapter
-        assert adapter.completed_unit(unit.preparation_intent_hash) == (legacy_task, None)
-        passes = _embedding_passes(service)
-
-        # The run at the single preparation's own cutoff, as a preview captured then.
-        template = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})["next_requests"]["prepare"]
-        prepared = _run_one(
-            service,
-            {
-                **template,
-                "evidence_as_of": now.isoformat(),
-                "preparation_binding_hash": coverage_intent_hash(coverage.run),
-            },
-        )
-        service.drain()
-        task = service.registry.task(UUID(prepared["task_id"]))
-        assert task.input.payload["purpose"] == COVERAGE_RUN_PURPOSE
-        assert task.lifecycle is TaskLifecycle.SUCCEEDED
-        assert _embedding_passes(service) == passes, "the single preparation was carried"
-        states = adapter.unit_states(task)
-        assert {value["state"] for value in states.values()} == {"PREPARED"}
-        packet = _run_one(service, prepared["next_requests"][f"packet_{unit.unit_id}"])
-        assert packet["status"] == "EVIDENCE_ANALYST_PACKET_READY"
-        assert packet["prepared_task_id"] == prepared["task_id"]
-        # the single Task's own packet still reads by its id
-        assert adapter.prepared_packet(legacy_task, now=review.clock()) is not None
-    finally:
-        service.session.stop()
+    # The run at the single preparation's own cutoff, as a preview captured then.
+    template = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})["next_requests"]["prepare"]
+    prepared = _run_one(
+        service,
+        {
+            **template,
+            "evidence_as_of": now.isoformat(),
+            "preparation_binding_hash": coverage_intent_hash(coverage.run),
+        },
+    )
+    service.drain()
+    task = service.registry.task(UUID(prepared["task_id"]))
+    assert task.input.payload["purpose"] == COVERAGE_RUN_PURPOSE
+    assert task.lifecycle is TaskLifecycle.SUCCEEDED
+    assert _embedding_passes(service) == passes, "the single preparation was carried"
+    states = adapter.unit_states(task)
+    assert {value["state"] for value in states.values()} == {"PREPARED"}
+    packet = _run_one(service, prepared["next_requests"][f"packet_{unit.unit_id}"])
+    assert packet["status"] == "EVIDENCE_ANALYST_PACKET_READY"
+    assert packet["prepared_task_id"] == prepared["task_id"]
+    # the single Task's own packet still reads by its id
+    assert adapter.prepared_packet(legacy_task, now=review.clock()) is not None
 
 
 def test_the_book_ledger_reads_every_group_of_a_wide_book(book: Any, tmp_path: Path) -> None:

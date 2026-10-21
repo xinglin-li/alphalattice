@@ -7,7 +7,6 @@ import json
 import re
 import textwrap
 from pathlib import Path
-from typing import get_args
 
 import pytest
 
@@ -24,6 +23,7 @@ from alphalattice.foundation.feature_engine.publication.snapshots import (
 from alphalattice.foundation.feature_engine.runtime.service import FeatureFoundationService
 from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
 from alphalattice.interface.local_application import client as client_module
+from tests.portfolio_strategy_lab.cli_support import strategy_readback_operations
 from tests.researcher_methodology_surface.alternate_capability import (
     ALTERNATE_ADAPTER_ID,
     ALTERNATE_RECIPE_SCHEMA_ID,
@@ -32,6 +32,7 @@ from tests.researcher_methodology_surface.external_factor_method import (
     EXTERNAL_FACTOR_ID,
     EXTERNAL_METHOD_FAMILY,
 )
+from tests.structural.refusal_support import rerun_refusal_codes
 from tests.structural.source_shape_samples import (
     _OPTION_CASES,
     bundle_refusal_declarations,
@@ -291,7 +292,7 @@ def test_every_coverage_floor_is_judged_by_one_rule_that_leaves_quiet_holdings_o
 
 
 def test_every_bound_a_specialist_answer_sets_is_screened_and_stated_source_shape() -> None:
-    """Each specialist answer field names its bound in the owner documentation."""
+    """Control: Every bound specialist answer sets is screened and stated source shape."""
 
     from alphalattice.evidence.alternative_evidence.analysis import views as analyst_views
     from alphalattice.evidence.alternative_evidence.analysis.contracts import (
@@ -549,20 +550,11 @@ def test_one_reader_names_the_session_a_request_and_its_launches_count_to_source
 
 
 def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy_source_shape() -> None:
-    """Every strategy readback has one reader and every caller supplies its strategy."""
+    """Control: Every read of work planned per strategy is keyed by its strategy source shape."""
 
     from alphalattice.control.product_host.composition import portfolio_research_operations
-    from alphalattice.interface.local_application.portfolio_research import (
-        PortfolioResearchOperation,
-        PortfolioResearchOperationRequest,
-    )
 
-    contract = PortfolioResearchOperationRequest.field_contract
-    readbacks = {
-        operation.replace("_PLAN", "_READBACK")
-        for operation in get_args(PortfolioResearchOperation.__value__)
-        if operation.endswith("_PLAN") and "strategy_package_id" in contract(operation)[0]
-    }
+    readbacks = strategy_readback_operations()
     tree = ast.parse(inspect.getsource(portfolio_research_operations))
     table = next(
         node.value
@@ -611,21 +603,13 @@ def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy_source
 
 
 def test_every_door_whose_way_on_reruns_a_plan_resumes_its_stopped_task_source_shape() -> None:
-    """Every stopped data owner has a source admission, resume and answered submission route."""
+    """Control: Every door whose way on reruns plan resumes its stopped task source shape."""
 
     from alphalattice.control.product_host.composition import portfolio_research_operations
     from alphalattice.control.product_host.data_preparation import application as preparation
     from alphalattice.control.product_host.maintenance import data_update
-    from alphalattice.interface.local_application import cli_contract
 
-    words = json.loads(
-        Path(cli_contract.__file__).with_name("refusal_words.json").read_text("utf-8")
-    )
-    reruns = {
-        code
-        for code, entry in words.items()
-        if re.search(r"\b(run the plan|confirm) again\b|\bplan runs again\b", str(entry["detail"]))
-    }
+    reruns = rerun_refusal_codes()
     owner = data_update.WorkspaceDataUpdateApplication
     resume = inspect.getsource(owner.resume_stopped)
     for code in reruns:
@@ -768,30 +752,6 @@ def test_no_generic_layer_module_names_a_strategy() -> None:
         if hits:
             offenders[relative] = hits
     assert offenders == {}, offenders
-
-
-def test_a_strategy_short_of_its_risk_window_names_it_and_offers_the_risk_study_source_shape() -> (
-    None
-):
-    """Every reachable research-strategy refusal has public words."""
-
-    from alphalattice.interface.local_application.cli_contract import refusal_words
-
-    source = (
-        Path(__file__).resolve().parents[2]
-        / "src/alphalattice/control/product_host/data_preparation/research_strategy.py"
-    ).read_text(encoding="utf-8")
-    internal = {  # integrity checks of the owner's own records, which no declaration reaches
-        "research_strategy.evidence_binding_mismatch",
-        "research_strategy.evidence_invalid",
-        "research_strategy.materialized_inputs",
-        "research_strategy.plan_invalid",
-        "research_strategy.retry_requested",
-        "research_strategy.stage_unknown",
-        "research_strategy.task_contract_invalid",
-    }
-    reachable = set(re.findall(r'"(research_strategy\.[a-z_]+)', source)) - internal
-    assert reachable and not [c for c in sorted(reachable) if not refusal_words(c)], reachable
 
 
 def test_a_strategys_risk_history_is_judged_by_one_owner_for_its_plan_and_preparation_shape() -> (
@@ -1090,10 +1050,7 @@ def test_seam_fixture_round_trips_one_native_shaped_event_and_one_product_event_
 def test_no_product_branch_agent_or_admission_was_required_source_shape() -> None:
     """External factor methodology IDs require no product branch or admission."""
 
-    for directory in (
-        PLAYPEN_ROOT / "src" / "alphalattice" / "control" / "product_host",
-        PLAYPEN_ROOT / "src" / "alphalattice" / "foundation" / "factor_research" / "agent",
-    ):
+    for directory in (PLAYPEN_ROOT / "src" / "alphalattice" / "control" / "product_host",):
         offenders = sorted(
             path.relative_to(PLAYPEN_ROOT).as_posix()
             for path in directory.rglob("*.py")

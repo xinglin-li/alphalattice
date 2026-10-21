@@ -170,7 +170,7 @@ def test_file_digests_bind_every_path_to_the_object_whose_bytes_were_read(
 def test_an_alias_replaced_after_grouping_never_answers_another_objects_digest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """An alias replaced after grouping never answers another object's digest."""
+    """Control: Alias replaced after grouping never answers another objects digest."""
 
     from alphalattice.control.product_host.research_authoring.factor_inputs import (
         file_digest,
@@ -213,6 +213,7 @@ def test_an_alias_replaced_after_grouping_never_answers_another_objects_digest(
 def test_an_alias_removed_after_grouping_is_not_answered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
+    """Control: Alias removed after grouping is not answered."""
     from alphalattice.control.product_host.research_authoring.factor_inputs import (
         file_digest,
         file_digests,

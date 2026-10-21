@@ -320,12 +320,8 @@ def shrink_only_growth(path: str, before: dict[str, Any], after: dict[str, Any])
     ]
 
 
-def _check_registries(*, staged: bool) -> bool:
-    """Refuse a change that adds to a registry without registering it (binding plan G0).
-
-    Only the changed files are read: a parameter, a failure code, a format or a private test
-    import can only be added where a file changed, so the check costs what the change costs.
-    """
+def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
+    """Run the canonical registry guards and the staged census ratchet."""
 
     paths = _git_lines(
         "diff", "--cached" if staged else "HEAD", "--name-only", "--diff-filter=ACMR"
@@ -334,10 +330,12 @@ def _check_registries(*, staged: bool) -> bool:
     started = perf_counter()
     sys.path.insert(0, str(ROOT / "src"))
     try:
-        from devtools.architecture.registries import private_test_growth, problems
+        from devtools.architecture.registries import census_check, private_test_growth, problems
     finally:
         sys.path.pop(0)
     found = problems(ROOT, changed)
+    if staged:
+        found += census_check(ROOT, baseline=baseline)
     # The tests' ratchet against the registry this change started from: registering a new
     # private import by hand passes the scan above, never this (LAWS.md TE5, V16).
     ratchet = "config/registries/test-private.json"
@@ -460,6 +458,9 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     gate_started = perf_counter()
     parser = argparse.ArgumentParser()
     parser.add_argument("--staged", action="store_true")
+    parser.add_argument(
+        "--registry-baseline", default=os.environ.get("ALPHALATTICE_REGISTRY_BASELINE")
+    )
     parser.add_argument("--all-python", action="store_true")
     parser.add_argument(
         "--fast",
@@ -559,7 +560,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         return 1
     if not _check_operation_registry():
         return 1
-    if not _check_registries(staged=args.staged):
+    if not _check_registries(staged=args.staged, baseline=args.registry_baseline):
         return 1
     if not _check_docstrings():
         return 1

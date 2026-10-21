@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from itertools import groupby
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.control.workspace_runtime.content_store import (
     CommittedIndex,
@@ -27,6 +29,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 if TYPE_CHECKING:
+    from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
     from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
         PortfolioDecisionCheckpoint,
         PortfolioUpdatePublication,
@@ -38,6 +41,30 @@ if TYPE_CHECKING:
 
 class PortfolioLedgerStoreError(ValueError):
     """Stable public ledger storage refusal."""
+
+
+class ObservationPart(BaseModel):  # type: ignore[misc]
+    """An exact JSON lane or field-reference head for Portfolio observations."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    payload_json: str = Field(repr=False)
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def validate_identity(self) -> ObservationPart:
+        """Verify the exact packed payload before any source consumes it."""
+        if self.content_hash != canonical_hash(self.payload_json):
+            raise ValueError("content_store.artifact_tampered")
+        return self
+
+
+_OBSERVATIONS = CommittedKind(
+    index="decision-observations",
+    category="decision-observation-heads",
+    model=ObservationPart,
+    identity_field="content_hash",
+)
+_OBSERVATION_PARTS = "decision-observation-parts"
 
 
 PUBLIC_NAMESPACE = "public"
@@ -71,7 +98,127 @@ def _require_reusable(program: PortfolioExecutionProgram) -> PortfolioExecutionP
     return program
 
 
-class PortfolioLedgerStore:
+class ObservationStore:
+    """Exact observation transport shared by the two separate Portfolio ledger roots."""
+
+    root: Path
+    content: ContentAddressedStore
+    _observation_category = "decision-observations"
+
+    def publish_decision_observations(self, *values: LocalQAMarketSnapshot) -> tuple[str, ...]:
+        """Seal full logical sources while sharing unchanged daily and listing parts."""
+        encoded: dict[str, ObservationPart] = {}
+        published: set[str] = set()
+        index = CommittedIndex(self.root, self.content)
+
+        def packed(payload: object) -> ObservationPart:
+            text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+            if text not in encoded:
+                encoded[text] = ObservationPart.model_construct(
+                    payload_json=text, content_hash=canonical_hash(text)
+                )  # Generated canonical bytes are hashed once; external reads validate below.
+            return encoded[text]
+
+        uris = []
+        for value in {id(v): v for v in values}.values():
+            legacy = self.root / self._observation_category / f"{value.content_hash}.json"
+            if legacy.is_file():
+                uris.append(
+                    self.content.publish_model(
+                        category=self._observation_category,
+                        value=value,
+                        identity_field="content_hash",
+                    )
+                )
+                continue
+            payload = value.model_dump(mode="json")
+            references: dict[str, list[str]] = {}
+            for field in ("bars", "actions", "schedule"):
+                rows = payload.pop(field)
+
+                def key(row: dict[str, Any], field: str = field) -> str:
+                    return str(
+                        row["listing_id"]
+                        if field == "actions"
+                        else row["session_date"]
+                        if field == "bars"
+                        else row["formation_session"][:4]
+                    )
+
+                references[field] = []
+                for _, group in groupby(rows, key):
+                    part = packed(list(group))
+                    if part.content_hash not in published:
+                        self.content.publish_model(
+                            category=_OBSERVATION_PARTS, value=part, identity_field="content_hash"
+                        )
+                        published.add(part.content_hash)
+                    references[field].append(part.content_hash)
+            head = packed({"snapshot": payload, "parts": references})
+            identity = index.commit(_OBSERVATIONS, value.content_hash, head)
+            uris.append(self.content.uri(_OBSERVATIONS.category, identity))
+        return tuple(uris)
+
+    def load_decision_observation(self, content_hash: str) -> LocalQAMarketSnapshot:
+        """Reopen a complete, identity-checked source from legacy JSON or shared parts."""
+        from alphalattice.foundation.causal_outcomes.execution.contracts import (
+            LocalQAMarketSnapshot,
+        )
+
+        self.content.require_hash(content_hash)
+        if (self.root / self._observation_category / f"{content_hash}.json").is_file():
+            return self.content.load_model(
+                category=self._observation_category,
+                content_hash=content_hash,
+                model=LocalQAMarketSnapshot,
+                identity_field="content_hash",
+            )
+        try:
+            index = CommittedIndex(self.root, self.content)
+            entry = json.loads(index.path(_OBSERVATIONS.index, content_hash).read_bytes())
+            head = self.content.load_model(
+                category=_OBSERVATIONS.category,
+                content_hash=entry["identity"],
+                model=ObservationPart,
+                identity_field="content_hash",
+            )
+            if entry["key"] != content_hash or entry["payload"] != head.model_dump(mode="json"):
+                raise ValueError("observation index differs")
+            packed = json.loads(head.payload_json)
+            payload, parts = packed["snapshot"], packed["parts"]
+            if set(parts) != {"bars", "actions", "schedule"}:
+                raise ValueError("observation fields differ")
+            for field, identities in parts.items():
+                payload[field] = [
+                    row
+                    for identity in identities
+                    for row in json.loads(
+                        self.content.load_model(
+                            category=_OBSERVATION_PARTS,
+                            content_hash=identity,
+                            model=ObservationPart,
+                            identity_field="content_hash",
+                        ).payload_json
+                    )
+                ]
+            value: LocalQAMarketSnapshot = LocalQAMarketSnapshot.model_validate(payload)
+            if value.content_hash != content_hash:
+                raise ValueError("observation identity differs")
+            return value
+        except FileNotFoundError as error:
+            raise ContentAddressedStoreError(
+                f"content_store.artifact_missing:{content_hash}"
+            ) from error
+        except ContentAddressedStoreError as error:
+            code = str(error).partition(":")[0]
+            if code == "content_store.artifact_missing":
+                raise
+            raise ContentAddressedStoreError("content_store.artifact_tampered") from error
+        except (KeyError, TypeError, ValueError) as error:
+            raise ContentAddressedStoreError("content_store.artifact_tampered") from error
+
+
+class PortfolioLedgerStore(ObservationStore):
     """Content-addressed descendants plus one by-program reuse index.
 
     The namespace chooses which root the artifacts land in. Both roots speak the
@@ -997,6 +1144,8 @@ class PortfolioLedgerStore:
 __all__ = [
     "PENDING_FINALIZATION_NAMESPACE",
     "PUBLIC_NAMESPACE",
+    "ObservationPart",
+    "ObservationStore",
     "PortfolioLedgerStore",
     "PortfolioLedgerStoreError",
 ]

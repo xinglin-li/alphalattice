@@ -48,7 +48,7 @@ def test_every_refusal_and_answer_template_command_parses(
     from alphalattice.control.product_host.research_authoring.model_extensions import (
         ModelExtensions,
     )
-    from alphalattice.interface.local_application import cli, cli_contract, client
+    from alphalattice.interface.local_application import cli_contract, native_setup
 
     table = cli_contract.command_table()
     names = (
@@ -128,6 +128,9 @@ def test_every_refusal_and_answer_template_command_parses(
         return re.sub(r"<([^<>]+)>", value, text).removeprefix("alphalattice ")
 
     def offered(location: str, text: str) -> None:
+        if location.endswith(".how_to_fill") and text.startswith("Read "):
+            advice, _, text = text[5:].partition(";")
+            commands.extend((location, filled(line.strip("`"))) for line in advice.split(" and "))
         if text.startswith("alphalattice "):
             commands.append((location, filled(text)))
             return
@@ -190,6 +193,8 @@ def test_every_refusal_and_answer_template_command_parses(
     root = SCRIPT.parents[1] / "src/alphalattice/interface/local_application"
     walk("refusal_words.json", door_words())
     walk("answers.json", json.loads((root / "answers.json").read_text(encoding="utf-8")))
+    for host in ("codex", "claude-code"):
+        walk(f"doctor.{host}", native_setup.host_readiness(tmp_path, host, None))
     for code, refusal in cli_contract._CLIENT_REFUSALS:
         offered(f"client_refusal.{code}", refusal.detail)
     operations = sorted({op for rows in table["commands"].values() for op in rows})

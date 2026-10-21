@@ -27,14 +27,19 @@ from alphalattice.investment.portfolio_strategy_lab.application.advancement impo
     WatermarkAdvancementProgram,
     WatermarkAdvancementReceipt,
 )
+from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
+    ObservationStore,
+)
 
 
 class AdvancementLedgerStoreError(ValueError):
     """Stable advancement storage refusal."""
 
 
-class AdvancementLedgerStore:
+class AdvancementLedgerStore(ObservationStore):
     """Content-addressed advancement artifacts plus one by-program receipt index."""
+
+    _observation_category = "market-inputs"
 
     def __init__(self, artifact_root: Path) -> None:
         """Bind content-addressed advancement evidence to the caller-owned artifact root.
@@ -76,36 +81,6 @@ class AdvancementLedgerStore:
             model=WatermarkAdvancementProgram,
             identity_field="program_hash",
         )
-
-    def publish_outcome(self, value: DomainLaneReceipt) -> str:
-        """Publish exact advancement outcome evidence.
-
-        Args:
-            value: Validated sealed evidence contract.
-
-        Returns:
-            Content-addressed evidence URI; publication also refuses a contradictory retained
-            program/lane index.
-        """
-        uri = self.content.publish_model(
-            category="lane-outcomes", value=value, identity_field="receipt_hash"
-        )
-        index = self._outcome_index(program_hash=value.program_hash, lane=value.lane)
-        payload = json.dumps(
-            {
-                "program_hash": value.program_hash,
-                "lane": value.lane,
-                "receipt_hash": value.receipt_hash,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode()
-        if index.is_file() and index.read_bytes() != payload:
-            raise AdvancementLedgerStoreError("portfolio_advancement.lane_outcome_identity_reused")
-        if not index.is_file():
-            index.parent.mkdir(parents=True, exist_ok=True)
-            index.write_bytes(payload)
-        return uri
 
     def find_outcome_for(
         self, *, program_hash: str, lane: AdvancementLaneId
@@ -155,19 +130,6 @@ class AdvancementLedgerStore:
             identity_field="receipt_hash",
         )
 
-    def publish_operational(self, value: OperationalReceipt) -> str:
-        """Publish exact advancement operational evidence.
-
-        Args:
-            value: Validated sealed evidence contract.
-
-        Returns:
-            Content-addressed evidence URI.
-        """
-        return self.content.publish_model(
-            category="operational-receipts", value=value, identity_field="receipt_hash"
-        )
-
     def load_operational(self, receipt_hash: str) -> OperationalReceipt:
         """Reopen exact advancement operational evidence.
 
@@ -182,19 +144,6 @@ class AdvancementLedgerStore:
             content_hash=receipt_hash,
             model=OperationalReceipt,
             identity_field="receipt_hash",
-        )
-
-    def publish_ledger_coverage(self, value: PortfolioLedgerCoverage) -> str:
-        """Publish exact advancement ledger coverage evidence.
-
-        Args:
-            value: Validated sealed evidence contract.
-
-        Returns:
-            Content-addressed evidence URI.
-        """
-        return self.content.publish_model(
-            category="ledger-coverage", value=value, identity_field="coverage_hash"
         )
 
     def load_ledger_coverage(self, coverage_hash: str) -> PortfolioLedgerCoverage:

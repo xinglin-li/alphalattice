@@ -310,14 +310,6 @@ class PortfolioResearchArtifactStore:
         except ContentAddressedStoreError as error:
             raise PortfolioPublicationError(_load_refusal(error)) from error
 
-    def publish_trial_evidence(self, value: PortfolioTrialEvidence) -> None:
-        """Publish exact sealed trial evidence in its registered category.
-
-        Args:
-            value: Validated trial evidence.
-        """
-        self.publish(category="trial-evidence", value=value, identity_field="evidence_hash")
-
     def load_trial_evidence(self, evidence_hash: str) -> PortfolioTrialEvidence:
         """Reopen exact sealed trial evidence.
 

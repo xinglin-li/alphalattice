@@ -411,16 +411,7 @@ def test_history_and_daily_features_are_identical_and_future_rows_are_inert(temp
         assert np.isfinite(covered[-1, -1]).all()  # Own history supplies the initial lookback.
 
 
-@pytest.mark.parametrize("temporal", (False, True))
-def test_maturity_and_budget_refuse_before_fit(tmp_path: Path, monkeypatch, temporal):
-
-    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
-    source = _source()
-    eligible = np.ones(source.close.shape, dtype=np.bool_)
-    if temporal:
-        eligible[:-1, -1] = False
-        source = replace(source, reference_eligible=eligible)
-    store = AlphaCurrentArtifactStore(tmp_path)
+def _training_inputs(store, source, eligible):
     obs = store.publish_frozen_observations(source, disposition="SYNTHETIC_INPUT_QA")
     targets = np.log(source.close / source.open)
     labels = publish_training_observations(
@@ -434,6 +425,20 @@ def test_maturity_and_budget_refuse_before_fit(tmp_path: Path, monkeypatch, temp
         targets=targets,
         eligible=eligible,
     )
+    return obs, targets, labels
+
+
+@pytest.mark.parametrize("temporal", (False, True))
+def test_maturity_and_budget_refuse_before_fit(tmp_path: Path, monkeypatch, temporal):
+    """Control: Maturity and budget refuse before fit."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
+    source = _source()
+    eligible = np.ones(source.close.shape, dtype=np.bool_)
+    if temporal:
+        eligible[:-1, -1] = False
+        source = replace(source, reference_eligible=eligible)
+    store = AlphaCurrentArtifactStore(tmp_path)
+    obs, targets, labels = _training_inputs(store, source, eligible)
     if temporal:
         with pytest.raises(ValueError, match="training_rows_outside_reference"):
             publish_training_observations(
@@ -491,7 +496,7 @@ def test_maturity_and_budget_refuse_before_fit(tmp_path: Path, monkeypatch, temp
 def test_monthly_yaml_runs_and_replays_through_the_existing_workflow(
     tmp_path, monkeypatch, temporal
 ):
-
+    """Control: Monthly yaml runs and replays through existing workflow."""
     from alphalattice.control.research_program.authoring.dispatcher import (
         ResearchExperimentDispatcher,
     )
@@ -519,19 +524,7 @@ def test_monthly_yaml_runs_and_replays_through_the_existing_workflow(
     if temporal:
         eligible[:190, -1] = False
         source = replace(source, reference_eligible=eligible)
-    obs = store.publish_frozen_observations(source, disposition="SYNTHETIC_INPUT_QA")
-    targets = np.log(source.close / source.open)
-    labels = publish_training_observations(
-        store,
-        observation_hash=obs.snapshot_hash,
-        target_method_id=COMPONENT.target_recipe,
-        target_authority_hash="c" * 64,
-        label_available_sessions=tuple(
-            day + timedelta(days=1) for day in source.formation_sessions
-        ),
-        targets=targets,
-        eligible=eligible,
-    )
+    obs, _targets, labels = _training_inputs(store, source, eligible)
     base = AlphaModelLifecycleRecipe.from_component(COMPONENT)
     admission = AlphaModelLifecycleAdmission.create(
         component=COMPONENT,
@@ -979,7 +972,7 @@ def test_context_history_uses_each_dates_reference_not_the_latest_roster(monkeyp
 
     def context(raw, mask):
         ids = tuple(f"L{i:03d}" for i in range(raw.shape[1]))
-        sectors = MappingProxyType({name: f"S{i % 2}" for i, name in enumerate(ids)})
+        sectors = MappingProxyType({name: f"SECTOR{i % 2}" for i, name in enumerate(ids)})
         with collect() as ledger:
             state, identity = compile_sector_context_arrays(
                 sessions=days,
@@ -1007,7 +1000,7 @@ def test_context_history_uses_each_dates_reference_not_the_latest_roster(monkeyp
             formation_sessions=days,
             holding_end_sessions=ends,
             ordered_listing_ids=ids,
-            ordered_sector_ids=("S0", "S1"),
+            ordered_sector_ids=("SECTOR0", "SECTOR1"),
             sector_by_listing_id=sectors,
             raw_log_execution_returns=raw,
             raw_simple_execution_returns=np.expm1(raw),
@@ -1083,9 +1076,9 @@ def test_context_history_uses_each_dates_reference_not_the_latest_roster(monkeyp
             ordered_listing_ids=ids,
             ordered_factor_ids=("mom_252_21",),
             absolute_state_factor_ids=("mom_252_21",),
-            ordered_sector_ids=("S0", "S1"),
+            ordered_sector_ids=("SECTOR0", "SECTOR1"),
             sector_by_listing_id=MappingProxyType(
-                {name: f"S{i % 2}" for i, name in enumerate(ids)}
+                {name: f"SECTOR{i % 2}" for i, name in enumerate(ids)}
             ),
             raw_formula_values=matrices[0],
             total_return_target_z=raw,

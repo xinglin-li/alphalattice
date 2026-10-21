@@ -8,7 +8,7 @@ actually did is sealed into durable clipping evidence bound to that method.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from typing import cast
 
@@ -41,7 +41,9 @@ from alphalattice.kernel.quant.cross_section import (
     MIN_SECTOR_SAMPLE,
     WINSOR_MULTIPLIER,
 )
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.spans import span
 
 CellOwnership = Mapping[tuple[str, str], frozenset[str]]
 """``(receipt_hash, factor_id) -> sessions`` a Panel attributes to that batch."""
@@ -403,6 +405,60 @@ class SectorNeutralPanelMaterializer:
         )
 
 
+_WORKER_PANELS: BoundedMemo[tuple[str, str], SectorNeutralPanelMaterializer] = BoundedMemo()
+"""A kept worker's Panel materializers, by catalog and the implementation each writer runs."""
+
+
+def configure_panel_worker_memo(*, capacity: int | None = None) -> None:
+    """Set the Panel worker's retained-materializer capacity; misses rebuild."""
+    global _WORKER_PANELS
+    _WORKER_PANELS = BoundedMemo(capacity=capacity)
+
+
+def materialize_panel_chunk(
+    *,
+    catalog: FeatureCatalog,
+    implementation_binding_hash: str,
+    feature_rows: pd.DataFrame,
+    active_listing_ids: tuple[str, ...],
+    manifest_revision: str,
+    sector_revision: str,
+    sector_by_listing_id: dict[str, str],
+    spy_revision: str,
+    factor_ids: tuple[str, ...],
+    members_by_session: Mapping[date, Sequence[str]],
+    source_exclusions_by_session: Mapping[date, Sequence[str]] | None,
+    cancelled: Callable[[], bool],
+) -> PanelMaterialization:
+    """One chunk of a build's Panel sessions, transformed cross-section by cross-section.
+
+    The computation of a Panel chunk, moved off the build's writer, which reads the chunk's
+    Feature rows and then stages, publishes and records the answers in chunk order (W10).
+    The materializer is the installed one, rebuilt here from the catalog and held to the
+    implementation the writer runs. One chunk is one transformation, so W10's ``cancelled``
+    is not consulted within it, as the writer's own loop never consulted it per chunk.
+    """
+    key = (catalog.binding.catalog_hash, implementation_binding_hash)
+    materializer = _WORKER_PANELS.get(key)
+    if materializer is None:
+        materializer = SectorNeutralPanelMaterializer(catalog)
+        if materializer.implementation.implementation_binding_hash != implementation_binding_hash:
+            raise ValueError("feature.worker_panel_implementation_mismatch")
+        _WORKER_PANELS[key] = materializer
+    with span("features", "panel_chunk"):
+        return materializer.materialize(
+            feature_rows=feature_rows,
+            active_listing_ids=active_listing_ids,
+            manifest_revision=manifest_revision,
+            sector_revision=sector_revision,
+            sector_by_listing_id=sector_by_listing_id,
+            spy_revision=spy_revision,
+            factor_ids=factor_ids,
+            members_by_session=members_by_session,
+            source_exclusions_by_session=source_exclusions_by_session,
+        )
+
+
 __all__ = [
     "MAD_SCALE",
     "MIN_COVERAGE",
@@ -415,5 +471,7 @@ __all__ = [
     "PanelPreprocessingBinding",
     "SectorNeutralPanelMaterializer",
     "clip_observation_record",
+    "configure_panel_worker_memo",
     "cross_section_policy_hash",
+    "materialize_panel_chunk",
 ]

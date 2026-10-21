@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
@@ -895,7 +895,12 @@ class EvidenceReviewDelivery:
             owner="chief_risk_officer",
         )
 
-    def review_standing(self, selector: BookSelector | None) -> dict[str, object]:
+    def review_standing(
+        self,
+        selector: BookSelector | None,
+        *,
+        read_update: Callable[[UUID, str], dict[str, object]] | None = None,
+    ) -> dict[str, object]:
         """Read the exact book's latest published review for an activation decision (V614).
 
         Read sealed review and analysis facts only: no current eligibility, dossier compiler
@@ -916,7 +921,10 @@ class EvidenceReviewDelivery:
                 "detail": "No sealed book is named for this review standing.",
             }
         # Scope compilation needs a current issuer authority; historical standing does not.
-        book = self.app._open_book(self.app.inputs(), selector)
+        inputs = self.app.inputs()
+        if read_update is not None:
+            inputs = replace(inputs, read_update=read_update)
+        book = self.app._open_book(inputs, selector)
         view = self.app.published_review_for_book(
             book, result_hash=book.result_hash, use_selected_analysis=False
         )

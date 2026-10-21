@@ -59,10 +59,9 @@ def _move(role: str, predecessor: str, successor: str) -> dict[str, str]:
     }
 
 
-def test_a_recorded_move_names_the_installed_authority_for_its_role_only(
-    tmp_path: Path,
-) -> None:
-    root = _successors(
+@pytest.fixture
+def successor_chain(tmp_path: Path) -> Path:
+    return _successors(
         tmp_path,
         [
             _move("role", _A, _B),
@@ -72,6 +71,13 @@ def test_a_recorded_move_names_the_installed_authority_for_its_role_only(
             _move("loop", _B, _A),
         ],
     )
+
+
+def test_a_recorded_move_names_the_installed_authority_for_its_role_only(
+    successor_chain: Path,
+) -> None:
+    """Control: Recorded move names installed authority for its role only."""
+    root = successor_chain
 
     assert is_current("role", _C, _C, root=root)
     assert is_current("role", _A, _C, root=root), "two recorded moves lead to the installed value"
@@ -81,21 +87,12 @@ def test_a_recorded_move_names_the_installed_authority_for_its_role_only(
     assert not is_current("loop", _A, _C, root=root), "a recorded cycle ends, not current"
 
 
-def test_a_bound_value_is_held_at_the_origin_its_recorded_moves_lead_from(tmp_path: Path) -> None:
-    """requirement (LAWS.md ID1, V324): a value bound where it is compared by equality is held
-    at the value its recorded moves lead from, so a recorded move leaves it where it was and an
-    unrecorded one is a new value; another role's moves and a recorded cycle end the walk."""
+def test_a_bound_value_is_held_at_the_origin_its_recorded_moves_lead_from(
+    successor_chain: Path,
+) -> None:
+    """Control: Bound value is held at origin its recorded moves lead from."""
 
-    root = _successors(
-        tmp_path,
-        [
-            _move("role", _A, _B),
-            _move("role", _B, _C),
-            _move("other", _C, _D),
-            _move("loop", _A, _B),
-            _move("loop", _B, _A),
-        ],
-    )
+    root = successor_chain
 
     assert recorded_origin("role", _C, root=root) == _A
     assert recorded_origin("role", _A, root=root) == _A

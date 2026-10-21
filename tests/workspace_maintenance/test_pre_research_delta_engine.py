@@ -46,15 +46,22 @@ def _head(
     listings: tuple[str, ...] = ("a", "b"),
     source_listings: tuple[str, ...] | None = None,
     marker: str = "m",
+    candidate: ObservedPreResearchCandidateSnapshot | None = None,
 ):
     source_listings = source_listings or listings
     return build_verified_head(
         kind="VerifiedPreResearchHead",
         market_profile_id="us-current",
         manifest_revision=canonical_hash(["manifest", marker]),
-        source_revision=canonical_hash(["source", marker]),
-        membership_fingerprint=canonical_hash(source_listings),
-        ordered_source_candidate_listing_ids=source_listings,
+        source_revision=canonical_hash(["source", marker])
+        if candidate is None
+        else candidate.source_revision,
+        membership_fingerprint=canonical_hash(source_listings)
+        if candidate is None
+        else candidate.source_membership_fingerprint,
+        ordered_source_candidate_listing_ids=source_listings
+        if candidate is None
+        else candidate.ordered_candidate_listing_ids,
         ordered_listing_ids=listings,
         listing_set_hash=canonical_hash(listings),
         research_history_start=date(2016, 8, 1),
@@ -583,6 +590,7 @@ def test_confirmed_pending_transition_is_not_replaced_by_later_source(tmp_path) 
 def test_disposable_membership_revision_advances_complete_frozen_tree_and_replays_noop(
     tmp_path,
 ) -> None:
+    """Control: Disposable membership revision advances complete frozen tree and replays noop."""
     store = PreResearchHeadStore(artifact_root=tmp_path, mutation_gate=WorkspaceMutationGate())
     base = _head(marker="base")
     base_candidate = _candidate(base)
@@ -644,16 +652,7 @@ def test_disposable_membership_revision_advances_complete_frozen_tree_and_replay
         quarantines=(),
         staged_child_hashes=child_hashes,
     )
-    next_head = _head(listings=("b", "c"), marker="membership-revision")
-    next_head = build_verified_head(
-        **{
-            **next_head.model_dump(mode="python", exclude={"head_hash", "verified_at"}),
-            "source_revision": candidate.source_revision,
-            "membership_fingerprint": candidate.source_membership_fingerprint,
-            "ordered_source_candidate_listing_ids": candidate.ordered_candidate_listing_ids,
-            "verified_at": NOW,
-        }
-    )
+    next_head = _head(listings=("b", "c"), marker="membership-revision", candidate=candidate)
     for value, publish in (
         (candidate, store.publish_candidate),
         (delta, store.publish_delta),
@@ -732,6 +731,7 @@ def test_post_hydration_active_set_fact_can_downgrade_fixed_screening() -> None:
 
 
 def test_restart_repairs_lifecycle_after_head_advanced_before_fulfillment(tmp_path) -> None:
+    """Control: Restart repairs lifecycle after head advanced before fulfillment."""
     heads = PreResearchHeadStore(artifact_root=tmp_path, mutation_gate=WorkspaceMutationGate())
     base = _head(marker="crash-base")
     base_candidate = _candidate(base, policy_hashes=PRE_RESEARCH_DELTA_POLICY_HASHES)
@@ -777,16 +777,7 @@ def test_restart_repairs_lifecycle_after_head_advanced_before_fulfillment(tmp_pa
         confirmed_at=NOW,
         confirmation_token="confirmed-crash-window-revision",
     )
-    next_head = _head(listings=("a", "b", "c"), marker="crash-next")
-    next_head = build_verified_head(
-        **{
-            **next_head.model_dump(mode="python", exclude={"head_hash", "verified_at"}),
-            "source_revision": candidate.source_revision,
-            "membership_fingerprint": candidate.source_membership_fingerprint,
-            "ordered_source_candidate_listing_ids": candidate.ordered_candidate_listing_ids,
-            "verified_at": NOW,
-        }
-    )
+    next_head = _head(listings=("a", "b", "c"), marker="crash-next", candidate=candidate)
     child_hashes = (
         next_head.panel_snapshot_hash,
         next_head.factor_screening_result_hash,

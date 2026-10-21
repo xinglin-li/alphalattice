@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from devtools.evaluation import Scenario, grade
+from tests.evaluation import plan
 
 CATALOG = {
     ("feature", "controls"): {"--binding"},
@@ -31,19 +32,6 @@ def request(**changes):
             **changes,
         }
     )
-
-
-def plan(**changes):
-    return {
-        "commands": ["alphalattice feature controls --binding <id>"],
-        "fields": [],
-        "steps": [],
-        "acts": [],
-        "decider": "agent",
-        "ask": [],
-        "refuse": [],
-        **changes,
-    }
 
 
 @pytest.mark.parametrize(

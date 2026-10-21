@@ -240,11 +240,13 @@ explains recorded usage and its switch.
 
 ## This release and where it is going
 
-**0.2.1, now.** 0.2.0 brought a one-sentence path to a dated, reviewed research
+**0.2.2, now.** 0.2.0 brought a one-sentence path to a dated, reviewed research
 result: data, strategy, research positions, SEC evidence, committee review and a
-report. 0.2.1 changes ordinary daily updates to write the day's changes instead of
-copying the full history. The [release notes](docs/public-source/release-notes.md#021)
-list every change.
+report. 0.2.1 made ordinary daily updates write only the day's changes. 0.2.2
+removes repeated and unused code, registers every extensible kind in one registry,
+and checks each sealed input once when the day's positions are read. The
+[release notes](docs/public-source/release-notes.md#022) list every change and the
+measured limits.
 
 Each minor version's scope is fixed in advance and released only after a run proves
 it; patches in between make the current version smoother. Each version builds on
@@ -254,29 +256,31 @@ inputs, sealed results and your authority.
 The next 0.2.x patches, in order. Each holds one theme, and each publishes its
 measured time, disk and memory against a stated budget:
 
-- **0.2.2: fewer lines and a complete registry.** Remove repeated and unused code,
-  and register every extensible kind in one registry.
 - **0.2.3: questions and messages by code.** Each question only you can answer, and
   each message, carries a stable code beside its words.
 - **0.2.4: a smoother daily update.** A shorter wrap-up for the agent, a measured time
   for each stage, and a background service that stays up between sessions.
-- **0.2.5: realistic replay and data checks.** Replay real-world events (corporate
-  actions, late reports, provider outages) and check data health every day. Each
-  later speed and memory change is measured on this replay.
+- **0.2.5: a measured baseline.** A first use and a daily, replayed without a model,
+  report each stage's time and the program's peak memory in minutes; later speed and
+  memory changes are measured against it.
 - **0.2.6: memory within budget.** Bring first use and daily updates within 8 GB.
-- **0.2.7: nothing stored twice.** A storage data model; upgrades reuse unchanged data.
-- **0.2.8: caching and checking, done once.** Hash once, verify at trust boundaries
+- **0.2.7: realistic replay.** Replay real-world events (corporate actions, late
+  reports, provider outages) through the real data client and its cache.
+- **0.2.8: data checks.** Check the health of the data every day, in the program and
+  the Workbench.
+- **0.2.9: nothing stored twice.** A storage data model; upgrades reuse unchanged data.
+- **0.2.10: caching and checking, done once.** Hash once, verify at trust boundaries
   and recompute only what changed, borrowing from Git's index and Bazel's action
   cache.
-- **0.2.9: less waiting on the program.** The program prepares likely next steps
+- **0.2.11: less waiting on the program.** The program prepares likely next steps
   while the agent is thinking.
-- **0.2.10: history you can query by date.** Ask what was known, tried and decided on
+- **0.2.12: history you can query by date.** Ask what was known, tried and decided on
   a past date, with nothing learned after it.
-- **0.2.11: an evaluation flywheel.** One runner and fixed gates check every patch
+- **0.2.13: an evaluation flywheel.** One runner and fixed gates check every patch
   from the product's own records.
-- **0.2.12: a first result in ten minutes.** A short trial on a small sample, labelled
+- **0.2.14: a first result in ten minutes.** A short trial on a small sample, labelled
   as a trial.
-- **0.2.13: ground for daily supervision.** A store for the forward record of
+- **0.2.15: ground for daily supervision.** A store for the forward record of
   positions.
 
 Later minor versions:

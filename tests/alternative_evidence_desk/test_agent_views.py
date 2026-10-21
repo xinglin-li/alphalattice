@@ -224,14 +224,14 @@ def test_files_are_packed_by_size_and_a_subject_splits_only_when_it_alone_exceed
             ),
         )
 
-    small = [section(f"S{index}", 1, per_file // 6) for index in range(3)]
+    small = [section(f"section_{index}", 1, per_file // 6) for index in range(3)]
     large = section("BIG", 6, per_file // 2 + 1)  # six filings over half a file: one a file
     after = section("AFTER", 1, per_file // 6)
     files = pack_sections([*small, large, after], stem="material")
     bundle = compose_bundle(["# Index"], files)
 
     assert [value.covers for value in files] == [
-        ("S0", "S1", "S2"),
+        ("section_0", "section_1", "section_2"),
         ("BIG part 1 of 6",),
         ("BIG part 2 of 6",),
         ("BIG part 3 of 6",),
@@ -245,7 +245,7 @@ def test_files_are_packed_by_size_and_a_subject_splits_only_when_it_alone_exceed
     assert bundle.files[0][0] == "README.md"
     for value in files:
         assert f"`{value.name}`" in index
-    assert "`material-01.md` -- S0; S1; S2 (3 filings)" in index
+    assert "`material-01.md` -- section_0; section_1; section_2 (3 filings)" in index
     assert index.rstrip("\n").endswith(READING_RULE)
     # A long paragraph wraps at a sentence, never past the line bound.
     wrapped = wrap_text(" ".join(f"Sentence {n} states a fact." for n in range(400)))

@@ -5,6 +5,7 @@ import json
 import os
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -717,14 +718,32 @@ def test_blocked_phase_one_snapshot_cannot_be_admitted_as_catalog_root(tmp_path)
         )
 
 
+def _sector_activation_receipt(
+    recipe: PanelDerivationRecipe, map_hash: str
+) -> SectorRevisionMapActivationReceipt:
+    return identified(
+        SectorRevisionMapActivationReceipt,
+        {
+            "manifest_revision": recipe.manifest_revision,
+            "sector_revision": recipe.sector_revision,
+            "sector_map_hash": map_hash,
+            "store_receipt_hash": _hash("store-receipt"),
+            "changed": False,
+            "observed_at": NOW,
+        },
+        "receipt_hash",
+    )
+
+
 def test_republishing_an_unchanged_sector_activation_leaves_its_pointer_alone(
     tmp_path, monkeypatch
 ) -> None:
-    """Republishing an unchanged sector activation leaves its pointer alone."""
+    """Control: Republishing unchanged sector activation leaves its pointer alone."""
 
     catalog, _store, _artifact_store, ledger, _coordinator = _fixture(tmp_path)
     root = ledger.root_for_head(ledger.require_head(catalog.binding.catalog_hash))
     recipe = ledger.recipe_for_root(root)
+    receipt = partial(_sector_activation_receipt, recipe)
     replaced: list[tuple[str, str]] = []
     real_replace = os.replace
 
@@ -733,20 +752,6 @@ def test_republishing_an_unchanged_sector_activation_leaves_its_pointer_alone(
         real_replace(source, destination)
 
     monkeypatch.setattr(os, "replace", counted_replace)
-
-    def receipt(map_hash: str) -> SectorRevisionMapActivationReceipt:
-        return identified(
-            SectorRevisionMapActivationReceipt,
-            {
-                "manifest_revision": recipe.manifest_revision,
-                "sector_revision": recipe.sector_revision,
-                "sector_map_hash": map_hash,
-                "store_receipt_hash": _hash("store-receipt"),
-                "changed": False,
-                "observed_at": NOW,
-            },
-            "receipt_hash",
-        )
 
     ledger.publish_sector_activation(receipt(recipe.sector_map_hash))
     pointer = [d for _s, d in replaced if d.endswith(f"{recipe.sector_revision}.json")]
@@ -766,7 +771,7 @@ def test_republishing_an_unchanged_sector_activation_leaves_its_pointer_alone(
 def test_changed_pointer_outlives_a_transient_sharing_violation_and_refuses_a_lasting_one(
     tmp_path, monkeypatch
 ) -> None:
-    """Changed pointer outlives a transient sharing violation and refuses a lasting one."""
+    """Control: Changed pointer outlives transient sharing violation and refuses lasting one."""
 
     from alphalattice.kernel.shared_kernel import persistence
     from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
@@ -774,21 +779,8 @@ def test_changed_pointer_outlives_a_transient_sharing_violation_and_refuses_a_la
     catalog, _store, artifact_store, ledger, _coordinator = _fixture(tmp_path)
     root = ledger.root_for_head(ledger.require_head(catalog.binding.catalog_hash))
     recipe = ledger.recipe_for_root(root)
+    receipt = partial(_sector_activation_receipt, recipe)
     monkeypatch.setattr(persistence.time, "sleep", lambda _seconds: None)
-
-    def receipt(map_hash: str) -> SectorRevisionMapActivationReceipt:
-        return identified(
-            SectorRevisionMapActivationReceipt,
-            {
-                "manifest_revision": recipe.manifest_revision,
-                "sector_revision": recipe.sector_revision,
-                "sector_map_hash": map_hash,
-                "store_receipt_hash": _hash("store-receipt"),
-                "changed": False,
-                "observed_at": NOW,
-            },
-            "receipt_hash",
-        )
 
     ledger.publish_sector_activation(receipt(recipe.sector_map_hash))
     pointer = ledger._pointer_path("sector-maps", recipe.sector_revision)

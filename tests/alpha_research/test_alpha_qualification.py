@@ -6,6 +6,8 @@ of development studies is proved by its own tests and acceptance."""
 from __future__ import annotations
 
 import math
+from contextlib import nullcontext
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,6 +18,7 @@ import pytest
 from pydantic import ValidationError
 
 import alphalattice.investment.alpha_research.candidates.qualification as qualification_module
+import alphalattice.investment.alpha_research.candidates.qualification_task as qualification_task
 from alphalattice.capabilities.alpha_modeling.catalog import (
     AlphaModelCatalog,
     build_installed_alpha_model_catalog,
@@ -26,7 +29,26 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     AlphaModelRecipeEnvelope,
     AlphaModelSearchDomainEnvelope,
 )
+from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.plain_refusals import refused
+from alphalattice.control.product_host.composition.research_experiments import (
+    ExperimentPlan,
+    ResearchExperimentApplication,
+    plan_implementation_hash,
+)
+from alphalattice.control.product_host.composition.research_workspace import (
+    ResearchWorkspaceExperimentInput,
+)
+from alphalattice.control.product_host.research_authoring.qualification_handoff import (
+    qualification_document,
+    qualification_workflow,
+)
+from alphalattice.control.task_control.contracts import (
+    TaskEvidence,
+    TaskExecutionCompatibility,
+    TaskLifecycle,
+)
+from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.investment.alpha_research.candidates.artifacts import (
     AlphaGoalResearchArtifactStore,
 )
@@ -62,12 +84,20 @@ from alphalattice.investment.alpha_research.candidates.qualification import (
 from alphalattice.investment.alpha_research.candidates.qualification_task import (
     AlphaFamilyQualification,
 )
+from alphalattice.investment.alpha_research.experiments.bindings import (
+    build_alpha_development_program,
+)
 from alphalattice.investment.alpha_research.experiments.contracts import (
     AlphaDevelopmentProgram,
     candidate_id_for_spec,
 )
+from alphalattice.investment.alpha_research.experiments.development_artifacts import (
+    AlphaDevelopmentArtifactStore,
+)
+from alphalattice.investment.alpha_research.experiments.execution import execute_alpha_model_batch
 from alphalattice.investment.alpha_research.experiments.family_qualification import (
     METHOD,
+    AlphaQuestionPreparation,
     AlphaStudy,
     alpha_family,
     alpha_question_hash,
@@ -79,8 +109,12 @@ from alphalattice.investment.alpha_research.experiments.mandate import (
     AlphaResearchModelRecipe,
     build_current_alpha_research_model_mandate,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.protocols.research_authoring.contracts import AuthoringError
+from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
+from alphalattice.protocols.research_authoring.contracts import (
+    AuthoringError,
+    ResolvedResearchAuthority,
+)
+from tests.alpha_research.fixtures import qualification_inputs
 
 HASH = "a" * 64
 
@@ -322,7 +356,46 @@ def test_later_holm_family_preserves_prior_current_stability_rejection() -> None
     assert carried.holm_adjusted_p_value == 0.02
 
 
+class _QualificationStore:
+    def load_candidate_report(self, _value):
+        return SimpleNamespace()
+
+    def publish_viability(self, _value):
+        return None
+
+
+def _qualification_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    candidate_id: str,
+    candidate_result: SimpleNamespace,
+    viability: SimpleNamespace,
+) -> _QualificationStore:
+    monkeypatch.setattr(
+        qualification_module,
+        "_index_attempted_family",
+        lambda **_kwargs: {candidate_id: (SimpleNamespace(), candidate_result)},
+    )
+    monkeypatch.setattr(
+        qualification_module,
+        "_candidate_rows",
+        lambda **_kwargs: (SimpleNamespace(), SimpleNamespace()),
+    )
+    monkeypatch.setattr(
+        qualification_module,
+        "_historical_mean_benchmark",
+        lambda **_kwargs: (SimpleNamespace(), SimpleNamespace()),
+    )
+    monkeypatch.setattr(
+        qualification_module,
+        "assess_alpha_model_viability",
+        lambda **_kwargs: viability,
+    )
+    return _QualificationStore()
+
+
 def test_renominated_prior_rejection_reuses_current_children(monkeypatch, tmp_path: Path) -> None:
+    """Control: Renominated prior rejection reuses current children."""
     program = _program()
     spec = _research_recipes((3.0,))[0]
     candidate_id = f"alpha-candidate-{spec.spec_hash[:16]}"
@@ -376,32 +449,11 @@ def test_renominated_prior_rejection_reuses_current_children(monkeypatch, tmp_pa
         assessment_hash="a" * 64,
     )
 
-    class Store:
-        def load_candidate_report(self, _value):
-            return SimpleNamespace()
-
-        def publish_viability(self, _value):
-            return None
-
-    monkeypatch.setattr(
-        qualification_module,
-        "_index_attempted_family",
-        lambda **_kwargs: {candidate_id: (SimpleNamespace(), candidate_result)},
-    )
-    monkeypatch.setattr(
-        qualification_module,
-        "_candidate_rows",
-        lambda **_kwargs: (SimpleNamespace(), SimpleNamespace()),
-    )
-    monkeypatch.setattr(
-        qualification_module,
-        "_historical_mean_benchmark",
-        lambda **_kwargs: (SimpleNamespace(), SimpleNamespace()),
-    )
-    monkeypatch.setattr(
-        qualification_module,
-        "assess_alpha_model_viability",
-        lambda **_kwargs: viability,
+    store = _qualification_dependencies(
+        monkeypatch,
+        candidate_id=candidate_id,
+        candidate_result=candidate_result,
+        viability=viability,
     )
     monkeypatch.setattr(
         qualification_module,
@@ -416,7 +468,7 @@ def test_renominated_prior_rejection_reuses_current_children(monkeypatch, tmp_pa
         nominated_candidate_ids=(candidate_id,),
         fold_plan=SimpleNamespace(fold_count=5),
         train_session_count=756,
-        store=Store(),
+        store=store,
         model_catalog=build_installed_alpha_model_catalog(),
         model_mandate=_model_mandate(),
     )
@@ -515,6 +567,7 @@ def _program(model_mandate: AlphaResearchModelMandate | None = None) -> AlphaRes
 def test_development_only_adapter_is_recorded_as_scientific_non_admission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Control: Development only adapter is recorded as scientific non admission."""
     adapter = _DevelopmentOnlyAdapter()
     catalog = AlphaModelCatalog((adapter,))  # type: ignore[arg-type]
     domain = AlphaModelSearchDomainEnvelope.create(
@@ -584,32 +637,11 @@ def test_development_only_adapter_is_recorded_as_scientific_non_admission(
         assessment_hash="6" * 64,
     )
 
-    class Store:
-        def load_candidate_report(self, _value):
-            return SimpleNamespace()
-
-        def publish_viability(self, _value):
-            return None
-
-    monkeypatch.setattr(
-        qualification_module,
-        "_index_attempted_family",
-        lambda **_kwargs: {candidate_id: (SimpleNamespace(), candidate_result)},
-    )
-    monkeypatch.setattr(
-        qualification_module,
-        "_candidate_rows",
-        lambda **_kwargs: (SimpleNamespace(), SimpleNamespace()),
-    )
-    monkeypatch.setattr(
-        qualification_module,
-        "_historical_mean_benchmark",
-        lambda **_kwargs: (SimpleNamespace(), SimpleNamespace()),
-    )
-    monkeypatch.setattr(
-        qualification_module,
-        "assess_alpha_model_viability",
-        lambda **_kwargs: viability,
+    store = _qualification_dependencies(
+        monkeypatch,
+        candidate_id=candidate_id,
+        candidate_result=candidate_result,
+        viability=viability,
     )
     monkeypatch.setattr(
         qualification_module,
@@ -624,7 +656,7 @@ def test_development_only_adapter_is_recorded_as_scientific_non_admission(
         nominated_candidate_ids=(candidate_id,),
         fold_plan=SimpleNamespace(fold_count=1, target_policy=None),
         train_session_count=1,
-        store=Store(),  # type: ignore[arg-type]
+        store=store,  # type: ignore[arg-type]
         model_catalog=catalog,
         model_mandate=mandate,
     )
@@ -710,9 +742,17 @@ def _qualified_authority(
     return registry, qualification
 
 
-def test_terminal_selection_rotates_registry_and_marker_children(tmp_path: Path) -> None:
-    program = _program()
-    criteria = _criteria()
+def _terminal_setup(
+    root: Path,
+    *,
+    program: AlphaResearchProgram | None = None,
+    criteria: AlphaModelResearchGoalCriteria | None = None,
+    store: AlphaGoalResearchArtifactStore | None = None,
+) -> tuple[AlphaGoalResearchArtifactStore, dict[str, Any]]:
+    if program is None:
+        program = _program()
+    if criteria is None:
+        criteria = _criteria()
     registry, qualification = _qualified_authority(program)
     selected = tuple(value.candidate_id for value in registry.candidates[:3])
     progress = resolve_goal_progress(
@@ -721,7 +761,8 @@ def test_terminal_selection_rotates_registry_and_marker_children(tmp_path: Path)
         qualification=qualification,
         completed_batch_count=1,
     )
-    store = AlphaGoalResearchArtifactStore(tmp_path)
+    if store is None:
+        store = AlphaGoalResearchArtifactStore(root)
     for value, publish in (
         (program, store.publish_program),
         (registry, store.publish_registry),
@@ -729,18 +770,25 @@ def test_terminal_selection_rotates_registry_and_marker_children(tmp_path: Path)
         (progress, store.publish_goal_progress),
     ):
         publish(value)  # type: ignore[arg-type]
+    return store, {
+        "program": program,
+        "selected_candidate_ids": selected,
+        "registry": registry,
+        "qualification": qualification,
+        "progress": progress,
+        "limitations": ("Risk remains not admitted.",),
+        "science_policy_hash": program.stability_policy_hash,
+        "completed_batch_count": 1,
+        "criteria": criteria,
+    }
 
-    committed = _committer(store).commit(
-        program=program,
-        selected_candidate_ids=selected,
-        registry=registry,
-        qualification=qualification,
-        progress=progress,
-        limitations=("Risk remains not admitted.",),
-        science_policy_hash=program.stability_policy_hash,
-        completed_batch_count=1,
-        criteria=criteria,
-    )
+
+def test_terminal_selection_rotates_registry_and_marker_children(tmp_path: Path) -> None:
+    """Control: Terminal selection rotates registry and marker children."""
+    store, inputs = _terminal_setup(tmp_path)
+    selected = inputs["selected_candidate_ids"]
+
+    committed = _committer(store).commit(**inputs)
 
     final_registry = store.load_registry(committed.marker.registry_hash)
     statuses = {value.candidate_id: value.status for value in final_registry.candidates}
@@ -752,6 +800,10 @@ def test_terminal_selection_rotates_registry_and_marker_children(tmp_path: Path)
     )
     assert committed.candidate_set is not None
     assert committed.candidate_set.ordered_candidate_ids == selected
+    assert set(selected) <= set(inputs["qualification"].current_qualified_ids)
+    assert (
+        committed.marker.candidate_set_snapshot_hash and not committed.marker.scientific_stop_hash
+    )
     assert committed.marker.registry_hash == final_registry.registry_hash
     assert store.load_active_marker() == committed.marker
 
@@ -773,35 +825,11 @@ def test_new_program_cas_supersedes_active_pointer_without_deleting_prior_artifa
     committer = _committer(store)
     committed = []
     for program in (first_program, second_program):
-        registry, qualification = _qualified_authority(program)
-        selected = tuple(value.candidate_id for value in registry.candidates[:3])
-        progress = resolve_goal_progress(
-            criteria=criteria,
-            registry=registry,
-            qualification=qualification,
-            completed_batch_count=1,
+        _same_store, inputs = _terminal_setup(
+            tmp_path, program=program, criteria=criteria, store=store
         )
-        for value, publish in (
-            (program, store.publish_program),
-            (registry, store.publish_registry),
-            (qualification, store.publish_qualification),
-            (progress, store.publish_goal_progress),
-        ):
-            publish(value)  # type: ignore[arg-type]
         assert committer.load_exact_replay(program.program_hash) is None
-        committed.append(
-            committer.commit(
-                program=program,
-                selected_candidate_ids=selected,
-                registry=registry,
-                qualification=qualification,
-                progress=progress,
-                limitations=("Risk remains not admitted.",),
-                science_policy_hash=program.stability_policy_hash,
-                completed_batch_count=1,
-                criteria=criteria,
-            )
-        )
+        committed.append(committer.commit(**inputs))
 
     assert store.load_active_marker() == committed[1].marker
     assert (
@@ -814,59 +842,23 @@ def test_new_program_cas_supersedes_active_pointer_without_deleting_prior_artifa
 def test_terminal_pointer_rolls_back_when_authoritative_readback_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    program = _program()
-    criteria = _criteria()
-    registry, qualification = _qualified_authority(program)
-    selected = tuple(value.candidate_id for value in registry.candidates[:3])
-    progress = resolve_goal_progress(
-        criteria=criteria,
-        registry=registry,
-        qualification=qualification,
-        completed_batch_count=1,
-    )
-    store = AlphaGoalResearchArtifactStore(tmp_path)
-    store.publish_program(program)
-    store.publish_registry(registry)
-    store.publish_qualification(qualification)
-    store.publish_goal_progress(progress)
+    """Control: Terminal pointer rolls back when authoritative readback fails."""
+    store, inputs = _terminal_setup(tmp_path)
 
     def fail_terminal_readback():
         raise ValueError("simulated terminal readback failure")
 
     monkeypatch.setattr(store, "load_active_marker", fail_terminal_readback)
     with pytest.raises(ValueError, match="simulated terminal readback failure"):
-        _committer(store).commit(
-            program=program,
-            selected_candidate_ids=selected,
-            registry=registry,
-            qualification=qualification,
-            progress=progress,
-            limitations=("Risk remains not admitted.",),
-            science_policy_hash=program.stability_policy_hash,
-            completed_batch_count=1,
-            criteria=criteria,
-        )
+        _committer(store).commit(**inputs)
     assert not (store.root / "active.json").exists()
 
 
 def test_terminal_publication_reuses_projection_after_pre_marker_crash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    program = _program()
-    criteria = _criteria()
-    registry, qualification = _qualified_authority(program)
-    selected = tuple(value.candidate_id for value in registry.candidates[:3])
-    progress = resolve_goal_progress(
-        criteria=criteria,
-        registry=registry,
-        qualification=qualification,
-        completed_batch_count=1,
-    )
-    store = AlphaGoalResearchArtifactStore(tmp_path)
-    store.publish_program(program)
-    store.publish_registry(registry)
-    store.publish_qualification(qualification)
-    store.publish_goal_progress(progress)
+    """Control: Terminal publication reuses projection after pre marker crash."""
+    store, inputs = _terminal_setup(tmp_path)
     real_publish_marker = store.publish_terminal_marker
 
     def interrupt_before_marker(*_args: object, **_kwargs: object) -> str:
@@ -875,18 +867,7 @@ def test_terminal_publication_reuses_projection_after_pre_marker_crash(
     monkeypatch.setattr(store, "publish_terminal_marker", interrupt_before_marker)
     first_clock = datetime(2026, 8, 9, 12, tzinfo=UTC)
     with pytest.raises(RuntimeError, match="simulated crash"):
-        _committer(store).commit(
-            program=program,
-            selected_candidate_ids=selected,
-            registry=registry,
-            qualification=qualification,
-            progress=progress,
-            limitations=("Risk remains not admitted.",),
-            science_policy_hash=program.stability_policy_hash,
-            completed_batch_count=1,
-            criteria=criteria,
-            clock=first_clock,
-        )
+        _committer(store).commit(**inputs, clock=first_clock)
     projection_pointers = tuple((store.root / "projection-by-marker").glob("*.json"))
     assert len(projection_pointers) == 1
     marker_hash = projection_pointers[0].stem
@@ -895,18 +876,7 @@ def test_terminal_publication_reuses_projection_after_pre_marker_crash(
     assert store.find_active_marker() is None
 
     monkeypatch.setattr(store, "publish_terminal_marker", real_publish_marker)
-    recovered = _committer(store).commit(
-        program=program,
-        selected_candidate_ids=selected,
-        registry=registry,
-        qualification=qualification,
-        progress=progress,
-        limitations=("Risk remains not admitted.",),
-        science_policy_hash=program.stability_policy_hash,
-        completed_batch_count=1,
-        criteria=criteria,
-        clock=first_clock + timedelta(hours=1),
-    )
+    recovered = _committer(store).commit(**inputs, clock=first_clock + timedelta(hours=1))
 
     assert recovered.marker.marker_hash == marker_hash
     assert recovered.projection == stranded_projection
@@ -1058,24 +1028,29 @@ def test_the_family_registry_keeps_each_study_standing() -> None:
         family_registry(program_hash="7" * 64, recipes=recipes, batch_results=results * 2)
 
 
-def test_a_qualification_binds_only_the_models_its_family_ran() -> None:
-    """Requirement: a model installed beside the family's moves no qualification,
-    and a family whose model the mandate no longer holds is refused before any work."""
-    first, second = _research_recipes((1.0, 3.0))
-    family = alpha_family(
+def _unprepared_arrays() -> Any:
+    pytest.fail("PLAN prepares no arrays")
+
+
+def _two_study_family(first, second):
+    return alpha_family(
         studies=(_study(TASK.format(1), 1, first), _study(TASK.format(2), 2, second)),
         question_hash="a" * 64,
         goal_id=str(UUID(int=7)),
         opened_at=OPENED,
     )
 
-    def unprepared() -> Any:
-        pytest.fail("PLAN prepares no arrays")
+
+def test_a_qualification_binds_only_the_models_its_family_ran() -> None:
+    """Requirement: a model installed beside the family's moves no qualification,
+    and a family whose model the mandate no longer holds is refused before any work."""
+    first, second = _research_recipes((1.0, 3.0))
+    family = _two_study_family(first, second)
 
     def method(mandate: AlphaResearchModelMandate) -> AlphaFamilyQualification:
         return AlphaFamilyQualification(
             family=family,
-            prepare_question=unprepared,
+            prepare_question=_unprepared_arrays,
             workspace=Path("."),
             model_mandate=mandate,
             model_catalog=build_installed_alpha_model_catalog(),
@@ -1094,58 +1069,16 @@ def test_a_qualification_binds_only_the_models_its_family_ran() -> None:
         method(installed.admitting(elsewhere.search_domain_hash))
 
 
-def test_a_nomination_outside_the_family_names_what_may_be_nominated() -> None:
-    """requirement (OP12): the refusal names the field's rule, and `expected` gives the
-    family's candidates, so an agent corrects the declaration without guessing."""
-    first, second = _research_recipes((1.0, 3.0))
-    family = alpha_family(
-        studies=(_study(TASK.format(1), 1, first), _study(TASK.format(2), 2, second)),
-        question_hash="a" * 64,
-        goal_id=str(UUID(int=7)),
-        opened_at=OPENED,
-    )
-
-    def unprepared() -> Any:
-        pytest.fail("PLAN prepares no arrays")
-
-    method = AlphaFamilyQualification(
-        family=family,
-        prepare_question=unprepared,
-        workspace=Path("."),
-        model_mandate=_model_mandate(),
-        model_catalog=build_installed_alpha_model_catalog(),
-    )
-    section = {
-        "methodology_id": METHOD,
-        "goal_id": str(UUID(int=7)),
-        "question_task_id": TASK.format(1),
-        "nominated_candidate_ids": ["alpha-candidate-" + "0" * 16],
-    }
-    with pytest.raises(
-        AuthoringError, match="qualification_nomination_invalid:not_in_family"
-    ) as caught:
-        method.validate_declaration({"alpha": section})
-    assert caught.value.expected == {"qualification.nominated_candidate_ids": family.candidate_ids}
-
-
 def test_a_declaration_with_a_study_s_fields_is_refused_by_the_section_it_breaks() -> None:
     """regression (OP12): agent copied a development study's fields into a
     qualification's `alpha` section and met a bare code; the refusal names the section and
     `expected` lists its four fields, and a declaration of another method names the method."""
     first, second = _research_recipes((1.0, 3.0))
-    family = alpha_family(
-        studies=(_study(TASK.format(1), 1, first), _study(TASK.format(2), 2, second)),
-        question_hash="a" * 64,
-        goal_id=str(UUID(int=7)),
-        opened_at=OPENED,
-    )
-
-    def unprepared() -> Any:
-        pytest.fail("PLAN prepares no arrays")
+    family = _two_study_family(first, second)
 
     method = AlphaFamilyQualification(
         family=family,
-        prepare_question=unprepared,
+        prepare_question=_unprepared_arrays,
         workspace=Path("."),
         model_mandate=_model_mandate(),
         model_catalog=build_installed_alpha_model_catalog(),
@@ -1172,21 +1105,15 @@ def test_a_declaration_with_a_study_s_fields_is_refused_by_the_section_it_breaks
     assert "`alpha` section" in explained["detail"]
 
 
-def test_a_qualification_names_its_goal_and_nominates_from_its_family() -> None:
+def test_a_qualification_names_its_goal_and_nominates_from_its_family(
+    tmp_path: Path, monkeypatch
+) -> None:
     first, second = _research_recipes((1.0, 3.0))
-    family = alpha_family(
-        studies=(_study(TASK.format(1), 1, first), _study(TASK.format(2), 2, second)),
-        question_hash="a" * 64,
-        goal_id=str(UUID(int=7)),
-        opened_at=OPENED,
-    )
-
-    def unprepared() -> Any:
-        pytest.fail("PLAN prepares no arrays")
+    family = _two_study_family(first, second)
 
     method = AlphaFamilyQualification(
         family=family,
-        prepare_question=unprepared,
+        prepare_question=_unprepared_arrays,
         workspace=Path("."),
         model_mandate=_model_mandate(),
         model_catalog=build_installed_alpha_model_catalog(),
@@ -1204,9 +1131,16 @@ def test_a_qualification_names_its_goal_and_nominates_from_its_family() -> None:
     )
     assert compiled.method_binding_hash == method.method_binding_hash()
     assert planned_calls(family, (candidate_id_for_spec(first),)) == 5
+    with pytest.raises(
+        AuthoringError, match="qualification_nomination_invalid:not_in_family"
+    ) as caught:
+        method.validate_declaration(
+            {"alpha": {**section, "nominated_candidate_ids": ["alpha-candidate-" + "0" * 16]}}
+        )
+    assert caught.value.expected == {"qualification.nominated_candidate_ids": family.candidate_ids}
+
     for change, code in (
         ({"goal_id": str(UUID(int=8))}, "family_goal_mismatch"),
-        ({"nominated_candidate_ids": ["alpha-candidate-" + "0" * 16]}, "nomination_invalid"),
         ({"nominated_candidate_ids": []}, "nomination_invalid"),
         ({"extra": 1}, "declaration_invalid"),
     ):
@@ -1217,3 +1151,163 @@ def test_a_qualification_names_its_goal_and_nominates_from_its_family() -> None:
         method.compile_desk_program(
             envelope=tight, document={"alpha": section}, authority=authority
         )
+
+    fold_plan, arrays = qualification_inputs()
+    mandate = _model_mandate()
+    development = build_alpha_development_program(fold_plan=fold_plan, model_mandate=mandate)
+    question_hash = alpha_question_hash(development)
+    recipes = _research_recipes((1.0, 3.0, 10.0, 20.0, 50.0, 100.0))
+    monkeypatch.setattr(
+        qualification_task,
+        "prepare_alpha_program_array_workspace",
+        lambda *a, **k: nullcontext(arrays),
+    )
+    sessions = fold_plan.panel_sessions
+    envelope = {
+        "kind": "alpha.model-development",
+        "schema_id": "research-experiment-envelope",
+        "data_snapshot_handle": "fixture",
+        "universe_handle": "fixture",
+        "sessions": {
+            "start": sessions[0],
+            "end": sessions[-1],
+            "as_of": {"session": sessions[-1], "phase": "OFFICIAL_CLOSE"},
+        },
+        "determinism": {"seed": 0, "thread_limit": 1, "network_disabled": True},
+        "output_workspace": "qualification",
+    }
+    resolved = ResolvedResearchAuthority.create(
+        data_snapshot_handle="fixture",
+        universe_handle="fixture",
+        panel_snapshot_hash=fold_plan.foundation.feature_panel_snapshot_hash,
+        panel_manifest_ref=fold_plan.feature_panel_manifest_ref,
+        universe_revision_sha256=canonical_hash(fold_plan.ordered_listing_ids),
+        ordered_listing_ids=fold_plan.ordered_listing_ids,
+        sessions=sessions,
+        source_watermark_hash=HASH,
+    )
+    implementation = plan_implementation_hash(SimpleNamespace(qualification_family=family))
+    studies, hashes = [], []
+    with LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OPENED) as live:
+        live.operations.set_cpu_budget("4", chosen_by="EXTERNAL_AUTOMATION")
+        for count in (2, 6):
+            for index in range(len(studies), count):
+                recipe, output = recipes[index], f"study-{index + 1}"
+                store = AlphaDevelopmentArtifactStore(tmp_path / output / "alpha-development")
+                batch = seal_contract(
+                    AlphaExperimentBatch,
+                    {
+                        "program_hash": development.program_hash,
+                        "batch_index": 1,
+                        "specs": (recipe,),
+                        "predecessor_batch_hash": None,
+                    },
+                    "batch_hash",
+                )
+                result = execute_alpha_model_batch(
+                    program=development,
+                    batch=batch,
+                    fold_plan=fold_plan,
+                    store=store,
+                    array_workspace=arrays,
+                    model_mandate=mandate,
+                )
+                store.publish_batch_result(result)
+                # The upstream receipt handle is a controlled input; batch children are real.
+                studies.append(
+                    replace(
+                        _study(TASK.format(index + 1), index + 1, recipe),
+                        question_hash=question_hash,
+                        sealed=lambda out=output, result=result: (out, HASH, result.result_hash),
+                    )
+                )
+            family = alpha_family(
+                studies=studies,
+                question_hash=question_hash,
+                goal_id=section["goal_id"],
+                opened_at=OPENED,
+            )
+            document = qualification_document(
+                {"alpha": {**section, "nominated_candidate_ids": list(family.candidate_ids)}},
+                {**envelope, "output_workspace": f"qualification-{count}"},
+                family,
+            )
+            workflow, sealed, preview = qualification_workflow(
+                workspace=tmp_path,
+                document=document,
+                family=family,
+                prepare_question=lambda: AlphaQuestionPreparation(fold_plan, development),
+                authority=resolved,
+            )
+            assert preview["study_count"] == count and preview["sealed_holdout"] == "UNREAD"
+            assert (
+                workflow.prepare(
+                    document, actor_kind=sealed.binding.actor_kind, actor_id=sealed.binding.actor_id
+                ).program.program_hash
+                == sealed.program.program_hash
+            )
+            hashes.append(sealed.program.program_hash)
+            evidence = workflow.execute_prepared(sealed)
+            plan = ExperimentPlan.create(
+                workspace_id=live.workspace_manifest.workspace_id,
+                binding=ResearchWorkspaceExperimentInput(input_id="fixture", binding_hash=HASH),
+                document=document,
+                program=sealed.program,
+                authority=resolved,
+                execution_preview=preview,
+                implementation_hash=implementation,
+                qualification_family=family,
+            )
+            app = live.operations.experiments
+            task = live.session.task_control_registry.task(app.admit(plan, sealed.binding).task_id)
+            compatibility = TaskExecutionCompatibility.create(
+                task_contract_hash=canonical_hash(schema_structure(ExperimentPlan)),
+                workflow_definition_hash=task.plan.workflow_definition_hash,
+                input_schema_id=task.input.input_schema_id,
+                domain_policy_hash=sealed.program.method_binding_hash,
+                framework_identity_hash=live.session.execution_identity(plan.implementation_hash),
+            )
+            claims = (
+                TaskEvidence(
+                    evidence_kind="research_experiment.evidence",
+                    reference=f"playpen://research-evidence/{evidence.evidence_hash}",
+                    content_hash=evidence.evidence_hash,
+                ),
+            )
+            adapter = SimpleNamespace(
+                task_kind=app.task_kind,
+                compatibility=lambda task, value=compatibility: value,
+                execute_stage=lambda claims=claims, **kwargs: StageExecutionResult(
+                    StageDisposition.READY, claims
+                ),
+                verify_stage=app.verify_stage,
+            )
+            assert (
+                live.session.execute_admitted(task, adapter, live.clock).lifecycle
+                is TaskLifecycle.SUCCEEDED
+            )
+            fresh = ResearchExperimentApplication(
+                session=live.session,
+                manifest=live.workspace_manifest,
+                dispatcher=live.dispatcher,
+                clock=live.clock,
+            )
+            body = fresh.readback(task.task_id)
+            assert body["status"] == "EXPERIMENT_PUBLISHED"
+            actual = body["alpha_qualification"]
+            assert actual["attempted_candidate_ids"] == list(family.candidate_ids)
+            assert [m["task_id"] for m in body["qualification_family"]["members"]] == [
+                TASK.format(i) for i in range(1, count + 1)
+            ]
+            assert (
+                set(actual["selected_candidate_ids"])
+                <= set(actual["current_qualified_ids"])
+                <= set(family.candidate_ids)
+            )
+            if count == 2:
+                assert actual["disposition"] == "NO_STABLE_CURRENT_ALPHA_MODEL"
+                assert (
+                    actual["selected_candidate_ids"] == [] and actual["candidate_set_hash"] is None
+                )
+                assert actual["scientific_stop_hash"]
+        assert hashes[0] != hashes[1]

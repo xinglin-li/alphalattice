@@ -130,6 +130,7 @@ def test_market_prefix_proves_actual_values_when_evidence_and_journals_are_uncha
 def test_market_prefix_respects_dates_active_actions_and_latest_provider_even_without_actions(
     market_source,
 ):
+    """Control: Market prefixes bind cutoffs, active actions and latest provider mappings."""
     market, _ = market_source
     before = _proof(market)
     later = _proof(market, through=DAYS[2])
@@ -243,6 +244,7 @@ def test_market_prefix_retains_raw_provider_rows_numeric_bits_and_missing_keys(m
 
 
 def test_market_prefix_refuses_invalid_scopes_and_missing_provider(market_source):
+    """Control: Market prefixes refuse empty, duplicate, reversed and providerless scopes."""
     market, _ = market_source
     for scope in ((), (SCOPE[0], SCOPE[0])):
         with pytest.raises(ValueError, match=r"market_data_ops\.source_prefix_request_invalid"):

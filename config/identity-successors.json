@@ -13525,6 +13525,755 @@
    "successor": "5a5d1bf029fb5b5c7c30500e7a50d8ad6c1fb073f28273da3b63f1868be09f8c",
    "change": "15c2c239c17b688dd491fe69c95f86be7318ce0c",
    "reason": "The input capture's byte ceiling counts a missing live database as zero instead of failing. Sealing, copying, admission and verification are unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.ABSOLUTE_STATE",
+   "predecessor": "aba11a22fd051dff8a5b16da74aa8ea4764356cd3c469eaf37f635b1cc0de1a5",
+   "successor": "85155f01262b5a811f96853a185db0df003211c218013892ef5881302745ee46",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.DOWNSIDE_TAIL",
+   "predecessor": "a3d87622472a4de3d7ac60c810d9ebe74d13a6156066c6cc02d7ff43291dd745",
+   "successor": "290a1052385c0ae3d013853cd101a6811d3ef95579fe886a48209fc89185de54",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.FACTOR_FORMULA",
+   "predecessor": "66f0c8b46758128d1d7d24acc627c2580e98f80a734f799f9a5e0b75e585236c",
+   "successor": "7a49e3479c2be95ff0728f5f4fba841faa3fb17df07094a14cadff7f1a20a77b",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.OPEN_INTRADAY",
+   "predecessor": "5eadfed029e68ce88f97787cfb113aaa945a4b23b84791ea991c94a9630e33a5",
+   "successor": "a8e9c849f2f49e619e54adee1c5099cb0732d51df1e46fe0346cda319443fd2d",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.RESIDUAL_REVERSAL",
+   "predecessor": "55ebe8d30a3f1e2cfaa3241219c572c2be013e7147a03f83a0d2fd529a529d36",
+   "successor": "9a250352934bf80577948af37594ce4f9b0020472ccedd6ddf15746c5b56a78f",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.SECTOR_LEADER_LAG",
+   "predecessor": "a8d47a91c8ddb8d6be47f378b8fc58722d74f1d68b3b17c49927aabd15aba25b",
+   "successor": "8de4511a1d558dd6920313513fb952b432b56c8b50890a15b5c29bc729ecb218",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_LIQUIDITY",
+   "predecessor": "ecdd5cfd55e269768efe4e0390f94b53dd9a0b6865c9bd6e619c5e97f78275b2",
+   "successor": "40cc70d49b5d20afe610bfab1ff90fb141c06d9036606526a6872be7d8888ad3",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_OBSERVATION",
+   "predecessor": "0aeb741f7db3833baed2fec9baf0724562db6a66a0caf1442c5335211dd4e57d",
+   "successor": "8909ff25c55eb83d5eb69a3927a19e6b1840bd0c5e98da6dfbfc632c6f7d60a2",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.STATE_INTERACTION",
+   "predecessor": "4b21731a7c6a4f9d07331ae82424f27f9a4003a71aa49e3b332d30ccf3797369",
+   "successor": "04c52705a7306e7f93f85d434049479587001532f5cc338e67745181c4015fd4",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "feature_engine.factor_value.controls",
+   "predecessor": "07568c5b649cbd05b6d8fc0f00c16cee99708428e1dc7fb83568065613846255",
+   "successor": "03bf27844c9a25da0e101896b016fd4d7834f6505c6c489ee002b050ebf06c86",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "57cfdf4b80e749e27df0096c8e9b58c9633a37dae3b98c4028949d35c6f43170",
+   "successor": "35ae43c4c6cf472ddba31601691e7eb0acd59fe6b951ef9d92eb4e681d960abf",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "dbce8d57d12fe9cb7e7bd705cfb370edfb834f48ecfe9ae2aa263ee2e63060f9",
+   "successor": "2d5c1b2b24f3431a4b6e56928fa65114d688d2a7e67d1f3e2306472fba20ae92",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "5b245de3c04626aa4ea3e4aad7c27ad0f6de7c2bbbc2b3e07db364720ffc412e",
+   "successor": "3912c71459ae01299d7660ecedd75d788985843f62eed6ca3f0bdea3f2d7f050",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "1f6f35fbbc6709cba41e32c2953cb5c3470bec855b7e04f45b38570a9afbb7ca",
+   "successor": "016af58fdba39e65c398ca1e6ceec274c4d16655de1ab45161e2836a247821f4",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "441aa820217d7ffbc19c66ac0713d794ae294a905bd67c73e7d0e8aac298d070",
+   "successor": "f286eefff698f9b1e99a6e2187bd54c16b02f0397b3636ebdeac6e79508a6cd8",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "507a6ecb2e825cb636fddc8df439105a3183eb903fafdc2fa6fdf92251a455d1",
+   "successor": "fadc6b35870b83d36c00aaf7ccdf7532304a1f43841fd9e3428a96e780f565af",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "507a6ecb2e825cb636fddc8df439105a3183eb903fafdc2fa6fdf92251a455d1",
+   "successor": "fadc6b35870b83d36c00aaf7ccdf7532304a1f43841fd9e3428a96e780f565af",
+   "change": "98e0c1be2452ca804bdda5a9c094223a2f66544d",
+   "reason": "Unused Feature adapters and an attestation writer are removed from modules whose source is hashed whole. The removed code had no reader, and every factor value and the controls are unchanged."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "e7b65cf232196b8ab3d0f8970f21c55b06939ec5ad763f32bc1c5ae995f985fb",
+   "successor": "d2bbbf3d22d5995669bb39ed7314092f36e57f7cc7df1588518f03f21b3b4194",
+   "change": "21ce55a6d90054b214b8964ebf8d049c91bfeb5e",
+   "reason": "Unused Alpha artifact writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "cfd02e14238e7a2b037b19cb3a63f26c3354f16fd8431dcfbd7aa729773c5e0c",
+   "successor": "f223ff9cc1d3ebf2bd0db378d04af515de8728bd6973088f1aafb2deb9535242",
+   "change": "21ce55a6d90054b214b8964ebf8d049c91bfeb5e",
+   "reason": "Unused Alpha artifact writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "a9c18ab7b82657ce28ad74bf3e184404e9955eca75c1649d59e1fdf006d2fa2a",
+   "successor": "4f92349a4fdd22bfaf4a62e608487873a6d58c155b0d9bb6ada79255e7fe557f",
+   "change": "21ce55a6d90054b214b8964ebf8d049c91bfeb5e",
+   "reason": "Unused Alpha artifact writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "2d5c1b2b24f3431a4b6e56928fa65114d688d2a7e67d1f3e2306472fba20ae92",
+   "successor": "7afb512e20664c8a67dc4e0fad989d16b238e9b85ffb9a872b6b30dcaf2c9f06",
+   "change": "21ce55a6d90054b214b8964ebf8d049c91bfeb5e",
+   "reason": "Unused Alpha artifact writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "24722970230b65b6521566e1d5ed997b01c9b2ccb9bbb9fd62e1441153302dc8",
+   "successor": "f99000b374cee6cea74237a8d1af44cd9e38972e3d1243403ef7fc66b23bb037",
+   "change": "21ce55a6d90054b214b8964ebf8d049c91bfeb5e",
+   "reason": "Unused Alpha artifact writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "f10b34ca3cfc6da504a13c668c7da0f5a9c284ae0b213d1bc4514f0468e37dad",
+   "successor": "496f66bb1ea52c48b6c489c30e9df7dd1066e6846fb176c6a8066c2dacd647f6",
+   "change": "21ce55a6d90054b214b8964ebf8d049c91bfeb5e",
+   "reason": "Unused Alpha artifact writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "5b181b1deab407a9c7223a910a02a0438c1cde5aaf1b862eef6a0421767db15c",
+   "successor": "7e2c87b768fa56fd54dbdbe1bac05388033fb10dcda4847e6d9701b792b6eb11",
+   "change": "21ce55a6d90054b214b8964ebf8d049c91bfeb5e",
+   "reason": "Unused Alpha artifact writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "fadc6b35870b83d36c00aaf7ccdf7532304a1f43841fd9e3428a96e780f565af",
+   "successor": "e08b4f36f88265458209d13da1d84ece31c9bd9ff1445e58c07f204133ac3a53",
+   "change": "21ce55a6d90054b214b8964ebf8d049c91bfeb5e",
+   "reason": "Unused Alpha artifact writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "fadc6b35870b83d36c00aaf7ccdf7532304a1f43841fd9e3428a96e780f565af",
+   "successor": "e08b4f36f88265458209d13da1d84ece31c9bd9ff1445e58c07f204133ac3a53",
+   "change": "21ce55a6d90054b214b8964ebf8d049c91bfeb5e",
+   "reason": "Unused Alpha artifact writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "3e655d913f23ba831ca1b4a90c6e9d13e676c10f8ad6dea9a224084e3a8c1551",
+   "successor": "4295d2cb04f5b4a524e1d258ad56dd0dde040caea2fab11ea78cb13de2524095",
+   "change": "21ce55a6d90054b214b8964ebf8d049c91bfeb5e",
+   "reason": "Unused Alpha artifact writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "97c73857b58546d49ca2257956bcfd056aa2001b98b0133f3d8220aa3657e614",
+   "successor": "bf7b774e3334dc67532c85cd7c64002cf3e9ce5f0e949efe9e49e84026188ad1",
+   "change": "21ce55a6d90054b214b8964ebf8d049c91bfeb5e",
+   "reason": "Unused Alpha artifact writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "50d890f818abb00668bda2851f9e3d86c2c66ee03feda1735ab23a656f2d26a0",
+   "successor": "c1428ef0f15aee7c2e01d569f2e8ef070f751afadeb0d8aaa8a83f3a3832415d",
+   "change": "ad634a93fcb40c34a55e7d97de2eae51528891aa",
+   "reason": "Unused Portfolio ledger writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "f223ff9cc1d3ebf2bd0db378d04af515de8728bd6973088f1aafb2deb9535242",
+   "successor": "21bf46d5352acff4aeab677927ba43c2a675e4113c54cd605f608b3fa565285d",
+   "change": "ad634a93fcb40c34a55e7d97de2eae51528891aa",
+   "reason": "Unused Portfolio ledger writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "f1894f9820db74f59f44afd34eae070c1a156c86685f95457937ecef481a2c3a",
+   "successor": "e1592175607d88a1121608baaf1ec998da322cb136fade3bc1411d2edcbc2de2",
+   "change": "ad634a93fcb40c34a55e7d97de2eae51528891aa",
+   "reason": "Unused Portfolio ledger writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "f99000b374cee6cea74237a8d1af44cd9e38972e3d1243403ef7fc66b23bb037",
+   "successor": "96965b6a8b5d428bf02869cf7e72659ad4900a830c04407fe2ebce900ecc73fa",
+   "change": "ad634a93fcb40c34a55e7d97de2eae51528891aa",
+   "reason": "Unused Portfolio ledger writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "496f66bb1ea52c48b6c489c30e9df7dd1066e6846fb176c6a8066c2dacd647f6",
+   "successor": "c0c920bc05188e37c70537418aae3a10f0f6400889ec2a8d9f578002779d60cf",
+   "change": "ad634a93fcb40c34a55e7d97de2eae51528891aa",
+   "reason": "Unused Portfolio ledger writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "bf7b774e3334dc67532c85cd7c64002cf3e9ce5f0e949efe9e49e84026188ad1",
+   "successor": "ced382cb54857b1ae4b8f7132e82c73099442c180fd192998eb4d0d7b6e52515",
+   "change": "ad634a93fcb40c34a55e7d97de2eae51528891aa",
+   "reason": "Unused Portfolio ledger writer facades are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "016af58fdba39e65c398ca1e6ceec274c4d16655de1ab45161e2836a247821f4",
+   "successor": "e955bef03adc6199a62a126657e373ac5d898ea75dde20985fcefc833b506fa7",
+   "change": "09be00586313eab7aee330bdc205a43301a2b359",
+   "reason": "An unused Factor writer and inventory accessor are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "f286eefff698f9b1e99a6e2187bd54c16b02f0397b3636ebdeac6e79508a6cd8",
+   "successor": "88de8c01be46163c85aec2476eedf9790776026058b6446acccc98013eb2d271",
+   "change": "09be00586313eab7aee330bdc205a43301a2b359",
+   "reason": "An unused Factor writer and inventory accessor are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "e08b4f36f88265458209d13da1d84ece31c9bd9ff1445e58c07f204133ac3a53",
+   "successor": "0202a9cc486307a87c511ecc48ea7d59d50999d40f0a7a036728028e42d614ae",
+   "change": "09be00586313eab7aee330bdc205a43301a2b359",
+   "reason": "An unused Factor writer and inventory accessor are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "e08b4f36f88265458209d13da1d84ece31c9bd9ff1445e58c07f204133ac3a53",
+   "successor": "0202a9cc486307a87c511ecc48ea7d59d50999d40f0a7a036728028e42d614ae",
+   "change": "09be00586313eab7aee330bdc205a43301a2b359",
+   "reason": "An unused Factor writer and inventory accessor are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "d2c9d02271a8ec55de588f7fd9eca85b6338b9af62e6218018d0457dc4539f2e",
+   "successor": "022f7c73adbe48fc4291911e33251daefa25e735983a53ec8c7b7551b42539fb",
+   "change": "09be00586313eab7aee330bdc205a43301a2b359",
+   "reason": "An unused Factor writer and inventory accessor are removed from modules hashed whole. The removed code had no reader, and no value changes."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "d2bbbf3d22d5995669bb39ed7314092f36e57f7cc7df1588518f03f21b3b4194",
+   "successor": "0ecc2311b70e49514f4d51ac09fe9ed0b0c37fe4238d12e4c548de47d1279e5a",
+   "change": "be62fbe97c0bdb1a9ec1c16554baa5e3d55a3434",
+   "reason": "Unused selected-current Alpha writers are removed from modules hashed whole. The removed code had no reader, and no value changes; one parameter occurrence count falls from two to one."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "21bf46d5352acff4aeab677927ba43c2a675e4113c54cd605f608b3fa565285d",
+   "successor": "fdbb7bd46ab5cd8950b93e8e865495a2cafc3f8e9cc40a62b9d69041de09ffa6",
+   "change": "be62fbe97c0bdb1a9ec1c16554baa5e3d55a3434",
+   "reason": "Unused selected-current Alpha writers are removed from modules hashed whole. The removed code had no reader, and no value changes; one parameter occurrence count falls from two to one."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "4f92349a4fdd22bfaf4a62e608487873a6d58c155b0d9bb6ada79255e7fe557f",
+   "successor": "2d68dbf2038709fe6594fdc3831ea53203430e0209f3a3983c969f3da58be9bd",
+   "change": "be62fbe97c0bdb1a9ec1c16554baa5e3d55a3434",
+   "reason": "Unused selected-current Alpha writers are removed from modules hashed whole. The removed code had no reader, and no value changes; one parameter occurrence count falls from two to one."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "7afb512e20664c8a67dc4e0fad989d16b238e9b85ffb9a872b6b30dcaf2c9f06",
+   "successor": "e94d0dea0ed6fd47b0701c8a491fd28c43a3e644f77a7601771609e3fa6505db",
+   "change": "be62fbe97c0bdb1a9ec1c16554baa5e3d55a3434",
+   "reason": "Unused selected-current Alpha writers are removed from modules hashed whole. The removed code had no reader, and no value changes; one parameter occurrence count falls from two to one."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "96965b6a8b5d428bf02869cf7e72659ad4900a830c04407fe2ebce900ecc73fa",
+   "successor": "dcd53301d73e5b15d2fae26461e7f1174f9a66b5b1ef32693c69ea00e4aaeedf",
+   "change": "be62fbe97c0bdb1a9ec1c16554baa5e3d55a3434",
+   "reason": "Unused selected-current Alpha writers are removed from modules hashed whole. The removed code had no reader, and no value changes; one parameter occurrence count falls from two to one."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "c0c920bc05188e37c70537418aae3a10f0f6400889ec2a8d9f578002779d60cf",
+   "successor": "f9786d70ddef6db225d801a48261c187f4ec5ea53b3926018233986e119310a5",
+   "change": "be62fbe97c0bdb1a9ec1c16554baa5e3d55a3434",
+   "reason": "Unused selected-current Alpha writers are removed from modules hashed whole. The removed code had no reader, and no value changes; one parameter occurrence count falls from two to one."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "7e2c87b768fa56fd54dbdbe1bac05388033fb10dcda4847e6d9701b792b6eb11",
+   "successor": "602e785db185451b18256dd568d336fb4d6e57850c440e3bdfc3eb879693c630",
+   "change": "be62fbe97c0bdb1a9ec1c16554baa5e3d55a3434",
+   "reason": "Unused selected-current Alpha writers are removed from modules hashed whole. The removed code had no reader, and no value changes; one parameter occurrence count falls from two to one."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "0202a9cc486307a87c511ecc48ea7d59d50999d40f0a7a036728028e42d614ae",
+   "successor": "d85380b2b8d57e3ea0812d79e6ddd2bc5872500aed2d49e0f90c1f9dfbe9ee59",
+   "change": "be62fbe97c0bdb1a9ec1c16554baa5e3d55a3434",
+   "reason": "Unused selected-current Alpha writers are removed from modules hashed whole. The removed code had no reader, and no value changes; one parameter occurrence count falls from two to one."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "0202a9cc486307a87c511ecc48ea7d59d50999d40f0a7a036728028e42d614ae",
+   "successor": "d85380b2b8d57e3ea0812d79e6ddd2bc5872500aed2d49e0f90c1f9dfbe9ee59",
+   "change": "be62fbe97c0bdb1a9ec1c16554baa5e3d55a3434",
+   "reason": "Unused selected-current Alpha writers are removed from modules hashed whole. The removed code had no reader, and no value changes; one parameter occurrence count falls from two to one."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "4295d2cb04f5b4a524e1d258ad56dd0dde040caea2fab11ea78cb13de2524095",
+   "successor": "a2e72b1b000da82dcbfc145eeb94240c2c73d3ebad44f580056903a779895592",
+   "change": "be62fbe97c0bdb1a9ec1c16554baa5e3d55a3434",
+   "reason": "Unused selected-current Alpha writers are removed from modules hashed whole. The removed code had no reader, and no value changes; one parameter occurrence count falls from two to one."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "ba8ba4f6da60cadc30ca3d4d02efc0c496c6dec1ef5b6d4fad91787e64681d5b",
+   "successor": "681d87e8719728408404fa07f365f52c47688bd443b276b6e11862b4f14e2cb3",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "0ecc2311b70e49514f4d51ac09fe9ed0b0c37fe4238d12e4c548de47d1279e5a",
+   "successor": "127a43bf1076adb9e132c8f621f452d401104746af6c5ffccde194e3daa2691b",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "2dc4b3cdc7723e915ff8c32a01e9811b6c6f035bb79625057cbd0116f78e68ae",
+   "successor": "62ecb5da16bd41fd4de174cc4999c013d877dd763b35917dac73734da2471e90",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "c1428ef0f15aee7c2e01d569f2e8ef070f751afadeb0d8aaa8a83f3a3832415d",
+   "successor": "0440770f8b0cc460b26348a87f469311d2fcf19c2d5664158552b0818aa5dbd1",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "fdbb7bd46ab5cd8950b93e8e865495a2cafc3f8e9cc40a62b9d69041de09ffa6",
+   "successor": "ef46e10ac4af0f3c07cacf7541df8b8d2906a98f483bc49cd44fb4d5292256a0",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "e1592175607d88a1121608baaf1ec998da322cb136fade3bc1411d2edcbc2de2",
+   "successor": "964f5f25e94b7c4ea10dd9515912ba4be0d704ad4c4e94dcaab536d7be856bb1",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "2d68dbf2038709fe6594fdc3831ea53203430e0209f3a3983c969f3da58be9bd",
+   "successor": "4f057e2a3764ae07010b91b645813e1ba198b977d65328b32ca6cf823a6d8fef",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "35ae43c4c6cf472ddba31601691e7eb0acd59fe6b951ef9d92eb4e681d960abf",
+   "successor": "5ee6c66224c9415cf20796a6c3e53045dda52de9bee3d6d2617f752c283426f1",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "e94d0dea0ed6fd47b0701c8a491fd28c43a3e644f77a7601771609e3fa6505db",
+   "successor": "30b5a21acb31e3ec696a400bd53f09e727a20eb0ad86e6d80d5e1b722eba8eae",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "3912c71459ae01299d7660ecedd75d788985843f62eed6ca3f0bdea3f2d7f050",
+   "successor": "3b28b73ffe7f47414640868b09b739a3611be9c913eb78e75e8de64d680a6186",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "e955bef03adc6199a62a126657e373ac5d898ea75dde20985fcefc833b506fa7",
+   "successor": "ad6ca7fa4c780000aa53e9e99bee626d3f2998b4d42df0eb18fd229a91fe5364",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "dcd53301d73e5b15d2fae26461e7f1174f9a66b5b1ef32693c69ea00e4aaeedf",
+   "successor": "792dc1ae016bad43d9ef34e12640f7949ec3bb1bf5e7eabf1797d7e8fed10b74",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "f9786d70ddef6db225d801a48261c187f4ec5ea53b3926018233986e119310a5",
+   "successor": "16dad03857f82b3f6fc6bf65684121a0ab2e3c476b93a85d6f0ad51e0ae69e8a",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "602e785db185451b18256dd568d336fb4d6e57850c440e3bdfc3eb879693c630",
+   "successor": "3546fbe6421b88717ece6af2fc22e9adaf4c0a234b8cf91845b0217a4083e2f9",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "88de8c01be46163c85aec2476eedf9790776026058b6446acccc98013eb2d271",
+   "successor": "25a12c9588ea4d59ae0bd9199d7ac62e0fcf1b755eb06d26063779cf100247a4",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "d85380b2b8d57e3ea0812d79e6ddd2bc5872500aed2d49e0f90c1f9dfbe9ee59",
+   "successor": "b0f55fde98fba314fd8297a9960dd2d3aa93bdb8ad45c17a61876e8716f1b6e2",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "d85380b2b8d57e3ea0812d79e6ddd2bc5872500aed2d49e0f90c1f9dfbe9ee59",
+   "successor": "b0f55fde98fba314fd8297a9960dd2d3aa93bdb8ad45c17a61876e8716f1b6e2",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "a2e72b1b000da82dcbfc145eeb94240c2c73d3ebad44f580056903a779895592",
+   "successor": "5902d3130ca09bfaaf1017ad7be5e98b0d6160a6bbaa7ae07a9d65fcdcaf0780",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "022f7c73adbe48fc4291911e33251daefa25e735983a53ec8c7b7551b42539fb",
+   "successor": "5222778d8a2c0605841a1064acce2cca64fc8e9a3b8bc5dad986ee4dffb3a0e4",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "ced382cb54857b1ae4b8f7132e82c73099442c180fd192998eb4d0d7b6e52515",
+   "successor": "e2df7c399462a063b5dd30a8b422684bdab1d030459bfa92b5b3a14853db074a",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "0876f9769f4e929448bd4cd0745fb055f265f0a83caa3ff86a7c090271f49d4d",
+   "successor": "82b5d68715b4992d13bbfca08f4392d2853fa57bda03219772686a86fff69e35",
+   "change": "e78db69f7230cde5574acc8d65781d26cf29017d",
+   "reason": "After a split repair, every Panel cell kept from stored Features is checked against the declared agreement, and a disagreement rebuilds that Feature instead of keeping it. The code sits in modules these roles hash whole. The default rule's hash is unchanged, and results where no cell disagrees are equal."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "681d87e8719728408404fa07f365f52c47688bd443b276b6e11862b4f14e2cb3",
+   "successor": "5c22c3b6c9c95b161cfceb46c59b4c45ed91898da977a008d9b9c4c834983912",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "127a43bf1076adb9e132c8f621f452d401104746af6c5ffccde194e3daa2691b",
+   "successor": "ad66798b29c0209682ce3848037051d459d0d189766a190a047b6dc030bd4d2f",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "62ecb5da16bd41fd4de174cc4999c013d877dd763b35917dac73734da2471e90",
+   "successor": "9c50c97985136e938c0fcacddca69e3413b1e72551d16e51dc70194537c7e000",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "0440770f8b0cc460b26348a87f469311d2fcf19c2d5664158552b0818aa5dbd1",
+   "successor": "34df2988a1f35d486245b49eb6d3d9eb6bec2bb43448a1e3a858766332fa545f",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "ef46e10ac4af0f3c07cacf7541df8b8d2906a98f483bc49cd44fb4d5292256a0",
+   "successor": "1158cea2e1ec4eb2687ffde2b5189127be3fb6eb0b05770ba90248d9fdcae6a2",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "964f5f25e94b7c4ea10dd9515912ba4be0d704ad4c4e94dcaab536d7be856bb1",
+   "successor": "b5f1d48d74a09800385c7fa10f922c0b4795920b2fe92ecd611e5ef317bfe04c",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "4f057e2a3764ae07010b91b645813e1ba198b977d65328b32ca6cf823a6d8fef",
+   "successor": "ada2bb3bb2addaac1a2f823f22f96cb629445cc4583c73215c76aff3fd5f2e13",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "5ee6c66224c9415cf20796a6c3e53045dda52de9bee3d6d2617f752c283426f1",
+   "successor": "e165bac6464254fb5966b54603dd66b4784242b096ba6fbbe0b456dbc5af625b",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "30b5a21acb31e3ec696a400bd53f09e727a20eb0ad86e6d80d5e1b722eba8eae",
+   "successor": "e191d968be07870c96bf2bbf7868db4f5fbce1767cb5fc8638241a78cd3fe95f",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "3b28b73ffe7f47414640868b09b739a3611be9c913eb78e75e8de64d680a6186",
+   "successor": "0837afacc247c1739f68fefcd0948313923ec826481f3df885a7f613b8635c5b",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "ad6ca7fa4c780000aa53e9e99bee626d3f2998b4d42df0eb18fd229a91fe5364",
+   "successor": "0d21377dbaea385c0968787c8599f87fc9d3c47179bf269a1defbfe375ac07bd",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "792dc1ae016bad43d9ef34e12640f7949ec3bb1bf5e7eabf1797d7e8fed10b74",
+   "successor": "07fb0c4fd5ce9003cf6bf39431c0e1b4734cd078914367e4a86b98251961c362",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "16dad03857f82b3f6fc6bf65684121a0ab2e3c476b93a85d6f0ad51e0ae69e8a",
+   "successor": "22c60cace5074bb7fdf0554a511bb7784724e0039e22e9fd76baec354b492f59",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "3546fbe6421b88717ece6af2fc22e9adaf4c0a234b8cf91845b0217a4083e2f9",
+   "successor": "2e58ce62d9601630d00e408ad97cac5c4a67b80352572c81871cc69264d5a486",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "25a12c9588ea4d59ae0bd9199d7ac62e0fcf1b755eb06d26063779cf100247a4",
+   "successor": "b1b6d1db17b3bb6229222a848b28d460e6f7937db54aa5e2ba6cc84d97d71dd5",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "b0f55fde98fba314fd8297a9960dd2d3aa93bdb8ad45c17a61876e8716f1b6e2",
+   "successor": "908881a370b68280abba3b734f8377d692557ec3982826ca1a98a9a9964ad623",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "b0f55fde98fba314fd8297a9960dd2d3aa93bdb8ad45c17a61876e8716f1b6e2",
+   "successor": "908881a370b68280abba3b734f8377d692557ec3982826ca1a98a9a9964ad623",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "5902d3130ca09bfaaf1017ad7be5e98b0d6160a6bbaa7ae07a9d65fcdcaf0780",
+   "successor": "f4e17a41766090c7fb6b5b16265f6d470de337e20a7ccfa92baeb4bf0c9897a3",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "5222778d8a2c0605841a1064acce2cca64fc8e9a3b8bc5dad986ee4dffb3a0e4",
+   "successor": "cb8ff30b51b537e8d19303f3100c1dc7fd8776d2da3bd18076e7f0eb02511eb8",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "e2df7c399462a063b5dd30a8b422684bdab1d030459bfa92b5b3a14853db074a",
+   "successor": "013a1ee4d90e64166223673c698f9a0e34214b35bf1601b5038e8c71a3b8face",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "82b5d68715b4992d13bbfca08f4392d2853fa57bda03219772686a86fff69e35",
+   "successor": "372d17613f08527b0ba6c44b06a3f800a25f2469bf85648ebc33f38309a5ecc2",
+   "change": "94165818e6e14dd695f1ea411445d0d1811e6fce",
+   "reason": "Long-lived derived memos are bounded, a failed read is never cached as an absence, and cache proofs are kept apart from results. The code sits in modules these roles hash whole. No formula, key authority or pin changed, and canonical values and readbacks are equal."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "ad66798b29c0209682ce3848037051d459d0d189766a190a047b6dc030bd4d2f",
+   "successor": "0416f923ea96eaacdaac8d00d9c8bbd550113c8ea0c81a73f48d112cdfdb49e7",
+   "change": "b429c6ab3",
+   "reason": "Uncalled adapter paths were removed from these implementations' source closures; no computed value changed: the owners' tests pass with their assertions unchanged."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "e191d968be07870c96bf2bbf7868db4f5fbce1767cb5fc8638241a78cd3fe95f",
+   "successor": "3cfa4ec91f998382226629b53d86e36d067e3cc90c55f7b56bbff0a05a56cf4f",
+   "change": "b429c6ab3",
+   "reason": "Uncalled adapter paths were removed from these implementations' source closures; no computed value changed: the owners' tests pass with their assertions unchanged."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "07fb0c4fd5ce9003cf6bf39431c0e1b4734cd078914367e4a86b98251961c362",
+   "successor": "66c26005dd7b511ccefc12208a528513b33778c1b8d2b3d36e18f4c3f05fb8d4",
+   "change": "b429c6ab3",
+   "reason": "Uncalled adapter paths were removed from these implementations' source closures; no computed value changed: the owners' tests pass with their assertions unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "908881a370b68280abba3b734f8377d692557ec3982826ca1a98a9a9964ad623",
+   "successor": "23890a7c738871f7adc73953f433125076beb52affe9ca8a5ab7462e0b9ce1ad",
+   "change": "b429c6ab3",
+   "reason": "Uncalled adapter paths were removed from these implementations' source closures; no computed value changed: the owners' tests pass with their assertions unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "908881a370b68280abba3b734f8377d692557ec3982826ca1a98a9a9964ad623",
+   "successor": "23890a7c738871f7adc73953f433125076beb52affe9ca8a5ab7462e0b9ce1ad",
+   "change": "b429c6ab3",
+   "reason": "Uncalled adapter paths were removed from these implementations' source closures; no computed value changed: the owners' tests pass with their assertions unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "f4e17a41766090c7fb6b5b16265f6d470de337e20a7ccfa92baeb4bf0c9897a3",
+   "successor": "3329c0ca8945184274dbfd605c965ec66b1e22b3ce9d4c4cbe8b3a26ea5539ca",
+   "change": "b429c6ab3",
+   "reason": "Uncalled adapter paths were removed from these implementations' source closures; no computed value changed: the owners' tests pass with their assertions unchanged."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "34df2988a1f35d486245b49eb6d3d9eb6bec2bb43448a1e3a858766332fa545f",
+   "successor": "2edd357681e9db67a1e9cbf687bdda157458b8080b102260f860dd95d515c8d5",
+   "change": "a01a35d87",
+   "reason": "The default market data provider is built in one place instead of five; these implementations' source closures moved, and no computed value changed: their owners' tests pass with assertions unchanged."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "1158cea2e1ec4eb2687ffde2b5189127be3fb6eb0b05770ba90248d9fdcae6a2",
+   "successor": "dcaecaf4f08a3deef506392096e56a6571b411e1f16247e8f4c28eb85895de45",
+   "change": "a01a35d87",
+   "reason": "The default market data provider is built in one place instead of five; these implementations' source closures moved, and no computed value changed: their owners' tests pass with assertions unchanged."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "2e58ce62d9601630d00e408ad97cac5c4a67b80352572c81871cc69264d5a486",
+   "successor": "a03ef144fd1ef190e3e2ff773b087d79e11d945652d7e95e45334369425b3a14",
+   "change": "a01a35d87",
+   "reason": "The default market data provider is built in one place instead of five; these implementations' source closures moved, and no computed value changed: their owners' tests pass with assertions unchanged."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "b1b6d1db17b3bb6229222a848b28d460e6f7937db54aa5e2ba6cc84d97d71dd5",
+   "successor": "692c5c5f8a5812f662cd8067e7eb244f3aa6b6d48bc1308f7f17bfc6ad95c96b",
+   "change": "a01a35d87",
+   "reason": "The default market data provider is built in one place instead of five; these implementations' source closures moved, and no computed value changed: their owners' tests pass with assertions unchanged."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "2edd357681e9db67a1e9cbf687bdda157458b8080b102260f860dd95d515c8d5",
+   "successor": "c18ff6bdbc212195c6cbfc8539dfcb5f114bcf398e3a40bf8e0e6dda3c1f96da",
+   "change": "b6bc449f1",
+   "reason": "Book records are written as shared parts in proportion to the day's change; these implementations moved, and no book value changed: earlier records read back exactly, and a retry writes nothing."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "dcaecaf4f08a3deef506392096e56a6571b411e1f16247e8f4c28eb85895de45",
+   "successor": "889067594cea7b1d6c92155fe7e0205b8c7150125b2d7a266db77cdaa3b5df43",
+   "change": "b6bc449f1",
+   "reason": "Book records are written as shared parts in proportion to the day's change; these implementations moved, and no book value changed: earlier records read back exactly, and a retry writes nothing."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "b5f1d48d74a09800385c7fa10f922c0b4795920b2fe92ecd611e5ef317bfe04c",
+   "successor": "2b420da180d86bc46f38aa5ead57bf568d90c9a1d0952834bd2ff007f2bfe885",
+   "change": "b6bc449f1",
+   "reason": "Book records are written as shared parts in proportion to the day's change; these implementations moved, and no book value changed: earlier records read back exactly, and a retry writes nothing."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "c18ff6bdbc212195c6cbfc8539dfcb5f114bcf398e3a40bf8e0e6dda3c1f96da",
+   "successor": "5729f3cc4a4361604e65e36f874de713da897453abbfc1988c4f8b644b75b5ac",
+   "change": "e568e5b8a927ec8833fd2bd203145312b8933e1f",
+   "reason": "A portfolio observation whose stored artifact is lost now reads as absence even when the store's error carries no detail, instead of as tampering; only the reader's condition changed. Values, inputs, parameters and the other 76 roles are unchanged."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "889067594cea7b1d6c92155fe7e0205b8c7150125b2d7a266db77cdaa3b5df43",
+   "successor": "5a6d4fd82d4c864cecd3472fa7e1a05a476ed39ef4b35c7a253f90edbdd29972",
+   "change": "e568e5b8a927ec8833fd2bd203145312b8933e1f",
+   "reason": "A portfolio observation whose stored artifact is lost now reads as absence even when the store's error carries no detail, instead of as tampering; only the reader's condition changed. Values, inputs, parameters and the other 76 roles are unchanged."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "2b420da180d86bc46f38aa5ead57bf568d90c9a1d0952834bd2ff007f2bfe885",
+   "successor": "ce17ba9f133879c9e885bd815c2b8e15b87ad35a802b5141cffa9f9ec92513ba",
+   "change": "e568e5b8a927ec8833fd2bd203145312b8933e1f",
+   "reason": "A portfolio observation whose stored artifact is lost now reads as absence even when the store's error carries no detail, instead of as tampering; only the reader's condition changed. Values, inputs, parameters and the other 76 roles are unchanged."
   }
  ]
 }

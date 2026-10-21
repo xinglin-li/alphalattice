@@ -129,7 +129,7 @@ def test_each_named_solver_is_actually_installed(solver: str) -> None:
 
 
 def test_the_public_executor_reaches_no_excluded_research_lane() -> None:
-    """The public executor reaches no excluded research lane."""
+    """Control: Public executor imports exclude solvers and masked research lanes."""
 
     result = _probe(
         "import alphalattice.investment.portfolio_strategy_lab.application."
@@ -143,7 +143,7 @@ def test_the_public_executor_reaches_no_excluded_research_lane() -> None:
 
 
 def test_the_public_risk_surface_reaches_no_excluded_research_lane() -> None:
-    """Risk enters the public path as one decomposition module and nothing else."""
+    """Control: Public risk decomposition imports exclude solvers and masked research lanes."""
 
     result = _probe(
         "from alphalattice.investment.risk_research.surfaces.decomposition import "
@@ -194,7 +194,7 @@ def test_the_excluded_package_probe_would_catch_each_lane(module: str) -> None:
 
 
 def test_the_local_application_service_reaches_no_solver_or_masked_lane() -> None:
-    """The local application service reaches no solver or masked lane."""
+    """Control: Local research service imports exclude solvers and masked research lanes."""
 
     result = _probe(
         "from alphalattice.interface.local_application.portfolio_research import "
@@ -208,7 +208,7 @@ def test_the_local_application_service_reaches_no_solver_or_masked_lane() -> Non
 
 
 def test_the_control_catalog_alone_reaches_no_solver_or_masked_lane() -> None:
-    """The catalog is what a UI renders before any workspace exists."""
+    """Control: Control catalog construction excludes solvers and masked research lanes."""
 
     result = _probe(
         "from alphalattice.investment.portfolio_strategy_lab.application.controls import "
@@ -254,7 +254,7 @@ def test_the_finalization_task_adapter_loads_no_validation_runtime() -> None:
 
 
 def test_the_shared_backtesting_owner_loads_no_validation_runtime_or_storage() -> None:
-    """Backtesting is mechanics: no Validation, no storage, no Strategy Lab."""
+    """Control: Backtesting segments import without validation runtime or Strategy Lab."""
 
     result = _probe(
         "from alphalattice.capabilities.portfolio_backtesting.segments import "
@@ -294,7 +294,7 @@ def test_the_validation_gate_loads_no_solver_and_no_numerical_path() -> None:
 
 
 def test_the_readback_owner_loads_no_validation_runtime_and_no_product_host() -> None:
-    """The readback owner loads no validation runtime and no product host."""
+    """Control: Readback imports omit validation runtime and Product Host."""
 
     result = _probe(
         "from alphalattice.investment.portfolio_strategy_lab.application.readback import "
@@ -321,7 +321,7 @@ def test_the_finalization_store_loads_no_validation_runtime() -> None:
 
 
 def test_the_shared_commit_primitive_couples_to_neither_of_its_two_users() -> None:
-    """The shared commit primitive couples to neither of its two users."""
+    """Control: Committed indexes import without validation runtime or consumer backedges."""
 
     result = _probe(
         "from alphalattice.control.workspace_runtime.content_store "

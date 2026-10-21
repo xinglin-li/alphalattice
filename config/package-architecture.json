@@ -490,6 +490,17 @@
       "allowed_peer_dependencies": [],
       "artifact_writer": false,
       "physical_namespace_target": "devtools.architecture"
+    },
+    {
+      "package_id": "evaluation",
+      "product_area": "engineering",
+      "capability_owner": "Evaluation Workflows",
+      "role": "ENGINEERING_TOOL",
+      "dependency_level": 5,
+      "authority_kind": "BUILD_TIME_GUARD",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "devtools.evaluation"
     }
   ]
 }

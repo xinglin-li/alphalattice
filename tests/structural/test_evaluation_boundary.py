@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from devtools.architecture.structural import discover_python_modules
+
 ROOT = Path(__file__).resolve().parents[2]
 ENTRY_MODULE, ENTRY_NAME = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"][
     "scripts"
@@ -45,10 +47,15 @@ def forbidden_imports(root):
     return failures
 
 
-def test_evaluation_imports_no_product_or_private_implementation():
+def test_evaluation_imports_no_product_or_private_implementation(tmp_path):
     root = ROOT / "src/devtools/evaluation"
     assert any(root.glob("*.py"))
     assert forbidden_imports(root) == []
+    r = tmp_path
+    m = r / "devtools/evaluation/forms.py"
+    assert discover_python_modules((m,), source_root=r)[0][1] == "evaluation.forms"
+    m = r / "devtools/evaluation_extra/forms.py"
+    assert discover_python_modules((m,), source_root=r)[0][1] == "devtools.evaluation_extra.forms"
 
 
 @pytest.mark.parametrize(

@@ -70,6 +70,7 @@ from alphalattice.investment.sector_research.targets.execution import (
 from alphalattice.protocols.actor_execution import ActorKind
 from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
+    _sector_revision,
     publish_causal_outcomes,
 )
 
@@ -83,7 +84,7 @@ def _synthetic_target_table(
 
     sessions = tuple(date(2026, 1, 5) + timedelta(days=index) for index in range(session_count))
     listings = tuple(f"L{index}" for index in range(listing_count))
-    sectors = {listing: f"S{index // 5}" for index, listing in enumerate(listings)}
+    sectors = {listing: f"SECTOR{index // 5}" for index, listing in enumerate(listings)}
     rng = np.random.default_rng(7)
     rows = [
         {
@@ -386,20 +387,6 @@ def _service(workspace: RealRiskWorkspace) -> SectorResearchDevelopmentService:
         outcome_reader=CausalExecutionOutcomeDevelopmentReader(workspace.artifact_root),
         resolver=ArtifactResolver(workspace.artifact_root),
     )
-
-
-def _sector_revision(workspace: RealRiskWorkspace) -> str:
-    from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
-        PanelClosureArtifactStore,
-    )
-    from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
-
-    store = PanelClosureArtifactStore(ArtifactResolver(workspace.artifact_root))
-    paths = sorted((store.root / "sector-maps").glob("*.json"))
-    assert paths, "the shared workspace publishes a sector revision map"
-    return store.load_model(
-        category="sector-maps", content_hash=paths[0].stem, model=SectorRevisionMap
-    ).sector_revision
 
 
 @pytest.fixture(scope="module")

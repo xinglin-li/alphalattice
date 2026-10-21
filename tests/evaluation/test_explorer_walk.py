@@ -153,7 +153,7 @@ def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: 
     ],
 )
 def test_an_injected_refusal_recovers_only_the_original_bound_step(
-    tmp_path: Path, recovery: str
+    tmp_path: Path, recovery: str, monkeypatch
 ) -> None:
     """A named refusal needs a filled recovery that admits the original operation and bindings."""
     request = {
@@ -311,6 +311,7 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         mutation_kinds={"drop-field"} if recovery == "walk" else None,
     )
     if recovery == "walk":
+        explorer.mutation_budget, explorer.mutation_limit = 0, 2
         grade, trace = explorer.explore([["start"]])
         assert grade["passed"] and sent.count(request) == 2
         assert (
@@ -369,6 +370,16 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
             explorer.inject(request, state)
             sampled.append((explorer.mutation_checks[-1]["mutation"], sent[before]))
         assert sampled[0] == sampled[1] == sampled[2] and sampled[0][1] != request
+        explorer.mutation_limit = 2
+        for cost in (1, 1000):
+            clock = iter(range(0, 100000, cost))
+            monkeypatch.setattr(
+                "devtools.evaluation.explorer.time.monotonic", lambda clock=clock: next(clock)
+            )
+            explorer.mutation_checks, explorer.mutation_seconds = [], 0
+            for _ in range(3):
+                explorer.inject(request, "committee", kinds={"drop-field"})
+            assert [row["mutation"] for row in explorer.mutation_checks] == ["drop-field"] * 2
 
 
 @pytest.mark.parametrize(

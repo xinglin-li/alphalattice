@@ -884,59 +884,6 @@ class DevelopmentFeatureOverlayService:
                 return manifest
         return None
 
-    def find_reusable(
-        self,
-        *,
-        output_root: Path,
-        base_panel_snapshot_hash: str,
-        source_identity: str,
-        panel_binding: FeaturePanelBinding,
-    ) -> DevelopmentFeatureOverlayManifest | None:
-        """Find a published overlay whose unrotated columns can seed a rebuild.
-
-        Unlike :meth:`find_exact` this does not require the whole installed
-        catalog to match -- only the same immutable base Panel, binding and
-        source identity, so column values whose formula and implementation
-        identities still hold can be copied instead of recomputed. Among
-        eligible manifests the one sharing the most currently-installed column
-        identities wins; ties resolve to the greatest overlay hash.
-        """
-        capabilities = {
-            item.factor_id: item for item in build_installed_factor_development_capabilities()
-        }
-        best: tuple[int, str] | None = None
-        chosen: DevelopmentFeatureOverlayManifest | None = None
-        root = output_root / DEVELOPMENT_FEATURE_OVERLAY_CATEGORY
-        for path in sorted(root.glob("*/manifest.json")) if root.is_dir() else ():
-            manifest = cast(
-                DevelopmentFeatureOverlayManifest,
-                DevelopmentFeatureOverlayManifest.model_validate_json(
-                    path.read_text(encoding="utf-8")
-                ),
-            )
-            parquet = path.parent / manifest.parquet_relative_path
-            if (
-                manifest.base_panel_snapshot_hash != base_panel_snapshot_hash
-                or manifest.base_panel_binding_hash != panel_binding.panel_binding_hash
-                or manifest.source_identity != source_identity
-                or not parquet.is_file()
-                or sha256_file(parquet) != manifest.parquet_sha256
-            ):
-                continue
-            matches = sum(
-                1
-                for column in manifest.columns
-                if column.factor_id in capabilities
-                and column.formula_specification_hash
-                == capabilities[column.factor_id].formula_specification_hash
-                and column.implementation_hash == capabilities[column.factor_id].implementation_hash
-            )
-            key = (matches, manifest.overlay_hash)
-            if matches and (best is None or key > best):
-                best = key
-                chosen = manifest
-        return chosen
-
     def materialize(
         self,
         *,

@@ -19,7 +19,7 @@ conversation text or private data to either form.
 
 At first use and any missing-dependency refusal, run the doctor from the checkout's root, `uv run python -m alphalattice.interface.local_application.native_setup doctor`, after the `uv sync` below and before any tool install. Fill each missing `host_readiness` item by its `who_decides` (only a missing item carries one), disclosing locked repairs and relaying one question before an outside-lock install.
 
-Windows is the certified platform for this source-checkout setup; macOS and Linux are unverified. Use Python 3.12, uv and a browser from the checkout root; the lock brings the Node that builds the Workbench. macOS also needs libomp (`brew install libomp`), which LightGBM loads, and Linux libatomic1, which the locked Node loads, and libgomp1, which LightGBM loads (`sudo apt install libatomic1 libgomp1`). They are system packages outside the lock: doctor's `system_libraries` names those missing with one install command, and the person is asked once. Dependency setup needs permission to download locked packages or a local cache; it prepares no research data:
+Windows is the certified platform for this source-checkout setup; macOS and Linux are unverified. Use Python 3.12, uv and a browser from the checkout root; the lock brings the Node that builds the Workbench. macOS also needs libomp (`brew install libomp`), which LightGBM loads, and Linux libatomic1, which the locked Node loads, and libgomp1, which LightGBM loads (`sudo apt install libatomic1 libgomp1`). They are system packages outside the lock: doctor's `system_libraries` names those missing with one install command, and the person is asked once. The agent discloses locked dependency downloads in one line; they prepare no research data:
 
 ```powershell
 uv sync --locked --all-extras
@@ -29,15 +29,15 @@ uv export --locked --all-extras --no-dev --no-emit-project --no-hashes --output-
 uv tool install --python 3.12 --editable . --with-requirements .venv/alphalattice-runtime-requirements.txt --constraints .venv/alphalattice-runtime-requirements.txt
 ```
 
-Run each missing item's returned `facts.commands` (the Workbench's `facts.command`), including the retrieval runtime's offline fill, and follow its download-permission words if a cold cache needs its network form. Run the doctor again after repairs and configuration; optional user-layer readings and Host-dependent measurements do not prevent research by themselves.
+Run each missing item's returned `facts.commands` (the Workbench's `facts.command`). The retrieval runtime resolves `config/requirements-retrieval.lock` online as the agent's act: say its `disclosure` in one line, even on an empty cache, and ask no second question or renewed first-use network consent. Explicit `--offline` reads only the local cache. Software outside the lock still needs the person's permission. Run the doctor again after repairs and configuration; optional user-layer readings and Host-dependent measurements do not prevent research by themselves.
 
 `uv sync` installs the checkout's command editable, so source edits are live; the tool install is editable too and pins its runtime to the exported lock. When `uv tool dir --bin` is not on the shell's PATH, your own commands may run `python scripts/run_alphalattice.py` from the checkout, but your specialists' routes run the bare `alphalattice` in fresh shells of their own, so `first-use prepare` refuses until it resolves: a persistent PATH is the person's shell setting, asked once (`uv tool update-shell`, then a restart). Each host command starts a fresh shell, so variables do not carry over. `uv run alphalattice` runs the checkout's command too, but the doctor and the first use read PATH as a fresh shell has it, without the folder `uv run` puts first. The first use's goal is the session's that ran `first-use prepare`; the same sentence and date reuse it from another session, and a shell with no agent session puts `--goal <goal_id>` before each later step's command. Run `uv tool uninstall alphalattice` before switching installation legs.
 
 For a release wheel, use a separate directory; no checkout is needed. Extract its runtime lock, then install the wheel with it as requirements and constraints:
 
 ```powershell
-python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.2.1-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
-uv tool install --python 3.12 ./alphalattice-0.2.1-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
+python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.2.2-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
+uv tool install --python 3.12 ./alphalattice-0.2.2-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
 ```
 
 A checkout is its own agent project: configure it from its root, `uv run python -m alphalattice.interface.local_application.native_setup configure --host <codex-or-claude-code>`. On the wheel leg, configure the separate agent folder with the tool environment's own interpreter, beneath `uv tool dir`. In a shell with no agent session, give the doctor the same `--host` choice; otherwise it defaults to Codex:

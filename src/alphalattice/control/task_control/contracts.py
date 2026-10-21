@@ -452,6 +452,26 @@ class ResearchPlan(ContractModel):
         }
         return cls(**identity, plan_hash=_hash(identity))
 
+    @classmethod
+    def from_stages(
+        cls, *, goal_hash: str, stages: tuple[str, ...], verifier_namespace: str
+    ) -> ResearchPlan:
+        """Seal prefix-dependent stages with their existing verifier namespace."""
+        stages_hash = canonical_hash(stages)
+        return cls.create(
+            goal_hash=goal_hash,
+            workflow_definition_hash=stages_hash,
+            verifier_catalog_hash=stages_hash,
+            work_items=tuple(
+                WorkItemDefinition.create(
+                    stage_id=stage,
+                    dependency_ids=stages[:i],
+                    verifier_id=f"{verifier_namespace}.{stage}",
+                )
+                for i, stage in enumerate(stages)
+            ),
+        )
+
 
 class TaskRecord(ContractModel):
     """Seal durable task state with a consistent input, goal, plan and active-stage binding.

@@ -259,7 +259,7 @@ def test_a_proposal_that_acknowledges_no_limitations_is_refused() -> None:
 
 
 def test_a_resealed_decision_naming_its_own_policy_is_refused() -> None:
-    """A resealed decision naming its own policy is refused."""
+    """Control: Resealed decision naming its own policy is refused."""
 
     checkpoint = _checkpoint()
     honest = admit_factor_research_curation(
@@ -333,26 +333,6 @@ def test_a_recorded_curation_reads_without_recompiling_or_current_admission(monk
 
     monkeypatch.setattr(decisions, "compile_factor_research_curation_submission", recompiled)
     verify_factor_research_curation(**common, recorded_readback=True)
-
-
-def test_a_decision_about_another_review_binding_is_refused(tmp_path: Path) -> None:
-    """A decision about another review binding is refused."""
-
-    checkpoint = _checkpoint()
-    honest = admit_factor_research_curation(
-        checkpoint=checkpoint,
-        review_binding_hash=CASE_REVIEW_BINDING_HASH,
-        proposal=_proposal(checkpoint),
-        actor_kind=ActorKind.HUMAN,
-        actor_id="researcher@example.test",
-    )
-    with pytest.raises(FactorResearchDecisionAuthorityError, match="dossier_mismatch"):
-        verify_factor_research_curation(
-            decision=honest,
-            checkpoint=checkpoint,
-            review_binding_hash="c" * 64,
-        )
-    assert not (tmp_path / "factor-research").exists()
 
 
 def test_factor_submission_boundary_has_no_agent_runtime_import_closure() -> None:

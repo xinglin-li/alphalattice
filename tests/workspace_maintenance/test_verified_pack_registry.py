@@ -73,12 +73,7 @@ def test_a_proof_is_reused_while_the_consumed_files_are_unchanged(tmp_path: Path
     assert replaced.closed
 
 
-def test_shared_adapters_lease_one_session_and_count_reuses(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """requirement: the default factories hand out leases on held sessions; a
-    lease's close keeps the session; a changed pack file loads a new one."""
-
+def _model_pack(tmp_path: Path) -> tuple[HybridIndexSpec, Path, Path]:
     spec = HybridIndexSpec.fixed_v2()
     model_root = tmp_path / "pack"
     (model_root / "onnx").mkdir(parents=True)
@@ -89,6 +84,15 @@ def test_shared_adapters_lease_one_session_and_count_reuses(
     for name, _digest in RERANKER_PACK:
         (pack / name).parent.mkdir(parents=True, exist_ok=True)
         (pack / name).write_bytes(b"reranker")
+    return spec, model_root, pack
+
+
+def test_shared_adapters_lease_one_session_and_count_reuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Control: Shared adapters lease one session and count reuses."""
+
+    spec, model_root, _pack = _model_pack(tmp_path)
     loaded: list[str] = []
 
     class _FakeEmbedding:
@@ -147,18 +151,9 @@ def test_shared_adapters_lease_one_session_and_count_reuses(
 def test_capability_probe_is_proven_once_and_again_after_a_pack_change(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: the readiness proof is held with both packs' facts."""
+    """Control: Capability probe is proven once and again after pack change."""
 
-    spec = HybridIndexSpec.fixed_v2()
-    model_root = tmp_path / "pack"
-    (model_root / "onnx").mkdir(parents=True)
-    (model_root / "onnx" / "model.onnx").write_bytes(b"model")
-    (model_root / "sentencepiece.bpe.model").write_bytes(b"tokenizer")
-    pack = reranking.reranker_pack_root(model_root)
-    pack.mkdir(parents=True)
-    for name, _digest in RERANKER_PACK:
-        (pack / name).parent.mkdir(parents=True, exist_ok=True)
-        (pack / name).write_bytes(b"reranker")
+    spec, model_root, pack = _model_pack(tmp_path)
     proofs: list[int] = []
     monkeypatch.setattr(embeddings, "VERIFIED_PACKS", embeddings.VerifiedPackRegistry())
     monkeypatch.setattr(
@@ -178,7 +173,7 @@ def test_capability_probe_is_proven_once_and_again_after_a_pack_change(
 def test_a_host_that_runs_items_at_once_holds_a_session_for_each(tmp_path: Path) -> None:
     """A host that runs items at once holds a session for each."""
 
-    registry = embeddings.VerifiedPackRegistry()
+    registry = embeddings.VerifiedPackRegistry(capacity=1)
     consumed = (tmp_path / "model.bin",)
     consumed[0].write_bytes(b"pack")
     loaded: list[_Session] = []
@@ -208,6 +203,16 @@ def test_a_host_that_runs_items_at_once_holds_a_session_for_each(tmp_path: Path)
     again.release()
     assert all(value.closed for value in loaded[:2])
     fresh.release()
+    busy = registry.lease(("busy",), consumed=consumed, load=load)
+    other = registry.lease(("other",), consumed=consumed, load=load)
+    assert not busy.value.closed
+    other.release()
+    assert other.value.closed and not busy.value.closed  # only idle pools can leave
+    busy.release()
+    for key in ("one", "two", "one"):
+        value, reused = registry.resolve((key,), consumed=consumed, load=lambda: object())
+    assert not reused  # the earlier proof left when a different key filled the capacity
+    registry.release()
 
 
 def test_a_model_call_gives_up_the_callers_lock_only_where_it_yields() -> None:

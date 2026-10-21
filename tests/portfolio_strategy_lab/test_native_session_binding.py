@@ -270,13 +270,12 @@ def test_host_bind_refuses_unadmitted_paths_and_session_fields(live, monkeypatch
 
 
 @pytest.mark.parametrize("held", [False, True])
+@pytest.mark.parametrize("read_denied", [False, True])
 def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
-    live, monkeypatch, capsys, tmp_path, held
+    live, monkeypatch, capsys, tmp_path, held, read_denied
 ):
-    """regression (Codex workspace-write, AX of 2026-10-15): its sandbox denies the project's
-    `.codex`, its first file or a slot beside another Session's, and the Session ran unbound and
-    unsaid; it binds in the workspace, and every answer says so."""
-    from alphalattice.interface.local_application.native_setup import autobind_root
+    """A sandbox fallback stays disclosed after memo eviction and transient binding read denial."""
+    from alphalattice.interface.local_application import native_setup
 
     project = _project(live, "codex")
     if held:  # another Session already holds the project's first binding file
@@ -284,19 +283,50 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
     _session(monkeypatch, "codex", "sandboxed")
     binding_path = project / ".codex" / BINDING_NAME
     opening, denied = Path.open, [project / ".codex"]
+    read_blocked = False
 
     def unavailable(path, mode="r", *args, **kwargs):
-        if any(path.is_relative_to(place) for place in denied) and "x" in mode:
+        if any(path.is_relative_to(place) for place in denied) and (
+            "x" in mode
+            or (read_blocked and (path == binding_path or len(denied) > 1) and "r" in mode)
+        ):
             raise PermissionError(13, "secret fixture exception text", str(path))
         return opening(path, mode, *args, **kwargs)
 
     monkeypatch.setattr(Path, "open", unavailable)
-    for _ in range(2):  # the first answer binds, and a later one still says how
-        cli.main(_research(live, tmp_path), serve=lambda _: 99)
-        notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
-        assert notice["status"] == "BOUND_IN_WORKSPACE", notice
-        assert notice["next_action"] == "NAME_THE_WORKSPACE_ON_EACH_COMMAND"
-    root = autobind_root(live.workspace)
+    read_binding, reads = native_setup.session_binding, []
+
+    def rehydrate(*arguments):
+        reads.append(arguments)
+        return read_binding(*arguments)
+
+    monkeypatch.setattr(native_setup, "session_binding", rehydrate)
+    native_setup.configure_binding_memo(capacity=1)
+    try:
+        for block_read in (False, True) if read_denied else (False,):
+            read_blocked = block_read
+            for index, session in enumerate(("sandboxed", "memo-other", "sandboxed")):
+                if index == 2:
+                    reads.clear()
+                _session(monkeypatch, "codex", session)
+                cli.main(_research(live, tmp_path), serve=lambda _: 99)
+                notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
+                assert notice["status"] == "BOUND_IN_WORKSPACE", notice
+                assert notice["next_action"] == "NAME_THE_WORKSPACE_ON_EACH_COMMAND"
+        key = ("codex", "sandboxed")
+        assert reads == [(project, None, key), (None, live.workspace, key)]
+        native_setup.configure_binding_memo(capacity=1)
+        denied.append(native_setup.autobind_root(live.workspace) / ".codex")
+        for block_read in (True, False):
+            read_blocked = block_read
+            cli.main(_research(live, tmp_path), serve=lambda _: 99)
+            recovered = json.loads(capsys.readouterr().out)["data"]
+        denied.pop()
+        assert recovered.get("session_binding", {}).get("status") == "BOUND_IN_WORKSPACE"
+    finally:
+        native_setup.configure_binding_memo()
+    read_blocked = False
+    root = native_setup.autobind_root(live.workspace)
     assert NativeResearchBinding.read(root, session=("codex", "sandboxed")) is not None
     _usage_files(tmp_path, monkeypatch, "sandboxed")
     reading = LocalResearchClient(live.workspace).publish_native_event(

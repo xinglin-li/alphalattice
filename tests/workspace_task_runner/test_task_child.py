@@ -158,6 +158,39 @@ def test_a_cancellation_reaches_the_worker_and_a_worker_that_ends_is_replaced() 
     assert run_in_child(f"{HERE}:doubled", {"value": 5})["value"] == 10
 
 
+def test_stage_plans_keep_both_consumers_canonical_work_items() -> None:
+    """The shared stage constructor preserves both consumers' complete plans and work items."""
+    from alphalattice.control.product_host.composition import (
+        research_experiments,
+        strategy_calibration,
+    )
+    from alphalattice.control.task_control.contracts import ResearchPlan, WorkItemDefinition
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+    for owner, namespace in (
+        (research_experiments, "research_experiment"),
+        (strategy_calibration, "portfolio_calibration"),
+    ):
+        stages = owner.STAGES
+        expected = ResearchPlan.create(
+            goal_hash="0" * 64,
+            workflow_definition_hash=canonical_hash(stages),
+            verifier_catalog_hash=canonical_hash(stages),
+            work_items=tuple(
+                WorkItemDefinition.create(
+                    stage_id=stage, dependency_ids=stages[:i], verifier_id=f"{namespace}.{stage}"
+                )
+                for i, stage in enumerate(stages)
+            ),
+        )
+        assert (
+            ResearchPlan.from_stages(
+                goal_hash="0" * 64, stages=stages, verifier_namespace=namespace
+            )
+            == expected
+        )
+
+
 def test_a_cached_read_sees_a_write_another_registry_made(tmp_path: Path) -> None:
     """regression (W10): Task reads are answered again while the database files show no write;
     a write through another registry on the same file is seen by the next read."""
@@ -217,17 +250,25 @@ def test_a_fit_log_records_the_numerical_thread_counts(tmp_path: Path) -> None:
     assert kept.numerical_threads == counts
 
 
-def test_a_spread_worker_loads_its_numerical_libraries_on_one_thread() -> None:
+def test_a_spread_worker_loads_its_numerical_libraries_on_one_thread(monkeypatch) -> None:
     """A spread worker loads its numerical libraries on one thread."""
 
-    parent = {name: os.environ.get(name) for name in ONE_THREAD_VARIABLES}
-    assert run_in_child(f"{HERE}:thread_variables", {}) == parent
-    with child_calls(f"{HERE}:thread_variables", workers=2) as calls:
-        for _ in range(2):
-            calls.make({})
-        answers = [calls.answer() for _ in range(2)]
-    spread = [a for a in answers if a != parent]
-    assert spread and all(set(a.values()) == {"1"} for a in spread)
+    for name in ONE_THREAD_VARIABLES:
+        monkeypatch.setenv(name, "2")
+    with pytest.raises(ChildInterrupted):
+        run_in_child(f"{HERE}:ended", {})
+    try:
+        parent = {name: os.environ.get(name) for name in ONE_THREAD_VARIABLES}
+        assert run_in_child(f"{HERE}:thread_variables", {}) == parent
+        with child_calls(f"{HERE}:thread_variables", workers=2) as calls:
+            for _ in range(2):
+                calls.make({})
+            answers = [calls.answer() for _ in range(2)]
+        spread = [a for a in answers if a != parent]
+        assert spread and all(set(a.values()) == {"1"} for a in spread)
+    finally:
+        with pytest.raises(ChildInterrupted):
+            run_in_child(f"{HERE}:ended", {})
 
 
 def test_spread_numerical_calls_hold_one_thread_and_leave_normal_calls_unchanged() -> None:

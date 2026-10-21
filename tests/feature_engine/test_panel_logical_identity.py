@@ -25,22 +25,19 @@ def test_physical_encoding_and_provenance_do_not_change_logical_identity(
     tmp_path: Path,
 ) -> None:
     resolver = ArtifactResolver(tmp_path / "artifacts")
-    first = _publish_fixture(
-        resolver,
-        suffix="first",
-        values=(0.0, -0.0, 1.0, np.nan),
-        valid=(True, True, True, True),
-        metadata_note="physical-a",
-    )
-    second = _publish_fixture(
-        resolver,
-        suffix="second",
-        values=(0.0, -0.0, 1.0, np.nan),
-        valid=(True, True, True, True),
-        metadata_note="physical-b",
+    first, second = (
+        _publish_fixture(
+            resolver,
+            suffix=suffix,
+            values=(0.0, -0.0, 1.0, np.nan),
+            valid=(True, True, True, True),
+            metadata_note=note,
+        )
+        for suffix, note in (("first", "physical-a"), ("second", "physical-b"))
     )
     store = PanelLogicalArtifactStore(PanelClosureArtifactStore(resolver))
     publisher = PanelLogicalIdentityPublisher(resolver=resolver, store=store)
+    assert not hasattr(publisher, "publish_equivalence_attestation")
 
     first_marker = publisher.publish_snapshot(first, published_at=_now())
     second_marker = publisher.publish_snapshot(second, published_at=_now())

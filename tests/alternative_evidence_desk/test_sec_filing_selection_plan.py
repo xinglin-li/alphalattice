@@ -21,7 +21,6 @@ import pytest
 
 from alphalattice.evidence.alternative_evidence.contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
-    AlternativeEvidenceAdmission,
     AlternativeEvidenceClass,
     AlternativeEvidenceMode,
     AlternativeEvidenceReadFiling,
@@ -44,21 +43,10 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     apply_unit_capacity,
     plan_sec_filing_selection,
 )
+from tests.alternative_evidence_desk.document_intelligence_support import live_admission
 from tests.alternative_evidence_desk.sec_fixture_transport import NOW, SecFixtureTransport
 
 WIDE = ("AAPL", "MSFT", "A3", "A4", "A5", "A6", "A7", "A8")
-
-
-def _live_admission(request: Any) -> AlternativeEvidenceAdmission:
-    return seal_contract(
-        AlternativeEvidenceAdmission,
-        "admission_hash",
-        request_hash=request.request_hash,
-        network_consent=True,
-        admit_live_official=True,
-        admit_model_review=False,
-        admitted_at=NOW,
-    )
 
 
 def _submissions(rows: list[tuple[str, ...]]) -> bytes:
@@ -446,7 +434,7 @@ def test_acquisition_fetches_exactly_the_plan_and_records_it(tmp_path: Path) -> 
     service = AlternativeEvidenceAcquisitionService(artifact_root=tmp_path)
     registry, snapshot, documents = service.build_live_evidence(
         request=request,
-        admission=_live_admission(request),
+        admission=live_admission(request, admitted_at=NOW),
         source=SecEdgarSource(transport),
         published_at=NOW,
         clock=lambda: NOW,
@@ -484,7 +472,7 @@ def test_a_scoped_acquisition_fetches_the_named_originals_as_the_index_holds_the
     service = AlternativeEvidenceAcquisitionService(artifact_root=tmp_path)
     _registry, snapshot, documents = service.build_live_evidence(
         request=request,
-        admission=_live_admission(request),
+        admission=live_admission(request, admitted_at=NOW),
         source=SecEdgarSource(transport),
         published_at=NOW,
         clock=lambda: NOW,
@@ -526,7 +514,7 @@ def test_a_scoped_acquisition_fetches_the_named_originals_as_the_index_holds_the
     with pytest.raises(ValueError, match="issuer_not_requested"):
         service.build_live_evidence(
             request=request,
-            admission=_live_admission(request),
+            admission=live_admission(request, admitted_at=NOW),
             source=SecEdgarSource(_FloodTransport(FLOOD)),
             published_at=NOW,
             clock=lambda: NOW,

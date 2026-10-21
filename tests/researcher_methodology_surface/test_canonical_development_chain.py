@@ -47,6 +47,7 @@ from alphalattice.investment.alpha_research.targets.canonical import (
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
+    _sector_revision,
     publish_causal_outcomes,
 )
 
@@ -82,20 +83,6 @@ def canonical_publication(real_risk_workspace: RealRiskWorkspace):  # type: igno
         )
     )
     return service, published, snapshot_hash, sector_revision
-
-
-def _sector_revision(workspace: RealRiskWorkspace) -> str:
-    from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
-        PanelClosureArtifactStore,
-    )
-    from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
-
-    store = PanelClosureArtifactStore(ArtifactResolver(workspace.artifact_root))
-    paths = sorted((store.root / "sector-maps").glob("*.json"))
-    assert paths, "the shared workspace publishes a sector revision map"
-    return store.load_model(
-        category="sector-maps", content_hash=paths[0].stem, model=SectorRevisionMap
-    ).sector_revision
 
 
 def test_host_publishes_the_canonical_target_and_its_scale(canonical_publication) -> None:  # type: ignore[no-untyped-def]

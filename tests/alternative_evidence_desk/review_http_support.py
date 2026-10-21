@@ -7,6 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -26,6 +27,7 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     AlternativeEvidenceDocumentTaskResources,
 )
 from alphalattice.evidence.alternative_evidence.sources.recorded import RecordedEvidenceDocument
+from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
@@ -277,6 +279,17 @@ def _service(
         yield service
     finally:
         service.session.stop()
+
+
+def external_analysis(service: _Service) -> tuple[Any, Any, LocalResearchClient, dict[str, str]]:
+    adapter = service.review.evidence_task_adapter
+    topics = adapter.resources.analysis_actor.topics
+    adapter.resources = replace(adapter.resources, analysis_actor=None)
+    service.review.model_authority_admitted = False
+    service.review.review_actor = None
+    client = LocalResearchClient(service.session.workspace)
+    selected = {"result_hash": service.result_hash()}
+    return adapter, topics, client, selected
 
 
 def _raise_interruption(*args: object, **kwargs: object) -> object:

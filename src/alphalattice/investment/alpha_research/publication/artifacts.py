@@ -771,20 +771,6 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             ),
         )
 
-    def publish_current_stability(self, value: AlphaCurrentStabilitySurface) -> str:
-        """Publish the sealed current-stability surface by identity.
-
-        Args:
-            value: Validated current-stability surface selecting its surface_hash destination.
-
-        Returns:
-            Published immutable record URI.
-
-        Raises:
-            ValueError: Existing content at that identity conflicts with the supplied record.
-        """
-        return str(self._publish("current-stability-surfaces", value, "surface_hash"))
-
     def load_current_stability(self, value: str) -> AlphaCurrentStabilitySurface:
         """Load and validate the exact current-stability surface.
 
@@ -988,96 +974,6 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         self.resolve_current_candidate_score_chunk(result.chunk)
         return result
 
-    def publish_current_score_chunk(
-        self,
-        table: pa.Table,
-        *,
-        request_hash: str,
-        foundation_hash: str,
-        logical_panel_hash: str,
-        selected_candidate_id: str,
-        decision_hash: str,
-        estimator_state_hash: str,
-        stability_assessment_hash: str,
-        formation_session: date,
-        ordered_listing_ids: tuple[str, ...],
-    ) -> CurrentFormationScoreChunkRef:
-        """Publish canonical selected current scores and verify their content readback.
-
-        The writer requires the exact score column inventory and nonempty sorted unique
-        formation/listing keys. Content identity binds declared lineage, Arrow schema and rows;
-        metadata binds the typed reference.
-
-        Args:
-            table: Canonical score rows with the installed column inventory.
-            request_hash: Exact numerical request identity.
-            foundation_hash: Admitted Foundation identity.
-            logical_panel_hash: Logical source Panel identity.
-            estimator_state_hash: Retained fitted estimator identity.
-            stability_assessment_hash: Admitted refit-stability identity.
-            formation_session: Formation associated with the published score rows.
-            ordered_listing_ids: Exact ordered listing axis committed by the reference.
-            selected_candidate_id: Decision-selected candidate identity.
-            decision_hash: Exact selection decision identity.
-
-        Returns:
-            Chunk reference after persisted Parquet URI/metadata/content verification.
-
-        Raises:
-            ValueError: Column inventory or row-key order/uniqueness violates publication.
-            AlphaCurrentArtifactReadbackError: Persisted chunk readback differs from its
-                declaration.
-        """
-        if tuple(table.schema.names) != self._CURRENT_SCORE_COLUMNS or table.num_rows < 1:
-            raise ValueError("current Alpha score chunk schema is invalid")
-        rows = table.to_pylist()
-        keys = tuple((row["formation_session"], row["listing_id"]) for row in rows)
-        if keys != tuple(sorted(keys)) or len(keys) != len(set(keys)):
-            raise ValueError("current Alpha score rows are not canonical")
-        identity = {
-            "request_hash": request_hash,
-            "foundation_hash": foundation_hash,
-            "logical_panel_hash": logical_panel_hash,
-            "selected_candidate_id": selected_candidate_id,
-            "decision_hash": decision_hash,
-            "estimator_state_hash": estimator_state_hash,
-            "stability_assessment_hash": stability_assessment_hash,
-            "formation_session": formation_session,
-            "ordered_listing_ids_hash": canonical_hash(ordered_listing_ids),
-        }
-        content_hash = canonical_hash(
-            {"identity": identity, "schema": str(table.schema), "rows": rows}
-        )
-        uri = self.uri("current/current-score-chunks", content_hash)
-        provisional = CurrentFormationScoreChunkRef.model_construct(
-            **identity,
-            content_hash=content_hash,
-            metadata_hash="0" * 64,
-            uri=uri,
-            row_count=table.num_rows,
-        )
-        metadata_hash = canonical_hash(
-            provisional.model_dump(mode="json", exclude={"metadata_hash", "uri"})
-        )
-        reference = CurrentFormationScoreChunkRef(
-            **provisional.model_dump(mode="python", exclude={"metadata_hash"}),
-            metadata_hash=metadata_hash,
-        )
-        target = self._path("current/current-score-chunks", content_hash, "parquet")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        metadata = {
-            b"alphalattice.snapshot_kind": b"CurrentFormationScoreChunk",
-            b"alphalattice.content_hash": content_hash.encode(),
-            b"alphalattice.metadata_hash": metadata_hash.encode(),
-        }
-        staged = target.with_name(f".{content_hash}.{os.getpid()}.tmp")
-        if not target.exists():
-            pq.write_table(table.replace_schema_metadata(metadata), staged, compression="zstd")
-            os.replace(staged, target)
-        staged.unlink(missing_ok=True)
-        self.resolve_current_score_chunk(reference)
-        return reference
-
     def resolve_current_score_chunk(self, value: CurrentFormationScoreChunkRef) -> pa.Table:
         """Resolve and verify the exact selected current-score Parquet content.
 
@@ -1129,21 +1025,6 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             raise AlphaCurrentArtifactReadbackError("current Alpha score content changed")
         return table
 
-    def publish_current_score(self, value: CurrentFormationScoreSnapshot) -> str:
-        """Publish the sealed selected current-score snapshot by identity.
-
-        Args:
-            value: Validated selected current-score snapshot selecting its snapshot_hash
-                destination.
-
-        Returns:
-            Published immutable record URI.
-
-        Raises:
-            ValueError: Existing content at that identity conflicts with the supplied record.
-        """
-        return str(self._publish("current-score-snapshots", value, "snapshot_hash"))
-
     def load_current_score(self, value: str) -> CurrentFormationScoreSnapshot:
         """Load the selected formation score and verify its declared Parquet chunk.
 
@@ -1169,20 +1050,6 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         )
         self.resolve_current_score_chunk(result.chunk)
         return result
-
-    def publish_marker(self, value: AlphaCurrentRuntimeMarker) -> str:
-        """Publish the sealed current runtime marker by identity.
-
-        Args:
-            value: Validated current runtime marker selecting its marker_hash destination.
-
-        Returns:
-            Published immutable record URI.
-
-        Raises:
-            ValueError: Existing content at that identity conflicts with the supplied record.
-        """
-        return str(self._publish("markers", value, "marker_hash"))
 
     def load_marker(self, value: str) -> AlphaCurrentRuntimeMarker:
         """Load and validate the exact current runtime marker.

@@ -23,9 +23,12 @@ NOW = datetime(2026, 8, 3, 15, tzinfo=UTC)
 AS_OF = date(2026, 7, 31)
 
 
-def _manifest(count: int, *, revision: str = "a" * 64) -> UniverseManifest:
+def _manifest(
+    count: int, *, revision: str = "a" * 64, market_profile_id: str | None = None
+) -> UniverseManifest:
+    profile_id = f"feature-input-{count}" if market_profile_id is None else market_profile_id
     profile = MarketProfile(
-        market_profile_id=f"feature-input-{count}",
+        market_profile_id=profile_id,
         display_name="Feature Input fixture",
         market="US",
         currency="USD",

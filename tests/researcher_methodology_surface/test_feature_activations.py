@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
@@ -78,7 +79,7 @@ def test_a_workspace_catalog_is_the_shipped_one_with_its_activations(tmp_path: P
 def test_a_feature_review_matches_the_executed_input_catalog_and_preprocessing(
     tmp_path: Path,
 ) -> None:
-    """A feature review matches the executed input catalog and preprocessing."""
+    """Control: Feature review matches executed input catalog and preprocessing."""
 
     from alphalattice.control.product_host.composition.feature_trials import FeatureTrial
     from alphalattice.control.product_host.research_authoring.feature_extensions import (
@@ -282,8 +283,26 @@ def test_feature_trial_keys_cover_every_executed_definition_field() -> None:
         assert FeatureExtensions._trial_key(plan(**{name: 2}), "formula") == key
 
 
+def _definition_plans(work: Callable[[], object]) -> dict[str, SimpleNamespace]:
+    def definition(recipe: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            request=SimpleNamespace(input_binding_hash="a" * 64),
+            source_panel_snapshot_hash="b" * 64,
+            candidate=SimpleNamespace(revision_hash="c" * 64),
+            work=work(),
+            required_fields=("close",),
+            preprocessing_recipes={"formula": recipe},
+        )
+
+    return {
+        "1" * 64: definition("recipe-a"),
+        "2" * 64: definition("recipe-a"),
+        "3" * 64: definition("recipe-b"),
+    }
+
+
 def test_feature_build_reuses_execution_but_not_changed_source_axes(tmp_path: Path) -> None:
-    """regression: a plan's reason does not rebuild; recipes and complete axes cannot alias."""
+    """Control: Feature builds reuse execution but distinguish recipes and source axes."""
 
     from alphalattice.control.product_host.data_preparation.feature_research import (
         TASK_KIND,
@@ -300,21 +319,7 @@ def test_feature_build_reuses_execution_but_not_changed_source_axes(tmp_path: Pa
         def model_dump(self, **kwargs):
             return {"base_compute_factor_ids": ["formula"], "panel_compute_factor_ids": ["formula"]}
 
-    def definition(recipe):
-        return SimpleNamespace(
-            request=SimpleNamespace(input_binding_hash="a" * 64),
-            source_panel_snapshot_hash="b" * 64,
-            candidate=SimpleNamespace(revision_hash="c" * 64),
-            work=Work(),
-            required_fields=("close",),
-            preprocessing_recipes={"formula": recipe},
-        )
-
-    plans = {
-        "1" * 64: definition("recipe-a"),
-        "2" * 64: definition("recipe-a"),
-        "3" * 64: definition("recipe-b"),
-    }
+    plans = _definition_plans(Work)
     payload = {
         "definition_plan_hash": "1" * 64,
         "input_binding_hash": "a" * 64,
@@ -392,7 +397,7 @@ def test_feature_build_reuses_execution_but_not_changed_source_axes(tmp_path: Pa
 
 
 def test_feature_trial_reopens_equivalent_declarations_on_one_baseline(tmp_path: Path) -> None:
-    """regression: the trial ledger reuses complete work, not a declaration's prose hash."""
+    """Control: Equivalent feature trials reuse only the same recipe and baseline."""
 
     from alphalattice.control.product_host.composition.feature_trials import FeatureTrials
 
@@ -400,21 +405,7 @@ def test_feature_trial_reopens_equivalent_declarations_on_one_baseline(tmp_path:
         def model_dump(self, **kwargs):
             return {"base_compute_factor_ids": ["formula"]}
 
-    def definition(recipe):
-        return SimpleNamespace(
-            request=SimpleNamespace(input_binding_hash="a" * 64),
-            source_panel_snapshot_hash="b" * 64,
-            candidate=SimpleNamespace(revision_hash="c" * 64),
-            work=Work(),
-            required_fields=("close",),
-            preprocessing_recipes={"formula": recipe},
-        )
-
-    plans = {
-        "1" * 64: definition("recipe-a"),
-        "2" * 64: definition("recipe-a"),
-        "3" * 64: definition("recipe-b"),
-    }
+    plans = _definition_plans(Work)
     baseline = UUID("00000000-0000-4000-8000-000000000001")
 
     class Ledger(FeatureTrials):

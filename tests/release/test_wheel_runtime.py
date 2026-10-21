@@ -142,7 +142,7 @@ def test_the_console_entry_and_runtime_exceptions_are_explicit() -> None:
 
 
 def test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg() -> None:
-    """Both guides start with the editable leg and name the installed leg."""
+    """Control: Launch guides retain usable editable and installed command forms."""
     owner = ".agents/skills/alphalattice-research/references/operating.md"
     for name in ("AGENTS.md", "README.md"):
         assert f"({owner})" in (ROOT / name).read_text(encoding="utf-8")
@@ -216,7 +216,7 @@ def test_a_built_wheel_holds_the_exact_runtime_content_set(tmp_path: Path) -> No
 def test_resource_names_and_printed_commands_survive_the_installed_layout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: physical installation directories never enter canonical source names."""
+    """Control: Installed layouts retain canonical resources and usable printed commands."""
     installed = tmp_path / "site-packages/alphalattice/_runtime"
     source = installed.parent / "kernel/shared_kernel/source_identity.py"
     assert project_layout.source_root(installed) == tmp_path / "site-packages"

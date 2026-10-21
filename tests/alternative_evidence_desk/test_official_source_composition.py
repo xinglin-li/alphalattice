@@ -54,6 +54,9 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     SecEdgarSource,
 )
 from alphalattice.interface.local_application.client import LocalResearchClient
+from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
+    PortfolioResearchSpec,
+)
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
 )
@@ -70,6 +73,7 @@ from tests.alternative_evidence_desk.sec_scenario_transport import (
     SecScenarioTransport,
     filing_body,
 )
+from tests.portfolio_strategy_lab.local_web_support import _harness, _run
 
 ONE_UNIT = "u01"
 """The book's only unit: every book is prepared as a coverage run (C2)."""
@@ -1465,12 +1469,9 @@ def test_a_holding_with_nothing_to_cite_carries_the_review(tmp_path: Path) -> No
 
 
 def test_a_raised_risk_stays_open_whichever_book_or_policy_raised_it(tmp_path: Path) -> None:
-    """A raised risk stays open whichever book or policy raised it."""
+    """Control: Raised risk stays open any book or policy raised it."""
 
     from alphalattice.control.product_host.composition import evidence_review_application
-    from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
-        PortfolioResearchSpec,
-    )
     from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from alphalattice.oversight.chief_risk_officer.decision import submissions
     from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
@@ -1488,7 +1489,6 @@ def test_a_raised_risk_stays_open_whichever_book_or_policy_raised_it(tmp_path: P
         SubmittedPortfolioReviewActor,
     )
     from alphalattice.protocols.actor_execution import ActorKind
-    from tests.portfolio_strategy_lab.local_web_support import _harness, _run
 
     portfolio = tmp_path / "portfolio"
     portfolio.mkdir()
@@ -1872,17 +1872,13 @@ def test_a_short_unit_is_delivered_whole_without_an_index(tmp_path: Path) -> Non
 
 
 def test_a_bundle_on_a_book_with_no_run_is_answered_as_it_was_read(tmp_path: Path) -> None:
-    """A bundle on a book with no run is answered as it was read."""
+    """Control: Bundle on book with no run is answered as it was read."""
 
     from alphalattice.control.task_control.contracts import TaskLifecycle
-    from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
-        PortfolioResearchSpec,
-    )
     from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
         BookSelector,
     )
     from tests.alternative_evidence_desk.review_http_support import _operation
-    from tests.portfolio_strategy_lab.local_web_support import _harness, _run
 
     portfolio = tmp_path / "portfolio"
     portfolio.mkdir()

@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 import pyarrow as pa
 import pyarrow.dataset as ds
@@ -19,10 +20,17 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     panel_rows_match_their_hashes,
     panel_schema_hash,
 )
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 
-_VALUES_VERIFIED: set[str] = set()
+_VALUES_VERIFIED: BoundedMemo[str, bool] = BoundedMemo()
 """The byte digests of the chunk files whose values this process has checked: a
 chunk is read many times in one study, and its values need checking once per content."""
+
+
+def configure_panel_proof_memo(*, capacity: int | None = None) -> None:
+    """Set this reader owner's capacity; evicted chunks receive full validation again."""
+    global _VALUES_VERIFIED
+    _VALUES_VERIFIED = BoundedMemo(capacity=capacity)
 
 
 @dataclass(frozen=True)
@@ -115,6 +123,12 @@ class FeaturePanelReader:
         """
         manifest = self.admitted_manifest(request.manifest_ref, consumer="Factor Research")
         self._validate_request_identity(manifest, request)
+        yield from self._admitted_batches(manifest, request)
+
+    def _admitted_batches(
+        self, manifest: dict[str, object], request: FeaturePanelReadRequest
+    ) -> Iterator[pa.RecordBatch]:
+        """Read verified immutable cells for this owner; research admission belongs to batches."""
         chunk_paths = self._qualified_chunk_paths(manifest, request)
         if not chunk_paths:
             raise ValueError("feature panel read range has no snapshot chunks")
@@ -286,7 +300,7 @@ class FeaturePanelReader:
                 f"{consumer} requires an ACTIVE Feature Panel snapshot "
                 f"({lifecycle.get('lifecycle')}: {reason})"
             )
-        return self.resolver.load_feature_panel_manifest(manifest_ref)
+        return cast(dict[str, object], self.resolver.load_feature_panel_manifest(manifest_ref))
 
     def identity_batches(
         self, manifest_ref: str, *, include_row_hash: bool = True
@@ -464,4 +478,4 @@ class FeaturePanelReader:
                 parquet.read(), row_hash_factor_ids=row_hash_factor_ids
             ):
                 raise ValueError("feature panel chunk values do not match their row hashes")
-            _VALUES_VERIFIED.add(digest)
+            _VALUES_VERIFIED[digest] = True

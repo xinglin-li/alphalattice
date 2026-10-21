@@ -511,31 +511,6 @@ class CurrentUniverseMaintenance:
             self._publish_progress(outcome, status="SUCCEEDED")
         return outcome
 
-    def _refresh_listing(
-        self, item: CurrentUniverseMaintenanceListing, *, observed_at: datetime
-    ) -> str:
-        with self._retained():
-            prepared = self._prepare_listing(item, observed_at=observed_at)
-        if prepared is None:
-            return "FAILED"
-        listing, existing, audit_start = prepared
-        try:
-            hydration = self._fetch_with_retry(
-                listing,
-                audit_start,
-                listing.listing_id not in self.full_audit_listing_ids,
-            )
-        except ProviderFetchError as exc:
-            with self._retained():
-                if exc.code in {"data.rate_limited", "data.provider_session_unstable"}:
-                    self._record_deferred_failure(item, code=exc.code, observed_at=observed_at)
-                    return f"DEFERRED:{exc.code}"
-                self._record_failure(item, code=exc.code, observed_at=observed_at, exception=exc)
-                return "FAILED"
-        with self._retained():
-            job = (item, listing, existing, audit_start, hydration)
-            return self._drive(self._apply_hydration(job, observed_at=observed_at), None)
-
     def _prepare_listing(
         self,
         item: CurrentUniverseMaintenanceListing,

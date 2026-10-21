@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from operator import itemgetter
@@ -281,7 +281,7 @@ class FeatureBaseClosureCoordinator:
         """A first load's batch: its part held no row when the load began, so no row of the
         batch replaces one, and none is compared or recorded key by key."""
         expected_receipts = self._expected_receipts(bounded)
-        cutoff_sets: dict[str, tuple[str, str]] = {}
+        cutoff_sets: MutableMapping[tuple[tuple[str, ...], str], tuple[str, str]] = {}
         writes = []
         for write in bounded:
             if not isinstance(write.rows, pd.DataFrame) or not write.rows_are_canonical:
@@ -540,7 +540,7 @@ class FeatureBaseClosureCoordinator:
                 list[tuple[date, str]],
             ]
         ] = []
-        cutoff_sets: dict[str, tuple[str, str]] = {}
+        cutoff_sets: MutableMapping[tuple[tuple[str, ...], str], tuple[str, str]] = {}
         for position, write in enumerate(writes):
             if not isinstance(write.rows, pd.DataFrame) or not write.rows_are_canonical:
                 raise ValueError("production Feature closure requires canonical DataFrame rows")
@@ -859,7 +859,7 @@ def feature_row_identities(
     *,
     catalog_hash: str,
     factor_ids: tuple[str, ...],
-    cutoff_sets: dict[str, tuple[str, str]],
+    cutoff_sets: MutableMapping[tuple[tuple[str, ...], str], tuple[str, str]],
 ) -> tuple[FeatureRowIdentity, ...]:
     """Each canonical Feature row's identity, in row order.
 
@@ -868,7 +868,7 @@ def feature_row_identities(
     that carries none, and by a Host worker beside the listing's computation (W10). A cutoff
     set belongs to a session, not to a listing, so every listing of a first build offers the
     same ~2,500 sets: `cutoff_sets` keeps each serialized set's answer, a function of the
-    string alone, so a batch -- or a kept worker -- derives each once.
+    string and factor axis, so a batch -- or a kept worker -- derives each once while held.
     """
     listing_ids = rows["listing_id"].tolist()
     cutoff_strings = rows["input_cutoffs_json"].tolist()
@@ -879,9 +879,10 @@ def feature_row_identities(
     for index, raw_session in enumerate(rows["session_date"].tolist()):
         session = _session(raw_session)
         cutoff_string = str(cutoff_strings[index])
-        derived = cutoff_sets.get(cutoff_string)
+        key = (factor_ids, cutoff_string)
+        derived = cutoff_sets.get(key)
         if derived is None:
-            derived = cutoff_sets[cutoff_string] = _canonical_cutoffs(cutoff_string, factor_ids)
+            derived = cutoff_sets[key] = _canonical_cutoffs(cutoff_string, factor_ids)
         canonical_cutoffs, cutoff_set = derived
         identities.append(
             FeatureRowIdentity(

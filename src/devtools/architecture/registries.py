@@ -1,4 +1,4 @@
-"""The registries the gate holds: what the tree may add only by registering it (binding plan G0).
+"""Original registry contracts and the staged census no-growth check.
 
 Six registries name what the product is made of. Three are already held where they live: the
 packages (``config/package-architecture.json``, the structural guards), the operations
@@ -6,24 +6,7 @@ packages (``config/package-architecture.json``, the structural guards), the oper
 the source-identity guards). The other three are held here, each against a baseline in
 ``config/registries/`` that may only shrink:
 
-- ``parameters``: every numeric literal of the number-deciding code, by file, the name it is bound
-  to and its value, each in one class -- METHOD (it decides a result), EXECUTION (how fast or how
-  quietly, never what; LAWS.md PA2) or LIMIT (a bound the product keeps);
-- ``refusals``: every failure code an owner raises or answers, by its owner;
-- ``formats``: every persisted schema name and Task kind, with the file that declares it.
-
-And the tests' ratchet: no new import of a private name, and no new patch of a private attribute,
-in ``tests/`` (LAWS.md TE5); and the owners' (G2): no new decision of a mapped noun outside its
-owner (``devtools.architecture.nouns``, against ``noun-definitions``), and no new module in the
-Host unless it is registered as its composition (``host-modules``; LAWS.md OW6): a module the
-owner map moves out is DOMAIN, and those only go; and no table written outside its registered
-owners (``config/storage-authorities.json``; another package's data writes held in
-``table-writers``, only shrinking). A new entry is refused with the registry and the
-line to add; one that went away is dropped by ``--shrink``. The check reads only the files it is
-given (the gate gives the changed ones), so it costs what the change costs.
-
-    python -m devtools.architecture.registries [--shrink] [FILE ...]
-    python -m devtools.architecture.where <noun>
+Use --staged [--update]; existing registry guards retain their contracts.
 """
 
 from __future__ import annotations
@@ -31,12 +14,16 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
 import re
+import subprocess
 import sys
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
+from devtools.architecture.git_inputs import read_blobs
 from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
     discover_table_writes,
@@ -106,7 +93,7 @@ def parameters(relative: str, tree: ast.AST) -> Counter[str]:
     return found
 
 
-def refusals(relative: str, tree: ast.AST) -> Counter[str]:
+def refusals(relative: str, tree: ast.AST, *, locations: bool = False) -> Counter[str]:
     """Each failure code a module raises or answers, by its text."""
 
     if not relative.startswith("src/"):
@@ -127,7 +114,7 @@ def refusals(relative: str, tree: ast.AST) -> Counter[str]:
             for key, value in zip(parent.keys, parent.values, strict=True)
         )
         if raised or keyed or valued:
-            found[code] += 1
+            found[code] = node.lineno if locations else found[code] + 1
     return found
 
 
@@ -220,10 +207,16 @@ def areas(root: Path) -> list[str]:
     """Each registered package whose product area is not the namespace it lives in."""
 
     document = json.loads((root / "config" / "package-architecture.json").read_text("utf-8"))
+    # Evaluation is engineering tooling; other namespaces keep their physical area.
     return sorted(
         package["package_id"]
         for package in document["packages"]
-        if package["physical_namespace_target"].split(".")[1] != package["product_area"]
+        if (
+            "engineering"
+            if package["physical_namespace_target"] == "devtools.evaluation"
+            else package["physical_namespace_target"].split(".")[1]
+        )
+        != package["product_area"]
     )
 
 
@@ -572,18 +565,157 @@ def tracked(root: Path) -> list[str]:
     )
 
 
+TARGETS = {
+    "nouns": ("config/registries/owners-map.json", "nouns"),
+    "nouns/no_owner": ("config/package-architecture.json", "packages"),
+    "operations": ("src/alphalattice/interface/local_application/operations.json", "fields"),
+    "message-kinds": ("config/registries/refusals.json", "entries"),
+}
+
+
+def g1_matches(prefix: str, nouns: dict[str, Any]) -> list[dict[str, Any]]:
+    """Use declared noun owners and folds; do not infer an owner from package names."""
+    matches = []
+    for noun, item in nouns.items():
+        if item["owner"] == prefix:
+            matches.append({"noun": noun, "relation": "OWNER", "owner": item["owner"]})
+        for fold in item.get("folds_in", []):
+            source = fold["from"]
+            if source == prefix or source.startswith(prefix + "."):
+                matches.append(
+                    {
+                        "noun": noun,
+                        "relation": "FOLDS_IN",
+                        "owner": fold.get("to", item["owner"]),
+                        "card": fold["card"],
+                        "source": source,
+                    }
+                )
+    return matches
+
+
+def _census_file_facts(path: str, text: str) -> dict[str, int]:
+    tree = ast.parse(text, filename=path)
+    return {
+        "message-kinds|" + code: line for code, line in refusals(path, tree, locations=True).items()
+    } | {
+        "operations|" + n.value: n.lineno
+        for alias in ast.walk(tree)
+        if isinstance(alias, ast.TypeAlias) and alias.name.id == "PortfolioResearchOperation"
+        for n in ast.walk(alias.value)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str)
+    }
+
+
+def _census_gaps(facts: dict[str, Any], data: dict[str, Any], text: str) -> dict[str, str]:
+    packages = data["config/package-architecture.json"]["packages"]
+    nouns = data[TARGETS["nouns"][0]]["nouns"]
+    gaps: dict[str, str] = {}
+    sites: dict[str, str] = {
+        match[1]: f"config/package-architecture.json:{i}"
+        for i, line in enumerate(text.splitlines(), 1)
+        for match in re.finditer(r'"physical_namespace_target"\s*:\s*"([^"\\]+)"', line)
+    }
+    for path, items in facts.items():
+        module = path.removesuffix(".py")[4:].replace("/", ".").removesuffix(".__init__")
+        unit = ".".join(module.split(".")[: 3 if module.startswith("alphalattice.") else 2])
+        sites.setdefault(unit, path + ":1")
+        if not any(
+            (module + ".").startswith(p["physical_namespace_target"] + ".")
+            or (p["physical_namespace_target"] + ".").startswith(module + ".")
+            for p in packages
+        ):
+            gaps.setdefault("nouns/no_owner|" + unit, path + ":1")
+        for key, line in items.items():
+            dimension, item = key.split("|", 1)
+            registry, member = TARGETS[dimension]
+            if item not in data[registry][member]:
+                gaps[key] = f"{path}:{line}"
+    for package in packages:
+        prefix = package["physical_namespace_target"]
+        if not g1_matches(prefix, nouns):
+            gaps["nouns|" + package["package_id"]] = sites.get(
+                prefix, "config/package-architecture.json:1"
+            )
+    return gaps
+
+
+def census_check(root: Path, *, baseline: str | None = None, update: bool = False) -> list[str]:
+    """Ratchet exact staged findings; unchanged source comes only from cached facts."""
+    if baseline is None:
+        print("registry ratchet not configured: set ALPHALATTICE_REGISTRY_BASELINE")
+        return []
+    anchor = Path(baseline)
+    baseline = (anchor.relative_to(root.resolve()) if anchor.is_absolute() else anchor).as_posix()
+    stage = subprocess.check_output(["git", "write-tree"], cwd=root, text=True).strip() + ":"
+    command = ["git", "diff", "HEAD", stage[:-1], "--name-only", "--no-renames", "-z"]
+    paths = set(subprocess.check_output(command, cwd=root).decode().split("\0")) - {""}
+    fixed = {baseline, "config/package-architecture.json", *(p for p, _ in TARGETS.values())}
+    blobs = read_blobs(["HEAD:" + baseline, *(stage + p for p in paths | fixed)], root)
+    data = {p: json.loads(blobs[stage + p]) for p in fixed}
+    base = json.loads(blobs.get("HEAD:" + baseline, blobs[stage + baseline]))
+    if (
+        "HEAD:" + baseline not in blobs
+        and base["source_sha"]
+        != subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    ):
+        return [f"registry-census: {baseline} must name the reviewed bootstrap source SHA."]
+    facts = base.get("by_file", {}).copy()
+    for path in sorted(p for p in paths if p.startswith("src/") and p.endswith(".py")):
+        if stage + path in blobs:
+            facts[path] = _census_file_facts(path, blobs[stage + path])
+        else:
+            facts.pop(path, None)
+    gaps = _census_gaps(facts, data, blobs[stage + "config/package-architecture.json"])
+    out = []
+    for key in sorted(gaps.keys() - base.get("automatic_gaps", {}).keys()):
+        kind, item = key.split("|", 1)
+        registry, member = TARGETS[kind]
+        form = f"{member}[{item!r}]"
+        if kind == "nouns/no_owner":
+            form = f"packages[] with package_id and physical_namespace_target={item!r}"
+        out.append(f"Unregistered {kind} {item} {gaps[key]}; add {registry} {form}.")
+    nouns = sorted(data[TARGETS["nouns"][0]]["nouns"])
+    expected = {"by_file": facts, "automatic_gaps": gaps, "registered_nouns": nouns}
+    if not out and any(data[baseline].get(key) != value for key, value in expected.items()):
+        if update:
+            (root / baseline).write_text(
+                json.dumps(data[baseline] | expected, indent=2) + "\n", encoding="utf-8"
+            )
+        else:
+            removed = ", ".join(
+                sorted(
+                    (base.get("automatic_gaps", {}).keys() - gaps.keys())
+                    | (set(base.get("registered_nouns", [])) - set(nouns))
+                )
+            )
+            out.append(
+                f"Sync {baseline} (removed: {removed or 'none'}) with --staged --update; stage it."
+            )
+    return out
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3])
-    parser.add_argument("--shrink", action="store_true", help="drop entries the tree no longer has")
-    parser.add_argument("--seed", action="store_true", help="write the first baselines")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--shrink", action="store_true", help="drop entries the tree no longer has")
+    mode.add_argument("--seed", action="store_true", help="write the first baselines")
+    mode.add_argument("--staged", action="store_true", help="check the staged census delta")
+    parser.add_argument("--baseline", default=os.environ.get("ALPHALATTICE_REGISTRY_BASELINE"))
+    parser.add_argument("--update", action="store_true", help="refresh the staged census baseline")
     parser.add_argument("files", nargs="*")
     args = parser.parse_args(argv)
+    if args.update and not args.staged:
+        parser.error("--update requires --staged")
     if args.shrink or args.seed:
         # A baseline is the whole tree's: shrinking from a few files would drop the rest.
         print(json.dumps(shrink(args.root, tracked(args.root), seed=args.seed), sort_keys=True))
         return 0
-    found = problems(args.root, args.files or tracked(args.root))
+    if args.staged:
+        found = census_check(args.root, baseline=args.baseline, update=args.update)
+    else:
+        found = problems(args.root, args.files or tracked(args.root))
     for line in found:
         print(line)
     return 1 if found else 0

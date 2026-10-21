@@ -19,7 +19,7 @@ import tempfile
 import time
 from io import BytesIO, TextIOWrapper
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
@@ -47,6 +47,7 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.failure_codes import FAILURE_DETAIL_WITHHELD
 from alphalattice.interface.local_application.labels import label
 from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
 )
 from devtools.evaluation.forms import Scenario
@@ -55,8 +56,10 @@ from tests.portfolio_strategy_lab.cli_support import (
     _cli,
     _inprocess_cli,
     _session_cli,
+    strategy_readback_operations,
 )
 from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.structural.refusal_support import rerun_refusal_codes
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 
@@ -1053,38 +1056,21 @@ def test_an_operation_only_a_person_completes_is_marked_so(
 
 
 def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy() -> None:
-    """Every read of work planned per strategy is keyed by its strategy."""
-
-    from alphalattice.interface.local_application.portfolio_research import (
-        PortfolioResearchOperation,
-        PortfolioResearchOperationRequest,
-    )
+    """Control: Every read of work planned per strategy is keyed by its strategy."""
 
     contract = PortfolioResearchOperationRequest.field_contract
-    readbacks = {
-        operation.replace("_PLAN", "_READBACK")
-        for operation in get_args(PortfolioResearchOperation.__value__)
-        if operation.endswith("_PLAN") and "strategy_package_id" in contract(operation)[0]
-    }
+    readbacks = strategy_readback_operations()
     for operation in readbacks:
         required, allowed = contract(operation)
         assert not required and {"task_id", "strategy_package_id"} <= allowed, operation
 
 
 def test_every_door_whose_way_on_reruns_a_plan_resumes_its_stopped_task() -> None:
-    """Every door whose way on reruns a plan resumes its stopped task."""
+    """Control: Every door whose way on reruns plan resumes its stopped task."""
 
     from alphalattice.control.product_host.maintenance import data_update
-    from alphalattice.interface.local_application import cli_contract
 
-    words = json.loads(
-        Path(cli_contract.__file__).with_name("refusal_words.json").read_text("utf-8")
-    )
-    reruns = {
-        code
-        for code, entry in words.items()
-        if re.search(r"\b(run the plan|confirm) again\b|\bplan runs again\b", str(entry["detail"]))
-    }
+    reruns = rerun_refusal_codes()
     assert reruns == {
         "workspace_data_update.retry_not_due",
         "workspace_data_update.source_access_not_admitted",

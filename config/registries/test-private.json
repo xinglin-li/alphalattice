@@ -2,9 +2,9 @@
 "entries": {
 "tests/alpha_research/test_alpha_qualification.py::import _carry_forward_prior_current_rejection": 1,
 "tests/alpha_research/test_alpha_qualification.py::import _index_attempted_family": 1,
-"tests/alpha_research/test_alpha_qualification.py::patch _candidate_rows": 2,
-"tests/alpha_research/test_alpha_qualification.py::patch _historical_mean_benchmark": 2,
-"tests/alpha_research/test_alpha_qualification.py::patch _index_attempted_family": 2,
+"tests/alpha_research/test_alpha_qualification.py::patch _candidate_rows": 1,
+"tests/alpha_research/test_alpha_qualification.py::patch _historical_mean_benchmark": 1,
+"tests/alpha_research/test_alpha_qualification.py::patch _index_attempted_family": 1,
 "tests/alpha_research/test_array_surface.py::patch _decode_hashes": 1,
 "tests/alpha_research/test_array_surface.py::patch _score_statistics": 1,
 "tests/alpha_research/test_dynamic_panel_portfolio_campaign.py::import _RUNTIME_ALLOCATION_CAP_FIELDS": 1,

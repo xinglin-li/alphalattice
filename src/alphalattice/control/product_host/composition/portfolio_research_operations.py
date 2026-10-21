@@ -92,7 +92,7 @@ from alphalattice.control.product_host.composition.portfolio_application import 
 from alphalattice.control.product_host.composition.portfolio_result_context import (
     date_risk,
     installed_temporal_statements,
-    position_summary,
+    position_rows,
     saved_portfolio_context,
 )
 from alphalattice.control.product_host.composition.portfolio_updates import (
@@ -136,7 +136,6 @@ from alphalattice.control.product_host.composition.strategy_activation import (
     INSTALLED_BOOK_WORDS,
     RUN_FORWARD_WORDS,
     StrategyActivation,
-    position_basis,
 )
 from alphalattice.control.product_host.composition.strategy_calibration import (
     TASK_KIND as STRATEGY_CALIBRATION_TASK_KIND,
@@ -370,7 +369,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     PortfolioUpdatePositions,
     PortfolioUpdatePublication,
-    portfolio_update_positions,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.resolution import (
     StrategyPortfolioResolver,
@@ -384,7 +382,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
-    position_row_groups,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
@@ -4132,8 +4129,12 @@ class PortfolioResearchOperations:
         committee_context: dict[str, Any] | None = None,
     ) -> dict[str, object]:
         """Owner position rows and Committee context at the Host clock, and a caller's offer."""
-        body = _position_rows(
-            body, review=self.review, risk=self._date_risk, now=self.dispatcher.clock()
+        body = position_rows(
+            body,
+            review=self.review,
+            risk=self._date_risk,
+            now=self.dispatcher.clock(),
+            read_update=partial(self._read_review_update, readback=body),
         )
         body.pop("committee_context", None)
         if committee_context is not None:
@@ -5580,17 +5581,34 @@ class PortfolioResearchOperations:
             body["review_publication_hash"] = publication_hash
         return body
 
-    def _read_review_update(self, task_id: UUID, publication_hash: str) -> dict[str, object]:
+    def _read_review_update(
+        self,
+        task_id: UUID,
+        publication_hash: str,
+        *,
+        readback: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        """Read the exact review origin, reusing a matching result verified in this request."""
         assert self.updates is not None
         task = self.workspace_session.task_control_registry.task(task_id)
+        reader: DecisionAdvancementApplication | PortfolioUpdateApplication
         if task.input.input_schema_id == DECISION_ADVANCEMENT_SCHEMA:
             if self.research_updates is None:
                 raise ValueError("product_host.evidence_review_update_not_configured")
-            body = self.research_updates.readback(task_id, publication_hash=publication_hash)
+            reader = self.research_updates
         elif task.task_kind == PORTFOLIO_UPDATE_TASK_KIND:
-            body = self.updates.readback(task_id, publication_hash=publication_hash)
+            reader = self.updates
         else:
             raise ValueError("product_host.evidence_review_update_task_mismatch")
+        publication = None if readback is None else readback.get("publication")
+        body = (
+            dict(readback)
+            if readback is not None
+            and readback.get("task_id") == str(task_id)
+            and isinstance(publication, dict)
+            and publication.get("content_hash") == publication_hash
+            else reader.readback(task_id, publication_hash=publication_hash)
+        )
         plan = cast(dict[str, object], task.input.payload["plan"])
         if publication_hash == plan.get("parent_hash"):
             value = PortfolioUpdatePublication.model_validate(body["publication"])
@@ -6348,68 +6366,6 @@ def _latest_update(task: TaskRecord | None) -> dict[str, object] | None:
             "readback": {"operation": "RESEARCH_UPDATE_READBACK", "task_id": str(task.task_id)}
         },
     }
-
-
-def _position_rows(
-    body: dict[str, object],
-    *,
-    review: EvidenceReviewApplication | None = None,
-    risk: Callable[[dict[str, object], PortfolioUpdatePositions], dict[str, Any]] | None = None,
-    now: datetime | None = None,
-) -> dict[str, object]:
-    raw = body.get("publication")
-    if isinstance(raw, dict):
-        value = PortfolioUpdatePublication.model_validate(raw)
-        history = tuple(
-            PortfolioUpdatePublication.model_validate(v)
-            for v in cast(list[object], body.get("history", []))
-        )
-        positions = portfolio_update_positions(value, history)
-        body["schedule"] = positions.schedule.model_dump(mode="json")
-        labels = cast(dict[str, str], body["listing_labels"])
-        groups = position_row_groups(
-            positions,
-            labels,
-            basis=position_basis(positions.basis, positions.schedule.entry_open_at, now),
-        )
-        body.update(groups)
-        body["summary"] = position_summary(
-            positions, labels, groups["position_rows"] + groups["exit_rows"]
-        )
-        body["review_selector"] = {
-            "update_task_id": body["task_id"],
-            "update_publication_hash": value.content_hash,
-            "position_basis": positions.basis,
-        }
-        # Review dated positions.
-        body["next_requests"] = {
-            **cast(dict[str, object], body.get("next_requests") or {}),
-            **review_requests(cast(dict[str, str], body["review_selector"])),
-        }
-        if risk is not None:
-            # Report-only date Risk.
-            body["date_risk"] = risk(body, positions)
-        if review is not None:
-            try:
-                standing = EvidenceReviewDelivery(review).review_standing(
-                    BookSelector(
-                        update_task_id=UUID(str(body["task_id"])),
-                        update_publication_hash=value.content_hash,
-                        position_basis=positions.basis,
-                    )
-                )
-            except Exception as error:
-                # Broken review lineage cannot hide sealed positions.
-                standing = {
-                    "status": "UNREADABLE",
-                    "detail": "Review standing unreadable.",
-                    "failure_code": public_failure(error, "evidence_review.standing_unreadable"),
-                }
-            body["review_standing"] = standing
-            later = cast(dict[str, object], standing.get("next_requests") or {}).get("review")
-            if later is not None:
-                cast(dict[str, object], body["next_requests"])["published_review"] = later
-    return body
 
 
 def _file_stamp(path: Path) -> tuple[int, int] | None:

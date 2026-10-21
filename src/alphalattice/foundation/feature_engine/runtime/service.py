@@ -61,6 +61,7 @@ from alphalattice.foundation.feature_engine.panels.materialization_identity impo
     align_feature_source_sessions,
     feature_source_values_hash,
 )
+from alphalattice.foundation.feature_engine.producers import cross_section
 from alphalattice.foundation.feature_engine.producers.base_materializer import (
     _REQUIRED_COLUMNS,
     BaseFeatureMaterializer,
@@ -68,6 +69,9 @@ from alphalattice.foundation.feature_engine.producers.base_materializer import (
 from alphalattice.foundation.feature_engine.producers.cross_section import (
     SectorNeutralPanelMaterializer,
     clip_observation_record,
+)
+from alphalattice.foundation.feature_engine.producers.cross_section import (
+    materialize_panel_chunk as materialize_panel_chunk,
 )
 from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
@@ -131,6 +135,7 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
 from alphalattice.foundation.market_data_ops.sources.price_integrity import TradingSessionAuthority
 from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
 from alphalattice.kernel.shared_kernel.spans import span, spanned
@@ -159,7 +164,7 @@ def catalog_reads_as_traded(catalog: FeatureCatalog) -> bool:
 
 _WORKER_KERNELS: dict[str, FeatureKernelRegistry] = {}
 """A kept worker's rebuilt shipped kernels, by the capability each sending build installed."""
-_WORKER_CUTOFF_SETS: dict[tuple[str, ...], dict[str, tuple[str, str]]] = {}
+_WORKER_CUTOFF_SETS: BoundedMemo[tuple[tuple[str, ...], str], tuple[str, str]] = BoundedMemo()
 """A kept worker's derived cutoff sets, by factor axis: a set belongs to a session, so every
 listing offers the same ones and the worker derives each once."""
 
@@ -233,7 +238,7 @@ def materialize_listing_rows(
             rows,
             catalog_hash=catalog_hash,
             factor_ids=factor_ids,
-            cutoff_sets=_WORKER_CUTOFF_SETS.setdefault(factor_ids, {}),
+            cutoff_sets=_WORKER_CUTOFF_SETS,
         )
     return rows, block.ineligibility, identities, stock_input_hash
 
@@ -241,52 +246,12 @@ def materialize_listing_rows(
 _PANEL_CHUNK = f"{__name__}:materialize_panel_chunk"
 """A Panel chunk's cross-section computation, run in the Host's kept workers (W10)."""
 
-_WORKER_PANELS: dict[tuple[str, str], SectorNeutralPanelMaterializer] = {}
-"""A kept worker's Panel materializers, by catalog and the implementation each writer runs."""
 
-
-def materialize_panel_chunk(
-    *,
-    catalog: FeatureCatalog,
-    implementation_binding_hash: str,
-    feature_rows: pd.DataFrame,
-    active_listing_ids: tuple[str, ...],
-    manifest_revision: str,
-    sector_revision: str,
-    sector_by_listing_id: dict[str, str],
-    spy_revision: str,
-    factor_ids: tuple[str, ...],
-    members_by_session: Mapping[date, Sequence[str]],
-    source_exclusions_by_session: Mapping[date, Sequence[str]] | None,
-    cancelled: Callable[[], bool],
-) -> PanelMaterialization:
-    """One chunk of a build's Panel sessions, transformed cross-section by cross-section.
-
-    The computation of a Panel chunk, moved off the build's writer, which reads the chunk's
-    Feature rows and then stages, publishes and records the answers in chunk order (W10).
-    The materializer is the installed one, rebuilt here from the catalog and held to the
-    implementation the writer runs. One chunk is one transformation, so W10's ``cancelled``
-    is not consulted within it, as the writer's own loop never consulted it per chunk.
-    """
-    key = (catalog.binding.catalog_hash, implementation_binding_hash)
-    materializer = _WORKER_PANELS.get(key)
-    if materializer is None:
-        materializer = SectorNeutralPanelMaterializer(catalog)
-        if materializer.implementation.implementation_binding_hash != implementation_binding_hash:
-            raise ValueError("feature.worker_panel_implementation_mismatch")
-        _WORKER_PANELS[key] = materializer
-    with span("features", "panel_chunk"):
-        return materializer.materialize(
-            feature_rows=feature_rows,
-            active_listing_ids=active_listing_ids,
-            manifest_revision=manifest_revision,
-            sector_revision=sector_revision,
-            sector_by_listing_id=sector_by_listing_id,
-            spy_revision=spy_revision,
-            factor_ids=factor_ids,
-            members_by_session=members_by_session,
-            source_exclusions_by_session=source_exclusions_by_session,
-        )
+def configure_worker_memos(*, capacity: int | None = None) -> None:
+    """Set the worker owner's cutoff/materializer memo capacity; values rebuild on misses."""
+    global _WORKER_CUTOFF_SETS
+    _WORKER_CUTOFF_SETS = BoundedMemo(capacity=capacity)
+    cross_section.configure_panel_worker_memo(capacity=capacity)
 
 
 @dataclass
@@ -2725,24 +2690,6 @@ class FeatureFoundationService:
             if session.year * 12 + session.month >= anchor_month
         )
         return calendar[min(bounded_position, calendar_anchor_position)]
-
-    @staticmethod
-    def _contiguous_target_ranges(
-        calendar: tuple[date, ...], selected: set[date]
-    ) -> tuple[tuple[date, date], ...]:
-        positions = {session: index for index, session in enumerate(calendar)}
-        ordered = [session for session in calendar if session in selected]
-        if not ordered:
-            return ()
-        ranges: list[tuple[date, date]] = []
-        first = previous = ordered[0]
-        for session in ordered[1:]:
-            if positions[session] != positions[previous] + 1:
-                ranges.append((first, previous))
-                first = session
-            previous = session
-        ranges.append((first, previous))
-        return tuple(ranges)
 
     @staticmethod
     def _panel_work_groups(

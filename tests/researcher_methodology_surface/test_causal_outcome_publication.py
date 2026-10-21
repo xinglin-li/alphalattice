@@ -406,7 +406,7 @@ def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(tmp_path
 
 
 def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path: Path) -> None:
-    """A worker failure publishes nothing and leaves no worker behind."""
+    """Control: Worker failure publishes nothing and leaves no worker behind."""
 
     import psutil
 
@@ -465,7 +465,7 @@ def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path
 
 
 def test_executor_creation_and_process_start_refusals_publish_nothing(tmp_path: Path) -> None:
-    """Executor creation and process start refusals publish nothing."""
+    """Control: Executor creation and process start refusals publish nothing."""
 
     import psutil
 

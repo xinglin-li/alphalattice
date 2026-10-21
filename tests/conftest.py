@@ -11,12 +11,10 @@ test's seconds, and an xdist run starts its longest modules first (TT, V289).
 
 from __future__ import annotations
 
-import getpass
 import json
 import os
 import subprocess
 import sys
-import tempfile
 from collections.abc import Iterator
 from dataclasses import fields, is_dataclass
 from pathlib import Path
@@ -34,6 +32,14 @@ from devtools.evaluation.round_trip import (
 from devtools.evaluation.round_trip import (
     plan_admission_problem as observed_plan_admission_problem,
 )
+from tests.pytest_environment import configure_temporary_roots, project_scope
+
+
+@pytest.fixture(autouse=True)
+def project_discovery(tmp_path, tmp_path_factory):
+    """Every test scopes project discovery and rejects outside reads without changing cwd."""
+    with project_scope(tmp_path, tmp_path_factory.getbasetemp()):
+        yield
 
 
 @pytest.fixture
@@ -387,44 +393,10 @@ def _recorded_durations() -> dict[str, float]:
 def pytest_configure(config: pytest.Config) -> None:
     """Refuse checkout temp before collection; keep the workers' longest-first queue."""
     checkout = Path(__file__).resolve().parents[1]
-    basetemp = config.getoption("basetemp")
-    if basetemp is not None:
-        roots = {"--basetemp": Path(os.path.abspath(str(basetemp)))}
-    else:
-        # pytest 9.1.1 uses this root, then pytest-of-<user>/pytest-<number>.
-        # Resolve its existing parents without getbasetemp(): that method deletes
-        # an explicit basetemp, and xdist calls it before workers collect.
-        temproot = Path(os.environ.get("PYTEST_DEBUG_TEMPROOT") or tempfile.gettempdir())
-        try:
-            user = getpass.getuser() or "unknown"
-        except (OSError, KeyError):
-            user = "unknown"
-        roots = {
-            "pytest temporary root": temproot,
-            "pytest user temporary root": temproot / f"pytest-of-{user}",
-            "pytest fallback temporary root": temproot / "pytest-of-unknown",
-        }
-    for source, path in roots.items():
-        resolved = path.resolve()
-        if resolved.is_relative_to(checkout):
-            raise pytest.UsageError(
-                f"basetemp_inside_checkout: {source} resolves to {resolved}, inside checkout "
-                f"{checkout}. Refused before collection: checkout artifacts and hooks would "
-                "contaminate test results. Use --basetemp with an absolute directory outside "
-                "the checkout, or move PYTEST_DEBUG_TEMPROOT / TMPDIR / TEMP / TMP outside it."
-            )
-    # A data update backs the held state up outside the workspace (V209): every test, and
-    # each command it starts, uses a temporary root, never the person's application data.
-    backup_parent = Path(tempfile.gettempdir()).resolve()
-    if backup_parent.is_relative_to(checkout):
-        # An explicit external basetemp can override a checkout TEMP. Keep backup
-        # roots beside that safe base, outside the directory pytest clears.
-        backup_parent = (
-            Path(basetemp).resolve().parent if basetemp is not None else temproot.resolve()
-        )
-    os.environ["ALPHALATTICE_BACKUP_ROOT"] = tempfile.mkdtemp(
-        prefix="alphalattice-test-backups-", dir=backup_parent
-    )
+    try:
+        configure_temporary_roots(checkout, config.getoption("basetemp"))
+    except ValueError as error:
+        raise pytest.UsageError(str(error)) from error
     if (
         config.getoption("dist", "no") == "load"
         and config.getoption("maxschedchunk", None) is None

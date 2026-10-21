@@ -194,7 +194,7 @@ def test_unique_correlation_read_refuses_multiple_envelopes(tmp_path: Path) -> N
 def test_unique_correlation_read_does_not_decode_outside_its_scope(
     tmp_path: Path, selector: str
 ) -> None:
-    """An unreadable envelope outside the exact run/schema cannot poison this link."""
+    """Control: Unreadable foreign run or schema envelopes cannot poison correlation reads."""
     ledger, port = _runtime(tmp_path)
     exact = port.emit(_draft(sequence=1))
     unrelated = port.emit(_draft(sequence=2, run_id="other-run"))
@@ -219,7 +219,8 @@ def test_unique_correlation_read_does_not_decode_outside_its_scope(
 def test_unique_correlation_read_preserves_store_integrity_refusals(
     tmp_path: Path, corruption: str
 ) -> None:
-    """A matching row is verified through the ledger's existing read contract."""
+    """Control: Correlated reads retain tamper and malformed-storage refusals for matching
+    rows."""
     ledger, port = _runtime(tmp_path)
     exact = port.emit(_draft(sequence=1))
     with sqlite3.connect(ledger.database_path) as writer:
@@ -502,7 +503,7 @@ def test_sqlite_writer_configuration_matches_derived_projection_policy(tmp_path:
 def test_an_open_observation_ledger_follows_the_workspace_cap_without_reidentifying_records(
     tmp_path: Path,
 ) -> None:
-    """V680: settings changed outside the ledger affect the next append and reopening."""
+    """Control: Live storage-cap changes preserve observation identity and exact replay."""
     store = StorageCapStore(tmp_path)
     store.write(200 * 1024**2, chosen_by="HUMAN", chosen_at=NOW)
     ledger = ObservationLedger(

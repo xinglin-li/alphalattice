@@ -13,7 +13,6 @@ from contextvars import ContextVar
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
-from threading import Lock
 from time import perf_counter
 from typing import Any, Self, TypeVar, cast
 
@@ -96,7 +95,6 @@ from alphalattice.investment.alpha_research.targets.total_return import (
     TotalReturnAlphaTargetEvidence,
     total_return_array_identity,
 )
-from alphalattice.kernel.shared_kernel.arrow_identity import canonical_hash_with_rows
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span, spanned
 
@@ -114,10 +112,10 @@ from .campaign_execution import (
     alpha_campaign_prediction_artifact_hash,
 )
 from .contracts import AlphaDevelopmentFitEvidence, AlphaExperimentBatchResult
+from .development_chunk_identity import _chunk_content_hash, _verified_content_hash
 from .development_contracts import (
     AlphaCandidateDevelopmentReport,
     AlphaCandidateDevelopmentScoreChunkRef,
-    AlphaCandidateExecutionBinding,
     AlphaCandidateFoldEvidence,
     AlphaCandidateInferenceEvidence,
     AlphaCandidateNumericalFoldResult,
@@ -134,7 +132,6 @@ from .development_contracts import (
     AlphaModelSelectionProposal,
     AlphaModelViabilityAssessment,
     AlphaNumericalDevelopmentScoreChunkRef,
-    AlphaParentRequestBinding,
     CanonicalAlphaScoreSurface,
     LegacyAlphaCandidateFoldEvidence,
 )
@@ -252,29 +249,6 @@ puts the cast in one place instead.
 """
 
 
-def _chunk_content_hash(table: pa.Table, identity: dict[str, object]) -> str:
-    """The content identity of one development chunk: its identity, schema and rows.
-
-    The same canonical document the chunk was first sealed with -- identity,
-    the schema text and every row as a sorted-key object -- hashed from the
-    Arrow columns (``canonical_hash_with_rows``, bit for bit the encoder's
-    output) rather than from a Python copy of every row.
-    """
-
-    return canonical_hash_with_rows(
-        {"identity": identity, "schema": str(table.schema)}, key="rows", table=table
-    )
-
-
-_VERIFIED_CHUNKS: dict[tuple[str, str], str] = {}
-"""Each development chunk this process derived in full: its file's SHA-256 and its identity's
-hash, to the content hash derived from those bytes (V461). The derivation is a function of the
-bytes alone, so a chunk whose bytes hash the same was derived before; its read still hashes the
-file and runs every other check. Kept in memory only: nothing on disk vouches for a file. Each
-entry is two digests, one per chunk file the process read, so the workspace's chunks bound it."""
-
-_VERIFIED_CHUNK_LOCK = Lock()
-
 _SIDECAR_SCOPE: ContextVar[dict[tuple[str, str], tuple[Any, Any, Any]] | None] = ContextVar(
     "alpha_model_fit_sidecar_scope", default=None
 )
@@ -299,19 +273,6 @@ def model_fit_sidecar_scope() -> Iterator[None]:
         if scope is not None:
             scope.clear()
         _SIDECAR_SCOPE.reset(token)
-
-
-def _verified_content_hash(raw: bytes, table: pa.Table, identity: dict[str, object]) -> str:
-    """The chunk's content hash, derived in full the first time this process reads its bytes."""
-
-    key = (sha256(raw).hexdigest(), str(canonical_hash(identity)))
-    with _VERIFIED_CHUNK_LOCK:
-        derived = _VERIFIED_CHUNKS.get(key)
-    if derived is None:
-        derived = _chunk_content_hash(table, identity)
-        with _VERIFIED_CHUNK_LOCK:
-            _VERIFIED_CHUNKS[key] = derived
-    return derived
 
 
 class AlphaDevelopmentArtifactReadbackError(ValueError):
@@ -1088,20 +1049,6 @@ class AlphaDevelopmentArtifactStore:
             identity_field="record_hash",
         )
 
-    def publish_campaign_dossier(self, value: AlphaDevelopmentDecisionDossier) -> str:
-        self.publish_campaign_program(value.program)
-        for record in value.inner_selection_records:
-            self.publish_campaign_inner_selection_record(record)
-        for child in value.trial_evidence:
-            self.publish_campaign_trial_evidence(child)
-        for child in value.method_evidence:
-            self.publish_campaign_method_evidence(child)
-        return self._publish_identity_json(
-            category="development/campaign/dossiers",
-            value=value,
-            identity_field="dossier_hash",
-        )
-
     def load_campaign_dossier(self, content_hash: str) -> AlphaDevelopmentDecisionDossier:
         dossier = self._read_identity_json_text(
             AlphaDevelopmentDecisionDossier,
@@ -1582,26 +1529,12 @@ class AlphaDevelopmentArtifactStore:
                 "alpha_research.simple_signal_value_artifact_readback_failed"
             ) from error
 
-    def publish_campaign_decision(self, value: AlphaCampaignDecisionReceipt) -> str:
-        return self._publish_identity_json(
-            category="development/campaign/decisions",
-            value=value,
-            identity_field="receipt_hash",
-        )
-
     def load_campaign_decision(self, content_hash: str) -> AlphaCampaignDecisionReceipt:
         return self._read_identity_json_text(
             AlphaCampaignDecisionReceipt,
             category="development/campaign/decisions",
             content_hash=content_hash,
             identity_field="receipt_hash",
-        )
-
-    def publish_campaign_replay(self, value: AlphaRecursiveReplayReceipt) -> str:
-        return self._publish_identity_json(
-            category="development/campaign/replays",
-            value=value,
-            identity_field="replay_hash",
         )
 
     def load_campaign_replay(self, content_hash: str) -> AlphaRecursiveReplayReceipt:
@@ -1694,9 +1627,6 @@ class AlphaDevelopmentArtifactStore:
     def publish_surface(self, value: AlphaDevelopmentSurfaceManifest) -> str:
         return self._publish("development-surfaces", value, "surface_hash")
 
-    def publish_surface_binding(self, value: AlphaDevelopmentSurfaceBinding) -> str:
-        return self._publish("development-surface-bindings", value, "binding_hash")
-
     def load_surface_binding(self, value: str) -> AlphaDevelopmentSurfaceBinding:
         return self._load(
             "development-surface-bindings",
@@ -1704,15 +1634,6 @@ class AlphaDevelopmentArtifactStore:
             "binding_hash",
             AlphaDevelopmentSurfaceBinding,
         )
-
-    def publish_candidate_execution_binding(self, value: AlphaCandidateExecutionBinding) -> str:
-        return self._publish("candidate-execution-bindings", value, "execution_binding_hash")
-
-    def publish_parent_request_binding(self, value: AlphaParentRequestBinding) -> str:
-        return self._publish("parent-request-bindings", value, "binding_hash")
-
-    def publish_current_refit_diagnostic(self, value: AlphaCurrentRefitDiagnosticReport) -> str:
-        return self._publish("current-refit-diagnostics", value, "report_hash")
 
     def load_current_refit_diagnostic(self, value: str) -> AlphaCurrentRefitDiagnosticReport:
         return self._load(
@@ -1956,9 +1877,6 @@ class AlphaDevelopmentArtifactStore:
             AlphaReturnUnitCalibrationEvidence,
         )
 
-    def publish_canonical_score_surface(self, value: CanonicalAlphaScoreSurface) -> str:
-        return self._publish(CANONICAL_SCORE_SURFACE_CATEGORY, value, "surface_hash")
-
     def load_canonical_score_surface(self, value: str) -> CanonicalAlphaScoreSurface:
         return self._load(
             CANONICAL_SCORE_SURFACE_CATEGORY,
@@ -1966,9 +1884,6 @@ class AlphaDevelopmentArtifactStore:
             "surface_hash",
             CanonicalAlphaScoreSurface,
         )
-
-    def publish_target_preprocessing_detail(self, value: AlphaTargetClippingDetail) -> str:
-        return self._publish("target-clipping-details", value, "detail_hash")
 
     def load_target_preprocessing_detail(self, value: str) -> AlphaTargetClippingDetail:
         return self._load(
@@ -1978,9 +1893,6 @@ class AlphaDevelopmentArtifactStore:
             AlphaTargetClippingDetail,
         )
 
-    def publish_target_preprocessing_receipt(self, value: AlphaTargetPreprocessingReceipt) -> str:
-        return self._publish("target-preprocessing-receipts", value, "receipt_hash")
-
     def load_target_preprocessing_receipt(self, value: str) -> AlphaTargetPreprocessingReceipt:
         return self._load(
             "target-preprocessing-receipts",
@@ -1988,9 +1900,6 @@ class AlphaDevelopmentArtifactStore:
             "receipt_hash",
             AlphaTargetPreprocessingReceipt,
         )
-
-    def publish_comparison_program(self, value: AlphaTargetPreprocessingComparisonProgram) -> str:
-        return self._publish("comparison-programs", value, "program_hash")
 
     def load_comparison_program(self, value: str) -> AlphaTargetPreprocessingComparisonProgram:
         return self._load(
@@ -2021,9 +1930,6 @@ class AlphaDevelopmentArtifactStore:
         if not category.is_dir():
             return ()
         return tuple(sorted(path.stem for path in category.glob("*.json")))
-
-    def publish_comparison_evidence(self, value: AlphaTargetPreprocessingComparisonEvidence) -> str:
-        return self._publish("comparison-evidence", value, "evidence_hash")
 
     def load_comparison_evidence(self, value: str) -> AlphaTargetPreprocessingComparisonEvidence:
         return self._load(
@@ -2353,21 +2259,6 @@ class AlphaDevelopmentArtifactStore:
     def publish_estimator_state(self, value: AlphaEstimatorState) -> str:
         return self._publish("estimator-states", value, "state_hash")
 
-    def publish_model_text(self, model_text: str) -> str:
-        """Publish one opaque tree model payload under its canonical content hash."""
-
-        content_hash = str(canonical_hash(model_text))
-        path = self.root / "current" / "model-text" / f"{content_hash}.txt"
-        encoded = model_text.encode("utf-8")
-        if path.is_file():
-            if path.read_bytes() != encoded:
-                raise AlphaDevelopmentArtifactReadbackError("Alpha model-text identity was reused")
-        else:
-            self._atomic_write(path, encoded)
-        if path.read_bytes() != encoded:
-            raise AlphaDevelopmentArtifactReadbackError("Alpha model-text readback failed")
-        return content_hash
-
     def load_model_text(self, content_hash: str) -> str:
         path: Path = self.root / "current" / "model-text" / f"{content_hash}.txt"
         value: str = path.read_text(encoding="utf-8")
@@ -2517,9 +2408,6 @@ class AlphaDevelopmentArtifactStore:
             AlphaModelViabilityAssessment,
         )
 
-    def publish_proposal(self, value: AlphaModelSelectionProposal) -> str:
-        return self._publish("selection-proposals", value, "proposal_hash")
-
     def load_proposal(self, value: str) -> AlphaModelSelectionProposal:
         return self._load(
             "selection-proposals",
@@ -2528,9 +2416,6 @@ class AlphaDevelopmentArtifactStore:
             AlphaModelSelectionProposal,
         )
 
-    def publish_decision(self, value: AlphaModelSelectionDecision) -> str:
-        return self._publish("selection-decisions", value, "decision_hash")
-
     def load_decision(self, value: str) -> AlphaModelSelectionDecision:
         return self._load(
             "selection-decisions",
@@ -2538,9 +2423,6 @@ class AlphaDevelopmentArtifactStore:
             "decision_hash",
             AlphaModelSelectionDecision,
         )
-
-    def publish_reproducibility(self, value: AlphaDecisionReproducibilityReport) -> str:
-        return self._publish("decision-reproducibility", value, "report_hash")
 
     def load_reproducibility(self, value: str) -> AlphaDecisionReproducibilityReport:
         return self._load(

@@ -222,7 +222,7 @@ def test_the_census_discovers_a_new_reader_and_a_strict_reader_changed_to_partia
 
 
 def test_canonical_task_parsers_cannot_bypass_stored_identity_validation():
-    """V661: filtered SQL reads share validation; queue heads retain their dedicated refusal."""
+    """Control: Canonical Task parsers retain stored-identity validation."""
     path = "control/task_control/registry.py"
     source = (ROOT / path).read_text(encoding="utf-8")
     expected = Counter(

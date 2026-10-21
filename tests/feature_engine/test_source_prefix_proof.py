@@ -683,9 +683,7 @@ def test_feature_prefix_batch_uses_the_supplied_snapshot_without_write_authority
 def test_feature_prefix_batch_matches_original_v1_across_the_arrow_chunk_boundary(
     tmp_path, counts, cutoffs_text
 ):
-    """Keep original small boundaries and independently prove multi-chunk earlier prefixes; as
-    a proof reads only its cutoff's year, the rows past the chunk boundary are listings of three
-    sessions, the first holding the smallest count, each later one the rows up to the next."""
+    """Control: Feature prefix batches preserve original digests across Arrow chunk boundaries."""
     catalog = FeatureCatalog.load()
     first, second = catalog.factor_ids[:2]
     database = WorkspaceDatabase(tmp_path / "chunk-boundary")

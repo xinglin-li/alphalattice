@@ -371,7 +371,7 @@ def test_recovery_respects_the_gate_that_withheld_the_index(tmp_path: Path) -> N
 
 
 def test_the_semantic_index_orders_each_sessions_row_hashes_by_listing_as_before() -> None:
-    """The semantic index orders each session's row hashes by listing."""
+    """Control: Panel indexes preserve listing order and row-hash tie order across batches."""
 
     import pyarrow as pa
 

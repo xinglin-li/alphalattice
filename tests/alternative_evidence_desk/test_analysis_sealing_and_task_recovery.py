@@ -313,7 +313,7 @@ def _admitted_task(
     return registry, admitted, adapter
 
 
-def test_the_task_runs_eight_stages_without_a_model_or_the_network(tmp_path: Path) -> None:
+def _recorded_task(tmp_path: Path) -> tuple[Any, ...]:
     runtime = _runtime(tmp_path)
     request = _request()
     actor = _CitingActor()
@@ -327,6 +327,12 @@ def test_the_task_runs_eight_stages_without_a_model_or_the_network(tmp_path: Pat
             analysis_actor=actor,
         ),
     )
+    return runtime, request, actor, registry, admitted, adapter
+
+
+def test_the_task_runs_eight_stages_without_a_model_or_the_network(tmp_path: Path) -> None:
+    """Control: Task runs eight stages without model or network."""
+    runtime, request, actor, registry, admitted, adapter = _recorded_task(tmp_path)
     runner = TaskControlRunner(
         registry=registry,
         adapters={adapter.task_kind: adapter},
@@ -653,21 +659,9 @@ def test_a_stage_failure_names_the_owners_own_code(
 def test_recovery_at_the_analysis_stage_keeps_the_index_and_publishes_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A lost process owes the unverified stage, not the whole Task."""
+    """Control: Recovery at analysis stage keeps index and publishes once."""
 
-    runtime = _runtime(tmp_path)
-    request = _request()
-    actor = _CitingActor()
-    registry, admitted, adapter = _admitted_task(
-        tmp_path,
-        runtime,
-        request=request,
-        resources=AlternativeEvidenceDocumentTaskResources(
-            recorded_registry=_registry(),
-            recorded_documents=(_recorded_document(),),
-            analysis_actor=actor,
-        ),
-    )
+    runtime, _request, _actor, registry, admitted, adapter = _recorded_task(tmp_path)
     original = AlternativeEvidenceDocumentTaskAdapter.verify_stage
     interruptions: list[str] = []
 

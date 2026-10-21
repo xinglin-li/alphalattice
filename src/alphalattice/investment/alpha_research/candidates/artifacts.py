@@ -16,7 +16,6 @@ from alphalattice.control.observation_runtime.contracts import (
     ObservationAuthorityReadback,
     ObservationAuthorityReference,
     build_observation_authority_readback,
-    build_observation_authority_reference,
 )
 from alphalattice.investment.sector_research.models.legacy_excess_ema import (
     SectorEmaAlphaManifest,
@@ -493,34 +492,6 @@ class AlphaGoalResearchArtifactStore:
             raise ValueError("alpha_research.sealed_marker_tampered")
         self.validate_terminal_lineage(marker)
         return marker
-
-    def observation_authority_reference(
-        self, *, marker_hash: str, task_id: str, run_id: str
-    ) -> ObservationAuthorityReference:
-        """Build and read back a goal-marker observation authority reference.
-
-        Args:
-            marker_hash: Exact terminal marker record identity.
-            task_id: Observing task identifier bound into the reference.
-            run_id: Observing run identifier bound into the reference.
-
-        Returns:
-            Observation reference checked against the terminal marker and required child evidence.
-
-        Raises:
-            ValueError: Declared goal-marker authority or terminal child readback fails.
-        """
-        marker = self._load("markers", marker_hash, AlphaGoalResearchMarker)
-        reference = build_observation_authority_reference(
-            owner_kind=self.authority_owner_kind,
-            record_kind="AlphaGoalResearchMarker",
-            record_hash=marker.marker_hash,
-            task_id=task_id,
-            run_id=run_id,
-            subject_id=marker.program_hash,
-        )
-        self.read_observation_authority(reference)
-        return reference
 
     def read_observation_authority(
         self, reference: ObservationAuthorityReference

@@ -70,7 +70,7 @@ def _risk_surface(
         recipe=recipe,
         formation_session=session,
         ordered_listing_ids=tuple(f"L{i:03d}" for i in range(LISTINGS)),
-        ordered_factor_ids=tuple(f"S{j}" for j in range(4)),
+        ordered_factor_ids=tuple(f"factor_{j}" for j in range(4)),
         exposures=exposures,
         factor_covariance=root @ root.T * 0.0004 * factor_scale,
         idiosyncratic_variance=rng.uniform(1e-4, 9e-4, LISTINGS),
