@@ -11,6 +11,7 @@ import json
 import os
 import shlex
 import time
+from contextlib import chdir
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,7 +27,7 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.interface.local_application import client as client_module
-from alphalattice.interface.local_application import retrieval_environment
+from alphalattice.interface.local_application import native_bridge
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_HOST_WAITS,
@@ -575,20 +576,24 @@ def test_a_remedy_that_resumed_its_task_is_followed_to_the_tasks_end(monkeypatch
 
 
 def test_the_compact_view_leaves_out_the_timing_no_decision_reads() -> None:
-    """requirement (V280): half of a `task show` answer was its stage timings; the compact
-    view leaves them out and says so, the full view and --output keep them."""
+    """Compact output omits execution timing and retains the person's complete coded question."""
+    from alphalattice.interface.local_application.goals import DAILY_NETWORK_ASK
 
     stage = {"stage_id": "prepare_data", "seconds": 125.0}
+    questions = [{"code": "network.daily_updates", "words": DAILY_NETWORK_ASK}]
     shown = client_module.compact_display(
         {
             "status": "RUNNING",
             "lifecycle": "RUNNING",
             "timing": {"stages": [stage] * 50},
             "stage_timing": stage,
+            "person_questions": questions,
+            **{f"noise_{index}": index for index in range(60)},
         }
     )
     assert "timing" not in shown["data"] and "timing" in shown["omitted_sections"]
     assert shown["data"]["stage_timing"] == stage
+    assert shown["data"]["person_questions"] == questions
 
 
 @pytest.mark.parametrize(
@@ -1415,17 +1420,22 @@ def _first_use(host: _FirstUseHost, named: str = "2026-10-12") -> dict[str, Any]
         notify=None,
         output=None,
     )
-    return client_module._first_use_steps(host, args)  # type: ignore[arg-type]
+    with chdir(host.workspace.parent):
+        return client_module._first_use_steps(host, args)  # type: ignore[arg-type]
 
 
 def test_a_first_use_opens_its_goal_from_the_sentence_and_stops_at_its_data_issues(
     tmp_path: Path,
     setup_done: dict[str, str],
 ) -> None:
-    """requirement (fewer agent steps): one call opens the goal from the person's sentence and
-    named date, prepares, and stops where the preparation needs data decisions."""
+    """One first use opens its dated goal, codes the person question and stops at data issues."""
     host = _FirstUseHost(tmp_path / "workspace")
     stopped = _first_use(host)
+
+    questions = stopped["first_use"].get("person_questions", [])
+    assert [q["code"] for q in questions] == ["network.daily_updates"]
+    assert questions[0]["words"] in stopped["first_use"]["ask_now"]
+    assert questions[0]["words_zh"] and questions[0]["words_zh"] != questions[0]["words"]
 
     declaration = host.sent[0]["goal_declaration"]
     assert declaration["objective"] == "Positions for Monday."
@@ -1514,7 +1524,7 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
-    monkeypatch.setattr(retrieval_environment, "load", lambda: False)
+    monkeypatch.setattr(native_bridge, "load", lambda: False)
     host, bare, held = _FirstUseHost(tmp_path / "w", prepared=True), tmp_path / "a", tmp_path / "b"
     bare.mkdir()
     venv = tmp_path / "venv"  # under `uv run`, whose own command no specialist's shell has

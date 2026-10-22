@@ -13,7 +13,7 @@ from typing import Any
 
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
-from .declaration import read_declaration
+from .declaration import AlphaModelDeclaration, installed_declaration, read_declaration
 from .model_contract import locked_distributions
 
 _SOURCE = Path("src/alphalattice/capabilities/alpha_modeling/extensions")
@@ -118,8 +118,6 @@ def declaration_template() -> str:
         The declaration's YAML text.
     """
     import yaml  # type: ignore[import-untyped]
-
-    from .declaration import AlphaModelDeclaration, installed_declaration
 
     example = installed_declaration("regularized_linear").model_dump(mode="json")
     example = {name: value for name, value in example.items() if value is not None}

@@ -7465,4 +7465,20 @@ window.ALPHA_ZH = {
   "None of the package's issuers holds a document at its cutoff; a package needs at least one. An empty filing index in the window means none to hold. A stopped install offers the next eight holdings by weight as `install`. Otherwise follow `next_commands`: if an official fetch failed, retry and check the same acquisition at that cutoff; otherwise run the setup's check. Details:{subject}": "证据包的发行人在其截止日都没有持有文档；证据包至少需要一份文档。窗口内的申报索引为空表示没有文档可持有。停止的安装会把按权重排列的下八个持仓作为 `install` 提供。否则请按 `next_commands` 继续：若官方获取失败，请在同一截止日重试同样的获取并检查；否则运行安装配置自身的检查。详情：{subject}",
   "Too few issuers hold documents at the cutoff for the package's floor. Empty filing indexes are excluded from the share; failed or unread acquisitions count against it. Follow `next_commands`: for official sources, retry the same acquisition at that cutoff and check it; quiet issuers remain excluded. For recorded imports, run the import's check. The package's floor is unchanged. Details:{subject}": "截止日持有文档的发行人不足，未达到证据包下限。申报索引为空的发行人不计入比例；获取失败或申报未读的发行人计为未覆盖。请按 `next_commands` 继续：官方来源在同一截止日重试同样的获取并检查，无申报的发行人仍不计入；已记录导入运行其自身检查。证据包下限不变。详情：{subject}",
   "Committee rules: ROLE/MEMBER/KEY, own role/session/key; STANCES/DEBATE/CLOSED/LATE, stage or time; ENDED, changed work after end; STANCE_IN, one stance; CAP, three challenges/replies; TARGET/REPLY_TO, valid alias/message; SHAPE, permitted fields; NUMBER, aliases only; AGENDA, raise one below-line point per PM reply first. Read `alphalattice committee show`, then correct the message and replace typed figures with floor aliases. Rule:{subject}": "委员会规则：ROLE/MEMBER/KEY，使用自己的角色、会话与密钥；STANCES/DEBATE/CLOSED/LATE，阶段或时间不符；ENDED，结束后更改工作；STANCE_IN，每人一条立场；CAP，三次质疑或回复；TARGET/REPLY_TO，有效别名或消息；SHAPE，类型允许的字段；NUMBER，只用别名；AGENDA，由 PM 每次回复先提出一个议程线下议题。请读取 `alphalattice committee show`，再更正消息，并把直接填写的数字换成讨论区列出的别名。规则：{subject}",
+  "Network access is the person's decision outside a first use: ask the person in one line and, on a clear yes, send this again with --person-said and --asked; `network show` reads what decides it.": "首次使用之外的网络访问由本人决定：用一句话询问本人，得到明确同意后，携带 --person-said 和 --asked 再次发送同一请求；`network show` 可查看决定网络状态的依据。",
+  "The question code is not registered. Read the offered question and relay its code with the person's words.": "问题代码未注册。请读取所提供的问题，并将其代码与本人的原话一同转达。",
+  "This question code does not cover the requested operation. Keep the offered request and its question together.": "此问题代码不涵盖所请求的操作。请将提供的请求与它对应的问题保持一致。",
+  "With --person-said: the registered code beside the question.": "与 --person-said 同用：问题旁的已注册代码。",
 };
+const legacyKeys = Object.keys(window.ALPHA_ZH).sort();
+const checkedCatalogs = new WeakMap();
+Object.defineProperty(window,'ALPHA_ZH',{value:Object.freeze(window.ALPHA_ZH),writable:false,configurable:false});
+Object.defineProperty(window,'ALPHA_ZH_CHECK',{value:table=>{
+  if (!checkedCatalogs.has(table)) {
+    const keys = Object.keys(table).sort();
+    checkedCatalogs.set(table, table === window.ALPHA_ZH && Object.isFrozen(table) &&
+      keys.length === legacyKeys.length && keys.every((key,i)=>key === legacyKeys[i]));
+  }
+  return checkedCatalogs.get(table);
+},writable:false,configurable:false});
+window.ALPHA_ZH_READY = true;

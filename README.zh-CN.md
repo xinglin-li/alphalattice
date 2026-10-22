@@ -7,11 +7,23 @@
 [![uv](https://img.shields.io/badge/uv-locked-261230.svg)](docs/public-source/getting-started.md)
 [![Mentioned in Awesome](https://awesome.re/mentioned-badge.svg)](https://github.com/wilsonfreitas/awesome-quant)
 
-**把投资想法变成经过审阅的研究组合。**
+**提出指定日期的研究组合请求，在同一工作区查看持仓、来源证据和已记录的审阅。**
+
+![示例运行（example run）：从已记录的请求、活动进展到指定日期的研究持仓，采用剪辑后的画面顺序。](docs/assets/readme/sentence-to-result.gif)
+
+*示例运行（example run）使用合成数据：请求查看已有结果、活动记录与指定日期的持仓，画面经过裁切和剪辑。*
 
 告诉你的 Claude Code 或 Codex 代理，你想研究什么。代理通过 AlphaLattice 运行量化研究、核查来源证据，再把结果交给研究委员会讨论。你可以在编程应用的内置浏览器中查看进展和结果。
 
 每项数值输入都受对应日期的信息截止时间约束，验证运行会检查前视偏差。委员会可以不认可某项结果。AlphaLattice 在本地运行，并且开源。
+
+## 0.2.3：现已提供
+
+- 网络许可问题在中英文说明旁附有稳定代码；问题的范围和答复保留在活动记录中。
+- 目标的用时分析显示已记录的请求、任务阶段和覆盖缺口。缺少观测仍会标明未观测；未归因的经过时间不会被称为代理用时。
+- 使用 Claude Code 时，首次启动会请你在自己的终端中执行一次所提供的命令。Codex 会自行独立启动 Host。这个启动步骤与网络许可问题分开。
+
+[0.2.3 发行说明（英文）](docs/public-source/release-notes.md#023)介绍了消息目录和这些诊断信息的适用范围。下方已有的测量仍注明其所属版本。
 
 使用 Claude Code 或 Codex 作为主导代理。要查看一次运行的用量，可以在工作台中依次打开**团队**、**会话**，再查看该会话的**参与者**：其中会列出每位成员使用的模型和 token 数量。
 
@@ -19,25 +31,9 @@
 
 > Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your built-in browser so I can follow it.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/committee-codex-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/committee-codex-light.png">
-  <img src="docs/images/committee-codex-light.png" alt="Codex 会话中的首次使用总结，以及工作台的委员会讨论：专家回复、CRO 质询、PM 裁定与最终结论。" width="1280">
-</picture>
-
-*Codex 中的一次首次使用：代理总结与工作台中的委员会讨论并排显示，工作台在 Codex 的内置浏览器中打开。*
-
 <a id="two-ways-to-use-alphalattice"></a>
 
 ## AlphaLattice 的两种使用方式
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/first-use-codex-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/first-use-codex-light.png">
-  <img src="docs/images/first-use-codex-light.png" alt="一句话启动首次使用：代理打开目标、提供工作台链接、询问联网许可，并在用户同意后继续；工作台显示目标的时间线。" width="1280">
-</picture>
-
-*一句话启动首次使用。代理在对话旁打开工作台，询问一次联网许可；目标时间线记录它为你执行的每一步。*
 
 1. **首次使用：在新文件夹中开始。** 把上面的研究意图，或 `Positions for <date>, reviewed.`，发给 Claude Code 或 Codex 代理。代理准备数据和策略，生成指定日期的研究仓位，再完成审阅、委员会讨论和报告。
 
@@ -46,6 +42,29 @@
    在首次使用的报告阶段，代理还会问：每日更新是否需要召集投资委员会。你可以当时或以后在对话中决定，也可以用同样的方式更改，例如说 "Stop convening the committee on daily updates." 在你同意之前，后续更新会给出组合经理对已审阅仓位的看法，并提供召集委员会的选项。**首次使用不会等待这个问题的答案。**
 
 2. **每日更新：在同一文件夹中开启新会话。** 发送 `Positions for <next session>, reviewed.` 代理使用已安装的策略和你持续有效的联网许可，更新数据并生成该交易日经过审阅的研究仓位，遵循你的每日委员会设置。它在首次使用的工作区中继续，因此换一个较晚的日期不会再启动一次首次使用；只有属于你的决定才会向你提问。
+
+## 查看一次示例运行
+
+![英文工作台的示例首页，显示指定日期的研究持仓及其来源。](docs/assets/readme/home-1280.png)
+
+*示例运行（example run）使用合成数据：首页集中显示持仓日期与结果的来源。*
+
+![英文工作台中已保存的风险研究，显示输入区间与诊断结果。](docs/assets/readme/research-1280.png)
+
+*示例运行（example run）使用合成数据：已保存的风险研究显示其输入区间与诊断结果。*
+
+![英文工作台中一次示例运行的活动时间线。](docs/assets/readme/activity-1280.png)
+
+*示例运行（example run）使用合成数据：活动记录保留了结果背后的工作过程。*
+
+<details>
+<summary>在较窄窗口中查看同一次示例运行</summary>
+
+![示例首页在 900 像素宽浏览器窗口中的布局。](docs/assets/readme/home-900.png)
+
+*示例运行（example run）使用合成数据，浏览器窗口宽度为 900 像素。*
+
+</details>
 
 <a id="before-you-start"></a>
 
@@ -56,9 +75,9 @@
   ```bash
   brew install libomp
   ```
-- **时间：** 在 2026-10-19 的 Windows 原生运行观测中，Codex 使用超高推理强度，首次使用耗时 **74.7 分钟**，委员会决定附带说明后继续。一次尝试中断后，用户同意了每日联网问题；随后经过协助的每日恢复运行发布了研究持仓，并在 **35.3 分钟**内封存了首次备份。其中记录到的 Host 工作（包括数据更新）约为 **12.6 分钟**；其余 **22.7 分钟**包括代理回合、工具调用和等待。这次恢复运行超过了每日 20 分钟的预算。这些是观测结果，不是运行时间保证。
-- **磁盘和内存：** 首次使用的工作区约占 **8.69 GB**；受管理的安装、工作区、缓存和模型目录合计约占 **10.38 GB**，不含备份。经过授权的每日恢复运行使工作区增长约 **181 MB**，其中包含首日的数据库步骤；首次备份一次性写入约 **4.26 GB**，之后的备份按变化增量写入。抽样观测到的 Host 进程合计内存峰值在首次使用时为 **8.37 GB**，恢复运行时为 **9.39 GB**。两次运行都超过了 8 GB 的预算。请为操作系统和编程应用留出余量；这些观测值不是最低配置要求。[发行说明（英文）](docs/public-source/release-notes.md#021)区分了普通每日写入、升级日、拆股日和显式输入捕获的开销。
-- **依赖包下载：** 在软件包缓存为空的机器上，首次使用会单独询问一次是否允许下载检索依赖包。后续版本计划在首次使用的联网许可下安装锁定的依赖包。
+- **时间：** 在 0.2.2 的 Windows 原生运行观测中，Claude Code 配合 Haiku，首次使用耗时 **121.8 分钟**，首次每日更新耗时 **43.6 分钟**；每个组件使用 472 个支撑证券。已记录的 Host 工作分别为 **50.75 分钟**和 **19.65 分钟**。每日更新超过了 20 分钟预算。这些是 0.2.2 的已测工作负载，不是运行时间保证，也不是 0.2.3 的新性能测量。
+- **磁盘和内存：** 上述 0.2.2 运行在首次使用后保留 **8.70 GB** 工作区，首次每日更新后为 **8.88 GB**。每日更新使工作区增长 **180 MB**；另计的 **4.27 GB** 首次备份是一次性填充。抽样观测到的 Host 私有内存峰值分别为 **9.32 GB** 和 **9.25 GB**，都超过了 8 GB 预算。MB 和 GB 使用十进制单位。请为操作系统和编程应用留出余量；这些观测值不是最低配置要求。[发行说明（英文）](docs/public-source/release-notes.md#022)列出工作负载、测量范围、升级结果和未满足的预算。
+- **依赖包下载：** 锁定的检索依赖包在首次使用的联网许可下安装，包括软件包缓存为空的机器。该许可涵盖安装，无需另问一次下载问题。
 - **代理费用：** Claude Code 或 Codex 的使用权限和用量费用独立于 AlphaLattice，具体以提供商条款为准。
 
 安装、下载和各步骤所需的权限，见[入门指南](docs/public-source/getting-started.md)和[设置流程](.agents/skills/alphalattice-research/references/operating.md)。

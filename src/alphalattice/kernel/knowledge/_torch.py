@@ -32,7 +32,11 @@ from threading import Lock
 from typing import Any
 
 from alphalattice.kernel.knowledge._embeddings import (
+    MODEL_WORK,
     PairScoreCache,
+    encoder_root,
+    load_vector_extension,
+    prepare_embedding_input,
     score_with_cache,
 )
 from alphalattice.kernel.knowledge.hybrid_contracts import (
@@ -144,11 +148,6 @@ def probe_torch_encoder(model_root: Path, spec: HybridIndexSpec) -> HybridCapabi
     """The torch encoder's readiness: pack, runtime, device, and the sqlite
     vector extension the index still needs."""
 
-    from alphalattice.kernel.knowledge._embeddings import (
-        encoder_root,
-        load_vector_extension,
-    )
-
     root = encoder_root(model_root, spec)
     assert spec.encoder_pack_sha256 is not None
     verify_pack(root, QWEN3_EMBEDDING_PACK, spec.encoder_pack_sha256)
@@ -203,10 +202,6 @@ class TorchEmbeddingAdapter:
     """One verified Qwen3 embedding session on the GPU, serialised."""
 
     def __init__(self, root: Path, spec: HybridIndexSpec) -> None:
-        from alphalattice.kernel.knowledge._embeddings import (
-            MODEL_WORK,
-            prepare_embedding_input,
-        )
 
         self.spec = spec
         self._prepare = prepare_embedding_input
@@ -332,7 +327,6 @@ class TorchCausalRerankerAdapter:
     """Score (query, passage) pairs with the verified Qwen3 reranker on the GPU."""
 
     def __init__(self, root: Path, spec: HybridIndexSpec) -> None:
-        from alphalattice.kernel.knowledge._embeddings import MODEL_WORK
 
         self._work = MODEL_WORK
         verify_pack(root, QWEN3_RERANKER_PACK, spec.reranker_pack_sha256)

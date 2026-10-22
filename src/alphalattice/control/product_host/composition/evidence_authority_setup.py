@@ -44,6 +44,7 @@ from alphalattice.control.product_host.composition.evidence_source_ways import (
     PACKAGE_RULE,
     SETUP_OPTIONS,
 )
+from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceEvidenceReview,
     read_research_workspace_manifest,
@@ -1588,8 +1589,6 @@ def read_setup(
     nor --install, is refused with the reason under `reasons`: an unquoted path with a space was
     once refused with none, and the first use went on without Evidence.
     """
-    from alphalattice.control.product_host.composition.plain_refusals import refused
-
     try:
         argv = shlex.split(setup, posix=True)
         arguments = setup_arguments(argv, workspace)

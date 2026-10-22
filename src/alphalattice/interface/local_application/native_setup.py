@@ -23,9 +23,15 @@ from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from alphalattice.interface.local_application import workbench_assets
 from alphalattice.interface.local_application.cli_contract import (
     BINDING_NOTICE,
+    REQUEST_PROVENANCE,
+    agent_session,
     command,
+    command_table,
+    refusal_words,
+    worded,
 )
 from alphalattice.interface.local_application.failure_codes import safe_failure_code, setup_failure
 from alphalattice.interface.local_application.native_bridge import (
@@ -350,8 +356,6 @@ def record_offer(answer: dict[str, Any], workspace: Path) -> None:
         workspace: Its workspace, whose notes count; the person's layer is the nearest up from
             here.
     """
-    from alphalattice.interface.local_application.cli_contract import worded
-
     here = Path.cwd()
     project = next((p for p in (here, *here.parents) if (p / ".alphalattice/user").is_dir()), here)
     if items := user_layer(project, workspace, _client(workspace)).get("items"):
@@ -425,7 +429,6 @@ def host_readiness(
     project: Path, host: str, binding: NativeResearchBinding | None
 ) -> list[dict[str, Any]]:
     """One advisory dependency list: the measured facts, what they enable and who fills them."""
-    from alphalattice.interface.local_application import workbench_assets
     from alphalattice.kernel.knowledge.model_store import default_store_root, recipe_readiness
 
     facts = _host_facts(binding)
@@ -583,11 +586,6 @@ def problem_report(
     expected_route: tuple[str, ...] | list[str] = (),
 ) -> dict[str, Any]:
     """Project existing readiness and activity into a local, reviewable public report."""
-    from alphalattice.interface.local_application.cli_contract import (
-        agent_session,
-        command_table,
-        refusal_words,
-    )
     from alphalattice.interface.local_application.client import (
         LocalResearchClient,
         LocalResearchClientError,
@@ -781,8 +779,6 @@ def files_unavailable(
     Returns:
         A refusal with the failure category, admitted path when known and remedy.
     """
-    from alphalattice.interface.local_application.cli_contract import refusal_words
-
     candidate = Path(error.filename) if isinstance(error.filename, str) else None
     safe_path: Path | None = None
     category = "PROJECT_FILES"
@@ -1259,11 +1255,6 @@ def bound_in_workspace(
     Returns:
         The workspace binding with its `session_binding` notice, or the refusal.
     """
-    from alphalattice.interface.local_application.cli_contract import (
-        REQUEST_PROVENANCE,
-        refusal_words,
-    )
-
     project = project or workspace
     if not _sandboxed_binding(error, project):
         return files_unavailable(error, project=project, workspace=workspace)
@@ -1453,8 +1444,6 @@ def main() -> int:
             # The checkout's shim of `alphalattice session unbind`, by the session it names.
             result = unbind_session(ROOT, session_id=args.session_id, host=args.host)
         else:
-            from alphalattice.interface.local_application.cli_contract import agent_session
-
             session = agent_session(os.environ)
             if session is not None and args.host is not None and args.host != session[0]:
                 raise NativeBridgeError("native_bridge.session_mismatch")

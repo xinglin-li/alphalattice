@@ -5,17 +5,14 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from unittest.mock import patch
-
-from alphalattice.interface.local_application import retrieval_environment
 
 
 @contextmanager
 def setup_done(root: Path) -> Iterator[dict[str, str]]:
-    """Its `alphalattice` command on PATH and its retrieval runtime readable: `load` itself in this
-    process, and for a client in a subprocess the returned environment's stub module."""
+    """Provide the CLI, in-process retrieval loaders and a subprocess stub environment."""
     stub = root / "setup-done"
     (stub / "fastembed").mkdir(parents=True, exist_ok=True)
     (stub / "fastembed" / "__init__.py").write_text("", encoding="utf-8")
@@ -23,5 +20,11 @@ def setup_done(root: Path) -> Iterator[dict[str, str]]:
         "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", ""),
         "PYTHONPATH": str(stub) + os.pathsep + os.environ.get("PYTHONPATH", ""),
     }
-    with patch.object(retrieval_environment, "load", lambda: True):
+    with ExitStack() as stack:
+        for target in (
+            "alphalattice.interface.local_application.native_bridge.load",
+            "alphalattice.control.product_host.composition.evidence_authority_setup.load",
+            "alphalattice.interface.local_application.retrieval_environment.load",
+        ):
+            stack.enter_context(patch(target, lambda: True))
         yield env

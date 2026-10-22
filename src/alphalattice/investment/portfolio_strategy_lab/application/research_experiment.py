@@ -52,6 +52,7 @@ from alphalattice.investment.portfolio_strategy_lab.contracts import (
     PortfolioScoreMode,
 )
 from alphalattice.investment.portfolio_strategy_lab.policies.catalog import (
+    build_installed_portfolio_policy_catalog,
     build_public_portfolio_policy_catalog,
 )
 from alphalattice.investment.portfolio_strategy_lab.policies.contracts import (
@@ -399,10 +400,6 @@ class PortfolioExperimentCompiler:
             catalog = build_public_portfolio_policy_catalog()
             policy = spec.recipe.recipe_hash
         else:
-            from alphalattice.investment.portfolio_strategy_lab.policies.catalog import (
-                build_installed_portfolio_policy_catalog,
-            )
-
             catalog = build_installed_portfolio_policy_catalog()
             policy = canonical_hash(spec.policy.model_dump(mode="json"))
         return {
@@ -1201,9 +1198,6 @@ class PortfolioExperimentExecutor:
         study's covariance projected for those formations alone."""
         from alphalattice.investment.portfolio_strategy_lab.evaluation.walk_forward import (
             PortfolioPolicyDecisionProvider,
-        )
-        from alphalattice.investment.portfolio_strategy_lab.policies.catalog import (
-            build_installed_portfolio_policy_catalog,
         )
 
         source = self.source

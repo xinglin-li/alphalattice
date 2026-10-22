@@ -5,6 +5,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const MESSAGE_WORDS = JSON.parse(fs.readFileSync(path.join(__dirname,'../../config/registries/messages.json'),'utf8')).entries;
 
 // Create each harness context in one place; only an explicit app directory adds library defaults.
 library.context = function(c, appDir) {
@@ -52,7 +53,7 @@ function library(appDir) {
   const context = {String, BREAKPOINTS, PARAMETER_VALUES};
   library.context(context);
   vm.runInContext(text.slice(from, to) + ';globalThis.out={SHORT,short,LIST_PAGE,LEGEND,LOBBY,param};', context);
-  return {...context.out, BREAKPOINTS, PARAMETER_VALUES, LABELS};
+  return {...context.out, BREAKPOINTS, PARAMETER_VALUES, LABELS, MESSAGE_WORDS};
 }
 // the Evidence library's builders (C1): the marked section of components.js evaluated inside the
 // harness's own context, so each builder composes that harness's stubs (html, btnAttrs, panel ...)
@@ -202,7 +203,7 @@ library.words = (appDir, routeUrl = null) => {
   library.context(c);
   for (const name of ['html.js', '../data/zh.js', 'i18n.js', 'status.js', 'icons.js', 'components.js'])
     vm.runInContext(fs.readFileSync(path.join(appDir, name), 'utf8'), c);
-  return vm.runInContext('({I18N, t, said, html, link, coded, badge, countText, actorWords, ACTORS, codeWords, declaredCodeWord, stageOf, stageWord, stateLine, stateOf, signed, typedBtn, refCell, hashCell, locatorCell, codeCell, notRead, refusalParts, causeLine, evidenceRow, goalReferenceIntegrity, hint, objectRow, stat, figureTile, glyphWord, measureStrip, TONE, EVIDENCE, CODE_WORDS, STATES, STAGES, MESSAGE_KINDS})', c);
+  return vm.runInContext('({MESSAGE_WORDS, I18N, t, said, html, link, coded, badge, countText, actorWords, ACTORS, codeWords, declaredCodeWord, stageOf, stageWord, stateLine, stateOf, signed, typedBtn, refCell, hashCell, locatorCell, codeCell, notRead, refusalParts, causeLine, evidenceRow, goalReferenceIntegrity, hint, objectRow, stat, figureTile, glyphWord, measureStrip, TONE, EVIDENCE, CODE_WORDS, STATES, STAGES, MESSAGE_KINDS})', c);
 };
 // The handover's one-argument Node command also enumerates the public owners. Pytest
 // supplies this JSON directly so its eight harnesses need no extra interpreter process.

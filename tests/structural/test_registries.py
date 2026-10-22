@@ -14,6 +14,31 @@ from devtools.architecture.where import main, where
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_person_questions_require_bilingual_words_reason_scope_and_way_on(tmp_path: Path) -> None:
+    """The catalog refuses a person question with an incomplete language form."""
+    path = tmp_path / "config/registries/messages.json"
+    path.parent.mkdir(parents=True)
+    shutil.copy(ROOT / "config/package-architecture.json", tmp_path / "config")
+    for missing in ("words", "reason", "scope", "way_on"):
+        entry = {
+            name: {"en": "English", "zh-CN": "中文"}
+            for name in ("words", "reason", "scope", "way_on")
+        }
+        entry.update(
+            owner="alphalattice.interface.local_application",
+            operations=["NETWORK_ACCESS_SET"],
+            kind="PERSON_QUESTION",
+        )
+        entry[missing] = {"en": "English"}
+        path.write_text(
+            json.dumps({"entries": {"network.workspace_access": entry}}), encoding="utf-8"
+        )
+        assert any(
+            "messages: network.workspace_access." + missing in problem
+            for problem in problems(tmp_path, ["config/registries/messages.json"])
+        )
+
+
 def test_the_tree_adds_nothing_to_a_registry_without_registering_it() -> None:
     """The tree adds nothing to a registry without registering it."""
 
@@ -367,3 +392,57 @@ def test_a_new_host_module_is_refused_unless_registered_as_composition(tmp_path:
     registry = tmp_path / "config" / "registries" / "host-modules.json"
     registry.write_text(json.dumps({"entries": {files[0]: "COMPOSITION"}}), encoding="utf-8")
     assert not any("a new module in the Host" in line for line in problems(tmp_path, files))
+
+
+def test_message_ids_keep_chinese_when_english_changes_and_refuse_invalid_forms(
+    tmp_path, synthetic_history, monkeypatch, capsys
+):
+    """Stable ids retain Chinese; locale, argument, alias and duplicate defects refuse export."""
+    monkeypatch.delenv("ALPHALATTICE_REGISTRY_BASELINE", raising=False)
+    git, _ = synthetic_history
+    path = tmp_path / "config/registries/messages.json"
+    path.parent.mkdir(parents=True)
+    entry = dict(
+        owner="alphalattice.interface.local_application",
+        kind="MESSAGE",
+        arguments=["item"],
+        words={"en": "Ready {item}", "zh-CN": "就绪 {item}"},
+    )
+
+    def check(entries, expected, *, raw=None, diagnostic=""):
+        path.write_text(raw or json.dumps({"entries": entries}), encoding="utf-8")
+        git("add", "--all")
+        assert registry_main(["--root", str(tmp_path), "--staged"]) == expected
+        assert diagnostic in capsys.readouterr().out
+
+    check({"job.ready": entry}, 0)
+    entry["words"]["en"] = "Prepared {item}"
+    check({"job.ready": entry}, 0)  # Copy changes do not change message identity.
+    for locale in ("en", "zh-CN"):
+        for value in (None, "", " ", "{other}", "{}", "{item!r}", "{item:04}"):
+            words = entry["words"] | {locale: value}
+            check({"job.ready": entry | {"words": words}}, 1, diagnostic="job.ready")
+    for field, value in (
+        ("owner", ""),
+        ("kind", "OTHER"),
+        ("kind", []),
+        ("arguments", []),
+        ("arguments", ["item", "item"]),
+        ("legacy_keys", ["", "old"]),
+        ("legacy_keys", ["old", "old"]),
+        ("operations", ["ANSWER"]),
+    ):
+        check({"job.ready": entry | {field: value}}, 1, diagnostic="job.ready")
+    alias = entry | {"legacy_keys": ["panel|Ready"]}
+    check({"job.ready": alias, "job.waiting": entry | {"legacy_keys": ["task|Ready"]}}, 0)
+    check({"job.ready": alias, "job.waiting": alias}, 1, diagnostic="panel|Ready")
+    check({"job.ready": entry | {"legacy_keys": ["job.waiting"]}, "job.waiting": entry}, 1)
+    member = json.dumps(entry)
+    check(
+        {},
+        1,
+        raw='{"entries":{"job.ready":' + member + ',"job.ready":' + member + "}}",
+        diagnostic="job.ready",
+    )
+    check({}, 1, raw='{"entries":{},"entries":{}}', diagnostic="entries")
+    check({}, 1, raw='{"entries":[]}', diagnostic="entries")

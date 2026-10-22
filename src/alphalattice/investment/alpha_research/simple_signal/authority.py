@@ -27,7 +27,12 @@ from alphalattice.capabilities.portfolio_inputs.signed_score.contracts import (
     ScoreObservationAuthority,
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.kernel.shared_kernel.source_identity import (
+    source_component_id,
+    switched_source_identity,
+)
 
+from . import materialization, standardize
 from .contracts import (
     SimpleSignedScoreBinding,
     SimpleSignedScoreMethodId,
@@ -69,13 +74,6 @@ class MaterializedSimpleSignedScore:
 
 def implementation_closure_hash() -> str:
     """Bytes of the modules whose edits move a simple score's numbers."""
-    from alphalattice.kernel.shared_kernel.source_identity import (
-        source_component_id,
-        switched_source_identity,
-    )
-
-    from . import materialization, standardize
-
     return str(
         switched_source_identity(
             {

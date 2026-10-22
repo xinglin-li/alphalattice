@@ -75,6 +75,34 @@ ENVELOPE = {
     "timing",
 }
 
+
+def test_a_question_code_is_optional_and_cannot_expand_a_relayed_decision() -> None:
+    """Coded replies retain legacy input and bind the catalog's permitted operations."""
+    from alphalattice.interface.local_application.goals import relayed_decision
+    from alphalattice.interface.local_application.portfolio_research import (
+        PersonConfirmation,
+        decision_hash,
+    )
+
+    request = {"operation": "EVIDENCE_CONSENT_SET", "evidence_documents_per_issuer": 3}
+    legacy = PersonConfirmation(
+        question="Allow?", words="Yes.", decision_hash=decision_hash(request)
+    )
+    assert legacy.model_dump().get("question_code", "absent") is None
+    assert relayed_decision(request, legacy) == legacy.decision_hash
+    coded = legacy.model_copy(update={"question_code": "network.daily_updates"})
+    assert relayed_decision(request, coded) == legacy.decision_hash
+    wider = {**request, "evidence_documents_per_issuer": 10}
+    with pytest.raises(ValueError, match=r"person_confirmation\.beyond_its_question"):
+        relayed_decision(wider, coded.model_copy(update={"decision_hash": decision_hash(wider)}))
+    for code, failure in (
+        ("unknown", "question_unknown"),
+        ("network.workspace_access", "question_mismatch"),
+    ):
+        with pytest.raises(ValueError, match=r"person_confirmation\." + failure):
+            relayed_decision(request, legacy.model_copy(update={"question_code": code}))
+
+
 _INTERNAL_CODE = re.compile(
     r"\b(?:V\d{2,3}|U\d{1,3}|(?:ID|OW|OP|PA|DA|EV|TE|PR|SC|LY|TY|ST|GY|WK|GR|AS|AX|NM|RR|FU|LS)"
     r"\d{1,3}|CLI-\d+)\b|\bGate [A-Z]\b|\bStage \d\b|\bPolicy [A-Z]\b"

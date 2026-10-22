@@ -18082,6 +18082,19 @@
         "PROCEED_WITH_NOTES"
       ]
     },
+    "message:PERSON_QUESTION/network.daily_updates": {
+      "operations": [
+        "NETWORK_ACCESS_SET",
+        "EVIDENCE_CONSENT_SET"
+      ],
+      "owner": "alphalattice.interface.local_application"
+    },
+    "message:PERSON_QUESTION/network.workspace_access": {
+      "operations": [
+        "NETWORK_ACCESS_SET"
+      ],
+      "owner": "alphalattice.interface.local_application"
+    },
     "message:RULES/CHALLENGE": "(ROLES[1:], frozenset({'DEBATE'}), None)",
     "message:RULES/PASS": "(ROLES[1:], frozenset({'DEBATE'}), None)",
     "message:RULES/PERSON_ANSWER": "(ROLES[:1], frozenset({'DEBATE', 'CLOSED'}), 'FOR_THE_PERSON')",
@@ -20593,6 +20606,12 @@
       "required": false,
       "type": null
     },
+    "option:automation set/--question-code": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:automation set/--repeat": {
       "choices": null,
       "nargs": null,
@@ -22519,6 +22538,12 @@
       "required": false,
       "type": null
     },
+    "option:committee daily/--question-code": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:committee daily/--repeat": {
       "choices": null,
       "nargs": null,
@@ -23706,6 +23731,12 @@
       "type": null
     },
     "option:data-update confirm/--plan": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:data-update confirm/--question-code": {
       "choices": null,
       "nargs": null,
       "required": false,
@@ -25198,6 +25229,12 @@
       "type": "Path"
     },
     "option:evidence install/--person-said": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:evidence install/--question-code": {
       "choices": null,
       "nargs": null,
       "required": false,
@@ -26769,6 +26806,12 @@
       "required": false,
       "type": null
     },
+    "option:evidence-consent set/--question-code": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:evidence-consent set/--repeat": {
       "choices": null,
       "nargs": null,
@@ -27101,6 +27144,12 @@
       "required": false,
       "type": null
     },
+    "option:feature activate/--question-code": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:feature activate/--repeat": {
       "choices": null,
       "nargs": null,
@@ -27344,6 +27393,12 @@
       "type": "Path"
     },
     "option:feature deactivate/--person-said": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:feature deactivate/--question-code": {
       "choices": null,
       "nargs": null,
       "required": false,
@@ -31631,6 +31686,12 @@
       "required": false,
       "type": null
     },
+    "option:input confirm/--question-code": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:input confirm/--recovery-task-hash": {
       "choices": null,
       "nargs": null,
@@ -32175,6 +32236,12 @@
       "required": false,
       "type": null
     },
+    "option:issue confirm/--question-code": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:issue confirm/--repeat": {
       "choices": null,
       "nargs": null,
@@ -32312,6 +32379,12 @@
       "type": "Path"
     },
     "option:issue delegate/--person-said": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:issue delegate/--question-code": {
       "choices": null,
       "nargs": null,
       "required": false,
@@ -32695,6 +32768,12 @@
       "required": false,
       "type": null
     },
+    "option:issue revoke/--question-code": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:issue revoke/--repeat": {
       "choices": null,
       "nargs": null,
@@ -32862,6 +32941,12 @@
       "type": "Path"
     },
     "option:model activate/--person-said": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:model activate/--question-code": {
       "choices": null,
       "nargs": null,
       "required": false,
@@ -33040,6 +33125,12 @@
       "type": "Path"
     },
     "option:model deactivate/--person-said": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:model deactivate/--question-code": {
       "choices": null,
       "nargs": null,
       "required": false,
@@ -33456,6 +33547,12 @@
       "type": "Path"
     },
     "option:network set/--person-said": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:network set/--question-code": {
       "choices": null,
       "nargs": null,
       "required": false,
@@ -34510,6 +34607,12 @@
       "type": null
     },
     "option:preparation confirm/--plan": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:preparation confirm/--question-code": {
       "choices": null,
       "nargs": null,
       "required": false,
@@ -38922,6 +39025,12 @@
       "required": false,
       "type": null
     },
+    "option:storage confirm/--question-code": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:storage confirm/--repeat": {
       "choices": null,
       "nargs": null,
@@ -39053,6 +39162,12 @@
       "type": null
     },
     "option:storage pin/--pinned": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:storage pin/--question-code": {
       "choices": null,
       "nargs": null,
       "required": false,
@@ -39666,6 +39781,12 @@
       "required": false,
       "type": null
     },
+    "option:strategy activate/--question-code": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:strategy activate/--repeat": {
       "choices": null,
       "nargs": null,
@@ -39959,6 +40080,12 @@
       "type": "Path"
     },
     "option:strategy deactivate/--person-said": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:strategy deactivate/--question-code": {
       "choices": null,
       "nargs": null,
       "required": false,
@@ -44198,6 +44325,12 @@
       "required": false,
       "type": null
     },
+    "option:usage-reading set/--question-code": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:usage-reading set/--repeat": {
       "choices": null,
       "nargs": null,
@@ -46864,6 +46997,8 @@
     "refusal:person_confirmation.beyond_its_question": {},
     "refusal:person_confirmation.decision_mismatch": {},
     "refusal:person_confirmation.not_the_persons_words": {},
+    "refusal:person_confirmation.question_mismatch": {},
+    "refusal:person_confirmation.question_unknown": {},
     "refusal:person_confirmation.refused": {},
     "refusal:person_confirmation.repeat_unknown": {},
     "refusal:person_confirmation.session_required": {},
@@ -51583,6 +51718,20 @@
         "maxLength": 600,
         "minLength": 1,
         "type": "string"
+      }
+    },
+    "request:Request/PersonConfirmation.question_code": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       }
     },
     "request:Request/PersonConfirmation.words": {

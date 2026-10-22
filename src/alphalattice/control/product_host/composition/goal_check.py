@@ -14,7 +14,9 @@ from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.failure_codes import located_failure, within
 from alphalattice.interface.local_application.goals import (
     Goal,
+    GoalDeclaration,
     GoalReferenceRequest,
+    GoalStatement,
     GoalSubmission,
     GoalTaskFact,
 )
@@ -339,3 +341,23 @@ def goal_refusal(
             **offered,
         }
     return answer
+
+
+def goal_schema(operations: Mapping[str, tuple[str, ...]], template: object) -> dict[str, Any]:
+    """The existing declaration and submission schema, composed beside its grammar."""
+    return {
+        "status": "AVAILABLE",
+        "grammar": submission_grammar(operations),
+        "schemas": {
+            "declaration": GoalDeclaration.model_json_schema(),
+            "reference": GoalReferenceRequest.model_json_schema(),
+            "statement": GoalStatement.model_json_schema(),
+            "submission": GoalSubmission.model_json_schema(),
+        },
+        "reference_operations": operations,
+        "template": GoalDeclaration.model_validate(template).model_dump(
+            mode="json", exclude_defaults=True
+        ),
+        "claim": "Contracts and declared budgets are not permission grants; the Host "
+        "checks a submission against its own record, never the truth of its summary.",
+    }

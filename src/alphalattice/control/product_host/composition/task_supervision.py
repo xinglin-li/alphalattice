@@ -34,6 +34,7 @@ from alphalattice.control.guanyin.tasks.supervision import (
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
+from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.product_host.composition.task_recovery import (
     TaskAttentionFact,
     task_attention,
@@ -41,6 +42,7 @@ from alphalattice.control.product_host.composition.task_recovery import (
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord, WorkItemLifecycle
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry, TaskNotFoundError
 from alphalattice.interface.local_application.activity import OperationObserver
+from alphalattice.interface.local_application.cli_contract import STOPPED_STATES
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
@@ -417,9 +419,6 @@ def register_wake(
     A stopped Task moves only on a request, so its wake is refused with the read that names its
     way on; an unknown Task is refused by name.
     """
-    from alphalattice.control.product_host.composition.plain_refusals import refused
-    from alphalattice.interface.local_application.cli_contract import STOPPED_STATES
-
     task_id, thread, read = wake
     ready = {} if observer is None else observer.wake_readiness(codex_path)
     if not ready.get("present"):

@@ -18,6 +18,7 @@ from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
+from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioBenchmarkComparison,
     PortfolioDeclaredPathReport,
@@ -161,10 +162,6 @@ class ObservationStore:
 
     def load_decision_observation(self, content_hash: str) -> LocalQAMarketSnapshot:
         """Reopen a complete, identity-checked source from legacy JSON or shared parts."""
-        from alphalattice.foundation.causal_outcomes.execution.contracts import (
-            LocalQAMarketSnapshot,
-        )
-
         self.content.require_hash(content_hash)
         if (self.root / self._observation_category / f"{content_hash}.json").is_file():
             return self.content.load_model(

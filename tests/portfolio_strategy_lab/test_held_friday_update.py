@@ -73,13 +73,12 @@ def test_prior_positions_keep_the_updates_own_next_requests(
     }
     failure = "product_host.evidence_review_export_subject_mismatch"
 
-    def review_standing(_self, selector, *, read_update=None):
+    def review_standing(selector):
         selectors.append(selector)
         if broken:
             raise book_evidence.PortfolioEvidenceReviewError(failure)
         return standing
 
-    monkeypatch.setattr(ops.EvidenceReviewDelivery, "review_standing", review_standing)
     answer = ops.position_rows(
         {
             "status": status,
@@ -89,7 +88,7 @@ def test_prior_positions_keep_the_updates_own_next_requests(
             "listing_labels": {"fixture-listing": "Fixture"},
             "next_requests": kept,
         },
-        review=SimpleNamespace(),
+        review=review_standing,
     )
     assert answer["status"] == status
     assert all(answer["next_requests"][key] == value for key, value in kept.items())

@@ -67,6 +67,7 @@ from alphalattice.investment.risk_research.contracts import (
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
+from . import covariance, matrix_identity
 from .capability import RANDOMNESS_NONE
 from .contracts import (
     SINGLE_THREAD_NUMERICAL_CAPABILITY,
@@ -114,8 +115,6 @@ def _implementation_content_hash() -> str:
     inside it: an edit there changes what R1 computes, and a binding that named
     only this file would not say so.
     """
-
-    from . import covariance, matrix_identity
 
     return implementation_content_hash(
         Path(__file__), Path(covariance.__file__), Path(matrix_identity.__file__)

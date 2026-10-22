@@ -106,15 +106,28 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
 ) -> None:
     """A first use goal lets its agent take the first steps and ends with them."""
 
+    cursor = _json(live, "/api/activity")["cursor"]
     plan = "a" * 64
     code, refused = _cli(live, "network", "set", "--enabled", "true")
     assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
+    assert refused["person_questions"][0]["code"] == "network.workspace_access"
     code, refused = _cli(live, "preparation", "confirm", "--plan", plan)
     assert code == 2 and _code(refused) == "workspace_preparation.human_confirmation_required"
     declaration = tmp_path / "first-use.json"
     declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
     code, opened = _cli(live, "goal", "open", "--file", str(declaration))
     assert code == 0, opened
+    assert opened["person_questions"][0]["code"] == "network.daily_updates"
+    page = _json(live, f"/api/activity?after={cursor}")
+    questions = [
+        q
+        for item in page["items"]
+        for q in (item["payload"] or {}).get("subject", {}).get("person_questions", [])
+    ]
+    assert {q["code"] for q in questions if q["state"] == "ASKED"} == {
+        "network.daily_updates",
+        "network.workspace_access",
+    }
     code, set_ = _cli(live, "network", "set", "--enabled", "true")
     assert code == 0 and set_["status"] == "NETWORK_ACCESS", set_
     assert _network(live)
@@ -148,6 +161,44 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     assert not _network(live)
     code, refused = _cli(live, "network", "set", "--enabled", "true")
     assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
+    assert refused["person_questions"][0]["code"] == "network.workspace_access"
+
+    # Only owner-accepted replies count; delegation and refused attempts above do not.
+    for question_code, enabled in zip(
+        ("network.daily_updates", "network.workspace_access", None),
+        ("true", "false", "true"),
+        strict=True,
+    ):
+        code, accepted = _cli(
+            live,
+            "network",
+            "set",
+            "--enabled",
+            enabled,
+            "--person-said",
+            "Yes.",
+            "--asked",
+            DAILY_NETWORK_ASK
+            if question_code == "network.daily_updates"
+            else refused["person_questions"][0]["words"],
+            *(("--question-code", question_code) if question_code else ()),
+        )
+        assert code == 0, accepted
+    rows = _json(live, f"/api/activity?after={cursor}")["items"]
+    records = [
+        q
+        for row in rows
+        for q in (row["payload"] or {}).get("subject", {}).get("person_questions", [])
+    ]
+    assert [q["code"] for q in records if q["state"] == "ANSWERED"] == [
+        "network.daily_updates",
+        "network.workspace_access",
+    ]
+    assert [q["code"] for q in records if q["state"] == "LEGACY_UNCODED"] == [None]
+    for row in rows:
+        for q in (row["payload"] or {}).get("subject", {}).get("person_questions", []):
+            assert set(q) == {"code", "catalog_hash", "state", "references"}
+            assert q["references"]["operation_ref"] == row["payload"]["operation_ref"]
 
 
 def test_the_first_use_deadline_names_the_hosts_local_moment(live, monkeypatch, host_local_clock):
@@ -353,16 +404,23 @@ def test_the_daily_network_yes_answers_only_its_two_requests(live: Any) -> None:
 def test_the_daily_yes_relayed_as_offered_outlives_the_first_use(
     live: Any, monkeypatch: pytest.MonkeyPatch, setup_done: dict[str, str]
 ) -> None:
-    """regression (a two-day run, 2026-10-15): the lead sent the daily question's requests
-    under the delegation, its goal's end closed the network, and day 2 asked again."""
+    """A coded daily yes survives the first use while retaining both actual person replies."""
+    monkeypatch.chdir(live.workspace.parent)  # isolate the Host's project discovery from dogfood
     monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
     first = _cli(live, "first-use", "prepare", "--sentence", "A book.", "--date", "2026-10-09")[1]
+    assert first["first_use"]["person_questions"][0]["code"] == "network.daily_updates"
     _watch, _said, _asked, network_on, consent = first["first_use"]["ask_now"]
     code, delegated = _cli(live, *shlex.split(network_on)[1:-4])
     assert code == 0 and "daily_question" in delegated, delegated
-    for offered in (network_on, consent):
+    for offered, operation in zip(
+        (network_on, consent), ("NETWORK_ACCESS_SET", "EVIDENCE_CONSENT_SET"), strict=True
+    ):
         line = shlex.split(offered.replace("<their words>", "Yes, keep it on."))[1:]
-        assert _cli(live, *line)[0] == 0, line
+        assert _cli(live, *line, "--question-code", "network.daily_updates")[0] == 0, line
+        row = _json(live, "/api/activity")["items"][-1]
+        assert row["payload"]["operation"] == operation
+        question = row["person_questions"][0]
+        assert (question["code"], question["state"]) == ("network.daily_updates", "ANSWERED")
     goal = live.operations.goals.first_use()
     assert _cli(live, "goal", "abandon", str(goal.goal_id), "--reason", "Done")[0] == 0
     day_two = network_access(live.workspace, environment={}, now=live.clock() + timedelta(days=1))
@@ -433,6 +491,7 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """First-use authority expires, while every caller keeps its open immutable date cap."""
+    monkeypatch.chdir(live.workspace.parent)
     caller = "EXTERNAL_AUTOMATION"
     now = [datetime(2026, 10, 2, tzinfo=UTC)]
     app = live.operations.goals

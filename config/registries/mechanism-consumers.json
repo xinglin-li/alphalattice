@@ -1,4 +1,17 @@
 {
   "schema": "alphalattice.playpen.registry.mechanism-consumers",
-  "entries": {}
+  "entries": {
+    "legacy message key ratchet": {
+      "owner": "alphalattice.interface.local_application",
+      "mechanism": "src/devtools/architecture/registries.py::census_check",
+      "consumers": [
+        "scripts/check_playpen.py",
+        "tests/structural/test_registries.py"
+      ],
+      "baseline_dimension": "legacy_message_keys",
+      "update": "PYTHONPATH=src python -m devtools.architecture.registries --staged --update",
+      "consumer_baseline_dimension": "legacy_catalog_consumers",
+      "input_registry": "owners-map.json / message catalog / gate_inputs"
+    }
+  }
 }

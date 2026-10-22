@@ -45,6 +45,14 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
   assert.ok(A.section().includes('Agent · API'),'the entry class, not a host identity (round 63: the class in words)');
   assert.ok(!A.section().includes('Codex'));
   const planned=A.groups()[0];assert.equal(A.facts(planned).state,'PLANNED');assert.ok(A.section().includes('spec abcdef01'));
+  // The row reads the API's projection in both locales, retaining its code and state.
+  const question=JSON.parse(fs.readFileSync(path.resolve(root,'../../../../../../../../config/registries/messages.json'),'utf8')).entries['network.daily_updates'];
+  planned.items.at(-1).person_questions=[{code:'network.daily_updates',state:'ASKED',words:question.words.en,words_zh:question.words['zh-CN']}];
+  assert.ok(A.section().includes('network.daily_updates'));assert.ok(A.section().includes(question.words.en));
+  c.I18N.zh=true;assert.ok(A.section().includes(question.words['zh-CN']));c.I18N.zh=false;
+  planned.items.at(-1).person_questions=[{code:null,state:'LEGACY_UNCODED'}];
+  assert.ok(!A.section().includes('LEGACY_UNCODED LEGACY_UNCODED'));
+  delete planned.items.at(-1).person_questions;
   // 2. An admitted RUN is announced once, its Task joins the list, and the next read watches it.
   const asked=item(3,'ProductOperationObserved',{operation:'RUN',caller:'EXTERNAL_AUTOMATION',phase:'REQUESTED',operation_ref:'op2',subject:{}});
   const run=item(4,'ProductOperationObserved',{operation:'RUN',caller:'EXTERNAL_AUTOMATION',phase:'RETURNED',operation_ref:'op2',status:'ADMITTED',task_id:'task-1',task_lifecycle:'QUEUED',next_read:{operation:'STATUS',task_id:'task-1'},subject:{network_used_under:'RELAYED_YES'}},{task_id:'task-1',run_id:'local-web:task-1'});

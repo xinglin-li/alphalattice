@@ -1,4 +1,12 @@
 {
+ "person_confirmation.question_unknown": {
+  "detail": "The question code is not registered. Read the offered question and relay its code with the person's words.",
+  "next_action": "READ_THE_OFFERED_QUESTION"
+ },
+ "person_confirmation.question_mismatch": {
+  "detail": "This question code does not cover the requested operation. Keep the offered request and its question together.",
+  "next_action": "READ_THE_OFFERED_QUESTION"
+ },
  "local_web.assets_stale": {
   "detail": "The Local Web's built files differ from this checkout's sources. Run `uv run python scripts/build_local_web_ui.py --product`, then serve again.",
   "next_action": "BUILD_LOCAL_WEB_ASSETS_AND_SERVE_AGAIN"

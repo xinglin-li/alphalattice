@@ -60,6 +60,7 @@ from alphalattice.foundation.feature_engine.catalog.research_values import (
 from alphalattice.foundation.feature_engine.panels.development_input import (
     ResolvedDevelopmentFeatureInput,
 )
+from alphalattice.foundation.feature_engine.producers.factors.core_bundle import numerical_spec_hash
 from alphalattice.foundation.feature_engine.producers.factors.specifications import (
     FeatureFormulaSpecificationError,
     build_research_formula_specification,
@@ -532,9 +533,6 @@ class ResearchFeatureBuildApplication:
             or {k for k, _ in receipt.columns} != {v.factor_id for v in owned}
         ):
             raise ValueError("feature_research.receipt_catalog_mismatch")
-        from alphalattice.foundation.feature_engine.producers.factors.core_bundle import (
-            numerical_spec_hash,
-        )
 
         reader = ResearchFormulaValues(store)
         verified = []

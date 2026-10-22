@@ -16,6 +16,14 @@ import numpy.typing as npt
 from joblib import Parallel, delayed, parallel_config  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.alpha_modeling.contracts import (
+    AlphaEstimatorContent,
+    AlphaFitProvenanceReceipt,
+    AlphaModelStateProjection,
+)
+from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment import (
+    AlphaModelNumericalEnvironment,
+)
 from alphalattice.capabilities.causal_inputs.admission import admit_decision_input_set
 from alphalattice.capabilities.causal_inputs.contracts import (
     AdmittedInformationSet,
@@ -75,6 +83,9 @@ from alphalattice.investment.alpha_research.experiments.panel_methodology_models
 from alphalattice.investment.alpha_research.experiments.panel_methodology_statistics import (
     AlphaEconomicCandidateEvidence,
     AlphaEconomicCandidateInput,
+    CausalCandidateSelection,
+    CausalModelSpecSelection,
+    CausalScoreAggregationSelection,
     PanelAlphaEconomicEvaluation,
     PanelModelScientificSelection,
     PanelScoreFilterEvaluationResult,
@@ -87,6 +98,7 @@ from alphalattice.investment.alpha_research.experiments.panel_methodology_statis
 from alphalattice.investment.alpha_research.inputs.panel_feature_materialization import (
     PanelFeaturePlan,
 )
+from alphalattice.investment.alpha_research.inputs.panel_feature_views import FoldScaleReceipt
 from alphalattice.investment.alpha_research.scores.temporal_aggregation import (
     SEALED_PANEL_ALPHA_MODEL_RECIPE_ID,
     SEALED_PANEL_ALPHA_PROGRAM_HASH,
@@ -141,6 +153,7 @@ from alphalattice.protocols.research_authoring.contracts import (
     DeskExperimentCompiler,
     NumericalCallRecorder,
     ResearchExecutionEvidence,
+    ResearchExperimentEnvelope,
     ResolvedResearchAuthority,
     SealedResearchProgram,
 )
@@ -1812,8 +1825,6 @@ def resolve_fixed_alpha_feature_binding(
     root_hash: str = SEALED_PANEL_ALPHA_ROOT_HASH,
 ) -> FixedAlphaFeatureBinding:
     """Derive Feature identity from fixed trials/estimators, never Feature values."""
-    from alphalattice.capabilities.alpha_modeling.contracts import AlphaEstimatorContent
-
     store, root, _economic, _candidate, folds, trials, _artifacts = _load_fixed_candidate_graph(
         output_workspace=output_workspace,
         root_hash=root_hash,
@@ -2582,23 +2593,6 @@ def _verify_alpha_fold_checkpoint(
     *, store: PortfolioResearchArtifactStore, fold: PanelModelFoldEvidence
 ) -> None:
     """Read every child that makes the fold receipt eligible for resume."""
-
-    from alphalattice.capabilities.alpha_modeling.contracts import (
-        AlphaEstimatorContent,
-        AlphaFitProvenanceReceipt,
-        AlphaModelStateProjection,
-    )
-    from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment import (
-        AlphaModelNumericalEnvironment,
-    )
-    from alphalattice.investment.alpha_research.experiments.panel_methodology_statistics import (
-        CausalCandidateSelection,
-        CausalModelSpecSelection,
-        CausalScoreAggregationSelection,
-    )
-    from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
-        FoldScaleReceipt,
-    )
 
     selection_model = (
         PanelModelScientificSelection
@@ -4475,9 +4469,6 @@ class PanelResearchMethodologyExecutor:
         envelope = document.get("experiment")
         if not isinstance(envelope, Mapping):
             raise AuthoringError("research_authoring.experiment_section_missing")
-        from alphalattice.protocols.research_authoring.contracts import (
-            ResearchExperimentEnvelope,
-        )
 
         compiled = self.compiler.compile_desk_program(
             envelope=ResearchExperimentEnvelope.create(**envelope),
@@ -5384,29 +5375,6 @@ def verify_panel_methodology_graph(
         filter_root := upstream_roots.get("SCORE_FILTER")
     ) is not None and filter_root.upstream_alpha_root_hash != root.upstream_alpha_root_hash:
         raise AuthoringError("alpha_research.panel_methodology_filter_lineage_mismatch")
-    from alphalattice.capabilities.alpha_modeling.contracts import (
-        AlphaEstimatorContent,
-        AlphaFitProvenanceReceipt,
-        AlphaModelStateProjection,
-    )
-    from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment import (
-        AlphaModelNumericalEnvironment,
-    )
-    from alphalattice.investment.alpha_research.experiments.panel_methodology_models import (
-        PanelModelFoldEvidence,
-        PanelModelTrialEvidence,
-    )
-    from alphalattice.investment.alpha_research.experiments.panel_methodology_statistics import (
-        CausalCandidateSelection,
-        CausalModelSpecSelection,
-        CausalScoreAggregationSelection,
-        PanelModelScientificSelection,
-        PanelScoreFilterEvidence,
-        PanelScoreFilterSelection,
-    )
-    from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
-        FoldScaleReceipt,
-    )
 
     for value in root.ordered_fold_hashes:
         fold = store.load(

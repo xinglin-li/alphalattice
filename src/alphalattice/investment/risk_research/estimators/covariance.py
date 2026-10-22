@@ -27,6 +27,7 @@ from alphalattice.kernel.shared_kernel.environment import (
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
+from . import matrix_identity
 from .capability import RANDOMNESS_NONE
 from .contracts import (
     SINGLE_THREAD_NUMERICAL_CAPABILITY,
@@ -57,8 +58,6 @@ def _implementation_content_hash() -> str:
     Cached because it is read once per process and the files cannot change
     underneath a running interpreter.
     """
-
-    from . import matrix_identity
 
     return implementation_content_hash(Path(__file__), Path(matrix_identity.__file__))
 

@@ -94,6 +94,11 @@ from alphalattice.investment.portfolio_strategy_lab.inputs.shared_lanes import (
 from alphalattice.investment.portfolio_strategy_lab.policies.lifecycle_research import (
     LocalQAOutcomeBinding,
 )
+from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import (
+    EXIT_RANK_MULTIPLE_RANGE,
+    TOP_K_RANGE,
+    TRANCHES_RANGE,
+)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.research_authoring.contracts import (
@@ -567,12 +572,6 @@ def portfolio_draft(
     Returns:
         The draft answer.
     """
-    from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import (
-        EXIT_RANK_MULTIPLE_RANGE,
-        TOP_K_RANGE,
-        TRANCHES_RANGE,
-    )
-
     # Execution paths are derived by PLAN and change with authored parameters.
     # An editable draft must not carry the old derived path as caller authority.
     document = deepcopy(prepared.document)

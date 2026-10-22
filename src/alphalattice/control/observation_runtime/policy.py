@@ -317,6 +317,8 @@ briefs, assessments or any other user-authored content.
 
 PRODUCT_OPERATION_FIELDS = frozenset(
     {
+        "clock_ref",
+        "clock_drift",
         "operation",
         "caller",
         "phase",
@@ -360,6 +362,22 @@ EXTERNAL_ACTIVITY_FIELDS = frozenset(
         "subject",
         "task_verified",
     }
+)
+
+
+CLOCK_CORRELATION_POLICY = ObservationSchemaPolicy(
+    "ClockCorrelationRecorded",
+    1,
+    frozenset(
+        {
+            "schema",
+            "clock_ref",
+            "replay_anchor",
+            "system_anchor",
+            "monotonic_anchor",
+            "uncertainty_seconds",
+        }
+    ),
 )
 
 
@@ -466,6 +484,7 @@ def default_observation_policies(
             ObservationSchemaPolicy(
                 PRODUCT_OPERATION_SCHEMA, 1, PRODUCT_OPERATION_FIELDS, max_inline_bytes=4096
             ),
+            CLOCK_CORRELATION_POLICY,
             ObservationSchemaPolicy(
                 EXTERNAL_ACTIVITY_SCHEMA, 1, EXTERNAL_ACTIVITY_FIELDS, max_inline_bytes=4096
             ),

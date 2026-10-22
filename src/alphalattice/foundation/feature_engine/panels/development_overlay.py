@@ -34,6 +34,7 @@ from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
     extension_factor_specs,
 )
+from alphalattice.foundation.feature_engine.producers.factors.core_bundle import numerical_spec_hash
 from alphalattice.foundation.feature_engine.producers.factors.interactions import (
     interaction_market_state_children,
 )
@@ -536,9 +537,6 @@ class DevelopmentFeatureOverlayService:
         the same installed preprocessing adapters as ``materialize`` perform it.
         The returned call count belongs to this attempt, not an old publication.
         """
-        from alphalattice.foundation.feature_engine.producers.factors.core_bundle import (
-            numerical_spec_hash,
-        )
 
         def checkpoint() -> None:
             if cancelled():

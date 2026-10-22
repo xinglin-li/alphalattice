@@ -46,6 +46,7 @@ from release.public_manifest import (
         ("config/alpha-arm-control.yaml", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("config/dynamic-panel-risk.yaml", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("tests/agent_eval/test_one.py", "PRIVATE", "PRIVATE_TEST"),
+        ("tests/structural/test_catalog_gate.py", "PRIVATE", "PRIVATE_TEST"),
         ("src/devtools/evaluation/forms.py", "PUBLIC", "PUBLIC_VERIFICATION"),
         ("tests/evaluation/test_forms.py", "PUBLIC", "PUBLIC_TEST"),
         (
@@ -236,6 +237,86 @@ def test_development_label_ratchet_pins_each_public_files_count_and_spelling():
     new_findings = internal_id_ratchet(more, new_rows, policy)["violations"]
     assert [(row["path"], row["line"], row["column"]) for row in new_findings] == [(new, 1, 8)]
     assert len(internal_id_ratchet(blobs, rows)["violations"]) == 4
+
+    # Product-form controls need actual detector bytes, assembled to avoid public self-scan.
+    owner_path = "config/registries/owners-map.json"
+    alias, other, prefix = "C" + "1", "C" + "2", "V" + "900."
+    source = "src/alphalattice/control/product_host/composition/committee_materials.py"
+    test = "tests/portfolio_strategy_lab/test_committee.py"
+    form = {
+        "name": "component floor alias",
+        "pattern": r"C[1-9][0-9]*",
+        "prefix": "C",
+        "producers": {source: {"holdings": {"scores": "keys"}}},
+        "assertions": {test: {"scores": "keys"}},
+    }
+    noun = {"owner": "alphalattice.control.product_host.composition", "identifier_forms": [form]}
+    source_text = f'def holdings():\n    return {{"scores": {{"{alias}": 1}}}}\n'
+    test_text = f'assert [v["scores"] for v in rows] == [{{"{other}": 0.5}}]\n'
+    product = {
+        source: source_text.encode(),
+        test: test_text.encode(),
+        owner_path: json.dumps({"nouns": {"the committee": noun}}).encode(),
+    }
+    choices = [{"path": p, "kind": "PUBLIC"} for p in (source, test, owner_path)]
+    catalog = {"cards": [alias, other], "lines": [], "occurrences": {}}
+    assert internal_id_ratchet(product, choices, catalog)["count"] == 0
+    for text in (
+        f"# card {alias}\n",
+        f'note = "card {alias}"\n',
+        f'request = {{"scores": {{"{alias}": 1}}}}\n',
+        f'def holdings():\n    return {{"note": "{alias}"}}\n',
+        f'assert v["other"] == "{alias}"\n',
+        f'broken "{alias}"\n',
+        f'assert v["scores"] == {{}} != "{alias}"\n',
+        f'assert (v["scores"], other) == ({{}}, "{alias}")\n',
+        f'assert v["scores"] == ({{}}, "{alias}")\n',
+        f"def test_{alias}(): pass\n",
+        "def test_" + "V" + "900(): pass\n",
+    ):
+        changed = product | {test: text.encode()}
+        assert internal_id_ratchet(changed, choices, catalog)["violations"]
+    # Scope and byte-column controls: neither another path nor nonoutput producer text qualifies.
+    outside = "tests/another.py"
+    assert internal_id_ratchet(
+        product | {outside: test_text.encode()},
+        [*choices, {"path": outside, "kind": "PUBLIC"}],
+        catalog,
+    )["violations"]
+    for text in (
+        f'def holdings():\n    request = {{"scores": {{"{alias}": 1}}}}\n    return {{}}\n',
+        f'def holdings():\n    return {{"scores": "card {alias}"}}\n',
+        f'def another():\n    return {{"scores": {{"{alias}": 1}}}}\n',
+        f'def holdings():\n    return {{"scores": load_card("{alias}")}}\n',
+        f"def holdings():\n    def unused():\n"
+        f'        return {{"scores": {{"{alias}": 1}}}}\n    return {{}}\n',
+    ):
+        assert internal_id_ratchet(product | {source: text.encode()}, choices, catalog)[
+            "violations"
+        ]
+    unicode_text = 'assert [v["scores"] for v in 中文] == [{"' + alias + '": 1}]\n'
+    assert (
+        internal_id_ratchet(product | {test: unicode_text.encode()}, choices, catalog)["count"] == 0
+    )
+    # Registry edits cannot widen the product namespace or detach its owner.
+    for owned, changes in (
+        (False, {"pattern": "[CV][1-9][0-9]*"}),
+        (False, {"prefix": "V", "pattern": "V[1-9][0-9]*"}),
+        (True, {"owner": "alphalattice.another"}),
+        (False, {"prefix": prefix, "pattern": re.escape(prefix) + r"[1-9][0-9]*"}),
+    ):
+        altered = json.loads(product[owner_path])
+        entry = altered["nouns"]["the committee"]
+        (entry if owned else entry["identifier_forms"][0]).update(changes)
+        encoded = json.dumps(altered).replace("V", r"\u0056").encode()
+        for text in (source_text.replace(alias, prefix + "1"), f"# {prefix}1\n"):
+            with pytest.raises(ValueError):
+                internal_id_ratchet(
+                    product | {owner_path: encoded, source: text.encode()}, choices, catalog
+                )
+    # One permitted literal never exempts a development label in the same line's comment.
+    changed = product | {test: (test_text.rstrip() + f"  # card {alias}\n").encode()}
+    assert len(internal_id_ratchet(changed, choices, catalog)["violations"]) == 1
 
 
 def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary_words():

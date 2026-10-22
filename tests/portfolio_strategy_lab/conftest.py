@@ -26,7 +26,7 @@ def reader_zone_utc(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def live(tmp_path: Path) -> Iterator[LocalPortfolioWebSession]:
+def live(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[LocalPortfolioWebSession]:
     """One booted product: session, application, dispatcher and loopback socket."""
 
     workspace = tmp_path / "workspace"
@@ -35,6 +35,7 @@ def live(tmp_path: Path) -> Iterator[LocalPortfolioWebSession]:
         workspace=workspace,
         workspace_manifest=_manifest("qa-local-web"),
         resolver=_Resolver(_resolved()),
+        **({"clock": request.param} if hasattr(request, "param") else {}),
     )
     session.start()
     try:

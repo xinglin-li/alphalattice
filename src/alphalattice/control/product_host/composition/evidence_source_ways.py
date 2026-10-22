@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING, Any, Final, cast
 
 from alphalattice.control.workspace_runtime.network_access import network_access, persons_stop
 from alphalattice.evidence.alternative_evidence.sources.admission import DEFAULT_SOURCE_CONSENT
-from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell
+from alphalattice.interface.local_application.retrieval_environment import fill_command
 from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
@@ -138,9 +139,6 @@ def evidence_setup(
     Returns:
         The setup's ``pack`` and ``authority`` steps.
     """
-    from alphalattice.interface.local_application.cli_contract import join, shell
-    from alphalattice.interface.local_application.retrieval_environment import fill_command
-
     windows = os.name == "nt"
     python = ".venv/Scripts/python.exe" if windows else ".venv/bin/python"
     retrieval = ".venv-retrieval/Scripts/python.exe" if windows else ".venv-retrieval/bin/python"

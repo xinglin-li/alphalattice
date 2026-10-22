@@ -52,15 +52,17 @@ person its `disclosure` in one line ([setup](.agents/skills/alphalattice-researc
 Use a new workspace for new research:
 
 ```powershell
-alphalattice --workspace "workspaces/my-research" serve --no-browser --stop-on-stdin
+alphalattice --workspace "workspaces/my-research" serve --no-browser --detach
 ```
 
-Run it in the background on Claude Code. On Codex, where a turn ends its shell's
-children, start it with `serve --no-browser --detach` instead: it returns once the
-Host serves, answering STARTED, or ALREADY_SERVING when a Host already serves that workspace
-(use that one), with the workspace and the Host's address, and the Host outlives the turn. `alphalattice host stop` stops it after its workers
-join; where your shell holds its standard input open, `stop` on it does the same,
-and a background shell that gives it none leaves it serving until then. Once it
+Use `--detach` on both Claude Code and Codex. Never keep a long-lived serve in a background
+Bash task: its time limit can stop the Host and running Tasks. STARTED requires a ready,
+authenticated Host proved outside its parent Job; otherwise the launch refuses by name and
+leaves no detached child. Give the person one copyable command from `terminal_command`, to run
+in a terminal they own outside the agent's shell (Claude Code desktop: its Terminal panel).
+Alternatively keep the Host attached for this session with `--stop-on-stdin`; say that a held
+update then waits for the next session. Never bypass Job containment through a broker, service
+or scheduler. `alphalattice host stop` joins running work and stops your Host. Once it
 serves, its ready lines end with the next action, OPEN_THE_WORKBENCH. The rule: the
 Workbench opens in the coding app's built-in browser, visibly, once, never in a separate
 system browser, so keep `--no-browser` on every serve you start. In Claude Code's desktop

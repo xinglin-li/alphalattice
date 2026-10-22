@@ -162,11 +162,19 @@ def test_each_stage_phase_keeps_its_spans_and_its_timing_reads_them_back(tmp_pat
     task = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
     runtime = tmp_path / "runtime" / "task-runtime.sqlite"
     runtime.parent.mkdir(exist_ok=True)
+
+    class Clock:
+        def __call__(self):
+            return now + timedelta(seconds=1)
+
+        def phase_metadata(self):
+            return {"clock_ref": "fixture-clock", "clock_drift": False}
+
     runner = TaskControlRunner(
         registry=registry,
         adapters={"factor_research": _SpannedAdapter()},
         runtime_path=str(runtime),
-        clock=lambda: now + timedelta(seconds=1),
+        clock=Clock(),
         heartbeat_seconds=0.01,
     )
     try:
@@ -178,7 +186,11 @@ def test_each_stage_phase_keeps_its_spans_and_its_timing_reads_them_back(tmp_pat
     assert path == tmp_path / "runtime" / "execution" / "spans" / f"{task.task_id}.jsonl"
     with path.open("a", encoding="utf-8") as sink:
         sink.write('{"torn": \n')
-    kept = read_stage_spans(runtime, task.task_id)
+    diagnostics = []
+    kept = read_stage_spans(runtime, task.task_id, diagnostics=diagnostics)
+    assert all(row.get("clock_ref") == "fixture-clock" for row in kept)
+    assert all(row.get("clock_drift") is False for row in kept)
+    assert diagnostics == [{"code": "PHASE_ROW_UNREADABLE", "source": str(path), "line": 5}]
     assert [(value["stage_id"], value["phase"]) for value in kept] == [
         ("resolve_inputs", "execute"),
         ("resolve_inputs", "verify"),
@@ -201,6 +213,12 @@ def test_each_stage_phase_keeps_its_spans_and_its_timing_reads_them_back(tmp_pat
     plain = task_timing(record, items, now=now + timedelta(seconds=2), selected_stage="absent")
     assert plain["selected_stage"] is None
     assert all(stage["phases"] == [] for stage in plain["stages"])  # type: ignore[union-attr]
+    path.write_bytes(b"\xff")
+    diagnostics.clear()
+    assert read_stage_spans(runtime, task.task_id, diagnostics=diagnostics) == ()
+    assert diagnostics == [{"code": "PHASE_ROWS_UNREADABLE", "source": str(path)}]
+    path.unlink()
+    assert read_stage_spans(runtime, task.task_id) == ()
 
 
 def test_a_stage_gate_refusal_blocks_the_stage_before_its_work(tmp_path: Path) -> None:

@@ -8,7 +8,7 @@ against that record, sealing it or naming each missing item.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
@@ -22,10 +22,13 @@ from pydantic import (
     model_validator,
 )
 
+from alphalattice.capabilities.causal_inputs.availability import information_available_at
+from alphalattice.interface.local_application.cli_contract import join, shell
 from alphalattice.interface.local_application.portfolio_research import (
     PersonConfirmation,
     decision_hash,
 )
+from alphalattice.interface.local_application.questions import person_question
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type ResearchStage = Literal[
@@ -38,12 +41,7 @@ _HASH = r"^[0-9a-f]{64}$"
 FIRST_USE_HOURS: Final = 24
 """How long a first-use goal's delegation lasts from its opening (V452)."""
 
-DAILY_NETWORK_ASK: Final = (
-    "May AlphaLattice keep this workspace's network on for your daily updates, to fetch new "
-    "market data and SEC filings within the default budget (3 per issuer, 600 documents and "
-    "3 GB overall), until you tell me to stop? Each use is recorded in the activity log and shown "
-    "in the Workbench."
-)
+DAILY_NETWORK_ASK: Final = str(person_question("network.daily_updates")["words"])
 """The one line a first use asks at its start, word for word: the person's yes, relayed by
 `DAILY_NETWORK_RELAY`, is theirs until they say stop, which is relayed to `network set --enabled
 false`; the delegation ends with its goal and never answers it."""
@@ -104,12 +102,43 @@ def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirma
     """
     if NOT_A_PERSON.search(confirmation.words):
         raise ValueError("person_confirmation.not_the_persons_words")
+    if confirmation.question_code is not None:
+        person_question(confirmation.question_code, operation=str(request["operation"]))
     decision = decision_hash(request)
     if confirmation.decision_hash != decision:
         raise ValueError("person_confirmation.decision_mismatch")
-    if confirmation.question == DAILY_NETWORK_ASK and decision not in DAILY_NETWORK_DECISIONS:
+    if (
+        confirmation.question == DAILY_NETWORK_ASK
+        or confirmation.question_code == "network.daily_updates"
+    ) and decision not in DAILY_NETWORK_DECISIONS:
         raise ValueError("person_confirmation.beyond_its_question")
     return decision
+
+
+def opened_goal(answer: dict[str, Any], declaration: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Project the first-use question at the Host boundary, before its observer."""
+    if answer.get("goal_id") and (declaration or {}).get("kind") == "FIRST_USE":
+        answer["person_questions"] = [person_question("network.daily_updates")]
+    return answer
+
+
+def first_use_asks(
+    link: str | None,
+    prefix: Sequence[str],
+    road: Iterable[tuple[str, Sequence[str], str]],
+    questions: Iterable[dict[str, Any]] = (),
+) -> dict[str, Any]:
+    """Format the first-use road and unchanged notices beside the Host's questions."""
+    selected_shell = shell()
+    relays = [join([*prefix, *words], selected_shell) for words in DAILY_NETWORK_RELAY]
+    return {
+        "road": [
+            {"step": step, "command": join([*prefix, *words], selected_shell), "does": does}
+            for step, words, does in road
+        ],
+        "ask_now": [WATCH_IN_WORKBENCH.format(link=link), *FIRST_USE_ASK_NOW, *relays],
+        "person_questions": list(questions),
+    }
 
 
 class GoalContract(BaseModel):  # type: ignore[misc]
@@ -254,7 +283,6 @@ def target_sessions(
     # The calendars load only for a dated first use, never with every client command.
     from zoneinfo import ZoneInfo
 
-    from alphalattice.capabilities.causal_inputs.availability import information_available_at
     from alphalattice.foundation.causal_outcomes.execution.readers import (
         planned_local_qa_schedule,
     )

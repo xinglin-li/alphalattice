@@ -186,6 +186,7 @@ def test_a_built_wheel_holds_the_exact_runtime_content_set(tmp_path: Path) -> No
         if path.is_file()
     )
     inputs = resource_files()
+    assert "config/registries/messages.json" in inputs
     expected.update("alphalattice/_runtime/" + name for name in inputs)
     expected.add("alphalattice/_runtime/config/release/source-hashes.json")
     expected.add("alphalattice/_runtime/config/release/runtime-requirements.txt")
@@ -234,6 +235,11 @@ def test_resource_names_and_printed_commands_survive_the_installed_layout(
     for name in ("", "../outside", str(tmp_path.resolve())):
         with pytest.raises(ValueError, match="resource_path_invalid"):
             project_layout.resource_path(installed, name)
+    for name in resource_files():
+        if name.startswith("config/registries/"):
+            destination = installed / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes((ROOT / name).read_bytes())
     monkeypatch.setattr(project_layout, "resolve_playpen_root", lambda _: installed)
     assert project_layout.command_prefix() == ("alphalattice",)
     assert cli_contract.entry(tmp_path) == ("alphalattice", "--workspace", str(tmp_path.resolve()))

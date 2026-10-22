@@ -54,6 +54,7 @@ from alphalattice.foundation.feature_engine.contracts import (
     FeatureBuildRequest,
     FeatureBuildStatus,
     FeatureInvalidation,
+    TemporalKnowledgeBoundary,
     canonical_hash,
 )
 from alphalattice.foundation.feature_engine.inputs.contracts import ListingQuarantine
@@ -1026,8 +1027,6 @@ class WorkspaceMaintenanceCoordinator:
             ),
         )
         if needs_feature_initialization:
-            from alphalattice.foundation.feature_engine.contracts import FeatureInvalidation
-
             invalidations: tuple[FeatureInvalidation, ...] = (
                 FeatureInvalidation("initial_backfill"),
             )
@@ -1042,8 +1041,6 @@ class WorkspaceMaintenanceCoordinator:
                 or str(active_panel["catalog_hash"])
                 != self.feature_foundation.catalog.binding.catalog_hash
             ):
-                from alphalattice.foundation.feature_engine.contracts import FeatureInvalidation
-
                 # A catalog change recomputes everything. A manifest change is
                 # a new governance relationship over the same rows: the Panel
                 # is rebuilt under its binding and reuses every partition whose
@@ -1547,7 +1544,6 @@ class WorkspaceMaintenanceCoordinator:
         sector = self.feature_state.current_sector_state(parent)
         if sector is None:
             return MaintenanceStatus.BLOCKED, "feature.baseline_sector_required", None
-        from alphalattice.foundation.feature_engine.contracts import TemporalKnowledgeBoundary
 
         boundary = TemporalKnowledgeBoundary(
             market_as_of_session=request.target_market_session,
@@ -1722,8 +1718,6 @@ class WorkspaceMaintenanceCoordinator:
         # its own coverage and Sector floors over the actual admitted Universe.
         if any(count < policy.minimum_sector_size for count in sector_distribution.values()):
             return "sector.partial_current_sector"
-
-        from alphalattice.foundation.feature_engine.contracts import TemporalKnowledgeBoundary
 
         boundary = TemporalKnowledgeBoundary(
             market_as_of_session=request.target_market_session,
@@ -2672,7 +2666,6 @@ class WorkspaceMaintenanceCoordinator:
                     retry_exhausted=True,
                 )
             )
-        from alphalattice.foundation.feature_engine.contracts import TemporalKnowledgeBoundary
 
         boundary = TemporalKnowledgeBoundary(
             market_as_of_session=request.target_market_session,

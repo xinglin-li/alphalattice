@@ -30,6 +30,7 @@ from alphalattice.kernel.live_evidence.online_sources import (
     NOT_CARRIED_PLACEHOLDER,
     Row,
     TableCarryPolicy,
+    TableLines,
     not_carried_tables,
     table_lines,
 )
@@ -356,7 +357,6 @@ def _frame(rendered: object, *, caption: str, scale: str, footnotes: tuple[str, 
     where the rows go: the caption, the source's own lines inside the table,
     the scale statement, the column headings; then the footnotes.
     """
-    from alphalattice.kernel.live_evidence.online_sources import TableLines
 
     assert isinstance(rendered, TableLines)
     head: list[str] = []

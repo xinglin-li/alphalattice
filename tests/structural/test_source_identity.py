@@ -565,11 +565,13 @@ def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
     assert schema_structure(TypeAdapter(whole)) == base
 
 
-# Where a raw JSON schema is left: shown to a reader, never hashed (SH). A hash takes
-# `schema_structure`; a schema both shown and hashed hashes its structure beside the display.
+# Raw schemas below are display-only; hashes use the kernel schema_structure (SH).
 _SCHEMA_DISPLAYS = frozenset(
     {
-        ("src/alphalattice/control/product_host/composition/goals.py", "model"),
+        *(
+            ("src/alphalattice/control/product_host/composition/goal_check.py", m)
+            for m in ("GoalDeclaration", "GoalReferenceRequest", "GoalStatement", "GoalSubmission")
+        ),
         (
             "src/alphalattice/control/product_host/composition/portfolio_research_operations.py",
             "PortfolioResearchRequestDocument",
@@ -609,9 +611,7 @@ _SCHEMA_DISPLAYS = frozenset(
 
 
 def test_every_hashed_schema_goes_through_the_kernel() -> None:
-    """requirement (SH, LAWS.md SC3): a raw `model_json_schema()` or `json_schema()` call stands
-    only where a schema is shown to a reader; every schema a hash binds is the kernel's
-    `schema_structure`, so no schema's prose is identity. The set is pinned, not counted."""
+    """Pin raw schemas to displays; hashed schemas use kernel schema_structure (SH/SC3)."""
 
     found: set[tuple[str, str]] = set()
     for base in ("src", "scripts"):

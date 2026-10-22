@@ -36,8 +36,10 @@ from alphalattice.interface.local_application.failure_codes import (
 from alphalattice.interface.local_application.native_bridge import HOSTS
 from alphalattice.interface.local_application.portfolio_research import (
     OperationCaller,
+    PersonConfirmation,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.interface.local_application.questions import person_question
 from alphalattice.interface.local_application.web import LocalWebError
 
 OBSERVED_READ_OPERATIONS: frozenset[str] = frozenset({"EXPERIMENT_DELIVERY_EXPORT"})
@@ -440,6 +442,7 @@ class OperationSpan:
     subject: dict[str, Any]
     request_fields: list[str]
     started: float
+    confirmation: PersonConfirmation | None = None
 
 
 class OperationObserver(Protocol):
@@ -452,7 +455,11 @@ class OperationObserver(Protocol):
     """
 
     def entered(
-        self, request: PortfolioResearchOperationRequest, *, caller: OperationCaller
+        self,
+        request: PortfolioResearchOperationRequest,
+        *,
+        caller: OperationCaller,
+        relayed: bool = False,
     ) -> OperationSpan | None:
         """Record a request before dispatch and return its correlation span."""
         ...
@@ -702,6 +709,22 @@ def activity_item(item: ObservationReadItem) -> dict[str, Any]:
     a reader that was away sees the gap where it happened.
     """
     envelope = item.envelope
+    questions = []
+    payload = envelope.inline_safe_payload
+    if (
+        envelope.schema_kind == "ProductOperationObserved"
+        and envelope.source_kind == "PRODUCT_OPERATION"
+        and envelope.authority.value == "OPERATIONAL_ASSERTION"
+        and isinstance(payload, dict)
+    ):
+        for record in payload.get("subject", {}).get("person_questions", []):
+            try:
+                words = person_question(record["code"]) if record.get("code") else {}
+            except ValueError:
+                words = {}
+            if words.get("catalog_hash") != record.get("catalog_hash"):
+                words = {}
+            questions.append({**words, **record, "catalog_available": bool(words)})
     return {
         "ordinal": item.ordinal,
         "observation_id": envelope.observation_id,
@@ -719,6 +742,7 @@ def activity_item(item: ObservationReadItem) -> dict[str, Any]:
         "retention_class": envelope.retention_class.value,
         "availability": envelope.availability.value,
         "payload": envelope.inline_safe_payload,
+        **({"person_questions": questions} if questions else {}),
     }
 
 

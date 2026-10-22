@@ -52,6 +52,10 @@ from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAM
 from alphalattice.foundation.causal_outcomes.execution.readers import read_local_qa_market_snapshot
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
+from alphalattice.interface.local_application.failure_codes import located_failure
+from alphalattice.investment.portfolio_strategy_lab.application.calibration import (
+    PreparedPortfolioBookInput,
+)
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     PortfolioDecisionCheckpoint,
     PortfolioSourceRevision,
@@ -71,6 +75,8 @@ from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_st
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
+
+from .plain_refusals import refused
 
 PLAN_FIELDS = ("decision_updates", "score_inputs")
 """The manifest fields a plan reads: the decision checkpoints installed and the score inputs the
@@ -201,10 +207,6 @@ def _task_contract(
 
 def update_refusal(error: Exception, fallback: str, **context: object) -> dict[str, object]:
     """Word an update refusal, retaining complete changed split subjects beside bounded words."""
-    from alphalattice.interface.local_application.failure_codes import located_failure
-
-    from .plain_refusals import refused
-
     failure = located_failure(error, fallback)
     body = failure | refused(str(failure["failure_code"]), **context)
     if isinstance(error, SplitBasisRevision):
@@ -275,9 +277,6 @@ class PortfolioUpdateApplication:
             proposal = publication.pending_proposal
             if proposal is None:
                 continue
-            from alphalattice.investment.portfolio_strategy_lab.application.calibration import (
-                PreparedPortfolioBookInput,
-            )
 
             items = (
                 proposal.input.components

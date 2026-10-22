@@ -70,6 +70,10 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
 from alphalattice.foundation.factor_research.experiments.authoring import (
     FACTOR_EXPERIMENT_KIND,
 )
+from alphalattice.foundation.factor_research.experiments.development_evidence import (
+    FactorDevelopmentCurationReader,
+    FactorDevelopmentReceiptReader,
+)
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.contracts import panel_source_manifest_revision
 from alphalattice.foundation.feature_engine.panels.development_input import (
@@ -107,6 +111,9 @@ from alphalattice.investment.alpha_research.experiments.panel_methodology_author
     PanelResearchRuntimeCaps,
     build_panel_research_preflight,
     methodology_section,
+)
+from alphalattice.investment.alpha_research.inputs.development_foundation import (
+    AlphaDevelopmentFoundationBinding,
 )
 from alphalattice.investment.alpha_research.inputs.panel_feature_materialization import (
     preflight_panel_feature_plan,
@@ -1369,16 +1376,9 @@ def _build_alpha_executor(
         feature_input=feature_input,
     )
     if section.get("foundation_admission_hash") is not None:
-        from alphalattice.foundation.factor_research.experiments.development_evidence import (
-            FactorDevelopmentCurationReader,
-            FactorDevelopmentReceiptReader,
-        )
         from alphalattice.foundation.research_foundation.publication.sponsorship import (
             admit_selected_factor_foundation,
             read_foundation_admission,
-        )
-        from alphalattice.investment.alpha_research.inputs.development_foundation import (
-            AlphaDevelopmentFoundationBinding,
         )
 
         admission = read_foundation_admission(

@@ -57,6 +57,7 @@ from alphalattice.evidence.alternative_evidence.runtime.coverage import (
     coverage_unit_ids,
 )
 from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.interface.local_application.evidence_cro import render_review_export
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
@@ -1387,9 +1388,6 @@ class EvidenceReviewDelivery:
         The analyses supply a separate requested read view only. Its annotations never enter
         the export's bytes, hash or sealed citation-page source, and share its verification.
         """
-        from alphalattice.interface.local_application.evidence_cro import render_review_export
-        from alphalattice.kernel.shared_kernel.identity import canonical_hash
-
         chosen = self.app.default_selector(selector)
         if chosen is None:
             raise PortfolioEvidenceReviewError("product_host.evidence_review_book_unselected")

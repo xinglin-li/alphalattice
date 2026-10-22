@@ -19,6 +19,18 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal, Protocol
 
+from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
+    MINIMUM_REVIEWED_ENDING_WEIGHT_COVERAGE,
+    PortfolioReviewAssessmentSubmission,
+    PortfolioReviewDossier,
+    review_dispositions,
+)
+from alphalattice.oversight.chief_risk_officer.decision.views import (
+    coverage_words,
+    held_issuer_count,
+    review_cutoff_words,
+)
+
 EvidenceCroState = Literal[
     "REVIEW_INPUT_INCOMPLETE",
     "NO_BOOK_TO_REVIEW",
@@ -1077,9 +1089,6 @@ def _scope_coverage(
     """Read the admitted scope owner. Nothing here is inferred from a name."""
     if scope is None:
         return None
-    from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
-        MINIMUM_REVIEWED_ENDING_WEIGHT_COVERAGE,
-    )
 
     failures = tuple(scope.mapping_failures)  # type: ignore[attr-defined]
     selected = tuple(scope.selected_issuers)  # type: ignore[attr-defined]
@@ -1442,11 +1451,6 @@ def _dispositions_of(review: dict[str, Any]) -> dict[str, dict[str, Any]]:
     receipt = review.get("receipt", {})
     submission = receipt.get("submission", {}) if isinstance(receipt, dict) else {}
     if isinstance(receipt, dict) and "answer" in receipt and isinstance(submission, dict):
-        from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
-            PortfolioReviewAssessmentSubmission,
-            review_dispositions,
-        )
-
         return {
             value.finding_handle: value.model_dump(mode="json")
             for value in review_dispositions(
@@ -1604,14 +1608,6 @@ def _conclusion_section(review: dict[str, Any]) -> str:
 
 def _coverage_facts(dossier: dict[str, Any]) -> str:
     """Render only recorded coverage facts, including older partial exports."""
-    from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
-        PortfolioReviewDossier,
-    )
-    from alphalattice.oversight.chief_risk_officer.decision.views import (
-        coverage_words,
-        held_issuer_count,
-        review_cutoff_words,
-    )
 
     coverage = dossier.get("coverage", {})
     coverage_labels = {

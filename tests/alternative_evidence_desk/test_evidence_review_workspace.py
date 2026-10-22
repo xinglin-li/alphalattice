@@ -1156,14 +1156,8 @@ def test_research_only_evidence_binding_preserves_inputs_without_installing_a_st
 
 def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, monkeypatch, capsys):
     from alphalattice.control.product_host.composition import entry as run_alphalattice
-    from alphalattice.control.product_host.composition import (
-        web_launcher as run_local_portfolio_web,
-    )
     from alphalattice.control.product_host.composition.research_workspace import (
         publish_research_workspace_manifest,
-    )
-    from alphalattice.interface.local_application import (
-        retrieval_environment as create_retrieval_environment,
     )
 
     binding, _registry = _package(tmp_path)
@@ -1173,8 +1167,8 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     )
     interpreter = tmp_path / "declared-python.exe"
     interpreter.write_bytes(b"selector-test-only")
-    monkeypatch.setattr(create_retrieval_environment, "interpreter_path", lambda: interpreter)
-    # `serve` imports these itself (a CLI call never pays for them), so the modules are patched.
+    monkeypatch.setattr(run_alphalattice, "interpreter_path", lambda: interpreter)
+    # Patch imported functions at the consumer, and module attributes at their module.
 
     monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
     spawned = []
@@ -1199,6 +1193,10 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
         str(foreign_source),
     ]
     assert os.environ["PYTHONPATH"] == str(foreign_source)
+    detached = []
+    monkeypatch.setattr(run_alphalattice, "start", lambda a, **kw: detached.append(kw) or 0)
+    assert run_alphalattice.serve([*args[:-1], "--detach"]) == 0
+    assert detached == [{"host_interpreter": interpreter, "new_research": False}]
     assert set(options) == {"env"}  # cwd and stdin retain their caller meaning.
     # Run the actual module from outside the checkout with that child's source
     # binding: dependency-only environments and hostile sibling paths both work.
@@ -1225,7 +1223,7 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     assert len(spawned) == 2
     # An uninitialized workspace must still reach the ordinary initializer.
     started = []
-    monkeypatch.setattr(run_local_portfolio_web, "main", lambda args: started.append(args) or 0)
+    monkeypatch.setattr(run_alphalattice, "start", lambda args: started.append(args) or 0)
     empty_args = ["--workspace", str(tmp_path / "empty"), "--no-browser"]
     assert run_alphalattice.serve(empty_args) == 0 and started == [empty_args]
 

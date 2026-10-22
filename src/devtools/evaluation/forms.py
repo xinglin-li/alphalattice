@@ -6,7 +6,8 @@ import json
 import re
 from collections.abc import Iterable
 from dataclasses import MISSING, asdict, dataclass, fields
-from datetime import datetime
+from datetime import date, datetime
+from math import isfinite
 from typing import Any, Literal, Protocol, TypedDict, cast
 
 import yaml
@@ -21,6 +22,103 @@ GEN_AI_TEXT = (
     "gen_ai.response.model",
 )
 GEN_AI_COUNTS = ("gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens")
+
+
+class GoldenAcquisition(TypedDict):
+    """A fixture acquisition's build and copy observations, separate from its research."""
+
+    schema: Literal["alphalattice.golden-acquisition.v1"]
+    recipe: str
+    cache: str
+    cold: bool
+    elapsed_clock: bool
+    require_cold: bool
+    initial_fill_seconds: float
+    fill_started_at: float | None
+    fill_ended_at: float | None
+    copy_started_at: float
+    copy_ended_at: float
+    copy_seconds: float
+
+
+def decode_golden_acquisition(value: Any) -> GoldenAcquisition:
+    """Decode the complete protocol shape; a cached copy has no initial fill."""
+    code = "replay.acquisition_invalid"
+    if not isinstance(value, dict) or value.keys() != GoldenAcquisition.__required_keys__:
+        raise ValueError(code)
+    if (
+        value["schema"] != "alphalattice.golden-acquisition.v1"
+        or any(not isinstance(value[k], str) or not value[k].strip() for k in ("recipe", "cache"))
+        or any(type(value[k]) is not bool for k in ("cold", "elapsed_clock", "require_cold"))
+    ):
+        raise ValueError(code)
+    keys = ["initial_fill_seconds", "copy_seconds", "copy_started_at", "copy_ended_at"]
+    if value["cold"]:
+        keys += ["fill_started_at", "fill_ended_at"]
+    elif (
+        value["require_cold"]
+        or value["initial_fill_seconds"] != 0
+        or any(value[k] is not None for k in ("fill_started_at", "fill_ended_at"))
+    ):
+        raise ValueError(code)
+    try:
+        invalid = any(type(value[k]) not in (int, float) or not isfinite(value[k]) for k in keys)
+    except OverflowError:
+        invalid = True
+    if invalid:
+        raise ValueError(code)
+    if any(value[k] < 0 for k in ("initial_fill_seconds", "copy_seconds")):
+        raise ValueError(code)
+    return cast(GoldenAcquisition, dict(value))
+
+
+def admit_replay_measurement(value: Any, source: str) -> dict[str, Any]:
+    """Admit the source-bound, complete owner profiles and simultaneous Host peaks."""
+    if not isinstance(value, dict):
+        raise ValueError("replay.receipt_incomplete")
+    try:
+        binding = (value["schema"], value["workload"], value["source_sha"], value["status"])
+        if binding != (
+            "alphalattice.replay-measurement.v1",
+            "first-use-and-daily-120",
+            source,
+            "COMPLETE",
+        ) or not re.fullmatch(r"[0-9a-f]{40}", source):
+            raise ValueError("replay.receipt_binding")
+        if not {"first_use", "daily"}.issubset(value["legs"]):
+            raise ValueError("replay.receipt_legs")
+        for leg in value["legs"].values():
+            profile, meter = leg["profile"], leg["meter"]
+            if (
+                profile["schema"],
+                profile["status"],
+                profile["coverage"]["status"],
+                profile["gaps"],
+            ) != ("alphalattice.goal-profile.v1", "GOAL_PROFILE", "COMPLETE", []):
+                raise ValueError("replay.receipt_profile")
+            if (
+                not profile["stages"]
+                or meter["host_tree_complete"] is not True
+                or meter["host_tree_observed"] is not True
+            ):
+                raise ValueError("replay.receipt_coverage")
+            peak = meter["peak_host_private_commit_bytes"]
+            if type(peak) is not int or peak <= 0:
+                raise ValueError("replay.receipt_peak")
+            numbers = [
+                leg["wall_seconds"],
+                profile["coverage"]["host_seconds"],
+                *(
+                    stage[phase]
+                    for stage in profile["stages"]
+                    for phase in ("execute_seconds", "verify_seconds")
+                ),
+            ]
+            if any(type(n) not in (int, float) or not isfinite(n) or n < 0 for n in numbers):
+                raise ValueError("replay.receipt_time")
+        return cast(dict[str, Any], value)
+    except (KeyError, TypeError, AttributeError, OverflowError) as error:
+        raise ValueError("replay.receipt_incomplete") from error
 
 
 def _record(cls: type[Any], value: object) -> dict[str, Any]:
@@ -93,6 +191,28 @@ def _feedback(value: object) -> None:
 
 
 @dataclass(frozen=True)
+class ReplayInput:
+    """A replay recipe and its closed sessions, independent of an agent runner."""
+
+    schema: str
+    golden: str
+    sessions: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.schema != "alphalattice.replay-input.v1":
+            raise ValueError("invalid_replay_schema")
+        _text(self.golden)
+        _identifier(self.golden)
+        sessions = _strings(self.sessions)
+        days = tuple(date.fromisoformat(session) for session in sessions)
+        if not days or tuple(sorted(set(days))) != days:
+            raise ValueError("invalid_replay_sessions")
+        if tuple(day.isoformat() for day in days) != sessions:
+            raise ValueError("invalid_replay_sessions")
+        object.__setattr__(self, "sessions", sessions)
+
+
+@dataclass(frozen=True)
 class Scenario:
     """Each route group requires one of its alternatives; all groups are required."""
 
@@ -113,6 +233,7 @@ class Scenario:
     starting_state: str = ""
     feedback: dict[str, Any] | None = None
     committee: dict[str, Any] | None = None
+    replay: ReplayInput | None = None
 
     def __post_init__(self) -> None:
         _version(self.version)
@@ -125,6 +246,8 @@ class Scenario:
         _timestamp(self.now)
         _samples(self.samples)
         _feedback(self.feedback)
+        if not isinstance(self.replay, (ReplayInput, type(None))):
+            raise ValueError("invalid_replay_input")
         if self.committee is not None:
             if self.feedback is not None or not isinstance(self.committee, dict):
                 raise ValueError("invalid_committee_context")
@@ -156,10 +279,16 @@ class Scenario:
 
     @classmethod
     def from_dict(cls, value: object) -> Scenario:
-        return cls(**_record(cls, value))
+        body = _record(cls, value)
+        if body.get("replay") is not None:
+            body = {**body, "replay": ReplayInput(**_record(ReplayInput, body["replay"]))}
+        return cls(**body)
 
     def to_dict(self) -> dict[str, Any]:
-        return cast(dict[str, Any], json.loads(json.dumps(asdict(self), ensure_ascii=False)))
+        body = cast(dict[str, Any], json.loads(json.dumps(asdict(self), ensure_ascii=False)))
+        if self.replay is None:
+            body.pop("replay")
+        return body
 
 
 @dataclass(frozen=True)

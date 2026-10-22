@@ -95,6 +95,10 @@ const LiveActivity = (() => {
       if (s[k] !== undefined && s[k] !== null && s[k] !== '') parts.push(named(t(label), s[k]));
     }
     if (NETWORK_USE[s.network_used_under]) parts.push(t(NETWORK_USE[s.network_used_under]));
+    for (const q of g.items.flatMap(i => i.person_questions || [])) {
+      const words = I18N.zh ? q.words_zh : q.words;
+      parts.push(locators ? html`<code>${q.code || ""}</code> ${q.state} ${words || ''}` : [q.code, q.state, words].filter(Boolean).join(' '));
+    }
     if (f.verified) parts.push(locators ? html`${codeWords(f.artifactKind)} ${hashCell(f.artifactHash, SHORT.id)}` : codeWords(f.artifactKind) + ' ' + shortRef(f.artifactHash));
     if (f.declared.length && !parts.length) parts.push(f.declared.at(-1).payload?.summary || '');
     return locators ? joinMarkup(parts) : parts.join(' · ');
@@ -209,7 +213,7 @@ const LiveActivity = (() => {
   }
   // Reuse the feed's cadence. Own read receipts cannot dirty the Goal again; canonical Task
   // state changes still do, including a result whose verification left the retained feed.
-  const FOLLOW_READS = new Set(['GOAL_LIST', 'GOAL_NARRATIVE', 'GOAL_SHOW', 'GOAL_REFERENCE', 'GOAL_EXPORT', 'CASE_NARRATIVE', 'CASE_READBACK', 'PENDING_DECISIONS', 'STATUS', 'TASK_RECOVERY', 'TASK_RECOVERY_VIEW', 'EXPERIMENT_READBACK', 'REPORT', 'RESEARCH_HISTORY']);
+  const FOLLOW_READS = new Set(['GOAL_LIST', 'GOAL_NARRATIVE', 'GOAL_PROFILE', 'GOAL_SHOW', 'GOAL_REFERENCE', 'GOAL_EXPORT', 'CASE_NARRATIVE', 'CASE_READBACK', 'PENDING_DECISIONS', 'STATUS', 'TASK_RECOVERY', 'TASK_RECOVERY_VIEW', 'EXPERIMENT_READBACK', 'REPORT', 'RESEARCH_HISTORY']);
   function goalStamp() {
     const ordinal = Math.max(0, ...[...S.groups.values()].flatMap(g => g.items).filter(v => v.schema_kind !== 'ProductOperationObserved' || !(FOLLOW_READS.has(v.payload?.operation) || (Data.offers?.(v.payload?.operation) && !Data.posts(v.payload.operation)))).map(v => v.ordinal));
     return JSON.stringify([S.epoch, ordinal, followedTasks().map(id => { const v = S.tasks[id] || Data.tasks().find(t => t.task_id === id); return [id, v?.lifecycle, v?.task_record_hash]; })]);

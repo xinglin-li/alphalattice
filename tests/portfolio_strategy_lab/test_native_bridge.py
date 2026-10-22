@@ -17,8 +17,8 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.interface.local_application import native_bridge, workbench_assets
 from alphalattice.interface.local_application import native_setup as setup
-from alphalattice.interface.local_application import retrieval_environment, workbench_assets
 from alphalattice.interface.local_application.client import (
     LocalResearchClient,
     LocalResearchConnection,
@@ -489,7 +489,7 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
         read_text=lambda _: json.dumps({"url": tmp_path.as_uri()}),
     )
     monkeypatch.setattr(importlib.metadata, "distribution", lambda _: distribution)
-    monkeypatch.setattr(retrieval_environment, "load", lambda: missing != "retrieval_runtime")
+    monkeypatch.setattr(native_bridge, "load", lambda: missing != "retrieval_runtime")
     monkeypatch.setattr(model_store, "default_store_root", lambda: tmp_path / "packs")
     monkeypatch.setattr(model_store, "recipe_readiness", lambda *_: {"ready": True})
     # Linux, here, without libgomp1: the locked Node finds libatomic, LightGBM finds no OpenMP.

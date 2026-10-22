@@ -38,6 +38,9 @@ from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     EvidenceTopic,
 )
 from alphalattice.interface.local_application.portfolio_export import PortfolioExportManifest
+from alphalattice.interface.local_application.questions import (
+    PersonConfirmation as PersonConfirmation,
+)
 from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
     WatermarkAdvancementProgram,
     WatermarkAdvancementReceipt,
@@ -103,25 +106,6 @@ class ResearchDeliveryCommentary(BaseModel):  # type: ignore[misc]
     text: str = Field(min_length=1, max_length=20_000)
 
 
-class PersonConfirmation(BaseModel):  # type: ignore[misc]
-    """The person's yes to one of their decisions, asked in one line and relayed whole.
-
-    The Host cannot prove who typed the words, so it keeps them as they were said for audit and
-    revocation. `decision_hash` binds them to the one request they answer, and each is used
-    once; the Host's clock dates it.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    question: str = Field(min_length=1, max_length=600)
-    """The one-line question the agent asked, as it asked it."""
-    words: str = Field(min_length=1, max_length=600)
-    """The person's answer, verbatim, never paraphrased."""
-    decision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    """The request it answers, without this confirmation."""
-    nonce: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
-    """For the person's next yes to a decision already made: the nonce its refusal named."""
-
-
 class CommitteeMessage(BaseModel):  # type: ignore[misc]
     """One message a committee member sends to its floor (`committee submit`)."""
 
@@ -156,6 +140,7 @@ type PortfolioResearchOperation = Literal[
     "GOAL_REVISE",
     "GOAL_SHOW",
     "GOAL_NARRATIVE",
+    "GOAL_PROFILE",
     "GOAL_REFERENCE",
     "GOAL_ATTACH",
     "GOAL_NOTE",
@@ -829,15 +814,15 @@ class PortfolioResearchOperationRequest:
                 frozenset({"goal_declaration"}),
                 frozenset({"goal_id", "goal_declaration", "change_reason"}),
             ),
-            # Bound sessions default the Goal and head (V391).
+            # Bound sessions default to their Goal.
             "GOAL_REVISE": (
                 frozenset({"goal_declaration", "change_reason"}),
                 frozenset({"goal_id", "goal_hash", "goal_declaration", "change_reason"}),
             ),
             **{
-                # An exact revision by its hash, or the goal's current head by its id.
+                # A saved revision or the current head.
                 op: (frozenset(), frozenset({"goal_id", "goal_hash"}))
-                for op in ("GOAL_SHOW", "GOAL_NARRATIVE", "GOAL_EXPORT")
+                for op in ("GOAL_SHOW", "GOAL_NARRATIVE", "GOAL_PROFILE", "GOAL_EXPORT")
             },
             "GOAL_REFERENCE": (
                 frozenset({"goal_hash", "goal_reference_id"}),

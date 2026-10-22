@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,11 @@ import pytest
 
 from devtools.evaluation.explorer import Explorer, mutations
 from devtools.evaluation.forms import Scenario
+
+
+def _explorer(call, work, name, sentence, *, mutation_limit=None, **kwargs):
+    scenario = Scenario(name, sentence, "2026-10-10T15:00:00+00:00", (), (), "agent", ())
+    return Explorer(call, lambda _: {}, scenario, work, mutation_limit=mutation_limit, **kwargs)
 
 
 def test_alias_mistakes_change_the_alias_and_keep_the_members_words() -> None:
@@ -152,10 +158,12 @@ def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: 
         "schema-duplicate",
     ],
 )
+@pytest.mark.parametrize("cost", (1, 1000))
 def test_an_injected_refusal_recovers_only_the_original_bound_step(
-    tmp_path: Path, recovery: str, monkeypatch
+    tmp_path: Path, recovery: str, monkeypatch, cost
 ) -> None:
     """A named refusal needs a filled recovery that admits the original operation and bindings."""
+    monkeypatch.setattr(time, "monotonic", iter(range(0, 100000, cost)).__next__)
     request = {
         "operation": "COMMITTEE_SUBMIT",
         "update_task_id": "task-1",
@@ -290,14 +298,11 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
             answer["next_requests"] = {"repair": document if recovery == "loop" else repaired}
         return answer
 
-    scenario = Scenario(
-        "injection", "continue the request", "2026-10-10T15:00:00+00:00", (), (), "agent", ()
-    )
-    explorer = Explorer(
+    explorer = _explorer(
         call,
-        lambda _: {},
-        scenario,
         tmp_path,
+        "injection",
+        "continue the request",
         request_fields={request["operation"]: {"required": [required], "allowed": list(request)}},
         mutation_owners={request["operation"]: "committee.py", "COMMITTEE_READ": "committee.py"},
         read_operations={
@@ -307,12 +312,13 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
             "WORKSPACE_SHOW",
             "OPERATION_LIST",
         },
-        mutation_budget=120,
+        mutation_limit=2 if recovery == "walk" else None,
         mutation_kinds={"drop-field"} if recovery == "walk" else None,
     )
     if recovery == "walk":
-        explorer.mutation_budget, explorer.mutation_limit = 0, 2
         grade, trace = explorer.explore([["start"]])
+        explorer.inject(request, "committee", kinds={"drop-field"})
+        assert [row["mutation"] for row in explorer.mutation_checks] == ["drop-field", "duplicate"]
         assert grade["passed"] and sent.count(request) == 2
         assert (
             sum(bool(e.attributes.get("alphalattice.corrected_original")) for e in trace.events)
@@ -370,16 +376,6 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
             explorer.inject(request, state)
             sampled.append((explorer.mutation_checks[-1]["mutation"], sent[before]))
         assert sampled[0] == sampled[1] == sampled[2] and sampled[0][1] != request
-        explorer.mutation_limit = 2
-        for cost in (1, 1000):
-            clock = iter(range(0, 100000, cost))
-            monkeypatch.setattr(
-                "devtools.evaluation.explorer.time.monotonic", lambda clock=clock: next(clock)
-            )
-            explorer.mutation_checks, explorer.mutation_seconds = [], 0
-            for _ in range(3):
-                explorer.inject(request, "committee", kinds={"drop-field"})
-            assert [row["mutation"] for row in explorer.mutation_checks] == ["drop-field"] * 2
 
 
 @pytest.mark.parametrize(
@@ -422,15 +418,14 @@ def test_a_retired_recovery_offer_is_settled_only_by_its_completed_source(tmp_pa
             },
         }
 
-    scenario = Scenario("recovery", "replan", "2026-10-10T15:00:00+00:00", (), (), "agent", ())
-    explorer = Explorer(
+    explorer = _explorer(
         call,
-        lambda _: {},
-        scenario,
         tmp_path,
+        "recovery",
+        "replan",
         read_operations={"TASK_RECOVERY", "TASKS"},
         mutation_owners={"TASK_RECOVERY": "tasks"},
-        mutation_budget=120,
+        mutation_limit=None,
     )
     field = "task_id" if state in {"stopped-read", "wrong-read"} else "recovery_task_id"
     explorer.inject(original, "recovery", kinds={"value-change"}, fields={field})
@@ -503,15 +498,11 @@ def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
         )
         return {"operation": request["operation"], "outcome": "PENDING", "data": data}
 
-    scenario = Scenario(
-        "duplicate", "run the plan", "2026-10-10T15:00:00+00:00", (), (), "agent", ()
-    )
-    explorer = Explorer(
+    explorer = _explorer(
         call,
-        lambda _: {},
-        scenario,
         tmp_path,
-        mutation_budget=120,
+        "duplicate",
+        "run the plan",
         read_operations={"COMMITTEE_READ"},
         mutation_owners={"COMMITTEE_SUBMIT": "committee.py", "COMMITTEE_READ": "committee.py"},
     )

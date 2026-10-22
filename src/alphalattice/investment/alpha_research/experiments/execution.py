@@ -68,6 +68,7 @@ from .contracts import (
 from .contracts import (
     AlphaCandidateStatus as NumericalCandidateStatus,
 )
+from .contracts import seal_contract as seal_alpha_contract
 from .development_artifacts import AlphaDevelopmentArtifactStore
 from .development_contracts import (
     AlphaCandidateDevelopmentReport,
@@ -91,6 +92,7 @@ from .mandate import (
     admitted_capabilities_installed,
     assert_research_recipe_target_authority,
 )
+from .policies import load_alpha_metric_policy
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -880,7 +882,6 @@ def _fit_ledger(
     prediction_mask: npt.NDArray[np.bool_],
     state_hash: str,
 ) -> AlphaFitLedgerEntry:
-    from .contracts import seal_contract as seal_alpha_contract
 
     return seal_alpha_contract(
         AlphaFitLedgerEntry,
@@ -898,7 +899,6 @@ def _fit_ledger(
 
 
 def _metric_policy() -> AlphaMetricPolicy:
-    from .policies import load_alpha_metric_policy
 
     return load_alpha_metric_policy()
 

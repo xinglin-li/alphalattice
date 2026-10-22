@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
     TRADING_SESSIONS_PER_YEAR,
 )
+from alphalattice.capabilities.portfolio_backtesting.contracts import PortfolioPerSideCostAssumption
 from alphalattice.control.product_host.composition.committee_materials import holdings
 from alphalattice.control.product_host.composition.decision_advancement import (
     DecisionAdvancementPlan,
@@ -26,7 +27,10 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
     read_research_workspace_manifest,
 )
-from alphalattice.control.product_host.research_authoring.factor_inputs import confined
+from alphalattice.control.product_host.research_authoring.factor_inputs import (
+    confined,
+    factor_input_paths,
+)
 from alphalattice.control.product_host.research_authoring.timing import binding_temporal_scope
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
@@ -51,9 +55,14 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.interface.local_application.web import LocalWebError
+from alphalattice.interface.local_application.workbench_projection import (
+    forward_holdings_view,
+    portfolio_view,
+)
 from alphalattice.investment.alpha_research.scores.model_renewal import (
     verified_lifecycle_admissions,
 )
+from alphalattice.investment.portfolio_strategy_lab.application import decision_updates
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioExecutionProgram,
 )
@@ -100,8 +109,6 @@ from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 
-from .evidence_review_application import EvidenceReviewApplication
-from .evidence_review_delivery import EvidenceReviewDelivery
 from .research_experiments import review_requests
 from .strategy_activation import position_basis
 
@@ -109,10 +116,9 @@ from .strategy_activation import position_basis
 def position_rows(
     body: dict[str, object],
     *,
-    review: EvidenceReviewApplication | None = None,
+    review: Callable[[BookSelector], dict[str, object]] | None = None,
     risk: Callable[[dict[str, object], PortfolioUpdatePositions], dict[str, Any]] | None = None,
     now: datetime | None = None,
-    read_update: Callable[[UUID, str], dict[str, object]] | None = None,
 ) -> dict[str, object]:
     """Project dated position rows and review standing from the verified publication."""
     raw = body.get("publication")
@@ -148,13 +154,12 @@ def position_rows(
             body["date_risk"] = risk(body, positions)
         if review is not None:
             try:
-                standing = EvidenceReviewDelivery(review).review_standing(
+                standing = review(
                     BookSelector(
                         update_task_id=UUID(str(body["task_id"])),
                         update_publication_hash=value.content_hash,
                         position_basis=positions.basis,
                     ),
-                    read_update=read_update,
                 )
             except Exception as error:
                 # Broken review lineage cannot hide sealed positions.
@@ -577,11 +582,6 @@ def read_portfolio(
             raise LocalWebError(safe_failure_code(refusal_code(body)) or FAILURE_DETAIL_WITHHELD)
         return cast(dict[str, Any], body)
 
-    from alphalattice.interface.local_application.workbench_projection import (
-        forward_holdings_view,
-        portfolio_view,
-    )
-
     performance = request.performance
     scope = request.portfolio_scope
     if scope is not None and (scope != "holdings" or performance == "latest"):
@@ -640,9 +640,6 @@ def read_portfolio(
         )
         # The book's exact quoted cost selects an already sealed return lane.
         # A quote outside the two recorded lanes remains explicitly unavailable.
-        from alphalattice.capabilities.portfolio_backtesting.contracts import (
-            PortfolioPerSideCostAssumption,
-        )
 
         cost = PortfolioPerSideCostAssumption.from_bps_per_side(
             cast(dict[str, str], body["spec"])["cost_bps_per_side"]
@@ -652,9 +649,6 @@ def read_portfolio(
         update = next(row for row in updates if row.get("realized_performance") == latest)
         from alphalattice.control.product_host.composition.rolling_portfolio_report import (
             read_rolling_report,
-        )
-        from alphalattice.investment.portfolio_strategy_lab.application import (
-            decision_updates,
         )
 
         assert operations.application is not None and operations.updates is not None
@@ -802,11 +796,6 @@ def book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
     from alphalattice.control.product_host.research_authoring.execution import (
         _sector_by_listing_id,
     )
-    from alphalattice.control.product_host.research_authoring.factor_inputs import (
-        factor_input_paths,
-    )
-    from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-    from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 
     source = body.get("portfolio_source") or {}
     binding, snapshot = source.get("input_binding_hash"), source.get("panel_snapshot_hash")

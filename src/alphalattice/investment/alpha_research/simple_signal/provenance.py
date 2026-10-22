@@ -30,6 +30,7 @@ from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     installed_feature_availability_policy,
     observation_clock_for,
 )
+from alphalattice.kernel.quant.factor_contracts import NUMERICAL_SPEC_FIELDS
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .standardize import SimpleSignalError
@@ -87,7 +88,6 @@ def resolve_feature_clock(feature_id: str) -> FeatureClockProvenance:
     # The same field set the Feature Desk uses to decide whether a recipe is
     # still the control it claims to be. Importing the contract's tuple keeps one
     # owner for "what can move the numbers"; restating it would let the two drift.
-    from alphalattice.kernel.quant.factor_contracts import NUMERICAL_SPEC_FIELDS
 
     payload = spec.model_dump(mode="json")
     methodology = canonical_hash({key: payload[key] for key in NUMERICAL_SPEC_FIELDS})

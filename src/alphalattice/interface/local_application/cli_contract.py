@@ -12,6 +12,7 @@ action and the words.
 
 from __future__ import annotations
 
+import ast
 import functools
 import json
 import os
@@ -23,9 +24,12 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
+from alphalattice.interface.local_application.labels import titles_in
+from alphalattice.interface.local_application.questions import person_question
 from alphalattice.kernel.shared_kernel.project_layout import (
     REFUSAL_WORDS_RESOURCE,
     command_prefix,
@@ -272,7 +276,8 @@ def count_launch(environment: Mapping[str, str] | None = None) -> int | None:
 _ZH_TABLE: Final = Path(__file__).parent / "assets" / "workbench-source" / "js" / "data" / "zh.js"
 """The UI owner's Chinese table, English source text to Chinese; the CLI reads it, never a copy."""
 
-_ZH_ENTRY: Final = re.compile(r'^\s*("(?:[^"\\]|\\.)*")\s*:\s*("(?:[^"\\]|\\.)*"),?\s*$', re.M)
+_ZH_STRING: Final = r"""(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')"""
+_ZH_ENTRY: Final = re.compile(rf"^\s*({_ZH_STRING})\s*:\s*({_ZH_STRING}),?\s*$", re.M)
 
 BUNDLE_WORKSPACE: Final = "workspace.json"
 
@@ -426,6 +431,8 @@ def refusal_words(
                 "its owner checks any remaining source requirements.",
                 next_action=decision["next_action"],
             )
+        elif workspace is not None:
+            words["person_questions"] = [person_question("network.workspace_access")]
         if workspace is not None or access.decided_by != "DEFAULT":
             words["network_access"] = decision
     return words
@@ -1567,6 +1574,7 @@ READ_OPERATIONS: frozenset[str] = frozenset(
         "GOAL_LIST",
         "GOAL_SHOW",
         "GOAL_NARRATIVE",
+        "GOAL_PROFILE",
         "GOAL_REFERENCE",
         "GOAL_EXPORT",
         "GOAL_CONTINUE",
@@ -1761,8 +1769,6 @@ def envelope(
     refusal = owner.get("refused")
     titles: dict[str, str] = {}
     if body is not None:
-        from alphalattice.interface.local_application.labels import titles_in
-
         # What it installs, named by the label table beside the ids the answer keeps.
         titles = titles_in(body, chinese=ANSWER_LANGUAGE.get() == "zh")
     return {
@@ -1807,25 +1813,34 @@ def answer_json(
 
 
 @functools.cache
-def _zh() -> dict[str, str]:
+def _zh() -> Mapping[str, str]:
     """The Chinese table's entries; a context-prefixed key (`tp|Queued`) is a page's own."""
+
+    def decoded(literal: str) -> str:
+        return str(json.loads(literal) if literal.startswith('"') else ast.literal_eval(literal))
+
     text = _ZH_TABLE.read_text(encoding="utf-8")
-    return {json.loads(key): json.loads(value) for key, value in _ZH_ENTRY.findall(text)}
+    return MappingProxyType(
+        {decoded(key): decoded(value) for key, value in _ZH_ENTRY.findall(text)}
+    )
 
 
 def worded(detail: str | None) -> str | None:
     """An answer's detail in the command's language (`ANSWER_LANGUAGE`, U19).
 
     Args:
-        detail: The owner's or the client's words, English.
+        detail: English source text or a registered MESSAGE id.
 
     Returns:
-        The table's Chinese under `--lang zh` where it words the sentence; the English
-        otherwise, so a sentence the table lacks reads as the owner wrote it.
+        The id's requested locale, or legacy Chinese under `--lang zh`; unregistered
+        source text stays unchanged. A PERSON_QUESTION id is never a message lookup.
     """
-    if detail is None or ANSWER_LANGUAGE.get() != "zh":
-        return detail
-    return _chinese(detail)
+    if detail is None:
+        return None
+    entry = runtime_json("config/registries/messages.json")["entries"].get(detail)
+    if entry is not None and entry["kind"] == "MESSAGE":
+        return str(entry["words"]["zh-CN" if ANSWER_LANGUAGE.get() == "zh" else "en"])
+    return _chinese(detail) if ANSWER_LANGUAGE.get() == "zh" else detail
 
 
 def _chinese(detail: str) -> str:

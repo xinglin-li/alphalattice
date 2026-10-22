@@ -1766,7 +1766,7 @@ function pctText(s, threshold = null) {
   return shown;
 }
 // a fraction of one (0.6 -> "60%")
-/* Owner codes read in words; hover and exports keep exact codes. Wording changes no value. */
+// Owner words; hover/exports keep exact codes.
 const CODE_WORDS = {
   'alternative_evidence.scoped_refresh': 'Refresh Evidence',
   'evidence_review.retrieval_environment_not_loaded': 'Retrieval environment not loaded',
@@ -1971,6 +1971,7 @@ const CODE_WORDS = {
   GOAL_EXPORT: "Export Goal",
   GOAL_LIST: "Goals",
   GOAL_NARRATIVE: "Goal narrative",
+  GOAL_PROFILE: "goal.profile.operation",
   GOAL_NOTE: "Record Goal note",
   GOAL_OPEN: "Open Goal",
   GOAL_REVISE: "Revise Goal",

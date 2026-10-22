@@ -43,6 +43,7 @@ from alphalattice.control.product_host.composition.evidence_source_ways import (
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     offered_installs as source_offered_installs,
 )
+from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -163,6 +164,7 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     RERANKER_RUNTIME_TORCH_CUDA,
     HybridIndexSpec,
 )
+from alphalattice.kernel.knowledge.model_store import runtime_availability
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.sealing import validate_hash_compatible
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
@@ -573,8 +575,6 @@ def retrieval_recipe_view(spec: HybridIndexSpec) -> dict[str, object]:
         "device": "gpu" if gpu else "cpu",
     }
     if gpu:
-        from alphalattice.kernel.knowledge.model_store import runtime_availability
-
         view["host_runtime"] = runtime_availability()
     return view
 
@@ -961,8 +961,6 @@ class EvidenceReviewApplication:
 
     def replan_request(self, task: TaskRecord) -> dict[str, object]:
         """Ask for the book selector the evidence-only Task does not retain."""
-        from alphalattice.control.product_host.composition.plain_refusals import refused
-
         return refused("evidence_review.replan_book_selection_required")
 
     def record_task_admission(
@@ -1018,8 +1016,6 @@ class EvidenceReviewApplication:
 
     def task_subject(self, task: TaskRecord) -> dict[str, object]:
         """Read admitted books and independent grouping from this Task's owner."""
-        from alphalattice.control.product_host.composition.plain_refusals import refused
-
         scope: dict[str, object] = {}
         context: dict[str, object] = {}
         subjects: list[dict[str, object]] = []
@@ -1454,7 +1450,6 @@ class EvidenceReviewApplication:
         current = network_access(self.workspace, now=now)
         if self.network_access.allowed and current.allowed:
             return None
-        from alphalattice.control.product_host.composition.plain_refusals import refused
 
         words = refused("evidence_review.workspace_network_not_allowed")
         delegation = self.network_delegation(caller)

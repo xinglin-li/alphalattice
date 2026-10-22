@@ -36,7 +36,7 @@ import functools
 import re
 import subprocess
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -49,6 +49,7 @@ from alphalattice.control.observation_runtime.adapters import safe_observation_d
 from alphalattice.control.observation_runtime.contracts import (
     ObservationAuthority,
     ObservationAvailability,
+    ObservationReadCursor,
     ObservationRetentionClass,
 )
 from alphalattice.control.observation_runtime.ledger import (
@@ -62,6 +63,8 @@ from alphalattice.control.observation_runtime.policy import (
     PRODUCT_OPERATION_SCHEMA,
     default_observation_policies,
 )
+from alphalattice.control.observation_runtime.profile import align_clock_inputs, stage_profile
+from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.native_usage_reader import UNVERIFIED_LIMIT
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     ArtifactReference,
@@ -70,6 +73,7 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
+from alphalattice.control.task_control.timing import read_stage_spans, stage_spans_path
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application.activity import (
     ActivityReadQuery,
@@ -97,17 +101,24 @@ from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     safe_failure_code,
 )
+from alphalattice.interface.local_application.goals import Goal
 from alphalattice.interface.local_application.native_bridge import (
     CHILD_USAGE_BINDING_UNVERIFIED as UNVERIFIED,
 )
 from alphalattice.interface.local_application.native_bridge import (
     HOSTS,
+    codex_command,
+    codex_queue_reach,
+    first_line,
     joined_members,
 )
 from alphalattice.interface.local_application.portfolio_research import (
     OperationCaller,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.interface.local_application.questions import asked_questions, person_question
+from alphalattice.kernel.shared_kernel.clocks import clock_metadata
+from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 
 OBSERVATION_LEDGER_NAME = "observations.sqlite"
 """Under `<workspace>/runtime`, the same store the Desk publishers use."""
@@ -243,6 +254,17 @@ class WorkspaceActivity:
         self._port = UnifiedObservationPort(
             ledger=ledger, policies=default_observation_policies(), clock=self.clock
         )
+        if isinstance(correlation := getattr(self.clock, "correlation", None), dict):
+            self._append(
+                schema_kind="ClockCorrelationRecorded",
+                source_kind=OPERATION_SOURCE_KIND,
+                source_id=self.source_id,
+                payload=correlation,
+                authority=ObservationAuthority.OPERATIONAL_ASSERTION,
+                task_id=None,
+                run_id=None,
+                correlation_ids=(),
+            )
 
     def attach(
         self,
@@ -260,6 +282,10 @@ class WorkspaceActivity:
         self._registry = registry
         self._artifacts = artifacts
         self._operations = operations
+        if operations is not None:
+            operations.goals.profile = lambda goal: self.goal_profile(
+                goal, operations.heartbeats.runtime_paths
+            )
         dispatcher.on_command_returned = self.command_returned
         self._wake_sender = ThreadPoolExecutor(max_workers=1, thread_name_prefix="codex-wake")
         for held in registry.interrupt_wakes(observed_at=self.clock()):
@@ -382,7 +408,11 @@ class WorkspaceActivity:
     # ----------------------------------------------------- operation observer
 
     def entered(
-        self, request: PortfolioResearchOperationRequest, *, caller: OperationCaller
+        self,
+        request: PortfolioResearchOperationRequest,
+        *,
+        caller: OperationCaller,
+        relayed: bool = False,
     ) -> OperationSpan | None:
         """Record admitted operation entry using bounded safe references and field names.
 
@@ -392,12 +422,14 @@ class WorkspaceActivity:
         Args:
             request: Validated operation declaration.
             caller: Declared operation caller.
+            relayed: Relay admission already checked by the operation owner.
 
         Returns:
             Operation span for observed operations, otherwise None; recording failures are isolated.
         """
         if not observed_operation(request.operation):
             return None
+        provenance = REQUEST_PROVENANCE.get()
         span = OperationSpan(
             operation=request.operation,
             caller=caller,
@@ -405,11 +437,13 @@ class WorkspaceActivity:
             subject={},
             request_fields=[],
             started=perf_counter(),
+            # The operation owner already admitted the confirmation's relay.
+            # HUMAN decisions ignore it and use their canonical direct code.
+            confirmation=(request.person_confirmation if caller != "HUMAN" and relayed else None),
         )
+
         # The agent session and goal the request's client named, read in the request's own
         # context: provenance beside what the request did, never an identity (OP13, ID6).
-        provenance = REQUEST_PROVENANCE.get()
-
         def record() -> None:
             span.subject = safe_references(
                 {
@@ -423,6 +457,37 @@ class WorkspaceActivity:
         self._isolated(record)
         return span
 
+    def _record_person_questions(
+        self, span: OperationSpan, body: Mapping[str, Any], subject: dict[str, Any]
+    ) -> None:
+        asked = asked_questions(span.operation, body.get("person_questions"))
+        confirmation = span.confirmation
+        answered = outcome_of(dict(body)) == "OK" and (
+            confirmation is not None
+            or (span.caller == "HUMAN" and span.operation == "NETWORK_ACCESS_SET")
+        )
+        if asked or answered:
+            code = confirmation.question_code if confirmation else "network.workspace_access"
+            definitions = asked or [person_question(code) if code else {}]
+            refs = safe_references(
+                {
+                    **subject,
+                    "workspace_id": self.workspace_id,
+                    "operation_ref": span.operation_ref,
+                }
+            )
+            if confirmation is not None:
+                refs["decision_hash"] = confirmation.decision_hash
+            subject["person_questions"] = [
+                {
+                    "code": definition.get("code"),
+                    "catalog_hash": definition.get("catalog_hash"),
+                    "state": "ASKED" if asked else "ANSWERED" if definition else "LEGACY_UNCODED",
+                    "references": refs,
+                }
+                for definition in definitions
+            ]
+
     def returned(self, span: OperationSpan, body: Mapping[str, Any]) -> None:
         """Record an operation return with safe status, references and next-read metadata.
 
@@ -435,6 +500,8 @@ class WorkspaceActivity:
 
         def record() -> None:
             subject = {**span.subject, **safe_references(returned_subject(body))}
+            # Question enrichment must not erase the ordinary RETURNED row.
+            self._isolated(lambda: self._record_person_questions(span, body, subject))
             conversation = body.get("conversation")
             receipt = body.get("receipt")
             if (
@@ -589,6 +656,7 @@ class WorkspaceActivity:
             "subject": span.subject if subject is None else subject,
             "request_fields": span.request_fields,
         }
+        payload.update(clock_metadata(self.clock))
         if phase != "REQUESTED":
             payload["latency_milliseconds"] = int((perf_counter() - span.started) * 1000)
             payload["status"] = status
@@ -813,6 +881,174 @@ class WorkspaceActivity:
             },
         }
 
+    def _profile_rows(self, goal: Goal) -> tuple[list[Any], list[Any], int, list[Any]]:
+        ledger, head = self._ledger, 0
+        rows: list[dict[str, Any]] = []
+        gaps: list[dict[str, Any]] = []
+        clocks: list[dict[str, Any]] = []
+        if ledger is None:
+            return rows, [{"code": "LEDGER_UNAVAILABLE"}], head, clocks
+        cursor = ObservationReadCursor(store_epoch=ledger.store_epoch, ordinal=0)
+        while True:
+            try:
+                page = ledger.observations_after(cursor, limit=MAXIMUM_READ_PAGE)
+            except ObservationStorageError:
+                gaps.append({"code": "LEDGER_ROWS_UNREADABLE"})
+                break
+            head = head or page.head_ordinal
+            for item in page.items:
+                envelope, payload = item.envelope, item.envelope.inline_safe_payload
+                if item.ordinal > head:
+                    break
+                if payload is None:
+                    gaps.append(
+                        {"code": "LEDGER_ROW_UNAVAILABLE", "source": envelope.observation_id}
+                    )
+                elif (
+                    envelope.schema_kind in {PRODUCT_OPERATION_SCHEMA, "ClockCorrelationRecorded"}
+                    and envelope.source_kind == OPERATION_SOURCE_KIND
+                    and envelope.authority == ObservationAuthority.OPERATIONAL_ASSERTION
+                ):
+                    target = rows if envelope.schema_kind == PRODUCT_OPERATION_SCHEMA else clocks
+                    target.append(
+                        {
+                            **payload,
+                            "at": envelope.observed_at.isoformat(),
+                            "source": envelope.source_id,
+                            "provenance": envelope.observation_id,
+                            "clock_domain": "LEDGER_OBSERVED_AT",
+                        }
+                    )
+            if not page.more or page.next_cursor.ordinal >= head:
+                break
+            cursor = page.next_cursor
+        owned = {
+            (r["source"], r.get("operation_ref"))
+            for r in rows
+            if r.get("subject", {}).get("goal_id") == str(goal.goal_id)
+        }
+        return (
+            [
+                r
+                for r in rows
+                if (r["source"], r.get("operation_ref")) in owned
+                and r.get("subject", {}).get("goal_id") in {None, str(goal.goal_id)}
+            ],
+            gaps,
+            head,
+            clocks,
+        )
+
+    def _profile_window(
+        self,
+        goal: Goal,
+        rows: Sequence[Any],
+        offsets: Mapping[str, float] | None,
+        gaps: list[dict[str, Any]],
+    ) -> tuple[str, str, str]:
+        """Bind terminal cuts to their saved revision; active reads use one snapshot clock."""
+        times = [datetime.fromisoformat(row["at"]) for row in rows]
+        start = (
+            min(times)
+            if offsets is not None and times
+            else min([goal.intent_registered_at, *times])
+        )
+        end = max(times, default=start) if offsets is not None else goal.recorded_at
+        source = "RECORDED_RPC_BOUND" if offsets is not None else "GOAL_TERMINAL_RECORD"
+        if goal.state == "OPEN":
+            snapshot = self.clock()
+            source = "HOST_READ_SNAPSHOT"
+            if offsets is not None:
+                offset = offsets.get(getattr(self.clock, "reference", ""))
+                if offset is None or clock_metadata(self.clock).get("clock_drift") is not False:
+                    gaps.append({"code": "CLOCK_WINDOW_UNOBSERVED"})
+                    snapshot = end
+                    source = "RECORDED_RPC_BOUND"
+                else:
+                    snapshot += timedelta(seconds=offset)
+            end = max([end, snapshot, *times])
+        else:
+            closing = [
+                at
+                for at, row in zip(times, rows, strict=True)
+                if row.get("phase") == "RETURNED"
+                and row.get("status") == "GOAL_SAVED"
+                and row.get("operation") in {"GOAL_SUBMIT", "GOAL_ABANDON"}
+                and row.get("subject", {}).get("goal_hash") == goal.goal_hash
+            ]
+            end = min(closing, default=end)
+            source = "GOAL_TERMINAL_RETURN" if closing else source
+            if offsets is not None and not closing:
+                gaps.append({"code": "CLOCK_WINDOW_UNOBSERVED"})
+        return start.isoformat(), end.isoformat(), source
+
+    def goal_profile(self, goal: Goal, runtime_paths: tuple[Path, ...]) -> dict[str, Any]:
+        """Read each scoped owner input once; the ledger cut fixes the answer's window."""
+        rows, gaps, head, clocks = self._profile_rows(goal)
+        phases: list[dict[str, Any]] = []
+        for task in sorted({row["task_id"] for row in rows if row.get("task_id")}):
+            items: Sequence[Any] = ()
+            if self._registry is not None:
+                try:
+                    _record, items = self._registry.task_with_work_items(UUID(task))
+                except KeyError:
+                    gaps.append({"code": "TASK_RECORD_UNAVAILABLE", "source": task})
+            observed: set[tuple[str, str]] = set()
+            for parent, runtime in {path.parent: path for path in runtime_paths}.items():
+                kept = read_stage_spans(runtime, UUID(task), diagnostics=gaps)
+                if not kept:
+                    gaps.append({"code": "UNKEPT_OR_INTERRUPTED_PHASE", "source": task})
+                phases.extend(
+                    {
+                        **row,
+                        "namespace": str(parent),
+                        "provenance": str(stage_spans_path(runtime, UUID(task))),
+                    }
+                    for row in kept
+                )
+                observed.update((str(row.get("stage_id")), str(row.get("phase"))) for row in kept)
+            for item in items:
+                for phase in ("execute", "verify"):
+                    if item.started_at is not None and (item.stage_id, phase) not in observed:
+                        gaps.append(
+                            {
+                                "code": "UNKEPT_OR_INTERRUPTED_PHASE",
+                                "source": [task, item.stage_id, phase, item.state_hash],
+                            }
+                        )
+        recorded_clock = clocks or any(row.get("clock_ref") for row in (*rows, *phases))
+        offsets = align_clock_inputs(rows, phases, clocks, gaps) if recorded_clock else None
+        start, end, source = self._profile_window(goal, rows, offsets, gaps)
+        if not rows:
+            gaps.append({"code": "RPC_RECORDS_UNOBSERVED"})
+        catalog = runtime_json("config/registries/messages.json")["entries"]
+        return {
+            **stage_profile(
+                window=(start, end),
+                window_source=source,
+                rpc=rows,
+                phases=phases,
+                diagnostics=gaps,
+            ),
+            "status": "GOAL_PROFILE",
+            "goal_id": str(goal.goal_id),
+            "goal_hash": goal.goal_hash,
+            "goal_kind": goal.declaration.kind,
+            "ledger_head": head,
+            "ledger_epoch": self.store_epoch,
+            "workspace_id": self.workspace_id,
+            "runtime_origins": list(map(str, runtime_paths)),
+            "labels": {
+                code: row["words"]
+                for code, row in catalog.items()
+                if code.startswith("goal.profile.")
+            },
+            "stdout_hint": {
+                "code": "cli.profile.full_output",
+                **catalog["cli.profile.full_output"]["words"],
+            },
+        }
+
     def recent(self, *, limit: int = 20) -> dict[str, object]:
         """The newest requests, grouped by agent session and goal, each with its read (OP13).
 
@@ -994,8 +1230,6 @@ class WorkspaceActivity:
                         observations += checked
                     else:  # a hook's, or a review thread's acceptance: its Task from the thread
                         if subject.get("input_channel") == "PRODUCT_REVIEW":
-                            from alphalattice.control.product_host.composition import committee
-
                             task = committee.accepted_task(
                                 operations.goals.store, str(subject.get("reference"))
                             )
@@ -1153,11 +1387,6 @@ class WorkspaceActivity:
 
     def wake_readiness(self, path: str | None = None) -> dict[str, object]:
         """Share successful reach probes; retry a supplied path after failure."""
-        from alphalattice.interface.local_application.native_bridge import (
-            codex_command,
-            codex_queue_reach,
-        )
-
         with self._lock:
             command, source = codex_command(path)
             if (
@@ -1346,7 +1575,6 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
     line in its queue, not that the model read it: Codex takes its queue while the thread is idle,
     and an active goal's next turn starts first.
     """
-    from alphalattice.interface.local_application.native_bridge import codex_command, first_line
 
     codex, source = codex_command(path)
     result: dict[str, Any] = {

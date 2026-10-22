@@ -111,6 +111,17 @@ def agent_surface(root: Path) -> dict[str, Any]:
     refusals = json.loads((root / "config/registries/refusals.json").read_bytes())["entries"]
     words = json.loads((local / "refusal_words.json").read_bytes())
     entries.update({f"refusal:{code}": {} for code in refusals.keys() | words.keys()})
+    catalog = json.loads((root / "config/registries/messages.json").read_bytes())["entries"]
+    entries.update(
+        {
+            f"message:PERSON_QUESTION/{code}": {
+                "owner": row["owner"],
+                "operations": row["operations"],
+            }
+            for code, row in catalog.items()
+            if row["kind"] == "PERSON_QUESTION"
+        }
+    )
     entries.update({f"envelope:{key}": {} for key in _ENVELOPE})
     entries["envelope:outcome"] = {"enum": list(get_args(Outcome))}
     entries["envelope:schema_version"] = {"const": SCHEMA_VERSION}

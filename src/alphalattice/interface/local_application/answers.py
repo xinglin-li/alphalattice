@@ -28,6 +28,21 @@ from pydantic import (
     model_validator,
 )
 
+from .cli_contract import (
+    STOPPED_STATES,
+    choices,
+    client_refusal,
+    command_table,
+    declaration_contracts,
+    exit_problem,
+    named_read,
+    offered_requests,
+    refusal_problem,
+    refused,
+    request_problem,
+    task_state,
+)
+
 
 class _Answer(BaseModel):  # type: ignore[misc]
     # Each field's meaning is its docstring, which `alphalattice schema show` prints (SC3).
@@ -572,7 +587,33 @@ def _declared_answers() -> dict[str, type[BaseModel]]:
     }
 
 
+class GoalProfileAnswer(_Answer):
+    """Recorded occupancy with explicit coverage and no inferred causal path."""
+
+    status: Literal["GOAL_PROFILE"]
+    """The Host's profile read from kept inputs."""
+    goal_id: str
+    """The Goal whose operation and phase records were selected."""
+    window: dict[str, Any]
+    """UTC endpoints and their terminal-record or read-snapshot source."""
+    stages: list[dict[str, Any]]
+    """Stage execute/verify occupancy, attempt identifiers and source provenance."""
+    coverage: dict[str, Any]
+    """Elapsed unions with overlap removed; missing measurements are qualified as UNOBSERVED."""
+    gaps: list[dict[str, Any]]
+    """Named missing, unreadable or unaligned inputs that limit coverage."""
+    cache_counts: dict[str, Any]
+    """Observed cache counters, or UNOBSERVED with its reason."""
+    critical_path_unavailable_reason: str
+    """Why no causal critical path is supplied by the current capture."""
+    labels: dict[str, dict[str, str]]
+    """Stable catalog identifiers and their English and Simplified Chinese forms."""
+    stdout_hint: dict[str, str]
+    """The bilingual catalog note about bounded display and the complete output file."""
+
+
 ANSWERS: Final[dict[str, type[BaseModel]]] = {
+    "GOAL_PROFILE": GoalProfileAnswer,
     "STATUS": TaskStatusAnswer,
     "TASKS": TasksAnswer,
     "TASK_RECOVERY": TaskRecoveryAnswer,
@@ -597,8 +638,6 @@ def collection_answer_fields(operation: str) -> tuple[str, ...]:
     the row fields, including optional refused-item arrays. Activity's `tasks` is the one keyed
     record map. Detail/readback arrays and ordinary object fields are excluded.
     """
-    from .cli_contract import command_table
-
     table = command_table()
     model = ANSWERS.get(operation)
     if operation not in table["reads"] or operation not in table["collections"] or model is None:
@@ -644,16 +683,6 @@ def answer_problem(
     Returns:
         None when it holds; else the operation and each field that fails, by path.
     """
-    from .cli_contract import (
-        command_table,
-        exit_problem,
-        named_read,
-        offered_requests,
-        refusal_problem,
-        refused,
-        request_problem,
-    )
-
     model = ANSWERS.get(operation)
     if not isinstance(body, dict):
         return None
@@ -710,8 +739,6 @@ def stopped_problem(
     Returns:
         None when the Task is not stopped or its answer offers its way on; else what is wrong.
     """
-    from .cli_contract import STOPPED_STATES, offered_requests, refused, task_state
-
     task = body.get("task_id") or body.get("blocking_task_id")
     state = lifecycle or task_state(dict(body))
     # A resubmitted recovery moves its Task out of its stop by this very act.
@@ -742,8 +769,6 @@ def declaration_problem(operation: str, body: Mapping[str, Any]) -> str | None:
     Returns:
         None for a declaration, refusal or named exception; otherwise the missing part.
     """
-    from .cli_contract import declaration_contracts, refused
-
     contract = declaration_contracts().get(operation)
     if contract is None or refused(dict(body)):
         return None
@@ -763,7 +788,6 @@ def continuation_problem(body: dict[str, Any]) -> str | None:
     The operation registry supplies each edge's contract. The actual client continues it,
     including declarations and aliases; no second continuation algorithm is maintained.
     """
-    from .cli_contract import client_refusal, command_table, offered_requests
     from .client import LocalResearchClientError, continued, reference_field
 
     table = command_table()
@@ -793,7 +817,6 @@ def continuation_problem(body: dict[str, Any]) -> str | None:
 
 def _rereads(operation: str, body: dict[str, Any], table: dict[str, Any]) -> str | None:
     """Whether a read's answer reads again from itself through `--from` (OP15, V449)."""
-    from .cli_contract import choices, request_problem
     from .client import LocalResearchClientError, continued
 
     allowed = frozenset(table["fields"][operation]["allowed"])

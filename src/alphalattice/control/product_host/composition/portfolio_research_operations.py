@@ -218,6 +218,7 @@ from alphalattice.control.product_host.publication.goals import (
 from alphalattice.control.product_host.research_authoring.feature_research import (
     ResearchFeatureDefinitions,
 )
+from alphalattice.control.product_host.research_authoring.model_extensions import ModelExtensions
 from alphalattice.control.product_host.research_authoring.risk_reports import RiskReportLinks
 from alphalattice.control.product_host.research_authoring.timing import binding_temporal_scope
 from alphalattice.control.product_host.storage.backup import (
@@ -234,6 +235,7 @@ from alphalattice.control.product_host.storage.retention import (
     require_no_pending_cleanup,
 )
 from alphalattice.control.research_program.authoring.document import (
+    convert_authoring_document,
     load_authoring_document,
 )
 from alphalattice.control.task_control.contracts import (
@@ -395,6 +397,8 @@ from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, Ag
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord, AgentRole, answer_read
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
+
+from .portfolio_result_context import read_portfolio
 
 PORTFOLIO_RUN_COMMAND = "portfolio_public_development_replay"
 
@@ -1117,14 +1121,9 @@ class PortfolioResearchOperations:
         caller: OperationCaller = "HUMAN",
         agent_execution: AgentExecutionBinding | None = None,
     ) -> dict[str, object]:
-        """Run one finite operation; all domain authority remains below here.
+        """Observe the actual caller and checked relay; domain owners keep authority.
 
-        `caller` comes from the entry boundary, never the request, so a page or a model cannot
-        claim to be the other actor; only operations that record who acted consult it.
-
-        The observer, when present, sees the request and caller before the owner runs and its
-        unaltered answer or exception after. It changes neither: a refusal is re-raised as is,
-        and an observer that itself fails is counted and stepped over.
+        Answers/errors leave unchanged; observer failures are counted and isolated.
         """
 
         observer = self.observer
@@ -1138,7 +1137,11 @@ class PortfolioResearchOperations:
         span = (
             None
             if observer is None
-            else self._observe(lambda: observer.entered(request, caller=caller))
+            else self._observe(
+                lambda: observer.entered(
+                    request, caller=caller, relayed=bool(getattr(provenance, "relayed", False))
+                )
+            )
         )
         try:
             recovery = self._recovery_context(request)
@@ -1509,14 +1512,8 @@ class PortfolioResearchOperations:
         if request.operation.startswith("MODEL_"):
             return self._model_operation(request, caller)
         if request.operation == "PORTFOLIO_READBACK":
-            from .portfolio_result_context import read_portfolio
-
             return read_portfolio(self, request, caller=caller)
         if request.operation == "EXPERIMENT_DECLARATION_CONVERT":
-            from alphalattice.control.research_program.authoring.document import (
-                convert_authoring_document,
-            )
-
             return cast(
                 dict[str, object],
                 convert_authoring_document(
@@ -4131,10 +4128,16 @@ class PortfolioResearchOperations:
         """Owner position rows and Committee context at the Host clock, and a caller's offer."""
         body = position_rows(
             body,
-            review=self.review,
+            review=(
+                partial(
+                    EvidenceReviewDelivery(self.review).review_standing,
+                    read_update=partial(self._read_review_update, readback=body),
+                )
+                if self.review is not None
+                else None
+            ),
             risk=self._date_risk,
             now=self.dispatcher.clock(),
-            read_update=partial(self._read_review_update, readback=body),
         )
         body.pop("committee_context", None)
         if committee_context is not None:
@@ -5825,9 +5828,6 @@ class PortfolioResearchOperations:
         Anyone reads the review packets; a person activates or deactivates a model, as a
         person sets network access (V143).
         """
-        from alphalattice.control.product_host.research_authoring.model_extensions import (
-            ModelExtensions,
-        )
 
         models = ModelExtensions(
             self.workspace_session.workspace,
@@ -5897,9 +5897,6 @@ class PortfolioResearchOperations:
         The next update finds its active Panel under another catalog the workspace made and
         rebuilds it under this one; a workspace with no data update has nothing to rebind.
         """
-        from alphalattice.control.product_host.maintenance.data_update import (
-            installed_data_update_binding,
-        )
 
         workspace = self.workspace_session.workspace
         binding = installed_data_update_binding(workspace)
