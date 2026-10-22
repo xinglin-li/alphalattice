@@ -1,0 +1,131 @@
+{
+  "schema": "alphalattice.message-catalog",
+  "version": 1,
+  "entries": {
+    "network.daily_updates": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "PERSON_QUESTION",
+      "reason": {
+        "en": "Daily updates outlive the first-use delegation.",
+        "zh-CN": "每日更新超出首次使用授权的有效期。"
+      },
+      "scope": {
+        "en": "Workspace network and default SEC consent until the person says stop.",
+        "zh-CN": "本工作区网络及默认额度的 SEC 同意，直到本人要求停止。"
+      },
+      "way_on": {
+        "en": "Relay the person's words for the two offered requests.",
+        "zh-CN": "为所提供的两条请求逐字转达本人的答复。"
+      },
+      "operations": [
+        "NETWORK_ACCESS_SET",
+        "EVIDENCE_CONSENT_SET"
+      ],
+      "ask_operations": [
+        "GOAL_OPEN"
+      ],
+      "words": {
+        "en": "May AlphaLattice keep this workspace's network on for your daily updates, to fetch new market data and SEC filings within the default budget (3 per issuer, 600 documents and 3 GB overall), until you tell me to stop? Each use is recorded in the activity log and shown in the Workbench.",
+        "zh-CN": "AlphaLattice 可以为你的每日更新保持此工作区的网络开启，在默认额度内（每个发行人 3 份，总计 600 份文件和 3 GB）获取新的市场数据和 SEC 文件，直到你让我停止吗？每次使用都会记录在活动日志中，并在工作台中显示。"
+      }
+    },
+    "network.workspace_access": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "PERSON_QUESTION",
+      "reason": {
+        "en": "Network access outside a valid delegation needs the person.",
+        "zh-CN": "有效授权之外的网络访问需要本人决定。"
+      },
+      "scope": {
+        "en": "This workspace's network control; no source consent or offline-hold override.",
+        "zh-CN": "本工作区的网络控制；不授予来源同意，也不解除离线限制。"
+      },
+      "way_on": {
+        "en": "Read network show and relay the person's words with network set.",
+        "zh-CN": "读取 network show，并通过 network set 逐字转达本人的答复。"
+      },
+      "operations": [
+        "NETWORK_ACCESS_SET"
+      ],
+      "ask_operations": [
+        "NETWORK_ACCESS_SET"
+      ],
+      "words": {
+        "en": "Network access is the person's decision outside a first use: ask the person in one line and, on a clear yes, send this again with --person-said and --asked; `network show` reads what decides it.",
+        "zh-CN": "首次使用之外的网络访问由本人决定：用一句话询问本人，得到明确同意后，携带 --person-said 和 --asked 再次发送同一请求；`network show` 可查看决定网络状态的依据。"
+      }
+    },
+    "goal.profile.time": {
+      "owner": "alphalattice.control.observation_runtime",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Time profile",
+        "zh-CN": "用时分析"
+      }
+    },
+    "goal.profile.coverage": {
+      "owner": "alphalattice.control.observation_runtime",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Recorded coverage",
+        "zh-CN": "已记录的覆盖范围"
+      }
+    },
+    "goal.profile.unattributed": {
+      "owner": "alphalattice.control.observation_runtime",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Unattributed time",
+        "zh-CN": "未归因用时"
+      }
+    },
+    "goal.profile.critical_path_incomplete": {
+      "owner": "alphalattice.control.observation_runtime",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Critical path incomplete",
+        "zh-CN": "关键路径记录不完整"
+      }
+    },
+    "cli.profile.full_output": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Use --output to save the complete profile; stdout stays bounded in every view.",
+        "zh-CN": "用 --output 保存完整用时分析；所有显示模式的标准输出都有长度上限。"
+      }
+    },
+    "host.start.breakaway_denied": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This launch could not prove escape from Windows Job containment, so it left no detached Host running. Run terminal_command in a terminal you own outside the agent's shell (Claude Code desktop: its Terminal panel). Or keep it attached for this session with --stop-on-stdin; a held update then waits for the next session.",
+        "zh-CN": "本次启动无法证明已脱离 Windows Job 的约束，因此没有留下独立运行的 Host。请在你自己持有、位于代理 shell 之外的终端运行 terminal_command（Claude Code 桌面端可使用其 Terminal 面板）。也可以通过 --stop-on-stdin 仅为本次会话保持连接；此时暂存的更新须等到下次会话。"
+      }
+    },
+    "cli.confirmation.question_code": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "With --person-said: the registered code beside the question.",
+        "zh-CN": "与 --person-said 同用：问题旁的已注册代码。"
+      }
+    },
+    "goal.profile.operation": {
+      "owner": "alphalattice.control.observation_runtime",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Goal time profile",
+        "zh-CN": "目标用时分析"
+      }
+    }
+  }
+}

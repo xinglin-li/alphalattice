@@ -37,11 +37,11 @@ from alphalattice.control.product_host.composition.first_use_road import (
     undated,
 )
 from alphalattice.control.product_host.composition.goal_check import (
+    goal_schema,
     missing_items,
     offered_attach,
     reference_request,
     resubmit,
-    submission_grammar,
 )
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.composition.research_workspace import (
@@ -80,6 +80,7 @@ from alphalattice.interface.local_application.goals import (
     GoalStatement,
     GoalSubmission,
     GoalTaskFact,
+    opened_goal,
     relayed_decision,
     target_sessions,
 )
@@ -418,6 +419,7 @@ _SESSION_GOAL_OPERATIONS = frozenset(
     {
         "GOAL_SHOW",
         "GOAL_NARRATIVE",
+        "GOAL_PROFILE",
         "GOAL_EXPORT",
         "GOAL_ATTACH",
         "GOAL_NOTE",
@@ -504,6 +506,10 @@ class GoalApplication:
         self.store, self.clock, self.read = store, clock, read
         self.admitted_at, self.task_facts = admitted_at, task_facts
         self.workspace, self.preparation_completed = workspace, preparation_completed
+        self.profile: Callable[[Goal], dict[str, Any]] = lambda _: {
+            "status": "REFUSED",
+            "failure_code": "activity.storage_unavailable",
+        }
 
     # ------------------------------------------------------------------ attribution
 
@@ -1348,26 +1354,7 @@ class GoalApplication:
     ) -> dict[str, Any]:
         """Run one goal operation for its caller and the provenance its request carried."""
         if request.operation == "GOAL_SCHEMA":
-            return {
-                "status": "AVAILABLE",
-                "grammar": submission_grammar(REFERENCE_OPERATIONS),
-                "schemas": {
-                    name: model.model_json_schema()
-                    for name, model in (
-                        ("declaration", GoalDeclaration),
-                        ("reference", GoalReferenceRequest),
-                        ("statement", GoalStatement),
-                        ("submission", GoalSubmission),
-                    )
-                },
-                "reference_operations": REFERENCE_OPERATIONS,
-                # The shortest valid declaration, for `--save-declaration` to edit (V378).
-                "template": GoalDeclaration.model_validate(_DECLARATION_TEMPLATE).model_dump(
-                    mode="json", exclude_defaults=True
-                ),
-                "claim": "Contracts and declared budgets are not permission grants; the Host "
-                "checks a submission against its own record, never the truth of its summary.",
-            }
+            return goal_schema(REFERENCE_OPERATIONS, _DECLARATION_TEMPLATE)
         if request.operation == "GOAL_LIST":
             return self.store.listing(
                 limit=request.history_limit or 25,
@@ -1376,13 +1363,12 @@ class GoalApplication:
                 task_id=request.task_id,
             )
         if request.operation == "GOAL_OPEN":
-            return self._open(request, caller, provenance)
+            return opened_goal(self._open(request, caller, provenance), request.goal_declaration)
         if (
             request.operation in _SESSION_GOAL_OPERATIONS
             and request.goal_id is None
             and request.goal_hash is None
         ):
-            # The session's own goal, so an agent never copies its id or hash (V391).
             bound = self.attributed_goal(provenance)
             if bound is None:
                 raise ValueError("goal.goal_id_required")
@@ -1419,8 +1405,9 @@ class GoalApplication:
             assert request.goal_reference_id is not None
             with GoalReferenceReadScope() as scope:
                 return self.reference_readback(goal, request.goal_reference_id, caller, scope=scope)
-        if request.operation == "GOAL_NARRATIVE":
-            return self.narrative(goal)
+        readers = {"GOAL_NARRATIVE": self.narrative, "GOAL_PROFILE": self.profile}
+        if request.operation in readers:
+            return readers[request.operation](goal)
         if request.operation in {"GOAL_SHOW", "GOAL_EXPORT"}:
             with GoalReferenceReadScope() as scope:
                 body = self.readback(goal, caller, scope=scope)

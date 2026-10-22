@@ -538,3 +538,58 @@ The upgrade checks reopened a workspace made by released 0.2.1, continued on 0.2
 - An explicit input capture still copies the whole market database, about 1 GB at 472 listings in the 0.2.1 measurement, and may need a second full copy when the immutable snapshot alias cannot be linked. Captures that store changed chunks are planned for 0.2.10.
 - Split days can still rewrite whole older parts and exceed the 50 MB ordinary-day write budget, even though every Panel cell is now checked. Reducing these writes is considered for 0.2.10 if replay measurements justify it. A full-year footprint against the 50 GB ceiling remains unmeasured.
 - Browser parity in the native run remains unproven. The passing deterministic Workbench cases do not establish that separate result.
+
+## 0.2.3
+
+0.2.3 gives network-permission questions stable codes, checks new English and Chinese messages together, and exposes the recorded stages of a Goal. Detached startup also checks that the local Host can continue after the launching session ends.
+
+### Added
+
+- Network-permission questions carry a stable code alongside their English and Chinese words, scope and permitted continuation. The activity record links the question and its answer. A reply code must belong to the operation it answers; existing uncoded replies remain supported.
+- A Goal's time profile reports recorded requests and Task stages, overlap, stage and cache provenance, and gaps in coverage. Missing observations stay marked as unobserved. Unattributed elapsed time is not reported as agent time, and an incomplete record does not establish a critical path.
+- Replay inputs record their source, dates, clock and workspace preparation. Checks can distinguish a cold preparation from copying an existing prepared workspace; these records are diagnostic evidence, not a completed performance baseline.
+
+### Changed
+
+- New interface messages use stable names and named arguments in one English and Chinese catalog. Checks reject missing translations, duplicate names, conflicting aliases and mismatched arguments. Existing sentence-keyed translations remain available while their owners migrate them; new entries cannot increase that legacy inventory.
+- Scripted evaluation answers use the Host's recorded question code and provenance instead of matching question wording. A transcript that merely repeats a question cannot authorize a reply.
+- The public-source scanner recognizes registered product identifiers in their declared output locations while retaining the frozen limits on development labels.
+
+**Measured observations**
+
+The Windows run used a four-core execution budget and Codex with GPT-6 Luna. The first use reached a completed Goal. Of its 14 native agent sessions, ten used high effort and four used extra-high effort with inherited parent context and no assigned role card. Committee-role fidelity was therefore not established. These are mixed-effort observations, not a controlled benchmark for GPT-6 Luna at high effort or a controlled comparison with 0.2.2.
+
+| Case and workload | Observed elapsed time | Largest observed Host memory |
+| --- | --- | --- |
+| Public-data first use for the 2026-10-21 session | 7,097.5 seconds, including a recorded pause during measurement | 8.66 GB |
+| Next daily in that workspace, for the 2026-10-22 session | 464.2 seconds before the measurement deadline; the Goal remained open | 9.39 GB |
+
+Host memory is sampled private committed memory; it excludes the agent's own process. Some stage observations were missing or had unmatched clocks, so the run does not establish a complete split between Host and agent time. A separate upgrade check retained equal values across all eight phases.
+
+The incomplete daily increased retained workspace files by 144.27 MB net. New or changed files totaled 1.05 GB; that is not a measurement of physical disk I/O. This run did not establish backup growth. MB and GB use decimal units, and the incomplete daily establishes neither its final elapsed time nor its final memory or storage footprint.
+
+### Deprecated
+
+- None.
+
+### Removed
+
+- None.
+
+### Fixed
+
+- Reading published positions reuses each sealed input's verification throughout one request, including the associated portfolio review. This correction is carried forward from 0.2.2.
+- On Claude Code, the first start asks you once to run the offered command in your own terminal; Codex detaches the local Host on its own. This startup step is separate from the network-permission question. Detached startup reports success only after the Host is ready and has escaped a launching process group that would otherwise end its work.
+- Goal profiles align recorded intervals across Host restarts using their recorded clocks. Missing or inconsistent clock mappings remain explicit coverage gaps.
+
+### Previews
+
+- None.
+
+### Known limits
+
+- Host memory remains above the 8 GB budget: 8.66 GB in the first use and at least 9.39 GB in the incomplete daily. Memory limits and controls are planned for 0.2.6.
+- The 20-minute daily wall-time budget remains unproven by this run: the daily was still open when its measurement deadline arrived after 464.2 seconds. Smaller readbacks and fewer finishing steps remain planned for 0.2.4.
+- The incomplete first daily after a first use grew the workspace by 144.27 MB at the measurement deadline, exceeding the 50 MB ordinary-day budget. The five-day scenario through the actual daily data and book writers, and the storage work it informs, are planned for 0.2.9.
+- An update with no end date, including an activation's first update or an undated daily update, can be refused when it resumes if its data step re-admitted quarantined candidates before waiting: that step changed the update's own inputs. The answer offers to cancel the update and plan it again; this route completes the update. A fix is planned for 0.2.4. The same limit applies to 0.2.2.
+- The other limits recorded in [0.2.2](#022), including explicit input captures, split-day writes and unproven native browser parity, still apply. Idle shutdown and authenticated reuse of an existing local Host are also later work.

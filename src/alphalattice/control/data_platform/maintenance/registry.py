@@ -864,9 +864,6 @@ class DuckDbWorkspaceMaintenanceRegistry:
         change_set = None
         if row[3] is not None:
             payload = json.loads(str(row[3]))
-            from alphalattice.control.data_platform.maintenance.contracts import (
-                ListingMarketDataChange,
-            )
 
             change_set = MarketDataChangeSet(
                 listing_changes=tuple(

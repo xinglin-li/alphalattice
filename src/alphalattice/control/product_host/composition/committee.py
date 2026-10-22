@@ -74,6 +74,7 @@ from alphalattice.control.product_host.composition.committee_words import (
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
+from alphalattice.interface.local_application.activity import SUMMARY_MAXIMUM_CHARACTERS
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
@@ -1498,7 +1499,6 @@ def _references(floor: Floor, message: Mapping[str, Any]) -> dict[str, str]:
 def _fitted(floor: Floor, message: Mapping[str, Any]) -> str:
     """A message's rendered text within a conversation row's bound. A cut is named, and points to
     the whole message on the floor, so filing and the report never refuse a long message."""
-    from alphalattice.interface.local_application.activity import SUMMARY_MAXIMUM_CHARACTERS
 
     text = render(message["text"], floor.opened.get("holdings", ()))
     if len(text) <= SUMMARY_MAXIMUM_CHARACTERS:

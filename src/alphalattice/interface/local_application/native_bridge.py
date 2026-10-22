@@ -53,6 +53,12 @@ from alphalattice.interface.local_application.native_usage import (
     read_session,
     session_file,
 )
+from alphalattice.interface.local_application.retrieval_environment import (
+    LOCKED_SETUP_DISCLOSURE,
+    LOCKED_SETUP_WORDS,
+    fill_command,
+    load,
+)
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from alphalattice.kernel.shared_kernel.environment import package_versions
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
@@ -1595,13 +1601,6 @@ def agent_setup() -> dict[str, dict[str, Any]]:
     The one readiness source the doctor (`host_readiness`) and a first use's gate both read: the
     `alphalattice` command its specialists run (`tool_setup`) and the retrieval runtime.
     """
-    from alphalattice.interface.local_application.retrieval_environment import (
-        LOCKED_SETUP_DISCLOSURE,
-        LOCKED_SETUP_WORDS,
-        fill_command,
-        load,
-    )
-
     retrieval: dict[str, Any] = {"present": True}
     if not load():
         retrieval = {

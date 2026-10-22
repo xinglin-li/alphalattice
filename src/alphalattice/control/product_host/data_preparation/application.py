@@ -44,6 +44,7 @@ from alphalattice.control.observation_runtime.telemetry.progress import (
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
+from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
     read_research_workspace_manifest,
@@ -84,6 +85,7 @@ from alphalattice.control.product_host.storage.plan_previews import (
     PLAN_PREVIEWS_DIRECTORY,
     PreviewRegistry,
 )
+from alphalattice.control.product_host.storage.retention import require_no_pending_cleanup
 from alphalattice.control.task_control.child import ChildStartFailed
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -583,8 +585,6 @@ class WorkspacePreparationApplication:
 
     def task_subject(self, task: TaskRecord) -> dict[str, object]:
         """Read the admitted date from this owner's canonical Task, without delegation IO."""
-        from alphalattice.control.product_host.composition.plain_refusals import refused
-
         try:
             if task.task_kind != TASK_KIND:
                 raise ValueError("workspace_preparation.task_not_admitted")
@@ -2063,7 +2063,6 @@ class WorkspacePreparationApplication:
         }
 
     def _capacity(self, task: TaskRecord) -> None:
-        from alphalattice.control.product_host.storage.retention import require_no_pending_cleanup
 
         require_no_pending_cleanup(self.session.workspace)
         frozen = self._load(task.task_id, STAGES[0])

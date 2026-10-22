@@ -142,25 +142,35 @@ HANDED_KEY = "key=<from the launcher>"
 """What a detached Host prints in place of the launch key its launcher made and holds."""
 
 
-def _refusal(failure_code: str, detail: str, next_action: str) -> int:
+def _refusal(
+    failure_code: str,
+    detail: str,
+    next_action: str,
+    *,
+    message_id: str | None = None,
+    terminal_command: list[str] | None = None,
+) -> int:
     """Print a launch's refusal as an answer: its code, its words and its way on."""
-    answer = {
+    answer: dict[str, object] = {
         "status": "REFUSED",
         "failure_code": failure_code,
         "detail": detail,
         "next_action": next_action,
     }
+    if message_id is not None:
+        answer["message_id"] = message_id
+    if terminal_command is not None:
+        answer["terminal_command"] = terminal_command
     print(json.dumps(answer), flush=True)
     return 2
 
 
-def _spawn_detached(command: list[str], log: Any, key: str) -> tuple[subprocess.Popen[bytes], bool]:
+def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[bytes]:
     """Start the Host apart from this process: its own process group (session), no console
     window and no standard input, and out of this process's Job where the Job allows it (a
     Codex turn ends its shell's children, by its tree or its Job).
 
-    Returns:
-        The Host's process, and whether a Job still holds it (one that allows no breakaway).
+    Denied Job breakaway raises; no still-held child is started.
     """
     # The new interpreter imports this same source, as `entry.serve` gives its child.
     source = str(Path(__file__).resolve().parents[4])
@@ -177,20 +187,34 @@ def _spawn_detached(command: list[str], log: Any, key: str) -> tuple[subprocess.
         "env": environment,
     }
     if sys.platform != "win32":
-        return subprocess.Popen(command, start_new_session=True, **common), False
+        return subprocess.Popen(command, start_new_session=True, **common)
     # No console window: the Host's workers start in its hidden console, never in new windows.
     flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-    try:
-        breakaway = flags | subprocess.CREATE_BREAKAWAY_FROM_JOB
-        return subprocess.Popen(command, creationflags=breakaway, **common), False
-    except PermissionError:
-        # A Job that allows no breakaway holds this launch, and now the Host: apart from the
-        # tree, not from that Job. (Any-Job checks mislead: a venv's launcher runs its Python in
-        # a Job of its own.)
-        return subprocess.Popen(command, creationflags=flags, **common), True
+    import ctypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.IsProcessInJob.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_int),
+    ]
+    in_job = ctypes.c_int()
+    child = subprocess.Popen(
+        command, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **common
+    )
+    # Windows Popen exposes a native handle absent from the cross-platform stub.
+    native: Any = child
+    handle = ctypes.c_void_p(int(native._handle))
+    if not kernel32.IsProcessInJob(handle, None, ctypes.byref(in_job)) or in_job.value:
+        child.terminate()
+        child.wait()
+        raise PermissionError("local_web.detached_breakaway_denied")
+    return child
 
 
-def _detach(arguments: argparse.Namespace) -> int:
+def _detach(
+    arguments: argparse.Namespace, host_interpreter: Path | None = None, new_research: bool = False
+) -> int:
     """Start a detached Host and return once it serves, as a daemon's start does.
 
     This launch makes the Host's launch key and hands it over in the environment; the Host
@@ -210,7 +234,7 @@ def _detach(arguments: argparse.Namespace) -> int:
     os.close(descriptor)
     log_path, key = Path(name), secrets.token_urlsafe(32)
     command = [
-        sys.executable,
+        str(host_interpreter) if host_interpreter is not None else sys.executable,
         "-m",
         "alphalattice.control.product_host.composition.web_launcher",
         "--workspace",
@@ -219,8 +243,33 @@ def _detach(arguments: argparse.Namespace) -> int:
         str(arguments.port),
         *(["--no-browser"] if arguments.no_browser else []),
     ]
-    with log_path.open("wb") as log:
-        host, held = _spawn_detached(command, log, key)
+    try:
+        with log_path.open("wb") as log:
+            host = _spawn_detached(command, log, key)
+    except PermissionError:
+        from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
+
+        log_path.unlink(missing_ok=True)
+        message_id = "host.start.breakaway_denied"
+        return _refusal(
+            "local_web.detached_breakaway_denied",
+            str(worded(message_id)),
+            "SERVE_FROM_A_PERSON_OWNED_TERMINAL",
+            message_id=message_id,
+            terminal_command=[
+                "alphalattice",
+                "--lang",
+                ANSWER_LANGUAGE.get(),
+                "--workspace",
+                str(arguments.workspace.resolve()),
+                "serve",
+                "--port",
+                str(arguments.port),
+                "--no-browser",
+                "--detach",
+                *(["--new-research"] if new_research else []),
+            ],
+        )
     deadline = time.monotonic() + READY_SECONDS
     while time.monotonic() < deadline:
         text = log_path.read_text(encoding="utf-8", errors="replace")
@@ -228,9 +277,19 @@ def _detach(arguments: argparse.Namespace) -> int:
             (line for line in text.splitlines() if line.startswith("Portfolio Research")), None
         )
         if launch is not None and "Loopback only." in text:
-            return _served(
-                arguments, launch.replace(HANDED_KEY, f"key={key}"), host, held, log_path
-            )
+            from alphalattice.interface.local_application import client
+
+            with suppress(client.LocalResearchClientError):
+                ready = client.LocalResearchClient(
+                    arguments.workspace, timeout=READY_SECONDS
+                ).request(
+                    {"operation": "OPERATION_LIST", "schema_operation": "HOST_STOP"},
+                    timeout=deadline - time.monotonic(),
+                )
+                if "HOST_STOP" in ready.get("operation_fields", {}):
+                    return _served(
+                        arguments, launch.replace(HANDED_KEY, f"key={key}"), host, log_path
+                    )
         if host.poll() is not None:
             return _exited(arguments.workspace, host, text, log_path)
         time.sleep(0.2)
@@ -247,7 +306,6 @@ def _served(
     arguments: argparse.Namespace,
     launch: str,
     host: subprocess.Popen[bytes],
-    held: bool,
     log_path: Path,
 ) -> int:
     """Say plainly that it STARTED, where and at which address; relay the launch line, say how
@@ -256,15 +314,9 @@ def _served(
     workspace = arguments.workspace.resolve()
     print(f"STARTED: a Host now serves {workspace} at {address[0] if address else 'its link'}.")
     print(launch)
-    lives = (
-        "started it, but a Job that allows no breakaway still holds it: it ends when that Job "
-        "ends. Serve it from a shell outside the Job to outlive it"
-        if held
-        else "started it and outlives it"
-    )
     print(
-        f"Loopback only. This Host (process {host.pid}) runs apart from the shell that {lives}; "
-        f"`alphalattice host stop` stops it. Log: {log_path}",
+        f"Loopback only. This Host (process {host.pid}) runs apart from the shell that "
+        f"started it and outlives it; `alphalattice host stop` stops it. Log: {log_path}",
         flush=True,
     )
     if arguments.no_browser:
@@ -303,7 +355,12 @@ def _exited(workspace: Path, host: subprocess.Popen[bytes], text: str, log_path:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    host_interpreter: Path | None = None,
+    new_research: bool = False,
+) -> int:
     """Run the declared command and return its exit status."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", required=True, type=Path)
@@ -328,7 +385,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     arguments = parser.parse_args(argv)
     if arguments.detach:
-        return _detach(arguments)
+        return _detach(arguments, host_interpreter, new_research)
     handed = LAUNCH_KEY_VARIABLE in os.environ
 
     from alphalattice.control.product_host.composition.local_web_session import (

@@ -76,6 +76,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import PanelSta
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.research_foundation.runtime.delta import VerifiedPreResearchHead
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
+from alphalattice.investment.portfolio_strategy_lab.application import research_experiment
 from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -286,10 +287,6 @@ class ResearchInputStorage:
                 else None
             )
             if portfolio_source is not None:
-                from alphalattice.investment.portfolio_strategy_lab.application import (
-                    research_experiment,
-                )
-
                 source = research_experiment.PortfolioExperimentSource.model_validate(
                     portfolio_source
                 )

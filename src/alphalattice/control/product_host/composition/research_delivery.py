@@ -16,6 +16,7 @@ from alphalattice.control.product_host.research_authoring.comparison import (
     compare_experiment_reports,
 )
 from alphalattice.control.product_host.research_authoring.risk_reports import RiskReportLinks
+from alphalattice.interface.local_application.experiment_report import render_research_delivery
 from alphalattice.interface.local_application.failure_codes import located_failure
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
@@ -38,8 +39,6 @@ def export_research_delivery(
     caller: str,
 ) -> dict[str, object]:
     """Read-only composition: no implicit latest choice, publication, fit or Task."""
-    from alphalattice.interface.local_application.experiment_report import render_research_delivery
-
     if (
         request.task_id is None
         or request.portfolio_session is None
@@ -295,8 +294,6 @@ def export_update_delivery(
     Its publication, the exact review it names and, once the committee closed, its floor as the
     commentary, which the Host accepted; beside them, the data issues the Host's rule decided.
     """
-    from alphalattice.interface.local_application.experiment_report import render_research_delivery
-
     if read_data_decisions is not None:
         records: dict[str, tuple[dict[str, object], ...]] = {}
         if floor is None:

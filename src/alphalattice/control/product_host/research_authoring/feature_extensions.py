@@ -30,7 +30,10 @@ from alphalattice.control.product_host.research_authoring.feature_activations im
     FeatureExtensionRegistry,
 )
 from alphalattice.control.product_host.research_authoring.feature_research import CATEGORY
-from alphalattice.foundation.feature_engine.catalog.contracts import desktop_core_feature_bundle
+from alphalattice.foundation.feature_engine.catalog.contracts import (
+    FeatureCatalog,
+    desktop_core_feature_bundle,
+)
 from alphalattice.foundation.feature_engine.catalog.research import (
     ResearchFeaturePlan,
     research_feature_execution_spec,
@@ -69,7 +72,6 @@ _LISTING_PAGE = 50
 
 def _shipped() -> frozenset[str]:
     """The shipped catalog's factor ids, which no workspace activates."""
-    from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 
     return frozenset(FeatureCatalog.load().factor_ids)
 

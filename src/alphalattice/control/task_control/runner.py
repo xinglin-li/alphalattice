@@ -164,7 +164,7 @@ def _bounded_raise(
 
 
 def _spanned[T](
-    runtime_path: Path,
+    runtime: tuple[Path, Callable[[], datetime]],
     task_id: UUID,
     execution_id: UUID,
     stage_id: str,
@@ -182,12 +182,13 @@ def _spanned[T](
     finally:
         if ledger is not None and ledger.readout_value is not None:
             record_stage_spans(
-                runtime_path,
+                runtime[0],
                 task_id=task_id,
                 execution_id=execution_id,
                 stage_id=stage_id,
                 phase=phase,
                 readout=ledger.readout_value,
+                clock=runtime[1],
             )
 
 
@@ -331,9 +332,8 @@ class TaskHeartbeatReader:
             runtime_paths: Runner runtime files whose heartbeat sidecars are read, deduplicated by
                 resolved path.
         """
-        self.paths = tuple(
-            dict.fromkeys(heartbeat_store_path(Path(value).resolve()) for value in runtime_paths)
-        )
+        self.runtime_paths = tuple(dict.fromkeys(Path(value).resolve() for value in runtime_paths))
+        self.paths = tuple(dict.fromkeys(heartbeat_store_path(p) for p in self.runtime_paths))
 
     def read(self, execution_id: UUID) -> TaskHeartbeatReadout:
         """Inspect all resolved sidecars for this execution and report unreadable stores separately.
@@ -526,7 +526,7 @@ class TaskControlRunner:
                         continue
                     try:
                         verified = _spanned(
-                            self._runtime_path,
+                            (self._runtime_path, self.clock),
                             task.task_id,
                             execution.execution_id,
                             item.stage_id,
@@ -729,7 +729,7 @@ class TaskControlRunner:
                 definition,
                 partial(
                     _spanned,
-                    self._runtime_path,
+                    (self._runtime_path, self.clock),
                     task_id,
                     execution_id,
                     definition.stage_id,
@@ -819,7 +819,7 @@ class TaskControlRunner:
             definition = definitions[item.stage_id]
             try:
                 verified = _spanned(
-                    self._runtime_path,
+                    (self._runtime_path, self.clock),
                     task.task_id,
                     execution.execution_id,
                     item.stage_id,
@@ -874,7 +874,7 @@ class TaskControlRunner:
             observed_at=self._now(),
         )
         verified = _spanned(
-            self._runtime_path,
+            (self._runtime_path, self.clock),
             task_id,
             execution.execution_id,
             definition.stage_id,

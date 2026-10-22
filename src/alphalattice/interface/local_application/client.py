@@ -64,11 +64,13 @@ from alphalattice.interface.local_application.cli_contract import (
     with_read_commands as _with_read_commands,
 )
 from alphalattice.interface.local_application.goals import (
-    DAILY_NETWORK_RELAY,
-    FIRST_USE_ASK_NOW,
     NEW_RESEARCH_SCOPE,
-    WATCH_IN_WORKBENCH,
+    first_use_asks,
     target_sessions,
+)
+from alphalattice.protocols.research_authoring.selection import (
+    dump_declaration,
+    load_safe_yaml_document,
 )
 
 CONNECTION_NAME = "local-research-connection.json"
@@ -730,8 +732,6 @@ def _yaml_value(path: Path, expected: str, *, text: str | None = None) -> Any:
 
     import yaml  # type: ignore[import-untyped]
 
-    from alphalattice.protocols.research_authoring.selection import load_safe_yaml_document
-
     try:
         return load_safe_yaml_document(_text(path) if text is None else text)
     except LocalResearchClientError:
@@ -779,8 +779,6 @@ def _response_document(path: Path) -> dict[str, Any]:
     """
 
     import yaml
-
-    from alphalattice.protocols.research_authoring.selection import load_safe_yaml_document
 
     text = _text(path, limit=4 * 1024 * 1024)
     try:
@@ -1326,8 +1324,6 @@ def _save_output(
     if format == "json":
         payload = body["json"].encode("utf-8") if isinstance(body.get("json"), str) else raw
     elif format == "yaml":
-        from alphalattice.protocols.research_authoring.selection import dump_declaration
-
         # The answer JSON saves: an export's inner answer where it carries one as text, so
         # `--from` reads the same Task and next requests from either file (V447).
         whole = (
@@ -1390,8 +1386,6 @@ def _save_declaration(path: Path, body: dict[str, Any]) -> None:
     comments, which the loader ignores."""
     value = body.get("yaml")
     if not isinstance(value, str) and isinstance(body.get("template"), dict):
-        from alphalattice.protocols.research_authoring.selection import dump_declaration
-
         value = dump_declaration(json.loads(json.dumps(body["template"], default=_json_value)))
     if not isinstance(value, str):
         raise LocalResearchClientError("local_client.declaration_unavailable")
@@ -1571,14 +1565,10 @@ def _context(
 
 
 COMPACT_ANSWER_BYTES = 32 * 1024
-"""A compact answer is one whole read on every agent host, as a bundle file is
-(`BUNDLE_FILE_BYTES`): Codex hands the model at most 10,000 tokens of one call's output, about
-40,000 bytes, and cuts the middle of the rest (AX1). Its data keeps what the envelope, the next
-requests and commands leave of it, never less than `COMPACT_DATA_FLOOR_BYTES` (V402)."""
+"""The stdout byte budget, shared by data, envelope metadata and whole offered requests."""
 COMPACT_DATA_FLOOR_BYTES = 8 * 1024
 _MARK_BYTES = 192
-"""What one omission prints at most, its mark and its name in `omitted_sections`: each part
-waiting to be shown keeps this much of the budget, so its mark always fits."""
+"""Reserved bytes for an omission and its path, so every waiting part fits."""
 _REPRESENTATION = "COMPACT_DISPLAY_NOT_AN_AUTHORITY_DOCUMENT"
 _FULL_RESPONSE = (
     "Each omitted part is a --section path: repeat a read with --section <part>; after a run "
@@ -1586,8 +1576,7 @@ _FULL_RESPONSE = (
     "answer exactly, this envelope's `data` at the file's root (read `position` there, not "
     "`data.position`)."
 )
-"""The envelope's note on the full answer: a saved file is the answer itself, never this
-envelope (V531: RR5d's agent read its saved answers as envelopes, `data.*`, turn after turn)."""
+"""A saved answer has the owner's data at its root, outside the envelope."""
 
 
 def _size(value: Any) -> int:
@@ -1656,6 +1645,16 @@ def _listing_page(
     )
 
 
+def _is_profile(body: Any) -> bool:
+    return isinstance(body, dict) and body.get("status") == "GOAL_PROFILE"
+
+
+def _profile_hint(answer: dict[str, Any], body: dict[str, Any]) -> None:
+    if _is_profile(body):
+        locale = {"zh": "zh-CN"}.get(ANSWER_LANGUAGE.get(), "en")
+        answer["full_response"] = body["stdout_hint"][locale]
+
+
 def compact_display(
     body: Any, *, budget: int = COMPACT_ANSWER_BYTES, section: str = "", whole: bool = False
 ) -> dict[str, Any]:
@@ -1706,6 +1705,8 @@ _IMPORTANT: Final = frozenset(
         "failure_code",
         "refused",
         "next_action",
+        "ask_now",
+        "person_questions",
         "next_requests",
         "plan_request",
         "submission_template",
@@ -1748,7 +1749,7 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
     remaining = 300
     spent = len(_REPRESENTATION) + len(_FULL_RESPONSE) + 120 + _size(omissions)
     pending: deque[tuple[Any, str, int, Any, str | int]] = deque()
-    important = _IMPORTANT
+    important = _IMPORTANT - {"coverage"} if _is_profile(body) else _IMPORTANT
 
     def room() -> int:
         return budget - spent - len(pending) * _MARK_BYTES
@@ -1955,8 +1956,6 @@ def saved_answer(
         LocalResearchClientError: A file failure, unsupported representation or absent part.
     """
     import yaml
-
-    from alphalattice.protocols.research_authoring.selection import load_safe_yaml_document
 
     text = _text(path, limit=4 * 1024 * 1024)
     if text.lstrip().startswith("<"):
@@ -2469,6 +2468,7 @@ class _Chain:
     name: str
     deadline: float | None
     steps: list[dict[str, Any]] = field(default_factory=list)
+    person_questions: list[dict[str, Any]] = field(default_factory=list)
     wake: tuple[str, str] | None = None
     """The Codex thread and this verb's rerun, sent when its first running Task ends."""
     receipt: _FollowReceipt = _follow_receipt
@@ -2969,20 +2969,18 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
     if answer.get("failure_code") == "local_client.first_use_completed":
         return answer
     prefix = _entry_of(client)
-    road = [
-        {"step": step, "command": join([*prefix, *words], shell()), "does": does}
-        for step, words, does in _FIRST_USE_ROAD
-    ]
+    asks = first_use_asks(
+        client.selected_url({"operation": "GOAL_SHOW"}, answer),
+        prefix,
+        _FIRST_USE_ROAD,
+        chain.person_questions,
+    )
+    road = asks["road"]
     answer[chain.name] = {
         **answer.get(chain.name, {"steps": chain.steps}),
         "date": named,
         "setup": setup,
-        "road": road,
-        "ask_now": [
-            WATCH_IN_WORKBENCH.format(link=client.selected_url({"operation": "GOAL_SHOW"}, answer)),
-            *FIRST_USE_ASK_NOW,
-            *(join([*prefix, *w], shell()) for w in DAILY_NETWORK_RELAY),
-        ],
+        **asks,
         **({"sentence": note} if note else {}),
     }
     if answer.get("status") == "ALREADY_PREPARED":
@@ -3017,6 +3015,7 @@ def _prepared(
         **({"scope": NEW_RESEARCH_SCOPE} if getattr(args, "new_research", 0) else {}),
     }
     opened = chain.send("goal", {"operation": "GOAL_OPEN", "goal_declaration": declaration})
+    chain.person_questions = opened.get("person_questions", [])
     note = None
     if opened.get("goal_id"):
         chain.client.goal = str(opened["goal_id"])
@@ -3378,10 +3377,9 @@ def run(
         templates = _next_commands(
             body, client.workspace, listed=listed, left=True, options=options
         )
-        # A selected section precedes the next-request listing.
         listing = {"next_commands": commands, "next_templates": templates} if listed else None
         viewed = selected or listing
-        compact = display_view == "compact"
+        compact = any((display_view == "compact", _is_profile(body)))
         navigation: dict[str, Any] = (
             {"navigation": client.navigation(document, body)} if compact and not viewed else {}
         )
@@ -3433,6 +3431,7 @@ def run(
             elif _size(selected) > room:
                 cut = compact_display(selected["value"], budget=room, section=selected["section"])
                 answer.update({**cut, "data": {**selected, "value": cut["data"]}})
+        _profile_hint(answer, body)
         print(
             answer_json(
                 (short_references if compact else _same)(answer),

@@ -157,7 +157,7 @@ def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(m
 
     app = SimpleNamespace(readback=read)
     monkeypatch.setattr(
-        "alphalattice.interface.local_application.experiment_report.render_research_delivery",
+        "alphalattice.control.product_host.composition.research_delivery.render_research_delivery",
         lambda value: "<html>presentation only</html>",
     )
     document = PortfolioResearchRequestDocument(

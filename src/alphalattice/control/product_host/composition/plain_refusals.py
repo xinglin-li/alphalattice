@@ -24,6 +24,7 @@ from alphalattice.interface.local_application.cli_contract import (
     refusal_words,
     schema_request,
 )
+from alphalattice.interface.local_application.questions import person_question
 
 _CHANGED = frozenset(
     {
@@ -377,11 +378,9 @@ def explain(
     `moved` names which recorded identities differ from what is installed; the words say
     which, and the answer carries them for an Agent. `book` is the book a review request
     named, as its request fields. `origin` is the study a continuation's PLAN named.
-    `portfolio` is the Alpha study and candidate a Portfolio declaration named.
-    `trial` is a refused trial's way on: the studies it can run against, or the Factor studies
-    whose handoff opens one (`FeatureTrials.way_on`). `installed_packages` names the book's
-    admitted choices when its selector is missing or unavailable, by id or as the installed
-    packages themselves, whose hashes a selector may have given in place of an id.
+    `portfolio` names a Portfolio declaration's Alpha study and candidate. `trial` offers
+    runnable studies or Factor handoffs (`FeatureTrials.way_on`). `installed_packages` names
+    admitted ids or packages for an absent selector; the selector may have supplied their hashes.
     """
     task = {"task_id": task_id} if task_id else {}
     base, _sep, subject = code.partition(":")
@@ -895,12 +894,10 @@ def explain(
             "next_requests": {"evidence": {"operation": "EVIDENCE_CRO", **(book or {})}},
         }
     if code == "local_application.network_access_human_only":
+        question = person_question("network.workspace_access")
         return {
-            "detail": (
-                "Network access is the person's decision outside a first use: ask the person "
-                "in one line and, on a clear yes, send this again with --person-said and "
-                "--asked; `network show` reads what decides it."
-            ),
+            "detail": question["words"],
+            "person_questions": [question],
             "next_requests": {"network": {"operation": "NETWORK_ACCESS"}},
         }
     if code == "task_control.task_not_found":

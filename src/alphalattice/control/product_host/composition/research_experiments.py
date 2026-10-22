@@ -81,7 +81,10 @@ from alphalattice.control.product_host.research_authoring.authority import (
     universe_control,
     universe_profile,
 )
-from alphalattice.control.product_host.research_authoring.comparison import POSITION_UNITS
+from alphalattice.control.product_host.research_authoring.comparison import (
+    POSITION_UNITS,
+    compare_experiment_reports,
+)
 from alphalattice.control.product_host.research_authoring.factor_authoring import (
     describe_feature_input,
 )
@@ -139,7 +142,10 @@ from alphalattice.control.research_program.authoring.document import (
     load_authoring_document,
     require_authoring_document,
 )
-from alphalattice.control.research_program.authoring.workflow import ResearchProgramWorkflow
+from alphalattice.control.research_program.authoring.workflow import (
+    ResearchEvidenceStore,
+    ResearchProgramWorkflow,
+)
 from alphalattice.control.task_control.child import run_in_child
 from alphalattice.control.task_control.contracts import (
     TaskEvidence,
@@ -3767,7 +3773,6 @@ class ResearchExperimentApplication:
         }
 
     def _stored_evidence(self, plan: ExperimentPlan) -> ResearchExecutionEvidence:
-        from alphalattice.control.research_program.authoring.workflow import ResearchEvidenceStore
 
         output = confined(self.session.workspace, plan.document["experiment"]["output_workspace"])
         stored = ResearchEvidenceStore(output).load_for_program(plan.program.program_hash)
@@ -4078,10 +4083,6 @@ class ResearchExperimentApplication:
                 right_graph=right_graph,
             )
         if op == "EXPERIMENT_COMPARE":
-            from alphalattice.control.product_host.research_authoring.comparison import (
-                compare_experiment_reports,
-            )
-
             assert request.left_task_id is not None and request.right_task_id is not None
             if request.left_task_id == request.right_task_id:
                 raise AuthoringError("portfolio_research.comparison_requires_two_results")

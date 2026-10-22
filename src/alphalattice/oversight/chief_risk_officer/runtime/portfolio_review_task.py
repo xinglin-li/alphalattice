@@ -32,6 +32,7 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
+from alphalattice.evidence.alternative_evidence.contracts import seal_contract
 from alphalattice.evidence.alternative_evidence.publication.analysis import (
     AlternativeEvidenceAnalysisPublicationService,
 )
@@ -548,7 +549,6 @@ class PortfolioReviewTaskAdapter:
             recommendation = compile_portfolio_review_recommendation(
                 dossier=dossier, receipt=receipt
             )
-            from alphalattice.evidence.alternative_evidence.contracts import seal_contract
 
             publication = seal_contract(
                 PortfolioReviewPublication,

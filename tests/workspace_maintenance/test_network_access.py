@@ -100,7 +100,7 @@ def test_a_delegated_setting_holds_until_its_end_with_no_write(
 def test_every_network_way_on_reads_the_effective_decision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str
 ) -> None:
-    """Network advice follows the effective owner and cannot lift an operator or run hold."""
+    """Coded network questions follow the effective owner without lifting offline holds."""
 
     import alphalattice.interface.local_application as local_application
     from alphalattice.control.product_host.composition.plain_refusals import explain
@@ -110,6 +110,7 @@ def test_every_network_way_on_reads_the_effective_decision(
         refusal_words,
         worded_refusal,
     )
+    from alphalattice.interface.local_application.questions import person_question
     from alphalattice.kernel.shared_kernel.environment import held_offline
 
     table = json.loads(Path(local_application.__file__).with_name("refusal_words.json").read_text())
@@ -132,6 +133,9 @@ def test_every_network_way_on_reads_the_effective_decision(
         monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     workspace = None if state == "unlocated" else tmp_path
     with held_offline() if state == "run" else nullcontext():
+        direct = explain("local_application.network_access_human_only", workspace=workspace)
+        assert direct["person_questions"] == [person_question("network.workspace_access")]
+        assert direct["detail"] == direct["person_questions"][0]["words"]
         for base in NETWORK_ACCESS_REFUSALS:
             code = base + (":2026-09-11,DATA" if base.startswith("research_update.") else "")
             owner = explain(code, workspace=workspace, now=now)
@@ -149,6 +153,7 @@ def test_every_network_way_on_reads_the_effective_decision(
                 now=now,
             )
             words = refusal_words(code, workspace=workspace, now=now)
+            assert bool(fresh.get("person_questions")) == (state in {"closed", "default"})
             assert fresh["next_action"] == words["next_action"]
             assert fresh["next_requests"] == {"network": {"operation": "NETWORK_ACCESS"}}
             if state in {"operator", "run"}:
@@ -168,6 +173,9 @@ def test_every_network_way_on_reads_the_effective_decision(
                 else:
                     assert fresh["next_action"] == "WAIT_FOR_THE_OFFLINE_RUN_TO_FINISH"
             elif state in {"closed", "default"}:
+                questions = fresh.get("person_questions", [])
+                assert [q["code"] for q in questions] == ["network.workspace_access"]
+                assert questions[0]["words"] and questions[0]["words_zh"] != questions[0]["words"]
                 assert (
                     "set the workspace control"
                     if base == "evidence_review.workspace_network_not_allowed"

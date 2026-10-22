@@ -38,7 +38,10 @@ from alphalattice.foundation.feature_engine.panels.observation_clock_authority i
 )
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
-from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
+from alphalattice.foundation.feature_engine.storage.repositories import (
+    FeatureStateRepository,
+    PanelStateRepository,
+)
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.investment.alpha_research.evaluation.contracts import AlphaMetricPolicy
@@ -500,9 +503,6 @@ class WorkspaceResearchAuthorityResolver:
     def _snapshot_hash(
         self, store: MarketDataRepository, envelope: ResearchExperimentEnvelope
     ) -> str:
-        from alphalattice.foundation.feature_engine.storage.repositories import (
-            PanelStateRepository,
-        )
 
         handle = envelope.data_snapshot_handle
         if handle == CURRENT_SNAPSHOT_HANDLE:

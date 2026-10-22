@@ -21,6 +21,10 @@ from hashlib import sha256
 from typing import Any, Final
 from uuid import UUID
 
+from alphalattice.interface.local_application.cli_contract import schema_request
+
+from .cli_contract import refusal_words
+
 FAILURE_DETAIL_WITHHELD = "activity.failure_detail_withheld"
 """Served or persisted in place of any failure text that is not a typed product code."""
 
@@ -91,8 +95,6 @@ def setup_failure(error: Exception) -> dict[str, object]:
         The owner's code when present, otherwise a typed, sanitized cause and door words.
         The setup entry supplies its own input context and lawful continuation.
     """
-    from .cli_contract import refusal_words
-
     causes: list[dict[str, object]] = []
     current: BaseException | None = error
     seen: set[int] = set()
@@ -237,7 +239,6 @@ def located_failure(
 
     if not isinstance(error, ValidationError):
         return {"failure_code": public_failure(error, fallback)}
-    from alphalattice.interface.local_application.cli_contract import refusal_words
 
     fields: list[list[str]] = []
     reasons: dict[str, str] = {}
@@ -313,7 +314,6 @@ def _way_back(
 ) -> dict[str, object]:
     """A refused request's way back: the same request corrected where only a field sent empty
     broke it, else a read of the named field's valid values; none where neither stands."""
-    from alphalattice.interface.local_application.cli_contract import refusal_words, schema_request
 
     corrected = _without_empty(fields, request)
     read = {} if corrected is not None else _request_read(reasons, request)
@@ -362,7 +362,6 @@ def _without_empty(
 
 def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> dict[str, object]:
     """Read valid values without choosing work or assuming a refused member's credentials."""
-    from alphalattice.interface.local_application.cli_contract import schema_request
 
     if "operation" in reasons:
         return {}

@@ -1,6 +1,7 @@
 {
   "schema": "alphalattice.release.runtime-resources.v1",
   "files": {
+    "config/registries/messages.json": "The shared bilingual message catalog, beginning with registered person questions.",
     "config/registries/agent-surface.json": "The versioned agent interface and its announced retirements.",
     "AGENTS.md": "The public research-agent guide, shared by both hosts.",
     "CLAUDE.md": "Claude Code's project entry includes the shared agent guide.",

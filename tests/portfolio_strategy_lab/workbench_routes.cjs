@@ -558,7 +558,7 @@ run('workbench_routes', async () => {
     const row=referenceReading('COMPARE','PORTFOLIO','VERIFIED_REFUSAL');
     row.summary.owner_refusal={status:'REFUSED',failure_code:code};row.summary.claim='Owner refused this comparison; no metrics or common scope invented.';
     const c=makeContext({hash:'#page=goal-results&goal='+H,body:goalAnswer(row),inspectorDom:true});c.probe.readRoute();
-    Object.assign(c.window.ALPHA_ZH,words.I18N.catalog);vm.runInContext('I18N.set('+JSON.stringify(lang)+')',c);words.I18N.set(lang);
+    assert.ok(Object.isFrozen(c.window.ALPHA_ZH));vm.runInContext('I18N.set('+JSON.stringify(lang)+')',c);words.I18N.set(lang);
     await c.probe.LiveGoals.ensure();await c.probe.LiveGoals.evidence('fixture-reference');
     const markup=String(c.probe.Window.detailPane('reference')),banner=/<div class="banner[\s\S]*?<\/div>/.exec(markup)?.[0];
     assert.ok(banner?.includes(words.t(row.summary.claim)),'code-only refusal reads its recorded owner claim in '+lang);

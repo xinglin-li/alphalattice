@@ -45,7 +45,12 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Final, Literal, cast
 
+from alphalattice.foundation.factor_research.experiments.authoring import (
+    FACTOR_EXPERIMENT_KIND,
+    FactorSection,
+)
 from alphalattice.interface.local_application import client
+from alphalattice.interface.local_application.answers import ANSWERS, outline
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
     BOUND_WORKSPACE,
@@ -69,13 +74,20 @@ from alphalattice.interface.local_application.cli_contract import (
     join,
     offered_requests,
     operation_schema,
+    refusal_words,
     shell,
     worded,
 )
 from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
+    safe_failure_code,
 )
+from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchRequestDocument,
+    decision_hash,
+)
+from alphalattice.investment.portfolio_strategy_lab.application.availability import NOT_AVAILABLE
 
 CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     (
@@ -294,9 +306,6 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                 raise ValueError("cli.not_an_operation_command")
             else:
                 request = _line_document(repaired, args)()
-            from alphalattice.interface.local_application.portfolio_research import (
-                PortfolioResearchRequestDocument,
-            )
 
             PortfolioResearchRequestDocument.model_validate(request)
             return {
@@ -722,19 +731,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
         for name in others:
             child.add_argument(flag(name), dest=name, help=_field_help(name, required))
         if "person_confirmation" in others:
-            child.add_argument(
-                "--asked",
-                dest="person_asked",
-                metavar="QUESTION",
-                help="With --person-said: the one-line question you asked the person, as asked.",
-            )
-            child.add_argument(
-                "--repeat",
-                dest="person_repeat",
-                metavar="NONCE",
-                help="With --person-said: the person's next yes to a decision already made, by "
-                "the nonce its refusal named.",
-            )
+            _person_confirmation_options(child)
         child.add_argument(
             "--from",
             dest="from_answer",
@@ -768,6 +765,29 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
     for command in _commands_of(parser):
         _global_options(command, anywhere=True)
     return parser
+
+
+def _person_confirmation_options(child: argparse.ArgumentParser) -> None:
+    """Declare the existing person relay's question, repeat nonce and optional catalog code."""
+    child.add_argument(
+        "--question-code",
+        dest="person_question_code",
+        metavar="CODE",
+        help="With --person-said: the registered code beside the question.",
+    )
+    child.add_argument(
+        "--asked",
+        dest="person_asked",
+        metavar="QUESTION",
+        help="With --person-said: the one-line question you asked the person, as asked.",
+    )
+    child.add_argument(
+        "--repeat",
+        dest="person_repeat",
+        metavar="NONCE",
+        help="With --person-said: the person's next yes to a decision already made, by "
+        "the nonce its refusal named.",
+    )
 
 
 def _global_options(parser: argparse.ArgumentParser, *, anywhere: bool) -> None:
@@ -899,11 +919,6 @@ def schema(operation: str) -> dict[str, Any]:
     It is read from the registry and the request document's own schema, and nothing here is a
     second copy of either.
     """
-    from alphalattice.interface.local_application.answers import ANSWERS
-    from alphalattice.interface.local_application.portfolio_research import (
-        PortfolioResearchRequestDocument,
-    )
-
     required, allowed = _fields(operation)
     noun, verb = next(name for name, ops in _commands().items() if operation in ops)
     request = operation_schema(
@@ -965,16 +980,12 @@ def _answer_parts(operation: str) -> dict[str, Any] | None:
     """
     if operation != "EXPERIMENT_READBACK":
         return None
-    from alphalattice.foundation.factor_research.experiments.authoring import (
-        FACTOR_EXPERIMENT_KIND,
-    )
     from alphalattice.foundation.factor_research.experiments.development_evidence import (
         FactorDevelopmentReceipt,
     )
     from alphalattice.foundation.factor_research.programs.program import (
         FactorResearchDeterministicEvidence,
     )
-    from alphalattice.interface.local_application.answers import outline
 
     return {
         FACTOR_EXPERIMENT_KIND: {
@@ -986,15 +997,11 @@ def _answer_parts(operation: str) -> dict[str, Any] | None:
 
 def _declaration_sections() -> dict[str, Any]:
     """Each Desk's section of an experiment declaration, by its contract (V249, SC3)."""
-    from alphalattice.foundation.factor_research.experiments.authoring import FactorSection
     from alphalattice.investment.alpha_research.experiments.authoring import (
         AlphaDevelopmentSection,
     )
     from alphalattice.investment.alpha_research.experiments.lifecycle_authoring import (
         AlphaLifecycleSection,
-    )
-    from alphalattice.investment.portfolio_strategy_lab.application.availability import (
-        NOT_AVAILABLE,
     )
     from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
         PortfolioExperimentSpec,
@@ -2044,7 +2051,8 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
     # The person's yes, asked in one line, relayed whole and bound to the request sent.
     said, asked = given.pop("person_confirmation", None), getattr(args, "person_asked", None)
     repeat = getattr(args, "person_repeat", None)
-    if (said is None) != (asked is None) or (repeat and said is None):
+    question_code = getattr(args, "person_question_code", None)
+    if (said is None) != (asked is None) or ((repeat or question_code) and said is None):
         parser.error("--person-said and --asked go together: the person's words, your question")
 
     def document() -> dict[str, Any]:
@@ -2081,7 +2089,6 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
         )
         if said is None:
             return line
-        from alphalattice.interface.local_application.portfolio_research import decision_hash
 
         return {
             **line,
@@ -2089,6 +2096,7 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
                 "question": asked,
                 "words": said,
                 "decision_hash": decision_hash(line),
+                **({"question_code": question_code} if question_code is not None else {}),
                 **({"nonce": repeat} if repeat else {}),
             },
         }
@@ -2241,8 +2249,6 @@ def _read_lead(
     for receipt in receipts:
         if receipt.get("status") in {"DELIVERED", "SKIPPED"}:
             continue
-        from alphalattice.interface.local_application.cli_contract import refusal_words
-        from alphalattice.interface.local_application.failure_codes import safe_failure_code
 
         reason = safe_failure_code(receipt.get("reason")) or "native_bridge.lead_usage_read_failed"
         words = refusal_words(reason) or refusal_words("native_bridge.lead_usage_read_failed")

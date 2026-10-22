@@ -1,5 +1,19 @@
 {
 "entries": {
+"schema:alphalattice.message-catalog": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/alphalattice/interface/local_application/questions.py",
+"tests/portfolio_strategy_lab/workbench_activity.cjs",
+"src/devtools/architecture/registries.py",
+"src/alphalattice/control/product_host/composition/workspace_activity.py",
+"src/alphalattice/interface/local_application/cli_contract.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.message-catalog"
+]
+},
 "schema:alphalattice.local-application.operations": {
 "owner": "schema:alphalattice",
 "readers": [
@@ -256,6 +270,72 @@
 "upgraders": [],
 "version": [
 "workspace-preparation-input"
+]
+},
+"schema:alphalattice.goal-profile.v1": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/alphalattice/control/observation_runtime/profile.py",
+"src/alphalattice/control/product_host/composition/workspace_activity.py",
+"src/alphalattice/interface/local_application/answers.py",
+"src/alphalattice/interface/local_application/client.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.goal-profile.v1"
+]
+},
+"schema:alphalattice.stage-spans.v1": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/alphalattice/control/task_control/timing.py",
+"src/alphalattice/control/observation_runtime/profile.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.stage-spans.v1"
+]
+},
+"schema:alphalattice.clock-correlation.v1": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/alphalattice/kernel/shared_kernel/clocks.py",
+"src/alphalattice/control/observation_runtime/profile.py",
+"src/alphalattice/control/product_host/composition/workspace_activity.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.clock-correlation.v1"
+]
+},
+"schema:alphalattice.replay-input.v1": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/devtools/evaluation/forms.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.replay-input.v1"
+]
+},
+"schema:alphalattice.replay-measurement.v1": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/devtools/evaluation/forms.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.replay-measurement.v1"
+]
+},
+"schema:alphalattice.golden-acquisition.v1": {
+"owner": "schema:alphalattice",
+"readers": [
+"src/devtools/evaluation/forms.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.golden-acquisition.v1"
 ]
 }
 },

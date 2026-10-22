@@ -25,7 +25,7 @@ const LiveGoals = (() => {
   // A saved revision's conversation is mutable. Observe the existing feed by its exact Goal
   // UUID, without joining unbound/same-book messages or opening another polling loop.
   // This reader's own operation receipts cannot make its saved record dirty again.
-  const GOAL_READS = new Set(['GOAL_SCHEMA', 'GOAL_LIST', 'GOAL_NARRATIVE', 'GOAL_SHOW', 'GOAL_REFERENCE', 'GOAL_EXPORT', 'GOAL_CONTINUE', 'CASE_NARRATIVE', 'CASE_READBACK', 'CASE_EXPORT']);
+  const GOAL_READS = new Set(['GOAL_SCHEMA', 'GOAL_LIST', 'GOAL_NARRATIVE', 'GOAL_PROFILE', 'GOAL_SHOW', 'GOAL_REFERENCE', 'GOAL_EXPORT', 'GOAL_CONTINUE', 'CASE_NARRATIVE', 'CASE_READBACK', 'CASE_EXPORT']);
   function activitySnapshot() {
     if (typeof LiveActivity === 'undefined' || !LiveActivity.state || !LiveActivity.retained) return null;
     const state = LiveActivity.state();

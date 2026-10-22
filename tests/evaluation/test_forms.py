@@ -17,6 +17,42 @@ from devtools.evaluation import (
 )
 
 
+def test_acquisition_protocol_rejects_missing_nonfinite_and_contradictory_fields():
+    """The public decoder owns receipt validity without importing its private producer."""
+    from devtools.evaluation import forms
+
+    decode = getattr(forms, "decode_golden_acquisition", None)
+    assert callable(decode)
+    value = dict(
+        schema="alphalattice.golden-acquisition.v1",
+        recipe="probe",
+        cache="cache",
+        cold=True,
+        elapsed_clock=True,
+        require_cold=True,
+        initial_fill_seconds=1.0,
+        fill_started_at=1.0,
+        fill_ended_at=2.0,
+        copy_started_at=2.0,
+        copy_ended_at=3.0,
+        copy_seconds=1.0,
+    )
+    assert decode(value) == value
+    for changed in (
+        {"schema": "unknown"},
+        {"cold": 1},
+        {"cold": False},
+        {"copy_seconds": -1},
+        {"copy_seconds": float("nan")},
+        {"copy_seconds": 10**1000},
+        {"extra": 1},
+    ):
+        with pytest.raises(ValueError, match=r"replay\.acquisition_invalid"):
+            decode(value | changed)
+    with pytest.raises(ValueError):
+        decode({})
+
+
 def scenario(**changes):
     return {
         "id": "sample.route",
@@ -61,6 +97,42 @@ def event(**changes):
         },
         **changes,
     }
+
+
+def test_replay_input_round_trips_without_a_model_and_rejects_malformed_starts():
+    """Model-free scenarios retain their recipe and strictly ordered replay sessions."""
+    replay = {
+        "schema": "alphalattice.replay-input.v1",
+        "golden": "first_use_sealed",
+        "sessions": ["2026-08-13", "2026-08-14"],
+    }
+    body = {"version": 1, "scenarios": [scenario(replay=replay)]}
+    try:
+        original = EvaluationDataset.loads_yaml(json.dumps(body))
+    except ValueError as error:
+        pytest.fail(f"Valid replay input was rejected: {error}")
+    restored = EvaluationDataset.loads_yaml(original.dumps_yaml())
+    assert restored.runner is None and restored == original
+    assert restored.scenarios[0].to_dict()["replay"] == replay
+    assert "replay" not in Scenario.from_dict(scenario()).to_dict()
+    held = Scenario.from_dict(scenario(replay=replay))
+    replay["sessions"].reverse()
+    assert held.to_dict()["replay"]["sessions"] == ["2026-08-13", "2026-08-14"]
+    replay["sessions"].reverse()
+    for changes in (
+        {"schema": "unknown"},
+        {"golden": "../outside"},
+        {"golden": 1},
+        {"sessions": []},
+        {"sessions": ["2026-08-14", "2026-08-13"]},
+        {"sessions": ["2026-08-13", "2026-08-13"]},
+        {"sessions": ["2026-02-30"]},
+        {"sessions": ["20260813"]},
+        {"unexpected": True},
+    ):
+        body["scenarios"] = [scenario(replay={**replay, **changes})]
+        with pytest.raises(ValueError):
+            EvaluationDataset.loads_yaml(json.dumps(body))
 
 
 def test_scenario_yaml_round_trips_route_alternatives_and_metadata():

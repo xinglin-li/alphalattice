@@ -1,5 +1,14 @@
 {
 "entries": {
+"clock.anchor_naive": {
+"owner": "alphalattice.kernel.shared_kernel"
+},
+"person_confirmation.question_unknown": {
+"owner": "person_confirmation"
+},
+"person_confirmation.question_mismatch": {
+"owner": "person_confirmation"
+},
 "activity.accepted_answer_binding_mismatch": {
 "owner": "activity"
 },
@@ -13256,6 +13265,45 @@
 },
 "workspace_runtime.writer_already_owned": {
 "owner": "workspace_runtime"
+},
+"observation.profile_window_invalid": {
+"owner": "observation"
+},
+"activity.storage_unavailable": {
+"owner": "activity"
+},
+"local_web.detached_breakaway_denied": {
+"owner": "alphalattice.control.product_host.composition",
+"message_id": "host.start.breakaway_denied",
+"next_action": "SERVE_FROM_A_PERSON_OWNED_TERMINAL",
+"recovery": "terminal_command names the same workspace, locale and declared flags; attached --stop-on-stdin is session-only"
+},
+"replay.receipt_binding": {
+"owner": "devtools.evaluation"
+},
+"replay.receipt_coverage": {
+"owner": "devtools.evaluation"
+},
+"replay.receipt_incomplete": {
+"owner": "devtools.evaluation"
+},
+"replay.receipt_legs": {
+"owner": "devtools.evaluation"
+},
+"replay.receipt_peak": {
+"owner": "devtools.evaluation"
+},
+"replay.receipt_profile": {
+"owner": "devtools.evaluation"
+},
+"replay.receipt_time": {
+"owner": "devtools.evaluation"
+},
+"replay.golden_warm": {
+"owner": "devtools.evaluation"
+},
+"replay.acquisition_invalid": {
+"owner": "devtools.evaluation"
 }
 },
 "note": "",

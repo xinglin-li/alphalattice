@@ -8,12 +8,12 @@ import ctypes
 import json
 import os
 import signal
-import struct
 import subprocess
 import sys
 import time
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,6 +23,52 @@ from alphalattice.control.product_host.composition.research_workspace import (
     publish_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.web_launcher import OPEN_THE_WORKBENCH
+from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+
+WINDOWS = pytest.mark.skipif(sys.platform != "win32", reason="Windows process control")
+_FLAGS = 0x08004000 if sys.platform == "win32" else 0  # no window, below normal
+_PYTHON = str(Path(sys.base_prefix) / "python.exe") if sys.platform == "win32" else sys.executable
+
+
+def _job(flags):
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateJobObjectW.restype = ctypes.c_void_p
+    job = ctypes.c_void_p(kernel.CreateJobObjectW(None, None))
+    limits = (ctypes.c_byte * 144)()
+    ctypes.c_uint32.from_buffer(limits, 16).value = flags
+    assert job and kernel.SetInformationJobObject(job, 9, limits, 144)
+    assert kernel.QueryInformationJobObject(job, 9, limits, 144, None)
+    assert ctypes.c_uint32.from_buffer(limits, 16).value == flags
+    current, inside = ctypes.c_void_p(-1), ctypes.c_int()
+    assert kernel.AssignProcessToJobObject(job, current)
+    assert kernel.IsProcessInJob(current, job, ctypes.byref(inside)) and inside.value
+    return kernel, job
+
+
+@pytest.fixture(scope="module", autouse=True)
+def runner_job():
+    """The same nodes also run inside a Job that denies every breakaway attempt."""
+    held = _job(0) if os.name == "nt" and os.environ.get("ALPHALATTICE_TEST_NO_BREAKAWAY") else None
+    yield
+    if held:
+        assert held[0].CloseHandle(held[1])
+
+
+def _can_escape():
+    if sys.platform != "win32":
+        return True
+    try:
+        with subprocess.Popen(
+            [_PYTHON, "-c", "import sys; sys.stdin.read()"],
+            stdin=subprocess.PIPE,
+            creationflags=_FLAGS | subprocess.CREATE_BREAKAWAY_FROM_JOB,
+        ) as child:
+            inside = ctypes.c_int()
+            handle = ctypes.c_void_p(int(child._handle))
+            proven = ctypes.windll.kernel32.IsProcessInJob(handle, None, ctypes.byref(inside))
+            return bool(proven) and not inside.value
+    except PermissionError:
+        return False
 
 
 def test_product_probe_reopens_a_workspace_and_reads_saved_object_indexes(tmp_path: Path) -> None:
@@ -74,17 +120,26 @@ def test_attached_launcher_stops_on_explicit_stdin_or_eof(tmp_path, monkeypatch,
         operations = None
 
         def start(self):
+            root = Path(__file__).resolve().parents[2]
+            host = subprocess.Popen(
+                [sys.executable, "-c", _WATCHED_STDIN, str(root)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                text=True,
+            )
+            assert host.stdout is not None and host.stdin is not None
+            assert host.stdout.readline().strip() == "started"
+            host.stdin.write("noise\n" + lines)
+            host.stdin.close()
+            assert host.wait(timeout=30) == 0
             calls.append("start")
             return "http://127.0.0.1:12345/"
 
         def stop(self):
             calls.append("stop")
 
-    monkeypatch.setattr(
-        run_local_portfolio_web.LocalPortfolioWebSession,
-        "from_workspace",
-        lambda *a, **k: Session(),
-    )
+    launcher = run_local_portfolio_web.LocalPortfolioWebSession
+    monkeypatch.setattr(launcher, "from_workspace", lambda *a, **k: Session())
     monkeypatch.setattr(sys, "stdin", StringIO(lines))
     assert (
         main(
@@ -98,92 +153,98 @@ def test_attached_launcher_stops_on_explicit_stdin_or_eof(tmp_path, monkeypatch,
     assert shown[0].endswith(Session.launch_url) and shown[2] == OPEN_THE_WORKBENCH
 
 
-@pytest.mark.parametrize("ending", ["stop\n", ""])
-def test_a_host_waiting_for_its_stop_lets_the_processes_it_starts_begin(ending: str) -> None:
-    "a synchronous read pending on the stdin pipe held every process the"
-
-    root = Path(__file__).resolve().parents[2]
-    host = subprocess.Popen(
-        [sys.executable, "-c", _WATCHED_STDIN, str(root)],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    assert host.stdout is not None and host.stdin is not None
-    assert host.stdout.readline().strip() == "started"
-    host.stdin.write("noise\n" + ending)
-    host.stdin.close()
-    assert host.wait(timeout=30) == 0
-
-
 _TURN = """
-import subprocess, sys
-sys.stdin.readline()  # released once the turn holds this process: its Job, or its group
+import ctypes, os, sys
+if os.name == "nt":
+    from tests.portfolio_strategy_lab.test_runtime_launchers import _job
+    k, job = _job(0x2800 if os.environ["ALPHALATTICE_TEST_JOB_MODE"] == "escaped" else 0x2000)
 from alphalattice.control.product_host.composition.entry import main
-sys.exit(main(sys.argv[1:]))
+result = main(sys.argv[1:])  # this CLI is inside the verified finite Job; only its Host escapes
+if os.name == "nt" and result == 2:
+    accounting = (ctypes.c_byte * 48)()
+    assert k.QueryInformationJobObject(job, 1, accounting, 48, None)
+    assert ctypes.c_uint32.from_buffer(accounting, 40).value == 1  # no held child before Job close
+sys.exit(result)
 """
 
 
 def _end_turn_after(command: list[str], root: Path, temp: Path) -> str:
-    """Run a launch as a Codex turn does and end the turn: its whole Job (Windows) or process
-    group is killed once the launch returns, children and all. Its logs go to ``temp``."""
-    folders = {name: str(temp) for name in ("TEMP", "TMP", "TMPDIR")}
-    env = {**os.environ, **folders, "PYTHONPATH": str(root / "src")}
-    if sys.platform != "win32":
-        turn = subprocess.Popen(
-            [sys.executable, "-c", _TURN, *command],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            text=True,
-            env=env,
-            start_new_session=True,
-        )
-        out = turn.communicate("go\n", timeout=180)[0]
-        with contextlib.suppress(ProcessLookupError):  # the group may be empty already
-            os.killpg(turn.pid, signal.SIGKILL)
-        return out
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.CreateJobObjectW.restype = ctypes.c_void_p
-    job = ctypes.c_void_p(kernel32.CreateJobObjectW(None, None))
-    # JOBOBJECT_EXTENDED_LIMIT_INFORMATION (144 bytes on x64), the only form that takes these
-    # flags: LimitFlags at offset 16 kills on close and allows breakaway, as a turn's Job may.
-    limits = (ctypes.c_ubyte * 144)()
-    struct.pack_into("<I", limits, 16, 0x2000 | 0x800)
-    assert kernel32.SetInformationJobObject(job, 9, limits, ctypes.sizeof(limits))
+    """A finite real CLI parent owns a verified Job, or a POSIX group; it ends before Host work."""
+    escaped = _can_escape()
+    env = {
+        **os.environ,
+        **{n: str(temp) for n in ("TEMP", "TMP", "TMPDIR")},
+        "PYTHONPATH": os.pathsep.join(
+            (str(root), str(root / "src"), str(Path(sys.prefix) / "Lib/site-packages"))
+        ),
+        "ALPHALATTICE_TEST_JOB_MODE": "escaped" if escaped else "denied",
+    }
     turn = subprocess.Popen(
-        [sys.executable, "-c", _TURN, *command],
-        stdin=subprocess.PIPE,
+        [_PYTHON, "-c", _TURN, *command],
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         env=env,
+        start_new_session=sys.platform != "win32",
+        creationflags=_FLAGS
+        | (subprocess.CREATE_BREAKAWAY_FROM_JOB if escaped and os.name == "nt" else 0),
     )
     try:
-        assert kernel32.AssignProcessToJobObject(job, ctypes.c_void_p(int(turn._handle)))
-        return turn.communicate("go\n", timeout=180)[0]
+        output, error = turn.communicate(timeout=180)
+        assert turn.returncode == (0 if escaped else 2), error
+        assert output, error
+        return output
     finally:
-        kernel32.TerminateJobObject(job, 1)
-        kernel32.CloseHandle(job)
+        if sys.platform != "win32":
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(turn.pid, signal.SIGKILL)
 
 
 @pytest.mark.parametrize("workspace_state", ["fresh", "initialized"])
 def test_a_detached_host_outlives_the_turn_that_started_it(
-    tmp_path: Path, workspace_state: str
+    tmp_path: Path, workspace_state: str, request
 ) -> None:
     """A turn's end kills everything its launch started; the Host `serve --detach` started, on
     a new workspace or an initialized one, serves a later client until `host stop`, with its
     key in no log; a second launch is refused by name and leaves no log."""
+    import fnmatch
+
+    import psutil
+
     from alphalattice.control.product_host.composition.entry import main
-    from alphalattice.interface.local_application.client import LocalResearchConnection
+    from alphalattice.interface.local_application import client
 
     root = Path(__file__).resolve().parents[2]
+    budgets = runtime_json("config/registries/process-budgets.json")
+    host_budget = budgets["kinds"]["host"]
     workspace = tmp_path / "workspace"
     if workspace_state == "initialized":
         manifest = ResearchWorkspaceManifest.research_only("turn")
         publish_research_workspace_manifest(workspace, manifest)
+
+    connection = client.LocalResearchConnection.path(workspace)
+
+    def stop_owned():
+        if not connection.exists():
+            return
+        assert main(["--workspace", str(workspace), "host", "stop"]) == 0
+        deadline = time.monotonic() + 60
+        while connection.exists() and time.monotonic() < deadline:
+            time.sleep(0.2)
+        assert not connection.exists()
+
+    request.addfinalizer(stop_owned)
     temp = tmp_path / "temp"
     temp.mkdir()
-    launch = ["--workspace", str(workspace), "serve", "--no-browser", "--detach"]
+    lang = "zh" if workspace_state == "initialized" else "en"
+    launch = ["--lang", lang, "--workspace", str(workspace), "serve", "--no-browser", "--detach"]
+    launch[5:5] = ["--port", "0"]
     out = _end_turn_after(launch, root, temp)
+    if out.startswith("{"):
+        refusal = json.loads(out)
+        assert refusal["failure_code"] == "local_web.detached_breakaway_denied"
+        assert not connection.exists() and not list(temp.iterdir())
+        return
     assert "Portfolio Research workspace:" in out and "outlives it" in out
     started = out.splitlines()[0]  # plainly STARTED, with the workspace and the address
     assert started.startswith("STARTED") and str(workspace.resolve()) in started
@@ -191,54 +252,96 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
     key = out.split("key=", 1)[1].split("#", 1)[0]
     logs = list(temp.glob("alphalattice-host-*.log"))
     assert len(logs) == 1 and key not in logs[0].read_text(encoding="utf-8")
-    address = LocalResearchConnection.read(workspace).url  # a later client finds the Host
+    reader = client.LocalResearchClient(workspace)
+    address = reader.connection.url
+    query = {"operation": "OPERATION_LIST", "schema_operation": "HOST_STOP"}
+    assert "HOST_STOP" in reader.request(query).get("operation_fields", {})
     assert address in started
     second = json.loads(_end_turn_after(launch, root, temp))  # plainly ALREADY_SERVING
     assert second["status"] == "ALREADY_SERVING" and second["workspace"] in started
     assert (second["address"], second["next_action"]) == (address, "USE_THE_SERVING_HOST")
     assert list(temp.glob("alphalattice-host-*.log")) == logs
-    assert main(["--workspace", str(workspace), "host", "stop"]) == 0
-    connection = LocalResearchConnection.path(workspace)
-    deadline = time.monotonic() + 60
-    while connection.exists() and time.monotonic() < deadline:
-        time.sleep(0.2)
-    assert not connection.exists()
+    tree = psutil.Process(int(out.split("(process ", 1)[1].split(")", 1)[0]))
+    tree = [tree, *tree.children(recursive=True)]
+    for process in tree:
+        process.cpu_percent(None)
+    time.sleep(0.9)  # an idle sample
+    commit = sum(process.memory_info().private for process in tree) / 2**30
+    cpu = sum(process.cpu_percent(None) for process in tree)
+    assert len(tree) <= host_budget["idle_processes"], [p.name() for p in tree]
+    assert commit <= host_budget["idle_commit_gib"] and cpu <= host_budget["idle_cpu_percent"]
+    assert _visible_windows({process.pid for process in tree}) == budgets["console_windows"]
+    declared = [entry["pattern"] for entry in budgets["declared_temporary_files"]]
+    written = [path.name for path in temp.iterdir()]
+    assert all(any(fnmatch.fnmatch(name, d) for d in declared) for name in written), written
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["temp", "workspace"]
+    stop_owned()
+    _gone, alive = psutil.wait_procs(tree, timeout=host_budget["stopped_within_seconds"])
+    assert not alive, [p.name() for p in alive]
 
 
-def test_a_detached_launch_refuses_what_it_cannot_serve(tmp_path, monkeypatch, capsys) -> None:
+@pytest.mark.parametrize("escape", ["escaped", "denied", "unproven"])
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_a_detached_launch_refuses_what_it_cannot_serve(
+    tmp_path, monkeypatch, capsys, escape, lang
+):
     """A detached Host that exits before serving answers its code and log, and a detached launch
     tied to standard input is refused by name, before anything starts."""
     from alphalattice.control.product_host.composition import web_launcher
+    from alphalattice.interface.local_application.cli import main
 
-    monkeypatch.setenv("TEMP", str(tmp_path))
-    monkeypatch.setenv("TMP", str(tmp_path))
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    for name in ("TEMP", "TMP", "TMPDIR"):
+        monkeypatch.setenv(name, str(tmp_path))
     monkeypatch.setattr(web_launcher.tempfile, "tempdir", None)
+    native, spawned, flags = subprocess.Popen, [], []
+
+    def spawn(*args, **kwargs):
+        flags.append(kwargs.get("creationflags", 0))
+        kwargs["creationflags"] = flags[-1] & ~getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
+        spawned.append(native(*args, **kwargs))
+        return spawned[-1]
+
+    def proof(_child, _job, inside):
+        inside._obj.value = (
+            escape == "denied" or not flags[-1] & subprocess.CREATE_BREAKAWAY_FROM_JOB
+        )
+        return escape != "unproven"
+
+    monkeypatch.setattr(subprocess, "Popen", spawn)
+    if os.name == "nt":
+        kernel = SimpleNamespace(IsProcessInJob=proof)
+        monkeypatch.setattr(ctypes, "WinDLL", lambda *_a, **_k: kernel)
     taken = tmp_path / "taken"
     taken.mkdir()
     (taken / "stray.txt").write_text("not a workspace", encoding="utf-8")
-    assert web_launcher.main(["--workspace", str(taken), "--no-browser", "--detach"]) == 2
+    launch = ["--lang", lang, "--workspace", str(taken), "serve"]
+    launch.extend(["--port", "0", "--no-browser", "--detach"])
+    assert main(launch, serve=web_launcher.main) == 2
     exited = json.loads(capsys.readouterr().out)
-    assert exited["failure_code"] == "local_web.detached_host_exited"
-    assert "nonempty_manifest_absent" in Path(exited["detail"].rsplit(": ", 1)[1]).read_text()
+    if escape == "escaped" or os.name != "nt":
+        assert exited["failure_code"] == "local_web.detached_host_exited"
+        assert "nonempty_manifest_absent" in Path(exited["detail"].rsplit(": ", 1)[1]).read_text()
+        if os.name == "nt":
+            probe = "import ctypes; print(bool(ctypes.windll.kernel32.GetConsoleWindow()))"
+            host = f"import subprocess, sys; subprocess.run([sys.executable, '-c', {probe!r}])"
+            log = tmp_path / "probe.log"
+            with log.open("wb") as written:
+                child = web_launcher._spawn_detached([_PYTHON, "-c", host], written, "k")
+            assert child.wait(timeout=60) == 0
+            assert log.read_text(encoding="utf-8").split() == ["False"]
+    else:
+        assert exited["failure_code"] == "local_web.detached_breakaway_denied"
+        assert exited["next_action"] == "SERVE_FROM_A_PERSON_OWNED_TERMINAL"
+        message_id = "host.start.breakaway_denied"
+        assert exited["message_id"] == message_id
+        words = runtime_json("config/registries/messages.json")["entries"][message_id]["words"]
+        assert exited["detail"] == words["zh-CN" if lang == "zh" else "en"]
+        assert exited["terminal_command"] == ["alphalattice", *launch]
+        assert not list(tmp_path.glob("alphalattice-host-*.log"))
+    assert spawned and all(child.poll() is not None for child in spawned)
     assert web_launcher.main(["--workspace", str(tmp_path), "--detach", "--stop-on-stdin"]) == 2
     tied = json.loads(capsys.readouterr().out)
     assert tied["failure_code"] == "local_web.detach_with_stop_on_stdin"
-
-
-@pytest.mark.skipif(sys.platform != "win32", reason="a console window is Windows'")
-def test_a_detached_hosts_workers_open_no_console_window(tmp_path) -> None:
-    """A process the detached Host starts, as its Task workers are, opens no console window on
-    the person's desktop (a window there, closed, would kill the worker)."""
-    from alphalattice.control.product_host.composition import web_launcher
-
-    probe = "import ctypes; print(bool(ctypes.windll.kernel32.GetConsoleWindow()))"
-    host = f"import subprocess, sys; subprocess.run([sys.executable, '-c', {probe!r}])"
-    log = tmp_path / "probe.log"
-    with log.open("wb") as written:
-        child, _held = web_launcher._spawn_detached([sys.executable, "-c", host], written, "k")
-    assert child.wait(timeout=60) == 0
-    assert log.read_text(encoding="utf-8").split() == ["False"]
 
 
 def test_the_launchers_module_loads_no_numerical_library() -> None:
@@ -271,44 +374,6 @@ def _visible_windows(pids: set[int]) -> int:
 
     user32.EnumWindows(each, None)
     return len(found)
-
-
-def test_a_served_host_keeps_the_persons_machine_clean(tmp_path: Path) -> None:
-    """A served Host holds its declared budget of processes, commit and CPU while idle, opens
-    no window, writes nothing outside the workspace but declared files, and leaves nothing."""
-    import fnmatch
-
-    import psutil
-
-    from alphalattice.control.product_host.composition.entry import main
-
-    root = Path(__file__).resolve().parents[2]
-    budgets = json.loads((root / "config/registries/process-budgets.json").read_text("utf-8"))
-    host_budget = budgets["kinds"]["host"]
-    workspace, temp = tmp_path / "workspace", tmp_path / "temp"
-    temp.mkdir()
-    out = _end_turn_after(
-        ["--workspace", str(workspace), "serve", "--no-browser", "--detach"], root, temp
-    )
-    tree = psutil.Process(int(out.split("(process ", 1)[1].split(")", 1)[0]))
-    tree = [tree, *tree.children(recursive=True)]
-    try:
-        for process in tree:
-            process.cpu_percent(None)
-        time.sleep(0.9)  # an idle sample
-        commit = sum(process.memory_info().private for process in tree) / 2**30
-        cpu = sum(process.cpu_percent(None) for process in tree)
-        assert len(tree) <= host_budget["idle_processes"], [p.name() for p in tree]
-        assert commit <= host_budget["idle_commit_gib"] and cpu <= host_budget["idle_cpu_percent"]
-        assert _visible_windows({process.pid for process in tree}) == budgets["console_windows"]
-        declared = [entry["pattern"] for entry in budgets["declared_temporary_files"]]
-        written = [path.name for path in temp.iterdir()]
-        assert all(any(fnmatch.fnmatch(name, d) for d in declared) for name in written), written
-        assert sorted(path.name for path in tmp_path.iterdir()) == ["temp", "workspace"]
-    finally:
-        assert main(["--workspace", str(workspace), "host", "stop"]) == 0
-    _gone, alive = psutil.wait_procs(tree, timeout=host_budget["stopped_within_seconds"])
-    assert not alive, [p.name() for p in alive]
 
 
 def test_a_token_count_needs_no_network_and_writes_no_temporary_file(tmp_path: Path) -> None:

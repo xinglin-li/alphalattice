@@ -2,6 +2,10 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const library=require('./workbench_library.cjs'),finish=library.guard('workbench_owner_words');
 const appDir=process.argv[2],groups=JSON.parse(process.argv[3]),details=JSON.parse(process.argv[4]),w=library.words(appDir);
+assert.ok(Object.isFrozen(w.I18N.catalog));
+for(const [id,entry] of Object.entries(w.MESSAGE_WORDS))if(entry.kind==='MESSAGE')for(const [locale,word] of Object.entries(entry.words)){
+  w.I18N.set(locale);assert.equal(w.t(id),word,'registered message '+id+'/'+locale);
+}
 const missing=[];
 const cause={exception_type:'DataTargetSessionLag',step:'prepare_data',detail:'At 2026-10-07, 0 of 10 listings have a market bar; the baseline needs at least 5. Latest common bar: 2026-09-10.'};
 w.I18N.set('en');const englishCause=String(w.causeLine(cause));w.I18N.set('zh');const chineseCause=String(w.causeLine(cause));

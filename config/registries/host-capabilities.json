@@ -2924,18 +2924,22 @@
       "capability": "product-host.detached-launch",
       "owner": "alphalattice.control.product_host.composition",
       "defined_by": "src/alphalattice/control/product_host/composition/web_launcher.py::_spawn_detached",
-      "definition_line": 157,
+      "definition_line": 168,
       "conditions": [
-        "The launcher supplies DEVNULL stdin and a distinct process group/session; Windows requests a hidden window and breakaway from the parent Job.",
-        "If Windows Job breakaway raises PermissionError it retries in that Job and reports held=True; a non-Windows launch uses start_new_session=True.",
-        "alphalattice host stop owns product stop; --detach with --stop-on-stdin is refused."
+        "Both Claude Code and Codex use serve --no-browser --detach; STARTED requires an authenticated ready Host.",
+        "The launcher uses DEVNULL stdin and a separate process group/session; Windows requests no window and Job breakaway.",
+        "Denied breakaway refuses local_web.detached_breakaway_denied with host.start.breakaway_denied; no still-held process is started.",
+        "Attached --stop-on-stdin and old flags keep their existing behavior; host stop owns shutdown.",
+        "Detachment is admitted in the caller runtime before any retrieval-interpreter trampoline; only the detached Host uses the declared retrieval interpreter.",
+        "Immediately after Windows spawn, IsProcessInJob(child, NULL) must prove no Job ownership; true or failed proof stops this child and refuses, with no broker."
       ],
       "limitations": [
-        "A held Windows child ends when its parent Job ends; a successful detached launch does not universally prove survival across native turn/session shutdown."
+        "Any remaining Job ownership, even where breakaway was permitted, is unproven and refused; use a person-owned terminal outside the agent shell or explicitly session-only attached mode.",
+        "No logout or reboot survival guarantee; no broker, scheduler or service escape is used."
       ],
       "supporting_definitions": [
-        "src/alphalattice/control/product_host/composition/web_launcher.py::_detach:193",
-        "src/alphalattice/control/product_host/composition/web_launcher.py::_served:246"
+        "src/alphalattice/control/product_host/composition/web_launcher.py::_detach:215",
+        "src/alphalattice/control/product_host/composition/web_launcher.py::_served:305"
       ],
       "consumers": {
         "import": [
@@ -2990,6 +2994,10 @@
         "source_commit": "42491202b3973f62dda18203fa620aa3661f46ba",
         "method": "Static defining-module imports/path references and distinctive name/vocabulary matches, including tests, manifests and shipped instructions; not runtime proof. Generic words and definition/import lines are excluded from string matches.",
         "scope": "Public static references; private maintainer reader evidence is tracked separately."
+      },
+      "amendment_basis": {
+        "source_commit": "4c8dec0bb7be8110cb976f8c396da61844b18a6f",
+        "method": "Current launcher definition AST and actual CLI/venv Job probes; original consumer inventory remains pinned to its earlier source_commit."
       }
     },
     "codex.session.identity-producer-channel": {
@@ -3776,18 +3784,22 @@
       "capability": "product-host.detached-launch",
       "owner": "alphalattice.control.product_host.composition",
       "defined_by": "src/alphalattice/control/product_host/composition/web_launcher.py::_spawn_detached",
-      "definition_line": 157,
+      "definition_line": 168,
       "conditions": [
-        "The launcher supplies DEVNULL stdin and a distinct process group/session; Windows requests a hidden window and breakaway from the parent Job.",
-        "If Windows Job breakaway raises PermissionError it retries in that Job and reports held=True; a non-Windows launch uses start_new_session=True.",
-        "alphalattice host stop owns product stop; --detach with --stop-on-stdin is refused."
+        "Both Claude Code and Codex use serve --no-browser --detach; STARTED requires an authenticated ready Host.",
+        "The launcher uses DEVNULL stdin and a separate process group/session; Windows requests no window and Job breakaway.",
+        "Denied breakaway refuses local_web.detached_breakaway_denied with host.start.breakaway_denied; no still-held process is started.",
+        "Attached --stop-on-stdin and old flags keep their existing behavior; host stop owns shutdown.",
+        "Detachment is admitted in the caller runtime before any retrieval-interpreter trampoline; only the detached Host uses the declared retrieval interpreter.",
+        "Immediately after Windows spawn, IsProcessInJob(child, NULL) must prove no Job ownership; true or failed proof stops this child and refuses, with no broker."
       ],
       "limitations": [
-        "A held Windows child ends when its parent Job ends; a successful detached launch does not universally prove survival across native turn/session shutdown."
+        "Any remaining Job ownership, even where breakaway was permitted, is unproven and refused; use a person-owned terminal outside the agent shell or explicitly session-only attached mode.",
+        "No logout or reboot survival guarantee; no broker, scheduler or service escape is used."
       ],
       "supporting_definitions": [
-        "src/alphalattice/control/product_host/composition/web_launcher.py::_detach:193",
-        "src/alphalattice/control/product_host/composition/web_launcher.py::_served:246"
+        "src/alphalattice/control/product_host/composition/web_launcher.py::_detach:215",
+        "src/alphalattice/control/product_host/composition/web_launcher.py::_served:305"
       ],
       "consumers": {
         "import": [
@@ -3842,6 +3854,10 @@
         "source_commit": "42491202b3973f62dda18203fa620aa3661f46ba",
         "method": "Static defining-module imports/path references and distinctive name/vocabulary matches, including tests, manifests and shipped instructions; not runtime proof. Generic words and definition/import lines are excluded from string matches.",
         "scope": "Public static references; private maintainer reader evidence is tracked separately."
+      },
+      "amendment_basis": {
+        "source_commit": "4c8dec0bb7be8110cb976f8c396da61844b18a6f",
+        "method": "Current launcher definition AST and actual CLI/venv Job probes; original consumer inventory remains pinned to its earlier source_commit."
       }
     },
     "claude-code.session.identity-producer-channel": {

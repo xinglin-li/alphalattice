@@ -161,9 +161,9 @@ const I18N = (() => {
 
   function t(key, vars) {
     seen.add(key.trim());
-    const en = interpolate(key.replace(CONTEXT, ''), vars);
-    if (locale !== 'zh-CN') return en;
-    // Each line of a multi-line phrase is its own catalog entry; surrounding whitespace is kept.
+    const message = registeredMessage(key, vars);
+    const en = message === null ? interpolate(key.replace(CONTEXT, ''), vars) : message;
+    if (message !== null || locale !== 'zh-CN') return en;
     if (en.includes('<br>')) return en.split('<br>').map((line) => t(line)).join('<br>');
     const lead = en.match(/^\s*/)[0];
     const trail = en.match(/\s*$/)[0];
@@ -222,9 +222,9 @@ const I18N = (() => {
   }
 
   return {
-    t,
-    said,
-    plural,
+    t: (key, vars) => validCatalog() ? t(key, vars) : '',
+    said: (text) => validCatalog() ? said(text) : '',
+    plural: (count, one, many, vars) => validCatalog() ? plural(count, one, many, vars) : '',
     set,
     ensure,
     get locale() {
@@ -237,6 +237,15 @@ const I18N = (() => {
     untranslated: () => [...missing],
     keys: () => [...seen],
   };
+  function validCatalog() {
+    return locale !== 'zh-CN' || (typeof window.ALPHA_ZH_CHECK === 'function' &&
+      window.ALPHA_ZH_CHECK(catalog));
+  }
+  function registeredMessage(key, vars) {
+    const entry = typeof MESSAGE_WORDS === 'object' && MESSAGE_WORDS[key];
+    return entry?.kind === 'MESSAGE'
+      ? interpolate(entry.words[locale === 'zh-CN' ? 'zh-CN' : 'en'], vars) : null;
+  }
 })();
 const t = I18N.t;
 const said = I18N.said;

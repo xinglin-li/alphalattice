@@ -210,6 +210,16 @@ def labels_js() -> str:
     return f"const LABELS = {json.dumps(labels, ensure_ascii=False, separators=(',', ':'))};\n"
 
 
+def messages_js() -> str:
+    """Embed the canonical id entries unchanged for the shared UI word reader."""
+    entries = json.loads((ROOT / "config/registries/messages.json").read_bytes())["entries"]
+    return (
+        "const MESSAGE_WORDS = "
+        + json.dumps(entries, ensure_ascii=False, separators=(",", ":"))
+        + ";\n"
+    )
+
+
 def hashed(name: str, data: bytes) -> str:
     """`workbench.css` -> `/workbench.<10 hex of sha256>.css`: a path a browser may keep."""
     stem, _dot, ext = name.rpartition(".")
@@ -221,12 +231,16 @@ def dictionary(source: str) -> str:
     catalog object `i18n.js` reads (`window.ALPHA_ZH`), never replaces it, and says when it
     is complete."""
     head, tail = "window.ALPHA_ZH = {", "};"
-    body = source.rstrip()
-    if not (body.startswith(head) or ("\n" + head) in body) or not body.endswith(tail):
+    body, marker, freeze = source.rstrip().partition("\nconst legacyKeys = ")
+    declared = body.startswith(head) or ("\n" + head) in body
+    if not marker or not declared or not body.endswith(tail):
         raise SystemExit("zh.js: the dictionary is not `window.ALPHA_ZH = {...};`")
-    body = body.replace(head, "Object.assign(window.ALPHA_ZH || (window.ALPHA_ZH = {}), {", 1)
-    body = body[: -len(tail)] + "});"
-    return body + "\nwindow.ALPHA_ZH_READY = true;\n"
+    body = body.replace(head, "const owner = {", 1)
+    merge = "\nObject.assign(window.ALPHA_ZH || (window.ALPHA_ZH = {}), owner);\n"
+    freeze = "const legacyKeys = " + freeze.replace(
+        "Object.keys(window.ALPHA_ZH)", "Object.keys(owner)"
+    )
+    return "if (!window.ALPHA_ZH_READY) {\n" + body + merge + freeze + "\n}\n"
 
 
 def render_outputs(
@@ -258,7 +272,7 @@ def render_outputs(
     outputs["workbench.zh.js"] = zh.encode("utf-8")
 
     engines = concat(ENGINE_FILES, "engine")
-    app = parameters_js(source_parameters) + labels_js() + concat(APP_FILES, "app")
+    app = parameters_js(source_parameters) + labels_js() + messages_js() + concat(APP_FILES, "app")
     scripts = (
         'window.ALPHA_PRODUCT=true; window.ALPHA_ENTRY={page:"history"};',
         engines,
@@ -317,7 +331,13 @@ def check():
 
     subprocess.run([sys.executable, str(ROOT / "scripts/check_ui_parameters.py")], check=True)
     engines = concat(ENGINE_FILES, "engine")
-    app = '(()=>{"use strict";\n' + parameters_js() + concat(APP_FILES, "app") + "\n})();"
+    app = (
+        '(()=>{"use strict";\n'
+        + parameters_js()
+        + messages_js()
+        + concat(APP_FILES, "app")
+        + "\n})();"
+    )
     prelude = read("js/app/prelude.js").replace("{{zh_src}}", "/workbench.zh.js")
     zh = dictionary(read("js/data/zh.js"))
     with TemporaryDirectory(prefix="ui-syntax-") as directory:

@@ -74,6 +74,7 @@ from alphalattice.investment.risk_research.contracts import (
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
+from . import covariance, matrix_identity
 from .capability import RANDOMNESS_NONE
 from .contracts import (
     SINGLE_THREAD_NUMERICAL_CAPABILITY,
@@ -117,8 +118,6 @@ def _implementation_content_hash() -> str:
     The control's module is included because the standardization and the input
     validation run inside it, exactly as they do for the blended challenger.
     """
-
-    from . import covariance, matrix_identity
 
     return implementation_content_hash(
         Path(__file__), Path(covariance.__file__), Path(matrix_identity.__file__)

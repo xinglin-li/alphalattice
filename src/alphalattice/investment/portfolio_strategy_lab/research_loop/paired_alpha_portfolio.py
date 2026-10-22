@@ -28,6 +28,7 @@ from alphalattice.capabilities.portfolio_backtesting.clocks import (
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioStateTransitionBinding,
     PortfolioTargetDecision,
+    PortfolioWalkForwardSequenceResult,
     RebalanceClock,
 )
 from alphalattice.capabilities.portfolio_backtesting.metrics import (
@@ -642,9 +643,6 @@ def _economic_path(
     workspace: _BacktestWorkspace,
     sequence: object,
 ) -> _EconomicPath:
-    from alphalattice.capabilities.portfolio_backtesting.contracts import (
-        PortfolioWalkForwardSequenceResult,
-    )
 
     resolved = cast(PortfolioWalkForwardSequenceResult, sequence)
     decision_anchor = _anchor_returns(workspace)

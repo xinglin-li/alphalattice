@@ -27,6 +27,7 @@ from alphalattice.protocols.actor_execution.answers import AnswerProblem
 from ..contracts import (
     AlternativeEvidenceContract,
     AlternativeEvidenceReviewStatus,
+    seal_contract,
     validate_contract_identity,
 )
 from ..retrieval.contracts import SPAN_HANDLE_PATTERN, AlternativeEvidenceResolvedSpan
@@ -83,8 +84,6 @@ def seal_research_obligation(**values: object) -> AlternativeEvidenceResearchObl
     Returns:
         The validated obligation with its canonical identity.
     """
-    from ..contracts import seal_contract
-
     return seal_contract(AlternativeEvidenceResearchObligation, "obligation_hash", **values)
 
 

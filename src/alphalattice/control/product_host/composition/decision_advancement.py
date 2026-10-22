@@ -141,6 +141,7 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import rend
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.kernel.shared_kernel.spans import span
 
 SCHEMA = "portfolio-conditional-decision-advancement"
@@ -386,8 +387,6 @@ class DecisionAdvancementApplication:
             numerical meaning.
         """
         from pathlib import Path
-
-        from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
         # This file decides which publications feed scoring and calibration; Task
         # Control's runner and registry, tracked here until the binding plan's B5,

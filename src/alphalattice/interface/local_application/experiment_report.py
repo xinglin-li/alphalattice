@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
+from alphalattice.interface.local_application.evidence_cro import render_review_export
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     DECISION_WORDS,
     format_book_change,
@@ -881,8 +882,6 @@ def _data_decisions(decisions: dict[str, Any]) -> dict[str, Any]:
 
 def render_research_delivery(snapshot: dict[str, Any]) -> str:
     """Compose existing verified content; commentary stays escaped and non-authoritative."""
-    from alphalattice.interface.local_application.evidence_cro import render_review_export
-
     token = ANSWER_LANGUAGE.set("en")
     try:
         sections = snapshot["sections"]

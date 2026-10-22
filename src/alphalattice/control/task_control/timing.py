@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -28,6 +28,7 @@ from alphalattice.control.task_control.contracts import (
     WorkItemLifecycle,
     WorkItemState,
 )
+from alphalattice.kernel.shared_kernel.clocks import clock_metadata
 
 _LOG = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ def record_stage_spans(
     stage_id: str,
     phase: str,
     readout: Mapping[str, Any],
+    clock: Callable[[], datetime] | None = None,
 ) -> None:
     """Append one phase's span readout; a write the filesystem refuses is logged, never raised.
 
@@ -72,6 +74,7 @@ def record_stage_spans(
         "stage_id": stage_id,
         "phase": phase,
         **readout,
+        **clock_metadata(clock),
     }
     path = stage_spans_path(runtime_path, task_id)
     try:
@@ -82,7 +85,9 @@ def record_stage_spans(
         _LOG.warning("stage spans for %s %s were not kept", task_id, stage_id, exc_info=True)
 
 
-def read_stage_spans(runtime_path: Path, task_id: UUID) -> tuple[dict[str, Any], ...]:
+def read_stage_spans(
+    runtime_path: Path, task_id: UUID, *, diagnostics: list[dict[str, Any]] | None = None
+) -> tuple[dict[str, Any], ...]:
     """A Task's kept phase readouts in the order they were written; none when absent.
 
     A line that is not a readout (a torn last write) is skipped: spans explain time and
@@ -91,16 +96,26 @@ def read_stage_spans(runtime_path: Path, task_id: UUID) -> tuple[dict[str, Any],
     path = stage_spans_path(runtime_path, task_id)
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeError):
+        if diagnostics is not None:
+            diagnostics.append({"code": "PHASE_ROWS_UNREADABLE", "source": str(path)})
         return ()
     kept: list[dict[str, Any]] = []
-    for raw in text.splitlines():
+    for line, raw in enumerate(text.splitlines(), 1):
         try:
             value = json.loads(raw)
         except ValueError:
+            if diagnostics is not None:
+                diagnostics.append(
+                    {"code": "PHASE_ROW_UNREADABLE", "source": str(path), "line": line}
+                )
             continue
         if isinstance(value, dict) and value.get("task_id") == str(task_id):
             kept.append(value)
+        elif diagnostics is not None:
+            diagnostics.append(
+                {"code": "PHASE_ROW_SCOPE_MISMATCH", "source": str(path), "line": line}
+            )
     return tuple(kept)
 
 

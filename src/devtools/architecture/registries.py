@@ -16,6 +16,7 @@ import ast
 import json
 import os
 import re
+import string
 import subprocess
 import sys
 from collections import Counter
@@ -306,7 +307,7 @@ def problems(root: Path, files: Sequence[str]) -> list[str]:
     """What ``files`` add to a registry without registering it."""
 
     found = inventory(root, files)
-    out: list[str] = []
+    out: list[str] = message_problems(root, files)
     for name, entries in found.items():
         known = baseline(root, name)
         for key, count in sorted(entries.items()):
@@ -640,11 +641,347 @@ def _census_gaps(facts: dict[str, Any], data: dict[str, Any], text: str) -> dict
     return gaps
 
 
+def _message_forms(code: str, row: dict[str, Any]) -> list[str]:
+    question = row["kind"] == "PERSON_QUESTION"
+    arguments = row.get("arguments", [] if question else None)
+    if (
+        not isinstance(arguments, list)
+        or any(not isinstance(a, str) or not a.isidentifier() for a in arguments)
+        or len(set(arguments)) != len(arguments)
+    ):
+        return [f"messages: {code} invalid arguments"]
+    fields = ("words", "reason", "scope", "way_on") if question else ("words",)
+    out = []
+    for field in fields:
+        forms = row.get(field, {})
+        for locale in ("en", "zh-CN"):
+            text = forms.get(locale) if isinstance(forms, dict) else None
+            try:
+                if not isinstance(text, str) or not text.strip():
+                    raise ValueError("missing form")
+                parts = list(string.Formatter().parse(text))
+                names = {name for _, name, _, _ in parts if name is not None}
+                if names != set(arguments) or any(
+                    spec or conversion for _, _, spec, conversion in parts
+                ):
+                    raise ValueError("named arguments differ")
+            except ValueError as error:
+                out.append(f"messages: {code}{'.' if question else ' '}{field}.{locale}: {error}")
+    return out
+
+
+def _unique_message_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    seen: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in seen:
+            raise ValueError(f"duplicate member {key}")
+        seen[key] = value
+    return seen
+
+
+def _message_aliases(code: str, legacy: Any, aliases: set[str]) -> list[str]:
+    if not isinstance(legacy, list):
+        return [f"messages: {code} invalid aliases"]
+    out = []
+    for alias in legacy:
+        if not isinstance(alias, str) or not alias.strip() or alias in aliases:
+            out.append(f"messages: {code} duplicate or conflicting alias {alias!r}")
+        else:
+            aliases.add(alias)
+    return out
+
+
+def message_problems(text: str | Path, files: Sequence[str] = ()) -> list[str]:
+    """Refuse ambiguous ids and aliases, incomplete locales and incompatible named arguments."""
+
+    if isinstance(text, Path):
+        path = text / "config/registries/messages.json"
+        if "config/registries/messages.json" not in files or not path.is_file():
+            return []
+        text = path.read_text("utf-8")
+    try:
+        entries = json.loads(text, object_pairs_hook=_unique_message_members)["entries"]
+        if not isinstance(entries, dict):
+            raise ValueError("entries must be an object")
+    except (ValueError, KeyError, TypeError) as error:
+        return [f"messages: {error}"]
+    out, aliases = [], set(entries)
+    for code, row in entries.items():
+        if not _CODE.fullmatch(code) or not isinstance(row, dict):
+            out.append(f"messages: {code} invalid entry")
+            continue
+        kind, owner = row.get("kind"), row.get("owner")
+        if (
+            kind not in ("MESSAGE", "PERSON_QUESTION")
+            or not isinstance(owner, str)
+            or not owner.strip()
+        ):
+            out.append(f"messages: {code} missing owner or unknown kind")
+            continue
+        operations = row.get("operations")
+        if (kind == "MESSAGE" and row.keys() & {"operations", "reason", "scope", "way_on"}) or (
+            kind == "PERSON_QUESTION"
+            and (
+                not isinstance(operations, list)
+                or not operations
+                or any(not isinstance(op, str) or not op for op in operations)
+            )
+        ):
+            out.append(f"messages: {code} invalid question contract")
+        out.extend(_message_forms(code, row))
+        out.extend(_message_aliases(code, row.get("legacy_keys", []), aliases))
+    return out
+
+
+def _legacy_message_keys(text: str) -> Counter[str]:
+    match = re.fullmatch(r"\s*(?:/\*.*?\*/\s*)?window\.ALPHA_ZH\s*=\s*(\{.*\});?\s*", text, re.S)
+    if not match:
+        raise ValueError("unsupported legacy catalog declaration")
+    tokens = "\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'"
+    body = re.sub(
+        r"/\*.*?\*/|//[^\n]*|" + tokens,
+        lambda m: (
+            ""
+            if m[0].startswith("/")
+            else m[0]
+            if m[0][0] == '"'
+            else json.dumps(ast.literal_eval(m[0]))
+        ),
+        match[1],
+        flags=re.S,
+    )
+    pairs = json.loads(re.sub(r",\s*}$", "}", body), object_pairs_hook=list)
+    if any(not isinstance(k, str) or not isinstance(v, str) for k, v in pairs):
+        raise ValueError("legacy catalog needs literal string pairs")
+    return Counter(k for k, _ in pairs)
+
+
+def _catalog_factory(tree: ast.Module, names: frozenset[str], spec: Any, historical: bool) -> None:
+    factories = [
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name + "()" in names
+    ]
+    if spec is None and (historical or not factories):
+        return
+    if not isinstance(spec, dict) or spec.get("read_only") is not True or len(factories) != 1:
+        raise ValueError(
+            "legacy factory outside its canonical owner; use config/registries/messages.json"
+        )
+    factory = factories[0]
+    body = factory.body[1:] if ast.get_docstring(factory) is not None else factory.body[:]
+    returned = body[-1].value if body and isinstance(body[-1], ast.Return) else None
+    match returned:
+        case ast.Call(func=ast.Name(id="MappingProxyType"), args=[value], keywords=[]):
+            wrapped = True
+            body[-1] = ast.Return(value=value)
+        case _:
+            wrapped = False
+    if (
+        (not historical and not wrapped)
+        or factory.name != spec.get("name")
+        or ast.dump(ast.Module(body=body, type_ignores=[])) != spec.get("canonical_body")
+    ):
+        raise ValueError(
+            "legacy factory changed its canonical form; use config/registries/messages.json"
+        )
+
+
+def _consumer_message_keys(
+    path: str, text: str, shapes: dict[str, Any], *, historical: bool = False
+) -> Counter[str]:
+    if not text:
+        return Counter()
+    if path.endswith("js/data/zh.js"):
+        footer = (
+            shapes.get("publication_footer")
+            or "window.ALPHA_ZH_READY = true;\nObject.freeze(window.ALPHA_ZH);"
+        )
+        if shapes.get("immutable") and not historical and not text.rstrip().endswith(footer):
+            raise ValueError(
+                "legacy owner must freeze its table; use config/registries/messages.json"
+            )
+        return _legacy_message_keys(text.rstrip().removesuffix(footer))
+    if path.endswith("zh_literals.json"):
+        return Counter(k for r in json.loads(text)["entries"] for k in r.get("keys", []))
+    if path.endswith(".py"):
+        _catalog_factory(ast.parse(text), shapes["writers"], shapes.get("factory"), historical)
+    lines = text.splitlines(keepends=True)
+    for read in shapes.get("read_calls", []):
+        index = read["line"] - 1
+        if (
+            index >= len(lines)
+            or lines[index].rstrip("\r\n") != read["text"]
+            or text.count(read["text"]) != 1
+        ):
+            if historical and read.get("verification"):
+                continue
+            raise ValueError(
+                f"{path}: registered catalog read changed; use config/registries/messages.json"
+            )
+        lines[index] = "\n"
+    return _catalog_literal_keys(path, "".join(lines), shapes["writers"])
+
+
+def _catalog_literal_keys(path: str, text: str, writers: frozenset[str]) -> Counter[str]:
+    strings: list[str] = []
+    quoted = r"""("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')"""
+
+    def token(match: re.Match[str]) -> str:
+        if match[0].startswith(("/", "#")):
+            return " "
+        strings.append(match[0])
+        return '"' + str(len(strings) - 1) + '"'
+
+    names = {n for n in writers if not n.endswith("()")}
+    if path.endswith(".py"):
+        names &= {n.id for n in ast.walk(ast.parse(text)) if isinstance(n, ast.Name)}
+    text = re.sub(quoted + r"|/\*.*?\*/|//[^\n]*|#[^\n]*", token, text, flags=re.S)
+    found: Counter[str] = Counter()
+    declaration = r'\b(\w+)\s*=\s*\{\s*((?:"\d+"\s*:\s*"\d+"\s*,?\s*)*)\}'
+    for match in re.finditer(declaration, text):
+        if match[1] in names:
+            found.update(
+                ast.literal_eval(strings[int(k)]) for k in re.findall(r'"(\d+)"\s*:', match[2])
+            )
+    remainder = (
+        re.sub(declaration, lambda m: " " if m[1] in names else m[0], text)
+        if path.endswith(".py")
+        else text + " ".join(s for s in strings if s[1:-1] in names)
+    )
+    if any(re.search(r"\b" + re.escape(name) + r"\b", remainder) for name in names):
+        raise ValueError(
+            f"{path}: catalog outside owner {strings[-10:]}; use config/registries/messages.json"
+        )
+    extra: Counter[str] = Counter()
+    for key, value in re.findall(r'"(\d+)"\s*:\s*"(\d+)"', text):
+        k, v = (ast.literal_eval(strings[int(n)]) for n in (key, value))
+        if k == v or re.search(r"[^\x00-\x7f]", v):
+            extra[k] += 1
+    return found | extra
+
+
+def _catalog_writers(path: str, shapes: dict[str, Any]) -> frozenset[str]:
+    default = ["WORDS", "_zh()"] if path.endswith(".py") else ["ALPHA_ZH", "catalog", "WORDS"]
+    raw = shapes.get("writers", default)
+    if (
+        not isinstance(raw, list)
+        or not raw
+        or any(not isinstance(n, str) or not n.strip() for n in raw)
+    ):
+        raise ValueError(
+            "catalog writer coverage is empty or invalid; use config/registries/messages.json"
+        )
+    names = frozenset(ast.unparse(ast.parse(n.strip(), mode="eval").body) for n in raw)
+    if any(re.fullmatch(r"[A-Za-z_]\w*(?:\(\))?", n) is None for n in names):
+        raise ValueError("catalog writer must name its owner; use config/registries/messages.json")
+    return names
+
+
+def _catalog_read_contract(
+    path: str, before: str, shape: dict[str, Any], previous: dict[str, Any], *, registered: bool
+) -> frozenset[str]:
+    names = _catalog_writers(path, shape)
+    old = (
+        names
+        if not registered or previous.get("writers") == shape.get("writers")
+        else _catalog_writers(path, previous)
+    )
+    if old - names:
+        raise ValueError(
+            "catalog writer coverage cannot shrink; use config/registries/messages.json"
+        )
+    held = previous.get("read_calls", [])
+    factory = previous.get("factory")
+    if factory:
+        factory = {**factory, "canonical_body": (shape.get("factory") or {}).get("canonical_body")}
+    if (held and shape.get("read_calls", [])[: len(held)] != held) or any(
+        value and shape.get(key) != value
+        for key, value in (("factory", factory), ("immutable", previous.get("immutable")))
+    ):
+        raise ValueError("registered catalog reads are frozen; use config/registries/messages.json")
+    lines = before.splitlines()
+    for read in shape.get("read_calls", []):
+        if (
+            read not in held
+            and not read.get("verification")
+            and (read["line"] > len(lines) or lines[read["line"] - 1] != read["text"])
+        ):
+            raise ValueError(
+                "a new catalog read exemption must be an existing read; "
+                "use config/registries/messages.json"
+            )
+    return names
+
+
+def _catalog_census(root: Path) -> tuple[list[str], dict[str, Any]]:
+    catalog, owners = "config/registries/messages.json", "config/registries/owners-map.json"
+    legacy = "src/alphalattice/interface/local_application/assets/workbench-source/js/data/zh.js"
+    blobs = read_blobs([":" + catalog, "HEAD:" + catalog, ":" + owners, "HEAD:" + owners], root)
+    out = message_problems(blobs[":" + catalog]) if ":" + catalog in blobs else []
+    if "HEAD:" + catalog in blobs and ":" + catalog not in blobs:
+        out.append("messages: missing catalog; restore config/registries/messages.json")
+    row = json.loads(blobs.get(":" + owners, "{}")).get("nouns", {}).get("message catalog", {})
+    paths = dict.fromkeys([legacy, *row.get("gate_inputs", row.get("pending_consumers", []))])
+    prior = (
+        json.loads(blobs.get("HEAD:" + owners, "{}")).get("nouns", {}).get("message catalog", {})
+    )
+    if not set(prior.get("gate_inputs", prior.get("pending_consumers", []))) <= paths.keys():
+        out.append("messages: restore the registered catalog gate inputs")
+    basis = "HEAD:"
+    pending = subprocess.run(
+        ["git", "rev-parse", "--verify", "MERGE_HEAD"], cwd=root, capture_output=True, text=True
+    )
+    if pending.returncode == 0 and pending.stdout.strip() == row.get("integration_base"):
+        basis = pending.stdout.strip() + ":"
+    blobs.update(read_blobs([prefix + p for p in paths for prefix in (":", basis)], root))
+    if (":" + legacy in blobs or "HEAD:" + legacy in blobs) and not row:
+        out.append("messages: missing message catalog owner; restore the owner registry")
+    census, consumers = {}, {}
+    for path in paths:
+        if ":" + path not in blobs and "HEAD:" + path not in blobs:
+            continue
+        before, after = blobs.get(basis + path, ""), blobs.get(":" + path, "")
+        try:
+            shape = row.get("gate_inputs", {}).get(path, {})
+            previous = prior.get("gate_inputs", {}).get(path, {})
+            unchanged = before == after and shape == previous
+            shape = {
+                **shape,
+                "writers": _catalog_read_contract(
+                    path, before, shape, previous, registered=path in prior.get("gate_inputs", {})
+                ),
+            }
+            old_shape = shape | previous
+            old_shape["writers"] = shape["writers"]
+            old_shape["factory"] = previous.get("factory")
+            old_shape["publication_footer"] = previous.get("publication_footer")
+            old = _consumer_message_keys(path, before, old_shape, historical=True)
+            current = old if unchanged else _consumer_message_keys(path, after, shape)
+        except (ValueError, SyntaxError) as error:
+            out.append(f"messages: {path}: {error}")
+            continue
+        out.extend(
+            f"messages: {path}: new English key {key!r}; use a stable message id"
+            for key in current - old
+        )
+        if path == legacy:
+            census = {
+                "legacy_message_keys": {
+                    "count": len(current),
+                    "declarations": current.total(),
+                    "keys": dict(sorted(current.items())),
+                }
+            }
+        else:
+            consumers[path] = dict(sorted(current.items()))
+    return out, census | ({"legacy_catalog_consumers": consumers} if consumers else {})
+
+
 def census_check(root: Path, *, baseline: str | None = None, update: bool = False) -> list[str]:
     """Ratchet exact staged findings; unchanged source comes only from cached facts."""
+    out, catalog = _catalog_census(root)
     if baseline is None:
         print("registry ratchet not configured: set ALPHALATTICE_REGISTRY_BASELINE")
-        return []
+        return out
     anchor = Path(baseline)
     baseline = (anchor.relative_to(root.resolve()) if anchor.is_absolute() else anchor).as_posix()
     stage = subprocess.check_output(["git", "write-tree"], cwd=root, text=True).strip() + ":"
@@ -667,7 +1004,6 @@ def census_check(root: Path, *, baseline: str | None = None, update: bool = Fals
         else:
             facts.pop(path, None)
     gaps = _census_gaps(facts, data, blobs[stage + "config/package-architecture.json"])
-    out = []
     for key in sorted(gaps.keys() - base.get("automatic_gaps", {}).keys()):
         kind, item = key.split("|", 1)
         registry, member = TARGETS[kind]
@@ -676,7 +1012,7 @@ def census_check(root: Path, *, baseline: str | None = None, update: bool = Fals
             form = f"packages[] with package_id and physical_namespace_target={item!r}"
         out.append(f"Unregistered {kind} {item} {gaps[key]}; add {registry} {form}.")
     nouns = sorted(data[TARGETS["nouns"][0]]["nouns"])
-    expected = {"by_file": facts, "automatic_gaps": gaps, "registered_nouns": nouns}
+    expected = {"by_file": facts, "automatic_gaps": gaps, "registered_nouns": nouns} | catalog
     if not out and any(data[baseline].get(key) != value for key, value in expected.items()):
         if update:
             (root / baseline).write_text(

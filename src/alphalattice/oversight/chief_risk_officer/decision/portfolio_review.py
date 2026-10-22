@@ -42,7 +42,11 @@ from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     EvidenceStructureState,
     EvidenceTopic,
 )
-from alphalattice.evidence.alternative_evidence.contracts import AlternativeEvidenceContract
+from alphalattice.evidence.alternative_evidence.contracts import (
+    AlternativeEvidenceContract,
+    seal_contract,
+)
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     BookAuthority,
     ExposureBand,
@@ -726,8 +730,6 @@ def raised_issue_handle(receipt_hash: str, issue_handle: str) -> str:
     Combine the receipt identity with the issue's position so a later review can
     refer to the same issue.
     """
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
-
     digest = str(canonical_hash({"receipt": receipt_hash, "issue": issue_handle}))
     return "OPEN-" + digest[:12].upper()
 
@@ -775,8 +777,6 @@ def review_basis(dossier: PortfolioReviewDossier, *, decision_policy_hash: str) 
     a model call. A new finding, exposure band or review state makes a new
     question. A holding with no finding or open issue cannot change the answer.
     """
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
-
     sources = finding_sources(dossier)
     named = {
         *(entity for value in dossier.findings for entity in value.affected_entities),
@@ -1520,8 +1520,6 @@ class PortfolioReviewReceipt(AlternativeEvidenceContract):
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_receipt(self) -> Self:
         """Reject a receipt with inconsistent review or routing fields."""
-        from alphalattice.kernel.shared_kernel.identity import canonical_hash
-
         if self.outcome.policy_version not in READABLE_PORTFOLIO_REVIEW_ROUTE_POLICIES:
             raise ValueError("chief_risk_officer.receipt_policy_invalid")
         if self.answer is not None and self.actor_submission.submission_hash != canonical_hash(
@@ -1628,8 +1626,6 @@ def compile_portfolio_review_recommendation(
     receipt: PortfolioReviewReceipt,
 ) -> PortfolioReviewRecommendation:
     """A pure function of two sealed artifacts, rebuildable after a restart."""
-    from alphalattice.evidence.alternative_evidence.contracts import seal_contract
-
     if receipt.dossier_hash != dossier.dossier_hash:
         raise ValueError("chief_risk_officer.recommendation_dossier_mismatch")
     return seal_contract(
@@ -1659,7 +1655,6 @@ def compile_portfolio_review_recommendation(
 
 
 def _identity(value: AlternativeEvidenceContract, field: str) -> None:
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     expected = canonical_hash(value.model_dump(mode="json", exclude={field}))
     if getattr(value, field) != expected:

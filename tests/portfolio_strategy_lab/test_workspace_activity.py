@@ -60,51 +60,88 @@ from alphalattice.interface.local_application.native_setup import declare_projec
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
+from alphalattice.interface.local_application.questions import person_question
 from tests.portfolio_strategy_lab.local_web_support import _cli, _json, _request
 
 
-def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task(tmp_path):
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    observer = WorkspaceActivity(
-        workspace=workspace,
-        workspace_id="synthetic-answer-receipt",
-        gate=WorkspaceMutationGate(),
-        instance="synthetic-answer-receipt",
-        clock=lambda: datetime(2026, 10, 5, 1, 10, tzinfo=UTC),
-    )
-    request = PortfolioResearchRequestDocument.model_validate(
-        {
-            "operation": "AGENT_ANSWER_SUBMIT",
-            "bundle_directory": str(tmp_path / "bundle"),
-            "agent_answer": {"text": "A bounded interpretation.", "references": []},
-        }
+@pytest.mark.parametrize("question_code", [None, "unregistered", "network.daily_updates"])
+def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task(
+    live, tmp_path, monkeypatch, question_code
+):
+    observer = live.activity
+    request = PortfolioResearchRequestDocument(
+        operation="AGENT_ANSWER_SUBMIT",
+        bundle_directory=str(tmp_path / "bundle"),
+        agent_answer={"text": "A bounded interpretation.", "references": []},
     ).to_operation_request()
-    try:
-        span = observer.entered(request, caller="EXTERNAL_AUTOMATION")
-        assert span is not None
-        observer.returned(
-            span,
-            {
-                "answer_reference": "a" * 64,
-                "bundle_reference": "b" * 64,
-                "text": "Owner prose is not retained in operation receipts.",
-            },
-        )
-        page = observer.read(ActivityReadQuery())
-        requested, returned = page["items"]
-        assert requested["payload"]["phase"] == "REQUESTED"
-        assert returned["payload"]["phase"] == "RETURNED"
-        assert returned["payload"]["subject"] == {
+    span = observer.entered(request, caller="EXTERNAL_AUTOMATION")
+    assert span is not None
+    observer.returned(
+        span,
+        {
             "answer_reference": "a" * 64,
             "bundle_reference": "b" * 64,
+            "text": "Owner prose is not retained in operation receipts.",
+        },
+    )
+    page = observer.read(ActivityReadQuery())
+    requested, returned = page["items"]
+    assert requested["payload"]["phase"] == "REQUESTED"
+    assert returned["payload"]["phase"] == "RETURNED"
+    assert returned["payload"]["subject"] == {
+        "answer_reference": "a" * 64,
+        "bundle_reference": "b" * 64,
+    }
+    assert returned["payload"].get("status") is None
+    assert returned["task_id"] is None
+    assert page["tasks"] == {}
+    assert "Owner prose" not in json.dumps(page)
+    # Words are a catalog projection, never added to the sealed observation payload.
+    question = person_question("network.workspace_access")
+    for index, proposed in enumerate(([question], [{"code": "unregistered"}], "foreign")):
+        observer.returned(span, {"person_questions": proposed})
+        page = observer.read(ActivityReadQuery())
+        assert len(page["items"]) == index + 3 and not page["items"][-1].get("person_questions")
+    request = PortfolioResearchRequestDocument(
+        operation="NETWORK_ACCESS_SET", network_enabled=True
+    ).to_operation_request()
+    span = observer.entered(request, caller="EXTERNAL_AUTOMATION")
+    assert span is not None
+    observer.returned(span, {"person_questions": [question]})
+    row = observer.read(ActivityReadQuery())["items"][-1]
+    projected = row["person_questions"][0]
+    assert (projected["words"], projected["words_zh"]) == (
+        question["words"],
+        question["words_zh"],
+    )
+    assert question["words"] not in json.dumps(row["payload"])
+    monkeypatch.setattr(
+        "alphalattice.interface.local_application.activity.person_question",
+        lambda code: {**person_question(code), "catalog_hash": "f" * 64},
+    )
+    changed = observer.read(ActivityReadQuery())["items"][-1]
+    assert changed["payload"] == row["payload"]
+    assert not changed["person_questions"][0]["catalog_available"]
+    assert "words" not in changed["person_questions"][0]
+    before = _json(live, "/api/activity")["cursor"]
+    payload = {"network_enabled": False}
+    if question_code is not None:
+        payload["person_confirmation"] = {
+            "question": "Unused metadata",
+            "words": "Unused answer",
+            "decision_hash": "a" * 64,
+            "question_code": question_code,
         }
-        assert returned["payload"].get("status") is None
-        assert returned["task_id"] is None
-        assert page["tasks"] == {}
-        assert "Owner prose" not in json.dumps(page)
-    finally:
-        observer.close()
+    answer = _json(live, "/api/workspace/network", method="POST", payload=payload)
+    assert answer["status"] == "NETWORK_ACCESS"
+    page = _json(live, "/api/activity?after=" + before)
+    rows = [r for r in page["items"] if r["payload"].get("operation") == "NETWORK_ACCESS_SET"]
+    assert [r["payload"]["phase"] for r in rows] == ["REQUESTED", "RETURNED"]
+    assert {r["payload"]["caller"] for r in rows} == {"HUMAN"}
+    question = rows[-1]["person_questions"][0]
+    assert (question["code"], question["state"]) == ("network.workspace_access", "ANSWERED")
+    assert "decision_hash" not in question["references"]
+    assert (page["observer"]["status"], page["observer"]["missing_observations"]) == ("OK", 0)
 
 
 def test_selected_session_product_facts_share_its_span_and_paging(live, tmp_path, monkeypatch):
@@ -807,6 +844,7 @@ def test_external_events_carry_the_boundary_assigned_trust_and_refuse_spoofing(
     assert declared["payload"]["event_kind"] == "NATIVE_TURN_STARTED"
     assert declared["payload"]["summary_truncated"] is False
     assert declared["task_id"] is None
+    assert not declared.get("person_questions")  # External claims never become Host questions.
 
     # The document cannot name its own trust, caller or source.
     for field in ("authority", "caller", "source_kind", "claim_level"):
@@ -1207,7 +1245,7 @@ def test_observer_callbacks_that_raise_never_change_the_operation_or_its_refusal
     def broken(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("observer bug")
 
-    def broken_entry(request: object, *, caller: object) -> None:
+    def broken_entry(request: object, *, caller: object, relayed: bool = False) -> None:
         if observed_operation(getattr(request, "operation", "")):
             raise RuntimeError("observer bug")
 

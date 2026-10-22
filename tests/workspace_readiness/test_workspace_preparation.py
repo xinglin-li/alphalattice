@@ -1416,6 +1416,7 @@ def test_empty_start_and_actor_boundary_without_strategy_or_data_authority(
         PortfolioResearchOperationRequest(
             operation="STORAGE_CONFIRM", storage_plan_hash="../outside"
         )
+    (tmp_path / "out" / "nested").mkdir(parents=True)
     with LocalPortfolioWebSession.from_workspace(
         tmp_path, clock=lambda: OBSERVED_AT, official_source=source
     ) as live:
@@ -1446,22 +1447,17 @@ def test_empty_start_and_actor_boundary_without_strategy_or_data_authority(
         assert _json(live, "/api/workspace/storage")["managed_bytes"] == 0
         assert _json(live, "/api/experiments/controls")["status"] == "RESEARCH_INPUT_NOT_ADMITTED"
         plan = _json(live, "/api/workspace/preparation/plan", method="POST", payload={})
+        confirmation = {"preparation_plan_hash": plan["plan_hash"]}
         bridge = InstalledAgent(live.operations)
-        refused = json.loads(
-            bridge.invoke(
-                PortfolioResearchAgentRequest(
-                    operation="WORKSPACE_PREPARE_CONFIRM",
-                    preparation_plan_hash=plan["plan_hash"],
-                )
-            )
-        )
+        ask = PortfolioResearchAgentRequest(operation="WORKSPACE_PREPARE_CONFIRM", **confirmation)
+        refused = json.loads(bridge.invoke(ask))
         assert "human_confirmation_required" in str(refused)
         assert (
             _json(
                 live,
                 "/api/workspace/preparation/confirm",
                 method="POST",
-                payload={"preparation_plan_hash": plan["plan_hash"]},
+                payload=confirmation,
             )["failure_code"]
             == "workspace_preparation.source_access_not_admitted"
         )
@@ -1477,8 +1473,10 @@ def test_empty_start_and_actor_boundary_without_strategy_or_data_authority(
     assert (tmp_path / "research-workspace.json").read_bytes() == manifest_bytes
     # Unknown existing contents must not be silently adopted as an empty workspace.
     unknown = tmp_path / "unknown"
-    unknown.mkdir()
-    (unknown / "market-data.duckdb").write_bytes(b"not a database")
+    (unknown / "out").mkdir(parents=True)
+    (unknown / ("out/.alphalattice-writer.lock" if injected else "market-data.duckdb")).write_bytes(
+        b"not a database"
+    )
     with pytest.raises(ValueError, match="nonempty_manifest_absent"):
         LocalPortfolioWebSession.from_workspace(unknown)
 

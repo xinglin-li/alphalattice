@@ -15,6 +15,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from alphalattice.evidence.alternative_evidence.contracts import seal_contract
 from alphalattice.kernel.shared_kernel.domain.serialization import canonical_json_bytes
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
@@ -425,7 +426,6 @@ def seal_portfolio_review(
         submission_hash=canonical_hash(answer.model_dump(mode="json")),
         agent_execution=agent_execution,
     )
-    from alphalattice.evidence.alternative_evidence.contracts import seal_contract
 
     receipt = seal_contract(
         PortfolioReviewReceipt,

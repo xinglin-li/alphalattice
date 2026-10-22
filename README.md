@@ -7,7 +7,11 @@ English | [简体中文](README.zh-CN.md)
 [![uv](https://img.shields.io/badge/uv-locked-261230.svg)](docs/public-source/getting-started.md)
 [![Mentioned in Awesome](https://awesome.re/mentioned-badge.svg)](https://github.com/wilsonfreitas/awesome-quant)
 
-**Turn an investment idea into a reviewed research portfolio.**
+**Ask for a dated research portfolio and inspect its positions, source evidence and recorded review in one workspace.**
+
+![An edited example run from a recorded request through activity to dated research positions.](docs/assets/readme/sentence-to-result.gif)
+
+*Example run on synthetic data: a request to inspect stored results, their activity and the dated positions, shown as an edited sequence of cropped views.*
 
 Tell your Claude Code or Codex agent what you want to investigate. It uses
 AlphaLattice to run quantitative studies, check source evidence and bring the
@@ -18,6 +22,14 @@ Every numerical input is bounded by the date's information cutoff, and
 verification runs check for look-ahead. The committee can decline to endorse a
 result. AlphaLattice runs locally and is open source.
 
+## 0.2.3, now
+
+- Network-permission questions have stable codes beside their English and Chinese words, with the question's scope and reply kept in the activity record.
+- A Goal's time profile shows recorded requests, Task stages and gaps. Missing observations stay unobserved; elapsed time without an attribution is not called agent time.
+- On Claude Code, the first start asks you once to run the offered command in your own terminal. Codex detaches the Host on its own. This startup step is separate from the network-permission question.
+
+See the [0.2.3 release notes](docs/public-source/release-notes.md#023) for the message catalog and the limits of these diagnostics. The earlier measured workloads remain identified by their release below.
+
 Use Claude Code or Codex as the lead. To see what a run used, open a session's
 **Participants** in the Workbench (**Team**, then **Sessions**): it shows the
 models and tokens each member used.
@@ -26,23 +38,7 @@ Give your agent this repository's link and one intent:
 
 > Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your built-in browser so I can follow it.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/committee-codex-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/committee-codex-light.png">
-  <img src="docs/images/committee-codex-light.png" alt="A Codex session's summary of a reviewed first use beside the Workbench's committee floor: specialists' replies, a CRO challenge, the PM's ruling and the verdict." width="1280">
-</picture>
-
-*A first use in Codex: the agent's summary beside the committee's discussion in the Workbench, open in Codex's built-in browser.*
-
 ## Two ways to use AlphaLattice
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/first-use-codex-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/first-use-codex-light.png">
-  <img src="docs/images/first-use-codex-light.png" alt="A first use started from one sentence: the agent opens the goal, gives the Workbench link, asks the network question and continues after the person's yes; the Workbench shows the goal's timeline." width="1280">
-</picture>
-
-*One sentence starts a first use. The agent opens the Workbench beside the conversation and asks its one network question; the goal's timeline records each step taken for you.*
 
 1. **First use, in a new folder.** Send your Claude Code or Codex agent the
    intent above, or `Positions for <date>, reviewed.` The agent prepares data
@@ -70,6 +66,29 @@ Give your agent this repository's link and one intent:
    first use's workspace, so a later date never starts a second first use, and it
    asks you only about decisions that are yours.
 
+## See an example run
+
+![The Home view of an example research workspace, with dated positions and their provenance.](docs/assets/readme/home-1280.png)
+
+*Example run on synthetic data: Home brings the positions date and the result's provenance together.*
+
+![A saved risk study with its input window and diagnostics in the Workbench.](docs/assets/readme/research-1280.png)
+
+*Example run on synthetic data: a saved risk study shows its input window and diagnostics.*
+
+![The activity timeline of an example research workspace.](docs/assets/readme/activity-1280.png)
+
+*Example run on synthetic data: the activity record keeps the work behind the result.*
+
+<details>
+<summary>The same example run at a narrower width</summary>
+
+![The example Home view at a 900-pixel browser width.](docs/assets/readme/home-900.png)
+
+*Example run on synthetic data at a browser width of 900 pixels.*
+
+</details>
+
 ## Before you start
 
 - **Environment:** Windows is the supported platform. Setup uses Python 3.12, uv
@@ -80,29 +99,23 @@ Give your agent this repository's link and one intent:
   ```bash
   brew install libomp
   ```
-- **Time:** In Windows native observations on 2026-10-19 with Codex at extra-high
-  reasoning effort, first use took **74.7 minutes**; its committee proceeded with
-  notes. After an interrupted attempt, the person granted the daily network
-  question; an assisted daily recovery then issued positions and sealed its
-  first backup in **35.3 minutes**.
-  Recorded Host work, including the data update, accounted for about
-  **12.6 minutes**; the remaining **22.7 minutes** included agent turns, tools
-  and waits. The recovery exceeded the 20-minute daily budget.
-  These are observations, not runtime guarantees.
-- **Disk and memory:** The first-use workspace occupied about **8.69 GB**, with
-  about **10.38 GB** across managed installation, workspace, cache and model
-  folders, excluding backup. The authorized daily recovery grew the workspace
-  by about **181 MB**, including the first day's database step; its first backup
-  filled **4.26 GB** once, with later backups incremental. Sampled peak memory
-  across the Host's processes was **8.37 GB** during first use and **9.39 GB**
-  during the recovery. Both runs exceeded the 8 GB budget.
-  Allow headroom for the operating system and your coding app; these
-  observations are not minimum system requirements. The
-  [release notes](docs/public-source/release-notes.md#021) distinguish ordinary
-  daily writes, upgrade and split days, and explicit captures.
-- **Package downloads:** On a machine with an empty package cache, first use
-  asks once for permission to download the retrieval packages. Installing locked
-  packages under the first use's network consent is planned for a later release.
+- **Time:** In native Windows observations for 0.2.2, with Claude Code and Haiku,
+  first use took **121.8 minutes** and the first daily took **43.6 minutes**.
+  Each component used 472 supporting listings. Recorded Host work accounted for
+  **50.75 minutes** and **19.65 minutes**, respectively. The daily exceeded the
+  20-minute budget. These are measured workloads from 0.2.2, not runtime
+  guarantees or a new performance measurement for 0.2.3.
+- **Disk and memory:** Those 0.2.2 runs retained an **8.70 GB** first-use
+  workspace and **8.88 GB** after the first daily. The daily grew the workspace
+  by **180 MB**; its separate **4.27 GB** first backup was a one-time fill.
+  Sampled Host private-memory peaks were **9.32 GB** and **9.25 GB**, both above
+  the 8 GB budget. MB and GB use decimal units. Allow headroom for your operating
+  system and coding app; these observations are not minimum requirements.
+  The [release notes](docs/public-source/release-notes.md#022) give the workload,
+  measurement limits, upgrade results and outstanding budgets.
+- **Package downloads:** Locked retrieval packages install under the first use's
+  network consent, including on a machine with an empty package cache. That
+  consent covers installation without a separate download question.
 - **Agent costs:** Your Claude Code or Codex access and usage costs are separate
   from AlphaLattice; check your provider's terms.
 

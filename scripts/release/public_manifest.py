@@ -184,6 +184,7 @@ RULES = [
             "tests/structural/test_source_candidate.py",
             "tests/structural/test_structural_guards.py",
             "tests/structural/test_playpen_gate_routing.py",
+            "tests/structural/test_catalog_gate.py",
             "tests/alpha_research/test_dynamic_panel_portfolio_campaign.py",
             "tests/alpha_research/test_verification_impact.py",
             "tests/portfolio_strategy_lab/cli_golden_capture.py",
@@ -195,6 +196,9 @@ RULES = [
             "the private checkout retains its coverage."
         ),
         "path_reasons": {
+            "tests/structural/test_catalog_gate.py": (
+                "covers private locale-input registrations and their public-absence control"
+            ),
             "tests/alternative_evidence_desk/test_evidence_review_route.py": (
                 "runs the private Review publication harness for exact admitted Task subjects"
             ),
@@ -392,6 +396,11 @@ RULES = [
             "docs/images/first-use-codex-dark.png",
             "docs/images/committee-codex-light.png",
             "docs/images/committee-codex-dark.png",
+            "docs/assets/readme/home-1280.png",
+            "docs/assets/readme/home-900.png",
+            "docs/assets/readme/research-1280.png",
+            "docs/assets/readme/activity-1280.png",
+            "docs/assets/readme/sentence-to-result.gif",
         ],
         "reason": (
             "Non-Python product resources, Local Web source/build assets and "
@@ -570,12 +579,87 @@ def internal_id_label(value: str) -> str:
     return re.sub(r"^(?:Codex|Claude|(?i:card))\s+", "", value)
 
 
+def _identifier_outputs(tree: ast.Module, producers: dict, fields: dict):
+    scopes = [tree, *[n for n in tree.body if isinstance(n, ast.FunctionDef)]]
+    for scope in scopes:
+        slots = producers.get(getattr(scope, "name", None), {})
+        for node in scope.body:
+            match node:
+                case ast.Assert(test=ast.Compare(left=left, ops=[ast.Eq()], comparators=[right])):
+                    if isinstance(left, ast.ListComp):
+                        left = left.elt
+                    match left:
+                        case ast.Subscript(slice=ast.Constant(value=field)) if field in fields:
+                            yield right, fields[field]
+                case ast.Return(value=ast.Dict(keys=keys, values=values)) if slots:
+                    for key, value in zip(keys, values, strict=True):
+                        if isinstance(key, ast.Constant) and key.value in slots:
+                            yield value, slots[key.value]
+
+
+def _product_identifier_spans(path: str, source: str, forms: list) -> set[tuple[int, int, int]]:
+    """Keep literal spans, so adjacent prose and comments remain development labels."""
+    relevant = [f for f in forms if path in f.get("producers", {}) | f.get("assertions", {})]
+    if not relevant or not path.endswith(".py"):
+        return set()
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    lines, spans = source.splitlines(), set()
+    for form in relevant:
+        pattern = form["compiled"]
+        pending = list(
+            _identifier_outputs(
+                tree,
+                form.get("producers", {}).get(path, {}),
+                form.get("assertions", {}).get(path, {}),
+            )
+        )
+        while pending:
+            literal, slot = pending.pop()
+            if isinstance(literal, ast.IfExp):
+                pending.extend((v, slot) for v in (literal.body, literal.orelse))
+            elif slot == "keys" and isinstance(literal, (ast.List, ast.Tuple)):
+                pending.extend((v, slot) for v in literal.elts)
+            elif slot == "keys" and isinstance(literal, ast.Dict):
+                pending.extend((key, "value") for key in literal.keys)
+            elif (
+                slot == "value"
+                and isinstance(literal, ast.Constant)
+                and isinstance(literal.value, str)
+                and pattern.fullmatch(literal.value)
+                and literal.lineno == literal.end_lineno
+            ):
+                line = lines[literal.lineno - 1].encode("utf-8")
+                start = len(line[: literal.col_offset].decode("utf-8"))
+                end = len(line[: literal.end_col_offset].decode("utf-8"))
+                spans.add((literal.lineno, start, end))
+    return spans
+
+
 def internal_id_ratchet(
     blobs: dict[str, bytes], decisions: list[dict], policy: dict | None = None
 ) -> dict:
     """Refuse public development labels beyond their per-file, per-label frozen allowance."""
     policy_values = policy or {}
     pattern = internal_id_pattern(policy)
+    owners = json.loads(blobs.get("config/registries/owners-map.json", b"{}"))
+    forms = [
+        dict(f, owner=noun["owner"])
+        for noun in owners.get("nouns", {}).values()
+        for f in noun.get("identifier_forms", [])
+    ]
+    reserved = internal_id_pattern()
+    test_names = re.compile(r"(?m)^\s*(?:async\s+)?def\s+test_\w+(?=\s*\()")
+    for form in forms:
+        owned, producers = "src/" + form["owner"].replace(".", "/") + "/", form["producers"]
+        if not producers or any(p not in blobs or not p.startswith(owned) for p in producers):
+            raise ValueError("product identifier needs its owning production source")
+        expected = re.escape(form["prefix"]) + r"[1-9][0-9]*"
+        if form["pattern"] != expected or reserved.search(form["prefix"] + "1"):
+            raise ValueError("product identifier form cannot widen a reserved namespace")
+        form["compiled"] = re.compile(expected)
     occurrences = policy_values.get("occurrences", {})
     limits = [n for row in occurrences.values() for n in row.values()]
     if any(type(count) is not int or count < 0 for count in limits):
@@ -592,10 +676,15 @@ def internal_id_ratchet(
             source = blobs[path].decode("utf-8-sig")
         except UnicodeError:
             continue
+        permitted = _product_identifier_spans(path, source, forms)
+        source = test_names.sub(lambda m: m[0].replace("_", " "), source)
         matches = [
             (number, match.start() + 1, internal_id_label(match.group()))
             for number, line in enumerate(source.splitlines(), 1)
             for match in pattern.finditer(line)
+            if not any(
+                n == number and a <= match.start() and match.end() <= b for n, a, b in permitted
+            )
         ]
         if matches:
             current[path] = len(matches)

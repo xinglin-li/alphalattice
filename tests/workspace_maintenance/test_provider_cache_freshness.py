@@ -3,14 +3,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
-from types import SimpleNamespace
-from typing import Any
 
-import pandas as pd
 import pytest
 from yfinance.data import YfData
 
@@ -26,86 +21,15 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import sanitiz
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import audit_one
-from tests.workspace_maintenance.local_data_provider import RecordingProvider, recording_provider
+from tests.workspace_maintenance.local_data_provider import (
+    HistoricalChartReplay,
+    recording_provider,
+)
 
 START = date(2025, 10, 1)
 PAID = date(2026, 1, 15)
 FIRST = date(2026, 8, 3)
 NEXT = date(2026, 8, 4)
-
-
-class _HistoricalReplay:
-    """Replay synthetic chart bytes without replacing the native response cache."""
-
-    def __init__(self, source: RecordingProvider) -> None:
-        self.source, self.through, self.cash = source, FIRST, 0.5
-        self.paid = PAID
-        self.requests: list[dict[str, Any]] = []
-
-    def rows(self, start: date, end: date) -> list[dict[str, Any]]:
-        return [
-            dict(row, open=100.0, high=101.0, low=99.0, close=100.0)
-            for row in self.source.fetch_daily(("AAPL",), start=start, end=end)["AAPL"]
-        ]
-
-    def get(self, url: str, params: Mapping[str, Any] | None = None, timeout: int = 30) -> Any:
-        assert "/finance/chart/AAPL" in url
-        params = dict(params or {})
-        assert params.get("interval") == "1d"
-        self.requests.append(dict(params=params, cash=self.cash, timeout=timeout))
-        start = (
-            datetime.fromtimestamp(params["period1"], UTC).date() if "period1" in params else START
-        )
-        end = (
-            datetime.fromtimestamp(params["period2"], UTC).date() - timedelta(days=1)
-            if "period2" in params
-            else self.through
-        )
-        rows = self.rows(start, min(end, self.through))
-        stamps = [
-            int(pd.Timestamp(row["session_date"], tz="America/New_York").timestamp()) + 34200
-            for row in rows
-        ]
-        quotes = {
-            name: [row[name] for row in rows] for name in ("open", "high", "low", "close", "volume")
-        }
-        adjusted = [
-            100.0 / (1.0 + self.cash / 100.0)
-            if date.fromisoformat(row["session_date"]) < self.paid
-            else 100.0
-            for row in rows
-        ]
-        paid = int(pd.Timestamp(self.paid.isoformat(), tz="America/New_York").timestamp()) + 34200
-        events = (
-            {"dividends": {str(paid): {"amount": self.cash, "date": paid}}}
-            if start <= self.paid <= end
-            else {}
-        )
-        periods = [
-            [dict(start=stamp, end=stamp + 23400, gmtoffset=-14400, timezone="EDT")]
-            for stamp in stamps
-        ]
-        chart = dict(
-            timestamp=stamps,
-            events=events,
-            meta=dict(
-                currency="USD",
-                symbol="AAPL",
-                instrumentType="EQUITY",
-                exchangeName="NMS",
-                exchangeTimezoneName="America/New_York",
-                priceHint=2,
-                validRanges=["1d", "max"],
-                regularMarketTime=stamps[-1],
-                regularMarketPrice=100.0,
-                tradingPeriods=periods,
-            ),
-            indicators=dict(quote=[quotes], adjclose=[dict(adjclose=adjusted)]),
-        )
-        payload = {"chart": {"result": [chart], "error": None}}
-        return SimpleNamespace(
-            url=url, status_code=200, text=json.dumps(payload), json=lambda: deepcopy(payload)
-        )
 
 
 @pytest.mark.parametrize("held", (date(2026, 1, 30), FIRST), ids=("catchup", "daily"))
@@ -129,7 +53,7 @@ def test_a_daily_catchup_sees_a_dividend_restatement_behind_a_cached_chunk(
     window = normal_refresh_plan(held, FIRST).windows[0]
     try:
         for fresh_control in (False, True):
-            replay = _HistoricalReplay(source)
+            replay = HistoricalChartReplay(source, start=START, through=FIRST, paid=PAID)
             if held == FIRST:
                 replay.paid = FIRST - timedelta(days=7)
             monkeypatch.setattr(YfData, "get", replay.get)

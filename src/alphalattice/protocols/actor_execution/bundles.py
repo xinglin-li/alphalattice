@@ -32,6 +32,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.answers import SPECIALIST_REFERENCE_COUNT
 
+from .projections import estimate_cl100k_proxy_tokens
+
 BUNDLE_FILE_BYTES: int = 32 * 1024
 """A file is one whole read on every agent host. Codex hands the model at most 10,000 tokens of
 one tool call's output, counted at four bytes a token, and cuts the middle of the rest: a
@@ -210,8 +212,6 @@ class AgentBundle:
 
     def measure(self) -> dict[str, object]:
         """Files, lines, bytes and a cl100k proxy token count, per file and in all."""
-        from .projections import estimate_cl100k_proxy_tokens
-
         rows = [
             {
                 "name": name,

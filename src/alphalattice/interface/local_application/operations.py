@@ -590,6 +590,9 @@ GRAMMAR: Final[dict[str, Command]] = {
         "Shows a goal's saved revision as recorded, without re-verifying its evidence.",
         "goal_id",
     ),
+    "GOAL_PROFILE": Command(
+        "goal", "profile", "Reads recorded stage times and coverage for a goal.", "goal_id"
+    ),
     "GOAL_REFERENCE": Command(
         "goal",
         "reference",

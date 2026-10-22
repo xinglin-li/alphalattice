@@ -193,7 +193,7 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
 
 def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, monkeypatch, request):
     """A wider or differently ordered book never borrows another book's cached label axis."""
-    from alphalattice.control.product_host.research_authoring import execution, factor_inputs
+    from alphalattice.control.product_host.research_authoring import execution
     from alphalattice.kernel.quant.sector_history import SectorHistory
 
     context.configure_projection_memos(capacity=1)
@@ -207,7 +207,7 @@ def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, mon
         "position": {"session": "2024-01-03"},
     }
     history = SectorHistory("d" * 64, {"one": "Technology", "two": "Energy"})
-    monkeypatch.setattr(factor_inputs, "factor_input_paths", lambda *_: (tmp_path, tmp_path))
+    monkeypatch.setattr(context, "factor_input_paths", lambda *_: (tmp_path, tmp_path))
     monkeypatch.setattr(
         context.MarketDataRepository,
         "load_universe_manifest_revision",
@@ -275,9 +275,9 @@ def test_ineligible_pending_scores_are_excluded_from_materials_and_update_readba
     answer = {**readback, "publication": published.model_dump(mode="json")}
     answer["date_risk"] = risk_source.risk(answer, portfolio_update_positions(published))
     assert answer["date_risk"]["risk_status"] == "EVALUATED"
-    held = committee.holdings(answer)  # C<n> floor alias; scanner false positive; fix in plan.
+    held = committee.holdings(answer)  # Component floor alias; its literal output is registered.
     rows = {row["listing_id"]: row for row in held}
-    assert [rows[k]["scores"] for k in names] == [{}, {}, {f"C{1}": -0.25} if last_eligible else {}]
+    assert [rows[k]["scores"] for k in names] == [{}, {}, {"C1": -0.25} if last_eligible else {}]
     facts = committee.facts(answer, EVIDENCE, held)
     clean = [f["text"] for f in facts if f["question"] == "ALPHA.clean"]
     excluded = clean[0].rsplit(": ", 1)[1].removesuffix(".").split(", ")

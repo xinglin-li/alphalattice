@@ -25,6 +25,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from .saved_object_readback import probe
+
 _TERMINAL = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "BLOCKED", "RECOVERY_REQUIRED"})
 
 
@@ -64,8 +66,6 @@ def _verdicts(path: Path) -> dict[tuple[str, str, str], str]:
 def _probe(copy: Path, work: Path, out: Path) -> dict[tuple[str, str, str], str]:
     import contextlib
     import io
-
-    from .saved_object_readback import probe
 
     harvest = copy.parent / f"{copy.name}-harvest"
     harvest.mkdir()

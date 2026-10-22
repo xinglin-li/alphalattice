@@ -37,6 +37,7 @@ from alphalattice.foundation.feature_engine.catalog.layer import FeatureCatalogL
 from alphalattice.foundation.feature_engine.contracts import (
     PanelCrossSectionRange,
     PanelSourceExclusion,
+    TemporalKnowledgeBoundary,
 )
 from alphalattice.foundation.feature_engine.inputs.contracts import (
     ListingQuarantine,
@@ -4531,8 +4532,6 @@ class PanelStateRepository(WorkspaceRepository):
         this low-level store does not own the Feature Input policy module.  It
         validates the exact expected types locally before opening a transaction.
         """
-        from alphalattice.foundation.feature_engine.contracts import TemporalKnowledgeBoundary
-
         if not isinstance(result, _FeatureInputGatewayResultLike):
             raise TypeError("result is not a FeatureInputGatewayResult")
         if not isinstance(temporal_boundary, TemporalKnowledgeBoundary):

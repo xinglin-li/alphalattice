@@ -587,8 +587,14 @@ def initialize_research_workspace(workspace: Path) -> None:
     try:
         if (root / RESEARCH_WORKSPACE_MANIFEST_NAME).exists():
             return
-        if any(p.name != ".alphalattice-writer.lock" for p in root.iterdir()):
-            raise ResearchWorkspaceError("research_workspace.nonempty_manifest_absent")
+        pending = [root]
+        while pending:
+            for p in pending.pop().iterdir():
+                if p.name == ".alphalattice-writer.lock" and p.parent == root:
+                    continue
+                if p.is_symlink() or p.is_junction() or not p.is_dir():
+                    raise ResearchWorkspaceError("research_workspace.nonempty_manifest_absent")
+                pending.append(p)
         from uuid import uuid4
 
         create_research_workspace_manifest(

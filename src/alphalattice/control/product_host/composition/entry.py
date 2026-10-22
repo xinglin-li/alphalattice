@@ -6,7 +6,16 @@ import json
 import sys
 from pathlib import Path
 
+from alphalattice.interface.local_application.retrieval_environment import (
+    LOCKED_SETUP_DISCLOSURE,
+    LOCKED_SETUP_WORDS,
+    fill_command,
+    interpreter_path,
+)
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+
+from .model_sandbox import run_sandbox
+from .web_launcher import main as start
 
 ROOT: Path = resolve_playpen_root(Path(__file__))
 
@@ -22,15 +31,8 @@ def serve(arguments: list[str]) -> int:
         RESEARCH_WORKSPACE_MANIFEST_NAME,
         read_research_workspace_manifest,
     )
-    from alphalattice.interface.local_application.retrieval_environment import (
-        LOCKED_SETUP_DISCLOSURE,
-        LOCKED_SETUP_WORDS,
-        fill_command,
-        interpreter_path,
-    )
 
     from .first_use_road import serve_road
-    from .web_launcher import main as start
 
     entry = argparse.ArgumentParser(add_help=False)
     entry.add_argument("--workspace", type=Path, required=True)
@@ -71,6 +73,11 @@ def serve(arguments: list[str]) -> int:
                 )
             )
             return 2
+        # Detach before a venv trampoline adds its own Job; that Job can mask the caller's.
+        if "--detach" in arguments:
+            return start(
+                arguments, host_interpreter=interpreter, new_research=selected.new_research
+            )
         # Inherit cwd/stdin/env. The workspace and input file arguments retain
         # their caller-relative meaning; no source is loaded from a sibling tree.
         # The checkout shim's sys.path bootstrap does not reach a new interpreter.
@@ -91,7 +98,11 @@ def serve(arguments: list[str]) -> int:
             ],
             env=environment,
         )
-    return start(arguments)
+    return (
+        start(arguments, new_research=selected.new_research)
+        if "--detach" in arguments
+        else start(arguments)
+    )
 
 
 def restore(
@@ -115,8 +126,6 @@ def sandbox(workspace: Path, model_id: str, *, study: Path | None, keep: bool) -
 
     Its saved-object readback is shared with the checkout verification probe.
     """
-    from .model_sandbox import run_sandbox
-
     answer: dict[str, object] = run_sandbox(workspace, model_id, study=study, keep=keep)
     return answer
 
@@ -156,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
                             "install",
                             "--python",
                             sys.executable,
-                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.2",
+                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.3",
                         ]
                     ),
                     "interpreter": sys.executable

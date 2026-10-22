@@ -3,15 +3,15 @@
   "version": 1,
   "note": "G1: each core noun's one owner package, from the plan's owner table (develop-wave-2, \"G1's map\"; the contested choices decided by the user on 2026-09-27). The owner defines a noun -- its types, state and decisions -- and every other package only imports it. A noun is recognised by the public types its `defined_by` modules export. `folds_in` lists what other packages still define of it and the card that moves it: G2 refuses a new definition outside the owner, naming the owner, against this list, which only shrinks. An owner a card creates names it (`created_by`).",
   "nouns": {
-  "book observation parts": {
-   "covers": "immutable structurally shared storage of complete book observation sources, preserving their logical snapshot identity",
-   "owner": "alphalattice.investment.portfolio_strategy_lab",
-   "defined_by": [
-    "alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger"
-   ],
-   "folds_in": [],
-   "note": "Consumers: PortfolioLedgerStore and the separate AdvancementLedgerStore, Portfolio update/advancement source sealing and readback, calibration preparation, the as-of grader and book-value replay. Private advancement roots stay private. Full LocalQAMarketSnapshot content and legacy records remain authoritative; parts change only storage."
-  },
+    "book observation parts": {
+      "covers": "immutable structurally shared storage of complete book observation sources, preserving their logical snapshot identity",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "defined_by": [
+        "alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger"
+      ],
+      "folds_in": [],
+      "note": "Consumers: PortfolioLedgerStore and the separate AdvancementLedgerStore, Portfolio update/advancement source sealing and readback, calibration preparation, the as-of grader and book-value replay. Private advancement roots stay private. Full LocalQAMarketSnapshot content and legacy records remain authoritative; parts change only storage."
+    },
     "workspace": {
       "covers": "paths, lock, persistence, databases, artifacts, checkpoints, writer lease, mutation gate",
       "note": "WorkspaceLock owns LOCK_SUFFIX; the backup consumer omits these transient files and retains their durable ledgers.",
@@ -259,7 +259,29 @@
       "defined_by": [
         "alphalattice.control.product_host.composition.committee"
       ],
-      "folds_in": []
+      "folds_in": [],
+      "identifier_forms": [
+        {
+          "name": "component floor alias",
+          "pattern": "C[1-9][0-9]*",
+          "producers": {
+            "src/alphalattice/control/product_host/composition/committee_materials.py": {
+              "holdings": {
+                "scores": "keys"
+              },
+              "_components": {
+                "alias": "value"
+              }
+            }
+          },
+          "assertions": {
+            "tests/portfolio_strategy_lab/test_committee.py": {
+              "scores": "keys"
+            }
+          },
+          "prefix": "C"
+        }
+      ]
     },
     "host setup": {
       "covers": "what a checkout needs before research: the doctor's host readiness and a first use's setup gate, each item present or missing, who fills it and its commands; one source supplies agent fills, including online installation of locked retrieval dependencies with one disclosure; software outside the lock needs the person's permission",
@@ -640,6 +662,7 @@
       "owner": "alphalattice.kernel.shared_kernel",
       "defined_by": [
         "alphalattice.kernel.shared_kernel.arrow_identity",
+        "alphalattice.kernel.shared_kernel.clocks",
         "alphalattice.kernel.shared_kernel.domain.base",
         "alphalattice.kernel.shared_kernel.domain.enums",
         "alphalattice.kernel.shared_kernel.domain.errors",
@@ -4272,7 +4295,7 @@
     },
     "evaluation workflows": {
       "owner": "devtools.evaluation",
-      "covers": "evaluation scenarios, deterministic walks, graders and evaluation records",
+      "covers": "evaluation scenarios, validated replay inputs and fixture acquisition receipts, deterministic walks, graders and evaluation records",
       "defined_by": [
         "devtools.evaluation.forms",
         "devtools.evaluation.committee",
@@ -4429,6 +4452,184 @@
           "src/alphalattice/kernel/shared_kernel/source_identity.py:242"
         ]
       }
+    },
+    "person question": {
+      "covers": "registered person-question codes, bilingual words, reply metadata and code-only asked/answered observations projected from the existing ledger; authority stays with the existing decision owners",
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "alphalattice.interface.local_application.questions"
+      ],
+      "folds_in": []
+    },
+    "message catalog": {
+      "owner": "alphalattice.interface.local_application",
+      "covers": "stable semantic message ids, locale forms and named arguments; the registry guard holds the contract before owner migrations",
+      "defined_by": [],
+      "folds_in": [],
+      "catalog": "config/registries/messages.json",
+      "gate": "src/devtools/architecture/registries.py",
+      "consumers": {
+        "gate": [
+          "src/devtools/architecture/registries.py",
+          "scripts/check_playpen.py"
+        ],
+        "runtime": [
+          "src/alphalattice/interface/local_application/cli_contract.py",
+          "src/alphalattice/control/product_host/composition/web_launcher.py",
+          "src/alphalattice/interface/local_application/assets/workbench-source/js/app/i18n.js"
+        ],
+        "build": [
+          "scripts/build_local_web_ui.py"
+        ],
+        "tests": [
+          "tests/portfolio_strategy_lab/workbench_library.cjs"
+        ]
+      },
+      "pending_consumers": [
+        "src/alphalattice/interface/local_application/assets/workbench-source/js/app/i18n.js",
+        "src/alphalattice/interface/local_application/cli_contract.py",
+        "scripts/build_local_web_ui.py",
+        "scripts/ui_qa/zh_nouns.cjs",
+        "scripts/ui_qa/zh_literals.json"
+      ],
+      "gate_inputs": {
+        "src/alphalattice/interface/local_application/assets/workbench-source/js/data/zh.js": {
+          "cutover": "canonical source and both renderers",
+          "state": "guarded legacy source; runtime cutover deferred",
+          "immutable": true,
+          "publication_footer": "const legacyKeys = Object.keys(window.ALPHA_ZH).sort();\nconst checkedCatalogs = new WeakMap();\nObject.defineProperty(window,'ALPHA_ZH',{value:Object.freeze(window.ALPHA_ZH),writable:false,configurable:false});\nObject.defineProperty(window,'ALPHA_ZH_CHECK',{value:table=>{\n  if (!checkedCatalogs.has(table)) {\n    const keys = Object.keys(table).sort();\n    checkedCatalogs.set(table, table === window.ALPHA_ZH && Object.isFrozen(table) &&\n      keys.length === legacyKeys.length && keys.every((key,i)=>key === legacyKeys[i]));\n  }\n  return checkedCatalogs.get(table);\n},writable:false,configurable:false});\nwindow.ALPHA_ZH_READY = true;"
+        },
+        "src/alphalattice/interface/local_application/assets/workbench-source/js/app/i18n.js": {
+          "cutover": "canonical source and both renderers",
+          "state": "guarded legacy source; runtime cutover deferred",
+          "writers": [
+            "ALPHA_ZH",
+            "catalog"
+          ],
+          "read_aliases": [
+            "const catalog = window.ALPHA_ZH || (window.ALPHA_ZH = {});"
+          ],
+          "read_calls": [
+            {
+              "line": 12,
+              "text": "  const catalog = window.ALPHA_ZH || (window.ALPHA_ZH = {});"
+            },
+            {
+              "line": 17,
+              "text": "  const lookup = (s) => (Object.hasOwn(catalog, s) ? catalog[s] : templated(s));"
+            },
+            {
+              "line": 29,
+              "text": "    [/^A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran\\. (Plan [\\s\\S]+)$/, (m) => Object.hasOwn(catalog, m[1]) ? t('A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. {subject}', {subject: t(m[1])}) : m[0]],"
+            },
+            {
+              "line": 138,
+              "text": "    const keys = Object.keys(catalog);"
+            },
+            {
+              "line": 141,
+              "text": "    subjects = keys.filter((k) => k.includes('{subject}') && !CONTEXT.test(k)).map((k) => [new RegExp('^' + k.split('{subject}').map((p) => p.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')).join('(.*?)') + '$'), catalog[k]]);"
+            },
+            {
+              "line": 174,
+              "text": "    if (Object.hasOwn(catalog, raw)) zh = interpolate(catalog[raw], vars);"
+            },
+            {
+              "line": 175,
+              "text": "    else if (Object.hasOwn(catalog, plain)) zh = interpolate(catalog[plain], vars);"
+            },
+            {
+              "line": 176,
+              "text": "    else if (Object.hasOwn(catalog, core)) zh = catalog[core];"
+            },
+            {
+              "line": 191,
+              "text": "    return Object.hasOwn(catalog, core) ? catalog[core] : templated(core);"
+            },
+            {
+              "line": 236,
+              "text": "    catalog,"
+            },
+            {
+              "line": 242,
+              "text": "      window.ALPHA_ZH_CHECK(catalog));",
+              "verification": true
+            }
+          ]
+        },
+        "src/alphalattice/interface/local_application/cli_contract.py": {
+          "cutover": "canonical source and both renderers",
+          "state": "guarded legacy source; runtime cutover deferred",
+          "writers": [
+            "WORDS",
+            "_zh()"
+          ],
+          "read_aliases": [
+            "_zh().items()"
+          ],
+          "factory": {
+            "name": "_zh",
+            "read_only": true,
+            "canonical_body": "Module(body=[FunctionDef(name='decoded', args=arguments(posonlyargs=[], args=[arg(arg='literal', annotation=Name(id='str', ctx=Load()))], kwonlyargs=[], kw_defaults=[], defaults=[]), body=[Return(value=Call(func=Name(id='str', ctx=Load()), args=[IfExp(test=Call(func=Attribute(value=Name(id='literal', ctx=Load()), attr='startswith', ctx=Load()), args=[Constant(value='\"')], keywords=[]), body=Call(func=Attribute(value=Name(id='json', ctx=Load()), attr='loads', ctx=Load()), args=[Name(id='literal', ctx=Load())], keywords=[]), orelse=Call(func=Attribute(value=Name(id='ast', ctx=Load()), attr='literal_eval', ctx=Load()), args=[Name(id='literal', ctx=Load())], keywords=[]))], keywords=[]))], decorator_list=[], returns=Name(id='str', ctx=Load()), type_params=[]), Assign(targets=[Name(id='text', ctx=Store())], value=Call(func=Attribute(value=Name(id='_ZH_TABLE', ctx=Load()), attr='read_text', ctx=Load()), args=[], keywords=[keyword(arg='encoding', value=Constant(value='utf-8'))])), Return(value=DictComp(key=Call(func=Name(id='decoded', ctx=Load()), args=[Name(id='key', ctx=Load())], keywords=[]), value=Call(func=Name(id='decoded', ctx=Load()), args=[Name(id='value', ctx=Load())], keywords=[]), generators=[comprehension(target=Tuple(elts=[Name(id='key', ctx=Store()), Name(id='value', ctx=Store())], ctx=Store()), iter=Call(func=Attribute(value=Name(id='_ZH_ENTRY', ctx=Load()), attr='findall', ctx=Load()), args=[Name(id='text', ctx=Load())], keywords=[]), ifs=[], is_async=0)]))], type_ignores=[])"
+          }
+        },
+        "scripts/build_local_web_ui.py": {
+          "cutover": "canonical source and both renderers",
+          "state": "guarded legacy source; runtime cutover deferred",
+          "writers": [
+            "WORDS",
+            "ALPHA_ZH"
+          ]
+        },
+        "scripts/ui_qa/zh_nouns.cjs": {
+          "cutover": "canonical source and both renderers",
+          "state": "guarded legacy source; runtime cutover deferred",
+          "keyed_admissions": "migrate scopes with each owning message after canonical cutover",
+          "writers": [
+            "catalog",
+            "ALPHA_ZH",
+            "WORDS"
+          ],
+          "read_calls": [
+            {
+              "line": 6,
+              "text": "function leakedWords(catalog, readings = []) {"
+            },
+            {
+              "line": 7,
+              "text": "  const entries = Object.entries(catalog);"
+            },
+            {
+              "line": 95,
+              "text": "          !left.get('property').isIdentifier({name:'ALPHA_ZH'})) return;"
+            },
+            {
+              "line": 111,
+              "text": "  return context.window.ALPHA_ZH;"
+            },
+            {
+              "line": 158,
+              "text": "  assertFrozen(context.I18N.catalog,root);",
+              "verification": true
+            }
+          ]
+        },
+        "scripts/ui_qa/zh_literals.json": {
+          "cutover": "canonical source and both renderers",
+          "state": "guarded legacy source; runtime cutover deferred",
+          "keyed_admissions": "migrate scopes with each owning message after canonical cutover"
+        }
+      },
+      "integration_base": "2c4f5b8bbb3b738802d9c230fc83965a13cf2e2d"
+    },
+    "goal time profile": {
+      "owner": "alphalattice.control.observation_runtime",
+      "covers": "read-only windowed RPC and stage-phase occupancy, coverage gaps and provenance; no causal path without recorded links",
+      "defined_by": [
+        "alphalattice.control.observation_runtime.profile"
+      ],
+      "folds_in": [],
+      "note": "Host composition is its consumer; Task Control retains phase ownership and the tuple reader contract. TaskHeartbeatReader retains canonical runtime origins for this consumer; phase readers deduplicate origins by parent directory."
     }
   }
 }

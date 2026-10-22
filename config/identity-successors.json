@@ -14274,6 +14274,167 @@
    "successor": "ce17ba9f133879c9e885bd815c2b8e15b87ad35a802b5141cffa9f9ec92513ba",
    "change": "e568e5b8a927ec8833fd2bd203145312b8933e1f",
    "reason": "A portfolio observation whose stored artifact is lost now reads as absence even when the store's error carries no detail, instead of as tampering; only the reader's condition changed. Values, inputs, parameters and the other 76 roles are unchanged."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "0416f923ea96eaacdaac8d00d9c8bbd550113c8ea0c81a73f48d112cdfdb49e7",
+   "successor": "7c19b6eab63a74cb5cda6ffad0ca978a60c30f8f3137badf20ac9e7195edf1eb",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "3147420b8694e89ae0fc9fe60cf28eac07f83320832d8b97bdaebef3ac863242",
+   "successor": "d4e87ce6199820036b37e6dc7651d6a7488f60efafa4f077d30cec161a177faf",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "chief_risk_officer.portfolio_review_policy",
+   "predecessor": "2b9e6cd6e32568edb0bd5b39423fbef03c7a856bb09e4eb4ab33c43f9e012b39",
+   "successor": "3c908bc158d2cc89d47d28acf97092ce2a3e4432e1d05843bc64293c6bbc5391",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "5729f3cc4a4361604e65e36f874de713da897453abbfc1988c4f8b644b75b5ac",
+   "successor": "fc94ae8b56fbe56091e1e448f877e74387650692e7ee985c9317e83882d68c91",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "5a6d4fd82d4c864cecd3472fa7e1a05a476ed39ef4b35c7a253f90edbdd29972",
+   "successor": "97fc73913d59607b50139b2bf5195f4e7ce27a28f3899714209424f47eff45c5",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "ce17ba9f133879c9e885bd815c2b8e15b87ad35a802b5141cffa9f9ec92513ba",
+   "successor": "8a2feb3a4a9d704d4a1c0091e88fa9073fc204e9324cf41017d6606600c68228",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "ada2bb3bb2addaac1a2f823f22f96cb629445cc4583c73215c76aff3fd5f2e13",
+   "successor": "17204e35e0567b8aa5b8b9565fab07d8c74de64ac285890a9ec230f194fc45cf",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "e165bac6464254fb5966b54603dd66b4784242b096ba6fbbe0b456dbc5af625b",
+   "successor": "ec20dbf8650a06acc1c4f6c1eba65afd939d2d43af3f0875ae20ad6ce99ff018",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "3cfa4ec91f998382226629b53d86e36d067e3cc90c55f7b56bbff0a05a56cf4f",
+   "successor": "c4ac9892e47b78dfb70a041738084986cbbca2e93b18fa7494369fe1bea62737",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "0837afacc247c1739f68fefcd0948313923ec826481f3df885a7f613b8635c5b",
+   "successor": "5534d63b94095ab283368c2e2c22a0ae794f72f59da0a6e33ac90e844d76a7cb",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "66c26005dd7b511ccefc12208a528513b33778c1b8d2b3d36e18f4c3f05fb8d4",
+   "successor": "9e1d9ba27bc9db2116bb5fa20c0b27c1068de7dce13b8072f195c3b6ba484643",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "22c60cace5074bb7fdf0554a511bb7784724e0039e22e9fd76baec354b492f59",
+   "successor": "934e142f13531fd0b1f6420322835588c1266875ac41e01000f90d0ccc7aafdb",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "a03ef144fd1ef190e3e2ff773b087d79e11d945652d7e95e45334369425b3a14",
+   "successor": "d209c2d5dc3b2cc2316c38181103fed890224e213455b757a961399c3fc85c23",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "692c5c5f8a5812f662cd8067e7eb244f3aa6b6d48bc1308f7f17bfc6ad95c96b",
+   "successor": "c6d2c2bc26c06bba582b210965d387d67ce3f4c1569f7b95de06403acabb8922",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "23890a7c738871f7adc73953f433125076beb52affe9ca8a5ab7462e0b9ce1ad",
+   "successor": "c1010fc89a9b5bd222b197e5113639e1c4e81f2a564daa5da66ae019e0684b69",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "23890a7c738871f7adc73953f433125076beb52affe9ca8a5ab7462e0b9ce1ad",
+   "successor": "c1010fc89a9b5bd222b197e5113639e1c4e81f2a564daa5da66ae019e0684b69",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "3329c0ca8945184274dbfd605c965ec66b1e22b3ce9d4c4cbe8b3a26ea5539ca",
+   "successor": "2d84042ed4ea538f5c47bed9fce5042d2c31e0fe9a1d5b719091a97d096c4263",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "013a1ee4d90e64166223673c698f9a0e34214b35bf1601b5038e8c71a3b8face",
+   "successor": "04a8b5d529ca575f88df257f8eed9e5f9030320d4de29159a7ae9fd0ae25e75c",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "372d17613f08527b0ba6c44b06a3f800a25f2469bf85648ebc33f38309a5ecc2",
+   "successor": "dc8f9d4d385b99f931293bd8209eab25c0ed5a59cc1aa3b45115a85681452f24",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-diagonal-shrunk-ledoit-wolf",
+   "predecessor": "13c51b42d61054bc9e7fb7f611d428db59f091bf2193c46aee4632f15afbe26d",
+   "successor": "b1154c3a43bcabe59a1129bf7ff40c22e55cedfb2518d8b4cddede1509fea90d",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-ewma-standardized-ledoit-wolf",
+   "predecessor": "75dd133dd01b2498fd697887944dacdef2f71678bec265b4f7721d63b2dbd540",
+   "successor": "34d281cefbc31956fd5849028f0f97d2f780e97b3772255d630ec963265d1d81",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-fast-slow-ledoit-wolf",
+   "predecessor": "1c3d361fa18f3b56eb6b39f5f8bfc5f63043a1bd352f850346f8daa9fbb7cf2b",
+   "successor": "966a58b3241181b2ae5c50c1062d3c2fbcf04b8c38c4f82b9fb307419ffd537c",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "risk_research.estimator_catalog",
+   "predecessor": "85041fed9104866bafcf5e83a2cce73057f9d924f5742c062c94b59953769e76",
+   "successor": "9c75d381b2fc7427ebc62ccb2d66865f1b315e9b10ee1a771c5710fd2631a224",
+   "change": "module-imports",
+   "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
   }
  ]
 }

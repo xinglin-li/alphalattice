@@ -49,7 +49,7 @@ from .contracts import (
     BoundAlphaTrainingInput,
     FloatArray,
 )
-from .declaration import AlphaModelDeclaration
+from .declaration import AlphaModelDeclaration, installed_declaration
 from .extension import DeclaredModelAdapter, extension_adapter
 
 _PACKAGE = "alphalattice.capabilities.alpha_modeling"
@@ -327,7 +327,6 @@ def _subject(
         build_installed_alpha_model_catalog,
         build_installed_alpha_model_search_domains,
     )
-    from .declaration import installed_declaration
 
     installed = build_installed_alpha_model_catalog()
     if model_id in installed.adapter_ids:
