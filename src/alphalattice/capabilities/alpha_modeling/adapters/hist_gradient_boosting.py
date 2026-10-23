@@ -7,7 +7,6 @@ import pickle
 from dataclasses import dataclass
 
 import numpy as np
-from sklearn.ensemble import HistGradientBoostingRegressor
 
 from ..contracts import (
     AlphaEstimatorContent,
@@ -233,6 +232,8 @@ class HistGradientBoostingAdapter:
         ):
             raise ValueError("ALPHA_HIST_GRADIENT_BOOSTING_FIT_PLAN_INVALID")
         parameters = self.validate_recipe(recipe)
+        from sklearn.ensemble import HistGradientBoostingRegressor  # lazy: heavy, first fit
+
         estimator = HistGradientBoostingRegressor(
             learning_rate=parameters.learning_rate,
             max_leaf_nodes=parameters.max_leaf_nodes,
@@ -288,6 +289,8 @@ class HistGradientBoostingAdapter:
         ):
             raise ValueError("ALPHA_HIST_GRADIENT_BOOSTING_ESTIMATOR_BINDING_INVALID")
         fitted = pickle.loads(base64.b64decode(estimator.payload["estimator_base64"]))
+        from sklearn.ensemble import HistGradientBoostingRegressor  # lazy: heavy, first prediction
+
         if not isinstance(fitted, HistGradientBoostingRegressor):
             raise ValueError("ALPHA_HIST_GRADIENT_BOOSTING_CONTENT_INVALID")
         predictions = np.asarray(fitted.predict(inputs.features), dtype=np.float64)

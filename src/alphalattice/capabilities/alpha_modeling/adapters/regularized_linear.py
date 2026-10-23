@@ -7,7 +7,6 @@ from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
-from sklearn.linear_model import ElasticNet, Lasso, Ridge
 
 from ..contracts import (
     AlphaEstimatorContent,
@@ -181,6 +180,8 @@ def fit_regularized_linear(
     penalty_scale = training_features.std(axis=0)
     penalty_scale = np.where(penalty_scale > 0.0, penalty_scale, 1.0)
     weighted_training = training_features / penalty_scale
+    from sklearn.linear_model import ElasticNet, Lasso, Ridge  # lazy: heavy, first fit
+
     if parameters.family == "ridge":
         assert parameters.alpha is not None
         estimator: Ridge | Lasso | ElasticNet = Ridge(

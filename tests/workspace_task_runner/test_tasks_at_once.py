@@ -314,6 +314,8 @@ def test_thread_limits_closing_out_of_order_never_leave_an_open_scope_unlimited(
     def counts() -> list[int]:
         return [pool["num_threads"] for pool in numerical_thread_pools()]
 
+    with numerical_thread_limit(1):  # the first scope loads the libraries it holds; this does
+        pass
     with threadpool_limits(limits=3):  # a known count above one for the scopes to narrow
         before = counts()
         assert before and max(before) > 1

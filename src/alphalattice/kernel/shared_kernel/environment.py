@@ -15,7 +15,7 @@ import platform
 import sys
 import threading
 from collections.abc import Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from functools import cache
 from typing import Any
@@ -188,15 +188,27 @@ _UNLIMITED: list[Any] = []
 _LIMITS_LOCK = threading.Lock()
 
 
+def _load_limited_libraries() -> None:
+    """Load the numerical libraries a limit holds before it is set: one first loaded inside a
+    limited block would start at its own default threads, which the limit never reaches."""
+    import scipy.linalg  # type: ignore[import-untyped]  # noqa: F401  # lazy: SciPy's BLAS
+    import sklearn  # noqa: F401  # lazy: the OpenMP runtime scikit-learn's estimators use
+
+    with suppress(ImportError, OSError):  # LightGBM needs its OpenMP runtime to load at all
+        import lightgbm  # noqa: F401  # lazy: LightGBM's own OpenMP runtime
+
+
 @contextmanager
 def numerical_thread_limit(limits: int) -> Iterator[None]:
-    """Limit the loaded numerical libraries' threads in the block, as ``threadpool_limits`` does.
+    """Limit the numerical libraries' threads in the block, as ``threadpool_limits`` does.
 
-    The limit is the process's, so the scopes of Tasks running at once share it: the libraries
-    run at the fewest threads any open scope asks for, and only the last scope to close
-    restores the counts from before the first, so a scope closing early leaves no other
-    unlimited.
+    The libraries it holds are loaded first, so one an adapter imports at its first fit runs
+    at the limit too. The limit is the process's, so the scopes of Tasks running at once share
+    it: the libraries run at the fewest threads any open scope asks for, and only the last
+    scope to close restores the counts from before the first, so a scope closing early leaves
+    no other unlimited.
     """
+    _load_limited_libraries()
     with _LIMITS_LOCK:
         if not _LIMITS:
             _UNLIMITED.append(_thread_pool_controller().limit(limits=limits))

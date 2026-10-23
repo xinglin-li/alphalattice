@@ -861,6 +861,13 @@
       "reason": "historical maximum 795.480 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
       "timeout_seconds": 1200,
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
+    },
+    {
+      "pattern": "tests/agent_eval/test_home_read_once.py::*",
+      "owner": "tests.agent_eval",
+      "reason": "Counts seal checks per input on a served Home read, which needs a sealed 120-listing first use (about 16 minutes cold).",
+      "timeout_seconds": 3600,
+      "admitted": "2026-10-22: one Large count gate on the generated 120-listing replay, admitted by the maintainer; returns to Medium with the build-once fixture."
     }
   ],
   "note": "Pytest-timeout enforces setup, call and teardown together; Large declarations form a shrink-only list. Resource confinement is a separate boundary.",

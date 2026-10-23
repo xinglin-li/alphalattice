@@ -7,7 +7,6 @@ from typing import Final, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
-from sklearn.linear_model import ElasticNet
 
 from alphalattice.capabilities.alpha_modeling.contracts import (
     AlphaEstimatorContent,
@@ -404,6 +403,8 @@ class DynamicPanelRegularizedLinearAdapter:
             assert parameters.l1_ratio is not None
             penalty = _alpha_max(inputs.features, inputs.targets)
             penalty *= parameters.alpha_max_multiplier
+            from sklearn.linear_model import ElasticNet  # lazy: heavy, first fit
+
             estimator = ElasticNet(
                 alpha=penalty / parameters.l1_ratio,
                 l1_ratio=parameters.l1_ratio,

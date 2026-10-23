@@ -11,7 +11,6 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from sklearn.covariance import LedoitWolf
 from threadpoolctl import threadpool_info  # type: ignore[import-untyped]
 
 from alphalattice.investment.risk_research.contracts import (
@@ -115,16 +114,23 @@ def risk_numerical_thread_policy() -> Iterator[None]:
 
     The live estimate enters it (``CovarianceEstimatorAdapter.estimate``): an eigen
     decomposition's last bits move with the BLAS thread count, and they reach the published
-    diagnostics. The thread view is the process's reused one (``numerical_thread_limit``).
+    diagnostics. The thread view is the process's reused one (``numerical_thread_limit``). Every
+    pool is checked as the scope opens and again as it closes, since one first loaded during the
+    estimate would have run at its own count.
     """
     with numerical_thread_limit(RISK_NUMERICAL_THREAD_LIMIT):
-        if any(
-            int(pool["num_threads"]) > RISK_NUMERICAL_THREAD_LIMIT
-            for pool in numerical_thread_pools()
-            if pool.get("num_threads") is not None
-        ):
-            raise RiskNumericalError("risk_research.numerical_thread_policy_failed")
+        _refuse_unlimited_pools()
         yield
+        _refuse_unlimited_pools()
+
+
+def _refuse_unlimited_pools() -> None:
+    if any(
+        int(pool["num_threads"]) > RISK_NUMERICAL_THREAD_LIMIT
+        for pool in numerical_thread_pools()
+        if pool.get("num_threads") is not None
+    ):
+        raise RiskNumericalError("risk_research.numerical_thread_policy_failed")
 
 
 def _validate_inputs(returns: FloatArray, listing_ids: tuple[str, ...]) -> FloatArray:
@@ -170,6 +176,8 @@ def estimate_dynamic_covariance(
     active_recipe = recipe or default_covariance_recipe()
     values = _validate_inputs(returns, ordered_listing_ids)
     residuals, forecast_variance = _standardized_residuals(values, active_recipe)
+    from sklearn.covariance import LedoitWolf  # lazy: heavy; at the first estimate
+
     estimator = LedoitWolf(
         store_precision=active_recipe.ledoit_wolf_store_precision,
         assume_centered=active_recipe.ledoit_wolf_assume_centered,

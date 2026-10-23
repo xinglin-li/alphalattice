@@ -8,7 +8,6 @@ from statistics import median
 import numpy as np
 import numpy.typing as npt
 import pyarrow as pa
-from lightgbm import LGBMRegressor
 
 from alphalattice.capabilities.alpha_modeling.adapters.regularized_linear import (
     RegularizedLinearParameters,
@@ -352,6 +351,8 @@ def _fit_tree(
         verbosity=-1,
     )
     mask = arrays.training_mask
+    from lightgbm import LGBMRegressor  # lazy: heavy, first fit (it also loads sklearn)
+
     estimator = LGBMRegressor(**common)
     estimator.fit(arrays.training_features[mask], arrays.training_targets[mask])
     training_prediction = np.asarray(

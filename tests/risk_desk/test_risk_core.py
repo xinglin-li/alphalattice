@@ -205,7 +205,9 @@ def test_covariance_axis_permutation_and_invalid_inputs() -> None:
         )
 
 
-def test_risk_numerical_thread_policy_is_fixed_and_path_free() -> None:
+def test_risk_numerical_thread_policy_is_fixed_and_path_free(monkeypatch) -> None:
+    """requirement: the Risk estimate runs at its fixed thread limit, and a pool that escapes it
+    during the estimate is refused by name at the scope's exit."""
     returns = _returns()
     listing_ids = tuple(f"listing-{index:02d}" for index in range(returns.shape[1]))
     outputs = []
@@ -230,6 +232,11 @@ def test_risk_numerical_thread_policy_is_fixed_and_path_free() -> None:
     assert environment["thread_limit"] == 1
     assert "filepath" not in str(environment)
     assert "site-packages" not in str(environment)
+    views = iter(([], [{"num_threads": 2}]))  # at entry within it; at exit, a pool loaded since
+    owner = "alphalattice.investment.risk_research.estimators.covariance"
+    monkeypatch.setattr(f"{owner}.numerical_thread_pools", lambda: next(views))
+    with pytest.raises(RiskNumericalError, match=r"policy_failed$"), risk_numerical_thread_policy():
+        pass
 
 
 @pytest.mark.parametrize(

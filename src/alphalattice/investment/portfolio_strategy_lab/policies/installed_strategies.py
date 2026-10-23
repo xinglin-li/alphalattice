@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Mapping
 from datetime import date
+from functools import cache
 from pathlib import Path
 from typing import Any, ClassVar, Final, Literal, Protocol, Self, cast
 
@@ -1563,29 +1564,33 @@ class HeterogeneousCurrentScoreSource:
 
 _ROOT: Final = Path(__file__).resolve().parents[4]
 
-INSTALLED_STRATEGY_SOURCE_HASH: Final = str(
-    switched_source_identity(
-        {
-            value.removesuffix(".py").replace("/", "."): _ROOT / "alphalattice" / value
-            for value in (
-                "investment/alpha_research/scores/heterogeneous_product.py",
-                "investment/alpha_research/scores/heterogeneous_replay.py",
-                "investment/portfolio_strategy_lab/policies/installed_strategies.py",
-                "investment/portfolio_strategy_lab/policies/post_observed_authority.py",
-                "investment/portfolio_strategy_lab/policies/lifecycle_research.py",
-            )
-        },
-        semantic_owner="installed_frozen_strategies",
-        numerical_role="score_source_and_book_policy",
-    )
-)
-"""The implementation bytes behind the installed score sources and book policies.
 
-Bound into every Program a package seals, beside the generic path's own source
-identity, so an edit to a strategy's scoring code rotates the Programs it
-produced -- and an edit to the generic path does not need to know which
-strategies exist to do the same.
-"""
+@cache
+def installed_strategy_source_hash() -> str:
+    """The implementation bytes behind the installed score sources and book policies.
+
+    Bound into every Program a package seals, beside the generic path's own source
+    identity, so an edit to a strategy's scoring code rotates the Programs it
+    produced -- and an edit to the generic path does not need to know which
+    strategies exist to do the same. Computed on first use, once: it parses its closure.
+    """
+    return str(
+        switched_source_identity(
+            {
+                value.removesuffix(".py").replace("/", "."): _ROOT / "alphalattice" / value
+                for value in (
+                    "investment/alpha_research/scores/heterogeneous_product.py",
+                    "investment/alpha_research/scores/heterogeneous_replay.py",
+                    "investment/portfolio_strategy_lab/policies/installed_strategies.py",
+                    "investment/portfolio_strategy_lab/policies/post_observed_authority.py",
+                    "investment/portfolio_strategy_lab/policies/lifecycle_research.py",
+                )
+            },
+            semantic_owner="installed_frozen_strategies",
+            numerical_role="score_source_and_book_policy",
+        )
+    )
+
 
 PRODUCT_EVIDENCE_ROOT_KEY: Final = "BROAD_ENSEMBLE_EVIDENCE_ROOT"
 HETEROGENEOUS_SUCCESSOR_PACKAGE_ROOT_KEY: Final = "HETEROGENEOUS_PACKAGE_ROOT"
@@ -1637,7 +1642,7 @@ def install_frozen_strategies(
                 sources={
                     "HISTORICAL_ARRAY_REPLAY": ProductScoreSource(alpha_evidence_root=evidence_root)
                 },
-                source_identity_hash=INSTALLED_STRATEGY_SOURCE_HASH,
+                source_identity_hash=installed_strategy_source_hash(),
             )
         ]
     )
@@ -1677,7 +1682,7 @@ def install_frozen_strategies(
                     current_authority=current_authority,
                 ),
                 sources=successor,
-                source_identity_hash=INSTALLED_STRATEGY_SOURCE_HASH,
+                source_identity_hash=installed_strategy_source_hash(),
             )
         )
     post_observed_root = artifacts.get(POST_OBSERVED_STRATEGY_AUTHORITY_ROOT_KEY)
@@ -1699,7 +1704,7 @@ def install_frozen_strategies(
                             authority=post_observed, recipe=recipe
                         )
                     },
-                    source_identity_hash=INSTALLED_STRATEGY_SOURCE_HASH,
+                    source_identity_hash=installed_strategy_source_hash(),
                 )
             )
     if local_research is not None:
@@ -1724,7 +1729,7 @@ def install_frozen_strategies(
                         model_lifecycle_hashes=source.model_lifecycle_hashes,
                     ),
                     sources={"HISTORICAL_ARRAY_REPLAY": source},
-                    source_identity_hash=INSTALLED_STRATEGY_SOURCE_HASH,
+                    source_identity_hash=installed_strategy_source_hash(),
                 )
             )
     return tuple(bindings)
@@ -1742,7 +1747,6 @@ __all__ = [
     "HETEROGENEOUS_SUCCESSOR_SCORE_KEY_PREFIX",
     "HOLDINGS_CONTROL_IDS",
     "INSTALLED_HETEROGENEOUS_BOOK_RECIPE",
-    "INSTALLED_STRATEGY_SOURCE_HASH",
     "POST_OBSERVED_CONTROLS_FROZEN",
     "POST_OBSERVED_STRATEGY_AUTHORITY_ROOT_KEY",
     "PRODUCT_COMPONENT_ID",
@@ -1766,5 +1770,6 @@ __all__ = [
     "heterogeneous_package",
     "install_frozen_strategies",
     "installed_book_part_hash",
+    "installed_strategy_source_hash",
     "product_evidence_closure_reader",
 ]

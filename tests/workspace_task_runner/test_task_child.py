@@ -79,6 +79,13 @@ def numerical_product(*, cancelled) -> dict[str, object]:  # type: ignore[no-unt
     return {"counts": before, "after": numerical_thread_counts(), "product": product.tolist()}
 
 
+def limited_once(*, cancelled) -> None:  # type: ignore[no-untyped-def]
+    from alphalattice.kernel.shared_kernel.environment import numerical_thread_limit
+
+    with numerical_thread_limit(1):  # loads the libraries a limit holds, as a fit's first does
+        pass
+
+
 def refused(*, cancelled) -> None:  # type: ignore[no-untyped-def]
     raise ValueError("fixture.refused_by_name")
 
@@ -277,6 +284,7 @@ def test_spread_numerical_calls_hold_one_thread_and_leave_normal_calls_unchanged
 
     values = np.arange(64, dtype=np.float64).reshape(8, 8)
     expected = (values @ values.T).tolist()
+    run_in_child(f"{HERE}:limited_once", {})  # the kept worker's first limited call came first
     ordinary = run_in_child(f"{HERE}:numerical_product", {})
     with child_calls(f"{HERE}:numerical_product", workers=2) as calls:
         for _ in range(2):

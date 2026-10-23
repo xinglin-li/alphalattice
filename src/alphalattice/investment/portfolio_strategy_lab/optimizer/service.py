@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from types import MappingProxyType
 from typing import Any, Final, Literal, Protocol
 
-import cvxpy as cp
 import numpy as np
 import numpy.typing as npt
 import osqp  # type: ignore[import-untyped]
@@ -226,6 +225,13 @@ class AlphaUtilityUnitsAdmission:
             normalization_reference_id=normalization_reference_id,
             admission_hash=str(canonical_hash(values)),
         )
+
+    def admits(self, values: tuple[float, float, float, float]) -> bool:
+        """Whether its seal recomputes and it binds these four utility values, in field order."""
+        sealed = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "admission_hash"}
+        costs = (self.turnover_regularization, self.transaction_cost_rate)
+        bound = (self.score_scale, self.risk_aversion, *costs)
+        return self.admission_hash == canonical_hash(sealed) and bound == values
 
 
 @dataclass(frozen=True, slots=True)
@@ -1249,28 +1255,8 @@ class PortfolioOptimizer:
         if liquidation_only_carry and selected_indices is None:
             raise PortfolioOptimizationError("portfolio_strategy_lab.optimizer_parameter_invalid")
         if score_scale > 0.0:
-            admission = alpha_utility_admission
-            if (
-                admission is None
-                or admission.admission_hash
-                != canonical_hash(
-                    {
-                        "method_id": admission.method_id,
-                        "alpha_unit": admission.alpha_unit,
-                        "risk_unit": admission.risk_unit,
-                        "cost_unit": admission.cost_unit,
-                        "score_scale": admission.score_scale,
-                        "risk_aversion": admission.risk_aversion,
-                        "turnover_regularization": admission.turnover_regularization,
-                        "transaction_cost_rate": admission.transaction_cost_rate,
-                        "normalization_reference_id": admission.normalization_reference_id,
-                    }
-                )
-                or admission.score_scale != score_scale
-                or admission.risk_aversion != risk_aversion
-                or admission.turnover_regularization != turnover_regularization
-                or admission.transaction_cost_rate != transaction_cost_rate
-            ):
+            utility = (score_scale, risk_aversion, turnover_regularization, transaction_cost_rate)
+            if alpha_utility_admission is None or not alpha_utility_admission.admits(utility):
                 raise PortfolioOptimizationError("ALPHA_UTILITY_UNITS_NOT_ADMITTED")
         elif alpha_utility_admission is not None:
             raise PortfolioOptimizationError("ALPHA_UTILITY_UNITS_NOT_ADMITTED")
@@ -2033,32 +2019,11 @@ def solve_with_cvxpy_oracle(
         or transaction_cost_rate < 0.0
         or (sector_capacity is not None and not 0.0 < sector_capacity <= 1.0)
         or (selected_indices is not None and sector_capacity is not None)
+        or (liquidation_only_carry and selected_indices is None)
     ):
         raise PortfolioOptimizationError("portfolio_strategy_lab.optimizer_parameter_invalid")
-    if liquidation_only_carry and selected_indices is None:
-        raise PortfolioOptimizationError("portfolio_strategy_lab.optimizer_parameter_invalid")
-    admission = alpha_utility_admission
-    if (
-        admission is None
-        or admission.admission_hash
-        != canonical_hash(
-            {
-                "method_id": admission.method_id,
-                "alpha_unit": admission.alpha_unit,
-                "risk_unit": admission.risk_unit,
-                "cost_unit": admission.cost_unit,
-                "score_scale": admission.score_scale,
-                "risk_aversion": admission.risk_aversion,
-                "turnover_regularization": admission.turnover_regularization,
-                "transaction_cost_rate": admission.transaction_cost_rate,
-                "normalization_reference_id": admission.normalization_reference_id,
-            }
-        )
-        or admission.score_scale != score_scale
-        or admission.risk_aversion != risk_aversion
-        or admission.turnover_regularization != turnover_regularization
-        or admission.transaction_cost_rate != transaction_cost_rate
-    ):
+    utility = (score_scale, risk_aversion, turnover_regularization, transaction_cost_rate)
+    if alpha_utility_admission is None or not alpha_utility_admission.admits(utility):
         raise PortfolioOptimizationError("ALPHA_UTILITY_UNITS_NOT_ADMITTED")
     if selected_indices is not None:
         selected = np.asarray(selected_indices, dtype=np.int64)
@@ -2093,6 +2058,8 @@ def solve_with_cvxpy_oracle(
     if bool(np.any(mutable & ~np.isfinite(local_scores))):
         raise PortfolioOptimizationError("portfolio_strategy_lab.mutable_score_missing")
     local_scores = np.where(np.isfinite(local_scores), local_scores * score_scale, 0.0)
+    import cvxpy as cp  # lazy: heavy; only this oracle solves with it
+
     weights = cp.Variable(axis.size)
     delta = weights - ref
     objective = cp.Maximize(

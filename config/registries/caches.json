@@ -3807,6 +3807,26 @@
       },
       "source_commit": "8f55110435d2ef43a0fc2cf59edb0acbd7bb300a",
       "description": "Memoizes only successful UTF-8 uv tool-bin discovery; failed or empty discovery remains retriable in the same process."
+    },
+    "src/alphalattice/investment/portfolio_strategy_lab/policies/installed_strategies.py::installed_strategy_source_hash::module-installed-strategy-source-hash": {
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "defined_by": [
+        "src/alphalattice/investment/portfolio_strategy_lab/policies/installed_strategies.py::installed_strategy_source_hash"
+      ],
+      "definition_line": 1569,
+      "key": "unit key; installed module namespace",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory installed_strategy_source_hash in its module, instance, or call namespace"
+      },
+      "source_commit": "3e6a7f3293e6d624ab2c0602ef2db62ab1c671b2",
+      "description": "Caches the installed strategies' source identity, computed on first use rather than at import, until process restart."
     }
   }
 }

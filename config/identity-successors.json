@@ -14596,6 +14596,146 @@
    "successor": "00243c1acced70a0aa7c136ea5ac3acc0fa16a2caccb90f9eb53233956876f8b",
    "change": "Unavailable decision-catalog reads refuse by name",
    "reason": "A decision-catalog read whose case store is missing now refuses by name with a way to recover instead of failing untyped; the positive read path, its queries and the seal verification are unchanged, reviewed independently and red on the previous code."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "ee496e139c60edf92852da28ff47105dbe1b17feebcbe73bf04609254ed9ceb1",
+   "successor": "870a853897a448c6b2ee47b467ca807b8bcd07e801f2a11efa9118de7d0a879c",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "cd23f7b600ad125d948d7505588761dfa2801518edff83c1221881365d9e24dd",
+   "successor": "1323032bbeb47b81553d9188f0ab0df9cd8ff9edeb82beb476dc1e11e44a52c0",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "d0a7fdb55af21ab2f4be4a8bf9e81612d8d3fe0587085b50d98bd0d6f6ebc6e1",
+   "successor": "07f318fe70ecaee3224e67476ff4e958f89b4d6c8775e60e1fad10e1f7adc614",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "749eab0e71033d3f7ba52bb4167d3a36bc8327568ba6d83229f7b6d8c7061554",
+   "successor": "9b8e8be24a9248f4d04abbac9e837a36500e5a865c3d2539192fb37a5be16b7f",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "4be30ce9472ac32fb851b3f6c37d3e95db9f147a5fca0e375539d06592fcd02a",
+   "successor": "f922f48ee9caae3f337b46717e4473416ba6b9d38149bb64ee9c9d10f125e42e",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "6f014011ee2469b8c5ecc5e374b0a12fda5aba8d018dc3bccf61901ca2c6edf9",
+   "successor": "afb6912e13564ea75d1df54590b2c6fc64906000f822661680bc22c6951b69af",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "f414cbf7986ffca323410bc5985cc4e0914f86bca5928372cbc9a8775eab6793",
+   "successor": "06801f1347fcec989208d03e3e978f26e47024472853550fa7b4e9926ea5cdd1",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "dba39abbeeb58236d7216dcc1a9ba245bfb9f597d3194803536d9f674eb31f96",
+   "successor": "21c185d8a31aca1124c600210f0a6352c2e766bedb1a0dd069d075d3612fe744",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "401d9333da8182301bf9cdac676cf91eb67bf0334685a25783879cd1ed3fb0ce",
+   "successor": "7d700fafe9bd532a898f4a4eb4f1eb88fb1cf0a76f363acd49d7a28a651f6ef1",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "7fe37e42bb30e6a28bb1fa1954045762e01132c3ba7760d0dc635c5ada610c0e",
+   "successor": "6af64270cc875f4ced22cffbe857a80211dbf3c71102b2e7bde7dc1719b5b90f",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "00243c1acced70a0aa7c136ea5ac3acc0fa16a2caccb90f9eb53233956876f8b",
+   "successor": "1718e7ab0f5dd57057baf8cc199cb1555489e13b1f3f2873e3a40be8abfba926",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "826b854cb9dc745988f57e25176115be985d0eab8a7cef833ef3a7e6fdc8b269",
+   "successor": "cbb66401ba9589337fa430f7444aa142fc653caf5019593ba16a8038db8a069b",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "826b854cb9dc745988f57e25176115be985d0eab8a7cef833ef3a7e6fdc8b269",
+   "successor": "cbb66401ba9589337fa430f7444aa142fc653caf5019593ba16a8038db8a069b",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "c5e7e6b30bc8186372de69349fe8c485fdd63721507e3fb386c58f5778eea418",
+   "successor": "8df9f7d6535b6f115819847f401d8644484f5ad9676b13da076c6e15f6acfa13",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "430e7d3f0a15d3fdf59709c2b63c716be854188e6dd2dd3cd815e6c9eea9a83f",
+   "successor": "5a5a66649d1a8f5d692ea81158697aa7924a272b35e3360848f5728b05a783bb",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "186d60292fd5534796a2141ae5c48d8ee845f33a99f907e4797c6bca325b85ec",
+   "successor": "3bf6a6169b7aa15a9104ddf4c1fbf2ca9fde7aebc443a759f03dc0eb0f193d44",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-diagonal-shrunk-ledoit-wolf",
+   "predecessor": "b1154c3a43bcabe59a1129bf7ff40c22e55cedfb2518d8b4cddede1509fea90d",
+   "successor": "205f5421ceb50606c7f4fc81e2274d3ec98b5ea67713b6575fd0158c5afda79b",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-ewma-standardized-ledoit-wolf",
+   "predecessor": "34d281cefbc31956fd5849028f0f97d2f780e97b3772255d630ec963265d1d81",
+   "successor": "a6d423e9d2f4e591ecdda428c0539e8e0bda772b45a9a41c1a238910a08ba826",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-fast-slow-ledoit-wolf",
+   "predecessor": "966a58b3241181b2ae5c50c1062d3c2fbcf04b8c38c4f82b9fb307419ffd537c",
+   "successor": "91e7536a1f559a48e09753211fc739b2c0d8692436bde2e7b6eda774f2bd6ebb",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "risk_research.estimator_catalog",
+   "predecessor": "9c75d381b2fc7427ebc62ccb2d66865f1b315e9b10ee1a771c5710fd2631a224",
+   "successor": "713d92b995b96aa83683a34472d2a032df348d8205d12748c8fe5cd44798281c",
+   "change": "Study libraries load on first use under the thread limit; one admission check",
+   "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
   }
  ]
 }
