@@ -30,8 +30,13 @@ from alphalattice.interface.local_application.cli_contract import (
     agent_session,
     command,
     command_table,
+    join,
     refusal_words,
     worded,
+)
+from alphalattice.interface.local_application.client import (
+    LocalResearchClient,
+    LocalResearchClientError,
 )
 from alphalattice.interface.local_application.failure_codes import safe_failure_code, setup_failure
 from alphalattice.interface.local_application.native_bridge import (
@@ -67,7 +72,11 @@ from alphalattice.kernel.shared_kernel.environment import (
     package_versions,
     recorded_environment,
 )
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.project_layout import (
+    command_prefix,
+    resolve_playpen_root,
+    runtime_json,
+)
 
 PRODUCT_HOOK_MATCHER = "^alphalattice_.*$"
 """The matcher of the product's retired lifecycle hooks; configure removes groups with it."""
@@ -79,7 +88,7 @@ ROOT = Path.cwd() if INSTALLED else RESOURCE_ROOT
 
 def _installed_leg() -> dict[str, Any]:
     """Compare the active distribution with this checkout, naming unproved PATH ownership."""
-    command = shutil.which("alphalattice", path=fresh_path())
+    command = shutil.which(command_prefix()[0], path=fresh_path())
     expected = None
     if (RESOURCE_ROOT / "pyproject.toml").is_file():
         expected = tomllib.loads((RESOURCE_ROOT / "pyproject.toml").read_text("utf-8"))["project"][
@@ -112,10 +121,6 @@ def _installed_leg() -> dict[str, Any]:
 
 def _host_facts(binding: NativeResearchBinding | None) -> dict[str, Any]:
     """Read existing Host facts when bound; an absent Host supplies no made-up measurements."""
-    from alphalattice.interface.local_application.client import (
-        LocalResearchClient,
-        LocalResearchClientError,
-    )
 
     if binding is None:
         return {"scope": "LOCAL_PROCESS", "reason": "SESSION_NOT_BOUND"}
@@ -144,10 +149,7 @@ HOST_DEPENDENCIES = {
     ),
     "installed_leg": (
         "Resolve the clean alphalattice command",
-        "Run uv sync --locked and the documented tool install; disclose it. "
-        "Check an unproved PATH owner first. A first use opens nothing until a fresh shell "
-        "runs `alphalattice storage cap --help`; off PATH, "
-        "`uv tool update-shell` and a restart are the person's.",
+        str(worded("setup.tool.readiness")),
         "AGENT",
     ),
     "workbench_build": (
@@ -366,7 +368,6 @@ def record_offer(answer: dict[str, Any], workspace: Path) -> None:
 
 def _client(workspace: Path | None) -> Any:
     """The workspace's Host client; None with no Host serving it."""
-    from alphalattice.interface.local_application import client
 
     with suppress(client.LocalResearchClientError, OSError):
         return client.LocalResearchClient(workspace) if workspace else None
@@ -375,7 +376,6 @@ def _client(workspace: Path | None) -> Any:
 
 def _open_ids(host: Any) -> frozenset[str] | None:
     """The Goals and Tasks the Host shows open; None with no Host to ask."""
-    from alphalattice.interface.local_application.client import LocalResearchClientError
 
     with suppress(LocalResearchClientError, OSError, KeyError, TypeError, AttributeError):
         goals = host.request({"operation": "GOAL_LIST", "history_limit": 50})["goals"]
@@ -387,7 +387,6 @@ def _open_ids(host: Any) -> frozenset[str] | None:
 
 def _package_hash(host: Any, package: str) -> str | None:
     """An installed package's hash, as its controls read it; None when none is installed."""
-    from alphalattice.interface.local_application.client import LocalResearchClientError
 
     with suppress(LocalResearchClientError, OSError, KeyError, TypeError):
         return str(
@@ -587,11 +586,6 @@ def problem_report(
     expected_route: tuple[str, ...] | list[str] = (),
 ) -> dict[str, Any]:
     """Project existing readiness and activity into a local, reviewable public report."""
-    from alphalattice.interface.local_application.client import (
-        LocalResearchClient,
-        LocalResearchClientError,
-    )
-
     operations = {op for group in command_table()["commands"].values() for op in group}
     if any(op not in operations for op in expected_route):
         raise NativeBridgeError("local_client.report_route_not_admitted")
@@ -818,8 +812,86 @@ def _declarations() -> Path:
     )
 
 
+def _guidance_renderer(prefix: tuple[str, ...], host: str) -> Callable[[bytes, str], bytes]:
+    """Compile this project's command projection once, preserving permissions and other prose."""
+    portable = command_prefix(portable=True)
+    if prefix == portable:
+        return lambda data, _relative: data
+    nouns = "|".join(sorted({re.escape(k.split()[0]) for k in command_table()["commands"]}))
+    pattern = re.compile(
+        rf"(?<![\w./\\-]){re.escape(portable[0])}(?=\s+(?:--|(?:{nouns})(?:\s|[`\"]|$)))"
+    )
+    prefixes = {kind: join(list(prefix), kind) for kind in ("powershell", "posix")}
+    marker = "alphalattice-command-prefix"
+    binding = runtime_json("config/registries/messages.json")["entries"]["setup.tool.prefixes"][
+        "words"
+    ]["en"]
+    block = f"<!-- {marker} -->\n{binding.format(**prefixes)}\n<!-- /{marker} -->\n\n"
+    kept_block = re.compile(rf"(?s)<!-- {marker} -->.*?<!-- /{marker} -->\n\n")
+    default = "posix" if host == "claude-code" else "powershell"
+
+    def render(data: bytes, relative: str) -> bytes:
+        suffix = Path(relative).suffix
+        if suffix not in {".md", ".toml"}:
+            return data
+        text = data.decode("utf-8")
+        if suffix == ".md" and (relative == "AGENTS.md" or relative.startswith(".agents/")):
+            text = kept_block.sub("", text, count=1)
+            if not pattern.search(text):
+                return data
+            start = text.find("\n---\n", 4) + 5 if text.startswith("---\n") else 0
+            return (text[:start] + block + text[start:]).encode("utf-8")
+        if suffix == ".toml":
+            document = tomllib.loads(text)
+            value = document.get("developer_instructions")
+            if not isinstance(value, str):
+                return data
+            rendered = pattern.sub(lambda _: prefixes[default], value)
+            return re.sub(
+                r'(?s)(developer_instructions\s*=\s*)""".*?"""',
+                lambda match: match[1] + json.dumps(rendered, ensure_ascii=False),
+                text,
+                count=1,
+            ).encode("utf-8")
+        lines, quoting = [], default
+        for line in text.splitlines(keepends=True):
+            if line.startswith("```"):
+                quoting = {
+                    "powershell": "powershell",
+                    "ps1": "powershell",
+                    "bash": "posix",
+                    "sh": "posix",
+                }.get(line.strip()[3:], default)
+            lines.append(pattern.sub(prefixes[quoting].replace("\\", "\\\\"), line))
+        return "".join(lines).encode("utf-8")
+
+    return render
+
+
+def _guidance_document(
+    relative: str, host: str, render: Callable[[bytes, str], bytes]
+) -> tuple[Path, bytes, bytes | None]:
+    """Plan one guidance write after checking its project path and existing owner bytes."""
+    path = ROOT / relative
+    if path.is_symlink() or not path.resolve().is_relative_to(ROOT):
+        raise NativeBridgeError("native_bridge.configuration_path_invalid")
+    original = (RESOURCE_ROOT / relative).read_bytes()
+    data = render(original, relative)
+    previous = original if ROOT == RESOURCE_ROOT else path.read_bytes() if path.exists() else None
+    declaration = ".claude/settings.json" if host == "claude-code" else ".codex/config.toml"
+    if relative == declaration and previous is not None:
+        data = _merge_installed_declaration(data, previous, host)
+    elif previous is not None and previous != data and ROOT != RESOURCE_ROOT:
+        raise NativeBridgeError("native_bridge.existing_configuration_differs")
+    return path, data, previous
+
+
 def _install_declarations(host: str) -> None:
-    """Copy shipped guidance unchanged; default host declarations register no product hooks."""
+    """Project shipped commands into guidance; default host declarations add no product hooks."""
+    prefix = command_prefix()
+    if not INSTALLED and (ROOT != RESOURCE_ROOT or prefix == command_prefix(portable=True)):
+        return
+    render = _guidance_renderer(prefix, host)
     manifest = json.loads(
         (RESOURCE_ROOT / "config/release/runtime-resources.json").read_text(encoding="utf-8")
     )
@@ -836,23 +908,16 @@ def _install_declarations(host: str) -> None:
             )
     declaration = ".claude/settings.json" if host == "claude-code" else ".codex/config.toml"
     inputs.append(declaration)
-    documents: dict[Path, bytes] = {}
+    documents: dict[Path, tuple[bytes, bytes | None]] = {}
     for relative in sorted(set(inputs)):
-        data = (RESOURCE_ROOT / relative).read_bytes()
-        path = ROOT / relative
-        if path.is_symlink() or not path.resolve().is_relative_to(ROOT):
-            raise NativeBridgeError("native_bridge.configuration_path_invalid")
-        if relative == declaration and path.exists():
-            data = _merge_installed_declaration(data, path.read_bytes(), host)
-        elif path.exists() and path.read_bytes() != data:
-            raise NativeBridgeError("native_bridge.existing_configuration_differs")
-        documents[path] = data
-    for path, data in documents.items():
+        path, data, previous = _guidance_document(relative, host, render)
+        documents[path] = data, previous
+    for path, (data, previous) in documents.items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        if not path.exists():
+        if previous is None:
             with path.open("xb") as stream:
                 stream.write(data)
-        elif path == ROOT / declaration and path.read_bytes() != data:
+        elif previous != data:
             path.write_bytes(data)
 
 
@@ -1427,8 +1492,7 @@ def main() -> int:
     try:
         replace = client.output_replacement(output, line=args.command_line, prefix=())
         if args.command == "configure":
-            if INSTALLED:
-                _install_declarations(args.host)
+            _install_declarations(args.host)
             removed = strip_product_hooks(ROOT, args.host)
             _configuration(args.host)
             declare_project(ROOT, args.host)

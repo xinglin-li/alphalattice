@@ -10,6 +10,7 @@ import itertools
 import json
 import os
 import shlex
+import shutil
 import time
 from contextlib import chdir
 from datetime import UTC, datetime, timedelta
@@ -33,12 +34,14 @@ from alphalattice.interface.local_application.cli_contract import (
     AGENT_HOST_WAITS,
     client_failure,
     client_refusal,
+    command,
     outcome_of,
 )
 from alphalattice.interface.local_application.portfolio_research import (
     LocalApplicationError,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 
 @pytest.mark.parametrize("wait", [0, -1, 20.5, True, "5"])
@@ -1519,13 +1522,12 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
 def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (fail fast): with no `alphalattice` command and no retrieval runtime nothing
-    opens, each item named with its commands and words; uv's copy off PATH is the person's."""
+    """Setup failures retry in this session; successful off-PATH discovery is read once."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
-    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
+    monkeypatch.setenv("CODEX_THREAD_ID", "off-path-first-use")
     monkeypatch.setattr(native_bridge, "load", lambda: False)
-    host, bare, held = _FirstUseHost(tmp_path / "w", prepared=True), tmp_path / "a", tmp_path / "b"
+    host, bare, held = _FirstUseHost(tmp_path / "w"), tmp_path / "a", tmp_path / "b"
     bare.mkdir()
     venv = tmp_path / "venv"  # under `uv run`, whose own command no specialist's shell has
     (venv / "Scripts").mkdir(parents=True)
@@ -1545,14 +1547,26 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     assert "--offline" not in runtime["commands"][0]
     assert runtime["network_commands"] and host.sent == []
     held.mkdir()  # uv holds the command where this PATH does not reach
-    for name, text in (("uv", f"#!/bin/sh\necho {held}\n"), ("uv.cmd", f"@echo {held}\n")):
+    probe = bare / ("uv.cmd" if os.name == "nt" else "uv")
+    probe.write_text("@exit /b 1\n" if os.name == "nt" else "#!/bin/sh\nexit 1\n")
+    probe.chmod(0o755)
+    assert native_bridge.tool_setup()["present"] is False
+    for name, text in (
+        ("uv", f'#!/bin/sh\necho p >>"{held}/queries"\necho {held}\n'),
+        ("uv.cmd", f'@>>"{held}/queries" echo p\n@echo {held}\n'),
+    ):
         (bare / name).write_text(text, encoding="utf-8")
         (bare / name).chmod(0o755)
         (held / name.replace("uv", "alphalattice")).write_text("", encoding="utf-8")
         (held / name.replace("uv", "alphalattice")).chmod(0o755)
-    person = _first_use(host)["missing"]["installed_leg"]
-    assert (person["who_decides"], person["commands"]) == ("PERSON", ["uv tool update-shell"])
-    assert "restart" in person["words"]
+    monkeypatch.setattr(native_bridge, "load", lambda: True)
+    continued = _first_use(host)
+    assert "installed_leg" not in continued.get("missing", {})
+    assert host.goals.first_use() is not None and continued["first_use"]["road"]
+    assert command_prefix() == (shutil.which("alphalattice", path=str(held)),)
+    posix = command({"operation": "STORAGE_CAP_SHOW"}, quoting="posix")
+    assert posix and shlex.split(posix)[0] == Path(command_prefix()[0]).as_posix()
+    assert (held / "queries").read_text().splitlines() == ["p"]
 
 
 @pytest.mark.parametrize(

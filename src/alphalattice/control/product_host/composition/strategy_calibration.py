@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
+from pathlib import Path
 from typing import Self, cast
 from uuid import UUID
 
@@ -107,8 +108,6 @@ so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md I
 
 
 def _implementation_hash() -> str:
-    from pathlib import Path
-
     return source_rule_closure_hash(
         root=resolve_playpen_root(Path(__file__)),
         semantic_owner="product_host",

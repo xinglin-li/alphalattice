@@ -130,7 +130,7 @@ def _canary_target(x: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
 
 def canary_digest(threads: int) -> str:
     """Grow and early-stop the canary at `threads`; the digest of what it wrote."""
-    lightgbm = import_module("lightgbm")
+    lightgbm = import_module("lightgbm")  # lazy: optional.
     train_x = _canary_values(30_000, 24, 0)
     valid_x = _canary_values(10_000, 24, 30_000 * 24)
     dataset_params = {

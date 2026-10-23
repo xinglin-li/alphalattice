@@ -29,6 +29,11 @@ from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
+from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
+    control_arithmetic_rule_identity,
+    installed_method_family_owners,
+    method_family_rule_identity,
+)
 from alphalattice.kernel.shared_kernel.source_identity import (
     number_deciding_closure,
     number_deciding_rule,
@@ -273,11 +278,6 @@ def installed_family_value_identity(method_family: str) -> str:
     edit to this file rotates none.
     """
 
-    from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
-        installed_method_family_owners,
-        method_family_rule_identity,
-    )
-
     owners = installed_method_family_owners(method_family)
     return str(method_family_rule_identity(method_family, owners))
 
@@ -289,10 +289,6 @@ def installed_control_value_identity() -> str:
     edit to a module the shared materializer imports (the availability catalog's among them)
     names it here.
     """
-
-    from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
-        control_arithmetic_rule_identity,
-    )
 
     return str(control_arithmetic_rule_identity())
 

@@ -158,7 +158,9 @@ def test_each_kind_of_new_entry_is_refused_by_its_registry(tmp_path: Path) -> No
 def test_staged_registry_census_refuses_new_unregistered_items(
     tmp_path, synthetic_history, capsys, monkeypatch
 ):
-    """Staged facts need registration and a purpose sentence; selectors never become reasons."""
+    """Real staged history refuses malformed, newly invented or restored import debt.
+    Staged facts need registration and a purpose sentence; selectors never become reasons.
+    """
     monkeypatch.delenv("ALPHALATTICE_REGISTRY_BASELINE", raising=False)
     assert registry_main(["--staged"]) == 0 and "not configured" in capsys.readouterr().out
     git, commit = synthetic_history
@@ -215,6 +217,15 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     refusals = "config/registries/refusals.json"
     legacy = client + "/legacy.py"
     baseline = "fixture-baseline.json"
+    hygiene_path, existing = "config/import-hygiene.json", client + "/existing.py"
+    import_key = existing + "::existing::import json"
+    hygiene = {"schema": "alphalattice.import-hygiene", "legacy_lazy_imports": {import_key: 1}}
+
+    def retained(counts, expected=0, *extra):
+        write(hygiene_path, {**hygiene, "legacy_lazy_imports": counts})
+        stage()
+        return check(expected, "--baseline", baseline, *extra)
+
     monkeypatch.setenv("ALPHALATTICE_REGISTRY_BASELINE", str(tmp_path / baseline))
     write("config/package-architecture.json", architecture)
     write("config/registries/owners-map.json", owners)
@@ -225,19 +236,32 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     cache_rows = {"entries": {"legacy": {}}}
     write(caches, cache_rows)
     write(legacy, "raise ValueError('census.legacy')\n")
-    facts = {legacy: {"message-kinds|census.legacy": 1}}
+    write(existing, "def existing():\n    import json\n")
+    facts = {legacy: {"message-kinds|census.legacy": 1}, existing: {}}
     allowed = {"message-kinds|census.legacy": legacy + ":1"}
     declared = sorted(owners["nouns"])
-    write(
-        baseline,
-        dict(
-            by_file=facts,
-            automatic_gaps=allowed,
-            registered_nouns=declared,
-            undescribed_registry_entries=[debt],
-        ),
+    initial = dict(
+        by_file=facts,
+        automatic_gaps=allowed,
+        registered_nouns=declared,
+        undescribed_registry_entries=[debt],
+        legacy_lazy_imports={import_key: 1},
     )
+    write(baseline, initial)
     commit("Registered fixture baseline with one declared gap")
+    retained({import_key: 1})
+    for invalid in (True, 0, -1, "1", None):
+        assert "import-hygiene" in retained({import_key: invalid}, 1, "--update")
+    invented = client + "/invented.py::invented::import json"
+    assert "stale-legacy-import" in retained({invented: 1}, 1, "--update")
+    retained({import_key: 1})
+    commit("Freeze the reviewed pre-existing lazy site")
+    assert "allowance grew" in retained({import_key: 2}, 1, "--update")
+    write(existing, "def existing():\n    import json  # lazy: optional fixture\n")
+    retained({}, 0, "--update")
+    commit("Retire the allowance after its reason is written")
+    assert "allowance grew" in retained({import_key: 1}, 1, "--update")
+    retained({})
     check(0, "--baseline", baseline)
     cache_rows["entries"]["new"] = {}
     write(caches, cache_rows)

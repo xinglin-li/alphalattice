@@ -146,7 +146,7 @@ def test_every_refusal_and_answer_template_command_parses(
         prose = prose.replace("model check command shown here", "")
         for match in raw.finditer(prose):
             head = match["full"] or match["plain"]
-            parser = cli._parser(cli._named(head.split()))
+            parser = cli.command_parser(cli._named(head.split()))
             terminal = next(
                 part for part in cli._commands_of(parser) if part.prog == f"alphalattice {head}"
             )

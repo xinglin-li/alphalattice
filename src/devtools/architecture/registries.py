@@ -24,16 +24,20 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from alphalattice.interface.local_application.message_catalog import english_message_ids
 from devtools.architecture.git_inputs import read_blobs
 from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
+    ImportHygiene,
     PackageArchitectureRegistry,
     discover_table_writes,
     import_contract_violations,
     load_storage_authority_registry,
     table_writer_violations,
 )
+from devtools.architecture.test_sizes import classify, included, load_policy
 
 REGISTRIES = Path("config") / "registries"
 _CLASSES = frozenset({"METHOD", "EXECUTION", "LIMIT"})
@@ -1212,14 +1216,30 @@ def census_check(root: Path, *, baseline: str | None = None, update: bool = Fals
     baseline = (anchor.relative_to(root.resolve()) if anchor.is_absolute() else anchor).as_posix()
     command = ["git", "diff", "HEAD", stage[:-1], "--name-only", "--no-renames", "-z"]
     paths = set(subprocess.check_output(command, cwd=root).decode().split("\0")) - {""}
-    fixed = {baseline, "config/package-architecture.json", *(p for p, _ in TARGETS.values())}
+    legacy_path = "config/import-hygiene.json"
+    fixed = {baseline, legacy_path, "config/package-architecture.json"}
+    fixed.update(p for p, _ in TARGETS.values())
     blobs = read_blobs(
-        ["HEAD:" + baseline, *(stage + p for p in (paths | fixed) - {TARGETS["message-kinds"][0]})],
+        [
+            "HEAD:" + baseline,
+            "HEAD:" + legacy_path,
+            *(stage + p for p in (paths | fixed) - {TARGETS["message-kinds"][0]}),
+        ],
         root,
     )
     blobs[refusal_key] = refusal_blob
     data = {p: json.loads(blobs[stage + p]) for p in fixed}
     base = json.loads(blobs.get("HEAD:" + baseline, blobs[stage + baseline]))
+    try:
+        legacy = ImportHygiene.model_validate(data[legacy_path]).legacy_lazy_imports
+    except ValueError as error:
+        return [*out, f"import-hygiene: {error}"]
+    prior = json.loads(blobs.get("HEAD:" + legacy_path, "{}")).get("legacy_lazy_imports", legacy)
+    out.extend(
+        f"import-hygiene: retained import allowance grew {key}"
+        for key, count in legacy.items()
+        if count > prior.get(key, 0)
+    )
     if (
         "HEAD:" + baseline not in blobs
         and base["source_sha"]
@@ -1236,49 +1256,63 @@ def census_check(root: Path, *, baseline: str | None = None, update: bool = Fals
             facts.pop(path, None)
     gaps = _census_gaps(facts, data, blobs[stage + "config/package-architecture.json"])
 
-    def check_imports() -> list[str]:
-        selected = set(facts)
-        if "config/package-architecture.json" not in paths:
-            selected.intersection_update(paths)
-        checked = {p for p in selected if p.startswith("src/alphalattice/") and p.endswith(".py")}
-        blobs.update(read_blobs([stage + p for p in checked if stage + p not in blobs], root))
-        sources = {p[4:-3].replace("/", "."): blobs[stage + p] for p in checked}
+    def check_imports(prefix: str = stage) -> list[str]:
+        checked = {p for p in facts if p.startswith("src/") and p.endswith(".py")}
+        if prefix != stage:
+            checked = {k.split("::", 1)[0] for k in legacy}
+        elif not paths & {"config/package-architecture.json", legacy_path}:
+            checked.intersection_update(paths)
+        blobs.update(read_blobs([prefix + p for p in checked if prefix + p not in blobs], root))
+        sources = {
+            p[4:-3].replace("/", "."): blobs[prefix + p] for p in checked if prefix + p in blobs
+        }
         known = {p[4:-3].replace("/", ".").removesuffix(".__init__") for p in facts}
         policy = PackageArchitectureRegistry.model_validate(
-            data["config/package-architecture.json"]
+            data["config/package-architecture.json"] | {"legacy_lazy_imports": legacy}
         )
-        return list(import_contract_violations(sources, registry=policy, modules=known))
+        return [
+            *(f"stale-legacy-import {p}" for p in checked if prefix + p not in blobs),
+            *import_contract_violations(sources, registry=policy, modules=known),
+        ]
 
     out.extend(check_imports())
-    for key in sorted(gaps.keys() - base.get("automatic_gaps", {}).keys()):
-        kind, item = key.split("|", 1)
-        registry, member = TARGETS[kind]
-        form = f"{member}[{item!r}]"
-        if kind == "nouns/no_owner":
-            form = f"packages[] with package_id and physical_namespace_target={item!r}"
-        out.append(f"Unregistered {kind} {item} {gaps[key]}; add {registry} {form}.")
+    if "HEAD:" + legacy_path not in blobs:
+        out.extend(p for p in check_imports("HEAD:") if p.startswith("stale-legacy-import"))
     nouns = sorted(data[TARGETS["nouns"][0]]["nouns"])
     expected = {
         "by_file": facts,
         "automatic_gaps": gaps,
         "registered_nouns": nouns,
+        "legacy_lazy_imports": legacy,
         "undescribed_registry_entries": undescribed,
     } | catalog
-    if not out and any(data[baseline].get(key) != value for key, value in expected.items()):
-        if update:
-            (root / baseline).write_text(
-                json.dumps(data[baseline] | expected, indent=2) + "\n", encoding="utf-8"
-            )
-        else:
-            removed = ", ".join(
-                sorted(
-                    (base.get("automatic_gaps", {}).keys() - gaps.keys())
-                    | (set(base.get("registered_nouns", [])) - set(nouns))
+
+    def sync_baseline() -> None:
+        for key in sorted(gaps.keys() - base.get("automatic_gaps", {}).keys()):
+            kind, item = key.split("|", 1)
+            registry, member = TARGETS[kind]
+            form = f"{member}[{item!r}]"
+            if kind == "nouns/no_owner":
+                form = f"packages[] with package_id and physical_namespace_target={item!r}"
+            out.append(f"Unregistered {kind} {item} {gaps[key]}; add {registry} {form}.")
+        if not out and any(data[baseline].get(key) != value for key, value in expected.items()):
+            if update:
+                (root / baseline).write_text(
+                    json.dumps(data[baseline] | expected, indent=2) + "\n", encoding="utf-8"
                 )
-            )
-            out.append(
-                f"Sync {baseline} (removed: {removed or 'none'}) with --staged --update; stage it."
-            )
+            else:
+                removed = ", ".join(
+                    sorted(
+                        (base.get("automatic_gaps", {}).keys() - gaps.keys())
+                        | (set(base.get("registered_nouns", [])) - set(nouns))
+                    )
+                )
+                out.append(
+                    f"Sync {baseline} (removed: {removed or 'none'}) "
+                    "with --staged --update; stage it."
+                )
+
+    sync_baseline()
     return out
 
 
@@ -1310,32 +1344,36 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
-    import pytest
 
-    from devtools.architecture.test_sizes import classify, included, load_policy
-
-    policy = load_policy(Path(__file__).resolve().parents[3])
     lane = os.environ.get("ALPHALATTICE_TEST_LANE", "")
-    if lane and lane not in policy["lanes"]:
-        raise pytest.UsageError("test_size.lane_unknown")
     kept: list[Any] = []
     omitted: list[Any] = []
     seen: set[str] = set()
     try:
+        policy = load_policy(Path(__file__).resolve().parents[3])
+        if lane and lane not in policy["lanes"]:
+            raise ValueError("test_size.lane_unknown")
         for item in items:
             if lane and item.nodeid in seen:
                 omitted.append(item)
                 continue
             seen.add(item.nodeid)
             declared = [m.name for m in item.iter_markers() if m.name in policy["sizes"]]
-            size, owner, declaration = classify(item.nodeid, declared, policy)
+            size, owner, declaration, seconds = classify(item.nodeid, declared, policy)
             if not declared:
                 item.add_marker(size)
+            previous = item.get_closest_marker("timeout")
+            if previous:
+                limit = previous.args[0] if previous.args else previous.kwargs.get("timeout")
+                if isinstance(limit, (int, float)) and limit > 0:
+                    seconds = min(seconds, limit)
+            item.add_marker(pytest.mark.timeout(seconds, func_only=False), append=False)
             item.user_properties.extend(
                 [
                     ("test_size", size),
                     ("test_size_owner", owner),
                     ("test_size_declaration", declaration),
+                    ("test_timeout_seconds", seconds),
                 ]
             )
             (kept if included(item.nodeid, size, lane, policy) else omitted).append(item)

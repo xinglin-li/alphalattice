@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
+import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -23,10 +26,6 @@ ROOT: Path = resolve_playpen_root(Path(__file__))
 
 def serve(arguments: list[str]) -> int:
     """Start the Local Web Host with its declared retrieval environment."""
-    import argparse
-    import importlib.util
-    import os
-
     from alphalattice.control.product_host.composition.research_workspace import (
         RESEARCH_WORKSPACE_MANIFEST_NAME,
         read_research_workspace_manifest,

@@ -404,7 +404,7 @@
         "alphalattice.interface.local_application.native_setup"
       ],
       "folds_in": [],
-      "consumer_boundary": "Local Application defines binding, membership and usage; Host workspace activity and Task Control compose and persist wake delivery; per-host capability contracts are separate registrations.",
+      "consumer_boundary": "Local Application defines binding, membership and usage; Host workspace activity and Task Control compose and persist wake delivery; per-host capability contracts are separate registrations. The shared-kernel command_prefix alone resolves executable routes, including an installed uv launcher outside PATH; readiness and specialist routes consume it. Native setup projects portable role cards and guides into the agent project with the canonical launcher and shell quoting; the Claude materializer keeps shipped templates portable.",
       "consumers": {
         "import": [
           "scripts/native_research.py:10",
@@ -503,7 +503,8 @@
       "consumer_basis": {
         "source_commit": "814997a8aec5acb67770805c2b393bf76f3b5368",
         "scope": "Static import, path and string references to public consumers; matches do not prove runtime execution."
-      }
+      },
+      "description": "Binds native host sessions and their configured research guidance to the workspace."
     },
     "the first use": {
       "covers": "the project's one first use: its FIRST_USE goal opened from the person's sentence and date, its road, and, once it is complete with a strategy running forward, the daily road a later date's sentence takes in that workspace instead of a second first use",
@@ -4496,6 +4497,8 @@
           "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py",
           "src/alphalattice/control/product_host/composition/evidence_authority_setup.py",
           "src/alphalattice/control/product_host/composition/web_launcher.py",
+          "src/alphalattice/control/product_host/composition/decision_advancement.py",
+          "src/alphalattice/control/data_platform/maintenance/orphaned_bind.py",
           "src/alphalattice/interface/local_application/web.py",
           "src/alphalattice/interface/local_application/assets/workbench-source/js/app/i18n.js"
         ],
@@ -4677,13 +4680,19 @@
       "note": "Host composition is its consumer; Task Control retains phase ownership and the tuple reader contract. TaskHeartbeatReader retains canonical runtime origins for this consumer; phase readers deduplicate origins by parent directory."
     },
     "package import contract": {
-      "covers": "build-time module deferral declarations and exact cross-owner private equality fences; internal private links stay with their owner",
+      "covers": "build-time module deferral declarations, explained function imports, a non-growing retained-site census and exact cross-owner private equality fences; internal private links stay with their owner",
       "owner": "devtools.architecture",
+      "legacy_lazy_imports": "config/import-hygiene.json",
+      "consumers": [
+        "src/devtools/architecture/structural.py",
+        "src/devtools/architecture/registries.py"
+      ],
       "defined_by": [
         "devtools.architecture.structural"
       ],
       "folds_in": [],
-      "note": "Threat model: product import statements and importlib.import_module aliases or __import__ with a literal name or module-level literal constant, including annotated constants. Positional and keyword names and explicit literal or constant package contexts are resolved; package initializers retain their relative context. Runtime-computed names, package contexts and argument expansions remain with the typed opaque extension/worker contracts or code review. The checker does not execute expressions or claim arbitrary reflection analysis."
+      "note": "Threat model: product and build-tool import statements and importlib.import_module aliases or __import__ with a literal name or module-level literal constant, including annotated constants. Positional and keyword names and explicit literal or constant package contexts are resolved; package initializers retain their relative context. Runtime-computed names, package contexts and argument expansions remain with the typed opaque extension/worker contracts or code review. The checker does not execute expressions or claim arbitrary reflection analysis. New function loads require a lazy reason on the opening import line or a counted retained site; direct module imports cannot be repeated inside a function.",
+      "description": "Keeps function import deferrals explicit and cross-owner private references fenced so the structural guard refuses new dependency shortcuts."
     },
     "goal": {
       "owner": "alphalattice.control.product_host.composition",
@@ -4747,7 +4756,7 @@
     },
     "structured error answers": {
       "description": "Gives every refusal a registered category, owner and exact reason so an agent can branch on the kind of error without parsing words.",
-      "covers": "Additive registry-owned error category, exact safe reason, domain, catalog words and schema-located field violations; no retry or admission authority.",
+      "covers": "Additive registry-owned error category, exact safe reason, domain, catalog words and schema-located field violations; shared answer field definitions in answers.json are materialized by answers.py without changing published schemas; no retry or admission authority.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
         "alphalattice.interface.local_application.cli_contract",

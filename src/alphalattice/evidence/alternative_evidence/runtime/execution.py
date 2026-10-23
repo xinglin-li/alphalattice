@@ -24,7 +24,9 @@ left to the build's writer (`feature_engine.runtime.service`); the rows are the 
 
 from __future__ import annotations
 
+import importlib.metadata
 import os
+import platform
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -35,6 +37,7 @@ from threading import Condition, Lock
 from typing import Annotated, Literal, TypeVar, cast
 from uuid import UUID
 
+import psutil  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
 
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
@@ -119,8 +122,6 @@ class PlatformIdentity(_Record):
 
 
 def platform_identity() -> PlatformIdentity:
-    import importlib.metadata
-    import platform
 
     libraries = {}
     for name in ("numpy", "pandas", "pyarrow", "duckdb", "lightgbm", "scikit-learn"):
@@ -530,8 +531,6 @@ def below_normal_thread() -> Iterator[bool]:
 
 def process_priority() -> str:
     """This process's scheduling priority: its Windows priority class, else its nice value."""
-    import psutil  # type: ignore[import-untyped]
-
     value = psutil.Process().nice()
     names = {
         getattr(psutil, name): name.removesuffix("_PRIORITY_CLASS").lower()

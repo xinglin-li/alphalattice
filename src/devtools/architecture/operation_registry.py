@@ -8,6 +8,7 @@ The registry checks request, route, activity and offer owners; the CLI walk need
 
 from __future__ import annotations
 
+import argparse
 import ast
 import contextlib
 import io
@@ -23,6 +24,15 @@ from dataclasses import fields as dataclass_fields
 from pathlib import Path
 from typing import Any, Final, cast, get_args
 
+from packaging.version import Version
+
+from alphalattice.interface.local_application import cli
+from alphalattice.interface.local_application.answers import ANSWERS
+from alphalattice.interface.local_application.cli_contract import (
+    AGENT_SESSION_VARIABLES,
+    SCHEMA_VERSION,
+    Outcome,
+)
 from devtools.architecture.neutral_changes import source_syntax_tree
 from devtools.architecture.registries import refusal_entries
 
@@ -60,10 +70,6 @@ def _schema_surface(name: str, schema: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parser_surface() -> dict[str, Any]:
-    import argparse
-
-    from alphalattice.interface.local_application.cli import _parser
-
     found: dict[str, Any] = {}
 
     def visit(parser: argparse.ArgumentParser, name: str, inherited: dict[str, Any]) -> None:
@@ -85,14 +91,12 @@ def _parser_surface() -> dict[str, Any]:
                 for child, nested in action.choices.items():
                     visit(nested, f"{name} {child}".strip(), options)
 
-    visit(_parser(), "", {})
+    visit(cli.command_parser(), "", {})
     return found
 
 
 def agent_surface(root: Path) -> dict[str, Any]:
     """Inventory the typed agent interface from its current owners."""
-    from alphalattice.interface.local_application.answers import ANSWERS
-    from alphalattice.interface.local_application.cli_contract import SCHEMA_VERSION, Outcome
     from alphalattice.interface.local_application.operations import table
     from alphalattice.interface.local_application.portfolio_research import (
         PortfolioResearchRequestDocument,
@@ -192,7 +196,6 @@ def surface_problems(
     manifest: dict[str, Any], live: dict[str, Any], *, previous: dict[str, Any] | None = None
 ) -> list[str]:
     """Refuse silent interface loss, including edits that erase frozen obligations."""
-    from packaging.version import Version
 
     out, retirements = [], manifest.get("retirements", {})
     prefix = f"USERSPACE {SURFACE}:1"
@@ -943,8 +946,7 @@ def text_served_as_code(root: Path) -> list[str]:
 def problems(root: Path) -> list[str]:
     """What disagrees with the registry at ``root``; empty when every name agrees."""
 
-    from alphalattice.interface.local_application import activity
-    from alphalattice.interface.local_application.cli import CLIENT_COMMANDS
+    from alphalattice.interface.local_application import activity  # lazy: contract checks.
     from alphalattice.interface.local_application.operations import (
         ALTERNATIVES,
         COMMANDS,
@@ -981,12 +983,12 @@ def problems(root: Path) -> list[str]:
             out.append(f"{operation}'s alternatives name {name}, which it does not take")
     # The help lists each object the CLI has once, and its common path only commands (V401).
     grouped = sorted(noun for _group, nouns in HELP_GROUPS for noun, _purpose in nouns)
-    objects = {noun for noun, _verb in (*COMMANDS, *CLIENT_COMMANDS)} | {"serve", "request"}
+    objects = {noun for noun, _verb in (*COMMANDS, *cli.CLIENT_COMMANDS)} | {"serve", "request"}
     if grouped != sorted(objects):
         out.append(f"the help's groups list objects other than each once: {grouped}")
     for command in COMMON_PATH:
         noun, _space, verb = command.partition(" ")
-        if (noun, verb) not in COMMANDS and (noun, verb) not in CLIENT_COMMANDS:
+        if (noun, verb) not in COMMANDS and (noun, verb) not in cli.CLIENT_COMMANDS:
             out.append(f"the help's common path names {command}, which the CLI does not have")
     for operation in OPERATIONS:
         try:
@@ -1026,16 +1028,12 @@ def problems(root: Path) -> list[str]:
 def _client_required(noun: str, verb: str) -> list[str]:
     """The required options of one of the client's own commands, as its parser declares them."""
 
-    import argparse
-
-    from alphalattice.interface.local_application import cli
-
     def child(parser: argparse.ArgumentParser, name: str) -> argparse.ArgumentParser:
         found = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
         chosen: argparse.ArgumentParser = found.choices[name]
         return chosen
 
-    command = child(child(cli._parser(), noun), verb)
+    command = child(child(cli.command_parser(), noun), verb)
     required = [a.option_strings[0] for a in command._actions if a.required and a.option_strings]
     # A required choice of one option among several: its first option stands for it.
     required += [
@@ -1103,9 +1101,6 @@ def walk(root: Path) -> list[str]:
     in its empty folder, never the checkout, whose binding the person's `session unbind` would
     remove (V586).
     """
-
-    from alphalattice.interface.local_application import cli
-    from alphalattice.interface.local_application.cli_contract import AGENT_SESSION_VARIABLES
 
     with contextlib.ExitStack() as outside:
         for _vendor, variable in AGENT_SESSION_VARIABLES:

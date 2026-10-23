@@ -10,8 +10,10 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta, tzinfo
+from importlib import import_module
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import (
     BaseModel,
@@ -281,7 +283,6 @@ def target_sessions(
         ValueError: `first_use.date_outside_calendar` for a date the calendars do not plan.
     """
     # The calendars load only for a dated first use, never with every client command.
-    from zoneinfo import ZoneInfo
 
     from alphalattice.foundation.causal_outcomes.execution.readers import (
         planned_local_qa_schedule,
@@ -351,21 +352,23 @@ def target_sessions(
 def _earliest_entry(formation: date) -> str | None:
     """The first entry whose formation's ten-year history the calendars plan, when this
     formation's history would start before their first session; else nothing."""
-    from importlib import import_module
 
-    from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
-        _ten_calendar_year_anniversary as history_start,
+    from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (  # lazy: date.
+        ten_calendar_year_anniversary,
     )
     from alphalattice.kernel.data.calendar import SUPPORTED_CALENDARS
 
-    get_calendar = import_module("exchange_calendars").get_calendar  # their first sessions
+    get_calendar = import_module("exchange_calendars").get_calendar  # lazy: calendar.
     floor = max(get_calendar(c).first_session.date() for c in SUPPORTED_CALENDARS)
-    if history_start(formation) >= floor:
+    if ten_calendar_year_anniversary(formation) >= floor:
         return None
     named = date(floor.year + 10, floor.month, min(floor.day, 28))
     while True:
         reading = target_sessions(named)
-        if history_start(date.fromisoformat(str(reading["formation_session"]))) >= floor:
+        if (
+            ten_calendar_year_anniversary(date.fromisoformat(str(reading["formation_session"])))
+            >= floor
+        ):
             return str(reading["entry_session"])
         named += timedelta(days=1)
 

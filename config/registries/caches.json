@@ -301,10 +301,10 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches per-listing hashes of the captured market-data source tables until the source-prefix call's returned helper is released."
     },
-    "src/alphalattice/interface/local_application/cli.py::_parser::module-parser": {
+    "src/alphalattice/interface/local_application/cli.py::command_parser::module-parser": {
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
-        "src/alphalattice/interface/local_application/cli.py::_parser"
+        "src/alphalattice/interface/local_application/cli.py::command_parser"
       ],
       "definition_line": 620,
       "key": "named",
@@ -316,9 +316,10 @@
       "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
       "location": {
         "scope": "process",
-        "path_expression": "In-memory _parser in its module, instance, or call namespace"
+        "path_expression": "In-memory command_parser in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "note": "The same parser factory is public as command_parser; the original census commit remains provenance under its former private name, with the same key, lifetime and invalidation.",
       "description": "Caches command-line parsers by the selected operation names until process restart."
     },
     "src/alphalattice/interface/local_application/cli_contract.py::agent_surface_manifest::module-agent-surface-manifest": {
@@ -3767,6 +3768,26 @@
         "path_expression": "module-local cached words in src/alphalattice/interface/local_application/message_catalog.cjs"
       },
       "description": "Caches the Python message catalog's frozen identifier projection until the Node process exits."
+    },
+    "src/alphalattice/kernel/shared_kernel/project_layout.py::_tool_bin::module-tool-bin": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/project_layout.py::_tool_bin"
+      ],
+      "definition_line": 106,
+      "key": "uv launcher path; fixed environment per process",
+      "dependency_coverage": "Successful directory discovery only; command_prefix checks launcher presence on every resolution, including after installation.",
+      "invalidation_rule": "Failures are never cached; successful directory discovery expires at process end or environment/tool-directory change through a new command process.",
+      "size_bound": "unbounded",
+      "bound_scope": "per process",
+      "eviction": "none; process end",
+      "safe_to_drop": "Yes: repeat directory discovery without changing command ownership",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _tool_bin cache"
+      },
+      "source_commit": "8f55110435d2ef43a0fc2cf59edb0acbd7bb300a",
+      "description": "Memoizes only successful UTF-8 uv tool-bin discovery; failed or empty discovery remains retriable in the same process."
     }
   }
 }

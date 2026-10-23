@@ -631,7 +631,7 @@ def _std(value: Panel, n: int) -> Panel:
 
 
 def _section_rank(value: Panel) -> Panel:
-    from scipy.stats import rankdata  # type: ignore[import-untyped]
+    from scipy.stats import rankdata  # type: ignore[import-untyped]  # lazy: optional quant.
 
     result = np.full(value.shape, np.nan)
     for row in range(value.shape[0]):

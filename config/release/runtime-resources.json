@@ -18,10 +18,10 @@
     "config/registries/refusals.json": "The shared refusal categories and their owning domains for structured error answers."
   },
   "directories": {
-    ".agents/skills": "The Codex Skills and their unchanged references.",
-    ".codex/agents": "The installed Codex role cards, unchanged.",
-    ".claude/agents": "The materialized Claude role cards, unchanged.",
-    ".claude/skills": "The materialized Claude Skills and their unchanged references."
+    ".agents/skills": "Portable guidance projected with the installed command when configuring an agent project.",
+    ".codex/agents": "Portable guidance projected with the installed command when configuring an agent project.",
+    ".claude/agents": "Portable guidance projected with the installed command when configuring an agent project.",
+    ".claude/skills": "Portable guidance projected with the installed command when configuring an agent project."
   },
   "host_declarations": {
     ".codex/config.toml": "Codex hook and role declarations read by native configure.",

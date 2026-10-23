@@ -8,6 +8,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import yaml  # type: ignore[import-untyped]
+
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -216,8 +218,6 @@ def risk_controls(
     Raises:
         AuthoringError: Input history cannot support the required lookback and next outcome session.
     """
-    import yaml  # type: ignore[import-untyped]
-
     bundle = read_factor_bundle(session.workspace, binding.binding_hash)
     eligible = eligible_formation_sessions(
         available=bundle.sessions[1:],

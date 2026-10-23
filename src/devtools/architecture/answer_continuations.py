@@ -14,6 +14,16 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from scripts.materialize_claude_host import SKILL_COMMANDS
+
+from alphalattice.interface.local_application.cli_contract import (
+    choices,
+    client_refusal,
+    named_read,
+    offered_requests,
+    request_problem,
+)
+
 
 def reference_checks(root: Path) -> list[dict[str, Any]]:
     """Check the compact display's round trip by the request contract.
@@ -34,6 +44,7 @@ def reference_checks(root: Path) -> list[dict[str, Any]]:
     base = root / "src/alphalattice/interface/local_application"
     operations = json.loads((base / "operations.json").read_text(encoding="utf-8"))
     answers = json.loads((base / "answers.json").read_text(encoding="utf-8"))
+    answers.pop("$defs")
     typed = set(operations["references"])
     requested = set(operations["types"])
     fields = set(typed)
@@ -101,7 +112,6 @@ def reference_checks(root: Path) -> list[dict[str, Any]]:
 
 def continuation_checks(root: Path) -> list[dict[str, Any]]:
     """Every required reference binds from its name/alias or refuses an absent answer."""
-    from alphalattice.interface.local_application.cli_contract import client_refusal
     from alphalattice.interface.local_application.client import (
         LOCATORS,
         LocalResearchClientError,
@@ -282,9 +292,7 @@ def source_offers(root: Path) -> list[dict[str, Any]]:
 
 def documented_edges(root: Path) -> list[dict[str, Any]]:
     """Saved-output to --from chains in the Skill commands and its references."""
-    from scripts.materialize_claude_host import SKILL_COMMANDS
 
-    from alphalattice.interface.local_application.cli_contract import client_refusal
     from alphalattice.interface.local_application.client import (
         LocalResearchClientError,
         continued,
@@ -381,13 +389,6 @@ def documented_edges(root: Path) -> list[dict[str, Any]]:
 
 def recorded_edges(root: Path, evidence: Path) -> dict[str, Any]:
     """Replay real saved answers without sending requests or retaining private values."""
-    from alphalattice.interface.local_application.cli_contract import (
-        choices,
-        client_refusal,
-        named_read,
-        offered_requests,
-        request_problem,
-    )
     from alphalattice.interface.local_application.client import LocalResearchClientError, continued
 
     table = json.loads(

@@ -135,7 +135,7 @@ def _guard_network() -> None:
 
 
 def _load_httpx_client() -> tuple[_HttpClient, type[BaseException]]:
-    httpx_module = import_module("httpx")
+    httpx_module = import_module("httpx")  # lazy: online.
     timeout_factory = cast(Callable[..., object], httpx_module.Timeout)
     client_factory = cast(Callable[..., _HttpClient], httpx_module.Client)
     timeout_exception = cast(

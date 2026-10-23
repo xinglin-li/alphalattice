@@ -14442,6 +14442,139 @@
    "successor": "16df840ae2216a565cbf401b40693fda6f37072fa14f598aebd316bce8ea4835",
    "change": "public-knowledge-runtime",
    "reason": "Knowledge's callers now import the same runtime objects through its public module; values and authority are unchanged."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "5c22c3b6c9c95b161cfceb46c59b4c45ed91898da977a008d9b9c4c834983912",
+   "successor": "ee496e139c60edf92852da28ff47105dbe1b17feebcbe73bf04609254ed9ceb1",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "7c19b6eab63a74cb5cda6ffad0ca978a60c30f8f3137badf20ac9e7195edf1eb",
+   "successor": "cd23f7b600ad125d948d7505588761dfa2801518edff83c1221881365d9e24dd",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "cd5adb629708c8169cdf13939fb6e3c5d2fa9a62a0ce8409c506967c09b54d47",
+   "successor": "d0a7fdb55af21ab2f4be4a8bf9e81612d8d3fe0587085b50d98bd0d6f6ebc6e1",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "16df840ae2216a565cbf401b40693fda6f37072fa14f598aebd316bce8ea4835",
+   "successor": "4725e81ea1fe1b348b700e8d5e9093155c7f332d20c4ede247dae284c290d734",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "fc94ae8b56fbe56091e1e448f877e74387650692e7ee985c9317e83882d68c91",
+   "successor": "749eab0e71033d3f7ba52bb4167d3a36bc8327568ba6d83229f7b6d8c7061554",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "97fc73913d59607b50139b2bf5195f4e7ce27a28f3899714209424f47eff45c5",
+   "successor": "121275b31a552bd7cb50139a5586e3cc1935841ef54b9aed017409a09b99a76b",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "8a2feb3a4a9d704d4a1c0091e88fa9073fc204e9324cf41017d6606600c68228",
+   "successor": "6f014011ee2469b8c5ecc5e374b0a12fda5aba8d018dc3bccf61901ca2c6edf9",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "17204e35e0567b8aa5b8b9565fab07d8c74de64ac285890a9ec230f194fc45cf",
+   "successor": "f414cbf7986ffca323410bc5985cc4e0914f86bca5928372cbc9a8775eab6793",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "c4ac9892e47b78dfb70a041738084986cbbca2e93b18fa7494369fe1bea62737",
+   "successor": "dba39abbeeb58236d7216dcc1a9ba245bfb9f597d3194803536d9f674eb31f96",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "9e1d9ba27bc9db2116bb5fa20c0b27c1068de7dce13b8072f195c3b6ba484643",
+   "successor": "401d9333da8182301bf9cdac676cf91eb67bf0334685a25783879cd1ed3fb0ce",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "934e142f13531fd0b1f6420322835588c1266875ac41e01000f90d0ccc7aafdb",
+   "successor": "7fe37e42bb30e6a28bb1fa1954045762e01132c3ba7760d0dc635c5ada610c0e",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "d209c2d5dc3b2cc2316c38181103fed890224e213455b757a961399c3fc85c23",
+   "successor": "51272978ba405711330beebc5ee5ef6ad836adcfe7aa38293f1f576a2baac091",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "c6d2c2bc26c06bba582b210965d387d67ce3f4c1569f7b95de06403acabb8922",
+   "successor": "7eea07541c6e42c5af9f0089ab5de615d65990aa601c2070f07ab11d603b06a6",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "c1010fc89a9b5bd222b197e5113639e1c4e81f2a564daa5da66ae019e0684b69",
+   "successor": "826b854cb9dc745988f57e25176115be985d0eab8a7cef833ef3a7e6fdc8b269",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "c1010fc89a9b5bd222b197e5113639e1c4e81f2a564daa5da66ae019e0684b69",
+   "successor": "826b854cb9dc745988f57e25176115be985d0eab8a7cef833ef3a7e6fdc8b269",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "2d84042ed4ea538f5c47bed9fce5042d2c31e0fe9a1d5b719091a97d096c4263",
+   "successor": "c5e7e6b30bc8186372de69349fe8c485fdd63721507e3fb386c58f5778eea418",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "04a8b5d529ca575f88df257f8eed9e5f9030320d4de29159a7ae9fd0ae25e75c",
+   "successor": "430e7d3f0a15d3fdf59709c2b63c716be854188e6dd2dd3cd815e6c9eea9a83f",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "dc8f9d4d385b99f931293bd8209eab25c0ed5a59cc1aa3b45115a85681452f24",
+   "successor": "186d60292fd5534796a2141ae5c48d8ee845f33a99f907e4797c6bca325b85ec",
+   "change": "Module-level import consolidation and two public function renames",
+   "reason": "Execution-only move: every changed module's executable syntax is equal apart from import placement, two renamed public functions and two docstrings; no arithmetic, decision, parameter or message changed, and startup output is byte-identical."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "121275b31a552bd7cb50139a5586e3cc1935841ef54b9aed017409a09b99a76b",
+   "successor": "959d0dccd313a31a5f48adb7eb5129efca7cab084fc2728bfa6710b06c2bd1f7",
+   "change": "Daily update recovery: own-move resume, cancel compensation and proven orphan release",
+   "reason": "A stopped resume revalidates the move it recorded itself, a cancel puts back the membership its half-done step changed, and a plan releases an older unowned bind only when the cancelled Task's own plan proves ownership; reviewed independently, red on the previous code and green after, including on a workspace made by the released 0.2.3."
   }
  ]
 }

@@ -29,7 +29,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix, runtime_json
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -51,7 +51,10 @@ CLAUDE_TOOLS = {
     # workspace, as its Codex card's workspace-write sandbox allows (V384).
     "workspace-write": "Read, Grep, Glob, Edit, Write, Bash",
 }
-COMMAND = " ".join(command_prefix())  # the routes' own prefix: one pattern, one owner
+COMMAND = " ".join(command_prefix(portable=True))  # installed projects render this template
+SPECIALIST_COMMAND = runtime_json("config/registries/messages.json")["entries"][
+    "setup.tool.specialists"
+]["words"]["en"]
 BUNDLE_TOOLS = (
     f"Read, Write, Bash({COMMAND} bundle submit:*), Bash({COMMAND} session unbind:*), "
     f"Bash({COMMAND} --workspace * session bind:*)"
@@ -512,7 +515,7 @@ def _cli_reference() -> tuple[
         return dict(found[0].choices) if found else {}
 
     flags: dict[tuple[str, str], dict[str, str]] = {}
-    for noun, noun_parser in children(cli._parser()).items():
+    for noun, noun_parser in children(cli.command_parser()).items():
         for verb, parser in (children(noun_parser) or {"": noun_parser}).items():
             flags[(noun, verb)] = {
                 option: " ".join((action.help or "").split())
@@ -581,7 +584,7 @@ def _render(
             else set()
         )
         by_flag = {"--" + table["flags"][f]: f for f in allowed if f in table["flags"]}
-        lines.append(f"- `{' '.join(command_prefix())} {command.form}`: {command.does}")
+        lines.append(f"- `{COMMAND} {command.form}`: {command.does}")
         named = [word for word in words if word.startswith("--")] + list(command.options)
         for flag in named:
             if flag not in flags[(noun, verb)]:
@@ -672,6 +675,7 @@ def command_block(role: str) -> str:
             "(../../.agents/skills/alphalattice-research/references/operating.md) for syntax, "
             "answers, continuations, files and waits. The assignment and lists below set "
             "your permissions.",
+            SPECIALIST_COMMAND,
             "Reads (ANALYZE, REVIEW):",
             *_render(role, capability.reads, explained, (flags, meanings)),
             "EXECUTE (only as authorized):",

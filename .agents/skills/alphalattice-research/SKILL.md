@@ -10,6 +10,13 @@ You lead the research. AlphaLattice's owners calculate, validate, record and pub
 
 At first use and any refusal naming a missing dependency, run the doctor from the checkout's root, `uv run python -m alphalattice.interface.local_application.native_setup doctor` (the guide's Open the workspace names the wheel leg's); fill each missing item by its `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
 
+Off PATH, use the binding block in the shared guides and pass the matching absolute prefix to every specialist; no shell update or restart is needed. Portable examples use alphalattice as a placeholder. When serving from another shell, set ALPHALATTICE_SHELL to your specialists' shell: posix or powershell.
+
+<!-- message: host.start.terminal.guide -->
+On Claude Code desktop, use the available Terminal panel through `run_in_terminal`; on Codex, use an available agent-driven Terminal panel in the same way. If detached start is refused, choose the first applicable `terminal_routes` offer and run `terminal_command` yourself there. Only without such a panel, give the person the same command for a terminal they own, then wait for their word. The Host cannot inspect your tools; its escape and authenticated readiness checks still decide STARTED.
+
+The app may ask the person to approve that one line.
+
 ## Shortest paths
 
 Begin at the person's own target (a date's positions, a named request), else at `alphalattice workspace show`'s first `intents` entry, and each answer offers the next request ([command contract](references/operating.md)). One exact read needs no goal; multi-step work runs under one ([goals](references/goals.md)).

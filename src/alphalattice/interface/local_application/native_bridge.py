@@ -19,7 +19,6 @@ import subprocess
 import sys
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -36,6 +35,7 @@ from alphalattice.interface.local_application.cli_contract import (
     join,
     refusal_words,
     shell,
+    worded,
 )
 from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
@@ -61,7 +61,7 @@ from alphalattice.interface.local_application.retrieval_environment import (
 )
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from alphalattice.kernel.shared_kernel.environment import package_versions
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AnswerVerdict
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
@@ -1508,43 +1508,32 @@ WHEEL_INSTALL: Final = (
     "--constraints alphalattice-runtime-requirements.txt",
 )
 """The documented wheel install (operating.md), run where the release wheel is."""
-OFF_PATH: Final = (
-    "The install puts the command in uv's tool folder (`uv tool dir --bin`); where that folder is "
-    "off PATH, the same command next asks the person for `uv tool update-shell` and a restart."
-)
+OFF_PATH: Final = "setup.tool.command"
 
 
-def tool_setup() -> dict[str, Any] | None:
-    """The `alphalattice` command a fresh shell runs, where this shell lacks it.
-
-    The specialists' routes and their allowlists name the bare command (`command_prefix`), so a
-    shell where it does not resolve is a gap: installed but off PATH, the person's shell setting
-    and a restart; otherwise the agent's documented install, the checkout's or the wheel's. A
-    command that resolves is no gap, whoever installed it (the doctor names its owner).
-    """
-    if shutil.which("alphalattice", path=fresh_path()) is not None:
-        return None
-    if _tool_bin() is not None:
-        words = (
-            "Tell the person in one line: the alphalattice command is installed, but this "
-            "shell's PATH does not reach it; they run `uv tool update-shell`, restart this "
-            "session or its terminal, and you run the same command again."
-        )
+def tool_setup() -> dict[str, Any]:
+    """Only an absent launcher needs installation; an off-PATH launcher remains executable."""
+    prefix = command_prefix()
+    if shutil.which(prefix[0], path=fresh_path()) is not None:
         return {
-            "present": False,
-            "who_decides": "PERSON",
-            "commands": ["uv tool update-shell"],
-            "words": words,
+            "present": True,
+            "command_prefix": list(prefix),
+            "words": str(worded(OFF_PATH)),
         }
     if not (resolve_playpen_root(Path(__file__)) / "pyproject.toml").is_file():
         version = package_versions(["alphalattice"])[0][1]
         commands = [line.format(version=version) for line in WHEEL_INSTALL]
-        return {"present": False, "who_decides": "AGENT", "commands": commands, "words": OFF_PATH}
+        return {
+            "present": False,
+            "who_decides": "AGENT",
+            "commands": commands,
+            "words": str(worded(OFF_PATH)),
+        }
     return {
         "present": False,
         "who_decides": "AGENT",
         "commands": list(TOOL_INSTALL),
-        "words": OFF_PATH,
+        "words": str(worded(OFF_PATH)),
     }
 
 
@@ -1563,19 +1552,6 @@ def fresh_path() -> str | None:
     own = {Path(venv) / "Scripts", Path(venv) / "bin"}
     parts = os.environ.get("PATH", "").split(os.pathsep)
     return os.pathsep.join(part for part in parts if part and Path(part) not in own)
-
-
-def _tool_bin() -> str | None:
-    """uv's tool directory, where it holds an `alphalattice` this shell's PATH does not reach."""
-    uv = shutil.which("uv")
-    if uv is None:
-        return None
-    with suppress(OSError, subprocess.SubprocessError):
-        found = subprocess.run(
-            [uv, "tool", "dir", "--bin"], capture_output=True, text=True, timeout=10, check=False
-        ).stdout.strip()
-        return found if found and shutil.which("alphalattice", path=found) else None
-    return None
 
 
 def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, Any]:
@@ -1612,7 +1588,7 @@ def agent_setup() -> dict[str, dict[str, Any]]:
             "words": LOCKED_SETUP_WORDS,
             "disclosure": LOCKED_SETUP_DISCLOSURE,
         }
-    return {"installed_leg": tool_setup() or {"present": True}, "retrieval_runtime": retrieval}
+    return {"installed_leg": tool_setup(), "retrieval_runtime": retrieval}
 
 
 def attachment_preflight(
@@ -1652,7 +1628,7 @@ def declaration_setup(project: Path, host: str) -> list[str]:
     python = python if (checkout / "pyproject.toml").is_file() else Path(sys.executable)
     module = "alphalattice.interface.local_application.native_setup"
     configure = [str(python), "-m", module, "--project", str(project), "configure", "--host", host]
-    bind = ["alphalattice", "--workspace", "<dir>", "session", "bind"]
+    bind = [*command_prefix(), "--workspace", "<dir>", "session", "bind"]
     return [join(configure, shell()), join(bind, shell())]
 
 

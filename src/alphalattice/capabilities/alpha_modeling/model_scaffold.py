@@ -11,6 +11,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+import yaml  # type: ignore[import-untyped]
+
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 from .declaration import AlphaModelDeclaration, installed_declaration, read_declaration
@@ -117,8 +119,6 @@ def declaration_template() -> str:
     Returns:
         The declaration's YAML text.
     """
-    import yaml  # type: ignore[import-untyped]
-
     example = installed_declaration("regularized_linear").model_dump(mode="json")
     example = {name: value for name, value in example.items() if value is not None}
     example["model_id"] = "my_model"

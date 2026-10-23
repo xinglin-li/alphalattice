@@ -1086,6 +1086,11 @@
   "detail": "The approved stock-list change could not be verified: the active membership is neither the one it approved nor one its own run recorded or the gateway's admission derives from it, or its prior Panel or approved candidate document changed. Nothing ran. The research and history already recorded stay readable; to keep updating, prepare a new workspace from the current source. Never edit a stored approval.",
   "next_action": "DATA_UPDATE_READBACK"
  },
+ "workspace_maintenance.membership_owner_unproved": {
+  "message_id": "workspace_maintenance.membership_owner_unproved",
+  "detail": "workspace_maintenance.membership_owner_unproved",
+  "next_action": "DATA_UPDATE_READBACK"
+ },
  "workspace_preparation.preview_required": {
   "detail": "A preparation starts from the exact preview it was planned from, and this plan has none the Host holds; plan it (`preparation plan`) and confirm the plan hash that preview names.",
   "next_action": "PLAN_THE_PREPARATION_AGAIN"

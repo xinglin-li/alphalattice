@@ -250,6 +250,8 @@ def test_every_documented_command_line_parses(
     commands, covered = ([], set())
     for path in paths:
         text = path.read_text(encoding="utf-8")
+        if path.name in {"AGENTS.md", "operating.md", "SKILL.md"}:
+            assert re.search(r"run_in_terminal.*terminal_routes.*Only without", text, re.S), path
         # Every OS's command: `uv run python` for the checkout, `bin/python` beside `Scripts`.
         assert ".venv/Scripts" not in text, path
         assert "Scripts/python.exe" not in text or "bin/python" in text, path

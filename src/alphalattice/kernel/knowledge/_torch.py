@@ -25,8 +25,10 @@ import gc
 import hashlib
 import importlib
 import importlib.metadata
+import sqlite3
 from collections.abc import Callable, Sequence
 from concurrent.futures import CancelledError
+from contextlib import closing
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -119,8 +121,8 @@ def runtime_for(
     """Import the runtime and prove it is the locked one on a usable GPU."""
 
     try:
-        torch = importlib.import_module("torch")
-        transformers = importlib.import_module("transformers")
+        torch = importlib.import_module("torch")  # lazy: GPU.
+        transformers = importlib.import_module("transformers")  # lazy: GPU.
     except ImportError as exc:
         raise _error(
             "the GPU retrieval runtime is not installed (scripts/create_gpu_environment.py)",
@@ -154,8 +156,6 @@ def probe_torch_encoder(model_root: Path, spec: HybridIndexSpec) -> HybridCapabi
     runtime_for(
         spec.encoder_torch_version, spec.encoder_transformers_version, spec.encoder_cuda_version
     )
-    import sqlite3
-    from contextlib import closing
 
     try:
         vector_version = importlib.metadata.version("sqlite-vec")

@@ -73,6 +73,7 @@ from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
 )
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.research_authoring.selection import rewrite_in_declaration_dialect
 
 LOOPBACK_HOST = "127.0.0.1"
@@ -634,7 +635,7 @@ class LocalWebApplication:
             )
         if reason == "local_application.dispatcher_closed" and self.workspace is not None:
             body["terminal_command"] = [
-                "alphalattice",
+                *command_prefix(),
                 "--workspace",
                 str(self.workspace),
                 "serve",

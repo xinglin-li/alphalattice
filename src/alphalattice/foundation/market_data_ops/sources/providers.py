@@ -578,8 +578,6 @@ class YFinanceMarketDataProvider:
             "sector": sector.strip(),
             "sectorKey": sector_key.strip() if isinstance(sector_key, str) else None,
         }
-        import hashlib
-        import json
 
         return SectorObservation(
             provider=self.name,

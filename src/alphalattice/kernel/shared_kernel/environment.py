@@ -167,7 +167,7 @@ def _thread_pool_controller() -> Any:
     is always seen; elsewhere, or when the modules cannot be listed, it is built each time.
     """
     global _THREAD_POOLS
-    from threadpoolctl import ThreadpoolController  # type: ignore[import-untyped]
+    from threadpoolctl import ThreadpoolController  # type: ignore[import-untyped]  # lazy: quant.
 
     loaded = _loaded_module_handles()
     with _THREAD_POOLS_LOCK:

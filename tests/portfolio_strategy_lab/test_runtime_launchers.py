@@ -465,8 +465,7 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
 def test_a_detached_launch_refuses_what_it_cannot_serve(
     tmp_path, monkeypatch, capsys, escape, lang, panel_host
 ):
-    """A detached Host that exits before serving answers its code and log, and a detached launch
-    tied to standard input is refused by name, before anything starts."""
+    """Detached refusals keep ownership checks and offer the agent panel before a person act."""
     from alphalattice.control.product_host.composition import web_launcher
     from alphalattice.interface.local_application.cli import main
 
@@ -520,6 +519,11 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
         assert exited["message_id"] == message_id
         words = runtime_json("config/registries/messages.json")["entries"][message_id]["words"]
         assert exited["detail"] == words["zh-CN" if lang == "zh" else "en"]
+        routes = exited.get("terminal_routes", [])
+        assert [r["who_decides"] for r in routes] == ["AGENT", "PERSON"]
+        assert routes[0]["next_action"] == "SERVE_FROM_THE_HOST_TERMINAL_PANEL"
+        assert routes[1]["next_action"] == "SERVE_FROM_A_PERSON_OWNED_TERMINAL"
+        assert all(r["command_field"] == "terminal_command" for r in routes)
         assert exited["terminal_command"] == ["alphalattice", *launch]
         assert not list(tmp_path.glob("alphalattice-host-*.log"))
     assert spawned and all(child.poll() is not None for child in spawned)

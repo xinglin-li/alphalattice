@@ -30,6 +30,7 @@ from alphalattice.control.data_platform.maintenance.data_changes import (
     BookObligations,
     WorkspaceDataChanges,
 )
+from alphalattice.control.data_platform.maintenance.orphaned_bind import restore_orphaned_membership
 from alphalattice.control.data_platform.maintenance.reconciliation import (
     capture_verified_maintenance_completion,
 )
@@ -148,11 +149,8 @@ them, never the whole manifest, so a publication of fields it does not read leav
 
 DATA_UPDATE_TASK_KIND = "workspace_data_update"
 _STAGES = ("validate_update_request", "maintain_data_feature", "publish_update_receipt")
-# One maintenance cycle advances one network chunk of listings: the runner fetches the chunk with
-# its transport workers and applies every completed fetch on one retained instance, so the
-# coordinator's preflight, the capacity walk, the cancel check and the engine's checkpoint are paid
-# once per chunk instead of once per listing. Cancellation is still honoured at the cycle boundary
-# and every listing still commits on its own.
+# One cycle advances one network chunk of listings: its preflight, capacity walk, cancel check
+# and engine checkpoint are paid per chunk; each listing still commits alone.
 _MAINTENANCE_CYCLE_LISTINGS = CurrentUniverseMaintenance.chunk_size
 _MEMBERSHIP_REVIEW = "workspace_data_update.membership_changed_review_required"
 """A plan without a declared change met a changed membership; a new plan, not a retry."""
@@ -162,11 +160,11 @@ _RECOVERABLE_BLOCKS = {
     "workspace_maintenance.snapshot_publication_failed",
     "workspace_maintenance.feature_source_reconciliation_failed",
     "data.full_history_audit_approval_required",
-    # Its way on is the plan run again once a person allows the network: the rerun resumes the
-    # stopped Task, and is refused while the network stays closed (V600).
+    # Its way on is the plan run again once a person opens the network: the rerun resumes the
+    # stopped Task, refused while it stays closed (V600).
     "workspace_data_update.source_access_not_admitted",
-    # Its way on is the backup's cause resolved and the plan run again: the rerun resumes the
-    # stopped Task, whose first stage takes the backup again.
+    # Its way on is the backup's cause resolved and the plan run again: the stopped Task resumes,
+    # its first stage retaking the backup.
     "workspace_data_update.archive_failed",
 }
 """The stops a rerun of the same plan resumes, once a person has cleared their cause."""
@@ -224,8 +222,8 @@ def read_workspace_inputs(
     if binding != installed_data_update_binding(root):
         raise ValueError("workspace_data_update.installed_binding_mismatch")
     market = MarketDataRepository(root)
-    # Dozens of small reads over one database: one retained read-only instance serves them all. A
-    # write attempted inside is refused, not upgraded; this is a read-only consumer and stays one.
+    # Dozens of small reads over one database: one retained read-only instance serves them all;
+    # a write inside is refused, not upgraded.
     with market.database.retain(read_only=True):
         state = _read_workspace_inputs(root, binding, market, allow_transition=allow_transition)
         if through is not None:
@@ -539,6 +537,7 @@ class WorkspaceDataUpdateApplication:
     portfolio_obligations: Callable[[], BookObligations] | None = None
     recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None
     data_rule: Callable[[UUID], Any] | None = None
+    cycle_owner: Callable[[str], str | None] | None = None
 
     @property
     def manifest(self) -> ResearchWorkspaceManifest:
@@ -726,10 +725,11 @@ class WorkspaceDataUpdateApplication:
     ) -> dict[str, object]:
         """Preview exact maintenance, due candidate checks and any explicit membership change.
 
-        Raw candidate retries and Feature/Sector rechecks are planned independently. Planning
-        neither runs Factor research nor grants source access. A data update that has not
-        ended answers its own plan: its run follows it, or resumes a deferred one once due
-        (V601); planned anew, the later update queued behind the deferral (V604).
+        Raw candidate retries and Feature/Sector rechecks are planned apart; planning runs no
+        Factor research and grants no source access. A data update that has not ended answers
+        its own plan: its run follows it, or resumes a deferred one once due (V601); planned
+        anew, the later update queued behind the deferral (V604). First, a cancelled update's
+        orphaned membership is restored (`restored_membership`), or an unproved one refused.
 
         Args:
             fresh: Plan anew even while a data update has not ended: a research update's own
@@ -740,6 +740,18 @@ class WorkspaceDataUpdateApplication:
             Transition refusal, ordinary maintenance plan, human confirmation proposal with source
             access and valuation obligations, or the plan of the update that has not ended.
         """
+        restored = {} if fresh else self.restored(self.cycle_owner)
+        return {**self._planned(fresh, recovery_task_id), **restored}
+
+    def restored(self, derived: Callable[[str], str | None] | None = None) -> dict[str, object]:
+        """A cancelled Task's orphaned membership, back to its Panel's own.
+
+        A plan proves an unnamed bind's owner by `derived`; a cancel restores named ones only.
+        """
+        tasks = self.session.task_control_registry
+        return restore_orphaned_membership(self._registry(), tasks, self.clock(), derived)
+
+    def _planned(self, fresh: bool, recovery_task_id: UUID | None) -> dict[str, object]:
         waiting = None if fresh or recovery_task_id is not None else self._waiting()
         if waiting is not None:
             planned = self._plan_of(waiting)
@@ -800,10 +812,9 @@ class WorkspaceDataUpdateApplication:
                 "next_action": "RESOLVE_EXISTING_WORKSPACE_TRANSITION",
             }
         readiness = self._readiness(MarketDataRepository(self.session.workspace))
-        # Two kinds of due work, planned independently: the raw retry of failed candidates and the
-        # Feature/Sector recheck of quarantined parent members. A day on which both fall due carries
-        # both; the raw retry admitting nothing does not settle the other, and the coordinator
-        # resolves the Feature scope against the parent as it stands after the raw retry.
+        # Two kinds of due work, planned apart: the raw retry of failed candidates and the
+        # Feature/Sector recheck of quarantined parent members. A day may carry both; a retry
+        # admitting nothing settles neither; Feature scope resolves on the parent after it.
         raw_recheck = (
             readiness.candidate_data.plan(observed_at=now, target_session=target)
             if change is None
@@ -840,9 +851,8 @@ class WorkspaceDataUpdateApplication:
             valuation_grants=grants,
         )
         self.last_plan = planned
-        # A change plan is kept in the change store, which its person's confirm reads; a
-        # maintenance plan is a preview in the plan store, so its run finds it after a Host
-        # restart within its hour (V537).
+        # A change plan is kept in the change store its person's confirm reads; a maintenance
+        # plan is a preview its run finds after a Host restart within its hour (V537).
         if change is not None:
             self.changes.save_plan(planned)
         else:
@@ -1121,9 +1131,8 @@ class WorkspaceDataUpdateApplication:
             sector_reference = summary.get("sector_reference")
             if sector_reference is not None and not isinstance(sector_reference, dict):
                 raise ValueError("workspace_data_update.sector_reference_disclosure_invalid")
-            # Partition reuse is the account of one Panel's composition. With a receipt it
-            # is the receipt's resulting Panel -- the selected update's own work, whatever
-            # Panel is active today; without one it is the current Panel's, said so.
+            # Partition reuse accounts for one Panel: with a receipt, the receipt's resulting
+            # Panel (the update's own work, whatever is active now), else the current one, said so.
             if receipt is None:
                 counts = _partition_reuse(summary.get("partition_reuse"))
                 if counts is not None:
@@ -1157,16 +1166,13 @@ class WorkspaceDataUpdateApplication:
         if sector_reference is not None and failure is None:
             result["sector_reference"] = sector_reference
         if failure is None and partition_reuse is not None:
-            # One Panel's own account of its composition: how many closed-year partitions
-            # it kept and how many it recomposed, with which Panel says so. Reuse, not new
-            # work; an unavailable historical account is said so, never a later Panel's.
+            # One Panel's account of its composition: closed-year partitions kept and
+            # recomposed, naming that Panel. Reuse, not new work; an unavailable historical
+            # account is said so, never a later Panel's.
             result["partition_reuse"] = partition_reuse
         if task is not None and plan is not None:
-            # The update's own work, for the selected Task: the maintenance cycle this
-            # Task's request admitted (phase, status, what changed), the maintenance
-            # runner's durable listing units for its target session, and the Task-bound
-            # work progress of its Feature and market-data steps. Read-only facts of the
-            # existing owners; none of them is a lifecycle or completion verdict.
+            # The selected Task's own work as its owners' read-only facts, no verdict: its cycle,
+            # the runner's listing units and its Feature and market-data steps' progress.
             result["cycle"] = self._cycle_readback(plan)
             result["maintenance"] = self._maintenance_readback(plan)
             # This selected update's saved formation disposition, not a later
@@ -1257,7 +1263,7 @@ class WorkspaceDataUpdateApplication:
             "phase": cycle.phase.value,
             "status": cycle.status.value,
             "updated_at": self.telemetry.instant(cycle.updated_at).isoformat(),
-            # The record's age at the product clock, for a page whose own clock is not it.
+            # The record's age by the product clock, for a page on another clock.
             "age_seconds": self.telemetry.age(cycle.updated_at),
             "retry_after_at": (
                 cycle.retry_after_at.isoformat() if cycle.retry_after_at is not None else None
@@ -1273,9 +1279,9 @@ class WorkspaceDataUpdateApplication:
                 ),
                 # Listing-sessions: one per listing per new session, never trading days.
                 "new_sessions": sum(len(item.new_sessions) for item in changes.listing_changes),
-                # A restatement is a raw bar corrected in place, or an adjusted return that
-                # moved on a session the update did not add: the new session's own return
-                # is new work, not a correction; one date named by both is one session.
+                # A restatement: a raw bar corrected in place, or an adjusted return moved on a
+                # session the update did not add (a new session's return is new work, not a
+                # correction); one date named by both is one session.
                 "listings_with_corrections": sum(
                     1 for item in changes.listing_changes if _restated_dates(item)
                 ),
@@ -1393,9 +1399,9 @@ class WorkspaceDataUpdateApplication:
             "age_seconds": self.telemetry.age(
                 max((item.updated_at for item in moved), default=run.updated_at)
             ),
-            # Every count is over listings (units), by what the runner recorded for each:
-            # processed = updated + failed; updated splits into new sessions fetched,
-            # history corrected without a new session, and re-verified with nothing new.
+            # Counts are over listings (units), as the runner recorded each: processed =
+            # updated + failed; updated splits into new sessions fetched, history corrected
+            # without one, and re-verified with nothing new.
             "counts": {
                 "listings": len(listings),
                 "processed": len(moved),
@@ -1556,8 +1562,8 @@ class WorkspaceDataUpdateApplication:
         Raises:
             ValueError: The plan is past its hour or was never planned in this workspace.
         """
-        # A maintenance preview runs within its hour whether or not the Host restarted since it
-        # was planned, and never past it from this Host's memory alone (V537, as V536).
+        # A maintenance preview runs within its hour across a Host restart, and never past it
+        # from this Host's memory alone (V537, as V536).
         if (kept := self._previews.runnable(plan_hash)) is not None:
             return kept
         # An already admitted request remains recoverable after process loss.
@@ -1567,8 +1573,8 @@ class WorkspaceDataUpdateApplication:
                 if plan.content_hash == plan_hash:
                     self._require_plan(plan)
                     return plan
-        # A change plan is kept until its person confirms it. A plan kept nowhere is one to plan
-        # again, never a tampered artifact (V537).
+        # A change plan is kept until its person confirms it; one kept nowhere is planned again,
+        # never a tampered artifact (V537).
         try:
             return self.changes.load_plan(plan_hash)
         except ContentAddressedStoreError as error:
@@ -1952,9 +1958,9 @@ class WorkspaceDataUpdateApplication:
         if snapshot is None:
             raise ValueError(_MEMBERSHIP_REVIEW)
         if plan.change is None and snapshot["manifest_revision"] != plan.before.manifest_revision:
-            # A revision that admits the same listings is governance, not a membership change; the
-            # plan stops for review only when the members the Panel admits at its as-of session
-            # differ from the ones the plan was made against.
+            # A revision admitting the same listings is governance, not a membership change: the
+            # plan stops for review only when the Panel's members at its as-of session differ
+            # from those it was made against.
             resolver = ArtifactResolver(self.session.workspace / "artifacts")
             panel = resolver.load_feature_panel_manifest(str(snapshot["manifest_uri"]))
             admitted = panel_as_of_listing_identity(panel)[0]
@@ -2010,21 +2016,19 @@ class WorkspaceDataUpdateApplication:
                 if self.data_rule and rule_task and stage == _STAGES[1]
                 else None
             )
-            return self._step(
-                plan, stage, cancelled=cancelled, bound_to=bound_to, diagnose=diagnose
-            )
+            return self._step(plan, stage, cancelled, bound_to, diagnose, rule_task)
 
     def _step(
         self,
         plan: WorkspaceDataUpdatePlan,
         stage: str,
-        *,
         cancelled: Callable[[], bool],
         bound_to: tuple[TaskRecord, TaskExecution] | None,
         diagnose: Any,
+        owner: UUID | None,
     ) -> StageExecutionResult:
         if stage == _STAGES[0]:
-            # The last update's backup, if the Host never took it or it failed, is taken first.
+            # The last update's backup, never taken or failed, is taken first.
             if settle_automatic_backup(
                 self.session.workspace, clock=self.clock, gate=self.session.mutation_gate
             ):
@@ -2084,8 +2088,8 @@ class WorkspaceDataUpdateApplication:
                 else:
                     onboarding = None
                 if onboarding is not None:
-                    # The new members' hydration advances one chunk per run like first use does; the
-                    # cancel is honoured at the chunk boundary and every listing commits on its own.
+                    # New members hydrate a chunk per run, as in first use; a cancel is honoured at
+                    # the chunk boundary and each listing commits alone.
                     while True:
                         if cancelled():
                             return self._cancelled(plan)
@@ -2168,6 +2172,7 @@ class WorkspaceDataUpdateApplication:
                 gate = self._readiness(runtime.market_data)
 
                 runtime.prepare_feature_closure()
+                runtime.maintenance_registry = runtime.maintenance_registry.owned_by(owner)
                 coordinator = runtime.maintenance_coordinator(
                     readiness_gate=gate,
                     clock=self.clock,
@@ -2202,9 +2207,8 @@ class WorkspaceDataUpdateApplication:
                 except ValueError as error:
                     if str(error) != _MEMBERSHIP_REVIEW:
                         raise
-                    # The cycle activated a quality-derived child membership this plan did not
-                    # declare; the update is applied and the Task stops here by name for the user to
-                    # plan against the new membership, instead of surfacing as an interruption.
+                    # The cycle activated a quality-derived child membership the plan did not
+                    # declare: applied, the Task stops by name for a plan on the new membership.
                     return StageExecutionResult(
                         StageDisposition.BLOCKED,
                         failure_code=public_failure(error, "workspace_data_update.blocked"),

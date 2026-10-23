@@ -47,7 +47,7 @@ from alphalattice.interface.local_application.web import (
     LAUNCH_KEY_VARIABLE,
     OPEN_THE_WORKBENCH,
 )
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix, runtime_json
 
 from .process_job import ChildJob
 
@@ -161,6 +161,7 @@ def _refusal(
     *,
     message_id: str | None = None,
     terminal_command: list[str] | None = None,
+    terminal_routes: list[dict[str, str]] | None = None,
     cause: str | None = None,
     host_log: str | None = None,
 ) -> int:
@@ -175,6 +176,8 @@ def _refusal(
         answer["message_id"] = message_id
     if terminal_command is not None:
         answer["terminal_command"] = terminal_command
+    if terminal_routes is not None:
+        answer["terminal_routes"] = terminal_routes
     if cause is not None:
         answer["cause"] = cause
     if host_log is not None:
@@ -344,8 +347,14 @@ def _detach(
             str(worded(message_id)),
             "SERVE_FROM_THE_HOST_TERMINAL_PANEL" if panel else "SERVE_FROM_A_PERSON_OWNED_TERMINAL",
             message_id=message_id,
+            terminal_routes=[
+                dict(route)
+                for route in runtime_json("config/registries/refusals.json")["entries"][
+                    "local_web.detached_breakaway_denied"
+                ]["terminal_routes"]
+            ],
             terminal_command=[
-                "alphalattice",
+                *command_prefix(),
                 "--lang",
                 ANSWER_LANGUAGE.get(),
                 "--workspace",

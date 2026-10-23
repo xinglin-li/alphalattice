@@ -12,6 +12,7 @@ and where to look, never the Host's internals.
 
 from __future__ import annotations
 
+import logging  # only a withheld failure is logged; a call's imports are its cost (W12)
 import os
 import re
 import subprocess
@@ -21,7 +22,10 @@ from hashlib import sha256
 from typing import Any, Final
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from alphalattice.interface.local_application.cli_contract import schema_request
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 from .cli_contract import error_projection, refusal_words
 
@@ -164,7 +168,6 @@ def public_failure(error: BaseException, fallback: str) -> str:
     of the failure, with the detail logged under it.
     """
     # The owners' models' failure; imported here, so the client's transport never loads them.
-    from pydantic import ValidationError
 
     code = owner_failure_code(error)
     if code is not None:
@@ -229,8 +232,6 @@ def within(error: BaseException, *place: str) -> BaseException:
     Returns:
         The same refusal with each item's location prefixed by `place`.
     """
-    from pydantic import ValidationError
-
     if not isinstance(error, ValidationError):
         return error
     lines: list[Any] = [{**item, "loc": (*place, *item["loc"])} for item in error.errors()]
@@ -253,8 +254,6 @@ def located_failure(
     contract's error type) and the contract's words (`message`), never a value. Any other
     failure answers the code `public_failure` gives.
     """
-    from pydantic import ValidationError
-
     if not isinstance(error, ValidationError):
         failure = {"failure_code": public_failure(error, fallback)}
         return {**failure, **error_projection(failure)}
@@ -353,7 +352,7 @@ def _way_back(
             **({"valid_values": read} if corrected is None else {"corrected": corrected}),
             "schema": schema_request(str(request["operation"])),
         },
-        "schema_command": ["alphalattice", "schema", "show", request["operation"]],
+        "schema_command": [*command_prefix(), "schema", "show", request["operation"]],
     }
 
 
@@ -466,7 +465,6 @@ def typed_failures(body: dict[str, object]) -> dict[str, object]:
 
 def _withheld(text: str, *, prefix: str = FAILURE_DETAIL_WITHHELD, incident: bool = True) -> str:
     """`prefix:<incident>`, the incident a digest of the text, which the Host's log keeps."""
-    import logging  # only a withheld failure is logged; a call's imports are its cost (W12)
 
     digest = sha256(text.encode("utf-8", "replace")).hexdigest()[:8]
     logging.getLogger("alphalattice.local_web").error("%s:%s %s", prefix, digest, text[:2000])

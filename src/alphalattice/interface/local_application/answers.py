@@ -587,7 +587,9 @@ def _declared_answers() -> dict[str, type[BaseModel]]:
 
     contract = table()
     rows: dict[str, dict[str, Any]] = json.loads(_DECLARED.read_text(encoding="utf-8"))
+    common = rows.pop("$defs")
     for operation, row in rows.items():
+        row["fields"] = [*row["fields"], *common.values()]
         if operation not in contract["reads"]:
             continue
         if "read_request" in {str(field["name"]) for field in row["fields"]}:

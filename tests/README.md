@@ -44,7 +44,7 @@ rewritten.
 
 A test is kept only while it holds a requirement nothing else holds. The fast
 guard (`scripts/check_test_shape.py`, run by `scripts/check_playpen.py --staged
---fast`) refuses rules 3, 7 and 9, a sentence pin of five or more words (rule 4)
+--fast`) refuses rules 1, 3, 7 and 9, a sentence pin of five or more words (rule 4)
 and the docstring bound in rule 1 on what a change adds; review holds the rest.
 Source growth past 100 KiB or 120 function lines/20 decisions, copied eight-line blocks and added performance lints are refused by the fast guard; owner count-budget excess is a COUNT STOP, and a higher pin needs maintainer approval.
 The Workbench parity guard refuses a write without an agent route, an added named UI-only exception, or a UI-origin check that blocks the person's relay.
@@ -52,8 +52,8 @@ The Workbench parity guard refuses a write without an agent route, an added name
 1. A test holds one requirement: a behaviour a user or a consumer relies on, a
    regression, a tamper or recovery case, or a boundary nothing else covers. Its
    docstring states that requirement in one sentence, at most three lines, in
-   words rather than internal card or ledger ids; the reasoning belongs in the
-   change's record.
+   words rather than internal card or ledger ids; the guard refuses new functions without it.
+   The change's record carries any further reasoning.
 2. Before writing one, search for a test of the same requirement and extend or
    replace it. A requirement is tested once, in its owner's suite, not again in
    another file or another harness. A fix extends the test that should have
@@ -81,7 +81,9 @@ The Workbench parity guard refuses a write without an agent route, an added name
     maintainer's merge stops one that does. Only the maintainer admits an
     exception, such as a small fix whose regression case outweighs it, and its
     reason is recorded. A test over 10 s names why
-    in its docstring; one over 60 s needs the maintainer's agreement.
+    in its docstring; one over 60 s needs the maintainer's agreement. Large entries need a
+    specific registry reason and the Lead's word; the declaration ratchet refuses growth.
+    Pytest-timeout enforces the registered bound over setup, call and teardown, naming overruns.
 11. An outdated test is deleted or changed, never loosened. A deleted test names
     its covering test in the change's record; protected classes (boundary rule 5)
     change only how they are built.

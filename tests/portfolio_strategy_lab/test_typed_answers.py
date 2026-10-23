@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
@@ -56,24 +55,24 @@ def test_each_task_and_book_read_answers_its_published_model(
 
 def test_every_operation_publishes_its_answer() -> None:
     """Every operation publishes its answer."""
-
     from alphalattice.interface.local_application.operations import OPERATIONS
 
+    rows = json.loads(answers._DECLARED.read_text("utf-8"))
+    assert set(rows.pop("$defs", {})) == {"error_info"}
+    assert all(f["name"] != "error_info" for r in rows.values() for f in r["fields"])
     assert set(ANSWERS) == set(OPERATIONS)
     for operation, model in ANSWERS.items():
         published = schema(operation)["answer_schema"]
         assert published == model.model_json_schema(), operation
-        undescribed = [
-            name
-            for name, field in published.get("properties", {}).items()
-            if not field.get("description")
-        ]
+        fields = published.get("properties", {})
+        undescribed = [name for name in fields if not fields[name].get("description")]
         assert not undescribed, (operation, undescribed)
 
 
 def test_every_answer_that_names_a_book_for_review_offers_that_review() -> None:
     """Every answer that names a book for review offers that review."""
-    rows = json.loads(Path(answers.__file__).with_name("answers.json").read_text("utf-8"))
+    rows = json.loads(answers._DECLARED.read_text("utf-8"))
+    rows.pop("$defs", None)
     naming = {
         operation
         for operation, answer in rows.items()
@@ -94,7 +93,8 @@ def test_every_answer_lifecycle_field_names_a_task_state_or_its_distinct_role():
         "model_lifecycle": "a model's place in its lifecycle",
         "component_lifecycles": "each component's model lifecycle",
     }
-    rows = json.loads(Path(answers.__file__).with_name("answers.json").read_text("utf-8"))
+    rows = json.loads(answers._DECLARED.read_text("utf-8"))
+    rows.pop("$defs", None)
     named = {
         str(field["name"])
         for row in rows.values()

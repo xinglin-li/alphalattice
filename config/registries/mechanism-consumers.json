@@ -96,10 +96,13 @@
       "owner": "devtools.architecture",
       "mechanism": "src/devtools/architecture/registries.py::pytest_collection_modifyitems",
       "consumers": [
-        "tests/conftest.py"
+        "tests/conftest.py",
+        "scripts/check_playpen.py"
       ],
       "input_registry": "config/registries/test-sizes.json",
-      "projection": "src/devtools/architecture/test_sizes.py"
+      "projection": "src/devtools/architecture/test_sizes.py",
+      "admission_guard": "scripts/check_playpen.py::shrink_only_growth",
+      "policy": "Registered limits drive pytest-timeout across setup, call and teardown; new Large rows require a dated maintainer decision in admitted, verified in review; other finding sets remain shrink-only."
     },
     "registry entry descriptions": {
       "owner": "devtools.architecture",

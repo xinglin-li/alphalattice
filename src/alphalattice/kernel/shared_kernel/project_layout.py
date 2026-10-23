@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
+from contextlib import suppress
 from functools import cache
 from importlib.resources import files
 from pathlib import Path
@@ -82,6 +86,32 @@ def tracked_path(root: Path, path: Path) -> str:
     raise ValueError("shared_kernel.source_resource_outside_runtime")
 
 
-def command_prefix() -> tuple[str, ...]:
+def command_prefix(*, portable: bool = False) -> tuple[str, ...]:
     """Return the tool-installed command, available in every host's fresh shell."""
+    if portable or ("UV_RUN_RECURSION_DEPTH" not in os.environ and shutil.which("alphalattice")):
+        return ("alphalattice",)
+    uv = shutil.which("uv")
+    folder = None
+    if uv:
+        # Catch outside @cache so a failed probe cannot become a retained value.
+        with suppress(OSError, subprocess.SubprocessError, UnicodeError):
+            folder = _tool_bin(uv)
+    command = shutil.which("alphalattice", path=folder) if folder else None
+    if command:
+        return (str(Path(command).absolute()),)
     return ("alphalattice",)
+
+
+@cache
+def _tool_bin(uv: str) -> str:
+    """Cache successful directory discovery; failed probes remain retriable."""
+    found = subprocess.run(
+        [uv, "tool", "dir", "--bin"],
+        capture_output=True,
+        encoding="utf-8",
+        timeout=10,
+        check=True,
+    ).stdout.strip()
+    if not found:
+        raise OSError
+    return found

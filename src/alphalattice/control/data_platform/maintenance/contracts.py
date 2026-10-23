@@ -1198,3 +1198,15 @@ class WorkspaceDataUpdateReceipt(_SealedDataUpdate):
         default=(), exclude_if=lambda v: not v
     )
     effect_receipts: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class WorkingManifestBind:
+    """One membership a maintenance cycle made active: by which authority, under whose Task."""
+
+    cycle_id: str
+    sequence: int
+    manifest_revision: str
+    authority: str
+    owner_task: str | None
+    recorded_at: datetime

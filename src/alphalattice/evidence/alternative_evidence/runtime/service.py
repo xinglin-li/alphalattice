@@ -33,7 +33,13 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     vector_asset_key,
 )
 from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
-from alphalattice.kernel.knowledge.runtime import VERIFIED_PACKS
+from alphalattice.kernel.knowledge.runtime import (
+    VERIFIED_PACKS,
+    observing_passages,
+    withhold_inference_yield,
+    yielding_during_inference,
+)
+from alphalattice.kernel.knowledge.runtime import build_chunks as _build_chunks
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.protocols.actor_execution import ActorKind, AgentExecutionBinding
@@ -1110,12 +1116,6 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         if value is not None:
             self.generation_builds_avoided += 1
         else:
-            from alphalattice.kernel.knowledge.runtime import (
-                observing_passages,
-                withhold_inference_yield,
-                yielding_during_inference,
-            )
-
             if chunks is not None:
                 chunks.expect(self._chunk_count(document_set))
 
@@ -1158,7 +1158,6 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         own chunking (0.35 s for a unit of 3,607 chunks): the denominator of a
         build's progress, never an input to it.
         """
-        from alphalattice.kernel.knowledge.runtime import build_chunks as _build_chunks
 
         library = self.documents.library
         snapshot = library.read_snapshot(UUID(document_set.workspace_snapshot_id))

@@ -15,7 +15,9 @@ it composes `backup restore`: the product readback probe imports no test harness
 
 from __future__ import annotations
 
+import contextlib
 import copy as copying
+import io
 import json
 import os
 import shutil
@@ -24,6 +26,9 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
+
+import psutil  # type: ignore[import-untyped]
+import yaml  # type: ignore[import-untyped]
 
 from .saved_object_readback import probe
 
@@ -64,8 +69,6 @@ def _verdicts(path: Path) -> dict[tuple[str, str, str], str]:
 
 
 def _probe(copy: Path, work: Path, out: Path) -> dict[tuple[str, str, str], str]:
-    import contextlib
-    import io
 
     harvest = copy.parent / f"{copy.name}-harvest"
     harvest.mkdir()
@@ -86,8 +89,6 @@ class _Peak:
     """The process's resident memory at its highest while a study runs, sampled."""
 
     def __init__(self) -> None:
-        import psutil  # type: ignore[import-untyped]
-
         self._process = psutil.Process()
         self.bytes = self._process.memory_info().rss
         self._stop = threading.Event()
@@ -122,7 +123,6 @@ def _declared_study(session: Any, copy: Path, model_id: str, study: Path | None)
     Either is an Alpha study that names a model; only the model and its recipe change, so a
     study declared for another model never runs as this one's trial.
     """
-    import yaml  # type: ignore[import-untyped]
 
     from alphalattice.capabilities.alpha_modeling.catalog import (
         build_installed_alpha_model_catalog,

@@ -6,7 +6,10 @@ import hashlib
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
+import sys
 import tomllib
 import zipfile
 from pathlib import Path
@@ -152,10 +155,10 @@ def test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg() ->
     assert all(line in guide for line in native_bridge.TOOL_INSTALL)  # a first use offers it
     version = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]["version"]
     assert all(line.format(version=version) in guide for line in native_bridge.WHEEL_INSTALL)
-    assert "uv tool dir --bin" in guide and "fresh shell" in guide
+    assert "absolute prefix" in guide and "no shell update" in guide
+    assert all(value in guide for value in ("uv tool dir", "fresh shell", "continue_here"))
     assert "Activate.ps1" not in guide and "$ws" not in guide
-    assert "uv run alphalattice" in guide
-    assert "python scripts/run_alphalattice.py" in guide
+    assert "uv run alphalattice" in guide and "python scripts/run_alphalattice.py" in guide
     assert "editable" in guide and "no checkout" in guide
 
 
@@ -255,34 +258,97 @@ def test_resource_names_and_printed_commands_survive_the_installed_layout(
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
+@pytest.mark.parametrize("off_path", [False, True, "source"])
 def test_installed_configure_copies_guidance_unchanged_and_refuses_an_overwrite(
-    host: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    host: str,
+    off_path: bool | str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """requirement: copied guidance retains its bytes and every link on both legs."""
-    resources = resource_files()
+    """Configured cards resolve off-PATH tools and preserve other guidance and personal edits."""
+    if off_path:
+        uv = shutil.which("uv")
+        assert uv
+        bare, binary = tmp_path / "uv-only", tmp_path / "tool bin 雪"
+        bare.mkdir()
+        binary.mkdir()
+        shutil.copy2(uv, bare / Path(uv).name)
+        path = binary / ("alphalattice.exe" if os.name == "nt" else "alphalattice")
+        path.write_bytes(b"")
+        path.chmod(0o755)
+        monkeypatch.setenv("PATH", str(bare))
+        monkeypatch.setenv("UV_TOOL_BIN_DIR", str(binary))
+        launcher = shutil.which("alphalattice", path=str(binary))
+        assert launcher
+        assert shutil.which("alphalattice") is None and project_layout.command_prefix() == (
+            launcher,
+        )
+
+    def unchanged(name):
+        shown, original = (project / name).read_bytes(), (ROOT / name).read_bytes()
+        if not off_path or Path(name).suffix not in {".md", ".toml"}:
+            assert shown == original
+            return
+        shown, original = shown.decode(), original.decode()
+        prefixes = (
+            "& '" + launcher.replace("'", "''") + "'",
+            shlex.quote(Path(launcher).as_posix()),
+        )
+        shared = name == "AGENTS.md" or name.startswith(".agents/")
+        if shared and re.search(r"(?:`|Bash\(|\n)alphalattice ", original):
+            assert launcher in shown or Path(launcher).as_posix() in shown
+            words = project_layout.runtime_json("config/registries/messages.json")["entries"][
+                "setup.tool.prefixes"
+            ]["words"]["en"].format(powershell=prefixes[0], posix=prefixes[1])
+            block = (
+                f"<!-- alphalattice-command-prefix -->\n{words}\n"
+                "<!-- /alphalattice-command-prefix -->\n\n"
+            )
+            assert shown.count(block) == 1
+            shown = shown.replace(block, "", 1)
+
+        def restore(text):
+            for prefix in prefixes:
+                text = text.replace(prefix, "alphalattice")
+            return text
+
+        if name.endswith(".toml"):
+            data = tomllib.loads(shown)
+            shown = data["developer_instructions"]
+            data["developer_instructions"] = restore(shown)
+            assert data == tomllib.loads(original)
+        else:
+            assert restore(shown) == original
+        if not shared and re.search(r"(?:`|Bash\(|\n)alphalattice ", original):
+            assert launcher in shown or Path(launcher).as_posix() in shown
+        if name.startswith(".claude/agents/"):
+            rules = re.findall(r"Bash\(([^)]*):\*\)", shown.split("\n---", 1)[0])
+            assert all(rule.startswith(prefixes[1] + " ") for rule in rules)
+
+    resources = list(resource_files())
+    if off_path == "source":
+        resources.append(".venv/" + ("Scripts/python.exe" if os.name == "nt" else "bin/python"))
     guidance = [
         name
         for name in resources
-        if (
-            name.endswith(".md")
-            and ("skills" in Path(name).parts or name.startswith(".claude/agents/"))
-        )
-        or (name.startswith(".codex/agents/") and name.endswith(".toml"))
+        if name.endswith((".md", ".toml")) and ("skills" in Path(name).parts or "/agents/" in name)
     ]
     _assert_guidance_links_resolve(ROOT, guidance)
     installed = tmp_path / "site-packages/alphalattice/_runtime"
     for name in resources:
         destination = installed / name
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes((ROOT / name).read_bytes())
-    project = tmp_path / "agent-project"
-    monkeypatch.setattr(native_setup, "INSTALLED", True)
+        source = Path(sys.executable) if name.startswith(".venv/") else ROOT / name
+        destination.write_bytes(source.read_bytes())
+    project = installed if off_path == "source" else tmp_path / "agent-project"
+    monkeypatch.setattr(native_setup, "INSTALLED", off_path != "source")
     monkeypatch.setattr(native_setup, "RESOURCE_ROOT", installed)
     monkeypatch.setattr(native_setup, "ROOT", project)
     monkeypatch.setattr(native_setup.sys, "argv", ["native", "configure", "--host", host])
     assert native_setup.main() == 0
     assert json.loads(capsys.readouterr().out)["status"] == "LOCAL_DECLARATIONS_VALIDATED"
-    assert (project / "AGENTS.md").read_bytes() == (ROOT / "AGENTS.md").read_bytes()
+    unchanged("AGENTS.md")
     host_directory = ".codex/" if host == "codex" else ".claude/"
     directories = [
         name
@@ -295,7 +361,11 @@ def test_installed_configure_copies_guidance_unchanged_and_refuses_an_overwrite(
         if any(name.startswith(directory + "/") for directory in directories)
     ]
     for name in copied_resources:
-        assert (project / name).read_bytes() == (ROOT / name).read_bytes()
+        unchanged(name)
+    if off_path:
+        from scripts import materialize_claude_host as cards
+
+        assert "`alphalattice workspace show`" in cards.command_block("alphalattice_risk")
     configured_guidance = [name for name in guidance if name in copied_resources]
     _assert_guidance_links_resolve(project, configured_guidance)
     _assert_guidance_links_resolve(project, ["AGENTS.md"], public_pages=True)
@@ -315,6 +385,10 @@ def test_installed_configure_copies_guidance_unchanged_and_refuses_an_overwrite(
         "schema": native_setup.PROJECT_DECLARATION_SCHEMA,
         "host": host,
     }
+    native_setup.sys.argv[-1] = "claude-code" if host == "codex" else "codex"
+    assert native_setup.main() == 0
+    capsys.readouterr()
+    native_setup.sys.argv[-1] = host
     assert native_setup.main() == 0
     capsys.readouterr()
     declaration = project / (".codex/config.toml" if host == "codex" else ".claude/settings.json")
@@ -335,11 +409,14 @@ def test_installed_configure_copies_guidance_unchanged_and_refuses_an_overwrite(
     assert json.loads(capsys.readouterr().out)["retired_hook_groups_removed"] == 0
     assert declaration.read_bytes() == foreign_bytes
     (project / "AGENTS.md").write_text("A person's own guide", encoding="utf-8")
-    assert native_setup.main() == 2
+    assert native_setup.main() == (0 if off_path == "source" else 2)
     refused = json.loads(capsys.readouterr().out)
-    assert refused["reason"] == "native_bridge.existing_configuration_differs"
-    assert refused["detail"] and refused["next_action"]
+    if off_path != "source":
+        assert refused["reason"] == "native_bridge.existing_configuration_differs"
+        assert refused["detail"] and refused["next_action"]
     assert (project / "AGENTS.md").read_text(encoding="utf-8") == "A person's own guide"
+    if off_path == "source":
+        return
     doctor = [
         native_setup.sys.executable,
         "-m",

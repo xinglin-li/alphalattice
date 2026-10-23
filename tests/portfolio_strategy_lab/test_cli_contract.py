@@ -888,7 +888,7 @@ def test_the_product_text_names_no_internal_code() -> None:
 
     for operation in sorted({name for names in cli._commands().values() for name in names}):
         collect(f"schema {operation}", cli.schema(operation))
-    parsers = [("alphalattice", cli._parser())]
+    parsers = [("alphalattice", cli.command_parser())]
     while parsers:
         name, parser = parsers.pop()
         texts.append((f"{name} --help", parser.format_help()))
@@ -914,8 +914,10 @@ def test_each_wait_takes_the_reread_its_compact_answer_offers() -> None:
     """A compact envelope offers `--section`; both waits take it, so the hint runs as written."""
     committee = ["committee", "wait", "--update", "u", "--role", "PM", "--key", "k"]
     for wait in (["activity", "wait"], committee):
-        assert cli._parser().parse_args([*wait, "--section", "messages"]).section == "messages"
-    parser = cli._parser()
+        assert (
+            cli.command_parser().parse_args([*wait, "--section", "messages"]).section == "messages"
+        )
+    parser = cli.command_parser()
     for word in committee[:2]:
         sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
         parser = sub.choices[word]

@@ -17,6 +17,8 @@ from threading import Lock
 from typing import Any, cast
 from uuid import UUID
 
+import yaml  # type: ignore[import-untyped]
+
 from alphalattice.capabilities.alpha_modeling.runtime.lightgbm_threads import (
     LightGBMThreads,
     lightgbm_threads,
@@ -1170,7 +1172,6 @@ class ResearchExperimentApplication:
         if prepared is not None:
             template["experiment"]["data_snapshot_handle"] = prepared.source_handle
         template["factor"]["factor_ids"] = [v.factor_id for v in inventory]
-        import yaml  # type: ignore[import-untyped]
 
         controls = [
             {
@@ -2031,8 +2032,6 @@ class ResearchExperimentApplication:
         (`ADMITTED` alone is the RUN disposition for work just sent, so a read
         never says it.)
         """
-        import yaml
-
         entry = self._previews.get(plan_hash)
         task = self._task_for_plan_hash(plan_hash)
         body: dict[str, object] = {
@@ -2626,7 +2625,6 @@ class ResearchExperimentApplication:
                 prior.alpha_source.factor_task_id,
                 prior.alpha_source.curation_receipt_hash,
             )
-        import yaml
 
         return {
             "status": "DRAFT_READY",
@@ -4301,8 +4299,6 @@ class ResearchExperimentApplication:
         if op == "EXPERIMENT_REPLAY" and body["status"] == "EXPERIMENT_PUBLISHED":
             return {**body, "status": "REUSED_EXACT", "numerical_call_count": 0}
         if op == "EXPERIMENT_EXPORT":
-            import yaml
-
             document = json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2)
             exported = {
                 "status": body["status"],

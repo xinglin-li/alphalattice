@@ -45,6 +45,9 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Final, Literal
 
+import yaml  # type: ignore[import-untyped]
+from pydantic import ValidationError
+
 from alphalattice.foundation.factor_research.experiments.authoring import (
     FACTOR_EXPERIMENT_KIND,
     FactorSection,
@@ -91,6 +94,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.interface.local_application.read_views import summary_display
 from alphalattice.investment.portfolio_strategy_lab.application.availability import NOT_AVAILABLE
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     (
@@ -299,7 +303,7 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                 raise ValueError
             corrected = list(arguments)
             corrected[corrected.index(bad)] = nearest[0] + bad[len(wrong) :]
-            repaired = _parser(_named(corrected))
+            repaired = command_parser(_named(corrected))
             args = repaired.parse_args(corrected)
             if args.noun == "request":
                 args.primary_file = args.file if args.from_response is not None else None
@@ -315,7 +319,7 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                 "repair": worded(
                     f"Replace {wrong} with {nearest[0]} and send the corrected request."
                 ),
-                "corrected_command": ["alphalattice", *corrected],
+                "corrected_command": [*command_prefix(), *corrected],
                 "help": help_line,
                 "next_requests": {"correct": request},
             }
@@ -628,8 +632,35 @@ def _named(arguments: Sequence[str]) -> frozenset[str]:
     return frozenset(arguments) & {noun for noun, _verb in _commands()}
 
 
+def _operation_fields(
+    operations: tuple[str, ...], table: dict[str, Any]
+) -> tuple[set[str], str | None, list[str], list[str], str]:
+    """Read an operation's field contract and render its usage in declared order."""
+    allowed = sorted(set().union(*(_fields(op)[1] for op in operations)))
+    required = set.intersection(*(set(_fields(op)[0]) for op in operations))
+    positional = next(
+        (table["positional"][op] for op in operations if op in table["positional"]), None
+    )
+    documents = [name for name in table["primary"] if name in allowed]
+    others = [name for name in allowed if name != positional and name not in documents]
+    line = " ".join(
+        [
+            *(["<id>"] if positional else []),
+            *(["--file <path>"] if set(documents) & required else []),
+            *(flag(name) for name in sorted(required & set(others))),
+            *(["[--file <path>]"] if documents and not set(documents) & required else []),
+            *(
+                [f"[{' '.join(flag(name) for name in sorted(set(others) - required))}]"]
+                if set(others) - required
+                else []
+            ),
+        ]
+    )
+    return required, positional, documents, others, line
+
+
 @functools.cache
-def _parser(named: frozenset[str] | None = None) -> _Parser:
+def command_parser(named: frozenset[str] | None = None) -> _Parser:
     """Build the command-line parser for the selected nouns.
 
     With ``named``, only the operations named by the command line receive flags;
@@ -685,26 +716,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
             continue
         purpose = " Or: ".join(dict.fromkeys(table["purposes"][op] for op in operations))
         person = any(op in table["person_only"] for op in operations)
-        allowed = sorted(set().union(*(_fields(op)[1] for op in operations)))
-        required = set.intersection(*(set(_fields(op)[0]) for op in operations))
-        positional = next(
-            (table["positional"][op] for op in operations if op in table["positional"]), None
-        )
-        documents = [name for name in table["primary"] if name in allowed]
-        others = [name for name in allowed if name != positional and name not in documents]
-        line = " ".join(
-            [
-                *(["<id>"] if positional else []),
-                *(["--file <path>"] if set(documents) & required else []),
-                *(flag(name) for name in sorted(required & set(others))),
-                *(["[--file <path>]"] if documents and not set(documents) & required else []),
-                *(
-                    [f"[{' '.join(flag(name) for name in sorted(set(others) - required))}]"]
-                    if set(others) - required
-                    else []
-                ),
-            ]
-        )
+        required, positional, documents, others, line = _operation_fields(operations, table)
         # One line per action, what it does then its contract: help shows each use (V377, F3).
         child = by_noun[noun].add_parser(
             verb,
@@ -1300,8 +1312,6 @@ def _declaration_fields(path: Path) -> str:
     Read here, in the CLI, so the declaration's module, which number-deciding closures hold,
     keeps its bytes.
     """
-    import yaml  # type: ignore[import-untyped]
-    from pydantic import ValidationError
 
     from alphalattice.capabilities.alpha_modeling.declaration import AlphaModelDeclaration
 
@@ -1400,7 +1410,7 @@ def main(
     language = ANSWER_LANGUAGE.set(_line_context(arguments))
     surface_token = SURFACE_USE.set(())
     try:
-        parser = _parser(_named(arguments))
+        parser = command_parser(_named(arguments))
         args = parser.parse_args(arguments)
         args.command_line = tuple(arguments)
         READ_VIEW.set((args.view or "compact", _summary_source(parser, args), summary_display))
@@ -1691,7 +1701,7 @@ def _refused(
     if workspace is not None and refusal.outcome == "NO_HOST":
         detail = host_checked(detail, workspace)
     if line and code == "local_client.workspace_unbound":
-        again = join(["alphalattice", "--workspace", "<dir>", *line], shell())
+        again = join([*command_prefix(), "--workspace", "<dir>", *line], shell())
         detail += " " + str(worded("This line with its workspace named: {subject}.")).replace(
             "{subject}", f"`{again}`"
         )
@@ -1908,7 +1918,7 @@ def _summary_source(parser: _Parser, args: argparse.Namespace) -> tuple[str, ...
     if getattr(args, "output", None) is None and (stdin or not pure):
         READ_VIEW.set(("summary", (), summary_display))
         parser.error(str(worded("read.summary")).format(pointer="--output PATH"))
-    return ("alphalattice", *args.command_line) if pure and not stdin else ()
+    return (*command_prefix(), *args.command_line) if pure and not stdin else ()
 
 
 def _command(
@@ -2018,7 +2028,7 @@ def request_of(argv: Sequence[str]) -> dict[str, Any]:
         ValueError: `cli.not_an_operation_command` for a client command or `request`.
     """
     arguments = list(argv)
-    parser = _parser(_named(arguments))
+    parser = command_parser(_named(arguments))
     args = parser.parse_args(arguments)
     if args.noun in {"serve", "request"} or hasattr(args, "client_command"):
         raise ValueError("cli.not_an_operation_command")

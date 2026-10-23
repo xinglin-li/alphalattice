@@ -21,6 +21,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import Context, ContextVar
+from ctypes import wintypes
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -109,8 +110,6 @@ class _WindowsReadLease:
     """
 
     def __init__(self, path: Path) -> None:
-        from ctypes import wintypes
-
         class Overlapped(ctypes.Structure):
             _fields_ = [
                 ("Internal", ctypes.c_size_t),

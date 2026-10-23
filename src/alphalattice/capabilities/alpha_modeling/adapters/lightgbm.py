@@ -18,7 +18,7 @@ LIGHTGBM_STATE_SCHEMA_ID = "alpha-model.lightgbm.development-state"
 
 
 def _load_lightgbm() -> Any:
-    return import_module("lightgbm")
+    return import_module("lightgbm")  # lazy: optional.
 
 
 __all__ = [

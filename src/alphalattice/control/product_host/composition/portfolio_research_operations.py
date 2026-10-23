@@ -1648,7 +1648,7 @@ class PortfolioResearchOperations:
                             return chosen
                         return self._positions(self._research_update_readback(chosen), caller)
                     assert request.update_plan_hash is not None
-                    plan = self.research_updates.prepare(request.update_plan_hash)
+                    plan = self.research_updates.resuming(request.update_plan_hash)
                     reused_task = self.research_updates.reusable(plan)
                     if reused_task is not None:
                         return {
@@ -3735,9 +3735,9 @@ class PortfolioResearchOperations:
             self.goals.first_use_delegation(first)["active"]
         )
         if not self.installed():
-            # No strategy is installed: the way forward begins at the research strategy's
-            # controls, which name each missing component's first step (V505, RR5). It is the
-            # first intent, the shortest way to positions, ahead of the inputs' Lab flows.
+            # No strategy installed: the way begins at the research strategy's controls, which
+            # name each missing component's first step (V505, RR5): the first intent, the
+            # shortest way to positions, ahead of the inputs' Lab flows.
             return [
                 {
                     "flow": "RUN_FORWARD",
@@ -3934,8 +3934,8 @@ class PortfolioResearchOperations:
         """
         assert self.application is not None
         spec = self._spec(document)
-        # A full queue answers before the plan resolves sources, scope and caches (V100); the
-        # preview answers whether a run would be reused, which takes no place.
+        # A full queue answers before the plan resolves sources, scope and caches (V100); a
+        # preview of a run's reuse takes no place.
         try:
             self.workspace_session.task_control_registry.check_capacity()
         except TaskQueueFull as error:
@@ -4476,9 +4476,8 @@ class PortfolioResearchOperations:
         status["task_record_hash"] = snapshot.projection.task_record_hash
         status["resume_refusal"] = resume_refusal
         body: dict[str, object] = {**view.model_dump(mode="json"), "status": status}
-        # Each permitted action that takes a version, bound to the Task and the version this
-        # view read, so `recovery run --from` sends what was seen; a Task that moved since is
-        # refused as stale, nothing applied (V443).
+        # Each permitted versioned action, bound to the Task and version this view read, so
+        # `recovery run --from` sends what was seen; one moved since is refused, unapplied (V443).
         versioned = {"RECOVER", "CANCEL"}
         available = [a for a in cast(list[Any], body.get("actions") or []) if a.get("available")]
         offered = {
@@ -4757,12 +4756,10 @@ class PortfolioResearchOperations:
     def _run_answer(
         self, sent: CommandSubmission, data_plan: WorkspaceDataUpdatePlan | None = None
     ) -> dict[str, Any]:
-        """A run's answer by its Task as every read of it sees it now (V600).
-
-        The admission carries the state the Task was admitted or found in, which a reopened or
-        taken-up Task has left; so the answer reads the Task as its status does, a stopped one
-        with its stop's code, words and way on. A refused admission names its code, and a
-        deferral refused before its retry time names that time, read for `data_plan` (V601).
+        """A run's answer by its Task as its status reads it, not the state it was admitted
+        in (V600): a stopped one with its stop's code, words and way on, an update resumed on its
+        own move's checkpoint saying so. A refused admission names its code; a deferral refused
+        before its retry time, that time, read for `data_plan` (V601).
         """
         if sent.task_id is None:
             refused: dict[str, Any] = sent.answer()
@@ -4781,6 +4778,7 @@ class PortfolioResearchOperations:
             "lifecycle": projection.lifecycle.value,
             "failure_code": None,
             **self._stopped_answer(projection),
+            **(self.research_updates.resumed(sent.task_id) if self.research_updates else {}),
         }
 
     def _stopped_answer(self, projection: TaskSafeProjection) -> dict[str, Any]:
@@ -5153,7 +5151,7 @@ class PortfolioResearchOperations:
         return None if evidence_hash is None else ArtifactReference(published, evidence_hash)
 
     def cancel(self, task_id: UUID, *, expected_task_hash: str | None = None) -> dict[str, object]:
-        """Cancel an exact version; Task Control refuses a moved one without a write."""
+        """Cancel an exact version, a moved one refused unwritten; heal a cancel's orphaned bind."""
         try:
             accepted = self.dispatcher.request_cancel(
                 task_id, expected_task_hash=expected_task_hash
@@ -5173,6 +5171,7 @@ class PortfolioResearchOperations:
             **task_status_body(projection),
             **self._stopped_answer(projection),
             "cancel_requested": accepted,
+            **(self.data_update.restored() if self.data_update else {}),
         }
 
     def results(self, task_id: UUID | None = None) -> dict[str, object]:

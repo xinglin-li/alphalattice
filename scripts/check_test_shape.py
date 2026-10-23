@@ -314,8 +314,8 @@ def clone_problems(path: str, old: str | None, new: str, corpus: dict[str, str])
 
 def _docstring_lines(text: str) -> dict[str, int]:
     return {
-        node.name: len((ast.get_docstring(node) or "").splitlines())
-        for node in ast.walk(_tree(text))
+        name: len((ast.get_docstring(node) or "").splitlines())
+        for name, node in _definitions(_tree(text))
         if isinstance(node, FUNCTION_TYPES) and node.name.startswith("test_")
     }
 
@@ -386,6 +386,8 @@ def problems(path: str, old: str | None, new: str) -> list[str]:
             found.append(f"{path}: sleeps {match.group(1)} s; drive the clock or the step (rule 7)")
     was = _docstring_lines(old or "")
     for name, count in _docstring_lines(new).items():
+        if name not in was and count == 0:
+            found.append(f"{path}::{name}: missing requirement docstring (rule 1)")
         if count > 3 and count > was.get(name, 0):
             found.append(
                 f"{path}::{name}: a {count}-line docstring; one requirement sentence (rule 1)"

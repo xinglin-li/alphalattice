@@ -152,9 +152,10 @@
       "kind": "MESSAGE",
       "arguments": [],
       "words": {
-        "en": "This launch could not prove escape from Windows Job containment, so it left no detached Host running. Give the person terminal_command to run in a terminal they own outside the agent's shell, then wait for their word before any further command for this workspace.",
-        "zh-CN": "本次启动无法证明已脱离 Windows Job 的约束，因此没有留下独立运行的 Host。请将 terminal_command 交给本人，在其自己持有、位于代理 shell 之外的终端运行，然后等待本人的话，再对此工作区执行任何命令。"
-      }
+        "en": "This launch could not prove escape from Windows Job containment, so it left no detached Host running. On Claude Code desktop, first run terminal_command yourself in an available agent-driven Terminal panel; Codex uses the same route when its panel is available. Only without such a panel, give the person that command for a terminal they own and wait for their word. Both routes keep the same escape and readiness checks; the app may ask approval for the line.",
+        "zh-CN": "本次启动无法证明已脱离 Windows Job 的约束，因此没有留下独立运行的 宿主。在 Claude Code 桌面应用中，优先自行通过可用的代理工具在 Terminal 面板运行 terminal_command；Codex 的面板可用时也走同一路径。只有没有这种面板时，才把同一命令交给本人在其持有的终端运行，并等待本人的话。两条路径都保留相同的脱离约束和就绪检查；应用可能要求批准这一行命令。"
+      },
+      "description": "Explains the ordered agent-panel and person-terminal recovery routes without claiming the Host can inspect agent tools."
     },
     "cli.confirmation.question_code": {
       "owner": "alphalattice.interface.local_application",
@@ -163,6 +164,33 @@
       "words": {
         "en": "With --person-said: the registered code beside the question.",
         "zh-CN": "与 --person-said 同用：问题旁的已注册代码。"
+      }
+    },
+    "research_update.resumed_own_move": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The update resumed on the checkpoint its own data stage moved its universe to; the update's ledger names both checkpoints and the names the move added.",
+        "zh-CN": "本次更新在其自身数据阶段推进股票池后的检查点上继续运行；更新账本记录了前后两个检查点及新增的名称。"
+      }
+    },
+    "workspace_maintenance.membership_restored": {
+      "owner": "alphalattice.control.data_platform",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "A cancelled update had left its candidate list active before its Panel published it; the active membership was returned to the Panel's own, and the step recorded once.",
+        "zh-CN": "一次已取消的更新在其 Panel 发布前留下了处于生效状态的候选名单；生效成员已恢复为 Panel 自身的成员，这一步只记录一次。"
+      }
+    },
+    "workspace_maintenance.membership_owner_unproved": {
+      "owner": "alphalattice.control.data_platform",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The active stock list is bound by the maintenance cycle this refusal names, which never finished, and no update's own plan proves which Task bound it, so it stays bound and nothing ran. Read the data update's record; the research and history already recorded stay readable. To keep updating, prepare a new workspace from the current source.",
+        "zh-CN": "当前生效的股票清单由本次拒绝所指明的维护周期绑定，该周期从未完成，且没有任何更新自身的计划能证明是哪个任务绑定了它，因此它保持绑定，没有执行任何操作。请读取数据更新的记录；已记录的研究和历史仍可读取。要继续更新，请从当前来源准备一个新的工作区。"
       }
     },
     "goal.closure.ready": {
@@ -199,9 +227,10 @@
       "kind": "MESSAGE",
       "arguments": [],
       "words": {
-        "en": "This launch could not prove escape from Windows Job containment, so it left no detached Host running. Run terminal_command yourself in the desktop app's Terminal panel whose shell you probed outside every Job; the same escape and readiness checks still apply. The app may ask the person to approve that one command line.",
-        "zh-CN": "本次启动无法证明已脱离 Windows Job 的约束，因此没有留下独立运行的 Host。请自行在桌面应用的 Terminal 面板运行 terminal_command；你已探测确认该面板的 shell 不在任何 Job 中。同样的脱离约束与就绪检查仍然适用。 应用可能要求本人批准这一行命令。"
-      }
+        "en": "The declared Terminal panel is the first offered route after this launch could not prove escape from Windows Job containment and left no detached Host running. On Claude Code desktop, run terminal_command yourself through the available panel tool; Codex follows the same route when available. Only without an agent-driven panel, give the person the same command for their terminal and wait for their word. The escape and readiness checks still apply; the app may ask approval for the line.",
+        "zh-CN": "本次启动无法证明已脱离 Windows Job 的约束，未留下独立运行的 宿主；已声明的 Terminal 面板是优先提供的路径。在 Claude Code 桌面应用中，自行通过可用的面板工具运行 terminal_command；Codex 可用时也走同一路径。只有没有可由代理操作的面板时，才将同一命令交给本人在其终端运行，并等待本人的话。脱离约束和就绪检查仍然适用；应用可能要求批准这一行命令。"
+      },
+      "description": "Explains the ordered agent-panel and person-terminal recovery routes without claiming the Host can inspect agent tools."
     },
     "host.serving": {
       "owner": "alphalattice.control.product_host.composition",
@@ -291,6 +320,69 @@
         "en": "The request field {field} is invalid.",
         "zh-CN": "请求字段 {field} 无效。"
       }
+    },
+    "setup.tool.command": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The installed command may be off PATH. Use its absolute launcher from `uv tool dir --bin` in this session; no shell update or restart is needed.",
+        "zh-CN": "已安装的命令可能不在搜索路径中。在本次会话使用 `uv tool dir --bin` 下启动程序的绝对路径，无需更新终端设置或重启。"
+      },
+      "description": "Explains the canonical command binding used by first-use setup and configured guidance."
+    },
+    "setup.tool.readiness": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Run the documented locked install and disclose it. Use the absolute launcher from `uv tool dir --bin` when it is off PATH; specialists use the same command in fresh shells. Check any unproved command owner first.",
+        "zh-CN": "按文档进行锁定安装并说明所做操作。若命令不在搜索路径中，使用 `uv tool dir --bin` 下启动程序的绝对路径；专家在新终端中使用同一个命令。若命令归属尚未证实，先核实。"
+      },
+      "description": "Explains the canonical command binding used by first-use setup and configured guidance."
+    },
+    "setup.tool.guide": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Off PATH, use the binding block in the shared guides and pass the matching absolute prefix to every specialist; no shell update or restart is needed. Portable examples use alphalattice as a placeholder. When serving from another shell, set ALPHALATTICE_SHELL to your specialists' shell: posix or powershell.",
+        "zh-CN": "命令不在搜索路径中时，请用共享指南中的前缀绑定说明，并把对应的绝对命令前缀交给每位专家；无需更新终端设置或重启。可移植示例中的 alphalattice 是占位写法。从另一种终端启动服务时，将 ALPHALATTICE_SHELL 设为专家所用终端的格式：posix 或 powershell。"
+      },
+      "description": "Explains the canonical command binding used by first-use setup and configured guidance."
+    },
+    "setup.tool.specialists": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Use the lead's resolved command_prefix wherever this card shows alphalattice; its permitted operations stay the same.",
+        "zh-CN": "本卡中出现 alphalattice 时，使用负责人提供的已解析 command_prefix；允许执行的操作不变。"
+      },
+      "description": "Explains the canonical command binding used by first-use setup and configured guidance."
+    },
+    "setup.tool.prefixes": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [
+        "powershell",
+        "posix"
+      ],
+      "words": {
+        "en": "Use these prefixes in place of `alphalattice`: PowerShell `{powershell}`; Bash `{posix}`.",
+        "zh-CN": "用以下命令前缀替换示例中的 `alphalattice`：PowerShell `{powershell}`；Bash `{posix}`。"
+      },
+      "description": "Explains the canonical command binding used by first-use setup and configured guidance."
+    },
+    "host.start.terminal.guide": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "On Claude Code desktop, use the available Terminal panel through `run_in_terminal`; on Codex, use an available agent-driven Terminal panel in the same way. If detached start is refused, choose the first applicable `terminal_routes` offer and run `terminal_command` yourself there. Only without such a panel, give the person the same command for a terminal they own, then wait for their word. The Host cannot inspect your tools; its escape and authenticated readiness checks still decide STARTED.",
+        "zh-CN": "在 Claude Code 桌面应用中，通过 `run_in_terminal` 使用可用的 Terminal 面板；在 Codex 中，同样使用可由代理操作的面板。独立启动遭拒时，选择 `terminal_routes` 中首条适用路径，并自行在那里运行 `terminal_command`。只有没有这种面板时，才把同一命令交给本人在其持有的终端运行，然后等待本人的话。宿主 无法查看你的工具；能否返回 STARTED 仍由脱离约束和身份验证后的就绪检查决定。"
+      },
+      "description": "Explains the ordered agent-panel and person-terminal recovery routes without claiming the Host can inspect agent tools."
     }
   }
 }

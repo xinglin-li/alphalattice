@@ -27,7 +27,11 @@ from alphalattice.interface.local_application.cli_contract import (
     schema_request,
 )
 from alphalattice.interface.local_application.failure_codes import located_failure
+from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchRequestDocument,
+)
 from alphalattice.interface.local_application.questions import person_question
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 if TYPE_CHECKING:
     from alphalattice.control.product_host.composition.research_workspace import (
@@ -59,10 +63,6 @@ def invalid_plan_document(
         return body
     offers: dict[str, Any] = {"controls": {"operation": "RESEARCH_STRATEGY_CONTROLS"}}
     if feature:
-        from alphalattice.interface.local_application.portfolio_research import (
-            PortfolioResearchRequestDocument,
-        )
-
         document = request.feature_document or {}
         binding = document.get("input_binding_hash")
         offers = {"inputs": {"operation": "RESEARCH_INPUTS"}}
@@ -397,7 +397,7 @@ def forward_availability_words(
             "identifier in this field and send the request again.",
             "fields": [["strategy_package_id"]],
             "reasons": {"strategy_package_id": code},
-            "schema_command": ["alphalattice", "schema", "show", "RESEARCH_UPDATE_PLAN"],
+            "schema_command": [*command_prefix(), "schema", "show", "RESEARCH_UPDATE_PLAN"],
             "next_requests": {
                 "valid_values": {"operation": "WORKSPACE_SHOW"},
                 "schema": schema_request("RESEARCH_UPDATE_PLAN"),
@@ -414,6 +414,15 @@ def forward_availability_words(
         ),
         "next_requests": {"books": {"operation": "CONTROLS"}},
     }
+
+
+_READBACK_WAY = frozenset(
+    {
+        "workspace_data_update.panel_binding_mismatch",
+        "workspace_maintenance.membership_owner_unproved",
+    }
+)
+"""Refusals whose way on is the data update's readback, which names the binding they refuse."""
 
 
 def explain(
@@ -445,7 +454,7 @@ def explain(
     """
     task = {"task_id": task_id} if task_id else {}
     base, _sep, subject = code.partition(":")
-    if base == "workspace_data_update.panel_binding_mismatch":
+    if base in _READBACK_WAY:
         return {
             **refusal_words(code, workspace=workspace, now=now),
             "next_requests": {"show": {"operation": "DATA_UPDATE_READBACK"}},

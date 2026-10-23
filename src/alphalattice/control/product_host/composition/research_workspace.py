@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any, Literal, Self, cast
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
@@ -595,7 +596,6 @@ def initialize_research_workspace(workspace: Path) -> None:
                 if p.is_symlink() or p.is_junction() or not p.is_dir():
                     raise ResearchWorkspaceError("research_workspace.nonempty_manifest_absent")
                 pending.append(p)
-        from uuid import uuid4
 
         create_research_workspace_manifest(
             root, ResearchWorkspaceManifest.research_only(f"research-{uuid4()}")

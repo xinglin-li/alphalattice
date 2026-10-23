@@ -17,6 +17,25 @@ def test_a_declared_finding_set_only_loses_keys_and_keeps_its_owners() -> None:
     for field in ("state", "owner"):
         added = {**row, field: "different"}
         assert shrink_only_growth("config/findings.json", before, {**before, "entries": [added]})
+    sizes = dict(before, shrink_only_list="large", large=[row], entries=[])
+    assert not shrink_only_growth("config/sizes.json", sizes, sizes)
+    assert not shrink_only_growth("config/sizes.json", sizes, {**sizes, "large": []})
+    assert shrink_only_growth(
+        "config/sizes.json", sizes, {**sizes, "large": [dict(row, state="different")]}
+    )
+    assert shrink_only_growth("config/sizes.json", sizes, {**sizes, "shrink_only_list": "entries"})
+    sizes = dict(shrink_only_set=["pattern"], shrink_only_list="large", large=[])
+    path = "config/registries/test-sizes.json"
+    added = dict(pattern="test_example", owner="tests")
+    after = dict(sizes, large=[added])
+    assert shrink_only_growth(path, sizes, after)
+    for value in (None, "", "accepted", "2026-02-30: accepted", "2026-10-22:"):
+        assert shrink_only_growth(path, sizes, dict(sizes, large=[dict(added, admitted=value)]))
+    admitted = dict(added, admitted="2026-10-22: accepted")
+    after = dict(sizes, large=[admitted])
+    assert not shrink_only_growth(path, sizes, after)
+    assert not shrink_only_growth(path, after, sizes)
+    assert shrink_only_growth("config/sizes.json", sizes, after)
 
 
 def _git_backend(texts, paths, state=None):
@@ -53,6 +72,12 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps() -
     )
     long = 'def test_a():\n    """One.\n\n    Two.\n    Three.\n    """\n'
     assert problems(PATH, None, long) and not problems(PATH, long, long)
+    missing = "def test_reason():\n    pass\n"
+    assert problems(PATH, None, missing) and not problems(PATH, missing, missing)
+    reason = 'def test_reason():\n    """Missing authority must refuse publication."""\n    pass\n'
+    assert not problems(PATH, None, reason)
+    debt = "class A:\n    " + missing.replace("\n", "\n    ")
+    assert problems(PATH, debt, debt.replace("class A", "class B"))
 
 
 def test_source_caps_hold_growth_by_qualified_function_and_spare_existing_debt() -> None:

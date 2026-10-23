@@ -2205,8 +2205,6 @@ def _task_uuid(value: str) -> UUID:
 def _task_read_response(body: dict[str, object]) -> object:
     """Legacy GET readers retain HTTP failure status; shared operations keep typed JSON."""
     if body.get("failure_code") == "task_control.task_not_found":
-        import json
-
         return LocalWebResponse(
             HTTPStatus.NOT_FOUND,
             json.dumps(body).encode("utf-8"),

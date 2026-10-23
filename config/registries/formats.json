@@ -1,5 +1,12 @@
 {
 "entries": {
+"schema:alphalattice.import-hygiene": {
+"owner": "schema:alphalattice",
+"description": "Records the non-growing count of retained function imports in config/import-hygiene.json by source path, scope and normalized import for the structural guard.",
+"readers": ["src/devtools/architecture/structural.py", "src/devtools/architecture/registries.py"],
+"upgraders": [],
+"version": ["alphalattice.import-hygiene"]
+},
 "schema:alphalattice.message-catalog": {
 "owner": "schema:alphalattice",
 "readers": [
@@ -396,7 +403,8 @@
 "readers": [
 "src/devtools/architecture/test_sizes.py",
 "tests/conftest.py",
-"src/devtools/architecture/registries.py"
+"src/devtools/architecture/registries.py",
+"scripts/check_playpen.py"
 ],
 "upgraders": [],
 "version": [

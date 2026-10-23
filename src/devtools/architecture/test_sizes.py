@@ -3,13 +3,20 @@
 import json
 from collections.abc import Iterable
 from fnmatch import fnmatchcase
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
 
 def load_policy(root: Path) -> dict[str, Any]:
     """Read one collection's policy once, without a process-global cache."""
-    value = json.loads((root / "config/registries/test-sizes.json").read_text("utf-8"))
+    return validate_policy(
+        json.loads((root / "config/registries/test-sizes.json").read_text("utf-8"))
+    )
+
+
+def validate_policy(value: Any) -> dict[str, Any]:
+    """Admit the same catalog from collection files or staged registry blobs."""
     if not isinstance(value, dict) or value.get("schema") != "alphalattice.test-sizes.v1":
         raise ValueError("test_size.schema")
     if value.get("sizes") != ["small", "medium", "large"]:
@@ -27,13 +34,39 @@ def load_policy(root: Path) -> dict[str, Any]:
         for r in value["defaults"] + value["large"]
     ):
         raise ValueError("test_size.rule")
-    if any(r.get("size") not in value["sizes"] for r in value["defaults"]):
+    if any(r.get("size") not in {"small", "medium"} for r in value["defaults"]):
         raise ValueError("test_size.default_size")
     if "mandatory" in value and (
         not isinstance(value["mandatory"], list) or "tests/structural/*" not in value["mandatory"]
     ):
         raise ValueError("test_size.mandatory_missing")
+    _limits(value)
     return value
+
+
+def _limits(policy: dict[str, Any]) -> None:
+    """Refuse disabled bounds, duplicate Large declarations and unexplained resource needs."""
+    limits = policy.get("limits")
+    if not isinstance(limits, dict) or set(limits) != set(policy["sizes"]):
+        raise ValueError("test_size.limits")
+    bounds = [
+        *limits.values(),
+        *(r.get("timeout_seconds", limits["large"]) for r in policy["large"]),
+    ]
+    if any(type(n) not in (int, float) or not isfinite(n) or n <= 0 for n in bounds):
+        raise ValueError("test_size.limits")
+    if len({r["pattern"] for r in policy["large"]}) != len(policy["large"]):
+        raise ValueError("test_size.large_duplicate")
+    for row in policy["large"]:
+        reason = row.get("reason")
+        if (
+            not isinstance(reason, str)
+            or "\n" in reason
+            or "\r" in reason
+            or reason.strip().casefold()
+            in {"", "slow", "integration", "slow test", "integration test"}
+        ):
+            raise ValueError("test_size.large_reason")
 
 
 def _rule(nodeid: str, rules: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -47,8 +80,10 @@ def _rule(nodeid: str, rules: list[dict[str, Any]]) -> dict[str, Any] | None:
     return min(closest, key=lambda r: r["pattern"])
 
 
-def classify(nodeid: str, declared: Iterable[str], policy: dict[str, Any]) -> tuple[str, str, str]:
-    """Resolve one size, its declaring owner and the declaration that selected it."""
+def classify(
+    nodeid: str, declared: Iterable[str], policy: dict[str, Any]
+) -> tuple[str, str, str, float]:
+    """Resolve size, owner, declaration and execution bound in one rule scan."""
     sizes = set(declared)
     if len(sizes) > 1:
         raise ValueError("test_size.conflicting:" + nodeid)
@@ -66,7 +101,10 @@ def classify(nodeid: str, declared: Iterable[str], policy: dict[str, Any]) -> tu
     if size not in policy["sizes"] or not rule.get("owner"):
         raise ValueError("test_size.declaration_invalid:" + nodeid)
     origin = "marker:" + nodeid if sizes else rule["pattern"]
-    return str(size), str(rule["owner"]), str(origin)
+    seconds = (
+        large.get("timeout_seconds", policy["limits"][size]) if large else policy["limits"][size]
+    )
+    return str(size), str(rule["owner"]), str(origin), float(seconds)
 
 
 def included(nodeid: str, size: str, lane: str, policy: dict[str, Any]) -> bool:

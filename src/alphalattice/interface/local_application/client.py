@@ -20,6 +20,8 @@ from threading import Timer
 from typing import Any, Final, Literal, NamedTuple, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
+import yaml  # type: ignore[import-untyped]
+
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_HEADER,
     AGENT_VENDOR_HEADER,
@@ -719,8 +721,6 @@ def _text(path: Path, *, limit: int = MAXIMUM_REQUEST_BODY_BYTES) -> str:
 def _yaml_value(path: Path, expected: str, *, text: str | None = None) -> Any:
     """A file read by the one declaration loader, its syntax errors located."""
 
-    import yaml  # type: ignore[import-untyped]
-
     try:
         return load_safe_yaml_document(_text(path) if text is None else text)
     except LocalResearchClientError:
@@ -764,8 +764,6 @@ def _listed(path: Path) -> list[Any]:
 
 def _response_document(path: Path) -> dict[str, Any]:
     """Read saved JSON/YAML; continuation parts must be whole, with refusal offers retained."""
-
-    import yaml
 
     text = _text(path, limit=4 * 1024 * 1024)
     try:
@@ -1940,8 +1938,6 @@ def saved_answer(
     Raises:
         LocalResearchClientError: Invalid file, representation or path.
     """
-    import yaml
-
     text = _text(path, limit=4 * 1024 * 1024)
     if text.lstrip().startswith("<"):
         raise LocalResearchClientError("local_client.saved_answer_format_unavailable:html")

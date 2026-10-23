@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shlex
+import tempfile
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -354,7 +355,6 @@ def count_launch(environment: Mapping[str, str] | None = None) -> int | None:
     named = agent_session(os.environ if environment is None else environment)
     if named is None:
         return None
-    import tempfile
 
     folder = Path(tempfile.gettempdir()) / "alphalattice-cli-launches"
     try:
@@ -1776,7 +1776,7 @@ def host_checked(detail: str, workspace: Path) -> str:
         The words in the command's language, with the Session's bound workspace where another.
     """
     checked, bound = workspace.resolve(), BOUND_WORKSPACE.get()
-    serve = ["alphalattice", "--workspace", str(checked), "serve", "--no-browser", "--detach"]
+    serve = [*command_prefix(), "--workspace", str(checked), "serve", "--no-browser", "--detach"]
     words = str(worded(CHECKED)).replace("{subject}", str(checked), 1)
     words = words.replace("{subject}", f"`{join(serve, shell())}`")
     if bound not in {None, checked}:
@@ -2068,8 +2068,9 @@ def declaration_contracts() -> dict[str, Any]:
     rows: dict[str, Any] = json.loads(
         Path(__file__).with_name("answers.json").read_text(encoding="utf-8")
     )
+    common = rows.pop("$defs")
     return {
-        operation: row
+        operation: row | {"fields": [*row["fields"], *common.values()]}
         for operation, row in rows.items()
         if any(field["name"] in {"yaml", "template"} for field in row["fields"])
     }
@@ -2269,7 +2270,7 @@ def entry(
 ) -> tuple[str, ...]:
     """The client's own root command for one workspace, as a printed command starts (V123).
 
-    The command is ``alphalattice`` on either leg. It names the workspace, except the one the
+    The command uses the installed tool's prefix. It names the workspace, except the one the
     agent session is bound to (`BOUND_WORKSPACE`), which the session's next command finds from
     its binding (V568); ``options`` are the caller's other global options, which its next
     command keeps (V406).
@@ -2310,7 +2311,7 @@ def shell() -> str:
 def command(
     request: dict[str, object],
     *,
-    prefix: tuple[str, ...] = ("alphalattice",),
+    prefix: tuple[str, ...] | None = None,
     quoting: str | None = None,
 ) -> str | None:
     """A next request as the command that sends it; None for an operation the CLI lacks.
@@ -2328,6 +2329,7 @@ def command(
     Returns:
         The command line, every part quoted for the shell, or None.
     """
+    prefix = command_prefix() if prefix is None else prefix
     operation = str(request.get("operation"))
     table = command_table()
     names = {op: name for name, ops in table["commands"].items() for op in ops}
@@ -2340,7 +2342,7 @@ def command(
     shown = table["positional"].get(operation)
     parts = [*prefix, *names[operation].split(" ")]
     last: list[str] = []
-    if shown and isinstance(request.get(shown), str) and shown not in left:
+    if isinstance(request.get(shown), str) and shown not in left:
         # A positional the parser would read as an option comes last, after `--` (V449).
         given = _given(str(request[shown]))
         if given.startswith("-") and not left:
@@ -2394,6 +2396,8 @@ def join(parts: list[str], quoting: str) -> str:
     if quoting == "powershell":
         quoted = [_powershell(str(part)) for part in parts]
         return ("& " if quoted and quoted[0].startswith("'") else "") + " ".join(quoted)
+    if parts and os.name == "nt":
+        parts = [str(parts[0]).replace("\\", "/"), *parts[1:]]
     return " ".join(shlex.quote(str(part)) for part in parts)
 
 
@@ -2450,7 +2454,7 @@ def wait_event(
     kind: str,
     read: dict[str, Any] | None,
     *,
-    prefix: tuple[str, ...] = ("alphalattice",),
+    prefix: tuple[str, ...] | None = None,
     **facts: Any,
 ) -> dict[str, Any]:
     """The one line a waiter ends with: what happened and the command that reads it.

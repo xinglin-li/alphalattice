@@ -17,8 +17,8 @@ PREPARATION = "control/product_host/data_preparation/"
 STRICT_READERS = {
     COMPOSITION + "decision_advancement.py": (
         "DecisionAdvancementApplication",
-        "_plan admit in_flight _completed_scores _completed_input "
-        "reusable publication_task readback",
+        "_plan admit in_flight _stopped _completed_scores _completed_input "
+        "reusable publication_task readback _cycle_owner",
     ),
     COMPOSITION + "evidence_review_application.py": (
         "EvidenceReviewApplication",
@@ -78,7 +78,7 @@ STRICT_READERS = {
         "WorkspaceDataUpdateApplication",
         # DUPD: select the exact retained Human approval/journal only from complete authority.
         "_approved_plans _waiting confirm.approve receipt_task "
-        "readback reusable prepare admit _step plan _audit_parent _supplemented",
+        "readback reusable prepare admit _step _planned _audit_parent _supplemented",
     ),
     "control/product_host/storage/input_references.py": ("ResearchInputStorage", "_references"),
     "control/task_control/registry.py": (

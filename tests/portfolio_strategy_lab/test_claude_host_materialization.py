@@ -301,7 +301,7 @@ def test_every_command_form_the_skill_generator_writes_parses(materialize):
         )
         arguments = ["--workspace", "w", *shlex.split(line)]
         try:
-            cli._parser(cli._named(arguments)).parse_args(arguments)
+            cli.command_parser(cli._named(arguments)).parse_args(arguments)
         except SystemExit:
             refused.append(form)
     assert refused == []

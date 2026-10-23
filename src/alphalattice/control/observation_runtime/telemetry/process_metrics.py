@@ -88,7 +88,7 @@ def peak_rss_bytes() -> int:
     if os.name == "nt":
         return _windows_memory_bytes()[1]
 
-    resource: Any = importlib.import_module("resource")
+    resource: Any = importlib.import_module("resource")  # lazy: POSIX.
     value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     return value if value > 10_000_000 else value * 1024
 

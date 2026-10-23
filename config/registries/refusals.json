@@ -17942,6 +17942,10 @@
 "owner": "workspace_maintenance",
 "category": "FAILED_PRECONDITION"
 },
+"workspace_maintenance.membership_owner_unproved": {
+"owner": "workspace_maintenance",
+"category": "FAILED_PRECONDITION"
+},
 "workspace_maintenance.membership_revision_mismatch": {
 "owner": "workspace_maintenance",
 "category": "ABORTED"
@@ -18154,9 +18158,23 @@
 "owner": "alphalattice.control.product_host.composition",
 "message_id": "host.start.breakaway_denied",
 "next_action": "SERVE_FROM_A_PERSON_OWNED_TERMINAL",
-"recovery": "terminal_command names the same workspace, locale and declared flags; attached --stop-on-stdin is session-only",
+"recovery": "terminal_routes are ordered and refer to the unchanged terminal_command; the agent chooses from its available tools, and legacy next_action remains compatible",
 "category": "FAILED_PRECONDITION",
-"classification_note": "web_launcher.py:208-212 starts a child then fails when Windows cannot prove the child escaped Job containment. This tests execution environment, not current caller authority. The admitted design explicitly uses unavailable Job breakaway as FAILED_PRECONDITION and warns that denied in the name does not imply permission. The PermissionError class does not change the tested condition."
+"classification_note": "web_launcher.py:208-212 starts a child then fails when Windows cannot prove the child escaped Job containment. This tests execution environment, not current caller authority. The admitted design explicitly uses unavailable Job breakaway as FAILED_PRECONDITION and warns that denied in the name does not imply permission. The PermissionError class does not change the tested condition.",
+"terminal_routes": [
+{
+"next_action": "SERVE_FROM_THE_HOST_TERMINAL_PANEL",
+"who_decides": "AGENT",
+"when": "AGENT_TERMINAL_PANEL_AVAILABLE",
+"command_field": "terminal_command"
+},
+{
+"next_action": "SERVE_FROM_A_PERSON_OWNED_TERMINAL",
+"who_decides": "PERSON",
+"when": "NO_AGENT_TERMINAL_PANEL",
+"command_field": "terminal_command"
+}
+]
 },
 "replay.receipt_binding": {
 "owner": "devtools.evaluation",
@@ -18296,6 +18314,21 @@
 "owner": "activity",
 "category": "INTERNAL",
 "classification_note": "Incident fallback when no specific registered reason is safe to show; retains the safe incident fingerprint. A specific registered reason wins. No retry authority."
+},
+"test_size.limits": {
+"owner": "devtools.architecture",
+"category": "INVALID_ARGUMENT",
+"reason": "Test execution limits must be finite positive durations."
+},
+"test_size.large_reason": {
+"owner": "devtools.architecture",
+"category": "INVALID_ARGUMENT",
+"reason": "Large declarations must state their specific one-line reason."
+},
+"test_size.large_duplicate": {
+"owner": "devtools.architecture",
+"category": "INVALID_ARGUMENT",
+"reason": "Duplicate Large declarations cannot evade the count ratchet."
 }
 },
 "note": "",

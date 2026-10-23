@@ -24,6 +24,7 @@ from typing import Any
 from .forms import Grade, IssuePart, Scenario, Trace, TraceEvent
 from .intent import FORBIDDEN, contains, proposes
 from .round_trip import RoundTripObserver
+from .session import session_findings
 
 Call = Callable[[list[str]], dict[str, Any]]
 """The CLI as an agent runs it: its arguments in, its printed answer (the envelope) out."""
@@ -37,6 +38,7 @@ DEPTH = 12
 _CHOICE = re.compile(r"<[^<>]+>")
 _OPERATOR_SWITCH = "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
 _ENDING = ("CANCEL", "_ABANDON", "_STOP")
+_DEFERRED = ("deferred", "warning", "Deferred")
 
 
 def data_decision_findings(
@@ -88,6 +90,46 @@ def data_decision_findings(
     ]
 
 
+def research_update_findings(
+    feed: dict[str, Any], projection: dict[str, Any]
+) -> list[dict[str, str]]:
+    """The person sees one update Task across its deferral and resume, waiting until its retry
+    time as the page's own formatter renders it (`wait`, date and time), and its publication on
+    the checkpoint its own move's ledger row names, both present."""
+    shown, task_id = projection.get("data_decision", {}), feed["task_id"]
+    rows = [r for r in shown.get("rows", []) if r.get("id") == task_id]
+    kinds = {r["id"] for r in shown.get("runs", []) if r.get("kind") == feed["task_kind"]}
+    page = shown.get("page") or {}
+    after = str(shown.get("detail") or "").partition("Waiting until ")[2]
+    waiting = after.splitlines()[0] if after else ""
+    failures = {
+        "update.task_row": len(rows) != 1 or kinds - set(feed.get("earlier", ())) != {task_id},
+        "update.deferred_state": feed.get("lifecycle") == "DEFERRED"
+        and (
+            any((r.get("status"), r.get("tone"), r.get("word")) != _DEFERRED for r in rows)
+            or not shown.get("wait")
+            or not waiting.startswith(str(shown["wait"]))
+        ),
+        "update.publication": feed.get("lifecycle") == "SUCCEEDED"
+        and (
+            page.get("task_id") != task_id
+            or not feed.get("to_checkpoint_hash")
+            or (page.get("publication") or {}).get("input_checkpoint_hash")
+            != feed["to_checkpoint_hash"]
+        ),
+    }
+    owners = {
+        "update.task_row": "assets/workbench-source/js/app/data.js",
+        "update.deferred_state": "assets/workbench-source/js/app/live-tasks.js",
+        "update.publication": "control/product_host/composition/decision_advancement.py",
+    }
+    return [
+        {"rule": rule, "loop_part": "feedback", "owner": owners[rule]}
+        for rule, failed in failures.items()
+        if failed
+    ]
+
+
 def evidence_reuse_findings(store: Path, before: frozenset[str]) -> list[dict[str, str]]:
     """A later day reads no filing an earlier analysis read, nor scores a selection over one.
 
@@ -124,7 +166,6 @@ def evidence_reuse_findings(store: Path, before: frozenset[str]) -> list[dict[st
 
 def daily_findings(feed: dict[str, Any], projection: dict[str, Any]) -> list[dict[str, str]]:
     """Today's rendered outcome, members and decisions preserve the previous sealed day."""
-    from .session import session_findings
 
     current, home = feed["current"], projection.get("home", {})
     selected, value = home.get("selection") or {}, home.get("value") or {}

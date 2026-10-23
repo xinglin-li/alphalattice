@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -306,17 +307,38 @@ def _check_identity_reach(*, staged: bool) -> bool:
 
 
 def shrink_only_growth(path: str, before: dict[str, Any], after: dict[str, Any]) -> list[str]:
-    """A declared finding set only loses keys; its owners stay bound to their findings."""
+    """Finding sets shrink; new Large declarations require a dated admission for review."""
     keys = before.get("shrink_only_set")
     if not keys:
         return []
     if after.get("shrink_only_set") != keys:
         return [f"{path}:1: shrink-only keys changed; restore the registered finding key"]
-    old = {(*[r[k] for k in keys], r["owner"]) for r in before["entries"]}
-    new = {(*[r[k] for k in keys], r["owner"]) for r in after["entries"]}
+    collection = before.get("shrink_only_list", "entries")
+    if after.get("shrink_only_list", "entries") != collection:
+        return [f"{path}:1: shrink-only list changed; restore the declared list"]
+    old = {(*[r[k] for k in keys], r["owner"]) for r in before[collection]}
+    new = {(*[r[k] for k in keys], r["owner"]) for r in after[collection]}
+    admitted = set()
+    if (
+        path == "config/registries/test-sizes.json"
+        and collection == "large"
+        and keys == ["pattern"]
+    ):
+        for row in after[collection]:
+            decision = row.get("admitted")
+            if not isinstance(decision, str):
+                continue
+            when, separator, words = decision.partition(":")
+            if not separator or len(when) != 10 or not words.strip():
+                continue
+            try:
+                date.fromisoformat(when)
+            except ValueError:
+                continue
+            admitted.add((row["pattern"], row["owner"]))
     return [
         f"{path}:1: shrink-only findings grew; fix the owner or ask the Lead: {row}"
-        for row in sorted(new - old)
+        for row in sorted(new - old - admitted)
     ]
 
 
@@ -331,6 +353,7 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
     sys.path.insert(0, str(ROOT / "src"))
     try:
         from devtools.architecture.registries import census_check, private_test_growth, problems
+        from devtools.architecture.test_sizes import validate_policy
     finally:
         sys.path.pop(0)
     found = problems(ROOT, changed)
@@ -359,7 +382,13 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
             base = shown("HEAD", path)
             current = shown("", path) if staged else (ROOT / path).read_text(encoding="utf-8")
             if base is not None and current is not None:
-                found += shrink_only_growth(path, json.loads(base), json.loads(current))
+                previous, value = json.loads(base), json.loads(current)
+                found += shrink_only_growth(path, previous, value)
+                if path == "config/registries/test-sizes.json":
+                    try:
+                        validate_policy(value)
+                    except ValueError as error:
+                        found.append(f"{path}:1: {error}")
     for line in found:
         print(f"REGISTRY {line}", flush=True)
     print(f"PLAYPEN_GATE_TIMING registries {perf_counter() - started:.3f}s", flush=True)

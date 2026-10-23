@@ -13,6 +13,25 @@ from devtools.architecture.structural import (
 SOURCE = "alphalattice.capabilities.alpha_modeling"
 TARGET = "alphalattice.kernel.shared_kernel"
 
+MODULE = TARGET + ".sample"
+READ = "def read():\n    "
+IMPORTS = {
+    "statement": f"{READ}from {MODULE} import Marker",
+    "importlib": f"import importlib as loader\n{READ}return loader.import_module('{MODULE}')",
+    "alias": f"from importlib import import_module as load\n{READ}return load('{MODULE}')",
+    "package": "",
+    "keyword": f"import importlib\n{READ}return importlib.import_module(name='{MODULE}')",
+    "annotated": "from typing import Final\nimport importlib\n"
+    f"MODULE: Final = '{MODULE}'\n{READ}return importlib.import_module(MODULE)",
+    "relative-positional": "import importlib\n"
+    f"{READ}return importlib.import_module('.sample', '{TARGET}')",
+    "relative-keyword": f"import importlib\nPACKAGE: str = '{TARGET}'\n{READ}"
+    "return importlib.import_module(name='.sample', package=PACKAGE)",
+    "builtin": f"{READ}return __import__(name='{MODULE}')",
+    "repeated": f"from {MODULE} import Marker\n{READ}from {MODULE} import Marker",
+    "external": f"{READ}import yaml",
+}
+
 
 def import_fixture(tmp_path, statement):
     raw = json.loads((Path(__file__).parents[2] / "config/package-architecture.json").read_text())
@@ -39,46 +58,19 @@ def fenced(registry, scope, target):
 
 
 @pytest.mark.parametrize("allowed", [False, True])
-@pytest.mark.parametrize(
-    "load",
-    [
-        "statement",
-        "importlib",
-        "alias",
-        "package",
-        "keyword",
-        "annotated",
-        "relative-positional",
-        "relative-keyword",
-        "builtin",
-    ],
-)
+@pytest.mark.parametrize("load", IMPORTS)
 def test_a_function_import_requires_its_module_declaration(tmp_path, allowed, load):
-    """Unknown deferrals fail; declared modules retain their permitted lazy load."""
-    module = TARGET + ".sample"
-    statements = {
-        "statement": f"def read():\n    from {module} import Marker",
-        "importlib": "import importlib as loader\ndef read():\n"
-        f"    return loader.import_module('{module}')",
-        "alias": "from importlib import import_module as load\ndef read():\n"
-        f"    return load('{module}')",
-        "keyword": "import importlib\ndef read():\n"
-        f"    return importlib.import_module(name='{module}')",
-        "annotated": "from typing import Final\nimport importlib\n"
-        f"MODULE: Final = '{module}'\ndef read():\n    return importlib.import_module(MODULE)",
-        "relative-positional": "import importlib\ndef read():\n"
-        f"    return importlib.import_module('.sample', '{TARGET}')",
-        "relative-keyword": f"import importlib\nPACKAGE: str = '{TARGET}'\ndef read():\n"
-        "    return importlib.import_module(name='.sample', package=PACKAGE)",
-        "builtin": f"def read():\n    return __import__(name='{module}')",
-    }
-    src, registry, _ = import_fixture(tmp_path, statements.get(load, ""))
+    """Deferrals need a declaration and reason; repeating an eager import still refuses."""
+    module = SOURCE + ".nested.sample" if load == "package" else MODULE
+    reason = "  # lazy: optional fixture" if allowed else ""
+    src, registry, _ = import_fixture(tmp_path, IMPORTS[load] + reason)
     if load == "package":
         directory = src.joinpath(*SOURCE.split(".")) / "nested"
         directory.mkdir()
         (directory / "sample.py").write_text("class Marker: pass\n")
-        (directory / "__init__.py").write_text("def read():\n    from .sample import Marker\n")
-        module = SOURCE + ".nested.sample"
+        (directory / "__init__.py").write_text(
+            "def read():\n    from .sample import Marker" + reason + "\n"
+        )
     if allowed:
         registry = registry.model_copy(
             update={"deferred_imports": {module: "Declared optional fixture"}}
@@ -86,7 +78,11 @@ def test_a_function_import_requires_its_module_declaration(tmp_path, allowed, lo
     else:
         registry = fenced(registry, "read", module + ".Marker")
     found = physical_namespace_violations(source_root=src, registry=registry)
-    assert any("unlisted-function-import" in issue for issue in found) is (not allowed)
+    assert any("unlisted-function-import" in issue for issue in found) is (
+        not allowed and load != "external"
+    )
+    assert any("unexplained-function-import" in issue for issue in found) is (not allowed)
+    assert any("repeated-function-import" in issue for issue in found) is (load == "repeated")
 
 
 @pytest.mark.parametrize("allowed", [False, True])
@@ -111,7 +107,7 @@ def test_a_private_import_keeps_its_exact_owner_fence(
     assert any("private-import" in issue for issue in found) is (cross_owner and not allowed)
     if cross_owner and allowed:
         existing = fenced(registry, "existing", target)
-        reader.write_text("def existing():\n    " + statement + "\n")
+        reader.write_text("def existing():\n    " + statement + "  # lazy: fenced fixture\n")
         assert physical_namespace_violations(source_root=src, registry=existing) == ()
         for changed in (statement + "\n" + statement, "def other():\n    " + statement):
             reader.write_text(changed + "\n")

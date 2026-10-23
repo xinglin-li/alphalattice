@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast
 from uuid import UUID
 
+import yaml  # type: ignore[import-untyped]
 from pydantic import ValidationError
 
 from alphalattice.control.product_host.composition.plain_refusals import explain
@@ -444,8 +445,6 @@ def offer_completion(
     goal: Goal, body: dict[str, Any], resolve: Callable[[GoalReferenceRequest], dict[str, Any]]
 ) -> None:
     """Select exact reads once and leave only the author's judgments to fill."""
-    import yaml  # type: ignore[import-untyped]
-
     refs = offered_attach(
         goal,
         [{"code": NO_EVIDENCE}],

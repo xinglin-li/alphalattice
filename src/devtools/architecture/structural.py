@@ -5,11 +5,12 @@ from __future__ import annotations
 import ast
 import json
 import re
+from collections import Counter
 from collections.abc import Mapping
 from enum import StrEnum
 from importlib.util import resolve_name
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -228,10 +229,16 @@ class PackageArchitecture(_Contract):
         return self
 
 
+class ImportHygiene(_Contract):
+    schema_id: Literal["alphalattice.import-hygiene"] = Field(alias="schema")
+    legacy_lazy_imports: dict[str, Annotated[int, Field(strict=True, ge=1)]]
+
+
 class PackageArchitectureRegistry(_Contract):
     schema_id: Literal["alphalattice.playpen.package-architecture"] = Field(alias="schema")
     packages: tuple[PackageArchitecture, ...] = Field(min_length=1)
     deferred_imports: dict[str, str] = Field(default_factory=dict)
+    legacy_lazy_imports: dict[str, int] = Field(default_factory=dict)
     private_import_fences: dict[str, dict[str, str]] = Field(default_factory=dict)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
@@ -309,7 +316,11 @@ def load_performance_baselines(path: Path) -> PerformanceBaselines:
 
 
 def load_package_architecture_registry(path: Path) -> PackageArchitectureRegistry:
-    return PackageArchitectureRegistry.model_validate(_load_json(path))  # type: ignore[no-any-return]
+    legacy = ImportHygiene.model_validate(
+        _load_json(path.parent.parent / "config/import-hygiene.json")
+    )
+    policy = PackageArchitectureRegistry.model_validate(_load_json(path))
+    return policy.model_copy(update={"legacy_lazy_imports": legacy.legacy_lazy_imports})  # type: ignore[no-any-return]
 
 
 def discover_store_surface(path: Path) -> StoreSurface:
@@ -858,6 +869,24 @@ def package_architecture_violations(
     return tuple(sorted(violations))
 
 
+def _import_scope(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> tuple[str, bool]:
+    ancestors = []
+    parent = parents.get(node)
+    while parent is not None:
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            ancestors.append(parent)
+        parent = parents.get(parent)
+    return ".".join(n.name for n in reversed(ancestors)) or "<module>", any(
+        isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) for n in ancestors
+    )
+
+
+def _imported_module(node: ast.AST, target: str, modules: set[str]) -> str:
+    if isinstance(node, ast.Import | ast.Call) or target in modules:
+        return target
+    return target.rpartition(".")[0]
+
+
 def import_contract_violations(
     sources: Mapping[str, str],
     *,
@@ -876,10 +905,12 @@ def import_contract_violations(
         return ""
 
     out: list[str] = []
+    retained = Counter(registry.legacy_lazy_imports)
 
     def inspect_module(qualified: str, source: str) -> None:
         module = qualified.removesuffix(".__init__")
         tree = ast.parse(source)
+        lines = source.splitlines()
         parents = {
             child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)
         }
@@ -929,23 +960,24 @@ def import_contract_violations(
             return []
 
         def check(node: ast.AST) -> None:
-            targets = [t for t in targets_of(node) if t.startswith(("alphalattice.", "devtools."))]
+            targets = targets_of(node)
             if not targets:
                 return
-            ancestors = []
-            parent = parents.get(node)
-            while parent is not None:
-                if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    ancestors.append(parent)
-                parent = parents.get(parent)
-            scope = ".".join(n.name for n in reversed(ancestors)) or "<module>"
-            deferred = any(
-                isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) for n in ancestors
-            )
+            scope, deferred = _import_scope(node, parents)
             fence = registry.private_import_fences.get(module + "::" + scope, {})
             located = f"{module}:{getattr(node, 'lineno', 0)}"
+            if deferred:
+                site = f"src/{qualified.replace('.', '/')}.py::{scope}::{ast.unparse(node)}"
+                if not re.search(r"#\s*lazy:\s*\S", lines[getattr(node, "lineno", 1) - 1]):
+                    if retained[site] < 1:
+                        out.append(f"{located}: unexplained-function-import {ast.unparse(node)}")
+                    retained[site] -= 1
             for target in targets:
-                imported = target if target in modules else target.rpartition(".")[0]
+                imported = _imported_module(node, target, modules)
+                if deferred and imported in eager:
+                    out.append(f"{located}: repeated-function-import {imported}")
+                if not target.startswith(("alphalattice.", "devtools.")):
+                    continue
                 private = any(part.startswith("_") for part in target.split(".")) and owner(
                     module
                 ) != owner(target)
@@ -961,12 +993,18 @@ def import_contract_violations(
                         out.append(f"{located}: private-import {target}")
                     seen.add(key)
 
+        eager = {_imported_module(n, t, modules) for n in tree.body for t in targets_of(n)}
         for node in ast.walk(tree):
             check(node)
 
     for qualified, source in sources.items():
-        if qualified.startswith("alphalattice."):
+        if qualified.startswith(("alphalattice.", "devtools.")):
             inspect_module(qualified, source)
+    out.extend(
+        f"stale-legacy-import {k}"
+        for k, n in retained.items()
+        if n > 0 and k.split("::", 1)[0][4:-3].replace("/", ".") in sources
+    )
     return tuple(sorted(out))
 
 

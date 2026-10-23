@@ -4388,13 +4388,13 @@
       "availability": "probed",
       "declaration_environment": "ALPHALATTICE_TERMINAL_PANEL_HOST",
       "conditions": [
-        "The host guide declares this host for one serve invocation only after its desktop Terminal panel shell is probed successfully outside every Windows Job.",
-        "Only a registered probed host declaration offers the agent the Terminal-panel route; absent, unknown or undeclared hosts offer the person-owned terminal.",
-        "The 2026-10-21 typed Claude Code desktop probe returned successful IsProcessInJob with in_job false in the Terminal panel; its command tool had Job LimitFlags 0x0.",
-        "The desktop run_in_terminal tool executes one literal line in the panel; the app may ask the person to approve it. A declaration requires both this executor and the outside-Job shell probe; auto mode remains the app classifier decision."
+        "The agent guide chooses an available agent-driven Terminal panel; the Host cannot inspect the agent tools.",
+        "Every denied detached start offers both routes in order: the agent Terminal panel, then a person-owned terminal only without an available panel.",
+        "The earlier declaration environment remains a compatibility selector for next_action; it neither hides either terminal_routes offer nor proves escape.",
+        "The 2026-10-21 typed Claude Code desktop probe found the Terminal panel outside any Job and the command tool in a Job with LimitFlags 0x0; run_in_terminal executes the panel command."
       ],
       "limitations": [
-        "A declaration selects guidance only; it grants no escape authority. The same child Job-escape and authenticated ready-Host checks still decide STARTED.",
+        "Neither guidance nor a declaration grants escape authority; the same child Job-escape and authenticated ready-Host checks decide STARTED.",
         "No broker, service, scheduler or separate system browser is used."
       ],
       "consumers": {
@@ -4407,10 +4407,11 @@
         ]
       },
       "consumer_basis": {
-        "source_commit": "79e9566c3",
-        "scope": "Registered host guide declaration and refusal consumer; typed environment probe supplied before this change, not new native acceptance."
+        "source_commit": "5b35496142a44e78d096555a63110e77ecf95ab1",
+        "scope": "Agent guide and ordered refusal offers; supplied historical typed evidence only, no new desktop probe."
       },
-      "executor": "run_in_terminal"
+      "executor": "run_in_terminal",
+      "description": "Claude Code desktop can run the offered Host command through its agent-driven Terminal panel outside the command tool Job."
     },
     "codex.product-host.terminal-panel": {
       "host": "codex",
@@ -4421,12 +4422,13 @@
       "availability": "undeclared",
       "declaration_environment": "ALPHALATTICE_TERMINAL_PANEL_HOST",
       "conditions": [
-        "The host guide declares this host for one serve invocation only after its desktop Terminal panel shell is probed successfully outside every Windows Job.",
-        "Only a registered probed host declaration offers the agent the Terminal-panel route; absent, unknown or undeclared hosts offer the person-owned terminal.",
-        "No Codex Terminal-panel escape probe is recorded; the capability remains undeclared."
+        "The agent guide chooses an available agent-driven Terminal panel; the Host cannot inspect the agent tools.",
+        "Every denied detached start offers both routes in order: the agent Terminal panel, then a person-owned terminal only without an available panel.",
+        "The earlier declaration environment remains a compatibility selector for next_action; it neither hides either terminal_routes offer nor proves escape.",
+        "No Codex Terminal-panel escape probe is recorded; availability remains undeclared."
       ],
       "limitations": [
-        "A declaration selects guidance only; it grants no escape authority. The same child Job-escape and authenticated ready-Host checks still decide STARTED.",
+        "Neither guidance nor a declaration grants escape authority; the same child Job-escape and authenticated ready-Host checks decide STARTED.",
         "No broker, service, scheduler or separate system browser is used."
       ],
       "consumers": {
@@ -4439,9 +4441,10 @@
         ]
       },
       "consumer_basis": {
-        "source_commit": "79e9566c3",
-        "scope": "Registered host guide declaration and refusal consumer; typed environment probe supplied before this change, not new native acceptance."
-      }
+        "source_commit": "5b35496142a44e78d096555a63110e77ecf95ab1",
+        "scope": "Agent guide and ordered refusal offers; supplied historical typed evidence only, no new desktop probe."
+      },
+      "description": "Codex may use an available agent-driven Terminal panel; this registry records no native escape proof for it."
     }
   }
 }

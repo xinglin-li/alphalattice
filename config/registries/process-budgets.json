@@ -370,13 +370,13 @@
       }
     },
     "uv_tool_bin_probe": {
-      "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::_tool_bin",
+      "defined_by": "src/alphalattice/kernel/shared_kernel/project_layout.py::_tool_bin",
       "spawn_sites": [
         {
-          "file": "src/alphalattice/interface/local_application/native_bridge.py",
-          "line": 1568,
+          "file": "src/alphalattice/kernel/shared_kernel/project_layout.py",
+          "line": 106,
           "symbol": "_tool_bin",
-          "call": "subprocess.run(\n            [uv, \"tool\", \"dir\", \"--bin\"], capture_output=True, text=True, timeout=10, check=False\n        )"
+          "call": "subprocess.run(\n        [uv, \"tool\", \"dir\", \"--bin\"],\n        capture_output=True,\n        encoding=\"utf-8\",\n        timeout=10,\n        check=True,\n    )"
         }
       ],
       "requests": {
@@ -389,7 +389,7 @@
         "cpu": "undeclared",
         "wall_time_seconds": {
           "value": 10,
-          "source": "src/alphalattice/interface/local_application/native_bridge.py:1569",
+          "source": "src/alphalattice/kernel/shared_kernel/project_layout.py:108",
           "scope": "One uv tool dir --bin command.",
           "semantics": "subprocess.run timeout bounds this command invocation; it is not an OS Job lifetime limit or a bound for all invocations of the family."
         }
@@ -400,69 +400,25 @@
           "limit_ref": "limits.wall_time_seconds"
         }
       ],
-      "note": "Queries uv tool dir --bin as a PATH fallback and confirms that alphalattice resolves in that directory.",
+      "note": "Queries uv tool dir --bin until successful, then caches that directory per uv launcher/process; command_prefix checks launcher presence for every emitted command.",
       "resource_semantics": "Memory and CPU requests or quotas remain undeclared. Explicit subprocess.run timeouts are command-scoped wall-time limits in limits.wall_time_seconds; absent command timeouts remain undeclared. Pool width, affinity and wait/cancel are separate execution controls. No enforcement is added; 0.2.4 owns measurement.",
       "owner_status": "RESOLVED",
       "owner_basis": "Current package defines the spawning function.",
-      "owner": "src/alphalattice/interface/local_application/native_bridge.py",
-      "owner_package": "alphalattice.interface.local_application",
+      "owner": "src/alphalattice/kernel/shared_kernel/project_layout.py",
+      "owner_package": "alphalattice.kernel.shared_kernel",
       "consumers": {
-        "import": [
-          "src/alphalattice/control/product_host/composition/committee.py:83",
-          "src/alphalattice/control/product_host/composition/first_use_road.py:33",
-          "src/alphalattice/control/product_host/composition/goals.py:86",
-          "src/alphalattice/control/product_host/composition/local_web_session.py:199",
-          "src/alphalattice/control/product_host/composition/native_usage_reader.py:20",
-          "src/alphalattice/control/product_host/composition/native_usage_reader.py:23",
-          "src/alphalattice/control/product_host/composition/portfolio_research_operations.py:334",
-          "src/alphalattice/control/product_host/composition/workspace_activity.py:100",
-          "src/alphalattice/control/product_host/composition/workspace_activity.py:103",
-          "src/alphalattice/control/product_host/composition/workspace_activity.py:1156",
-          "src/alphalattice/control/product_host/composition/workspace_activity.py:1349",
-          "src/alphalattice/interface/local_application/activity.py:36",
-          "src/alphalattice/interface/local_application/cli.py:1528",
-          "src/alphalattice/interface/local_application/cli.py:1722",
-          "src/alphalattice/interface/local_application/cli.py:1765",
-          "src/alphalattice/interface/local_application/cli.py:1795",
-          "src/alphalattice/interface/local_application/client.py:2585",
-          "src/alphalattice/interface/local_application/client.py:266",
-          "src/alphalattice/interface/local_application/client.py:2963",
-          "src/alphalattice/interface/local_application/client.py:663",
-          "src/alphalattice/interface/local_application/native_setup.py:28",
-          "tests/portfolio_strategy_lab/test_accepted_answer_conversation.py:65",
-          "tests/portfolio_strategy_lab/test_local_web_service.py:38",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:198",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:26",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:691",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:898",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:982",
-          "tests/portfolio_strategy_lab/test_native_lead_usage.py:21",
-          "tests/portfolio_strategy_lab/test_native_lead_usage.py:28",
-          "tests/portfolio_strategy_lab/test_native_session_binding.py:22",
-          "tests/portfolio_strategy_lab/test_native_usage.py:14",
-          "tests/portfolio_strategy_lab/test_native_usage.py:17",
-          "tests/portfolio_strategy_lab/test_native_usage.py:887",
-          "tests/portfolio_strategy_lab/test_native_usage.py:925",
-          "tests/portfolio_strategy_lab/test_workspace_activity.py:57",
-          "tests/portfolio_strategy_lab/test_workspace_activity.py:58",
-          "tests/release/test_wheel_runtime.py:24"
-        ],
-        "path": [
-          "scripts/release/public_outputs.py:12",
-          "tests/structural/test_public_closure.py:274"
-        ],
+        "import": [],
+        "path": [],
         "string": [
-          "scripts/release/public_outputs.py:327",
-          "src/alphalattice/interface/local_application/native_bridge.py:1521",
-          "tests/portfolio_strategy_lab/web_refusal_support.py:487",
-          "tests/structural/test_public_closure.py:286"
+          "src/alphalattice/kernel/shared_kernel/project_layout.py::command_prefix"
         ]
       },
       "consumer_basis": {
         "source_commit": "42491202b3973f62dda18203fa620aa3661f46ba",
         "method": "Static defining-module imports/path references and distinctive symbol matches; includes tests/declarations, not runtime proof.",
         "scope": "Public static references; private maintainer reader evidence is tracked separately."
-      }
+      },
+      "description": "Discovers the uv tool-bin directory for the shared command resolver."
     },
     "retrieval_environment_setup": {
       "defined_by": "src/alphalattice/interface/local_application/retrieval_environment.py::create",

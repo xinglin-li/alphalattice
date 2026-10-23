@@ -86,6 +86,12 @@ REGISTER: dict[tuple[str, str, str], str] = {
     "deferred one too, whose run resumes it once due (V601, V604); a cancelling one is not pending",
     (
         "control/product_host/composition/decision_advancement.py",
+        "DecisionAdvancementApplication._stopped.stops",
+        "DEFERRED,RECOVERY_REQUIRED",
+    ): "the stopped updates a rerun takes up as themselves, a deferral once due or one owed its "
+    "recovery; only theirs can be an own move, and a blocked update keeps its own stop's way on",
+    (
+        "control/product_host/composition/decision_advancement.py",
         "DecisionAdvancementApplication.in_flight",
         "CANCEL_REQUESTED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "every state the Task leaves by itself answers the admitted Task; a deferral is not in "

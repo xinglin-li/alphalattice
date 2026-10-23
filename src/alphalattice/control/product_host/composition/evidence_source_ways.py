@@ -147,7 +147,8 @@ def evidence_setup(
         python = join([sys.executable], shell())
         retrieval = python
     # The running Host installs a package as a Task (its setup script is the path with no Host).
-    host = f'{" ".join(command_prefix())} --workspace "{workspace}" evidence install --setup='
+    prefix = join(list(command_prefix()), shell())
+    host = f'{prefix} --workspace "{workspace}" evidence install --setup='
     if rebind:
         return {
             "authority": {
@@ -470,9 +471,10 @@ def source_ways(
     # After the person's own stop the way on is their yes, never a delegated set.
     delegation = None if persons_stop(workspace, now) else delegation
     # The person's own consent, in their shell: it names the workspace on either leg.
+    prefix = join(list(command_prefix()), shell())
     ways: dict[str, object] = {
         "official": {
-            "command": f'{" ".join(command_prefix())} --workspace "{workspace}" evidence-consent '
+            "command": f'{prefix} --workspace "{workspace}" evidence-consent '
             f"set --per-issuer {DEFAULT_SOURCE_CONSENT.documents_per_issuer}",
             "before": str(
                 network_access(workspace, now=now).body(

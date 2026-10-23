@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from typing import Final
 
+from alphalattice.interface.local_application.cli_contract import join, shell
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
-COMMAND: Final = " ".join(command_prefix())
+COMMAND: Final = join(list(command_prefix()), shell())
 RULE_WORDS: Final = {
     "ROLE": "Only its senders send this kind, each with the key in its own bundle: a STANCE or "
     "REPLY any member, a CHALLENGE or PASS a specialist, a RULING, VERDICT or PERSON_ANSWER the "

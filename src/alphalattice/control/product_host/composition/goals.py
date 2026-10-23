@@ -17,6 +17,7 @@ from secrets import token_hex
 from typing import Any, Self
 from uuid import UUID, uuid5
 
+import yaml  # type: ignore[import-untyped]
 from pydantic import ValidationError
 
 from alphalattice.control.data_platform.contracts import (
@@ -91,6 +92,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.actor_execution import ActorKind
 from alphalattice.protocols.actor_execution.bundles import (
     bundle_directory_key,
@@ -2265,8 +2267,6 @@ class GoalApplication:
         scope: GoalReferenceReadScope | None = None,
     ) -> dict[str, Any]:
         """The verified readback with the book deliveries it names, as a sealed page."""
-        import yaml  # type: ignore[import-untyped]
-
         from alphalattice.interface.local_application.experiment_report import render_goal
 
         scope = scope or GoalReferenceReadScope()
@@ -2343,7 +2343,7 @@ def goal_prompt(goal: Goal, workspace: Path) -> str:
     """
 
     def command(*parts: str) -> str:
-        return join(["alphalattice", "--workspace", str(workspace), *parts], shell())
+        return join([*command_prefix(), "--workspace", str(workspace), *parts], shell())
 
     criteria = "; ".join(f"{c.criterion_id}: {c.text}" for c in goal.declaration.criteria)
     goal_id = str(goal.goal_id)

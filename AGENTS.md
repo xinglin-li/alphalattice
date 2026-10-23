@@ -48,6 +48,8 @@ inputs request, repair the invalid fields and plan again with the same research 
 
 At first use and any refusal naming a missing dependency, run the doctor from the checkout's root, after `uv sync --locked --all-extras`: `uv run python -m alphalattice.interface.local_application.native_setup doctor` (on the wheel leg, with the tool environment's interpreter beneath `uv tool dir`). Fill each missing `host_readiness` item by its `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
 
+Off PATH, use the binding block in the shared guides and pass the matching absolute prefix to every specialist; no shell update or restart is needed. Portable examples use alphalattice as a placeholder. When serving from another shell, set ALPHALATTICE_SHELL to your specialists' shell: posix or powershell.
+
 If you installed AlphaLattice in this session, continue here: read this guide and
 the research Skill by the paths `configure` printed under `continue_here`, start
 each specialist as a general subagent whose prompt is its card's text, and tell the
@@ -62,6 +64,11 @@ For a new Host on Claude Code desktop, use its available `run_in_terminal` tool 
 probe the Terminal panel shell as the operating guide describes; only after a successful outside-every-Job result, declare
 `ALPHALATTICE_TERMINAL_PANEL_HOST=claude-code` for this serve invocation, then remove it.
 Codex's panel capability is undeclared; never assume a panel from a host's name alone.
+<!-- message: host.start.terminal.guide -->
+On Claude Code desktop, use the available Terminal panel through `run_in_terminal`; on Codex, use an available agent-driven Terminal panel in the same way. If detached start is refused, choose the first applicable `terminal_routes` offer and run `terminal_command` yourself there. Only without such a panel, give the person the same command for a terminal they own, then wait for their word. The Host cannot inspect your tools; its escape and authenticated readiness checks still decide STARTED.
+
+The app may ask the person to approve that one line.
+
 Use a new workspace for new research:
 
 ```powershell
@@ -72,11 +79,6 @@ Use `--detach` on both Claude Code and Codex. Never keep a long-lived serve in a
 Bash task: its time limit can stop the Host and running Tasks. STARTED requires a ready,
 authenticated Host proved outside its parent Job. A readiness timeout can leave the named
 process starting: follow its offered log or stop recovery before another launch.
-If the refusal offers `SERVE_FROM_THE_HOST_TERMINAL_PANEL`, run
-`terminal_command` yourself there through `run_in_terminal`; the app may ask the person to
-approve that one line. Otherwise give
-the person one copyable `terminal_command` for a terminal they own outside the agent's shell,
-then wait for their word before any further command for this workspace.
 An explicitly session-only Host still accepts `--stop-on-stdin`; a held update then waits
 for the next session. Never bypass Job containment through a broker, service
 or scheduler. `alphalattice host stop` joins running work and stops your Host.
@@ -150,8 +152,9 @@ alphalattice --workspace "workspaces/my-research" first-use prepare --sentence "
 ```
 
 It first checks the setup a first use cannot run without, and opens nothing while
-it is missing: the bare `alphalattice` command your specialists' routes run in their
-own fresh shells, and the retrieval environment. Run each `missing` item's `commands`,
+it is missing: the resolved command your specialists' routes run in their own fresh
+shells, including its absolute uv launcher off PATH, and the retrieval environment.
+Run each `missing` item's `commands`,
 disclosing them (a person's item is asked once, in one line). Download and install
 `config/requirements-retrieval.lock` packages as your act, without repeating first-use
 network consent, even with an empty cache; say `disclosure` in one line and ask no

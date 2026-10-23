@@ -26,7 +26,7 @@ def _apply_windows_lock(
     handle: BinaryIO,
     mode_name: Literal["LK_NBLCK", "LK_UNLCK"],
 ) -> None:
-    members = vars(import_module("msvcrt"))
+    members = vars(import_module("msvcrt"))  # lazy: OS lock.
     locking = cast(Callable[[int, int, int], None], members["locking"])
     locking(handle.fileno(), int(members[mode_name]), 1)
 
@@ -70,7 +70,7 @@ class WorkspaceLock:
             if os.name == "nt":
                 _apply_windows_lock(handle, "LK_NBLCK")
             else:
-                fcntl = import_module("fcntl")
+                fcntl = import_module("fcntl")  # lazy: OS lock.
                 members = vars(fcntl)
                 flock = members["flock"]
                 flock(
@@ -112,7 +112,7 @@ class WorkspaceLock:
         if os.name == "nt":
             _apply_windows_lock(handle, "LK_UNLCK")
         else:
-            fcntl = import_module("fcntl")
+            fcntl = import_module("fcntl")  # lazy: OS lock.
             members = vars(fcntl)
             flock = members["flock"]
             flock(handle.fileno(), int(members["LOCK_UN"]))

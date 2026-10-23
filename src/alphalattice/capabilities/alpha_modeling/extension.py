@@ -206,7 +206,7 @@ def extension_adapter(model_id: str) -> AlphaModelAdapter:
     if not re.fullmatch(r"[a-z][a-z0-9_]*", model_id):
         raise ValueError(f"model_extension.not_found:{model_id}")
     try:
-        module = importlib.import_module(f"{EXTENSION_PACKAGE}.{model_id}")
+        module = importlib.import_module(f"{EXTENSION_PACKAGE}.{model_id}")  # lazy: optional.
     except ModuleNotFoundError as error:
         raise ValueError(f"model_extension.not_found:{model_id}") from error
     adapter = getattr(module, "ADAPTER", None)

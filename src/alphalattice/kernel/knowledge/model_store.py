@@ -457,7 +457,7 @@ def hub_fetcher(
         Pinned-revision fetcher using resumable partial arrivals; network admission is the caller's
         responsibility.
     """
-    import httpx
+    import httpx  # lazy: optional download.
 
     def fetch(pack: PackDefinition, name: str, staging: Path) -> Path:
         destination = staging / name

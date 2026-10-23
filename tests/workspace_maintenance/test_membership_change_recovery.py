@@ -6,10 +6,14 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
+from alphalattice.control.data_platform.maintenance.contracts import WorkspaceMaintenanceRequest
+from alphalattice.control.data_platform.maintenance.orphaned_bind import (
+    restore_orphaned_membership,
+)
 from alphalattice.control.data_platform.maintenance.registry import (
     DuckDbWorkspaceMaintenanceRegistry,
 )
@@ -40,6 +44,11 @@ PROFILE = "us-current-index-research"
 MEMBERS = SYMBOLS[:7]
 """One Sector of seven: after a leaver and a sectorless joiner it keeps the five-member floor."""
 CHANGED_AT = NOW + timedelta(days=1)
+_REQUEST = ("market_profile_id", "target_market_session", "knowledge_cutoff_at", "trigger")
+_REQUEST += ("data_policy_hash", "feature_policy_hash")
+_READINESS = ("market_profile_id", "status", "active_membership_fingerprint", "failure_code")
+_READINESS += ("active_candidate_manifest_document", "pending_membership_fingerprint")
+_READINESS += ("pending_candidate_manifest_document", "last_checked_at", "last_changed_at")
 
 
 def _host(workspace: Path, binding, provider, source) -> LocalPortfolioWebSession:  # type: ignore[no-untyped-def]
@@ -188,6 +197,87 @@ def test_a_stopped_membership_change_resumes_through_the_membership_its_cycle_ma
     # The same Task ran the same cycle to the same coverage floor; the audit was not owed again.
     assert resumed["latest_failure_code"] == "feature.panel_coverage_not_ready", resumed
     assert [t.task_id for t in tasks if t.task_kind == "workspace_data_update"] == [UUID(task_id)]
+
+
+def test_a_working_membership_names_the_task_whose_cycle_bound_it(stopped_change, tmp_path):
+    """A cycle's working membership names the Task whose stage bound it; another writer's bind of
+    the same membership on that cycle is recorded after it, never folded into the first."""
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace")
+    with _host(
+        workspace, stopped_change.binding, stopped_change.provider, stopped_change.source
+    ) as live:
+        registry = _registry(live)
+        own = registry.working_binds(stopped_change.cycle_id)[-1]
+        registry.owned_by("another-task").record_working_manifest(
+            stopped_change.cycle_id,
+            manifest_revision=own.manifest_revision,
+            authority="tamper",
+            observed_at=CHANGED_AT,
+        )
+        binds = [b for b in registry.working_binds() if b.cycle_id == stopped_change.cycle_id]
+    assert own.manifest_revision == stopped_change.active
+    assert own.owner_task == stopped_change.task_id
+    assert [b.owner_task for b in binds[-2:]] == [stopped_change.task_id, "another-task"]
+
+
+@pytest.mark.parametrize("owner", ["CANCELLED", "DEFERRED", "UNPROVED", "AMBIGUOUS"])
+def test_a_cancelled_tasks_orphaned_candidate_list_returns_to_its_panels_own(
+    stopped_change, tmp_path, owner
+):
+    """A candidate list a cancelled Task's cycle left active returns to its Panel's own, once;
+    a live owner's stays, so does a journaled change, and a plan refuses an owner nothing proves
+    while a cancel skips it. Its 40 s are the module's stopped change, shared with the file."""
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace")
+    task = SimpleNamespace(lifecycle=SimpleNamespace(value=owner))
+    tasks, later = SimpleNamespace(task=lambda _task_id: task), CHANGED_AT + timedelta(hours=1)
+    with _host(
+        workspace, stopped_change.binding, stopped_change.provider, stopped_change.source
+    ) as live:
+        registry, market = _registry(live), MarketDataRepository(workspace)
+        assert restore_orphaned_membership(registry, tasks, CHANGED_AT) == {}
+        held, record = (
+            registry.cycle(stopped_change.cycle_id).request,
+            market.readiness.load(PROFILE),
+        )
+        panel = registry.working_binds()[1].manifest_revision  # the Panel's own, before the change
+        candidate = registry.working_binds()[0].manifest_revision  # bound, never journaled
+        cycle = registry.admit(
+            WorkspaceMaintenanceRequest.create(
+                **{k: getattr(held, k) for k in _REQUEST},
+                membership_revision=panel,
+                requested_at=later,
+            ),
+            observed_at=later,
+        ).cycle_id
+        unnamed = owner == "UNPROVED"  # recorded as 0.2.3 recorded it, naming no Task
+        writers = [registry if unnamed else registry.owned_by(str(stopped_change.task_id))]
+        if owner == "AMBIGUOUS":  # a second Task named on the same cycle
+            writers.append(registry.owned_by(str(uuid4())))
+        for writer in writers:
+            writer.record_working_manifest(
+                cycle,
+                manifest_revision=candidate,
+                authority="candidate_preparation",
+                observed_at=later,
+            )
+        market.readiness.save(
+            **{k: getattr(record, k) for k in _READINESS},
+            active_manifest_id=market.load_universe_manifest_revision(candidate).manifest_id,
+            active_manifest_revision=candidate,
+            observed_at=later,
+        )
+        if owner in {"UNPROVED", "AMBIGUOUS"}:  # the data door's plan proves no owner
+            with pytest.raises(ValueError, match=f"membership_owner_unproved:{cycle}"):
+                live.operations.data_update.plan()
+        restored = restore_orphaned_membership(registry, tasks, later)
+        again = restore_orphaned_membership(registry, tasks, later)
+        active = market.readiness.load(PROFILE)
+    expected = (panel, "RESEARCH_READY") if owner == "CANCELLED" else (candidate, record.status)
+    assert (active.active_manifest_revision, active.status) == expected
+    assert bool(restored) is (owner == "CANCELLED") and again == {}, restored
+    if restored:
+        moved = restored["restored_membership"]
+        assert (moved["cycle_id"], moved["from_revision"]) == (cycle, candidate), moved
 
 
 def test_a_cycle_record_naming_another_membership_is_refused_by_name(stopped_change, tmp_path):
