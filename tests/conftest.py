@@ -34,6 +34,8 @@ from devtools.evaluation.round_trip import (
 )
 from tests.pytest_environment import configure_temporary_roots, project_scope
 
+pytest_plugins = ["devtools.architecture.registries"]
+
 
 @pytest.fixture(autouse=True)
 def project_discovery(tmp_path, tmp_path_factory):

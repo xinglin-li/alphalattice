@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import replace
 from datetime import date, datetime, timedelta
+from functools import partial
 from threading import RLock
 from typing import Any, Literal, Protocol, Self, cast
 from uuid import UUID
@@ -126,6 +127,7 @@ class ResearchUpdateAutomation:
         clock: Callable[[], datetime],
         execute: Callable[[PortfolioResearchOperationRequest], dict[str, object]],
         resume: Callable[[], None] | None = None,
+        admit: Callable[[Callable[[], None]], None] | None = None,
     ) -> None:
         """Wire committed settings and a bounded service-lifetime maintenance host.
 
@@ -136,18 +138,27 @@ class ResearchUpdateAutomation:
             clock: Explicit observed-time source.
             execute: Deterministic operation dispatch callback.
             resume: At start, what holds the first use's dated update again when still owed.
+            admit: Reserve a held callback until its Task handoff completes.
         """
         self.index, self.manifest_hash = index, workspace_manifest_hash
         self.installed = installed_package_ids
         self.clock, self.execute = clock, execute
         self.wake = MaintenanceWakeController()
-        self.host = MaintenanceBackgroundHost(wake=self.wake, run_once=self._cycle, clock=clock)
+        self.host = MaintenanceBackgroundHost(
+            wake=self.wake,
+            run_once=partial(admit, self._cycle) if admit else self._cycle,
+            clock=clock,
+        )
         # The first use's dated update: the same seam, one shot, never the daily schedule.
         self.held_wake = MaintenanceWakeController()
         self.held_host = MaintenanceBackgroundHost(
-            wake=self.held_wake, run_once=self._run_held, clock=clock
+            wake=self.held_wake,
+            run_once=partial(admit, self._run_held) if admit else self._run_held,
+            clock=clock,
         )
         self._held: tuple[datetime, Callable[[], object]] | None = None
+        self._held_running = False
+        self.held_goal: UUID | None = None
         self._resume = resume
         self._lock = RLock()
         self._started = False
@@ -319,19 +330,56 @@ class ResearchUpdateAutomation:
         quiet = self.held_host.close(timeout=5.0 if timeout is None else timeout)
         quiet = self.host.close(timeout=5.0 if timeout is None else timeout) and quiet
         if not quiet and timeout is None:
+            self.held_host.wait_stopped()
             self.host.wait_stopped()
             quiet = True
         return quiet
 
-    def hold(self, at: datetime, run: Callable[[], object]) -> None:
+    def keeps_host(self, goals: GoalApplication) -> bool:
+        """Retain only current held work or an admitted, armed automation wake."""
+        with self._lock:
+            pending, running, goal = self._held is not None, self._held_running, self.held_goal
+            armed = self._next_due is not None
+        if running:
+            return True
+        if pending:
+            head = goals.store.head(goal) if goal is not None else None
+            if goal is None or (head is not None and head.state == "OPEN"):
+                return True
+            self.hold(None, None, goal)
+        value = self.settings()
+        return bool(
+            armed
+            and value is not None
+            and value.enabled
+            and value.workspace_manifest_hash == self.manifest_hash
+        )
+
+    @property
+    def has_held_work(self) -> bool:
+        """Whether a held update is pending or still admitting its Task.
+
+        Returns:
+            True through the callback-to-dispatcher handoff, under the owner lock.
+        """
+        with self._lock:
+            return self._held is not None or self._held_running
+
+    def hold(
+        self, at: datetime | None, run: Callable[[], object] | None, goal: UUID | None = None
+    ) -> None:
         """Hold the first use's dated update until its information is available; run it once.
 
         It carries out the person's own named request, so the daily automation's setting does not
         gate it, and it never arms the daily schedule.
+        None disarms only that Goal's pending hold; a claimed callback stays owned.
         """
         with self._lock:
-            self._held = (at, run)
-            self.held_wake.set_next_due(at)
+            if run is None and goal != self.held_goal:
+                return
+            self._held = (at, run) if at is not None and run is not None else None
+            self.held_goal = goal
+            self.held_wake.set_next_due(at if run is not None else None)
         self.held_wake.event.set()
 
     def _run_held(self) -> None:
@@ -339,6 +387,7 @@ class ResearchUpdateAutomation:
             held, self._held = self._held, None
             if held is not None and (self._closing or held[0] > self.clock()):
                 self._held, held = held, None
+            self._held_running = held is not None
             # The wake's due time is the hold's own: one taken leaves none past due to spin on.
             self.held_wake.set_next_due(None if self._held is None else self._held[0])
         if held is not None:
@@ -351,6 +400,9 @@ class ResearchUpdateAutomation:
                         self._held = held
                         self.held_wake.set_next_due(held[0])
                 raise
+            finally:
+                with self._lock:
+                    self._held_running = False
 
     def command_completed(self) -> None:
         """Wake once the dispatcher's queue is idle.
@@ -632,7 +684,7 @@ def first_update(
     activated: dict[str, object],
     provenance: RequestProvenance | None,
     *,
-    held: bool = False,
+    held: UUID | None = None,
 ) -> dict[str, object]:
     """The activated strategy's first update, admitted in the activation's own act.
 
@@ -643,14 +695,15 @@ def first_update(
     is not yet available is held until it is (`ResearchUpdateAutomation.hold`) and then run once,
     recorded under the goal while it stays open (`held`); the delegation still ends on time.
     """
-    first_use = host.goals.first_use()
+    if held:
+        first_use = host.goals.store.head(held)
+        if getattr(first_use, "state", None) != "OPEN":
+            return {}
+    else:
+        first_use = host.goals.first_use()
     live = (
         first_use
-        if first_use is not None
-        and (
-            host.goals.first_use_delegation(first_use)["active"]
-            or (held and first_use.state == "OPEN")
-        )
+        if first_use is not None and (host.goals.first_use_delegation(first_use)["active"] or held)
         else None
     )
     named = None if live is None else live.declaration.target_date
@@ -721,7 +774,8 @@ def _held_until(
     at = datetime.fromisoformat(str(dated["information_available_at"]))
     if host.automation is None or at <= host.dispatcher.clock():
         return plan
-    host.automation.hold(at, lambda: first_update(host, activated, provenance, held=True))
+    run = partial(first_update, host, activated, provenance, held=live.goal_id)
+    host.automation.hold(at, run, live.goal_id)
     package = str(activated["strategy_package_id"])
     host.goals.store.attribute(live.goal_id, {"held_update": {"package": package, "at": str(at)}})
     return {**plan, "held_until": at.isoformat(), "reading": dated.get("reading")}
@@ -758,4 +812,20 @@ def resume_held(host: _Host) -> None:
     if held:
         activated: dict[str, object] = {"strategy_package_id": held[-1]["package"]}
         at = max(datetime.fromisoformat(str(held[-1]["at"])), host.dispatcher.clock())
-        host.automation.hold(at, lambda: first_update(host, activated, None, held=True))
+        run = partial(first_update, host, activated, None, held=first.goal_id)
+        host.automation.hold(at, run, first.goal_id)
+
+
+def require_service_operation(operation: str, caller: str) -> None:
+    """Keep service automation within its existing admitted operation set."""
+    if caller == "SERVICE_AUTOMATION" and operation not in {
+        "RESEARCH_UPDATE_PLAN",
+        "RESEARCH_UPDATE_RUN",
+        "RESEARCH_UPDATE_READBACK",
+        # The Host's Forward prewarm reads only retained results and updates.
+        "REPORT",
+        "EXPERIMENT_READBACK",
+        "PORTFOLIO_UPDATE_READBACK",
+        "PORTFOLIO_READBACK",
+    }:
+        raise ValueError("research_update.automation_operation_not_admitted")

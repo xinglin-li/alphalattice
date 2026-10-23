@@ -19,6 +19,7 @@ from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.shared_kernel import clocks
 from alphalattice.kernel.shared_kernel.clocks import ReplayClock
 from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.workspace_task_runner.task_control_support import task_contract
@@ -86,19 +87,26 @@ def _profile_scene(live, monkeypatch, kind, namespace, stages=1, close=True, exi
     return client, goal, registry, runtime
 
 
-def _correlated_clock(anchor, system):
+def _correlated_clock(anchor, system, quantized=False):
     clock = Mock(return_value=anchor)
+    offset = [0.0]
 
     def elapsed():
         return (clock.return_value - anchor).total_seconds()
 
-    replay = ReplayClock(anchor, ticks=elapsed, wall=lambda: system + timedelta(seconds=elapsed()))
+    replay = ReplayClock(
+        anchor,
+        ticks=lambda: (elapsed() // (1 / 64)) * (1 / 64) if quantized else elapsed(),
+        wall=lambda: system + timedelta(seconds=elapsed() + offset[0]),
+    )
+    offset[0] = 1 / 1024 if quantized else 0
+    clock.wall_offset = offset
     clock.reference, clock.correlation = replay.reference, replay.correlation
     clock.phase_metadata = replay.phase_metadata
     return clock
 
 
-@pytest.mark.parametrize("fault", [None, "missing", "drift"])
+@pytest.mark.parametrize("fault", [None, "missing", "drift", "quantized", "physical_drift"])
 @pytest.mark.parametrize("live", [_correlated_clock(NOW, NOW + timedelta(days=30))], indirect=True)
 def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(live, monkeypatch, fault):
     """Real served reads align active and closed windows; missing or drifting origins stay gaps."""
@@ -107,7 +115,15 @@ def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(live, 
     active = client.request({"operation": "GOAL_PROFILE", "goal_id": goal})
     assert active["window"]["end"] == (system + timedelta(seconds=12)).isoformat()
     live.stop()
-    clock = _correlated_clock(NOW + timedelta(days=7), system + timedelta(seconds=60))
+    if fault in {"quantized", "physical_drift"}:
+        monkeypatch.setattr(
+            clocks, "get_clock_info", lambda _: Mock(resolution=1 / 64), raising=False
+        )
+    clock = _correlated_clock(
+        NOW + timedelta(days=7), system + timedelta(seconds=60), quantized=fault == "quantized"
+    )
+    if fault == "physical_drift":
+        clock.wall_offset[0] = 1
     if fault == "missing":
         clock.reference = "missing-clock"
         clock.phase_metadata = lambda: {"clock_ref": clock.reference, "clock_drift": False}
@@ -129,15 +145,21 @@ def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(live, 
         (live.workspace.parent / "clock-profile.json").write_text(
             json.dumps(result), encoding="utf-8"
         )
-        if fault:
-            assert f"CLOCK_MAPPING_{fault.upper()}" in {g["code"] for g in result["gaps"]}
+        if fault in {"missing", "drift", "physical_drift"}:
+            code = "CLOCK_MAPPING_MISSING" if fault == "missing" else "CLOCK_MAPPING_DRIFT"
+            assert code in {g["code"] for g in result["gaps"]}
             assert result["coverage"]["status"] == "PARTIAL"
         else:
+            assert "CLOCK_MAPPING_DRIFT" not in {g["code"] for g in result["gaps"]}
             assert result["window"]["start"] == system.isoformat()
             assert result["window"]["end"] == (system + timedelta(seconds=72)).isoformat()
             assert result["coverage"]["host_seconds"] == 18
             assert result["coverage"]["phase_seconds"] == 14
             assert result["clock_domains"] == ["UTC"]
+            if fault == "quantized":
+                assert clock.correlation.get("resolution_seconds") == dict(
+                    time=1 / 64, monotonic=1 / 64
+                )
     finally:
         second.stop()
 

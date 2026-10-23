@@ -18,21 +18,23 @@ AlphaLattice to run quantitative studies, check source evidence and bring the
 results to a research committee. Follow the work and its results in your coding app's
 built-in browser.
 
-Every numerical input is bounded by the date's information cutoff, and
-verification runs check for look-ahead. The committee can decline to endorse a
-result. AlphaLattice runs locally and is open source.
+Research calculations use the information cutoff stated in each result. The market
+list comes from current listings, and the report explains the survivorship limit
+and limits in older sector and price records. Verification runs check for
+look-ahead. The committee can decline to endorse a result. AlphaLattice runs
+locally and is open source.
 
 ## 0.2.3, now
 
 - Network-permission questions have stable codes beside their English and Chinese words, with the question's scope and reply kept in the activity record.
 - A Goal's time profile shows recorded requests, Task stages and gaps. Missing observations stay unobserved; elapsed time without an attribution is not called agent time.
-- On Claude Code, the first start asks you once to run the offered command in your own terminal. Codex detaches the Host on its own. This startup step is separate from the network-permission question.
+- On Claude Code, the first start can ask you once to run the offered command in your own terminal. Codex detaches the Host on its own. This startup step is separate from the network-permission question.
 
-See the [0.2.3 release notes](docs/public-source/release-notes.md#023) for the message catalog and the limits of these diagnostics. The earlier measured workloads remain identified by their release below.
+See the [0.2.3 release notes](docs/public-source/release-notes.md#023) for the message catalog and the limits of these diagnostics. The versioned notes keep each measured workload and its limits.
 
 Use Claude Code or Codex as the lead. To see what a run used, open a session's
-**Participants** in the Workbench (**Team**, then **Sessions**): it shows the
-models and tokens each member used.
+**Participants** in the Workbench (**Team**, then **Sessions**): it shows the models and
+tokens each member used, and marks any gaps.
 
 Give your agent this repository's link and one intent:
 
@@ -99,20 +101,16 @@ Give your agent this repository's link and one intent:
   ```bash
   brew install libomp
   ```
-- **Time:** In native Windows observations for 0.2.2, with Claude Code and Haiku,
-  first use took **121.8 minutes** and the first daily took **43.6 minutes**.
-  Each component used 472 supporting listings. Recorded Host work accounted for
-  **50.75 minutes** and **19.65 minutes**, respectively. The daily exceeded the
-  20-minute budget. These are measured workloads from 0.2.2, not runtime
-  guarantees or a new performance measurement for 0.2.3.
-- **Disk and memory:** Those 0.2.2 runs retained an **8.70 GB** first-use
-  workspace and **8.88 GB** after the first daily. The daily grew the workspace
-  by **180 MB**; its separate **4.27 GB** first backup was a one-time fill.
-  Sampled Host private-memory peaks were **9.32 GB** and **9.25 GB**, both above
-  the 8 GB budget. MB and GB use decimal units. Allow headroom for your operating
-  system and coding app; these observations are not minimum requirements.
-  The [release notes](docs/public-source/release-notes.md#022) give the workload,
-  measurement limits, upgrade results and outstanding budgets.
+- **Time:** In the 0.2.3 release run with a Codex lead, first use took **7,097.5
+  seconds** (about **118 minutes**, including a recorded pause); the first daily
+  did not finish within the measurement window. The 0.2.2 Claude Code (Haiku) run
+  took **121.8 minutes** for first use and **43.6 minutes** for the first daily.
+  These are single runs, not guarantees.
+- **Disk and memory:** The 0.2.3 first-use Host peaked at **8.66 GB**, above the
+  **8 GB** budget. The 0.2.2 workspace was **8.70 GB** after first use; its first
+  daily also filled a one-time **4.27 GB** backup. Allow headroom for the operating system and
+  coding app. The [release notes](docs/public-source/release-notes.md#023) give
+  each run's workload and limits; MB and GB use decimal units.
 - **Package downloads:** Locked retrieval packages install under the first use's
   network consent, including on a machine with an empty package cache. That
   consent covers installation without a separate download question.
@@ -253,24 +251,21 @@ explains recorded usage and its switch.
 
 ## This release and where it is going
 
-**0.2.2, now.** 0.2.0 brought a one-sentence path to a dated, reviewed research
-result: data, strategy, research positions, SEC evidence, committee review and a
-report. 0.2.1 made ordinary daily updates write only the day's changes. 0.2.2
-removes repeated and unused code, registers every extensible kind in one registry,
-and checks each sealed input once when the day's positions are read. The
-[release notes](docs/public-source/release-notes.md#022) list every change and the
-measured limits.
+**0.2.3 is the current release.** It adds coded network-permission questions,
+a shared catalog for new bilingual messages, recorded Goal profiles with gaps,
+and a check that a detached Host survives its launching session. The
+[release notes](docs/public-source/release-notes.md#023) distinguish the delivered
+behaviour, observed workloads and remaining limits.
 
-Each minor version's scope is fixed in advance and released only after a run proves
-it; patches in between make the current version smoother. Each version builds on
+Each minor version's scope is planned in advance. Its release notes state the
+checks run, measured workloads and unproved limits; patches in between make the
+current version smoother. Each version builds on
 methods already proven elsewhere, adapted to AlphaLattice's own rules: dated
 inputs, sealed results and your authority.
 
 The next 0.2.x patches, in order. Each holds one theme, and each publishes its
 measured time, disk and memory against a stated budget:
 
-- **0.2.3: questions and messages by code.** Each question only you can answer, and
-  each message, carries a stable code beside its words.
 - **0.2.4: a smoother daily update.** A shorter wrap-up for the agent, a measured time
   for each stage, and a background service that stays up between sessions.
 - **0.2.5: a measured baseline.** A first use and a daily, replayed without a model,
@@ -343,7 +338,7 @@ For a security vulnerability, report privately as described in [SECURITY](SECURI
 
 ## About
 
-Documentation updated: 2026-10-17.
+Last checked: 2026-10-22 against 0.2.3
 
 The [design principles](docs/public-source/design-principles.md) explain how the
 agent, the software and the person share the work.

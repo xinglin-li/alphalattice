@@ -33,6 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 from alphalattice.interface.local_application.failure_codes import setup_failure  # noqa: E402
+from alphalattice.interface.local_application.message_catalog import catalog_words  # noqa: E402
 from alphalattice.kernel.shared_kernel.persistence import replace_with_retry  # noqa: E402
 
 ASSETS = ROOT / "src/alphalattice/interface/local_application/assets"
@@ -211,13 +212,9 @@ def labels_js() -> str:
 
 
 def messages_js() -> str:
-    """Embed the canonical id entries unchanged for the shared UI word reader."""
-    entries = json.loads((ROOT / "config/registries/messages.json").read_bytes())["entries"]
-    return (
-        "const MESSAGE_WORDS = "
-        + json.dumps(entries, ensure_ascii=False, separators=(",", ":"))
-        + ";\n"
-    )
+    """Project the id catalog; legacy English-keyed catalogs remain immutable."""
+    words = catalog_words()
+    return f"const MESSAGE_WORDS = Object.freeze({json.dumps(words, ensure_ascii=False)});\n"
 
 
 def hashed(name: str, data: bytes) -> str:

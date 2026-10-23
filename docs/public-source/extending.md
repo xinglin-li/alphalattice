@@ -1,5 +1,5 @@
 # Change and extend the workspace
-Date: 2026-10-08
+Last checked: 2026-10-22 against 0.2.3
 
 Ask your agent to fix a runtime defect or propose a strategy, Alpha model or Feature. The editable checkout is your workspace to change. Explain the intended behavior and inspect the resulting contract, research evidence and eligibility before deciding on activation. The [research-agent guide](../../AGENTS.md#change-the-checkout) owns code recovery and the [person's decisions](../../AGENTS.md#what-only-a-person-decides).
 

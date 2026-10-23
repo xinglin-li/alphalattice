@@ -1,0 +1,308 @@
+{
+  "schema": "alphalattice.test-sizes.v1",
+  "owner": "devtools.architecture",
+  "defaults": [
+    {
+      "pattern": "tests/agent_eval/*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/alpha_research/*",
+      "owner": "tests.alpha_research",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/alternative_evidence_desk/*",
+      "owner": "tests.alternative_evidence_desk",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/autonomous_alpha_consumer/*",
+      "owner": "tests.autonomous_alpha_consumer",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/current_universe_bootstrap/*",
+      "owner": "tests.current_universe_bootstrap",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/current_universe_onboarding/*",
+      "owner": "tests.current_universe_onboarding",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/data_performance/*",
+      "owner": "tests.data_performance",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/evaluation/*",
+      "owner": "tests.evaluation",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/factor_research_pipeline_correctness/*",
+      "owner": "tests.factor_research_pipeline_correctness",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/feature_engine/*",
+      "owner": "tests.feature_engine",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/feature_input_gateway/*",
+      "owner": "tests.feature_input_gateway",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/market_data_operations/*",
+      "owner": "tests.market_data_operations",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/model_message_boundaries/*",
+      "owner": "tests.model_message_boundaries",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/model_validation/*",
+      "owner": "tests.model_validation",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/operation_suite/*",
+      "owner": "tests.operation_suite",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/portfolio_development/*",
+      "owner": "tests.portfolio_development",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/portfolio_input_preparation/*",
+      "owner": "tests.portfolio_input_preparation",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/portfolio_strategy_lab/*",
+      "owner": "tests.portfolio_strategy_lab",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/release/*",
+      "owner": "tests.release",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/researcher_methodology_extension/*",
+      "owner": "tests.researcher_methodology_extension",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/researcher_methodology_surface/*",
+      "owner": "tests.researcher_methodology_surface",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/risk_desk/*",
+      "owner": "tests.risk_desk",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/risk_portfolio_research/*",
+      "owner": "tests.risk_portfolio_research",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/sector_panel_closure/*",
+      "owner": "tests.sector_panel_closure",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/structural/*",
+      "owner": "tests.structural",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unified_observation/*",
+      "owner": "tests.unified_observation",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/workspace_maintenance/*",
+      "owner": "tests.workspace_maintenance",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/workspace_readiness/*",
+      "owner": "tests.workspace_readiness",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/workspace_task_runner/*",
+      "owner": "tests.workspace_task_runner",
+      "size": "medium"
+    },
+    {
+      "pattern": "*",
+      "owner": "tests",
+      "size": "medium"
+    }
+  ],
+  "large": [
+    {
+      "pattern": "tests/agent_eval/test_first_use_completion.py::test_a_first_use_sealed_under_the_last_release_still_verifies_here*",
+      "owner": "tests.agent_eval",
+      "reason": "released-workspace upgrade workflow"
+    },
+    {
+      "pattern": "tests/agent_eval/test_intent_eval.py::test_committee_calls_keep_each_sample_blind_until_the_pm_decision*",
+      "owner": "tests.agent_eval",
+      "reason": "whole native-loop workflow fixture"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_first_use_review_without_evidence_offers_its_install_ready*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_host_killed_mid_task_resumes_it_when_served_again*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_host_started_before_its_retrieval_runtime_reaches_the_evidence_preflight*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_malformed_feature_plan_recovers_through_bound_controls*",
+      "owner": "tests.agent_eval",
+      "reason": "Cold-builds the prepared ten-listing workspace and the UI for each case until the build-once fixture lands."
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_preparation_stopped_for_a_data_decision_offers_its_way_on*",
+      "owner": "tests.agent_eval",
+      "reason": "whole first-use recovery workflow"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_prepared_workspaces_plan_offers_no_confirm_that_reopens_its_stopped_preparation*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_ruling_that_names_no_challenge_is_refused_with_the_ruling_corrected*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_source_not_final_defers_the_update_with_its_resume*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_stale_binding_offers_exact_recovery_before_a_bundle_reaches_its_host*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_verdict_waits_for_every_ruling_and_the_report_keeps_every_standing_position*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_daily_consent_admits_only_the_books_real_install_offers*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_daily_start_keeps_the_completed_first_day_and_uses_the_next_session*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_each_committee_member_speaks_in_its_native_session_and_usage_survives_reload*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_each_review_member_answers_on_its_own_thread_and_its_mistakes_are_refused*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_the_committee_ready_golden_copies_its_published_date_risk_and_review*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_the_hosts_rule_decides_a_first_uses_data_issue_without_a_stop*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/agent_eval/test_path_explorer.py::test_tomorrows_positions_reach_the_committee_and_its_report*",
+      "owner": "tests.agent_eval",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/portfolio_strategy_lab/test_cli_golden_transcripts.py::test_golden_transcripts_replay_on_a_qa_copy*",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/portfolio_strategy_lab/test_daily_book_records_gate.py::test_a_daily_source_seal_writes_its_change_under_the_plant_bytes_gate*",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/portfolio_strategy_lab/test_strategy_activation.py::test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session*",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/researcher_methodology_surface/test_real_workspace.py::test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/researcher_methodology_surface/test_real_workspace.py::test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/researcher_methodology_surface/test_real_workspace.py::test_the_golden_key_binds_the_interpreter_and_the_installed_distributions*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "current workflow or golden entry; census source flags revalidated by current definition"
+    },
+    {
+      "pattern": "tests/structural/test_public_release_closure.py::test_every_public_file_closes_over_the_public_manifest*",
+      "owner": "tests.structural",
+      "reason": "fresh structural observation over60s; remains mandatory at merge"
+    },
+    {
+      "pattern": "tests/structural/test_reuse_spec.py::test_reuse_discovery_has_no_unreviewed_predicate*",
+      "owner": "tests.structural",
+      "reason": "fresh structural observation over60s; remains mandatory at merge"
+    }
+  ],
+  "note": "Classification only; fixture/network/time enforcement follows. Source evidence declares workflows and goldens; historical duration alone does not certify a size. Structural holders remain mandatory.",
+  "sizes": [
+    "small",
+    "medium",
+    "large"
+  ],
+  "lanes": [
+    "merge",
+    "candidate",
+    "nightly"
+  ],
+  "mandatory": [
+    "tests/structural/*",
+    "tests/portfolio_strategy_lab/test_cli_contract.py*"
+  ]
+}

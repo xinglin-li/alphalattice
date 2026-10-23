@@ -1,5 +1,5 @@
 # Upgrading AlphaLattice
-Date: 2026-10-18
+Last checked: 2026-10-22 against 0.2.3
 
 Use this guide to upgrade from 0.2.0 to a later 0.2.x patch. Keep using your
 existing agent project and research workspace. [Getting started](getting-started.md)
@@ -63,12 +63,12 @@ Run the doctor again after repairs or configuration.
 Download the new release's wheel to a separate installation directory. Extract
 the runtime requirements from that same wheel and use them as both requirements
 and constraints, as in the [operating reference](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch).
-The example below uses the 0.2.1 wheel; replace its filename in both commands
+The example below uses the 0.2.3 wheel; replace its filename in both commands
 with the wheel you downloaded:
 
 ```powershell
-python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.2.1-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
-uv tool install --force --python 3.12 ./alphalattice-0.2.1-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
+python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.2.3-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
+uv tool install --force --python 3.12 ./alphalattice-0.2.3-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
 ```
 
 `--force` replaces the previous tool installation. To switch between the wheel
@@ -80,16 +80,16 @@ Run the new tool's doctor against your existing agent project. Replace
 
 ```powershell
 $toolDir = uv tool dir
-& "$toolDir/alphalattice/Scripts/python.exe" -m alphalattice.interface.local_application.native_setup --project "<agent-project>" doctor --host codex
+& "$toolDir/alphalattice/Scripts/python.exe" -m alphalattice.interface.local_application.native_setup --project "<agent-project>" doctor --host claude-code
 ```
 
 If the doctor calls for configuration, use the same interpreter and project:
 
 ```powershell
-& "$toolDir/alphalattice/Scripts/python.exe" -m alphalattice.interface.local_application.native_setup --project "<agent-project>" configure --host codex
+& "$toolDir/alphalattice/Scripts/python.exe" -m alphalattice.interface.local_application.native_setup --project "<agent-project>" configure --host claude-code
 ```
 
-Use `--host claude-code` for Claude Code. On macOS and Linux the interpreter is
+Use `--host codex` for Codex. On macOS and Linux the interpreter is
 `bin/python` rather than `Scripts/python.exe`; see [Getting started](getting-started.md#release-wheel)
 for platform requirements. Follow any setup repairs, read `continue_here` after
 configuration and run the doctor again.
@@ -101,6 +101,10 @@ Start the Host on the workspace path you saved:
 ```powershell
 alphalattice --workspace "<existing-workspace-path>" serve --no-browser --detach
 ```
+
+If startup asks for a person-owned terminal, run its offered command once there
+and tell the agent to continue. This is separate from the standing network
+permission in your existing workspace.
 
 Open its printed Workbench link in your coding app's built-in browser. In the
 same agent project, ask for your next daily update as usual, for example

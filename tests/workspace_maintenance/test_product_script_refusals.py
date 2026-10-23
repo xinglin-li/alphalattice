@@ -29,7 +29,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.interface.local_application.cli_contract import refusal_words, worded
 
 
 def _blocked(tmp_path: Path) -> Path:
@@ -48,7 +48,7 @@ def _refusal(capsys: pytest.CaptureFixture[str]) -> dict[str, str]:
 
 
 def test_the_pack_installer_refuses_an_unwritable_store_by_name(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """regression (V539, RR5d's FINDING 20:06): an unwritable model store is refused by name
     before any download, `--store <directory>` the way on, outside the checkout and any
@@ -77,6 +77,33 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
     assert installer.main(["--store", str(workspace / "models"), *arguments]) == 2
     assert _refusal(capsys)["failure_code"] == "model_store.store_inside_workspace"
     assert not (workspace / "models").exists()
+    for view in (("--vie", "summary"), ("--vie=summary",)):
+        assert installer.main(["--status", "--store", str(tmp_path / "missing"), *view]) == 0
+        command = json.loads(capsys.readouterr().out)["full_answer"]["command"]
+        replay = subprocess.run(command, capture_output=True, check=False)
+        assert replay.returncode == 0 and "representation" not in json.loads(replay.stdout)
+    store = tmp_path.joinpath(*(["中" * 48] * 120))
+    line = ["--status", "--store", str(store)]
+    assert installer.main(line) == 0
+    whole = capsys.readouterr().out.rstrip("\n").encode()
+    saved = tmp_path / "pack-status.json"
+    read = [*line, "--view", "summary", "--output", str(saved)]
+    assert installer.main(read) == 0
+    printed = capsys.readouterr().out
+    summary = json.loads(printed)
+    assert len(printed.encode()) <= 32768 and not store.exists()
+    assert summary["full_answer"] == {"file": str(saved.resolve())}
+    assert saved.read_bytes() == whole
+    assert installer.main(read) == 2
+    assert _refusal(capsys)["failure_code"] == "local_client.output_exists_choose_another_path"
+    assert saved.read_bytes() == whole
+    monkeypatch.setattr(
+        installer.model_store, "hub_fetcher", lambda **_: pytest.fail("unexpected install")
+    )
+    with pytest.raises(SystemExit):
+        installer.main([*arguments, "--store", str(tmp_path / "new-store"), "--view", "summary"])
+    capsys.readouterr()
+    assert not (tmp_path / "new-store").exists()
 
 
 def test_the_retrieval_environment_setup_answers_its_failure_in_words(
@@ -229,7 +256,17 @@ def test_a_backup_refuses_an_unwritable_root_by_name_and_words_it(tmp_path: Path
     with pytest.raises(WorkspaceBackupError) as refused:
         backups.create(reason="REQUEST")
     code = "workspace_backup.root_unwritable"
-    assert located_failure(refused.value, "workspace_backup.refused") == {"failure_code": code}
+    assert located_failure(refused.value, "workspace_backup.refused") == {
+        "failure_code": code,
+        "error_info": {
+            "category": "FAILED_PRECONDITION",
+            "domain": "workspace_backup",
+            "reason": code,
+            "message_id": "protocol.error.summary",
+            "message": str(worded("protocol.error.summary")).format(reason=code),
+            "field_violations": [],
+        },
+    }
     words = refusal_words(code)
     assert "ALPHALATTICE_BACKUP_ROOT" in words["detail"]
     assert words["next_action"] == "SERVE_WITH_A_WRITABLE_BACKUP_ROOT"
@@ -295,25 +332,21 @@ def test_the_evidence_setup_preserves_its_cause_and_offers_a_read_only_way_on(
 
     monkeypatch.setattr(setup, "materialize", refused)
     binding = "a" * 64
-    assert (
-        setup.main(
-            [
-                "--workspace",
-                str(tmp_path),
-                "--acquire-sec",
-                "--entities",
-                "FIXTURE",
-                "--research-input-id",
-                "fixture-input",
-                "--research-input-hash",
-                binding,
-                "--network-consent",
-                "--install",
-            ]
-        )
-        == 2
-    )
-    payload = json.loads(capsys.readouterr().out)
+    line = [
+        "--workspace",
+        str(tmp_path),
+        "--acquire-sec",
+        "--entities",
+        "FIXTURE",
+        "--research-input-id",
+        "fixture-input",
+        "--research-input-hash",
+        binding,
+        "--network-consent",
+    ]
+    assert setup.main([*line, "--install"]) == 2
+    whole = capsys.readouterr().out.rstrip("\n").encode()
+    payload = json.loads(whole)
     assert payload["failure_code"] == code
     assert payload["detail"] and payload["next_action"]
     assert payload["causes"][0]["kind"] == kind
@@ -334,6 +367,17 @@ def test_the_evidence_setup_preserves_its_cause_and_offers_a_read_only_way_on(
         assert payload["causes"][0]["code"] == code
         words = refusal_words(code) or refusal_words(f"setup.owner_refused:{code}")
         assert payload["detail"] == words["detail"]
+    saved = tmp_path / "preflight.json"
+    assert setup.main([*line, "--preflight", "--view", "summary", "--output", str(saved)]) == 2
+    printed = capsys.readouterr().out
+    summary = json.loads(printed)
+    assert len(printed.encode()) <= 32768
+    assert summary["full_answer"] == {"file": str(saved.resolve())}
+    assert summary["next_requests"] == payload["next_requests"]
+    assert saved.read_bytes() == whole
+    with pytest.raises(SystemExit):
+        setup.main([*line, "--install", "--view", "summary"])
+    capsys.readouterr()
 
 
 def test_the_evidence_setup_names_http_status_without_response_or_request_secrets(

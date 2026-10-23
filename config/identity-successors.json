@@ -14435,6 +14435,13 @@
    "successor": "9c75d381b2fc7427ebc62ccb2d66865f1b315e9b10ee1a771c5710fd2631a224",
    "change": "module-imports",
    "reason": "Imports that functions deferred now load with their module; only where the imports sit changed, and the objects they bind and every value are the same."
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "45ee521713056588758ff624627b3b77db7230b7ce2b7961567e34a94e726c59",
+   "successor": "16df840ae2216a565cbf401b40693fda6f37072fa14f598aebd316bce8ea4835",
+   "change": "public-knowledge-runtime",
+   "reason": "Knowledge's callers now import the same runtime objects through its public module; values and authority are unchanged."
   }
  ]
 }

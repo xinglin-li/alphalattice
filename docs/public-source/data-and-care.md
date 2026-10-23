@@ -1,5 +1,5 @@
 # Maintain data and the workspace
-Date: 2026-10-08
+Last checked: 2026-10-22 against 0.2.3
 
 Updates preserve the exact inputs bound by earlier studies. Local Web shows the proposed change, progress and receipt; reusing an exact completed update can return its receipt without another Task. Source terms belong to the [third-party data guide](third-party-and-data.md). The [CLI guide](cli.md) describes commands and continuations. The [research-agent guide](../../AGENTS.md#what-only-a-person-decides) lists choices that need you.
 

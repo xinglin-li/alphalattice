@@ -21,17 +21,18 @@ from tests.portfolio_strategy_lab.cli_support import _assert_commands_parse
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 
 
-@pytest.mark.parametrize("change", ["remove", "type", "required", "enum", "baseline"])
+@pytest.mark.parametrize(
+    "change",
+    ["remove", "type", "required", "enum", "baseline", "definition_remove", "definition_type"],
+)
 def test_the_userspace_ratchet_refuses_silent_interface_changes(change: str) -> None:
-    """Frozen names and typed contracts survive edits to code or the baseline."""
+    """New schema definitions keep old fields, definitions, types and retirements intact."""
     entry = {"required": False, "schema": {"type": "string", "enum": ["A", "B"]}}
+    entry["schema"]["$defs"] = {"Old": {"type": "string"}}
     frozen = {"release": "0.2.0", "entries": {"answer:STATUS.state": entry}, "retirements": {}}
-    live = {
-        "answer:STATUS.state": {
-            "required": False,
-            "schema": {"type": "string", "enum": ["A", "B", "C"]},
-        }
-    }
+    live = json.loads(json.dumps(frozen["entries"]))
+    live["answer:STATUS.state"]["schema"]["enum"].append("C")
+    live["answer:STATUS.state"]["schema"]["$defs"]["Info"] = {"type": "object"}
     assert surface_problems(frozen, live) == []
     previous = json.loads(json.dumps(frozen))
     if change == "remove":
@@ -40,6 +41,10 @@ def test_the_userspace_ratchet_refuses_silent_interface_changes(change: str) -> 
         frozen["entries"].clear()
     elif change == "required":
         live["answer:STATUS.state"]["required"] = True
+    elif change == "definition_remove":
+        live["answer:STATUS.state"]["schema"]["$defs"].pop("Old")
+    elif change == "definition_type":
+        live["answer:STATUS.state"]["schema"]["$defs"]["Old"]["type"] = "integer"
     else:
         live["answer:STATUS.state"]["schema"][change] = "integer" if change == "type" else ["A"]
     assert any(
@@ -77,6 +82,8 @@ def test_the_frozen_surface_and_release_retirements_match_the_owners() -> None:
     root = SCRIPT.parents[1]
     assert userspace_problems(root) == []
     entries = agent_surface(root)
+    assert entries["view:full"] == {"const": "full"}
+    assert entries["view:summary"] == {"const": "summary"}
     assert "command:committee show" in entries and "option:committee show/--update" in entries
     assert "law:product/PR1" in entries and "law:workbench/PR1" in entries
     assert "message:RULES/STANCE" in entries and "exchange:CORRECTION" in entries

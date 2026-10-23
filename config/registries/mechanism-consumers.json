@@ -12,6 +12,106 @@
       "update": "PYTHONPATH=src python -m devtools.architecture.registries --staged --update",
       "consumer_baseline_dimension": "legacy_catalog_consumers",
       "input_registry": "owners-map.json / message catalog / gate_inputs"
+    },
+    "terminal read representation": {
+      "owner": "alphalattice.interface.local_application",
+      "mechanism": "src/alphalattice/interface/local_application/cli_contract.py::answer_json",
+      "consumers": [
+        "src/alphalattice/interface/local_application/cli.py",
+        "src/alphalattice/interface/local_application/client.py",
+        "src/alphalattice/interface/local_application/native_setup.py",
+        "src/devtools/architecture/operation_registry.py",
+        "src/alphalattice/interface/local_application/read_views.py",
+        "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py",
+        "src/alphalattice/control/product_host/composition/evidence_authority_setup.py",
+        "pyproject.toml",
+        ".pre-commit-config.yaml",
+        "scripts/check_playpen.py"
+      ],
+      "read_front_doors": {
+        "served and workflow reads": "src/alphalattice/interface/local_application/client.py::run",
+        "saved and section reads": "src/alphalattice/interface/local_application/cli.py::_saved_answer",
+        "schema reads": "src/alphalattice/interface/local_application/cli.py::_offline",
+        "local doctor read": "src/alphalattice/interface/local_application/native_setup.py::main",
+        "retrieval pack status": "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py::main",
+        "standalone Evidence preflight": "src/alphalattice/control/product_host/composition/evidence_authority_setup.py::main"
+      },
+      "scope_roots": [
+        "src/alphalattice/"
+      ],
+      "guard": "pyproject.toml Ruff T20/TID251 through the pre-commit hook",
+      "legacy_view": "full",
+      "summary_view": "summary",
+      "byte_budget": 32768,
+      "output_owner": "src/alphalattice/interface/local_application/read_views.py::emit_owner",
+      "stdout_exemptions": "Named per-line noqa reasons at audited output sites; no blanket product-file exemption",
+      "threat_model": "Accidental stdout bypasses; deliberate aliasing and suppression edits require code review"
+    },
+    "Host admission and drain": {
+      "owner": "alphalattice.interface.local_application",
+      "mechanism": "src/alphalattice/interface/local_application/dispatcher.py::LocalBackgroundDispatcher._admit",
+      "reservation_owner": "alphalattice.interface.local_application",
+      "consumers": [
+        "src/alphalattice/interface/local_application/dispatcher.py",
+        "src/alphalattice/interface/local_application/web.py",
+        "src/alphalattice/control/product_host/composition/local_web_session.py",
+        "src/alphalattice/control/product_host/composition/web_launcher.py",
+        "src/alphalattice/control/product_host/composition/portfolio_research_operations.py",
+        "src/alphalattice/control/product_host/composition/research_update_automation.py"
+      ],
+      "policy": "One reservation door and bounded drain for existing HTTP, Task and held-update admissions; no new authority or lifecycle store. Read polling does not refresh activity."
+    },
+    "Host idle admission and drain": {
+      "owner": "alphalattice.control.product_host",
+      "mechanism": "src/alphalattice/interface/local_application/dispatcher.py::LocalBackgroundDispatcher._idle_expired",
+      "reservation_owner": "alphalattice.interface.local_application",
+      "consumers": [
+        "src/alphalattice/interface/local_application/dispatcher.py",
+        "src/alphalattice/interface/local_application/web.py",
+        "src/alphalattice/control/product_host/composition/local_web_session.py",
+        "src/alphalattice/control/product_host/composition/portfolio_research_operations.py",
+        "src/alphalattice/control/product_host/composition/research_update_automation.py",
+        "src/alphalattice/control/product_host/composition/web_launcher.py",
+        "AGENTS.md",
+        ".agents/skills/alphalattice-research/references/operating.md",
+        ".claude/skills/alphalattice-research/references/operating.md"
+      ],
+      "policy": "Existing Host owner predicates supply retention; one monotonic deadline rechecks admission generation before draining. Domain evidence reads stay outside the dispatcher lock. No new lifecycle store, authority, service or timer thread. The existing optional idle writer participates in the same reservation; only its existing closed admission is skipped when a manual stop wins.",
+      "setting": "host.idle_timeout_seconds",
+      "message": "host.idle",
+      "closing_signal": "src/alphalattice/interface/local_application/dispatcher.py::_DispatcherClosed",
+      "idle_writer": "src/alphalattice/control/product_host/composition/portfolio_research_operations.py::PortfolioResearchOperations._worker_idle"
+    },
+    "canonical merge gate": {
+      "owner": "devtools.architecture",
+      "mechanism": "tools/lead_check.py",
+      "consumers": [
+        "tools/lead_merge.py",
+        "Tech Lead"
+      ],
+      "selector": "scripts/check_alpha_verification_impact.py",
+      "executor": "tools/run_pytest.py --integration"
+    },
+    "test size collection": {
+      "owner": "devtools.architecture",
+      "mechanism": "src/devtools/architecture/registries.py::pytest_collection_modifyitems",
+      "consumers": [
+        "tests/conftest.py"
+      ],
+      "input_registry": "config/registries/test-sizes.json",
+      "projection": "src/devtools/architecture/test_sizes.py"
+    },
+    "registry entry descriptions": {
+      "owner": "devtools.architecture",
+      "mechanism": "src/devtools/architecture/registries.py::_description_census",
+      "consumers": [
+        "scripts/check_playpen.py",
+        "tests/structural/test_registries.py"
+      ],
+      "baseline_dimension": "undescribed_registry_entries",
+      "update": "PYTHONPATH=src python -m devtools.architecture.registries --staged --update",
+      "description": "Require each new registry entry to explain its purpose while existing description debt can only shrink.",
+      "scope": "Staged config/registries JSON entries, nouns, process kinds and test-size declarations; refusal/message words and generated agent-surface/identity-reach are excluded."
     }
   }
 }

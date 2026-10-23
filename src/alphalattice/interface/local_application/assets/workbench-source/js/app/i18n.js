@@ -1,4 +1,4 @@
-/* Localization: one catalog (English source text → Chinese), one lookup, resolved while rendering.
+/* Localization: registered messages first, then the immutable English → Chinese legacy catalog.
  *
  * Every user-facing string in the templates goes through t(). The English text is the key; the
  * Chinese translation lives in data/zh.js. A key may carry a short context prefix ("tp|Queued")
@@ -161,9 +161,9 @@ const I18N = (() => {
 
   function t(key, vars) {
     seen.add(key.trim());
-    const message = registeredMessage(key, vars);
-    const en = message === null ? interpolate(key.replace(CONTEXT, ''), vars) : message;
-    if (message !== null || locale !== 'zh-CN') return en;
+    const en = interpolate(key.replace(CONTEXT, ''), vars);
+    if (locale !== 'zh-CN') return en;
+    // Each line of a multi-line phrase is its own catalog entry; surrounding whitespace is kept.
     if (en.includes('<br>')) return en.split('<br>').map((line) => t(line)).join('<br>');
     const lead = en.match(/^\s*/)[0];
     const trail = en.match(/\s*$/)[0];
@@ -222,8 +222,8 @@ const I18N = (() => {
   }
 
   return {
-    t: (key, vars) => validCatalog() ? t(key, vars) : '',
-    said: (text) => validCatalog() ? said(text) : '',
+    t: (key, vars) => validCatalog() ? message(key, vars, t) : '',
+    said: (text) => validCatalog() ? message(text, null, said) : '',
     plural: (count, one, many, vars) => validCatalog() ? plural(count, one, many, vars) : '',
     set,
     ensure,
@@ -241,10 +241,12 @@ const I18N = (() => {
     return locale !== 'zh-CN' || (typeof window.ALPHA_ZH_CHECK === 'function' &&
       window.ALPHA_ZH_CHECK(catalog));
   }
-  function registeredMessage(key, vars) {
-    const entry = typeof MESSAGE_WORDS === 'object' && MESSAGE_WORDS[key];
-    return entry?.kind === 'MESSAGE'
-      ? interpolate(entry.words[locale === 'zh-CN' ? 'zh-CN' : 'en'], vars) : null;
+  function message(text, vars, legacy) {
+    const words = typeof MESSAGE_WORDS === 'undefined' ? {} : MESSAGE_WORDS;
+    const raw = String(text ?? ''), key = raw.trim().replace(CONTEXT, '');
+    if (!Object.hasOwn(words, key)) return legacy(text, vars);
+    return raw.match(/^\s*/)[0] +
+      interpolate(words[key][locale === 'zh-CN' ? 'zh-CN' : 'en'], vars) + raw.match(/\s*$/)[0];
   }
 })();
 const t = I18N.t;

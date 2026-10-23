@@ -1,5 +1,5 @@
 # Getting started
-Date: 2026-10-08
+Last checked: 2026-10-22 against 0.2.3
 
 Give your agent the repository link and one research intent. It installs
 AlphaLattice and continues in the same session. The
@@ -75,6 +75,12 @@ holds the installation and launch procedure.
    ```powershell
    alphalattice --workspace "workspaces/my-research" serve --no-browser --detach
    ```
+
+   On Claude Code, the first start can ask you to run the offered
+   `terminal_command` once in a terminal you own, outside the agent's command
+   shell. Tell the agent when it is running so it can continue. Codex detaches
+   the Host itself. This startup step is separate from the network-permission
+   question. Follow the returned startup answer and keep its ready link.
 
    The [agent guide](../../AGENTS.md) says how the agent opens that link visibly
    in its coding app's Workbench pane. Reuse a Host already serving this workspace.
@@ -154,12 +160,9 @@ gives the exact consent words, activity disclosure and controls for stopping acc
 
 ## Measured preparation and CPU budget
 
-The 2026-09-30 reference preparation run took 407.1 seconds and peaked
-at 3.99 GB on Windows 11 Pro, Intel Core i9-13900K (24 cores, 32 logical
-processors), with 128 GB memory. From an empty workspace through its data decision
-to completion, it used eight logical processors on four P-cores; a comparison
-ran concurrently on disjoint cores. This observation is neither a hardware
-minimum nor a runtime guarantee.
+In the [0.2.3 release run](release-notes.md#023), first use with a Codex lead
+took 7,097.5 seconds (about 118 minutes, including a recorded pause), and the
+largest observed Host memory was 8.66 GB.
 
 ```powershell
 alphalattice cpu-budget show

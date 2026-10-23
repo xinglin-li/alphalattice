@@ -238,6 +238,7 @@ scripts/release/public_snapshot.py
 src/alphalattice/control/product_host/composition/strategy_activation.py
 src/alphalattice/control/product_host/composition/entry.py
 src/alphalattice/control/product_host/composition/web_launcher.py
+src/alphalattice/control/product_host/composition/process_job.py
 src/alphalattice/control/product_host/composition/model_sandbox.py
 src/alphalattice/control/product_host/composition/saved_object_readback.py
 src/alphalattice/control/product_host/composition/retrieval_pack_setup.py

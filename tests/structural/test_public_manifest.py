@@ -12,6 +12,7 @@ import pytest
 from release.public_manifest import (
     INTERNAL_ID_BASELINE,
     RULES,
+    attach_reviews,
     classify,
     generate,
     internal_id_label,
@@ -561,3 +562,67 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public():
     assert sorted(path for path in named if not (root / path).is_file()) == []
     kinds = {path: classify(path, set(), set(), set())[0] for path in named}
     assert {path: kind for path, kind in kinds.items() if kind != "PUBLIC"} == {}
+
+
+@pytest.mark.parametrize(
+    "path,text,rule,mode,admitted",
+    [
+        ("README.md", "\r\n备注 x@private.company\r\n", "NO_PERSONAL_CONTACT", "key", True),
+        ("README.md", " 备注 x@private.company", "NO_PERSONAL_CONTACT", "key", False),
+        ("README.md", "备注 other@private.company", "NO_PERSONAL_CONTACT", "key", False),
+        ("README.zh-CN.md", "备注 x@private.company", "NO_PERSONAL_CONTACT", "key", False),
+        ("README.md", "备注 x@private.company", "NO_INTERNAL_ID", "key", False),
+        ("README.md", "\n备注 x@private.company", "NO_PERSONAL_CONTACT", "same", True),
+        ("README.md", "备注 x@private.company", "NO_PERSONAL_CONTACT", "conflict", "error"),
+        ("README.md", "备注 x@private.company", "NO_PERSONAL_CONTACT", "unknown", "error"),
+        ("README.md", "备注 x@private.company", "NO_PERSONAL_CONTACT", "legacy", "error"),
+        ("README.md", "\n备注 x@example.invalid", "NO_PERSONAL_CONTACT", "auto", True),
+        ("README.md", "备注 x@private.company", "NO_PERSONAL_CONTACT", "auto", False),
+        (
+            "README.md",
+            "备注 x@example.invalid y@private.company",
+            "NO_PERSONAL_CONTACT",
+            "auto",
+            False,
+        ),
+    ],
+)
+def test_a_disclosure_review_follows_only_its_proved_line_content(path, text, rule, mode, admitted):
+    """Moves retain content reviews; edits reopen; reserved-only contacts self-review."""
+    version = "alphalattice.release.review-key.v1"
+    digest = hashlib.sha256("备注 x@private.company".encode()).hexdigest()
+    row = dict(
+        path="README.md",
+        line=1,
+        column=4,
+        rule=rule,
+        disposition="KEEP_SYNTHETIC",
+        evidence="fixture",
+    )
+    if mode != "legacy":
+        row["review_key"] = ["unknown" if mode == "unknown" else version, "README.md", rule, digest]
+    rows = [] if mode == "auto" else [row]
+    if mode in {"same", "conflict"}:
+        rows.append(
+            dict(
+                row,
+                evidence="corroborating",
+                disposition="REJECT" if mode == "conflict" else "KEEP_SYNTHETIC",
+            )
+        )
+    blobs = {path: text.encode(), "census/entry_reach.json": b'{"modules": []}'}
+    _, audit = generate("a" * 40, blobs, dict.fromkeys(blobs, "100644"))
+    if admitted == "error":
+        with pytest.raises(ValueError, match="review key"):
+            attach_reviews(audit, {"standalone": {"current_findings": rows}}, Path(), blobs)
+        return
+    attach_reviews(audit, {"standalone": {"current_findings": rows}}, Path(), blobs)
+    finding = audit["findings"][0]
+    assert all(("review" in f) == admitted for f in audit["findings"])
+    assert finding["review_key"][:3] == [version, path, "NO_PERSONAL_CONTACT"]
+    if admitted:
+        assert finding["line"] == 2
+        assert (
+            finding["review_key"][-1]
+            == hashlib.sha256(text.replace("\r\n", "\n").split("\n")[1].encode()).hexdigest()
+        )

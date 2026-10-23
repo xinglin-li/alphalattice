@@ -3,7 +3,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const library=require('./workbench_library.cjs'),finish=library.guard('workbench_owner_words');
 const appDir=process.argv[2],groups=JSON.parse(process.argv[3]),details=JSON.parse(process.argv[4]),w=library.words(appDir);
 assert.ok(Object.isFrozen(w.I18N.catalog));
-for(const [id,entry] of Object.entries(w.MESSAGE_WORDS))if(entry.kind==='MESSAGE')for(const [locale,word] of Object.entries(entry.words)){
+for(const [id,forms] of Object.entries(w.MESSAGE_WORDS))for(const [locale,word] of Object.entries(forms)){
   w.I18N.set(locale);assert.equal(w.t(id),word,'registered message '+id+'/'+locale);
 }
 const missing=[];

@@ -4,6 +4,7 @@
   "entries": {
     "env:ALPHALATTICE_BACKUP_ROOT": {
       "key": "env:ALPHALATTICE_BACKUP_ROOT",
+      "description": "Selects a filesystem directory for workspace backup roots so the operator can place backups on suitable storage.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -43,6 +44,7 @@
     },
     "env:ALPHALATTICE_LAUNCH_KEY": {
       "key": "env:ALPHALATTICE_LAUNCH_KEY",
+      "description": "Supplies an ephemeral launch-key token from the detached launcher so its child Host can serve the same authenticated launch URL.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -68,6 +70,7 @@
     },
     "env:ALPHALATTICE_MODEL_STORE": {
       "key": "env:ALPHALATTICE_MODEL_STORE",
+      "description": "Selects the model-pack store directory as a filesystem path so installed retrieval models can live outside the platform default location.",
       "owner": "alphalattice.kernel.knowledge",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -101,6 +104,7 @@
     },
     "env:ALPHALATTICE_NETWORK_DISABLED": {
       "key": "env:ALPHALATTICE_NETWORK_DISABLED",
+      "description": "Uses the string 1 as an operator offline switch so network reads can be blocked even when a workspace permits them.",
       "owner": "alphalattice.kernel.shared_kernel",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -216,6 +220,7 @@
     },
     "env:ALPHALATTICE_SHELL": {
       "key": "env:ALPHALATTICE_SHELL",
+      "description": "Selects the powershell or posix quoting enum for printed commands so they can be pasted into the operator's actual shell.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -252,6 +257,7 @@
     },
     "env:CLAUDE_CODE_SESSION_ID": {
       "key": "env:CLAUDE_CODE_SESSION_ID",
+      "description": "Supplies a Claude Code session-identifier token so requests and launches can be attributed to the host session that issued them.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -338,6 +344,7 @@
     },
     "env:CLAUDE_CONFIG_DIR": {
       "key": "env:CLAUDE_CONFIG_DIR",
+      "description": "Selects Claude Code's configuration directory as a filesystem path so admitted usage readers can find session files under a relocated projects directory.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -372,6 +379,7 @@
     },
     "env:CODEX_HOME": {
       "key": "env:CODEX_HOME",
+      "description": "Selects Codex's home directory as a filesystem path so admitted usage readers can find session files under a relocated sessions directory.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -406,6 +414,7 @@
     },
     "env:CODEX_THREAD_ID": {
       "key": "env:CODEX_THREAD_ID",
+      "description": "Supplies a Codex thread-identifier token so request attribution and queued completion wakes can target the issuing chat.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -485,6 +494,7 @@
     },
     "env:LOCALAPPDATA": {
       "key": "env:LOCALAPPDATA",
+      "description": "Supplies the Windows application-data directory as a filesystem path so default backups follow the operator's platform storage location.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -512,6 +522,7 @@
     },
     "env:MSYSTEM": {
       "key": "env:MSYSTEM",
+      "description": "Uses the presence of a shell-environment string to select POSIX quoting on Windows so printed commands work inside Git Bash.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -537,6 +548,7 @@
     },
     "env:PATH": {
       "key": "env:PATH",
+      "description": "Supplies an ordered list of executable-search directories so native command readiness can check availability after removing the current uv environment's entries.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -612,6 +624,7 @@
     },
     "env:PYTHONPATH": {
       "key": "env:PYTHONPATH",
+      "description": "Supplies an ordered list of Python module-search directories so a retrieval child can import the same checkout source while retaining inherited import locations.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -661,6 +674,7 @@
     },
     "env:SEC_USER_AGENT": {
       "key": "env:SEC_USER_AGENT",
+      "description": "Overrides the SEC request User-Agent with contact text containing an email address so an operator can use an appropriate acquisition contact.",
       "owner": "alphalattice.evidence.alternative_evidence",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -694,6 +708,7 @@
     },
     "env:UV": {
       "key": "env:UV",
+      "description": "Selects the uv executable name or filesystem path for the version probe so readiness can check an installation outside the default command lookup.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -723,6 +738,7 @@
     },
     "env:UV_RUN_RECURSION_DEPTH": {
       "key": "env:UV_RUN_RECURSION_DEPTH",
+      "description": "Uses the presence of uv's recursion marker string to remove virtual-environment command directories during readiness checks so the check reflects a fresh shell.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -748,6 +764,7 @@
     },
     "env:VIRTUAL_ENV": {
       "key": "env:VIRTUAL_ENV",
+      "description": "Supplies the active virtual-environment directory as a filesystem path so uv-only executable entries can be removed from fresh-shell readiness checks.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -774,6 +791,7 @@
     },
     "env:XDG_DATA_HOME": {
       "key": "env:XDG_DATA_HOME",
+      "description": "Supplies the non-Windows application-data directory as a filesystem path so default backups follow the operator's platform storage location.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
@@ -800,6 +818,7 @@
     },
     "NetworkAccess.allowed": {
       "key": "NetworkAccess.allowed",
+      "description": "Records the effective boolean permission for product network reads so workspace consent can be applied subject to run and operator offline holds.",
       "owner": "alphalattice.control.workspace_runtime",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "bool",
@@ -1378,6 +1397,7 @@
     },
     "StorageCapSetting.cap_bytes": {
       "key": "StorageCapSetting.cap_bytes",
+      "description": "Sets the managed-storage cap in bytes or selects auto so the operator can limit growth according to available disk and recovery headroom.",
       "owner": "alphalattice.control.workspace_runtime",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Annotated[int, Field(strict=True, gt=0)] | Literal['auto']",
@@ -1443,6 +1463,7 @@
     },
     "RuntimeCapacityRequest.maximum_memory_gib": {
       "key": "RuntimeCapacityRequest.maximum_memory_gib",
+      "description": "Requests an absolute memory reservation in GiB so the operator can bound a workload independently of the machine's fractional default.",
       "owner": "alphalattice.control.observation_runtime",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "float | None",
@@ -1476,6 +1497,7 @@
     },
     "RuntimeCapacityRequest.maximum_memory_fraction": {
       "key": "RuntimeCapacityRequest.maximum_memory_fraction",
+      "description": "Sets the fraction of physical memory reserved when no GiB limit is supplied so workload admission can leave memory for other processes.",
       "owner": "alphalattice.control.observation_runtime",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "float",
@@ -1503,6 +1525,7 @@
     },
     "RuntimeCapacityRequest.reserved_logical_processors": {
       "key": "RuntimeCapacityRequest.reserved_logical_processors",
+      "description": "Sets a count of logical processors kept outside workload admission so the operator can preserve processor headroom.",
       "owner": "alphalattice.control.observation_runtime",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int",
@@ -1533,6 +1556,7 @@
     },
     "RuntimeCapacityRequest.maximum_kept_workers": {
       "key": "RuntimeCapacityRequest.maximum_kept_workers",
+      "description": "Provides a default cap in retained worker processes so pool sizing can avoid keeping excessive idle processes on large machines.",
       "owner": "alphalattice.control.observation_runtime",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int",
@@ -1561,6 +1585,7 @@
     },
     "RuntimeParallelismRequest.fold_workers": {
       "key": "RuntimeParallelismRequest.fold_workers",
+      "description": "Requests a positive fold-worker count or AUTO so Alpha fold scheduling can fit the operator's concurrency preference within admitted memory and processor bounds.",
       "owner": "alphalattice.control.observation_runtime",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Literal['AUTO'] | int",
@@ -1601,6 +1626,7 @@
     },
     "RuntimeParallelismRequest.lightgbm_threads_per_fit": {
       "key": "RuntimeParallelismRequest.lightgbm_threads_per_fit",
+      "description": "Declares the fixed count of one thread per LightGBM fit so execution retains the currently verified model-thread policy.",
       "owner": "alphalattice.control.observation_runtime",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Literal[1]",
@@ -1642,6 +1668,7 @@
     },
     "RuntimeParallelismRequest.duckdb_threads": {
       "key": "RuntimeParallelismRequest.duckdb_threads",
+      "description": "Requests a positive DuckDB thread count or AUTO so database work can share the admitted processor budget with model workers.",
       "owner": "alphalattice.control.observation_runtime",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Literal['AUTO'] | int",
@@ -1686,6 +1713,7 @@
     },
     "RuntimeParallelismRequest.blas_threads": {
       "key": "RuntimeParallelismRequest.blas_threads",
+      "description": "Declares the fixed count of one BLAS thread so numerical-library concurrency retains the supported single-thread policy.",
       "owner": "alphalattice.control.observation_runtime",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Literal[1]",
@@ -1720,6 +1748,7 @@
     },
     "ResearchRuntimeRequest.profile": {
       "key": "ResearchRuntimeRequest.profile",
+      "description": "Selects the AUTO, LOW_MEMORY, BALANCED or THROUGHPUT operating-profile enum so fold concurrency can reflect the operator's memory and throughput preference.",
       "owner": "alphalattice.control.observation_runtime",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Literal['AUTO', 'LOW_MEMORY', 'BALANCED', 'THROUGHPUT']",
@@ -2203,6 +2232,7 @@
     },
     "ResearchUpdateAutomationSettings.enabled": {
       "key": "ResearchUpdateAutomationSettings.enabled",
+      "description": "Sets a boolean that arms or disables service-lifetime research-update scheduling so the selected installed strategies run only when that automation is enabled.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "bool",
@@ -2358,6 +2388,7 @@
     },
     "ResearchUpdateAutomationSettings.package_ids": {
       "key": "ResearchUpdateAutomationSettings.package_ids",
+      "description": "Selects a tuple of installed strategy identifiers for automatic research updates so the caller can choose which strategies receive scheduled cycles.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "tuple[str, ...]",
@@ -2407,6 +2438,7 @@
     },
     "AgentExecutionBudget.model_call_timeout_seconds": {
       "key": "AgentExecutionBudget.model_call_timeout_seconds",
+      "description": "Declares a model-call timeout in seconds in the maintenance policy so callers can state a per-call bound, although the installed diagnosis callback does not enforce it.",
       "owner": "alphalattice.control.data_platform",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int",
@@ -2433,6 +2465,7 @@
     },
     "AgentExecutionBudget.case_deadline_seconds": {
       "key": "AgentExecutionBudget.case_deadline_seconds",
+      "description": "Declares a maintenance-case deadline in seconds for the policy record so callers can state an overall time bound, although the installed diagnosis callback does not enforce it.",
       "owner": "alphalattice.control.data_platform",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int",
@@ -2459,6 +2492,7 @@
     },
     "AgentExecutionBudget.maximum_model_calls": {
       "key": "AgentExecutionBudget.maximum_model_calls",
+      "description": "Declares a model-call allowance as a call count in the maintenance policy so callers can record their intended limit, although the installed diagnosis callback does not enforce it.",
       "owner": "alphalattice.control.data_platform",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int",
@@ -2490,6 +2524,7 @@
     },
     "AgentExecutionBudget.maximum_semantic_diagnoses": {
       "key": "AgentExecutionBudget.maximum_semantic_diagnoses",
+      "description": "Records the fixed count of one initial semantic diagnosis in the maintenance policy hash, while the installed diagnosis callback does not enforce this field.",
       "owner": "alphalattice.control.data_platform",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int",
@@ -2516,6 +2551,7 @@
     },
     "AgentExecutionBudget.maximum_stale_rediagnoses": {
       "key": "AgentExecutionBudget.maximum_stale_rediagnoses",
+      "description": "Records the fixed count of one stale-evidence rediagnosis in the maintenance policy hash, while the installed diagnosis callback does not enforce this field.",
       "owner": "alphalattice.control.data_platform",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int",
@@ -2542,6 +2578,7 @@
     },
     "EvidenceReviewModelProfile.provider": {
       "key": "EvidenceReviewModelProfile.provider",
+      "description": "Records the fixed deepseek provider enum in a sealed review profile to preserve the installed authority's declared lineage, without selecting the current native review provider.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Literal['deepseek']",
@@ -4442,6 +4479,7 @@
     },
     "EvidenceReviewModelProfile.model_name": {
       "key": "EvidenceReviewModelProfile.model_name",
+      "description": "Records the provider model alias as text in a sealed review profile so an installed authority discloses its declared model, without selecting the current native review model.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str",
@@ -4482,6 +4520,7 @@
     },
     "EvidenceReviewModelProfile.base_url": {
       "key": "EvidenceReviewModelProfile.base_url",
+      "description": "Records the normalized HTTPS endpoint URL in a sealed review profile so an installed authority discloses its declared endpoint, without routing current native review calls.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str",
@@ -4513,6 +4552,7 @@
     },
     "EvidenceReviewModelProfile.model_revision_disposition": {
       "key": "EvidenceReviewModelProfile.model_revision_disposition",
+      "description": "Records the fixed unpinned-provider-alias enum in a sealed review profile so its lineage does not claim an immutable model revision.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Literal['PROVIDER_ALIAS_UNPINNED']",
@@ -4538,6 +4578,7 @@
     },
     "EvidenceReviewModelProfile.native_reasoning": {
       "key": "EvidenceReviewModelProfile.native_reasoning",
+      "description": "Records the fixed disabled reasoning enum in a sealed review profile to preserve its declared call policy, without controlling current native review reasoning.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Literal['disabled']",
@@ -4563,6 +4604,7 @@
     },
     "EvidenceReviewModelProfile.analyst_timeout_seconds": {
       "key": "EvidenceReviewModelProfile.analyst_timeout_seconds",
+      "description": "Records the declared analyst-call timeout in seconds in a sealed review profile so its bounded call policy remains disclosed, without enforcing current native review timeouts.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "float",
@@ -4599,6 +4641,7 @@
     },
     "EvidenceReviewModelProfile.review_timeout_seconds": {
       "key": "EvidenceReviewModelProfile.review_timeout_seconds",
+      "description": "Records the declared review-call timeout in seconds in a sealed review profile so its bounded call policy remains disclosed, without enforcing current native review timeouts.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "float",
@@ -4635,6 +4678,7 @@
     },
     "GoalBudget.maximum_tasks": {
       "key": "GoalBudget.maximum_tasks",
+      "description": "Records a caller-declared maximum Task count with a Goal so the intended work bound is retained, without enforcing Task admission.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int",
@@ -4665,6 +4709,7 @@
     },
     "GoalBudget.maximum_numerical_calls": {
       "key": "GoalBudget.maximum_numerical_calls",
+      "description": "Records a caller-declared maximum numerical-call count with a Goal so the intended computation bound is retained, without enforcing numerical execution.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int",
@@ -4727,6 +4772,7 @@
     },
     "GoalBudget.maximum_model_calls": {
       "key": "GoalBudget.maximum_model_calls",
+      "description": "Records a caller-declared maximum model-call count with a Goal so the intended model-use bound is retained, without enforcing model calls.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int",
@@ -4759,6 +4805,7 @@
     },
     "viewer:commands.recent": {
       "key": "viewer:commands.recent",
+      "description": "Keeps an array of up to five recent command identifiers so Quick Open can prioritize the viewer's recently used commands.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "array[str]",
@@ -4784,6 +4831,7 @@
     },
     "viewer:display.*": {
       "key": "viewer:display.*",
+      "description": "Keeps a per-display object of visibility, grouping, ordering, property and density choices so each list can restore the viewer's preferred presentation.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "object per display name",
@@ -4809,6 +4857,7 @@
     },
     "viewer:dockSide": {
       "key": "viewer:dockSide",
+      "description": "Selects the left or right dock-side enum so the viewer can place navigation on the preferred side of the Workbench.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Literal['left','right']",
@@ -4834,6 +4883,7 @@
     },
     "viewer:lang": {
       "key": "viewer:lang",
+      "description": "Selects a language-code string so the viewer can read the Workbench in the preferred supported language.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str",
@@ -4859,6 +4909,7 @@
     },
     "viewer:lobby.*": {
       "key": "viewer:lobby.*",
+      "description": "Keeps a per-list object of boolean group folds so a returning viewer can restore which groups were collapsed.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "object per lobby name",
@@ -4884,6 +4935,7 @@
     },
     "viewer:navigation": {
       "key": "viewer:navigation",
+      "description": "Selects the follow, sidebar, rail or top navigation-mode enum so the viewer can choose how navigation uses the available width.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Literal['follow','sidebar','rail','top']",
@@ -4911,6 +4963,7 @@
     },
     "viewer:objects.recent": {
       "key": "viewer:objects.recent",
+      "description": "Keeps an array of recently opened object identifiers so the recent-object list can put the viewer's saved history first.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "array[str]",
@@ -4937,6 +4990,7 @@
     },
     "viewer:opaqueControls": {
       "key": "viewer:opaqueControls",
+      "description": "Sets a boolean that makes controls opaque so the viewer can reduce transparent control surfaces.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "bool",
@@ -4962,6 +5016,7 @@
     },
     "viewer:preparationScene": {
       "key": "viewer:preparationScene",
+      "description": "Reads a legacy Task-keyed scene object as a fallback so the viewer's preparation fold, inspection and follow choices survive migration to the shared work area.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "object | null",
@@ -4986,6 +5041,7 @@
     },
     "viewer:reduceFocusEffects": {
       "key": "viewer:reduceFocusEffects",
+      "description": "Sets a boolean that removes page dimming and fog behind dialogs so the viewer can reduce focus effects.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "bool",
@@ -5011,6 +5067,7 @@
     },
     "viewer:reviewDrafts": {
       "key": "viewer:reviewDrafts",
+      "description": "Keeps an object of unsent analyst and review text keyed by workspace, book, prepared Task and unit so the viewer can recover drafts in their original context.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "object",
@@ -5067,6 +5124,7 @@
     },
     "viewer:sideGroups": {
       "key": "viewer:sideGroups",
+      "description": "Keeps a mapping of navigation-group names to open-state booleans so the viewer can restore preferred sidebar folds.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "object[str,bool]",
@@ -5093,6 +5151,7 @@
     },
     "viewer:sideWidth": {
       "key": "viewer:sideWidth",
+      "description": "Sets the navigation column width in CSS pixels within its declared bounds so the viewer can resize navigation to fit the pane.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "number",
@@ -5119,6 +5178,7 @@
     },
     "viewer:tab:*": {
       "key": "viewer:tab:*",
+      "description": "Keeps a page-identifier string for each remembered tab group so returning to a section restores the viewer's last valid tab.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str page id",
@@ -5144,6 +5204,7 @@
     },
     "viewer:taskNotices": {
       "key": "viewer:taskNotices",
+      "description": "Sets a boolean requesting browser notifications for Task endings so a viewer who grants notification permission can hear about changes while the page is in the background.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "bool",
@@ -5169,6 +5230,7 @@
     },
     "viewer:theme": {
       "key": "viewer:theme",
+      "description": "Selects a supported theme-name enum, including following the host color scheme, so the viewer can choose the Workbench's appearance.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str member of THEMES",
@@ -5194,6 +5256,7 @@
     },
     "viewer:wideScrollbars": {
       "key": "viewer:wideScrollbars",
+      "description": "Sets a boolean that widens scrollbars so the viewer can make scrolling controls easier to target.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "bool",
@@ -5219,6 +5282,7 @@
     },
     "viewer:workScene": {
       "key": "viewer:workScene",
+      "description": "Keeps a Task-keyed object of fold, inspection and follow choices so the viewer can return to the same work-area reading state.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "object | null",
@@ -5244,6 +5308,7 @@
     },
     "viewer:zoom": {
       "key": "viewer:zoom",
+      "description": "Selects a supported text-scale percentage so the viewer can resize the Workbench when the embedding host does not offer suitable zoom.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "number member of ZOOM_STEPS",
@@ -5269,6 +5334,7 @@
     },
     "ResearchWorkspaceManifest.workspace_id": {
       "key": "ResearchWorkspaceManifest.workspace_id",
+      "description": "Declares the workspace's identifier string so its configuration and retained research records can be bound to an explicitly named workspace.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str",
@@ -5626,6 +5692,7 @@
     },
     "ResearchWorkspaceManifest.default_strategy_package_id": {
       "key": "ResearchWorkspaceManifest.default_strategy_package_id",
+      "description": "Selects a default installed strategy by identifier string so requests without an explicit strategy can resolve the workspace's declared choice.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | None",
@@ -5705,6 +5772,7 @@
     },
     "ResearchWorkspaceManifest.default_score_source_mode": {
       "key": "ResearchWorkspaceManifest.default_score_source_mode",
+      "description": "Selects the default score-source-mode enum so requests without an explicit mode can use the workspace's declared score source.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "ScoreSourceMode | None",
@@ -5788,6 +5856,7 @@
     },
     "ResearchWorkspaceManifest.strategy_installation": {
       "key": "ResearchWorkspaceManifest.strategy_installation",
+      "description": "Declares the absent, not-installed or non-default-research installation enum so workspace admission can distinguish a default strategy catalog from research-only or uninstalled states.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Literal['NOT_INSTALLED', 'NON_DEFAULT_RESEARCH'] | None",
@@ -5853,6 +5922,7 @@
     },
     "ResearchWorkspaceManifest.strategy_artifacts": {
       "key": "ResearchWorkspaceManifest.strategy_artifacts",
+      "description": "Lists artifact-key and relative-path bindings so the launcher can build the installed strategy catalog from the workspace's explicitly admitted local artifacts.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "tuple[ResearchWorkspaceArtifact, ...]",
@@ -5934,6 +6004,7 @@
     },
     "ResearchWorkspaceManifest.evidence_review": {
       "key": "ResearchWorkspaceManifest.evidence_review",
+      "description": "Binds an optional evidence-review authority by relative path and file hash so the Host can verify and serve the workspace's selected review package.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "ResearchWorkspaceEvidenceReview | None",
@@ -6156,6 +6227,7 @@
     },
     "ResearchWorkspaceManifest.data_update": {
       "key": "ResearchWorkspaceManifest.data_update",
+      "description": "Binds an optional typed data-update source configuration so the Host can prepare and update the workspace's declared data inputs.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "WorkspaceDataUpdateBinding | None",
@@ -6366,6 +6438,7 @@
     },
     "ResearchWorkspaceManifest.data_decision_rule": {
       "key": "ResearchWorkspaceManifest.data_decision_rule",
+      "description": "Selects an optional typed data-decision rule so maintenance can make bounded deterministic decisions under the workspace's declared policy.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "DataDecisionRule | None",
@@ -6430,6 +6503,7 @@
     },
     "ResearchWorkspaceManifest.committee_agenda_limit": {
       "key": "ResearchWorkspaceManifest.committee_agenda_limit",
+      "description": "Sets a maximum count of seeded committee agenda items so the workspace can bound the agenda admitted for a committee review.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int | None",
@@ -6474,6 +6548,7 @@
     },
     "ResearchWorkspaceManifest.score_inputs": {
       "key": "ResearchWorkspaceManifest.score_inputs",
+      "description": "Lists strategy and component authority bindings with paths and hashes so scoring can select the workspace's admitted preparation sources.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "tuple[ResearchWorkspaceScoreInput, ...] | None",
@@ -6546,6 +6621,7 @@
     },
     "ResearchWorkspaceManifest.calibration_inputs": {
       "key": "ResearchWorkspaceManifest.calibration_inputs",
+      "description": "Lists strategy calibration-seed bindings by identifier and hash so calibration can continue from the workspace's declared seed source.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "tuple[ResearchWorkspaceCalibrationInput, ...] | None",
@@ -6595,6 +6671,7 @@
     },
     "ResearchWorkspaceManifest.decision_updates": {
       "key": "ResearchWorkspaceManifest.decision_updates",
+      "description": "Lists strategy decision-checkpoint bindings by identifier and hash so dated updates can continue the workspace's admitted strategy decisions.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "tuple[ResearchWorkspaceDecisionUpdate, ...] | None",
@@ -6696,6 +6773,7 @@
     },
     "ResearchWorkspaceManifest.experiment_inputs": {
       "key": "ResearchWorkspaceManifest.experiment_inputs",
+      "description": "Lists research-input identifiers and binding hashes so experiments can resolve immutable inputs admitted into this workspace.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "tuple[ResearchWorkspaceExperimentInput, ...] | None",
@@ -6784,6 +6862,7 @@
     },
     "ResearchWorkspaceManifest.model_training_inputs": {
       "key": "ResearchWorkspaceManifest.model_training_inputs",
+      "description": "Lists component training-authority bindings with identifiers, paths and hashes so model lifecycle work can select the workspace's admitted training sources.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "tuple[ResearchWorkspaceModelTrainingInput, ...] | None",
@@ -6847,6 +6926,7 @@
     },
     "host:--workspace": {
       "key": "host:--workspace",
+      "description": "Selects the research workspace directory as a filesystem path so the Host serves the caller's intended local workspace.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "Path",
@@ -7194,6 +7274,7 @@
     },
     "host:--port": {
       "key": "host:--port",
+      "description": "Selects a loopback TCP port number, with zero requesting an operating-system assignment, so the Host can use an available or explicitly chosen local port.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "int",
@@ -7222,6 +7303,7 @@
     },
     "host:--no-browser": {
       "key": "host:--no-browser",
+      "description": "Sets a boolean that suppresses automatic browser opening so callers can start the Host for terminal or embedded-browser use.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "bool",
@@ -7266,6 +7348,7 @@
     },
     "host:--stop-on-stdin": {
       "key": "host:--stop-on-stdin",
+      "description": "Sets a boolean that stops an attached Host on a stop line or end of standard input so its lifetime can follow the caller's input stream.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "bool",
@@ -7300,6 +7383,7 @@
     },
     "host:--detach": {
       "key": "host:--detach",
+      "description": "Sets a boolean that launches the Host as an independent process so serving can continue after the starting shell returns.",
       "owner": "alphalattice.control.product_host",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "bool",
@@ -7334,6 +7418,7 @@
     },
     "native-config:codex.agents.*": {
       "key": "native-config:codex.agents.*",
+      "description": "Holds named Codex agent-profile objects so configuration can add missing product roles while preserving existing compatible roles and unrelated user settings.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "object mapping",
@@ -7358,6 +7443,7 @@
     },
     "native-config:claude.hooks.*": {
       "key": "native-config:claude.hooks.*",
+      "description": "Holds Claude Code lifecycle-hook groups as an object mapping so configuration can remove exactly the retired product groups while preserving unrelated user hooks.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "object mapping",
@@ -7382,6 +7468,7 @@
     },
     "native-config:codex.hooks.*": {
       "key": "native-config:codex.hooks.*",
+      "description": "Holds Codex lifecycle-hook groups as an object mapping so configuration can remove exactly the retired product groups while preserving unrelated user hooks.",
       "owner": "alphalattice.interface.local_application",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "object mapping",
@@ -7403,6 +7490,50 @@
         ]
       },
       "reader_basis": "Public static key/attribute references, including declarations, writes and tests; same-named fields may belong to other contracts. Private maintainer references are tracked separately. This is not runtime or type-flow proof."
+    },
+    "host.idle_timeout_seconds": {
+      "key": "host.idle_timeout_seconds",
+      "description": "Sets the idle shutdown delay in seconds, with zero disabling it, so a detached Host can stop after inactivity while attached sessions can remain open.",
+      "owner": "alphalattice.control.product_host",
+      "type": "int",
+      "default": {
+        "value": 900,
+        "source": "src/alphalattice/interface/local_application/web.py::DEFAULT_IDLE_TIMEOUT_SECONDS"
+      },
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/local_web_session.py::LocalPortfolioWebSession"
+      ],
+      "identity_bearing": false,
+      "identity_scope": "Host lifetime execution",
+      "identity_basis": "The idle period paces Host shutdown only; zero disables it and no scientific identity includes it.",
+      "readers": {
+        "literal": [
+          "src/alphalattice/control/product_host/composition/web_launcher.py",
+          "src/alphalattice/control/product_host/composition/local_web_session.py"
+        ]
+      },
+      "reader_basis": "Typed Host-lifetime field; detached default900, attached/debug0, zero disables. Operator setter is deferred; no scientific identity reads it."
+    },
+    "env:ALPHALATTICE_TEST_LANE": {
+      "key": "env:ALPHALATTICE_TEST_LANE",
+      "description": "Selects which test sizes a gate runs, so merge gates skip large tests and the nightly lane runs them.",
+      "owner": "devtools.architecture",
+      "type": "str | absent",
+      "default": {
+        "value": "",
+        "resolution": "No size selection outside an admitted gate lane",
+        "source": "src/devtools/architecture/registries.py::pytest_collection_modifyitems"
+      },
+      "defined_by": [
+        "src/devtools/architecture/registries.py::pytest_collection_modifyitems"
+      ],
+      "identity_bearing": false,
+      "identity_scope": "test execution selection",
+      "readers": {
+        "literal": [
+          "src/devtools/architecture/registries.py"
+        ]
+      }
     }
   }
 }

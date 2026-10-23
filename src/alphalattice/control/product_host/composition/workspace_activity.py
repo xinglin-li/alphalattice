@@ -211,6 +211,7 @@ class WorkspaceActivity:
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
     storage_cap_reader: Callable[[], int] | None = None
     native_usage_state: Callable[[], dict[str, object]] | None = None
+    serving_host: dict[str, object] = field(default_factory=dict, init=False)
     """Optional Host-owned usage health read; only its safe status and reason are exposed."""
     store_failure: str | None = field(default=None, init=False)
     """The typed code of the storage failure that left this observer UNAVAILABLE."""
@@ -1422,6 +1423,7 @@ class WorkspaceActivity:
         else:
             status, recording = "OK", "OK"
         state: dict[str, object] = {
+            "host": dict(self.serving_host),
             "status": status,
             "recording": recording,
             "appends": appends,

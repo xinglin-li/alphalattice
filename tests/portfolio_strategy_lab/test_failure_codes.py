@@ -13,7 +13,11 @@ from alphalattice.control.data_platform.maintenance.reconciliation import (
 )
 from alphalattice.control.product_host.storage.inventory import StorageInventoryError
 from alphalattice.foundation.feature_engine.catalog.research import ResearchFeatureChange
-from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.interface.local_application.cli_contract import (
+    ANSWER_LANGUAGE,
+    refusal_words,
+    worded_refusal,
+)
 from alphalattice.interface.local_application.failure_codes import (
     located_failure,
     owner_failure_code,
@@ -49,19 +53,27 @@ def test_a_committee_document_refusal_keeps_its_members_own_read() -> None:
 
 
 def test_an_install_missing_its_setup_offers_its_own_form() -> None:
-    """A missing setup names the field and offers the selected install contract."""
+    """Model-level required fields stay named in metadata and their original setup offer."""
     request = {"operation": "EVIDENCE_INSTALL"}
     with pytest.raises(ValidationError) as caught:
         PortfolioResearchRequestDocument.model_validate(request)
-    answer = located_failure(caught.value, "local_client.request_invalid", request=request)
+    answer = located_failure(
+        caught.value,
+        "local_client.request_invalid",
+        request=request,
+        schema=PortfolioResearchRequestDocument.model_json_schema(),
+    )
     assert answer["fields"] == [["evidence_setup"]]
+    assert [item["field"] for item in answer["error_info"]["field_violations"]] == [
+        ["evidence_setup"]
+    ]
     read = answer["next_requests"]["valid_values"]
     assert read == {"operation": "OPERATION_LIST", "schema_operation": "EVIDENCE_INSTALL"}
     PortfolioResearchRequestDocument.model_validate(read)
 
 
 def test_a_contract_failure_answers_one_located_shape() -> None:
-    """Failures preserve owner codes and located rules without exposing private diagnostics."""
+    """Structured failures keep typed paths and bilingual words without private inputs."""
 
     class Document(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -87,6 +99,71 @@ def test_a_contract_failure_answers_one_located_shape() -> None:
     }
     assert "name: portfolio_research.name_unknown" in str(answer["message"])
     assert "private-input-marker" not in json.dumps(answer)
+    assert "error_info" not in answer  # Unregistered legacy reasons keep their old shape.
+    located = located_failure(
+        caught.value, "local_client.request_invalid", schema=Document.model_json_schema()
+    )
+    for language in ("en", "zh"):
+        token = ANSWER_LANGUAGE.set(language)
+        try:
+            info = worded_refusal(located)["error_info"]
+            assert (info["category"], info["reason"], info["domain"]) == (
+                "INVALID_ARGUMENT",
+                "local_client.request_invalid",
+                "local_client",
+            )
+            assert [item["field"] for item in info["field_violations"]] == [
+                ["top_k"],
+                ["name"],
+                ["<unrecognized>"],
+            ]
+            assert "private-input-marker" not in json.dumps(info) and "extra" not in json.dumps(
+                info
+            )
+            assert any("一" <= char <= "鿿" for char in info["message"]) == (language == "zh")
+            job = worded_refusal({"failure_code": "local_web.detached_breakaway_denied"})[
+                "error_info"
+            ]
+            assert (job["domain"], job["message_id"]) == (
+                "alphalattice.control.product_host.composition",
+                "host.start.breakaway_denied",
+            )
+        finally:
+            ANSWER_LANGUAGE.reset(token)
+
+    class Value(BaseModel):
+        number: int
+
+    class NestedDocument(Document):
+        items: list[dict[str | int, Value]]
+
+    with pytest.raises(ValidationError) as nested:
+        NestedDocument.model_validate(
+            {
+                "top_k": 1,
+                "name": "known",
+                "items": [
+                    {
+                        "private-map-key": {"number": "private-value"},
+                        42: {"number": "private-value"},
+                    }
+                ],
+            }
+        )
+    safe = located_failure(
+        nested.value, "local_client.request_invalid", schema=NestedDocument.model_json_schema()
+    )["error_info"]
+    assert safe["field_violations"][0]["field"] == ["items", 0, "<unrecognized>", "number"]
+    assert safe["field_violations"][1]["field"] == ["items", 0, "<unrecognized>", "number"]
+    assert "private-map-key" not in json.dumps(safe) and "private-value" not in json.dumps(safe)
+    for notice in (
+        "native_bridge.bound_in_workspace",
+        "risk_research.date_risk_unavailable",
+        "risk_research.positions_outside_the_risk_axis",
+        "risk_research.return_surface_short_of_the_date",
+        "sector.recoverable_exclusion_applied",
+    ):
+        assert "error_info" not in worded_refusal({"failure_code": notice})
     assert located_failure(ValueError("portfolio_research.top_k_outside"), "x.refused") == {
         "failure_code": "portfolio_research.top_k_outside"
     }

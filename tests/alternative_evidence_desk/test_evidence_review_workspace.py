@@ -1180,7 +1180,9 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     )
     monkeypatch.setenv("PYTHONPATH", str(foreign_source))
     monkeypatch.setattr(
-        subprocess, "call", lambda args, **kwargs: spawned.append((args, kwargs)) or 0
+        run_alphalattice,
+        "attached_child",
+        lambda args, **kwargs: spawned.append((args, kwargs)) or 0,
     )
     args = ["--workspace", str(tmp_path), "--no-browser", "--stop-on-stdin"]
     assert run_alphalattice.serve(args) == 0

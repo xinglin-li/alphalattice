@@ -402,6 +402,11 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): "waiting on a request: a review to decide (an answer's status), a Task to recover",
     (
         "interface/local_application/dispatcher.py",
+        "LocalBackgroundDispatcher._idle_expired",
+        "DEFERRED,QUEUED,RECOVERY_REQUIRED,RUNNING",
+    ): "owned admitted work keeps the Host; cancelled work still draining is held by _idle_busy",
+    (
+        "interface/local_application/dispatcher.py",
         "_SETTLED_LIFECYCLES",
         "BLOCKED,CANCELLED,SUCCEEDED",
     ): ENDED,

@@ -1940,11 +1940,15 @@ def test_review_continue_carries_a_real_book_from_its_analyst_to_its_published_r
 
     adapter, topics, client, selected = external_analysis(service)
     workspace = ("--workspace", str(service.session.workspace))
-    prepared = client.request(
-        client.request({"operation": "EVIDENCE_PREVIEW", **selected})["next_requests"]["prepare"]
-    )
+    preview = {"operation": "EVIDENCE_PREVIEW", **selected}
+    prepared = client.request(client.request(preview)["next_requests"]["prepare"])
     service.drain()
     source_id = prepared["task_id"]
+
+    def bundles(answer: dict[str, Any]) -> list[str]:
+        return [name for name in answer["next_requests"] if name.startswith("analyst_bundle")]
+
+    assert bundles(client.request(preview)), "an unanswered unit is offered to its Analyst"
 
     def run(*arguments: str) -> tuple[int, dict[str, Any]]:
         code = main(["--view", "full", *arguments], serve=lambda _: 99)
@@ -2004,3 +2008,12 @@ def test_review_continue_carries_a_real_book_from_its_analyst_to_its_published_r
     assert code == 0 and published["status"] == "REVIEW_PUBLISHED", published
     assert [receipt["agent_role"] for receipt in published["receipts"]] == ["CRO"]
     assert published["evidence"]["state"]
+
+    # An exact retry minutes later resumes the answered preparation: no Analyst is offered the
+    # unit again, so the review reads one current analysis and stays the one published.
+    service.review.clock = lambda: _NOW + timedelta(minutes=2)
+    retry = client.request(preview)
+    again = client.request(retry["next_requests"]["prepare"])
+    assert again["disposition"] == "REUSED_EXACT" and again["task_id"] == source_id, again
+    assert not bundles(retry) and not bundles(again), (retry, again)
+    assert client.request({"operation": "EVIDENCE_CRO", **selected})["state"] == "REVIEW_PUBLISHED"

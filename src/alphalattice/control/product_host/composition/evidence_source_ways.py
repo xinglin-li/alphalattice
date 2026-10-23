@@ -164,14 +164,14 @@ def evidence_setup(
         "store": str(store),
         "present": all(model_store.pack_directory(store, value).is_dir() for value in packs),
         "download_bytes": sum(value.approximate_bytes for value in packs),
-        "check": f"{retrieval} scripts/install_retrieval_pack.py --status",
+        "check": f"{retrieval} scripts/install_retrieval_pack.py --status --view summary",
         "install": f"{retrieval} scripts/install_retrieval_pack.py --install "
         f"{RECIPE_MINILM_CPU} --network",
     }
     if installed:
         from alphalattice.control.product_host.composition.retrieval_pack_setup import pack_command
 
-        pack["check"] = join(pack_command("--status"), shell())
+        pack["check"] = join(pack_command("--status", "--view", "summary"), shell())
         pack["install"] = join(pack_command("--install", RECIPE_MINILM_CPU, "--network"), shell())
     if installed or not (resolve_playpen_root(Path(__file__)) / retrieval).is_file():
         pack["environment"] = join(fill_command(), shell())  # the one command, on either leg

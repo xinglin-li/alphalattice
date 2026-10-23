@@ -876,7 +876,18 @@ def test_a_held_dated_update_runs_once_at_its_time_without_the_daily_setting(tmp
     )
     automation.start()
     try:
-        automation.hold(now[0] + timedelta(hours=7), lambda: ran.append(1) or reached.set())
+
+        def once():
+            assert automation.has_held_work
+            ran.append(1)
+            reached.set()
+
+        head = [SimpleNamespace(state="OPEN")]
+        goals = SimpleNamespace(store=SimpleNamespace(head=lambda _: head[0]))
+        goal = uuid4()
+        automation.hold(now[0] + timedelta(hours=7), once, goal)
+        assert automation.keeps_host(goals)
+        assert automation.has_held_work
         assert not reached.wait(0.05) and resumed == [True]
         now[0] += timedelta(hours=7)
         automation.held_wake.event.set()
@@ -897,6 +908,8 @@ def test_a_held_dated_update_runs_once_at_its_time_without_the_daily_setting(tmp
             assert time.monotonic() < end, automation.held_wake.seconds_until_due(now[0])
             reached.wait(0.01)
         assert automation.held_host.last_error_code and failing == [None]  # kept, backed off
+        assert automation.has_held_work
+        assert automation.keeps_host(goals)
         now[0] += timedelta(seconds=30)
         automation.held_wake.event.set()
         while failing:
@@ -904,6 +917,11 @@ def test_a_held_dated_update_runs_once_at_its_time_without_the_daily_setting(tmp
             reached.wait(0.01)
     finally:
         assert automation.close(timeout=None)
+    assert not automation.has_held_work
+    assert not automation.keeps_host(goals)
+    for head[0] in (SimpleNamespace(state="COMPLETE"), None):
+        automation.hold(now[0] + timedelta(hours=7), once, goal)
+        assert not automation.keeps_host(goals) and not automation.has_held_work
 
 
 def test_automation_attends_what_it_admitted_and_never_replans_a_stopped_update(tmp_path):

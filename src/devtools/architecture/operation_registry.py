@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Final, cast, get_args
 
 from devtools.architecture.neutral_changes import source_syntax_tree
+from devtools.architecture.registries import refusal_entries
 
 _OFFERED = re.compile(r'"operation":\s*"([A-Z][A-Z0-9_]*[A-Z0-9])"')
 _ENVELOPE = {
@@ -98,6 +99,18 @@ def agent_surface(root: Path) -> dict[str, Any]:
     )
 
     entries = _parser_surface()
+    entries.update(
+        {f"view:{value}": {"const": value} for value in entries["option:/--view"]["choices"]}
+    )
+    formats = json.loads((root / "config/registries/formats.json").read_bytes())["entries"]
+    entries.update(
+        {
+            f"representation:{version}": {"schema": row["schema"]}
+            for row in formats.values()
+            if row.get("kind") == "READ_REPRESENTATION"
+            for version in row["version"]
+        }
+    )
     registry = table()
     local = root / "src/alphalattice/interface/local_application"
     entries.update(
@@ -108,7 +121,7 @@ def agent_surface(root: Path) -> dict[str, Any]:
     entries.update(_schema_surface("request:Request", document))
     for operation, model in ANSWERS.items():
         entries.update(_schema_surface(f"answer:{operation}", model.model_json_schema()))
-    refusals = json.loads((root / "config/registries/refusals.json").read_bytes())["entries"]
+    refusals = refusal_entries(json.loads((root / "config/registries/refusals.json").read_bytes()))
     words = json.loads((local / "refusal_words.json").read_bytes())
     entries.update({f"refusal:{code}": {} for code in refusals.keys() | words.keys()})
     catalog = json.loads((root / "config/registries/messages.json").read_bytes())["entries"]
@@ -122,7 +135,7 @@ def agent_surface(root: Path) -> dict[str, Any]:
             if row["kind"] == "PERSON_QUESTION"
         }
     )
-    entries.update({f"envelope:{key}": {} for key in _ENVELOPE})
+    entries.update({f"envelope:{key}": {} for key in _ENVELOPE | {"error_info"}})
     entries["envelope:outcome"] = {"enum": list(get_args(Outcome))}
     entries["envelope:schema_version"] = {"const": SCHEMA_VERSION}
     for book, scope in (
@@ -161,7 +174,7 @@ def agent_surface(root: Path) -> dict[str, Any]:
 
 def _compatible(before: Any, after: Any, key: str = "") -> bool:
     if isinstance(before, dict) and isinstance(after, dict):
-        if key != "properties" and before.keys() != after.keys():
+        if key not in {"properties", "$defs"} and before.keys() != after.keys():
             return False
         return all(k in after and _compatible(v, after[k], k) for k, v in before.items())
     if key in {"enum", "allowed", "choices"} and isinstance(before, list):

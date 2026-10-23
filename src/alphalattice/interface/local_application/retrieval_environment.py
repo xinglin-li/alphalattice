@@ -269,13 +269,13 @@ def main() -> int:
     )
     arguments = parser.parse_args()
     if not arguments.offline:
-        print(LOCKED_SETUP_DISCLOSURE, file=sys.stderr)
+        print(LOCKED_SETUP_DISCLOSURE, file=sys.stderr)  # noqa: T201, TID251  # CLI stderr
     try:
         interpreter = create(offline=arguments.offline)
     except Exception as error:
-        print(json.dumps(refusal(error, offline=arguments.offline), indent=1))
+        print(json.dumps(refusal(error, offline=arguments.offline), indent=1))  # noqa: T201  # setup command
         return 2
-    print(interpreter)
+    print(interpreter)  # noqa: T201  # setup command
     return 0
 
 

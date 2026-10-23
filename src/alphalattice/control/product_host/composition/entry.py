@@ -15,6 +15,7 @@ from alphalattice.interface.local_application.retrieval_environment import (
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 from .model_sandbox import run_sandbox
+from .web_launcher import attached_child
 from .web_launcher import main as start
 
 ROOT: Path = resolve_playpen_root(Path(__file__))
@@ -25,7 +26,6 @@ def serve(arguments: list[str]) -> int:
     import argparse
     import importlib.util
     import os
-    import subprocess
 
     from alphalattice.control.product_host.composition.research_workspace import (
         RESEARCH_WORKSPACE_MANIFEST_NAME,
@@ -41,7 +41,7 @@ def serve(arguments: list[str]) -> int:
     # Before anything starts: the project's completed first use in another workspace is its
     # daily road, unless the person said yes to separate new research.
     if not selected.new_research and (road := serve_road(selected.workspace)) is not None:
-        print(json.dumps(road))
+        print(json.dumps(road))  # noqa: T201  # bootstrap/lifecycle
         return 2
     arguments = [a for a in arguments if a != "--new-research"]
     manifest = (
@@ -58,7 +58,7 @@ def serve(arguments: list[str]) -> int:
         packaged or (checkout and interpreter.is_file())
     ):
         if not checkout or not interpreter.is_file():
-            print(
+            print(  # noqa: T201  # bootstrap/lifecycle
                 json.dumps(
                     {
                         "status": "REFUSED",
@@ -89,7 +89,7 @@ def serve(arguments: list[str]) -> int:
         environment["PYTHONPATH"] = (
             source + os.pathsep + inherited_path if inherited_path else source
         )
-        return subprocess.call(
+        return attached_child(
             [
                 str(interpreter),
                 "-m",
@@ -142,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         # provides it; a missing product module is a broken tree and is raised as one.
         if error.name is None or error.name.split(".")[0] in {"alphalattice", "scripts"}:
             raise
-        print(
+        print(  # noqa: T201  # bootstrap/lifecycle
             json.dumps(
                 {
                     "status": "REFUSED",

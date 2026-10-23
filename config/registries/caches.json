@@ -19,7 +19,8 @@
         "scope": "process",
         "path_expression": "In-memory installed_price_basis in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed market profile's daily price basis until process restart."
     },
     "src/alphalattice/foundation/factor_research/research_loop/decisions.py::_policy_hash_for::module-policy-hash-for": {
       "owner": "alphalattice.foundation.factor_research",
@@ -38,7 +39,8 @@
         "scope": "process",
         "path_expression": "In-memory _policy_hash_for in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each checkout root's Factor review policy source hash until process restart."
     },
     "src/alphalattice/foundation/feature_engine/catalog/contracts.py::_resource_payload::module-resource-payload": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -57,7 +59,8 @@
         "scope": "process",
         "path_expression": "In-memory _resource_payload in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed desktop feature catalog document until process restart."
     },
     "src/alphalattice/foundation/feature_engine/producers/arithmetic_identity.py::control_arithmetic_content_hash::module-control-arithmetic-content-hash": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -76,7 +79,8 @@
         "scope": "process",
         "path_expression": "In-memory control_arithmetic_content_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed base-control arithmetic identity until process restart."
     },
     "src/alphalattice/foundation/feature_engine/producers/arithmetic_identity.py::method_family_rule_identity::module-method-family-rule-identity": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -95,7 +99,8 @@
         "scope": "process",
         "path_expression": "In-memory method_family_rule_identity in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each factor method family's rule identity by its name and owner modules until process restart."
     },
     "src/alphalattice/foundation/feature_engine/producers/arithmetic_identity.py::method_family_content_hash::module-method-family-content-hash": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -114,7 +119,8 @@
         "scope": "process",
         "path_expression": "In-memory method_family_content_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each factor method family's recorded value identity by its name and owner modules until process restart."
     },
     "src/alphalattice/foundation/feature_engine/producers/factors/formula.py::reference_value.at::reference-value-at": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -133,7 +139,8 @@
         "scope": "process",
         "path_expression": "In-memory reference_value.at in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches a formula subexpression's value at each row of the fixed input series until the reference evaluation ends."
     },
     "src/alphalattice/foundation/feature_engine/producers/preprocessing/adapters.py::_robust_sector_neutral_z_content_hash::module-robust-sector-neutral-z-content-hash": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -152,7 +159,8 @@
         "scope": "process",
         "path_expression": "In-memory _robust_sector_neutral_z_content_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed robust sector-neutral preprocessing implementation identity until process restart."
     },
     "src/alphalattice/foundation/feature_engine/producers/preprocessing/adapters.py::_development_preprocessing_content_hash::module-development-preprocessing-content-hash": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -171,7 +179,8 @@
         "scope": "process",
         "path_expression": "In-memory _development_preprocessing_content_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed development preprocessing implementation identity until process restart."
     },
     "src/alphalattice/foundation/feature_engine/producers/preprocessing/joint_primary.py::_relative_content_hash::module-relative-content-hash": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -190,7 +199,8 @@
         "scope": "process",
         "path_expression": "In-memory _relative_content_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed joint-primary relative preprocessing identity until process restart."
     },
     "src/alphalattice/foundation/feature_engine/producers/preprocessing/joint_primary.py::_interaction_content_hash::module-interaction-content-hash": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -209,7 +219,8 @@
         "scope": "process",
         "path_expression": "In-memory _interaction_content_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed joint-primary interaction preprocessing identity until process restart."
     },
     "src/alphalattice/foundation/feature_engine/producers/preprocessing/robust_universe.py::_content_hash::module-content-hash": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -228,7 +239,8 @@
         "scope": "process",
         "path_expression": "In-memory _content_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed universe-centred preprocessing implementation identity until process restart."
     },
     "src/alphalattice/foundation/market_data_ops/sources/membership.py::_membership_clocks::module-membership-clocks": {
       "owner": "alphalattice.foundation.market_data_ops",
@@ -247,7 +259,8 @@
         "scope": "process",
         "path_expression": "In-memory _membership_clocks in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches joint exchange session clocks for each requested start and end date, rebuilding on a new range or after LRU eviction."
     },
     "src/alphalattice/foundation/market_data_ops/storage/duckdb.py::_plain_text::module-plain-text": {
       "owner": "alphalattice.foundation.market_data_ops",
@@ -285,7 +298,8 @@
         "scope": "process",
         "path_expression": "In-memory market_data_source_prefix_proofs.listings in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches per-listing hashes of the captured market-data source tables until the source-prefix call's returned helper is released."
     },
     "src/alphalattice/interface/local_application/cli.py::_parser::module-parser": {
       "owner": "alphalattice.interface.local_application",
@@ -304,7 +318,8 @@
         "scope": "process",
         "path_expression": "In-memory _parser in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches command-line parsers by the selected operation names until process restart."
     },
     "src/alphalattice/interface/local_application/cli_contract.py::agent_surface_manifest::module-agent-surface-manifest": {
       "owner": "alphalattice.interface.local_application",
@@ -323,7 +338,8 @@
         "scope": "process",
         "path_expression": "In-memory agent_surface_manifest in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed agent interface compatibility and retirement manifest until process restart."
     },
     "src/alphalattice/interface/local_application/cli_contract.py::_zh::module-zh": {
       "owner": "alphalattice.interface.local_application",
@@ -342,7 +358,8 @@
         "scope": "process",
         "path_expression": "In-memory _zh in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed Chinese translation table until process restart."
     },
     "src/alphalattice/interface/local_application/cli_contract.py::_zh_templates::module-zh-templates": {
       "owner": "alphalattice.interface.local_application",
@@ -361,7 +378,8 @@
         "scope": "process",
         "path_expression": "In-memory _zh_templates in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches compiled patterns for the installed Chinese translation templates until process restart."
     },
     "src/alphalattice/interface/local_application/cli_contract.py::command_table::module-command-table": {
       "owner": "alphalattice.interface.local_application",
@@ -380,7 +398,8 @@
         "scope": "process",
         "path_expression": "In-memory command_table in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed command operation and field contract until process restart."
     },
     "src/alphalattice/interface/local_application/cli_contract.py::declaration_contracts::module-declaration-contracts": {
       "owner": "alphalattice.interface.local_application",
@@ -399,7 +418,8 @@
         "scope": "process",
         "path_expression": "In-memory declaration_contracts in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed declaration-answer contracts until process restart."
     },
     "src/alphalattice/interface/local_application/labels.py::label_table::module-label-table": {
       "owner": "alphalattice.interface.local_application",
@@ -418,7 +438,8 @@
         "scope": "process",
         "path_expression": "In-memory label_table in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed product label table until process restart."
     },
     "src/alphalattice/interface/local_application/labels.py::_by_id::module-by-id": {
       "owner": "alphalattice.interface.local_application",
@@ -437,7 +458,8 @@
         "scope": "process",
         "path_expression": "In-memory _by_id in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches product labels indexed by identifier until process restart."
     },
     "src/alphalattice/investment/alpha_research/experiments/campaign_evidence.py::_policy_hash_for::module-policy-hash-for": {
       "owner": "alphalattice.investment.alpha_research",
@@ -456,7 +478,8 @@
         "scope": "process",
         "path_expression": "In-memory _policy_hash_for in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each checkout root's Alpha campaign decision-policy source hash until process restart."
     },
     "src/alphalattice/investment/alpha_research/scaling/adapters.py::_implementation_content_hash::module-implementation-content-hash": {
       "owner": "alphalattice.investment.alpha_research",
@@ -475,7 +498,8 @@
         "scope": "process",
         "path_expression": "In-memory _implementation_content_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed cross-sectional scaling implementation identity until process restart."
     },
     "src/alphalattice/investment/portfolio_strategy_lab/application/strategy_package.py::_value_moves::module-value-moves": {
       "owner": "alphalattice.investment.portfolio_strategy_lab",
@@ -494,7 +518,8 @@
         "scope": "process",
         "path_expression": "In-memory _value_moves in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches recorded ancestry for result-value identities until process restart."
     },
     "src/alphalattice/investment/risk_research/estimators/covariance.py::_implementation_content_hash::module-implementation-content-hash": {
       "owner": "alphalattice.investment.risk_research",
@@ -513,7 +538,8 @@
         "scope": "process",
         "path_expression": "In-memory _implementation_content_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed covariance estimator's first-party implementation identity until process restart."
     },
     "src/alphalattice/investment/risk_research/estimators/covariance.py::_numerical_backends::module-numerical-backends": {
       "owner": "alphalattice.investment.risk_research",
@@ -532,7 +558,8 @@
         "scope": "process",
         "path_expression": "In-memory _numerical_backends in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the observed numerical backend libraries and versions until process restart."
     },
     "src/alphalattice/investment/risk_research/estimators/covariance.py::numerical_environment_hash::module-numerical-environment-hash": {
       "owner": "alphalattice.investment.risk_research",
@@ -551,7 +578,8 @@
         "scope": "process",
         "path_expression": "In-memory numerical_environment_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the covariance estimator's observed numerical environment hash until process restart."
     },
     "src/alphalattice/investment/risk_research/estimators/diagonal.py::_implementation_content_hash::module-implementation-content-hash": {
       "owner": "alphalattice.investment.risk_research",
@@ -570,7 +598,8 @@
         "scope": "process",
         "path_expression": "In-memory _implementation_content_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed diagonal risk estimator's first-party implementation identity until process restart."
     },
     "src/alphalattice/investment/risk_research/estimators/fast_slow.py::_implementation_content_hash::module-implementation-content-hash": {
       "owner": "alphalattice.investment.risk_research",
@@ -589,7 +618,8 @@
         "scope": "process",
         "path_expression": "In-memory _implementation_content_hash in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed fast-slow risk estimator's first-party implementation identity until process restart."
     },
     "src/alphalattice/kernel/shared_kernel/environment.py::_installed_version::module-installed-version": {
       "owner": "alphalattice.kernel.shared_kernel",
@@ -608,7 +638,8 @@
         "scope": "process",
         "path_expression": "In-memory _installed_version in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each distribution's installed version or absence until process restart."
     },
     "src/alphalattice/kernel/shared_kernel/environment.py::_module_lister::module-module-lister": {
       "owner": "alphalattice.kernel.shared_kernel",
@@ -627,7 +658,8 @@
         "scope": "process",
         "path_expression": "In-memory _module_lister in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the configured Windows process-module enumeration API until process restart."
     },
     "src/alphalattice/kernel/shared_kernel/identity_successors.py::recorded_moves::module-recorded-moves": {
       "owner": "alphalattice.kernel.shared_kernel",
@@ -646,7 +678,8 @@
         "scope": "process",
         "path_expression": "In-memory recorded_moves in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches recorded identity moves for each checkout root until process restart."
     },
     "src/alphalattice/kernel/shared_kernel/project_layout.py::runtime_json::module-runtime-json": {
       "owner": "alphalattice.kernel.shared_kernel",
@@ -665,7 +698,8 @@
         "scope": "process",
         "path_expression": "In-memory runtime_json in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each installed JSON resource by its relative path until process restart."
     },
     "src/alphalattice/kernel/shared_kernel/source_identity.py::number_deciding_rule::module-number-deciding-rule": {
       "owner": "alphalattice.kernel.shared_kernel",
@@ -684,7 +718,8 @@
         "scope": "process",
         "path_expression": "In-memory number_deciding_rule in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each checkout root's rules for identifying number-deciding code until process restart."
     },
     "src/alphalattice/kernel/shared_kernel/source_identity.py::identity_switch::module-identity-switch": {
       "owner": "alphalattice.kernel.shared_kernel",
@@ -703,7 +738,8 @@
         "scope": "process",
         "path_expression": "In-memory identity_switch in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each checkout root's recorded source-identity switch table until process restart."
     },
     "src/alphalattice/protocols/actor_execution/projections.py::_cl100k::module-cl100k": {
       "owner": "alphalattice.protocols.actor_execution",
@@ -722,7 +758,8 @@
         "scope": "process",
         "path_expression": "In-memory _cl100k in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the tokenizer built from the shipped token ranks until process restart."
     },
     "src/devtools/architecture/nouns.py::_decision_types::module-decision-types": {
       "owner": "devtools.architecture",
@@ -741,7 +778,8 @@
         "scope": "process",
         "path_expression": "In-memory _decision_types in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches registered decision types and their owning packages for each checkout root until process restart."
     },
     "src/alphalattice/kernel/shared_kernel/source_identity.py::<module>._PARSED::source-ast-import-memo-parsed": {
       "owner": "alphalattice.kernel.shared_kernel",
@@ -760,7 +798,8 @@
         "scope": "process",
         "path_expression": "In-memory _PARSED in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches Python syntax digests and imports by source-byte hash and package, so changed bytes or package context require a new parse."
     },
     "src/alphalattice/control/workspace_runtime/paths.py::<module>._ROOT_IDENTITY_LIMIT::workspace-root-resolution-root-identities": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -779,7 +818,8 @@
         "scope": "process",
         "path_expression": "Module-level _root_identities dictionary in src/alphalattice/control/workspace_runtime/paths.py"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches resolved workspace roots while directory device, inode and attributes match, rebuilding after replacement and refusing links."
     },
     "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_MODEL_SCOPE::verified-model-request-scope": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -798,7 +838,8 @@
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_MODEL_SCOPE in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified frozen artifact models by file and content identity until the outer model-read scope exits."
     },
     "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_MODEL_CACHE::verified-model-process-lru": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -817,7 +858,8 @@
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_MODEL_CACHE in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified immutable artifact models across opted-in reads, missing on changed file or content identity and dropping the least recently used excess."
     },
     "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_ARRAY_SCOPE::verified-array-request-scope": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -836,7 +878,8 @@
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_ARRAY_SCOPE in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches decoded array values by the caller's exact identity until the outer array-read scope exits."
     },
     "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_ARRAY_CACHE::verified-array-process-lru": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -855,7 +898,8 @@
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_ARRAY_CACHE in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches decoded array values across opted-in reads, rebuilding when the source lease breaks or identity changes and evicting values at the byte limit."
     },
     "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_SOURCE_LEASES::source-read-lease-proof-reuse": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -874,7 +918,8 @@
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_SOURCE_LEASES in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches source-file read leases for retained decoded values, closing them on lease break, replacement, eviction or process exit."
     },
     "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_PROOF_SCOPE::verified-proof-request-set": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -893,7 +938,8 @@
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_PROOF_SCOPE in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches successful exact-identity proofs until the outer verified-array read scope exits."
     },
     "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_PROOF_CACHE::verified-proof-process-lru": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -912,7 +958,8 @@
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_PROOF_CACHE in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches successful exact-identity proofs across opted-in reads, requiring new proofs for changed identities and dropping the least recently used excess."
     },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._KEPT::held-workspace-file-fact-maps-kept": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -931,7 +978,8 @@
         "scope": "process",
         "path_expression": "In-memory _KEPT in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches workspace file digests while file size, modification time and inode match, updating on owner writes and dropping the workspace map when its writer lease closes."
     },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._PROCESS::other-process-file-facts-process": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -950,7 +998,8 @@
         "scope": "process",
         "path_expression": "In-memory _PROCESS in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches file digests outside retained workspaces while file size, modification time and inode match, rebuilding after a changed stamp or LRU eviction."
     },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._HELD::year-fact-schema-presence-held": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -969,7 +1018,8 @@
         "scope": "process",
         "path_expression": "In-memory _HELD in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Remembers which database connections contain the verified-year table until those connection objects are collected."
     },
     "src/alphalattice/control/workspace_runtime/database.py::<module>._EPOCHS::database-instance-seal-epoch-resource-pool": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -988,7 +1038,8 @@
         "scope": "process",
         "path_expression": "In-memory _EPOCHS in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the seal epoch of each open workspace database until its last owning instance closes."
     },
     "src/alphalattice/control/product_host/storage/inventory.py::<module>._measured_data::last-physical-size-sample-measured-data": {
       "owner": "alphalattice.control.product_host",
@@ -1007,7 +1058,8 @@
         "scope": "process",
         "path_expression": "In-memory _measured_data in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each workspace's last complete managed-storage byte count until the next full inventory sample replaces it."
     },
     "src/alphalattice/control/product_host/storage/inventory.py::<module>._StageMeasure::stage-inventory-memo-trees-files": {
       "owner": "alphalattice.control.product_host",
@@ -1026,7 +1078,8 @@
         "scope": "process",
         "path_expression": "In-memory _StageMeasure in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches walked managed trees and file paths for storage admissions until the storage-capacity scope exits."
     },
     "src/alphalattice/control/product_host/storage/plan_previews.py::PreviewRegistry.__init__.self._entries::previewregistry-in-memory-plans": {
       "owner": "alphalattice.control.product_host",
@@ -1045,7 +1098,8 @@
         "scope": "process",
         "path_expression": "In-memory PreviewRegistry.__init__.self._entries in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches sealed plan previews by plan hash, refusing expired plans and replacing earlier plans when single-plan retention is selected."
     },
     "src/alphalattice/control/task_control/registry.py::DuckDbTaskControlRegistry.__init__.self._answers::task-registry-read-answer-memo": {
       "owner": "alphalattice.control.task_control",
@@ -1064,7 +1118,8 @@
         "scope": "process",
         "path_expression": "In-memory DuckDbTaskControlRegistry.__init__.self._answers in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches Task Control read answers while the database and WAL file stamps remain unchanged."
     },
     "src/alphalattice/control/task_control/registry.py::DuckDbTaskControlRegistry.__init__.self._read_scopes::task-registry-nested-read-connection-reuse": {
       "owner": "alphalattice.control.task_control",
@@ -1083,7 +1138,8 @@
         "scope": "process",
         "path_expression": "In-memory DuckDbTaskControlRegistry.__init__.self._read_scopes in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Reuses one Task Control database connection for nested reads on a thread until the outer read scope exits."
     },
     "src/alphalattice/control/product_host/composition/native_usage_reader.py::NativeUsageReader.__init__.self._read_at::nativeusagereader-refresh-memo": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1102,7 +1158,8 @@
         "scope": "process",
         "path_expression": "In-memory NativeUsageReader.__init__.self._read_at in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches native session usage readings for ten seconds, removing inactive bindings and clearing all readings when usage observation is switched off."
     },
     "src/alphalattice/interface/local_application/native_setup.py::<module>._IN_WORKSPACE::native-sandbox-binding-reminder-memo": {
       "owner": "alphalattice.interface.local_application",
@@ -1149,7 +1206,8 @@
         "size_bound": "unbounded",
         "invalidation_rule": "Changed binding, snapshot, universe revision, shown session or ordered listing axis; process end.",
         "installed_in_this_base": false
-      }
+      },
+      "description": "Caches a saved portfolio's sector labels by input binding, panel snapshot, sector revision, shown date and listing axis, rebuilding after a changed key or LRU eviction."
     },
     "src/alphalattice/control/product_host/composition/portfolio_result_context.py::<module>._DATE_RISK::dated-risk-projection-date-risk": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1177,7 +1235,8 @@
         "size_bound": "unbounded",
         "invalidation_rule": "Changed publication, authority, recipe, positions, or canonical_hash({'surface': surface.surface_hash, 'carried': hashes}); process end.",
         "installed_in_this_base": false
-      }
+      },
+      "description": "Caches fully covered dated portfolio risk projections by publication, authority, recipe, positions and return-source identity, rebuilding after a changed key or LRU eviction."
     },
     "src/alphalattice/control/product_host/composition/committee.py::<module>._PROOFS::committee-claim-proof-memo-proofs": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1196,7 +1255,8 @@
         "scope": "process",
         "path_expression": "In-memory _PROOFS in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches committee claim-verification results by store and claim digest, verifying changed claims again and clearing the map when its entry threshold is exceeded."
     },
     "src/alphalattice/control/product_host/composition/evidence_review_application.py::EvidenceReviewApplication._unit_obligation_cache::evidence-unit-obligation-memo": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1215,7 +1275,8 @@
         "scope": "process",
         "path_expression": "In-memory EvidenceReviewApplication._unit_obligation_cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches evidence review unit obligations by issuer scope and evidence cutoff, clearing them for a fresh review run or installed-authority replacement."
     },
     "src/alphalattice/control/product_host/composition/research_experiments.py::<module>._VERIFIED_EVIDENCE::experiment-verified-evidence-request-scope": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1234,7 +1295,8 @@
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_EVIDENCE in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified research evidence for the current request until the outer evidence-read scope exits."
     },
     "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._attempt_evidence::experiment-attempt-evidence-memo": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1253,7 +1315,8 @@
         "scope": "process",
         "path_expression": "In-memory ResearchExperimentApplication.__init__.self._attempt_evidence in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches a Task's verified execution evidence for one attempt and removes it when that execution finishes."
     },
     "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._task_plans::experiment-checked-plan-memo": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1272,7 +1335,8 @@
         "scope": "process",
         "path_expression": "In-memory ResearchExperimentApplication.__init__.self._task_plans in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches checked experiment plans by Task, input, goal and plan hashes, rebuilding after a changed contract key or LRU eviction."
     },
     "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._installed::experiment-installed-role-memo": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1291,7 +1355,8 @@
         "scope": "process",
         "path_expression": "In-memory ResearchExperimentApplication.__init__.self._installed in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each study role's installed implementation identity until the experiment application is discarded."
     },
     "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication.__init__.self._ledger::experiment-verification-ledger-memory": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1310,7 +1375,8 @@
         "scope": "process",
         "path_expression": "In-memory ResearchExperimentApplication.__init__.self._ledger in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches study verification evidence while the Task record, file fingerprint and installed implementation match, dropping it on explicit study invalidation or bounded eviction."
     },
     "src/alphalattice/control/product_host/composition/feature_trials.py::<module>._TRIAL_READS::feature-trial-request-memo": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1329,7 +1395,8 @@
         "scope": "process",
         "path_expression": "In-memory _TRIAL_READS in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches completed feature-trial readbacks until the outer trial-read scope exits."
     },
     "src/alphalattice/control/product_host/composition/goals.py::GoalReferenceReadScope._responses::goal-reference-owner-response-memo": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1348,7 +1415,8 @@
         "scope": "process",
         "path_expression": "In-memory GoalReferenceReadScope._responses in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches owner responses by canonical reference document until the reference-read scope object is discarded."
     },
     "src/alphalattice/evidence/alternative_evidence/publication/artifacts.py::<module>._VERIFIED_RECORDS::evidence-verified-record-request-scope": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -1367,7 +1435,8 @@
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_RECORDS in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified frozen evidence records within one operation and releases them when the outer operation exits."
     },
     "src/alphalattice/evidence/alternative_evidence/retrieval/session.py::AlternativeEvidenceRetrievalSession.__init__.self._originals::evidence-retrieval-original-structure-text-span-views": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -1386,7 +1455,8 @@
         "scope": "process",
         "path_expression": "In-memory AlternativeEvidenceRetrievalSession.__init__.self._originals in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches original evidence documents and derived text or structural views for the retrieval session, with a fresh session reading them again."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedExcerpts.__init__.self._by_key::evidence-sealed-excerpt-index": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -1405,7 +1475,8 @@
         "scope": "process",
         "path_expression": "In-memory SealedExcerpts.__init__.self._by_key in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches sealed citation excerpts by source bytes and extraction binding, indexing newly sealed snapshots and rebuilding when the helper is replaced."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedCanonicals.__init__.self._sources::evidence-sealed-canonical-source-indexes": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -1424,7 +1495,8 @@
         "scope": "process",
         "path_expression": "In-memory SealedCanonicals.__init__.self._sources in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches canonical document references by source snapshot and document identity, indexing newly sealed sets and rebuilding when the helper is replaced."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedSelections.__init__.self._by_key::evidence-access-receipt-selection-index": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -1443,7 +1515,8 @@
         "scope": "process",
         "path_expression": "In-memory SealedSelections.__init__.self._by_key in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches admitted retrieval-access receipts by document, index, selection and policy identities until the selection helper is discarded."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/service.py::VerifiedSourceLookup.__init__.self._by_accession::verified-sec-source-lookup-indexes": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -1462,7 +1535,8 @@
         "scope": "process",
         "path_expression": "In-memory VerifiedSourceLookup.__init__.self._by_accession in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified filing references, commitments and deferrals, extending the lookup as sealed records are admitted and rebuilding when the runtime is replaced."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::AlternativeEvidenceDocumentTaskAdapter.__init__.self._receipts::evidence-task-receipt-memo": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -1481,7 +1555,8 @@
         "scope": "process",
         "path_expression": "In-memory AlternativeEvidenceDocumentTaskAdapter.__init__.self._receipts in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each Task's committed stage receipts until that Task's version changes or the adapter is discarded."
     },
     "src/alphalattice/evidence/alternative_evidence/storage/inventory.py::EvidenceStorageInventory.__init__.self._proofs::evidence-inventory-committed-payload-proof-memo": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -1500,7 +1575,8 @@
         "scope": "process",
         "path_expression": "In-memory EvidenceStorageInventory.__init__.self._proofs in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches committed index and vector payload reference proofs by commitment pair until the evidence inventory object is discarded."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/service.py::AlternativeEvidenceDocumentIntelligenceRuntime.__init__.self.pair_score_facts::evidence-runtime-pair-score-facts": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -1519,7 +1595,8 @@
         "scope": "process",
         "path_expression": "In-memory AlternativeEvidenceDocumentIntelligenceRuntime.__init__.self.pair_score_facts in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the last retrieval session's pair-score counters until the next session's counters are read."
     },
     "src/alphalattice/foundation/causal_outcomes/execution/readers.py::CausalExecutionOutcomePolicyHoldoutReader.__init__.self._verified_tables::holdout-causal-outcome-verified-tables": {
       "owner": "alphalattice.foundation.causal_outcomes",
@@ -1538,7 +1615,8 @@
         "scope": "process",
         "path_expression": "In-memory CausalExecutionOutcomePolicyHoldoutReader.__init__.self._verified_tables in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified policy-holdout outcome tables by chunk content hash until the reader is discarded."
     },
     "src/alphalattice/foundation/factor_research/evaluation/oos_evidence.py::<module>._SessionRanks::factor-session-rank-mask-memo": {
       "owner": "alphalattice.foundation.factor_research",
@@ -1557,7 +1635,8 @@
         "scope": "process",
         "path_expression": "In-memory _SessionRanks in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches factor score ranks and target ranks for one session's fixed vectors and row masks until the session evaluator is discarded."
     },
     "src/alphalattice/foundation/feature_engine/panels/reader.py::<module>._VALUES_VERIFIED::panel-raw-value-proof-set-values-verified": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1576,7 +1655,8 @@
         "scope": "process",
         "path_expression": "In-memory _VALUES_VERIFIED in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches successful panel row-value proofs by whole-file byte hash, checking changed bytes again and rebuilding after LRU eviction or capacity reconfiguration."
     },
     "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._identity_by_session::panel-composition-identity-cross-section-indexes": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1595,7 +1675,8 @@
         "scope": "process",
         "path_expression": "In-memory PanelCompositionSession.__init__.self._identity_by_session in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches cross-section identities and yearly ranges for a panel composition's fixed binding and membership until that composition session is discarded."
     },
     "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._base_axes::panel-base-chunk-session-axes": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1614,7 +1695,8 @@
         "scope": "process",
         "path_expression": "In-memory PanelCompositionSession.__init__.self._base_axes in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each base panel chunk's session axis by chunk hash until the composition session is discarded."
     },
     "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._identity_tables::panel-identity-table-reads": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1633,7 +1715,8 @@
         "scope": "process",
         "path_expression": "In-memory PanelCompositionSession.__init__.self._identity_tables in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches panel partition identity columns by chunk hash until composition finalization clears them."
     },
     "src/alphalattice/foundation/feature_engine/panels/feature_closure_coordinator.py::FeatureBaseClosureCoordinator.__init__.self._digest_states::feature-closure-running-digest-states": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1652,7 +1735,8 @@
         "scope": "process",
         "path_expression": "In-memory FeatureBaseClosureCoordinator.__init__.self._digest_states in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches a catalog's running feature-row digest at its last sealed head, extending it only from that head and replacing it after each transition."
     },
     "src/alphalattice/foundation/feature_engine/producers/consumption_audit.py::_CoreEvaluator.__init__.self._cache::core-feature-evaluator-memo": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1671,7 +1755,8 @@
         "scope": "process",
         "path_expression": "In-memory _CoreEvaluator.__init__.self._cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches core feature values for each perturbation probe over a fixed input frame until the audit evaluator is discarded."
     },
     "src/alphalattice/foundation/feature_engine/producers/consumption_audit.py::_ExtensionEvaluator.__init__.self._cache::extension-feature-evaluator-memo": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1690,7 +1775,8 @@
         "scope": "process",
         "path_expression": "In-memory _ExtensionEvaluator.__init__.self._cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches extension feature values for each perturbation probe over a fixed recipe and input frame until the audit evaluator is discarded."
     },
     "src/alphalattice/foundation/feature_engine/storage/repositories.py::FeatureStateRepository.__init__.self._feature_factor_ids_by_catalog::feature-catalog-factor-id-memo": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1709,7 +1795,8 @@
         "scope": "process",
         "path_expression": "In-memory FeatureStateRepository.__init__.self._feature_factor_ids_by_catalog in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each catalog hash's factor identifier axis until the feature repository is discarded."
     },
     "src/alphalattice/foundation/feature_engine/runtime/service.py::<module>._WORKER_KERNELS::feature-worker-kernel-registry-memo": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1728,7 +1815,8 @@
         "scope": "process",
         "path_expression": "In-memory _WORKER_KERNELS in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches rebuilt feature-kernel registries by installed capability hash until the worker process exits."
     },
     "src/alphalattice/foundation/feature_engine/runtime/service.py::<module>._WORKER_CUTOFF_SETS::feature-worker-cutoff-set-memo": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1747,7 +1835,8 @@
         "scope": "process",
         "path_expression": "In-memory _WORKER_CUTOFF_SETS in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches canonical cutoff-set payloads and hashes by factor axis and exact cutoff JSON text, rebuilding after changed keys, LRU eviction or capacity reconfiguration."
     },
     "src/alphalattice/foundation/feature_engine/runtime/service.py::<module>._WORKER_PANELS::feature-worker-panel-materializers": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1785,7 +1874,8 @@
         "scope": "process",
         "path_expression": "In-memory _Replays.base_cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches base-year frames while replaying panel artifacts, loading a different year on demand and evicting the least recently used frame beyond three years."
     },
     "src/alphalattice/foundation/feature_engine/panels/rematerialization.py::_Replays.done::artifact-replay-completed-materializations": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1804,7 +1894,8 @@
         "scope": "process",
         "path_expression": "In-memory _Replays.done in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches completed panel receipt materializations until replay advances past each receipt's final session."
     },
     "src/alphalattice/foundation/feature_engine/panels/rematerialization.py::ArtifactOnlyPanelRematerializer.base_closure_probe_matches.cache::artifact-base-closure-probe-frame-memo": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1823,7 +1914,8 @@
         "scope": "process",
         "path_expression": "In-memory ArtifactOnlyPanelRematerializer.base_closure_probe_matches.cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches base-year frames within a panel closure probe, evicting beyond three years and releasing the cache when the probe returns."
     },
     "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::CurrentUniverseOnboarding.__post_init__.self._calendar_cache::onboarding-calendar-memo": {
       "owner": "alphalattice.foundation.market_data_ops",
@@ -1842,7 +1934,8 @@
         "scope": "process",
         "path_expression": "In-memory CurrentUniverseOnboarding.__post_init__.self._calendar_cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches exchange calendars and schedule rows by calendar identifier for the onboarding run's fixed history window until that onboarding object is discarded."
     },
     "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::<module>._VERIFIED_CHUNKS::alpha-verified-development-chunk-hashes": {
       "owner": "alphalattice.investment.alpha_research",
@@ -1880,7 +1973,8 @@
         "scope": "process",
         "path_expression": "In-memory _SIDECAR_SCOPE in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified model-fit sidecars by store and operation binding until the formation or block scope exits."
     },
     "src/alphalattice/investment/alpha_research/experiments/dynamic_panel_artifacts.py::DynamicPanelArtifactStore.__init__.self._surface_cache::alpha-dynamicpanel-surface-manifest-memo": {
       "owner": "alphalattice.investment.alpha_research",
@@ -1899,7 +1993,8 @@
         "scope": "process",
         "path_expression": "In-memory DynamicPanelArtifactStore.__init__.self._surface_cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified dynamic-panel surface manifests by content hash until the artifact store object is discarded."
     },
     "src/alphalattice/investment/alpha_research/inputs/surfaces.py::AlphaProgramArrayWorkspace.__init__.self._fold_cache::alpha-program-fold-arrays": {
       "owner": "alphalattice.investment.alpha_research",
@@ -1918,7 +2013,8 @@
         "scope": "process",
         "path_expression": "In-memory AlphaProgramArrayWorkspace.__init__.self._fold_cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches derived Alpha fold arrays by fold index within the sealed program workspace, removing failed over-budget additions and clearing all arrays on release."
     },
     "src/alphalattice/investment/alpha_research/inputs/surfaces.py::AlphaProgramArrayWorkspace.__init__.self._current_cache::alpha-current-refit-arrays": {
       "owner": "alphalattice.investment.alpha_research",
@@ -1937,7 +2033,8 @@
         "scope": "process",
         "path_expression": "In-memory AlphaProgramArrayWorkspace.__init__.self._current_cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the current-refit Alpha arrays for the sealed program workspace until release clears them."
     },
     "src/alphalattice/investment/alpha_research/scores/product_replay.py::AdmittedProductEvidence._axis_cache::alpha-evidence-prediction-axis-cache": {
       "owner": "alphalattice.investment.alpha_research",
@@ -1956,7 +2053,8 @@
         "scope": "process",
         "path_expression": "In-memory AdmittedProductEvidence._axis_cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified prediction axes by vintage until that vintage is explicitly dropped or the admitted evidence object is discarded."
     },
     "src/alphalattice/investment/alpha_research/scores/product_replay.py::AdmittedProductEvidence._model_cache::alpha-evidence-fitted-model-cache": {
       "owner": "alphalattice.investment.alpha_research",
@@ -1975,7 +2073,8 @@
         "scope": "process",
         "path_expression": "In-memory AdmittedProductEvidence._model_cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified fitted models and predictions by vintage and seed until that model or vintage is explicitly dropped or the evidence object is discarded."
     },
     "src/alphalattice/investment/alpha_research/scores/heterogeneous_replay.py::AdmittedHeterogeneousCurrentClosure._surfaces::alpha-heterogeneous-component-feature-surfaces": {
       "owner": "alphalattice.investment.alpha_research",
@@ -1994,7 +2093,8 @@
         "scope": "process",
         "path_expression": "In-memory AdmittedHeterogeneousCurrentClosure._surfaces in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches heterogeneous component feature matrices by component and vintage until the admitted evidence object is discarded."
     },
     "src/alphalattice/investment/alpha_research/scores/model_renewal.py::<module>._VERIFIED::alpha-lifecycle-admission-verification-scope": {
       "owner": "alphalattice.investment.alpha_research",
@@ -2013,7 +2113,8 @@
         "scope": "process",
         "path_expression": "In-memory _VERIFIED in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches Alpha lifecycle admission and model-set verification results by exact artifact identities until the outer operation scope exits."
     },
     "src/alphalattice/investment/alpha_research/experiments/panel_alpha_fold_execution.py::_compute_fold.provider.role_cache::alpha-fold-materialization-role-memo": {
       "owner": "alphalattice.investment.alpha_research",
@@ -2032,7 +2133,8 @@
         "scope": "process",
         "path_expression": "In-memory _compute_fold.provider.role_cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches panel role materializations within one fold's fixed training and transform boundary until the provider's release callback clears them."
     },
     "src/alphalattice/investment/alpha_research/experiments/panel_alpha_fold_execution.py::_compute_fold.provider.current::alpha-fold-last-projection-memo": {
       "owner": "alphalattice.investment.alpha_research",
@@ -2051,7 +2153,8 @@
         "scope": "process",
         "path_expression": "In-memory _compute_fold.provider.current in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the last panel feature projection within a fold provider, replacing it when the installed view changes and clearing it on provider release."
     },
     "src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::<module>._DATASET_CACHE::lightgbm-binned-dataset-scope": {
       "owner": "alphalattice.capabilities.alpha_modeling",
@@ -2070,7 +2173,8 @@
         "scope": "process",
         "path_expression": "In-memory _DATASET_CACHE in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches binned LightGBM datasets by input arrays, feature names, construction parameters and reference identity until the fold scope exits."
     },
     "src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::<module>._BOOSTER_CACHE::lightgbm-parsed-booster-scope": {
       "owner": "alphalattice.capabilities.alpha_modeling",
@@ -2089,7 +2193,8 @@
         "scope": "process",
         "path_expression": "In-memory _BOOSTER_CACHE in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches parsed LightGBM boosters by exact model text until the scoring scope exits."
     },
     "src/alphalattice/investment/risk_research/surfaces/returns.py::CausalRiskReturnReader.__init__.self._verified_chunks::risk-verified-chunk-paths": {
       "owner": "alphalattice.investment.risk_research",
@@ -2108,7 +2213,8 @@
         "scope": "process",
         "path_expression": "In-memory CausalRiskReturnReader.__init__.self._verified_chunks in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified risk-return chunk paths by chunk hash, refusing a changed chunk declaration or missing file and releasing the cache with the reader."
     },
     "src/alphalattice/investment/risk_research/surfaces/returns.py::CausalRiskReturnReader.__init__.self._available_cache::risk-available-session-axis": {
       "owner": "alphalattice.investment.risk_research",
@@ -2127,7 +2233,8 @@
         "scope": "process",
         "path_expression": "In-memory CausalRiskReturnReader.__init__.self._available_cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the available risk-return session axis until a different surface hash replaces it or the reader is discarded."
     },
     "src/alphalattice/investment/risk_research/surfaces/returns.py::CausalRiskReturnReader.__init__.self._window_cache::risk-read-window-matrix": {
       "owner": "alphalattice.investment.risk_research",
@@ -2146,7 +2253,8 @@
         "scope": "process",
         "path_expression": "In-memory CausalRiskReturnReader.__init__.self._window_cache in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the last bounded risk-return matrix, reusing covered windows and replacing it for a different surface or uncovered window."
     },
     "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._templates::osqp-ordinary-templates": {
       "owner": "alphalattice.investment.portfolio_strategy_lab",
@@ -2165,7 +2273,8 @@
         "scope": "process",
         "path_expression": "In-memory PortfolioOptimizer.__init__.self._templates in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches ordinary OSQP solver templates by selected-asset count until the optimizer is discarded."
     },
     "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._wide_templates::osqp-wide-templates": {
       "owner": "alphalattice.investment.portfolio_strategy_lab",
@@ -2184,7 +2293,8 @@
         "scope": "process",
         "path_expression": "In-memory PortfolioOptimizer.__init__.self._wide_templates in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches wide OSQP solver templates by capacity until the optimizer is discarded."
     },
     "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._capped_templates::osqp-capped-templates": {
       "owner": "alphalattice.investment.portfolio_strategy_lab",
@@ -2203,7 +2313,8 @@
         "scope": "process",
         "path_expression": "In-memory PortfolioOptimizer.__init__.self._capped_templates in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches turnover-capped OSQP solver templates by capacity until the optimizer is discarded."
     },
     "src/alphalattice/investment/portfolio_strategy_lab/optimizer/service.py::PortfolioOptimizer.__init__.self._banded::osqp-banded-templates": {
       "owner": "alphalattice.investment.portfolio_strategy_lab",
@@ -2222,7 +2333,8 @@
         "scope": "process",
         "path_expression": "In-memory PortfolioOptimizer.__init__.self._banded in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches banded OSQP solver templates by selected-asset and sector counts until the optimizer is discarded."
     },
     "src/alphalattice/kernel/knowledge/_embeddings.py::PairScoreCache.__init__.self._entries::reranker-in-memory-pair-scores": {
       "owner": "alphalattice.kernel.knowledge",
@@ -2241,7 +2353,8 @@
         "scope": "process",
         "path_expression": "In-memory PairScoreCache.__init__.self._entries in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches successful rounded reranker scores by query and passage text hashes, evicting the least recently used excess and releasing them with the adapter."
     },
     "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._entries::verified-model-pack-proof-report-registry": {
       "owner": "alphalattice.kernel.knowledge",
@@ -2260,7 +2373,8 @@
         "scope": "process",
         "path_expression": "In-memory VerifiedPackRegistry.__init__.self._entries in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches model-pack verification reports while consumed-file facts match, replacing them after changed facts or LRU eviction and clearing them on release."
     },
     "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._pools::leased-model-session-pools": {
       "owner": "alphalattice.kernel.knowledge",
@@ -2279,7 +2393,8 @@
         "scope": "process",
         "path_expression": "In-memory VerifiedPackRegistry.__init__.self._pools in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches leased model sessions by pack and context, retiring sessions when file facts change or a session becomes unusable and closing them after their last lease."
     },
     "src/alphalattice/kernel/knowledge/_reranking.py::PairScoreStore.__init__.self._blocks::pair-score-pending-in-process-batch": {
       "owner": "alphalattice.kernel.knowledge",
@@ -2298,7 +2413,8 @@
         "scope": "process",
         "path_expression": "PairScoreStore instance self._pending mapping from pair digest to score awaiting sealing."
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches pending reranker query-passage scores until flushing seals or refuses the next batch, with remaining pairs retained until the store object is discarded."
     },
     "src/alphalattice/kernel/knowledge/hybrid.py::WorkspaceHybridKnowledgeRetriever.__init__.self._chunks::hybrid-reader-verified-chunks-vectors": {
       "owner": "alphalattice.kernel.knowledge",
@@ -2317,7 +2433,8 @@
         "scope": "process",
         "path_expression": "In-memory WorkspaceHybridKnowledgeRetriever.__init__.self._chunks in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches a retrieval generation's verified chunks and vectors until the reader closes or opens another generation."
     },
     "src/alphalattice/kernel/knowledge/hybrid.py::<module>.READER_PAGE_CACHE_KIB::hybrid-sqlite-connection-page-cache": {
       "owner": "alphalattice.kernel.knowledge",
@@ -2336,7 +2453,8 @@
         "scope": "process",
         "path_expression": "SQLite page cache on each kept reader connection, configured by _verify_projection(keep_open=True) and owned by WorkspaceHybridKnowledgeRetriever._connection."
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches SQLite pages within each open hybrid retrieval connection, releasing them when that connection closes."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::AlternativeEvidenceDocumentTaskAdapter.__init__.self._completed_units::evidence-review-child-unit-receipt-progress-memo": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -2355,7 +2473,8 @@
         "scope": "process",
         "path_expression": "In-memory AlternativeEvidenceDocumentTaskAdapter.__init__.self._completed_units in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches completed evidence preparation intents and Task-scoped absent lookups until the adapter is discarded, with a new intent or requesting Task using a new lookup."
     },
     "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._held::cro-issuer-register-read-writeback-memo-held": {
       "owner": "alphalattice.oversight.chief_risk_officer",
@@ -2374,7 +2493,8 @@
         "scope": "process",
         "path_expression": "In-memory PortfolioReviewPublicationService.__init__.self._held in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches portfolio-review issuer registers by publication hash, replacing held registers when review writeback changes them and releasing them with the service."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/service.py::AlternativeEvidenceDocumentIntelligenceRuntime.__init__.self._set_revisions::evidence-selected-source-set-revision-memo": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -2393,7 +2513,8 @@
         "scope": "process",
         "path_expression": "In-memory AlternativeEvidenceDocumentIntelligenceRuntime.__init__.self._set_revisions in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each sealed evidence document set's issuer and filing revisions by set hash until the runtime is discarded."
     },
     "src/alphalattice/interface/local_application/assets/workbench-source/js/app/data.js::reads::data-unfinished-get-coalescer": {
       "owner": "alphalattice.interface.local_application",
@@ -2412,7 +2533,8 @@
         "scope": "process",
         "path_expression": "In-memory reads in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Shares unfinished HTTP GET responses by exact request path, removing them when the response settles or its last subscriber cancels."
     },
     "src/alphalattice/interface/local_application/assets/workbench-source/js/app/data.js::workspace::data-current-owner-readback-snapshots": {
       "owner": "alphalattice.interface.local_application",
@@ -2431,7 +2553,8 @@
         "scope": "process",
         "path_expression": "In-memory workspace in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches workspace and selected-object owner readbacks, refreshing them on owner events, collection resynchronization or a changed selection generation."
     },
     "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-research.js::controlsRead::research-controls-result-memo": {
       "owner": "alphalattice.interface.local_application",
@@ -2450,7 +2573,8 @@
         "scope": "process",
         "path_expression": "In-memory controlsRead in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches research declarations and controls by study kind and input binding until page refresh explicitly forgets them."
     },
     "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-tasks.js::subjects::task-admission-subject-memo": {
       "owner": "alphalattice.interface.local_application",
@@ -2469,7 +2593,8 @@
         "scope": "process",
         "path_expression": "In-memory subjects in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches Task admission context by Task identifier, marking it dirty on renewed receipts and dropping entries no longer displayed or selected."
     },
     "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-team.js::S::team-resolved-owner-fact-memo-person-question-selections-excluded": {
       "owner": "alphalattice.interface.local_application",
@@ -2488,7 +2613,8 @@
         "scope": "process",
         "path_expression": "In-memory S in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches resolved and verified product-reference facts, replacing each reference's outcome after verification and evicting the oldest excess until the page is discarded."
     },
     "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-team.js::X::team-external-session-metadata-projection": {
       "owner": "alphalattice.interface.local_application",
@@ -2507,7 +2633,8 @@
         "scope": "process",
         "path_expression": "In-memory X in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches external session observations by observation identifier, clearing them when the feed epoch changes and refreshing selected-session records on session changes."
     },
     "src/alphalattice/interface/local_application/assets/workbench-source/js/app/i18n.js::seen::i18n-dictionary-load-asked-key-memo": {
       "owner": "alphalattice.interface.local_application",
@@ -2526,7 +2653,8 @@
         "scope": "process",
         "path_expression": "In-memory seen in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Remembers translation keys requested by the page for catalog-coverage inspection until the page reloads."
     },
     "src/alphalattice/control/product_host/composition/reference_prefixes.py::ReferenceLedger.__init__.self._values::compact-reference-ledger-in-memory": {
       "owner": "alphalattice.control.product_host.composition",
@@ -2545,7 +2673,8 @@
         "scope": "process",
         "path_expression": "In-memory ReferenceLedger.__init__.self._values in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches whole product hashes and identifiers observed in answers, extending the ledger on new answers and retaining only its newest bounded entries on overflow."
     },
     "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._index::cro-publication-placement-index": {
       "owner": "alphalattice.oversight.chief_risk_officer",
@@ -2564,7 +2693,8 @@
         "scope": "process",
         "path_expression": "In-memory PortfolioReviewPublicationService.__init__.self._index in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches portfolio-review publication day and cutoff placement, extending it on publication writeback and rebuilding when the service is replaced."
     },
     "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._policy::cro-installed-policy-scalar": {
       "owner": "alphalattice.oversight.chief_risk_officer",
@@ -2583,7 +2713,8 @@
         "scope": "process",
         "path_expression": "In-memory PortfolioReviewPublicationService.__init__.self._policy in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed portfolio-review policy identity until the publication service is discarded."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::RecordDays.__init__.self._known::evidence-record-day-index-in-memory": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -2602,7 +2733,8 @@
         "scope": "process",
         "path_expression": "In-memory RecordDays.__init__.self._known in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches sealed records' UTC dates, updating entries as records are noted and rebuilding the map when the helper is replaced."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::SealedReadings.__init__.self._by_entity::evidence-carried-analysis-issuer-index": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -2621,7 +2753,8 @@
         "scope": "process",
         "path_expression": "In-memory SealedReadings.__init__.self._by_entity in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches carried evidence readings by issuer and expected bindings, rebuilding for an earlier since-window and extending it with newly sealed matching publications."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::AlternativeEvidenceDocumentTaskAdapter.__init__.self._carried_runs::evidence-task-carried-run-and-issuer-registry-snapshots": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -2640,7 +2773,8 @@
         "scope": "process",
         "path_expression": "In-memory AlternativeEvidenceDocumentTaskAdapter.__init__.self._carried_runs in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches carried evidence coverage runs indexed by scope until the Task adapter is discarded."
     },
     "src/alphalattice/foundation/factor_research/experiments/verification.py::FactorEvidenceVerifier.__init__.self.verified_readback::factor-verifier-last-readback": {
       "owner": "alphalattice.foundation.factor_research",
@@ -2659,7 +2793,8 @@
         "scope": "process",
         "path_expression": "In-memory FactorEvidenceVerifier.__init__.self.verified_readback in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Retains the last verified Factor receipt and child evidence, clearing them before the next verification."
     },
     "src/alphalattice/investment/portfolio_strategy_lab/application/research_experiment.py::PortfolioExperimentVerifier.__init__.self.verified_readback::portfolio-verifier-last-readback": {
       "owner": "alphalattice.investment.portfolio_strategy_lab",
@@ -2678,7 +2813,8 @@
         "scope": "process",
         "path_expression": "In-memory PortfolioExperimentVerifier.__init__.self.verified_readback in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Retains the last verified Portfolio receipt and replay rows, clearing them before the next verification."
     },
     "src/alphalattice/investment/risk_research/experiments/verification.py::RiskEvidenceVerifier.__init__.self._verified_key::risk-verifier-current-verified-key": {
       "owner": "alphalattice.investment.risk_research",
@@ -2697,7 +2833,8 @@
         "scope": "process",
         "path_expression": "In-memory RiskEvidenceVerifier.__init__.self._verified_key in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the just-verified Risk graph's metadata for its exact output root and evidence key, clearing it before verification and after graph projection."
     },
     "src/alphalattice/foundation/feature_engine/panels/artifacts.py::PanelCompositionSession.__init__.self._spans::panel-composition-span-index": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -2716,7 +2853,8 @@
         "scope": "process",
         "path_expression": "In-memory PanelCompositionSession.__init__.self._spans in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the session axis of each panel partition span for the fixed composition binding until the composition session is discarded."
     },
     "src/alphalattice/foundation/feature_engine/panels/development_input.py::CompositeDevelopmentFeatureReader.__init__.self._listing_ids::panel-development-input-listing-axis": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -2735,7 +2873,8 @@
         "scope": "process",
         "path_expression": "In-memory CompositeDevelopmentFeatureReader.__init__.self._listing_ids in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the base input's listing axis for a composite development feature reader until that reader is discarded."
     },
     "src/alphalattice/evidence/alternative_evidence/retrieval/session.py::AlternativeEvidenceRetrievalSession.__init__.self._chunk_index::goal-evidence-retrieval-committed-chunk-position-index": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -2754,7 +2893,8 @@
         "scope": "process",
         "path_expression": "In-memory AlternativeEvidenceRetrievalSession.__init__.self._chunk_index in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches committed chunk character positions by document within one retrieval generation until the retrieval session is discarded."
     },
     "src/alphalattice/kernel/shared_kernel/spans.py::SpanLedger.__init__.self.readout_value::final-span-ledger-metric-readout": {
       "owner": "alphalattice.kernel.shared_kernel",
@@ -2773,7 +2913,8 @@
         "scope": "process",
         "path_expression": "In-memory SpanLedger.__init__.self.readout_value in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Retains finalized span and resource measurements when collection ends, keeping that readout for the ledger object's lifetime."
     },
     "src/alphalattice/interface/local_application/web.py::LocalWebApplication.assets::host-cached-built-asset-bytes": {
       "owner": "alphalattice.interface.local_application",
@@ -2792,7 +2933,8 @@
         "scope": "process",
         "path_expression": "In-memory LocalWebApplication.assets in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches registered built asset bytes by URL until the asset is registered again or the Host application is reconstructed."
     },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>.FILE_FACTS::persistent-verified-file-digests": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -2811,7 +2953,8 @@
         "scope": "workspace",
         "path_expression": "<workspace>/runtime/verified-files.jsonl"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Persists verified file digests with size, modification time and inode, rejecting changed stamps and compacting invalid entries when the workspace opens."
     },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>.ensure_year_fact_schema::verified-year-fact-table": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -2830,7 +2973,8 @@
         "scope": "workspace",
         "path_expression": "Verified year-fact table in the workspace market-data database"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Persists verified yearly values by kind, scope, year, basis and seal epoch, forgetting touched years on owner writes and refusing values under a different epoch or basis."
     },
     "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._module::yfinance-timezone-cache": {
       "owner": "alphalattice.foundation.market_data_ops",
@@ -2850,7 +2994,8 @@
         "path_expression": "YFinanceMarketDataProvider.cache_root/tkr-tz.db",
         "source": "src/alphalattice/foundation/market_data_ops/sources/providers.py:183,216-227"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches Yahoo ticker time zones in the provider's persistent store, replacing or deleting a ticker entry when yfinance stores a changed or absent value."
     },
     "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._module::yfinance-cookie-cache": {
       "owner": "alphalattice.foundation.market_data_ops",
@@ -2870,7 +3015,8 @@
         "path_expression": "YFinanceMarketDataProvider.cache_root/cookies.db",
         "source": "src/alphalattice/foundation/market_data_ops/sources/providers.py:183,216-227"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches Yahoo authentication cookies in the provider's persistent store, refusing expired cookies and replacing them when yfinance fetches and saves a new cookie."
     },
     "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._module::yfinance-isin-cache": {
       "owner": "alphalattice.foundation.market_data_ops",
@@ -2890,7 +3036,8 @@
         "path_expression": "YFinanceMarketDataProvider.cache_root/isin-tkr.db",
         "source": "src/alphalattice/foundation/market_data_ops/sources/providers.py:183,216-227"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches Yahoo ISIN-to-symbol lookups, replacing changed values and removing older duplicate-symbol entries when yfinance stores a lookup."
     },
     "src/alphalattice/interface/local_application/native_bridge.py::_reading.cache::native-usage-incremental-checkpoints": {
       "owner": "alphalattice.interface.local_application",
@@ -2909,7 +3056,8 @@
         "scope": "workspace",
         "path_expression": "<workspace>/runtime/native-usage"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Persists native usage parsing checkpoints for exact source and session identities, rebuilding on source mismatch and clearing them when usage is disabled or the session is unbound."
     },
     "src/alphalattice/control/product_host/composition/research_experiments.py::ResearchExperimentApplication._ledger_path::experiment-verification-ledger-files": {
       "owner": "alphalattice.control.product_host.composition",
@@ -2928,7 +3076,8 @@
         "scope": "workspace",
         "path_expression": "<workspace>/runtime/verification-ledger"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Persists Alpha study verification evidence and readbacks, reusing them only while Task record, file fingerprint and installed implementation match and removing them on explicit study invalidation."
     },
     "src/alphalattice/control/product_host/storage/plan_previews.py::PreviewRegistry._seal::durable-unadmitted-plan-previews": {
       "owner": "alphalattice.control.product_host",
@@ -2947,7 +3096,8 @@
         "scope": "workspace",
         "path_expression": "<workspace>/runtime/plan-previews"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Persists sealed plan previews by plan hash and expiry, deleting expired files on the next preview write and replacing older files in single-plan mode."
     },
     "src/alphalattice/control/product_host/composition/reference_prefixes.py::ReferenceLedger._values::compact-reference-ledger-file": {
       "owner": "alphalattice.control.product_host.composition",
@@ -2966,7 +3116,8 @@
         "scope": "workspace",
         "path_expression": "<workspace>/runtime/reference-ledger.txt"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Persists whole product hashes and identifiers observed in answers, appending new references and rewriting only the newest bounded entries on overflow."
     },
     "src/alphalattice/evidence/alternative_evidence/runtime/reuse.py::RecordDays.__init__.self._records::evidence-record-day-side-index": {
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -2985,7 +3136,8 @@
         "scope": "workspace",
         "path_expression": "<workspace>/runtime/artifacts/alternative-evidence/record-days"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Persists sealed record identities indexed by UTC sealing day, adding or updating an identity when its sealing date is noted."
     },
     "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService.__init__.self._index::cro-register-day-placement-side-index": {
       "owner": "alphalattice.oversight.chief_risk_officer",
@@ -3004,7 +3156,8 @@
         "scope": "workspace",
         "path_expression": "<workspace>/runtime/artifacts/alternative-evidence/cro-review-register/days"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Persists portfolio-review register day placement, updating it on review writeback and learning missing placement from sealed records during readback."
     },
     "src/alphalattice/investment/alpha_research/publication/workspace_history.py::<module>._PARTS::workspace-observation-history-prepared-reuse": {
       "owner": "alphalattice.investment.alpha_research",
@@ -3023,7 +3176,8 @@
         "scope": "workspace",
         "path_expression": "<workspace>/artifacts/alpha-research/current/workspace-observation-history"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches prepared workspace observation-history parts by layout and content, reusing only unchanged stable prefixes with matching scope, selection, listing and session axes."
     },
     "src/alphalattice/kernel/knowledge/hybrid.py::<module>.committed_database_relative::hybrid-sqlite-retrieval-projections": {
       "owner": "alphalattice.kernel.knowledge",
@@ -3042,7 +3196,8 @@
         "scope": "workspace",
         "path_expression": "<workspace>/runtime/evidence-knowledge/.system/knowledge-indexes"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Persists hybrid retrieval database projections by corpus, index specification and schema version, creating another generation when any of those identities changes."
     },
     "src/alphalattice/kernel/knowledge/hybrid.py::<module>._commitment_for::committed-vector-blocks-reused-across-index-generations": {
       "owner": "alphalattice.kernel.knowledge",
@@ -3061,7 +3216,8 @@
         "scope": "workspace",
         "path_expression": "<workspace>/runtime/evidence-knowledge/.system/knowledge-vectors"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Persists verified embedding vector blocks by payload byte hash, reusing the same bytes across index generations and selecting another block for changed content."
     },
     "src/alphalattice/kernel/knowledge/_reranking.py::<module>.PAIR_SCORE_STORE_CAP_BYTES::sealed-reranker-pair-score-blocks": {
       "owner": "alphalattice.kernel.knowledge",
@@ -3080,7 +3236,8 @@
         "scope": "workspace",
         "path_expression": "<workspace>/runtime/evidence-knowledge/.system/knowledge-scores"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Persists rounded reranker query-passage score blocks under their reranker context, selecting another store when that context changes and keeping sealed blocks immutable."
     },
     "scripts/playwright.ps1::<script>::playwright-pinned-browser-binaries": {
       "owner": "alphalattice.interface.local_application",
@@ -3100,7 +3257,8 @@
         "path_expression": "third_party/playwright/.browsers",
         "source": "scripts/playwright.ps1:4-5"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches pinned Chromium browser binaries by the installed browser-manifest revision, installing a new revision during setup when its executable is absent."
     },
     "src/alphalattice/interface/local_application/retrieval_environment.py::<module>.create::uv-package-download-build-cache": {
       "owner": "alphalattice.interface.local_application",
@@ -3119,7 +3277,8 @@
         "scope": "outside",
         "path_expression": "uv-managed cache root, delegated to uv configuration"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches downloaded and built Python packages used by retrieval-environment setup, with refresh and removal delegated to uv's package validation and explicit cache cleaning."
     },
     "src/alphalattice/kernel/knowledge/model_store.py::<module>.pack_directory::pinned-retrieval-embedding-reranker-model-packs": {
       "owner": "alphalattice.kernel.knowledge",
@@ -3138,7 +3297,8 @@
         "scope": "outside",
         "path_expression": "pack_directory(default_model_store(...), spec), selected model-store root"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches verified embedding and reranker model files by repository and immutable revision, installing a separate revision or explicitly replacing the pinned pack during installation."
     },
     "src/alphalattice/interface/local_application/web.py::<module>.IMMUTABLE_CACHE::browser-immutable-asset-http-cache": {
       "owner": "alphalattice.interface.local_application",
@@ -3157,7 +3317,8 @@
         "scope": "outside",
         "path_expression": "Browser-owned HTTP cache for content-hashed asset URLs; product does not select physical profile"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches content-hashed web assets in the browser for at most one year, fetching a new URL when asset content changes."
     },
     "src/alphalattice/kernel/knowledge/_reranking.py::PairScoreStore.__init__.self.cap_bytes::hybrid-loaded-pair-score-blocks": {
       "owner": "alphalattice.kernel.knowledge",
@@ -3176,7 +3337,8 @@
         "scope": "process",
         "path_expression": "PairScoreStore instance self._blocks tuple of verified admitted score blocks, loaded by PairScoreStore.load."
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches admitted sealed reranker score blocks in memory, adding newly sealed blocks and releasing all loaded blocks when the score-store object is discarded."
     },
     "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider.fetch_daily.frame::yfinance-historical-http-responses-delegated": {
       "owner": "alphalattice.foundation.market_data_ops",
@@ -3204,7 +3366,8 @@
         "size_bound": "unbounded",
         "invalidation_rule": "Each _ticker construction creates a fresh cache; entries live only with that acquisition cache, no LRU quota.",
         "installed_in_this_base": false
-      }
+      },
+      "description": "Caches Yahoo historical HTTP responses by URL, frozen parameters and timeout, rebuilding after LRU eviction or process restart."
     },
     "src/alphalattice/kernel/data/calendar.py::materialize_calendar_schedule.calendar::exchange-calendar-dispatcher-schedule-reuse-delegated": {
       "owner": "alphalattice.kernel.data",
@@ -3223,7 +3386,8 @@
         "scope": "process",
         "path_expression": "Delegated exchange_calendars process dispatcher and retained calendar schedules reached through get_calendar(calendar_id); the local calendar variable is the returned object."
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches constructed exchange calendars by resolved name and construction arguments, replacing a name's calendar when those arguments change."
     },
     "src/alphalattice/control/task_control/child.py::<module>._SHARED::kept-child-worker-shared-input-values-shared": {
       "owner": "alphalattice.control.task_control",
@@ -3242,7 +3406,8 @@
         "scope": "process",
         "path_expression": "In-memory _SHARED in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches content-keyed shared inputs within each child-worker call set, forgetting that set when its owner closes or the worker exits."
     },
     "src/alphalattice/control/task_control/child.py::<module>._WORKERS::kept-child-worker-executor-pool-workers": {
       "owner": "alphalattice.control.task_control",
@@ -3261,7 +3426,8 @@
         "scope": "process",
         "path_expression": "In-memory _WORKERS in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches child-worker executors by worker position, retiring broken workers or workers that remain idle past the idle timeout."
     },
     "src/alphalattice/control/product_host/composition/resource_estimates.py::<module>._GATES::workspace-resourcegate-reuse-gates": {
       "owner": "alphalattice.control.product_host.composition",
@@ -3280,7 +3446,8 @@
         "scope": "process",
         "path_expression": "In-memory _GATES in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches each resolved workspace's resource admission gate until process restart."
     },
     "src/alphalattice/control/task_control/registry.py::<module>._CONNECTION_LOCKS::task-database-lock-object-weak-pool": {
       "owner": "alphalattice.control.task_control",
@@ -3299,7 +3466,8 @@
         "scope": "process",
         "path_expression": "In-memory _CONNECTION_LOCKS in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Shares Task database locks by database path until the last registry holding a lock releases its strong reference."
     },
     "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._runtime_module::yfinance-loaded-provider-runtime-module": {
       "owner": "alphalattice.foundation.market_data_ops",
@@ -3318,7 +3486,8 @@
         "scope": "process",
         "path_expression": "In-memory YFinanceMarketDataProvider._runtime_module in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the initialized yfinance runtime module until the provider instance is discarded."
     },
     "scripts/check_alpha_verification_impact.py::_case_file_facts_for::module-case-file-facts-for": {
       "owner": "devtools.architecture",
@@ -3337,7 +3506,8 @@
         "scope": "process",
         "path_expression": "In-memory _case_file_facts_for in its process/call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches case-study file imports and quoted dependency names by source root until the impact-check process exits."
     },
     "scripts/check_alpha_verification_impact.py::_product_graph::module-product-graph": {
       "owner": "devtools.architecture",
@@ -3356,7 +3526,8 @@
         "scope": "process",
         "path_expression": "In-memory _product_graph in its process/call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches product import graphs and case-study dependencies by source root until the impact-check process exits."
     },
     "scripts/check_alpha_verification_impact.py::_parent_tree::module-parent-tree": {
       "owner": "devtools.architecture",
@@ -3375,7 +3546,8 @@
         "scope": "process",
         "path_expression": "In-memory _parent_tree in its process/call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches unpacked parent source trees by Git revision until the impact-check process exits and removes their temporary directories."
     },
     "scripts/check_test_shape.py::_code_lines::module-code-lines": {
       "owner": "devtools.architecture",
@@ -3394,7 +3566,8 @@
         "scope": "process",
         "path_expression": "In-memory _code_lines in its process/call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches tokenized source-code lines by path and exact text, rebuilding on changed text or LRU eviction."
     },
     "scripts/materialize_claude_host.py::_cli_reference::module-cli-reference": {
       "owner": "alphalattice.interface.local_application",
@@ -3413,7 +3586,8 @@
         "scope": "process",
         "path_expression": "In-memory _cli_reference in its process/call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches CLI flags, request-field descriptions and outcome exit codes until the host-materialization process exits."
     },
     "scripts/check_playpen.py::<module>.main::mypy-incremental-analysis-cache-from-shipped-gate": {
       "owner": "devtools.architecture",
@@ -3432,7 +3606,8 @@
         "scope": "workspace",
         "path_expression": ".mypy_cache"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches mypy module analysis, rebuilding when tool version, relevant options, plugins, source contents or dependency metadata no longer match."
     },
     "scripts/check_playpen.py::<module>.main::ruff-validation-cache-from-shipped-gate": {
       "owner": "devtools.architecture",
@@ -3451,7 +3626,8 @@
         "scope": "workspace",
         "path_expression": ".ruff_cache"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches Ruff validation results for the selected source files, with reuse invalidated by changed source, tool version or configuration."
     },
     "scripts/playwright.ps1::<script>::npm-package-cache-used-by-shipped-playwright-setup": {
       "owner": "alphalattice.interface.local_application",
@@ -3471,7 +3647,8 @@
         "path_expression": "NPM configured cache root; npm ci uses NPM configuration without a product cache override"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "lifecycle_owner": "NPM; the product owns this declared invocation, not the shared tool cache lifecycle."
+      "lifecycle_owner": "NPM; the product owns this declared invocation, not the shared tool cache lifecycle.",
+      "description": "Caches npm package downloads used by pinned Playwright setup, with artifact validation and removal delegated to npm's cache owner."
     },
     "scripts/run_playpen_precommit.py::_prepare_environment.cache_root::shipped-pre-commit-uv-cache": {
       "owner": "devtools.architecture",
@@ -3490,7 +3667,8 @@
         "scope": "outside",
         "path_expression": "shared_default_hook_temp"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches Python package downloads and builds for local commit hooks, with refresh and removal delegated to uv under the selected temporary cache root."
     },
     "scripts/run_playpen_precommit.py::_prepare_environment.pre_commit_home::shipped-pre-commit-tool-repository-cache": {
       "owner": "devtools.architecture",
@@ -3509,7 +3687,8 @@
         "scope": "outside",
         "path_expression": "shared_default_hook_temp"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches pre-commit hook repositories and environments by repository, revision and dependencies, creating another entry when that key changes."
     },
     "scripts/check_alpha_verification_impact.py::_parent_tree.holder::shipped-impact-check-parent-tree-memo-files": {
       "owner": "devtools.architecture",
@@ -3528,7 +3707,8 @@
         "scope": "outside",
         "path_expression": "unknown: native TEMP/impact-parent-*"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Retains temporary parent source archives by Git revision until normal impact-check process exit removes their directories."
     },
     "scripts/release/public_closure.py::_python.optional_cache::shipped-closure-optional-import-scan-memo": {
       "owner": "devtools.architecture",
@@ -3547,7 +3727,8 @@
         "scope": "process",
         "path_expression": "In-memory _python.optional_cache in its process/call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches whether each parsed Python AST node is inside an optional import route until that source-file scan returns."
     },
     "scripts/release/public_manifest.py::validate_internal_id_history.cache::shipped-public-label-history-tree-memo": {
       "owner": "devtools.architecture",
@@ -3566,7 +3747,26 @@
         "scope": "process",
         "path_expression": "In-memory validate_internal_id_history.cache in its process/call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the frozen public-label policy read from each resolved Git commit until history validation returns."
+    },
+    "src/alphalattice/interface/local_application/message_catalog.cjs::messageWords::installed-id-projection": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/message_catalog.cjs::messageWords"
+      ],
+      "key": "unit key in the loaded checkout module; canonical Python id catalog owner",
+      "dependency_coverage": "Installed messages.json and catalog_words; fixed-install/process assumption",
+      "invalidation_rule": "Node process end; tests use a fresh process for each installed catalog",
+      "size_bound": "1 projection",
+      "bound_scope": "loaded checkout module",
+      "eviction": "Node process end",
+      "safe_to_drop": "Yes: recompute the same immutable installed catalog projection",
+      "location": {
+        "scope": "process",
+        "path_expression": "module-local cached words in src/alphalattice/interface/local_application/message_catalog.cjs"
+      },
+      "description": "Caches the Python message catalog's frozen identifier projection until the Node process exits."
     }
   }
 }

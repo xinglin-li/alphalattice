@@ -18,7 +18,6 @@ import json
 import os
 import re
 import shlex
-from collections import Counter
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -29,7 +28,11 @@ from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
 from alphalattice.interface.local_application.labels import titles_in
+from alphalattice.interface.local_application.message_catalog import catalog_words
 from alphalattice.interface.local_application.questions import person_question
+from alphalattice.interface.local_application.request_offers import (
+    offered_requests as offered_requests,
+)
 from alphalattice.kernel.shared_kernel.project_layout import (
     REFUSAL_WORDS_RESOURCE,
     command_prefix,
@@ -38,7 +41,100 @@ from alphalattice.kernel.shared_kernel.project_layout import (
 )
 
 SCHEMA_VERSION: Final = 1
+
+
+def _schema_branches(
+    spec: Mapping[str, Any], definitions: Mapping[str, Any]
+) -> list[Mapping[str, Any]]:
+    """Resolve the canonical schema's local reference and union alternatives."""
+    if "$ref" in spec:
+        spec = definitions.get(spec["$ref"].removeprefix("#/$defs/"), {})
+    options = spec.get("anyOf", spec.get("oneOf"))
+    return (
+        [part for option in options for part in _schema_branches(option, definitions)]
+        if options
+        else [spec]
+    )
+
+
+def _error_path(path: tuple[Any, ...], schema: Mapping[str, Any]) -> list[Any]:
+    """Keep declared properties and array indices, redacting supplied map keys."""
+    definitions = schema.get("$defs", {})
+    nodes, field = [schema], []
+    for part in path:
+        choices = [choice for node in nodes for choice in _schema_branches(node, definitions)]
+        if isinstance(part, int):
+            known = [item["items"] for item in choices if isinstance(item.get("items"), dict)]
+        else:
+            known = [
+                item["properties"][part] for item in choices if part in item.get("properties", {})
+            ]
+        nodes = known or [
+            item["additionalProperties"]
+            for item in choices
+            if isinstance(item.get("additionalProperties"), dict)
+        ]
+        field.append(part if known else "<unrecognized>")
+    return field
+
+
+def error_projection(
+    body: Mapping[str, Any],
+    *,
+    locations: list[tuple[Any, ...]] | None = None,
+    schema: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Add registry-owned errors with schema-declared paths, never supplied values or text."""
+    code = refusal_code(body) or body.get("latest_failure_code")
+    if not isinstance(code, str):
+        return {}
+    row = runtime_json("config/registries/refusals.json")["entries"].get(
+        (code or "").partition(":")[0], {}
+    )
+    if not row.get("category"):
+        return {}
+    carried = body.get("error_info") or {}
+    paths = (
+        locations
+        if locations is not None
+        else [tuple(item["field"]) for item in carried.get("field_violations", [])]
+    )
+    violations = []
+    field_words = str(worded("protocol.error.field"))
+    for path in paths:
+        field = _error_path(path, schema or {}) if locations is not None else list(path)
+        violations.append(
+            {
+                "field": field,
+                "message_id": "protocol.error.field",
+                "message": field_words.format(field=".".join(map(str, field))),
+            }
+        )
+    candidate = body.get("message_id", row.get("message_id"))
+    declared = runtime_json("config/registries/messages.json")["entries"].get(
+        candidate if isinstance(candidate, str) else "", {}
+    )
+    message_id = (
+        candidate
+        if declared.get("kind") == "MESSAGE" and not declared.get("arguments")
+        else "protocol.error.summary"
+    )
+    return {
+        "error_info": {
+            "category": row["category"],
+            "domain": row["owner"],
+            "reason": code,
+            "message_id": message_id,
+            "message": str(worded(message_id)).format(reason=code),
+            "field_violations": violations,
+        }
+    }
+
+
 SURFACE_USE: ContextVar[tuple[str, ...]] = ContextVar("surface_use", default=())
+READ_VIEW: ContextVar[tuple[str, tuple[str, ...], Callable[..., dict[str, Any]] | None]] = (
+    ContextVar("read_view", default=("compact", (), None))
+)
 
 
 @functools.cache
@@ -54,6 +150,8 @@ def deprecation_notices(
     """Disclose a retired interface only when this answer actually uses it."""
     manifest = agent_surface_manifest()
     used = set(SURFACE_USE.get()) | {f"operation:{operation}"}
+    if READ_VIEW.get()[0] == "full":
+        used.add("view:full")
     used.update(f"answer:{operation}.{key}" for key in body)
     used.update(f"request:Request.{key}" for key in request)
     for key in ("failure_code", "refused"):
@@ -62,7 +160,7 @@ def deprecation_notices(
     if isinstance(message, Mapping):
         used.add(f"message:RULES/{message.get('kind')}")
     notices = [
-        {"entry": key, **row}
+        {"entry": key, **row, "reason": worded(row.get("message_id", row.get("reason")))}
         for key, row in manifest["retirements"].items()
         if key in used and row["status"] == "Deprecated"
     ]
@@ -401,6 +499,8 @@ def refusal_words(
         ).replace("{subject}", subject),
         "next_action": found["next_action"],
     }
+    if found.get("message_id"):
+        words["detail"] = worded(found["message_id"])
     if base == "task_control.queue_full":
         words["next_requests"] = {"capacity": {"operation": "CPU_BUDGET_SHOW"}}
     if base in NETWORK_ACCESS_REFUSALS:
@@ -564,7 +664,7 @@ def worded_refusal(
         ),
     }
     offered = {"next_requests": words["next_requests"]} if "next_requests" in words else {}
-    return {**offered, **body, **missing}
+    return {**offered, **body, **missing, **error_projection(body)}
 
 
 def _refusal_body_problem(body: dict[str, Any], *, label: str) -> str | None:
@@ -1784,6 +1884,12 @@ def envelope(
         or owner.get("failure_code")
         or (refusal if isinstance(refusal, str) else None),
         "detail": worded(detail or owner.get("detail")),
+        **error_projection(owner | {"failure_code": failure_code or refusal_code(owner)}),
+        **(
+            {"closure_detail": worded(owner["closure_message_id"])}
+            if owner.get("closure_message_id")
+            else {}
+        ),
         "next_requests": owner.get("next_requests"),
         "timing": {"elapsed_seconds": round(elapsed_seconds, 3)},
         # This agent session's CLI launches, help and schema included (V364).
@@ -1809,6 +1915,12 @@ def answer_json(
     fields = {**{name: answer[name] for name in leading if name in answer}, **answer}
     if "data" in fields:
         fields["data"] = fields.pop("data")
+    if READ_VIEW.get()[0] == "full" and "surface_version" not in fields:
+        fields.update(deprecation_notices(fields.get("operation"), fields, {}))
+    if READ_VIEW.get()[0] == "summary":
+        render = READ_VIEW.get()[2]
+        assert render is not None
+        fields = render(fields, default=default)
     return json.dumps(fields, default=default)
 
 
@@ -1837,9 +1949,9 @@ def worded(detail: str | None) -> str | None:
     """
     if detail is None:
         return None
-    entry = runtime_json("config/registries/messages.json")["entries"].get(detail)
-    if entry is not None and entry["kind"] == "MESSAGE":
-        return str(entry["words"]["zh-CN" if ANSWER_LANGUAGE.get() == "zh" else "en"])
+    words = catalog_words().get(detail)
+    if words is not None:
+        return words["zh-CN" if ANSWER_LANGUAGE.get() == "zh" else "en"]
     return _chinese(detail) if ANSWER_LANGUAGE.get() == "zh" else detail
 
 
@@ -2015,73 +2127,6 @@ def choices(request: dict[str, object]) -> list[str]:
         if isinstance(value, dict):
             left += [f"{name}.{key}" for key in inner if value.get(key) is None]
     return left
-
-
-_ITEM_IDENTIFIERS = (
-    "entry_id",
-    "task_id",
-    "case_token",
-    "review_publication_hash",
-    "feature_trial_id",
-)
-"""What names a listed item's requests apart when two items offer one name: a history row by
-its entry, since one Task can have two reviews (V528)."""
-_OFFER_DEPTH = 5
-"""How deep the collector looks for offered requests: `workspace show`'s are three parts down
-(`intents.0.flows.factor`), and a deeper part offers none (V425)."""
-
-
-def offered_requests(body: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """Every next request an answer offers, wherever it sits (V135, V425).
-
-    The top level's by their names; a nested part's (each of the pending decisions, each flow
-    of `workspace show`'s intents) by its name, or, where two offer one name, by the name and
-    the part's identifier (``recovery:<task_id>``), or its place (``decisions.2``,
-    ``intents.0.flows.factor``) when it has none. The same named request offered twice is
-    listed once; distinct printed aliases remain sendable;
-    two items that name theirs alike keep both, each by its place (V528).
-
-    Args:
-        body: The owner's answer.
-
-    Returns:
-        Each offered request by the name ``--action`` takes.
-    """
-    found: list[tuple[str, str | None, str | None, dict[str, Any]]] = []
-    seen: set[str] = set()
-
-    def walk(value: Any, place: str | None, depth: int) -> None:
-        if isinstance(value, dict):
-            offered = value.get("next_requests")
-            if isinstance(offered, dict):
-                named = next((str(value[f]) for f in _ITEM_IDENTIFIERS if value.get(f)), None)
-                for name, request in offered.items():
-                    key = json.dumps((name, request), sort_keys=True, default=str)
-                    if isinstance(request, dict) and key not in seen:
-                        seen.add(key)
-                        found.append((name, named, place, request))
-            parts = [(key, inner) for key, inner in value.items() if key != "next_requests"]
-        elif isinstance(value, list):
-            parts = [(str(index), inner) for index, inner in enumerate(value)]
-        else:
-            return
-        if depth < _OFFER_DEPTH:
-            for key, inner in parts:
-                walk(inner, key if place is None else f"{place}.{key}", depth + 1)
-
-    walk(body, None, 0)
-    counts = Counter(name for name, _named, _place, _request in found)
-    labels = [
-        name if place is None or counts[name] == 1 else f"{name}:{named or place}"
-        for name, named, place, _request in found
-    ]
-    # Two different requests under one label keep both, each by its place, never the first
-    # alone: one Task's two reviews each offered their own export (V528).
-    clashes = Counter(labels)
-    requests: dict[str, dict[str, Any]] = {}
-    for label, (name, _named, place, request) in zip(labels, found, strict=True):
-        requests[f"{name}:{place}" if clashes[label] > 1 and place is not None else label] = request
-    return requests
 
 
 _STAND_IN: Final = re.compile(r"<[^<>]+>")
@@ -2352,7 +2397,9 @@ def join(parts: list[str], quoting: str) -> str:
     return " ".join(shlex.quote(str(part)) for part in parts)
 
 
-def output_retry(line: tuple[str, ...], path: Path) -> list[str] | None:
+def output_retry(
+    line: tuple[str, ...], path: Path, *, prefix: tuple[str, ...] | None = None
+) -> list[str] | None:
     """Keep the parsed command, replacing only its effective output option."""
     parts = list(line)
     end = parts.index("--") if "--" in parts else len(parts)
@@ -2360,7 +2407,8 @@ def output_retry(line: tuple[str, ...], path: Path) -> list[str] | None:
         option, equal, _value = parts[index].partition("=")
         if len(option) > 2 and option.startswith("--") and "--output".startswith(option):
             parts[index : index + (1 if equal else 2)] = [f"--output={path}"]
-            return [join([*command_prefix(), *parts], shell())]
+            entry = command_prefix() if prefix is None else prefix
+            return [join([*entry, *parts], shell())]
     return None
 
 

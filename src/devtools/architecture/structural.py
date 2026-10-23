@@ -7,6 +7,7 @@ import json
 import re
 from collections.abc import Mapping
 from enum import StrEnum
+from importlib.util import resolve_name
 from pathlib import Path
 from typing import Literal
 
@@ -230,6 +231,8 @@ class PackageArchitecture(_Contract):
 class PackageArchitectureRegistry(_Contract):
     schema_id: Literal["alphalattice.playpen.package-architecture"] = Field(alias="schema")
     packages: tuple[PackageArchitecture, ...] = Field(min_length=1)
+    deferred_imports: dict[str, str] = Field(default_factory=dict)
+    private_import_fences: dict[str, dict[str, str]] = Field(default_factory=dict)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_inventory(self) -> PackageArchitectureRegistry:
@@ -250,6 +253,12 @@ class PackageArchitectureRegistry(_Contract):
         )
         if unknown:
             raise ValueError(f"package architecture registry has unknown peers: {unknown}")
+        reasons = [
+            *self.deferred_imports.values(),
+            *(r for f in self.private_import_fences.values() for r in f.values()),
+        ]
+        if any(not reason.strip() for reason in reasons):
+            raise ValueError("package import declarations require their reason")
         return self
 
     @property
@@ -849,12 +858,125 @@ def package_architecture_violations(
     return tuple(sorted(violations))
 
 
+def import_contract_violations(
+    sources: Mapping[str, str],
+    *,
+    registry: PackageArchitectureRegistry,
+    modules: set[str] | None = None,
+) -> tuple[str, ...]:
+    """Enforce declared lazy modules and exact cross-owner private equality fences."""
+    modules = {n.removesuffix(".__init__") for n in (sources if modules is None else modules)}
+    roots = sorted(registry.packages, key=lambda r: -len(r.physical_namespace_target))
+
+    def owner(name: str) -> str:
+        for entry in roots:
+            prefix = entry.physical_namespace_target
+            if name == prefix or name.startswith(prefix + "."):
+                return entry.package_id
+        return ""
+
+    out: list[str] = []
+
+    def inspect_module(qualified: str, source: str) -> None:
+        module = qualified.removesuffix(".__init__")
+        tree = ast.parse(source)
+        parents = {
+            child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)
+        }
+        constants: dict[str, object] = {}
+        loaders = {"__import__", "importlib.import_module"}
+        for item in ast.walk(tree):
+            match item:
+                case (
+                    ast.Assign(targets=[ast.Name(id=name)], value=ast.Constant(value=value))
+                    | ast.AnnAssign(target=ast.Name(id=name), value=ast.Constant(value=value))
+                ) if item in tree.body:
+                    constants[name] = value
+                case ast.Import(names=names):
+                    loaders.update(
+                        (a.asname or a.name) + ".import_module"
+                        for a in names
+                        if a.name == "importlib"
+                    )
+                case ast.ImportFrom(module="importlib", names=names):
+                    loaders.update(a.asname or a.name for a in names if a.name == "import_module")
+        package = module if qualified.endswith(".__init__") else module.rpartition(".")[0]
+        constants["__package__"] = package
+        seen: set[tuple[str, str]] = set()
+
+        def literal(node: ast.AST | None) -> object:
+            return getattr(node, "value", constants.get(getattr(node, "id", "")))
+
+        def targets_of(node: ast.AST) -> list[str]:
+            match node:
+                case ast.Import(names=names):
+                    return [a.name for a in names]
+                case ast.ImportFrom(module=module, level=level, names=names):
+                    base = resolve_name("." * level + (module or ""), package) if level else module
+                    return [f"{base}.{a.name}" for a in names]
+                case ast.Call(func=func) if ast.unparse(func) in loaders:
+                    args = {k.arg: k.value for k in node.keywords}
+                    if node.args:
+                        args.setdefault("name", node.args[0])
+                    if len(node.args) > 1:
+                        args.setdefault("package", node.args[1])
+                    name = literal(args.get("name"))
+                    context = literal(args["package"]) if "package" in args else package
+                    if isinstance(name, str) and (
+                        not name.startswith(".") or isinstance(context, str)
+                    ):
+                        return [resolve_name(name, str(context)) if name.startswith(".") else name]
+            return []
+
+        def check(node: ast.AST) -> None:
+            targets = [t for t in targets_of(node) if t.startswith(("alphalattice.", "devtools."))]
+            if not targets:
+                return
+            ancestors = []
+            parent = parents.get(node)
+            while parent is not None:
+                if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    ancestors.append(parent)
+                parent = parents.get(parent)
+            scope = ".".join(n.name for n in reversed(ancestors)) or "<module>"
+            deferred = any(
+                isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) for n in ancestors
+            )
+            fence = registry.private_import_fences.get(module + "::" + scope, {})
+            located = f"{module}:{getattr(node, 'lineno', 0)}"
+            for target in targets:
+                imported = target if target in modules else target.rpartition(".")[0]
+                private = any(part.startswith("_") for part in target.split(".")) and owner(
+                    module
+                ) != owner(target)
+                if (
+                    deferred
+                    and imported not in registry.deferred_imports
+                    and not (private and target in fence)
+                ):
+                    out.append(f"{located}: unlisted-function-import {imported}")
+                if private:
+                    key = (scope, target)
+                    if target not in fence or key in seen:
+                        out.append(f"{located}: private-import {target}")
+                    seen.add(key)
+
+        for node in ast.walk(tree):
+            check(node)
+
+    for qualified, source in sources.items():
+        if qualified.startswith("alphalattice."):
+            inspect_module(qualified, source)
+    return tuple(sorted(out))
+
+
 def physical_namespace_violations(
     *, source_root: Path, registry: PackageArchitectureRegistry
 ) -> tuple[str, ...]:
     """Require every registered owner to occupy its declared physical namespace."""
 
     violations: list[str] = []
+    all_sources: list[Path] = []
     for contract in registry.packages:
         target = source_root / Path(*contract.physical_namespace_target.split("."))
         if not target.is_dir():
@@ -864,6 +986,7 @@ def physical_namespace_violations(
             )
             continue
         sources = tuple(sorted(target.rglob("*.py")))
+        all_sources.extend(sources)
         if not sources:
             violations.append(
                 f"{contract.package_id}: physical namespace has no tracked-style Python source"
@@ -877,7 +1000,11 @@ def physical_namespace_violations(
             violations.append(
                 f"{contract.package_id}: physical namespace resolves to {sorted(observed)}"
             )
-    return tuple(sorted(violations))
+    payloads = {
+        ".".join(p.relative_to(source_root).with_suffix("").parts): p.read_text(encoding="utf-8")
+        for p in all_sources
+    }
+    return tuple(sorted([*violations, *import_contract_violations(payloads, registry=registry)]))
 
 
 def discover_python_modules(
@@ -1149,6 +1276,7 @@ __all__ = [
     "discover_store_surface",
     "duckdb_access_mode_violations",
     "empty_python_package_directories",
+    "import_contract_violations",
     "load_artifact_authority_registry",
     "load_package_architecture_registry",
     "load_performance_baselines",

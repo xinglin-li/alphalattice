@@ -261,7 +261,7 @@ class AlternativeEvidenceRetrievalService:
         after embedding still shows the passages it cost, and query embeddings
         and cross-encoder pairs -- which no build count carries -- are here.
         """
-        from alphalattice.kernel.knowledge._embeddings import MODEL_WORK
+        from alphalattice.kernel.knowledge.runtime import MODEL_WORK
 
         return {
             "published_passage_embedding_passes": int(self.passage_embedding_pass_count),

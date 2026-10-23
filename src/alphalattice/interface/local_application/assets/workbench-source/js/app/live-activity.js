@@ -399,6 +399,7 @@ const LiveActivity = (() => {
   }
   function banners() {
     const out = [], o = S.observer;
+    if (o?.host?.instance && !S.error) out.push(noteLine(t('host.serving', o.host)));
     if (S.error) out.push(banner(t('Activity feed unreachable'), html`${S.error}<br>${t('A transport failure is not an execution failure: Tasks continue and their owners are re-read when the feed returns.')}`, 'warning'));
     if (o?.status === 'UNAVAILABLE') out.push(banner(t('Activity recording unavailable'), html`<span class="mono">${o.store_failure || ''}</span><br>${t('The product runs unobserved: operations, Tasks and results still work and are read through their own routes.')}${S.stale ? html`<br>${t('Entries shown are retained from before the store became unavailable; they are not current.')}` : ''}`, 'warning'));
     else if (o?.status === 'DEGRADED') out.push(banner(t('Activity recording degraded'), html`${t('{n} observations missing since {since}', {n: o.missing_observations, since: o.first_failure_at || ''})} · <span class="mono">${o.last_failure_code || o.hook_failure_type || o.entry_failure_type || ''}</span><br>${t(o.recording === 'OK' ? 'Recording works again; the gap remains a gap.' : 'Recording is still failing; operations and Tasks are unaffected.')}`, 'warning'));

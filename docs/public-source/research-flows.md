@@ -1,5 +1,5 @@
 # Research dependencies and results
-Date: 2026-10-08
+Last checked: 2026-10-22 against 0.2.3
 
 State the question you want answered. A prepared workspace or installed strategy starts from its strategy controls; new Factor, Alpha, Risk or Portfolio exploration follows the dependencies below. The [research-agent guide](../../AGENTS.md#choose-the-path-by-intent) owns the steps your agent takes from `workspace show` and each answer's offered requests.
 

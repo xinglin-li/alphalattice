@@ -5,6 +5,7 @@ import importlib.metadata
 import importlib.util
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -459,6 +460,30 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     assert notices["present"] is True and "who_decides" not in notices  # only a missing item's
     assert (project / ".codex" / BINDING_NAME).read_bytes() == binding_before_doctor
     assert not (project / ".codex/config.toml").exists()
+    monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
+    report["host_readiness"].append({"key": "中" * 8000, "detail": "中" * 12000})
+    monkeypatch.setattr(entry, "host_readiness", lambda *_: report["host_readiness"])
+    saved = tmp_path / "doctor.json"
+    line = ("--project", str(project), "doctor", "--view", "summary", "--output")
+    code, summary = run(*line, str(saved))
+    assert code == 0 and len(json.dumps(summary).encode()) < 32768
+    assert summary["full_answer"] == {"file": str(saved.resolve())}
+    expected = json.dumps({**report["attachment_preflight"], **report}).encode()
+    assert saved.read_bytes() == expected
+    for held in (b"{}", b'{"status":"REFUSED","task_id":"held"}'):
+        saved.write_bytes(held)
+        code, refusal = run(*line, str(saved))
+        assert code == 2
+        assert refusal["failure_code"] == "local_client.output_exists_choose_another_path"
+        assert refusal["path"] == str(saved) and refusal["detail"] and saved.read_bytes() == held
+    retry = shlex.split(refusal["next_commands"][0])
+    assert retry[1:3] == ["-m", "alphalattice.interface.local_application.native_setup"]
+    code, retried = run(*retry[3:])
+    assert code == 0 and Path(retried["output_file"]).read_bytes() == expected
+    code, failed = run(*line, str(saved / "answer.json"))
+    failed = failed["local_failure"]
+    assert code == 0 and failed["failure_code"] == "local_client.output_write_refused"
+    assert failed["path"] == str(saved / "answer.json") and failed["detail"]
     # The Codex host still reads its own file, and refuses without it.
     assert run("configure")[1]["status"] == "REFUSED"
 

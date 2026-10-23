@@ -38,6 +38,7 @@ from alphalattice.control.product_host.composition.portfolio_application import 
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
 )
+from alphalattice.control.product_host.composition.web_launcher import main
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
@@ -848,11 +849,23 @@ def _run_to_completion(session: LocalPortfolioWebSession) -> str:
     return str(results[0]["result_hash"])
 
 
+def serve_conflict(workspace, monkeypatch):
+    """Build an OS launch denial; descriptor, lease and HTTP authentication remain real."""
+
+    def denied(*args, **kwargs):
+        raise PermissionError("local_web.detached_breakaway_denied")
+
+    with monkeypatch.context() as build:
+        build.setattr(subprocess, "Popen", denied)
+        return main(["--workspace", str(workspace), "--no-browser", "--detach"])
+
+
 _CATALOG_READER = r"""
 const fs=require('fs'),vm=require('vm');
 const library = require(process.argv[2]);
 const [root,said]=[process.argv[1],JSON.parse(fs.readFileSync(0,'utf8'))];
 const c={window:{},document:{documentElement:{}},console};library.context(c);
+vm.runInContext(process.argv[3],c);
 vm.runInContext(fs.readFileSync(root+'/data/zh.js','utf8'),c);
 vm.runInContext(fs.readFileSync(root+'/app/i18n.js','utf8')+';globalThis.I18N=I18N;',c);
 c.I18N.set('zh');
@@ -868,8 +881,16 @@ def read_in_chinese(said: list[str], *, missing: str, required: bool) -> dict[st
     root = Path(__file__).resolve().parents[2] / (
         "src/alphalattice/interface/local_application/assets/workbench-source/js"
     )
+    from scripts import build_local_web_ui
+
     answer = run_node(
-        ["-e", _CATALOG_READER, str(root), str(Path(__file__).with_name("workbench_library.cjs"))],
+        [
+            "-e",
+            _CATALOG_READER,
+            str(root),
+            str(Path(__file__).with_name("workbench_library.cjs")),
+            getattr(build_local_web_ui, "messages_js", lambda: "")(),
+        ],
         missing=missing,
         required=required,
         input=json.dumps(said),

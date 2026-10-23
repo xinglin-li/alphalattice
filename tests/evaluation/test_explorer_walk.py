@@ -18,6 +18,14 @@ def _explorer(call, work, name, sentence, *, mutation_limit=None, **kwargs):
     return Explorer(call, lambda _: {}, scenario, work, mutation_limit=mutation_limit, **kwargs)
 
 
+def test_strategy_plan_mutations_reach_the_document_owner():
+    "A document probe removes its required field while retaining the operation envelope."
+    request = dict(operation="RESEARCH_STRATEGY_PLAN", experiment_document={"alpha_task_ids": [1]})
+    changed = [v for v in mutations(request, []) if v[0] == "drop-field"]
+    assert changed == [("drop-field", {**request, "experiment_document": {}}, "alpha_task_ids")]
+    assert request["experiment_document"] == {"alpha_task_ids": [1]}
+
+
 def test_alias_mistakes_change_the_alias_and_keep_the_members_words() -> None:
     """An alias mutation changes the referenced value without replacing its surrounding words."""
     message = {"kind": "CHALLENGE", "text": "H1 conflicts with T2.", "targets": ["H1"]}
@@ -156,13 +164,22 @@ def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: 
         "schema-fields",
         "schema-empty",
         "schema-duplicate",
+        "feature-good",
+        "feature-read-binding",
+        "feature-read-parent",
+        "feature-binding",
+        "feature-base",
+        "feature-parent",
+        "feature-field",
+        "feature-reason",
+        "feature-words",
     ],
 )
 @pytest.mark.parametrize("cost", (1, 1000))
 def test_an_injected_refusal_recovers_only_the_original_bound_step(
     tmp_path: Path, recovery: str, monkeypatch, cost
 ) -> None:
-    """A named refusal needs a filled recovery that admits the original operation and bindings."""
+    """Repair keeps exact source bindings and requires located fields to explain document faults."""
     monkeypatch.setattr(time, "monotonic", iter(range(0, 100000, cost)).__next__)
     request = {
         "operation": "COMMITTEE_SUBMIT",
@@ -170,28 +187,38 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         "committee_key": "a" * 32,
     }
     required = "plan_hash" if recovery == "changed-hash" else "update_task_id"
+    feature = recovery.startswith("feature-")
+    if feature:
+        required = "feature_document"
+        request = {
+            "operation": "FEATURE_CATALOG_PLAN",
+            required: dict(
+                input_binding_hash="input",
+                base_revision_hash="base",
+                parent_plan_hash="parent",
+                edits=[1],
+            ),
+        }
     if recovery == "changed-hash":
         request = {"operation": "MODEL_RUN", "plan_hash": "a" * 64}
-    discovery = recovery.startswith(("activity-", "tasks-", "packages-", "schema-"))
+    discovery = recovery.startswith(("activity-", "tasks-", "packages-", "schema-", "feature-"))
     read_data = {}
-    if recovery.startswith("schema-"):
+    if feature:
+        read_data = dict(
+            input_binding_hash="input",
+            base_revision={"revision_hash": "base"},
+            template={"parent_plan_hash": "parent"},
+        )
+    elif recovery.startswith("schema-"):
         required = "evidence_setup"
         request = {"operation": "EVIDENCE_INSTALL", required: "task-1"}
+        properties = {"operation": {"const": request["operation"]}, required: {"type": "string"}}
+        if recovery == "schema-operation":
+            properties["operation"]["const"] = "TASKS"
+        if recovery == "schema-fields":
+            del properties[required]
         read_data = (
-            {
-                "operation_schema": {
-                    "properties": {
-                        "operation": {
-                            "const": "TASKS"
-                            if recovery == "schema-operation"
-                            else request["operation"]
-                        },
-                        **({} if recovery == "schema-fields" else {required: {"type": "string"}}),
-                    }
-                }
-            }
-            if recovery != "schema-empty"
-            else {}
+            {"operation_schema": {"properties": properties}} if recovery != "schema-empty" else {}
         )
     elif recovery.startswith("packages-"):
         required = "strategy_package_id"
@@ -204,54 +231,52 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
     elif recovery.startswith("activity-"):
         required = "update_plan_hash"
         request = {"operation": "RESEARCH_UPDATE_RUN", required: "a" * 64}
-        read_data = {
-            "items": []
-            if recovery == "activity-empty"
-            else [
-                {
-                    "payload": {
-                        "phase": "REQUESTED" if recovery == "activity-phase" else "RETURNED",
-                        "status": "REFUSED" if recovery == "activity-status" else "PLANNED",
-                        "operation": "DATA_UPDATE_PLAN"
-                        if recovery == "activity-operation"
-                        else "RESEARCH_UPDATE_PLAN",
-                        "subject": {
-                            required: "b" * 64 if recovery == "activity-hash" else "a" * 64
-                        },
-                    }
-                }
-            ]
-        }
+        payload = dict(
+            phase="REQUESTED" if recovery == "activity-phase" else "RETURNED",
+            status="REFUSED" if recovery == "activity-status" else "PLANNED",
+            operation="DATA_UPDATE_PLAN"
+            if recovery == "activity-operation"
+            else "RESEARCH_UPDATE_PLAN",
+            subject={required: "b" * 64 if recovery == "activity-hash" else "a" * 64},
+        )
+        read_data = {"items": [] if recovery == "activity-empty" else [{"payload": payload}]}
     elif recovery.startswith("tasks-"):
-        read_data = {
-            "tasks": []
-            if recovery == "tasks-empty"
-            else [
-                {
-                    "task_id": "task-2" if recovery == "tasks-id" else "task-1",
-                    "task_kind": "portfolio_run"
-                    if recovery == "tasks-kind"
-                    else "portfolio_public_watermark_advancement",
-                    "lifecycle": "RUNNING" if recovery == "tasks-lifecycle" else "SUCCEEDED",
-                }
-            ]
-        }
+        task = dict(
+            task_id="task-2" if recovery == "tasks-id" else "task-1",
+            task_kind="portfolio_run"
+            if recovery == "tasks-kind"
+            else "portfolio_public_watermark_advancement",
+            lifecycle="RUNNING" if recovery == "tasks-lifecycle" else "SUCCEEDED",
+        )
+        read_data = {"tasks": [] if recovery == "tasks-empty" else [task]}
+    original = json.loads(json.dumps(request))
     sent: list[dict[str, Any]] = []
     repaired = dict(request)
     if recovery in {"wrong-read", "located-read", "owned-read", "empty-read"}:
         repaired = {"operation": "COMMITTEE_READ", "update_task_id": "task-1"}
     elif discovery:
         repaired = {
-            "operation": "WORKSPACE_SHOW"
-            if recovery.startswith("packages-")
-            else "OPERATION_LIST"
-            if recovery.startswith("schema-")
-            else "ACTIVITY_LIST"
-            if recovery.startswith("activity-")
-            else "TASKS"
+            "operation": {
+                "feature": "FEATURE_CATALOG_CONTROLS",
+                "packages": "WORKSPACE_SHOW",
+                "schema": "OPERATION_LIST",
+                "activity": "ACTIVITY_LIST",
+                "tasks": "TASKS",
+            }[recovery.partition("-")[0]]
         }
         if recovery.startswith("schema-"):
             repaired["schema_operation"] = request["operation"]
+        if feature:
+            repaired.update(input_binding_hash="input", feature_plan_hash="parent")
+            target = {
+                "feature-read-binding": (repaired, "input_binding_hash"),
+                "feature-read-parent": (repaired, "feature_plan_hash"),
+                "feature-binding": (read_data, "input_binding_hash"),
+                "feature-base": (read_data["base_revision"], "revision_hash"),
+                "feature-parent": (read_data["template"], "parent_plan_hash"),
+            }.get(recovery)
+            if target:
+                target[0][target[1]] = "wrong"
     elif recovery in {"wrong-binding", "wrong-write"}:
         repaired["update_task_id"] = "task-2"
     elif recovery == "changed-hash":
@@ -264,7 +289,10 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         sent.append(document)
         if discovery and document == repaired:
             return {"operation": document["operation"], "outcome": "OK", "data": read_data}
-        if document.get(required) and argv[1] == "--file" and recovery != "schema-duplicate":
+        value = document.get(required)
+        if feature and isinstance(value, dict):
+            value = value.get("edits")
+        if value and argv[1] == "--file" and recovery != "schema-duplicate":
             return {
                 "operation": document["operation"],
                 "outcome": "UNAVAILABLE" if recovery == "unavailable" else "OK",
@@ -283,6 +311,15 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         }
         if recovery in {"located", "located-read", "empty-read"} or discovery:
             answer["reasons"] = {required: "required"}
+        if feature:
+            answer.update(
+                failure_code="feature_research.document_invalid",
+                fields=[["other" if recovery == "feature-field" else "edits"]],
+                reasons={"edits": "" if recovery == "feature-reason" else "missing"},
+                message="Field required"
+                if recovery == "feature-words"
+                else "edits: Field required",
+            )
         if recovery == "owned-read":
             answer.update(
                 failure_code="committee.message_refused:TARGET",
@@ -311,6 +348,7 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
             "TASKS",
             "WORKSPACE_SHOW",
             "OPERATION_LIST",
+            "FEATURE_CATALOG_CONTROLS",
         },
         mutation_limit=2 if recovery == "walk" else None,
         mutation_kinds={"drop-field"} if recovery == "walk" else None,
@@ -328,6 +366,7 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         explorer.inject(
             request,
             "committee",
+            fields={"edits"} if feature else None,
             **(
                 {"baseline": {"outcome": "OK", "data": {"task_id": "held"}}}
                 if recovery == "schema-duplicate"
@@ -335,6 +374,7 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
             ),
         )
     clean = recovery in {
+        "feature-good",
         "schema-good",
         "filled",
         "located",
@@ -353,16 +393,12 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
     )
     assert explorer.mutation_checks[0]["words_state_rule"] == (
         (recovery in {"located", "located-read", "owned-read", "empty-read", "usage"} or discovery)
-        and recovery != "schema-duplicate"
+        and recovery not in {"schema-duplicate", "feature-field", "feature-reason", "feature-words"}
     )
     assert explorer.mutation_checks[0]["owner"] == "committee.py"
-    assert (required in sent[0]) == (recovery == "schema-duplicate") and request[required] == (
-        "installed"
-        if recovery.startswith("packages-")
-        else "a" * 64
-        if recovery == "changed-hash" or recovery.startswith("activity-")
-        else "task-1"
-    )
+    assert request == original
+    probed = sent[0][required] if feature else sent[0]
+    assert (("edits" if feature else required) in probed) == (recovery == "schema-duplicate")
     if clean:
         assert sent[-1] == request
     elif recovery == "loop":

@@ -37,7 +37,9 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from functools import wraps
+from time import monotonic
+from typing import Literal, Protocol, TypeVar, cast
 from uuid import UUID
 
 from alphalattice.control.task_control.contracts import (
@@ -45,6 +47,22 @@ from alphalattice.control.task_control.contracts import (
     TaskRecord,
     TaskSafeProjection,
 )
+
+
+class _DispatcherClosed(RuntimeError):
+    """The existing closed admission, distinguished from a failed optional callback."""
+
+
+_Value = TypeVar("_Value")
+
+
+def _admitted[Function: Callable[..., object]](method: Function) -> Function:
+    @wraps(method)
+    def run(self: LocalBackgroundDispatcher, *args: object, **kwargs: object) -> object:
+        return self._admit(lambda: method(self, *args, **kwargs))
+
+    return cast(Function, run)
+
 
 CommandDisposition = Literal[
     "ADMITTED",
@@ -254,8 +272,12 @@ class LocalBackgroundDispatcher:
     it in the queue. Each is driven again once the place is free, in admission order."""
     _owned_tasks: set[UUID] = field(default_factory=set, init=False, repr=False)
     """Submitted here or restored with an installed command under the Host lease."""
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    _lock: threading.Condition = field(default_factory=threading.Condition, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
+    _admitting: int = field(default=0, init=False, repr=False)
+    _generation: int = field(default=0, init=False, repr=False)
+    _depth: threading.local = field(default_factory=threading.local, init=False, repr=False)
+    _last_needed: float = field(default_factory=lambda: monotonic(), init=False, repr=False)
     admissions: int = field(default=0, init=False)
     executions: int = field(default=0, init=False)
     _idle: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
@@ -268,11 +290,80 @@ class LocalBackgroundDispatcher:
 
     # ------------------------------------------------------------- lifecycle
 
+    def _admit(self, action: Callable[[], _Value], activity: bool = True) -> _Value:
+        """Reserve an admitted action through its nested handoffs, outside the state lock."""
+        depth = getattr(self._depth, "value", 0)
+        with self._lock:
+            if self._closed and not depth:
+                raise _DispatcherClosed("local_application.dispatcher_closed")
+            self._admitting += 1
+            self._generation += activity
+        self._depth.value = depth + 1
+        try:
+            return action()
+        finally:
+            self._depth.value = depth
+            with self._lock:
+                self._admitting -= 1
+                if activity:
+                    self._last_needed = monotonic()
+                self._lock.notify_all()
+
+    def _begin_drain(self) -> None:
+        """Refuse new top-level work while admitted handoffs finish."""
+        with self._lock:
+            self._closed = True
+
+    def _idle_busy(self) -> bool:
+        """Read the current busy facts while the caller holds the admission lock."""
+        return any(
+            (
+                self._admitting,
+                self._running,
+                self._work.unfinished_tasks,
+                self._idle_again,
+                self._idle.locked(),
+            )
+        )
+
+    def _idle_expired(self, seconds: int, needed: Callable[[], bool]) -> bool:
+        """Claim idle shutdown only after owner reads and admission facts agree."""
+        now = monotonic()
+        with self._lock:
+            if not seconds or self._closed or self._idle_busy():
+                return False
+            if now < self._last_needed + seconds:
+                return False
+            generation, owned = self._generation, self._owned_tasks.difference(self._failures)
+        try:
+            keep = needed() or any(
+                task.task_id in owned
+                and task.lifecycle
+                in {
+                    TaskLifecycle.QUEUED,
+                    TaskLifecycle.RUNNING,
+                    TaskLifecycle.DEFERRED,
+                    TaskLifecycle.RECOVERY_REQUIRED,
+                }
+                for task in self.status_port.tasks()
+            )
+        except Exception:
+            keep = True
+        with self._lock:
+            if keep:
+                self._last_needed = max(self._last_needed, now)
+            if keep or self._closed or self._generation != generation or self._idle_busy():
+                return False
+            if monotonic() < self._last_needed + seconds:
+                return False
+            self._closed = True
+            return True
+
     def start(self) -> None:
         """Begin the workers the running places want. Idempotent: a service may call it often."""
         with self._lock:
-            if self._closed:
-                raise RuntimeError("local_application.dispatcher_closed")
+            if self._closed and not getattr(self._depth, "value", 0):
+                raise _DispatcherClosed("local_application.dispatcher_closed")
             added = [
                 threading.Thread(
                     target=self._drain, name="local-application-dispatcher", daemon=False
@@ -303,17 +394,22 @@ class LocalBackgroundDispatcher:
         keep holding whatever that writer needs -- not to carry on with cleanup.
         Calling again resumes the join rather than reporting success.
         """
+        deadline = None if timeout is None else time.monotonic() + timeout
         with self._lock:
             self._closed = True
+            while self._admitting:
+                left = None if deadline is None else deadline - time.monotonic()
+                if left is not None and left <= 0:
+                    return False
+                self._lock.wait(left)
             workers = list(self._workers)
-        deadline = None if timeout is None else time.monotonic() + timeout
         # Work admitted before the close runs before the workers stop, as a queued command
         # always did; a command waiting its turn is driven again when the running ones return.
         with self._work.all_tasks_done:
             while workers and self._work.unfinished_tasks:
                 left = None if deadline is None else deadline - time.monotonic()
                 if threading.current_thread() in workers or (left is not None and left <= 0):
-                    break
+                    return False
                 self._work.all_tasks_done.wait(left)
         for _worker in workers:
             self._work.put(None)
@@ -344,6 +440,7 @@ class LocalBackgroundDispatcher:
 
     # -------------------------------------------------------------- submit
 
+    @_admitted
     def submit(self, command: LocalApplicationCommand) -> CommandSubmission:
         """Admit one command and return the task it owns. Never waits for the work.
 
@@ -352,9 +449,6 @@ class LocalBackgroundDispatcher:
         needs *now*, and all three are Task Control's to state.
         """
         submitted_at = self.clock()
-        with self._lock:
-            if self._closed:
-                raise RuntimeError("local_application.dispatcher_closed")
         try:
             admission = command.admit()
         except self.queue_full_error as error:
@@ -392,6 +486,7 @@ class LocalBackgroundDispatcher:
             lifecycle=admission.lifecycle,
         )
 
+    @_admitted
     def resume(
         self,
         commands: dict[str, LocalApplicationCommand],
@@ -689,16 +784,19 @@ class LocalBackgroundDispatcher:
                 self._notify_returned(command.command_kind, task_id)
                 self.drive_waiting()
             finally:
-                self._work.task_done()
                 with self._lock:
+                    self._last_needed = monotonic()
                     callback = self.on_idle if not self._running and not self._closed else None
-                if callback is not None:
-                    self._idle_again = True
+                    if callback is not None:
+                        self._idle_again = True
+                self._work.task_done()
                 while callback is not None and self._idle.acquire(blocking=False):
                     try:
                         while self._idle_again:
                             self._idle_again = False
-                            callback()
+                            self._admit(callback)
+                    except _DispatcherClosed:
+                        pass  # A manual stop won before this optional wake was admitted.
                     except Exception:
                         # An optional wake observer is not allowed to kill the
                         # Task worker or change a published Task's lifecycle.

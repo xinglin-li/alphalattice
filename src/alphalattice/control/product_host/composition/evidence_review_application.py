@@ -24,6 +24,13 @@ from pydantic import Field, TypeAdapter, ValidationError, model_validator
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
+from alphalattice.control.product_host.composition.evidence_review_resume import (
+    CURRENT_WITHIN,
+    answered_units,
+    current_answers,
+    resumed,
+    unanswered,
+)
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     EVIDENCE_INSTALL_TASK_KIND,
     on_official_source,
@@ -403,6 +410,7 @@ class ResolvedCoverage:
     resolved: ResolvedBookScope
     run: AlternativeEvidenceCoverageRun
     prepare_only: bool
+    answered: frozenset[str] = frozenset()
 
 
 _QuestionRecord = tuple[ResolvedEvidenceQuestion, AlternativeEvidenceAnalysisPublication]
@@ -917,12 +925,6 @@ _CHECKS_ITEM = "checks:"
 """The delivery item of one issuer's reported checks in a dossier read."""
 
 
-CURRENT_WITHIN = timedelta(seconds=604_800)
-"""The longest analysis TTL a request admits (`AlternativeEvidenceRequest.ttl_seconds`):
-an analysis is published at or after its cutoff, so one published before now less this
-has expired, and a reader of current analyses reads no older record (Z2)."""
-
-
 class EvidenceTaskContext(AlternativeEvidenceContract):
     """The admission's display facts, captured from its verified book."""
 
@@ -1365,6 +1367,7 @@ class EvidenceReviewApplication:
         evidence_as_of: datetime,
         prepare_only: bool = True,
         read_inventory: bool = False,
+        resume: bool = False,
     ) -> ResolvedCoverage:
         """Open the book and seal every unit it is owed at this cutoff.
 
@@ -1376,6 +1379,8 @@ class EvidenceReviewApplication:
         if adapter is None:
             raise PortfolioEvidenceReviewError("product_host.evidence_task_adapter_absent")
         resolved = self.resolve_book(selector)
+        if resume and (kept := resumed(self, resolved.scope)):
+            return ResolvedCoverage(resolved, kept[0], prepare_only, kept[1])
         policy = (
             replace(self.evidence_policy, admit_model_review=False)
             if prepare_only
@@ -1400,7 +1405,7 @@ class EvidenceReviewApplication:
                 == (policy.network_consent, policy.admit_live_official, policy.admit_model_review)
                 and all(self.evidence_policy.matches(unit.request) for unit in sealed.units)
             ):
-                return ResolvedCoverage(resolved=resolved, run=sealed, prepare_only=prepare_only)
+                return ResolvedCoverage(resolved, sealed, prepare_only)
         if (
             read_inventory
             and policy.mode is not AlternativeEvidenceMode.RECORDED
@@ -1435,7 +1440,7 @@ class EvidenceReviewApplication:
             carried=counted.carried,
             read_filings=counted.read_filings,
         )
-        return ResolvedCoverage(resolved=resolved, run=run, prepare_only=prepare_only)
+        return ResolvedCoverage(resolved, run, prepare_only)
 
     def _source_acquisition_refusal(
         self, *, evidence_as_of: datetime | None = None, caller: str = "HUMAN"
@@ -1775,30 +1780,15 @@ class EvidenceReviewApplication:
         self, *, question: ResolvedEvidenceQuestion
     ) -> AlternativeEvidenceAnalysisPublicationView | None:
         """The one current publication answering this exact obligation, or nothing."""
-        service = self.evidence_publications
-        if service is None:
-            return None
         now = self.clock()
-        matches = []
-        for publication in analysis_records(
-            self.artifacts, self._publication_days(), now - CURRENT_WITHIN
-        ):
-            if (
-                publication.obligation_hash != question.obligation.obligation_hash
-                or service.standing(publication, now=now) != "CURRENT"
-            ):
-                continue
-            request = self.artifacts.load(
-                "requests", publication.request_hash, AlternativeEvidenceRequest
-            )
-            if self.evidence_policy.matches(request):
-                matches.append(publication)
+        matches = current_answers(self, {question.obligation.obligation_hash}, now=now)
         if len(matches) > 1:
             raise EvidenceSelectionAmbiguous(
                 "product_host.evidence_review_evidence_ambiguous:"
                 + ",".join(sorted(value.publication_hash[:12] for value in matches))
             )
-        return service.replay(matches[0].publication_hash, now=now) if matches else None
+        service = self.evidence_publications
+        return service.replay(matches[0].publication_hash, now=now) if service and matches else None
 
     def _obligation_matches_scope(
         self,
@@ -2027,7 +2017,7 @@ class EvidenceReviewApplication:
                 "claim": "No Task, acquisition or model work performed.",
             }
         now = self.clock()
-        coverage = self.resolve_coverage(chosen, evidence_as_of=now, prepare_only=True)
+        coverage = self.resolve_coverage(chosen, evidence_as_of=now, prepare_only=True, resume=True)
         resolved, run = coverage.resolved, coverage.run
         scope = resolved.scope
         resources = adapter.resources
@@ -2210,7 +2200,7 @@ class EvidenceReviewApplication:
                     if unit["prepared_task_id"] is not None
                 ]
             ),
-            "next_requests": with_analyst_bundles(next_requests),
+            "next_requests": with_analyst_bundles(unanswered(next_requests, coverage.answered)),
             "claim": (
                 "Preview performs no acquisition and grants no source/network permission. "
                 "Preparation revalidates current authority and dates at submission; the "
@@ -2696,7 +2686,7 @@ class EvidenceReviewApplication:
         """Read the exact packet requests answered by a preparation task or its coverage units.
 
         The packet request(s) a preparation Task answers: one for a single
-        preparation, one per unit for a coverage run.
+        preparation, one per unit for a coverage run that no current analysis answers yet.
         """
         chosen = self.default_selector(selector)
         if chosen is None:
@@ -2711,6 +2701,7 @@ class EvidenceReviewApplication:
         if run is None:
             packet = {"operation": "EVIDENCE_PACKET", **fields, "task_id": str(task_id)}
             return with_analyst_bundles({"packet": packet})
+        answered = answered_units(self, run)
         return with_analyst_bundles(
             {
                 f"packet_{unit.unit_id}": {
@@ -2720,6 +2711,7 @@ class EvidenceReviewApplication:
                     "evidence_unit_id": unit.unit_id,
                 }
                 for unit in run.units
+                if unit.unit_id not in answered
             }
         )
 

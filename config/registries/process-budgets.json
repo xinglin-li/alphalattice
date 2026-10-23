@@ -629,6 +629,31 @@
         "method": "Static defining-module imports/path references and distinctive symbol matches; includes tests/declarations, not runtime proof.",
         "scope": "Public static references; private maintainer reader evidence is tracked separately."
       }
+    },
+    "attached_retrieval_host_child": {
+      "owner": "src/alphalattice/control/product_host/composition/web_launcher.py",
+      "owner_package": "alphalattice.control.product_host.composition",
+      "defined_by": "src/alphalattice/control/product_host/composition/web_launcher.py::attached_child",
+      "budget_ref": "host",
+      "requests": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "limits": {
+        "memory_bytes": "undeclared",
+        "cpu": "undeclared",
+        "wall_time_seconds": "undeclared"
+      },
+      "execution_controls": [
+        {
+          "name": "Windows parent-owned anonymous Job",
+          "source": "src/alphalattice/control/product_host/composition/process_job.py::ChildJob",
+          "expression": "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE; suspended child assigned before resume",
+          "scope": "lifetime ownership, not a resource quota; parent is the only Job handle owner"
+        }
+      ],
+      "note": "Attached retrieval-environment Host child. Existing Host budgets apply. POSIX retains subprocess.call behavior; detached launch bypasses this boundary. Process creation precedes assignment, so parent loss during that interval can leave a suspended child; no Host work starts before assignment."
     }
   },
   "console_windows": 0,

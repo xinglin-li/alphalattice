@@ -44,9 +44,29 @@ from .cli_contract import (
 )
 
 
+class ErrorInfo(BaseModel):  # type: ignore[misc]
+    """Registered error metadata supplements the unchanged owner answer."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, use_attribute_docstrings=True)
+    category: str
+    """The committed registry category; it grants no retry authority."""
+    domain: str
+    """The refusal registry's owning domain."""
+    reason: str
+    """The exact safe failure code, including its admitted suffix."""
+    message_id: str
+    """The shared bilingual catalog id."""
+    message: str
+    """The catalog's localized words, without supplied values or exception text."""
+    field_violations: list[dict[str, Any]]
+    """Safe typed field paths and catalog words; unknown keys use <unrecognized>."""
+
+
 class _Answer(BaseModel):  # type: ignore[misc]
     # Each field's meaning is its docstring, which `alphalattice schema show` prints (SC3).
     model_config = ConfigDict(extra="allow", frozen=True, use_attribute_docstrings=True)
+    error_info: ErrorInfo | None = None
+    """Optional registered error metadata, independent of Task state and exit code."""
 
 
 class TaskStatusAnswer(_Answer):
@@ -495,6 +515,7 @@ class TaskGuardianAnswer(_Answer):
 _DECLARED: Final = Path(__file__).with_name("answers.json")
 """Every operation's answer the models above leave out, a row each (V410)."""
 _KINDS: Final[dict[str, Any]] = {
+    "error_info": ErrorInfo,
     "string": str,
     "integer": int,
     "number": float,

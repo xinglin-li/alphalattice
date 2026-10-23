@@ -199,7 +199,7 @@
         "alphalattice.control.research_program.authoring.workflow"
       ],
       "folds_in": [],
-      "note": "level 1 with no peers: only code importing level 0 alone may move there (V213) The Host's research_authoring files are its composition (O3, 2026-09-29): the Desk handoffs, the drafts that compose the Host's input envelope with a Desk's installed domain, the authority resolver over the workspace, and the paired methodology's source resolver over five owners' stores; their one-owner helpers adapt an owner's store to the workspace or translate its refusal into the authoring vocabulary. The Desk computations they held moved: the execution-outcome selection to causal outcomes and the development Alpha mandate to Alpha. One component's lifecycle admission moved to Alpha's scores/lifecycle_preparation.py with MODEL_KERNEL's rotation for V365 and V366 (V325, 2026-10-01). The Host composition/research_experiment_plan.py owns its existing sealed Task-plan adapter and validation; application-local bounded plan memos rebuild through that same validator."
+      "note": "level 1 with no peers: only code importing level 0 alone may move there (V213) The Host's research_authoring files are its composition (O3, 2026-09-29): the Desk handoffs, the drafts that compose the Host's input envelope with a Desk's installed domain, the authority resolver over the workspace, and the paired methodology's source resolver over five owners' stores; their one-owner helpers adapt an owner's store to the workspace or translate its refusal into the authoring vocabulary. The Desk computations they held moved: the execution-outcome selection to causal outcomes and the development Alpha mandate to Alpha. One component's lifecycle admission moved to Alpha's scores/lifecycle_preparation.py with MODEL_KERNEL's rotation for V365 and V366 (V325, 2026-10-01). The Host composition/research_experiment_plan.py owns its existing sealed Task-plan adapter and validation; application-local bounded plan memos rebuild through that same validator. composition/plain_refusals owns invalid Feature and strategy document recovery for the two PLAN consumers in portfolio_research_operations; CLI, Host and Workbench read the same located refusal and bound discovery offers."
     },
     "the agent seam": {
       "covers": "an agent's submissions, provenance and readable answer/bundle moments",
@@ -396,7 +396,7 @@
       "folds_in": []
     },
     "native session": {
-      "covers": "an agent Session bound to the workspace and its members: the binding, each member's usage read from the host's own session files, which role each member is by the key evidence its file holds, and the wake, and the Workbench launch each Session's first answer offers once",
+      "covers": "an agent Session bound to the workspace and its members: the binding, each member's usage read from the host's own session files, which role each member is by the key evidence its file holds, and the wake, and one-use Workbench launches on each Session's first answer and its completed Goal, with the sealed Goal selector",
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
         "alphalattice.interface.local_application.native_bridge",
@@ -595,14 +595,16 @@
       "consumer_basis": {
         "source_commit": "814997a8aec5acb67770805c2b393bf76f3b5368",
         "scope": "Static import, path and string references to public consumers; matches do not prove runtime execution."
-      }
+      },
+      "description": "Check architecture contracts and retain reviewed registry gaps so unexplained source and registry additions are refused."
     },
     "knowledge retrieval": {
       "covers": "local retrieval contracts, verified model-pack proofs and leased model sessions",
       "owner": "alphalattice.kernel.knowledge",
       "defined_by": [
         "alphalattice.kernel.knowledge.hybrid_contracts",
-        "alphalattice.kernel.knowledge._embeddings"
+        "alphalattice.kernel.knowledge._embeddings",
+        "alphalattice.kernel.knowledge.runtime"
       ],
       "input_contracts": [
         "PairScoreAdmission"
@@ -2351,19 +2353,23 @@
       }
     },
     "product Host composition": {
-      "covers": "the served product composition for a workspace: constructing its application session and operation owners, wiring their routes into the local Web service, publishing and removing live client discovery, and starting and closing the Host and its owned components",
+      "covers": "the served product composition for a workspace: constructing its application session and operation owners, wiring their routes into the local Web service, publishing and removing live client discovery, and starting and closing the Host and its owned components; authenticated reuse and serving instance/process/start-time provenance through the existing Activity observer; Windows attached retrieval-child Job lifetime, owned by its CLI parent",
       "owner": "alphalattice.control.product_host",
       "defined_by": [
         "alphalattice.control.product_host.composition.entry",
         "alphalattice.control.product_host.composition.application_session",
         "alphalattice.control.product_host.composition.local_web_session",
         "alphalattice.control.product_host.composition.local_web_connection",
-        "alphalattice.control.product_host.composition.web_launcher"
+        "alphalattice.control.product_host.composition.web_launcher",
+        "alphalattice.control.product_host.composition.native_usage_reader",
+        "alphalattice.control.product_host.composition.research_update_automation",
+        "alphalattice.control.product_host.composition.process_job"
       ],
       "folds_in": [],
       "note": "This root composes the registered noun owners; it does not redefine their records or decisions. The committee and first-use entries retain their narrower composition ownership. HTTP routing, authorization, request/response types, service transport and connection metadata remain the interface.local_application definitions that this root consumes.",
       "consumers": {
         "import": [
+          "scripts/agent_eval/runners/owned_runner.py:16",
           "scripts/bind_local_web_data_workspace.py:13",
           "scripts/bind_local_web_research_inputs.py:15",
           "scripts/bind_local_web_research_inputs.py:18",
@@ -3604,7 +3610,12 @@
           "tests/structural/test_product_scripts_answer_their_writes.py:29",
           "tests/structural/test_registries.py:236",
           "tests/structural/test_registries.py:241",
-          "tests/workspace_readiness/test_workspace_preparation.py:1426"
+          "tests/workspace_readiness/test_workspace_preparation.py:1426",
+          "src/alphalattice/control/product_host/composition/web_launcher.py::_failed_start",
+          "src/alphalattice/control/product_host/composition/workspace_activity.py::observer_state",
+          "src/alphalattice/interface/local_application/assets/workbench-source/js/app/live-activity.js::banners",
+          "AGENTS.md",
+          ".agents/skills/alphalattice-research/references/operating.md"
         ]
       },
       "consumer_basis": {
@@ -4295,7 +4306,7 @@
     },
     "evaluation workflows": {
       "owner": "devtools.evaluation",
-      "covers": "evaluation scenarios, validated replay inputs and fixture acquisition receipts, deterministic walks, graders and evaluation records",
+      "covers": "evaluation scenarios, validated replay inputs and fixture acquisition receipts, deterministic and model-free baseline walks, graders, issued native tool and CLI observations with result-less and resumed calls, and evaluation records; daily closure readiness from owner snapshots and final Goal/report/rendered-page fidelity including observed paginated numeric cells and the supplied closing link; committee evaluation participants use their own role sessions and staged admission receipts, with historical fixture adapters explicitly named; served scripted actors keep actual issued CLI and file tool receipts distinct from native execution and continue from their admitted PM verdict",
       "defined_by": [
         "devtools.evaluation.forms",
         "devtools.evaluation.committee",
@@ -4454,7 +4465,7 @@
       }
     },
     "person question": {
-      "covers": "registered person-question codes, bilingual words, reply metadata and code-only asked/answered observations projected from the existing ledger; authority stays with the existing decision owners",
+      "covers": "registered person-question codes, bilingual words, reply metadata and code-only asked/answered observations projected from the existing ledger; authority stays with the existing decision owners; current observed instances project per code and Goal, else session, without granting authority",
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
         "alphalattice.interface.local_application.questions"
@@ -4464,18 +4475,28 @@
     "message catalog": {
       "owner": "alphalattice.interface.local_application",
       "covers": "stable semantic message ids, locale forms and named arguments; the registry guard holds the contract before owner migrations",
-      "defined_by": [],
+      "defined_by": [
+        "alphalattice.interface.local_application.message_catalog"
+      ],
       "folds_in": [],
       "catalog": "config/registries/messages.json",
       "gate": "src/devtools/architecture/registries.py",
       "consumers": {
         "gate": [
           "src/devtools/architecture/registries.py",
-          "scripts/check_playpen.py"
+          "scripts/check_playpen.py",
+          "scripts/ui_qa/zh_nouns.cjs",
+          "tests/portfolio_strategy_lab/workbench_library.cjs"
         ],
         "runtime": [
           "src/alphalattice/interface/local_application/cli_contract.py",
+          "src/alphalattice/interface/local_application/cli.py",
+          "src/alphalattice/interface/local_application/native_setup.py",
+          "src/alphalattice/interface/local_application/read_views.py",
+          "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py",
+          "src/alphalattice/control/product_host/composition/evidence_authority_setup.py",
           "src/alphalattice/control/product_host/composition/web_launcher.py",
+          "src/alphalattice/interface/local_application/web.py",
           "src/alphalattice/interface/local_application/assets/workbench-source/js/app/i18n.js"
         ],
         "build": [
@@ -4620,7 +4641,31 @@
           "keyed_admissions": "migrate scopes with each owning message after canonical cutover"
         }
       },
-      "integration_base": "2c4f5b8bbb3b738802d9c230fc83965a13cf2e2d"
+      "integration_base": "2c4f5b8bbb3b738802d9c230fc83965a13cf2e2d",
+      "projection_bridge": "src/alphalattice/interface/local_application/message_catalog.cjs"
+    },
+    "terminal read representation": {
+      "owner": "alphalattice.interface.local_application",
+      "covers": "the versioned bounded summary of a CLI read; exact owner answers remain available by saved file or a read-only pointer",
+      "defined_by": [
+        "alphalattice.interface.local_application.cli_contract",
+        "alphalattice.interface.local_application.read_views"
+      ],
+      "folds_in": [],
+      "mechanism": "src/alphalattice/interface/local_application/cli_contract.py::answer_json",
+      "consumers": [
+        "src/alphalattice/interface/local_application/cli_contract.py",
+        "src/alphalattice/interface/local_application/cli.py",
+        "src/alphalattice/interface/local_application/client.py",
+        "src/alphalattice/interface/local_application/native_setup.py",
+        "src/alphalattice/interface/local_application/read_views.py",
+        "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py",
+        "src/alphalattice/control/product_host/composition/evidence_authority_setup.py",
+        "pyproject.toml",
+        ".pre-commit-config.yaml",
+        "scripts/check_playpen.py"
+      ],
+      "guard": "pyproject.toml Ruff T20/TID251 through the pre-commit hook"
     },
     "goal time profile": {
       "owner": "alphalattice.control.observation_runtime",
@@ -4630,6 +4675,86 @@
       ],
       "folds_in": [],
       "note": "Host composition is its consumer; Task Control retains phase ownership and the tuple reader contract. TaskHeartbeatReader retains canonical runtime origins for this consumer; phase readers deduplicate origins by parent directory."
+    },
+    "package import contract": {
+      "covers": "build-time module deferral declarations and exact cross-owner private equality fences; internal private links stay with their owner",
+      "owner": "devtools.architecture",
+      "defined_by": [
+        "devtools.architecture.structural"
+      ],
+      "folds_in": [],
+      "note": "Threat model: product import statements and importlib.import_module aliases or __import__ with a literal name or module-level literal constant, including annotated constants. Positional and keyword names and explicit literal or constant package contexts are resolved; package initializers retain their relative context. Runtime-computed names, package contexts and argument expansions remain with the typed opaque extension/worker contracts or code review. The checker does not execute expressions or claim arbitrary reflection analysis."
+    },
+    "goal": {
+      "owner": "alphalattice.control.product_host.composition",
+      "covers": "the existing revisioned Goal ledger, exact-reference completion offers, request-scoped sealing and report receipts that pass verified reference results through; judgments remain the agent's",
+      "defined_by": [
+        "alphalattice.control.product_host.composition.goals",
+        "alphalattice.control.product_host.composition.goal_check"
+      ],
+      "folds_in": [],
+      "consumers": [
+        "src/alphalattice/control/product_host/composition/goals.py",
+        "src/alphalattice/control/product_host/composition/goal_check.py",
+        "src/alphalattice/interface/local_application/web.py",
+        "src/alphalattice/interface/local_application/cli_contract.py",
+        ".agents/skills/alphalattice-research/references/goals.md",
+        "src/alphalattice/interface/local_application/client.py"
+      ],
+      "note": "Existing wire contracts and storage retain their owners; no identity or scientific role moves."
+    },
+    "offered_request": {
+      "owner": "alphalattice.interface.local_application",
+      "covers": "Named requests an owner answer offers, including distinct nested subjects and sendable aliases.",
+      "defined_by": [
+        "alphalattice.interface.local_application.request_offers"
+      ],
+      "folds_in": [],
+      "consumers": [
+        "src/devtools/evaluation/round_trip.py",
+        "src/devtools/architecture/answer_continuations.py",
+        "scripts/agent_eval/environments/explorer_host.py",
+        "src/alphalattice/interface/local_application/native_setup.py",
+        "src/alphalattice/interface/local_application/cli_contract.py",
+        "src/alphalattice/interface/local_application/client.py",
+        "src/alphalattice/interface/local_application/cli.py",
+        "src/alphalattice/interface/local_application/answers.py",
+        "src/alphalattice/control/product_host/composition/workspace_activity.py",
+        "src/alphalattice/control/observation_runtime/policy.py"
+      ],
+      "note": "The CLI contract retains its imported collector binding; its legacy operation-only consumer prefers an existing Goal submit form while explicit actions retain all offers. Collection does not admit or execute a request."
+    },
+    "local_client_error": {
+      "owner": "alphalattice.interface.local_application",
+      "covers": "Bounded client failures and their structured document, reference and recovery context.",
+      "defined_by": [
+        "alphalattice.interface.local_application.failure_codes"
+      ],
+      "folds_in": [],
+      "consumers": [
+        "src/alphalattice/interface/local_application/client.py"
+      ],
+      "note": "The client retains its public imported type binding; its callers receive the same error class and fields."
+    },
+    "test execution size": {
+      "owner": "devtools.architecture",
+      "covers": "registered test size, declaring owner and collection-time conflicts",
+      "defined_by": [
+        "devtools.architecture.test_sizes"
+      ],
+      "folds_in": [],
+      "note": "tests/conftest.py consumes classification once per collection; the canonical gate will consume the same item properties."
+    },
+    "structured error answers": {
+      "description": "Gives every refusal a registered category, owner and exact reason so an agent can branch on the kind of error without parsing words.",
+      "covers": "Additive registry-owned error category, exact safe reason, domain, catalog words and schema-located field violations; no retry or admission authority.",
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "alphalattice.interface.local_application.cli_contract",
+        "alphalattice.interface.local_application.answers"
+      ],
+      "folds_in": [],
+      "note": "Current consumers: failure_codes located failures, shared CLI envelopes and authenticated Host worded refusals. The existing safe_failure_code owner and reader paths remain unchanged. The registry census holds the exact legacy words and validated word-selector declaration, including the committed selector classification against promotion into emitted entries. HTTP, Task, startup, four typed validating contexts, Activity, summary and Workbench are deferred to 0.2.6 after oversized-owner pruning. No full series completion is claimed by this declaration."
     }
   }
 }

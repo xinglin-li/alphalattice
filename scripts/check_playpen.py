@@ -457,7 +457,11 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     ensure_environment()
     gate_started = perf_counter()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--staged", action="store_true")
+    parser.add_argument(
+        "--staged",
+        action="store_true",
+        help="Select staged paths; lint reads working files (pre-commit hides unstaged edits).",
+    )
     parser.add_argument(
         "--registry-baseline", default=os.environ.get("ALPHALATTICE_REGISTRY_BASELINE")
     )

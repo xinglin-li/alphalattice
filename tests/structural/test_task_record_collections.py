@@ -96,7 +96,8 @@ STRICT_READERS = {
     ),
     "interface/local_application/dispatcher.py": (
         "LocalBackgroundDispatcher",
-        "resume _waits_its_turn drive_waiting",
+        # Idle expiry must prove no owned Task still needs the Host from complete authority.
+        "resume _waits_its_turn drive_waiting _idle_expired",
     ),
 }
 

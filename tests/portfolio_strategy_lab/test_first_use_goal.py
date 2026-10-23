@@ -724,7 +724,7 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
     # Asked at 11:00 New York for Monday, before Friday's data settles: held until 18:00 ET,
     # run once then, and kept in the goal's ledger for a Host that starts again.
     goal.declaration.target_date = datetime(2026, 10, 12).date()
-    holds: list[datetime] = []
+    holds = []
     kept_entries: list[dict[str, object]] = []
     early = SimpleNamespace(
         **{
@@ -734,19 +734,36 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
                 "failure_code": "research_update.target_not_completed",
             },
             "dispatcher": SimpleNamespace(clock=lambda: datetime(2026, 10, 9, 15, tzinfo=UTC)),
-            "automation": SimpleNamespace(hold=lambda at, _run: holds.append(at)),
+            "automation": SimpleNamespace(hold=lambda at, run, *_goal: holds.append((at, run))),
         }
     )
     early.goals.store.attribute = lambda _goal, entry: kept_entries.append(entry)
     plan = first_update(early, activated, None)["update"]["plan"]  # type: ignore[arg-type]
-    assert holds == [datetime(2026, 10, 9, 22, tzinfo=UTC)] and "18:00 ET" in plan["reading"]
-    assert plan["held_until"] == holds[0].isoformat() and kept_entries[0]["held_update"]
+    ((due, callback),) = holds
+    assert due == datetime(2026, 10, 9, 22, tzinfo=UTC) and "18:00 ET" in plan["reading"]
+    assert plan["held_until"] == due.isoformat() and kept_entries[0]["held_update"]
     # A reader outside New York also gets their own time, with its date where the day differs.
     asked = datetime(2026, 10, 9, 15, tzinfo=UTC)
     west = target_sessions(goal.declaration.target_date, asked, ZoneInfo("America/Los_Angeles"))
     east = target_sessions(goal.declaration.target_date, asked, ZoneInfo("Asia/Shanghai"))
     assert "(15:00 your time)" in str(west["reading"]) and "18:00 ET" in str(west["reading"])
     assert "06:00 on 2026-10-10" in str(east["reading"])
+    goal.state = "CLOSED"
+    early.goals.first_use = lambda: SimpleNamespace(
+        **{**vars(goal), "goal_id": UUID(int=8), "state": "OPEN"}
+    )
+    early.execute = execute
+    before = len(sent)
+    for head in (goal, None):
+        early.goals.store.head = lambda named, head=head: head if named == goal.goal_id else None
+        assert callback() == {} and len(sent) == before
+
+    def unreadable(_named):
+        raise ValueError("goal.head_invalid")
+
+    early.goals.store.head = unreadable
+    with pytest.raises(ValueError, match=r"goal\.head_invalid"):
+        callback()
 
 
 def test_a_first_use_is_the_one_before_the_first_preparation(

@@ -17,15 +17,22 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
+import psutil
 import pytest
 
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
+from alphalattice.interface.local_application.client import (
+    LocalResearchClient,
+    LocalResearchConnection,
+)
+from alphalattice.interface.local_application.retrieval_environment import interpreter_path
 from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.portfolio_strategy_lab.local_web_support import (
     _json,
     _run_to_completion,
+    serve_conflict,
 )
 
 
@@ -160,8 +167,6 @@ def test_declaration_validation_feedback_names_fields_without_echoing_values(
 
 
 def test_workspace_context_is_opt_in_and_one_unreadable_section_stays_explicit(live, monkeypatch):
-    from alphalattice.interface.local_application.client import LocalResearchClient
-
     def unavailable_inputs(_self):
         raise ValueError("research_input.test_unreadable")
 
@@ -198,8 +203,6 @@ def test_workspace_context_is_opt_in_and_one_unreadable_section_stays_explicit(l
 def test_external_client_refuses_spoofing_before_operation_dispatch(
     read_only_live, monkeypatch, fault
 ):
-    from alphalattice.interface.local_application.client import LocalResearchClient
-
     tasks_before = read_only_live.session.task_control_registry.tasks()
     client = LocalResearchClient(read_only_live.workspace)
     if fault == "human_token":
@@ -221,19 +224,18 @@ def test_external_client_refuses_spoofing_before_operation_dispatch(
     assert read_only_live.session.task_control_registry.tasks() == tasks_before
 
 
-def test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced(tmp_path):
-    from alphalattice.interface.local_application.client import (
-        LocalResearchClient,
-        LocalResearchConnection,
-    )
-
+def test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced(
+    tmp_path, capsys, monkeypatch
+):
     root = Path(__file__).resolve().parents[2]
     workspace = tmp_path / "served-workspace"
     environment = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     environment["ALPHALATTICE_NETWORK_DISABLED"] = "1"
+    interpreter = interpreter_path()
+    output = (tmp_path / "startup.log").open("wb")
     child = subprocess.Popen(
         [
-            sys.executable,
+            str(interpreter) if interpreter.is_file() else sys.executable,
             str(root / "scripts/run_alphalattice.py"),
             "--workspace",
             str(workspace),
@@ -242,21 +244,42 @@ def test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced(
         ],
         cwd=tmp_path,
         env=environment,
-        stdout=subprocess.PIPE,
+        stdout=output,
         stderr=subprocess.STDOUT,
     )
     try:
-        deadline = time.monotonic() + 20
+        started = time.monotonic()
+        deadline = started + 120
         while not LocalResearchConnection.path(workspace).exists():
             if child.poll() is not None or time.monotonic() >= deadline:
                 pytest.fail("CLI did not start its own Host")
             time.sleep(0.05)
+        output.write(f"Ready after {time.monotonic() - started:.3f}s\n".encode())
+        output.flush()
         client = LocalResearchClient(workspace)
         assert client.request()["caller"] == "EXTERNAL_AUTOMATION"
         instance = client.connection.instance
     finally:
-        child.terminate()
+        family = psutil.Process(child.pid)
+        family = [*family.children(recursive=True), family]
+        for process in family:
+            process.terminate()
         child.communicate(timeout=20)
+        assert not psutil.wait_procs(family, timeout=20)[1]
+        output.close()
+    from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
+
+    lease = WorkspaceWriterLease.acquire(workspace)
+    try:
+        descriptor = LocalResearchConnection.path(workspace).read_bytes()
+        assert serve_conflict(workspace, monkeypatch) == 2
+        assert (
+            json.loads(capsys.readouterr().out)["failure_code"]
+            == "local_web.serving_host_unverified"
+        )
+        assert LocalResearchConnection.path(workspace).read_bytes() == descriptor and lease.held
+    finally:
+        lease.close()
     with LocalPortfolioWebSession.from_workspace(workspace) as reopened:
         assert LocalResearchConnection.read(workspace).instance != instance
         assert LocalResearchClient(workspace).request()["workspace_id"] == reopened.workspace_id
@@ -790,8 +813,6 @@ def test_cli_attaches_to_the_existing_host_and_reopens_exact_results(
     live, tmp_path, monkeypatch, capsys
 ):
     "CLI attachment reads the existing Host's public context and operation contracts."
-    from alphalattice.interface.local_application.client import LocalResearchClient
-
     client = LocalResearchClient(live.workspace)
     view = client.request()
     assert view["caller"] == "EXTERNAL_AUTOMATION" and "session_token" not in view
@@ -889,8 +910,6 @@ def test_cli_saves_owner_refusals_and_rejects_removed_submit_commands(live, tmp_
 
 def test_cli_run_reads_and_saves_the_exact_completed_result(live, tmp_path):
     "A CLI run completes, discovers its result and saves the owner's exact export."
-    from alphalattice.interface.local_application.client import LocalResearchClient
-
     client = LocalResearchClient(live.workspace)
     spec = tmp_path / "spec.yaml"
     spec.write_text("{}", encoding="utf-8")
@@ -945,11 +964,6 @@ def test_cli_run_reads_and_saves_the_exact_completed_result(live, tmp_path):
 
 def test_cli_reopens_exact_results_and_reuses_them_after_a_host_restart(live, tmp_path):
     "A restarted Host rejects its stale connection and reopens its exact result without admission."
-    from alphalattice.interface.local_application.client import (
-        LocalResearchClient,
-        LocalResearchConnection,
-    )
-
     client = LocalResearchClient(live.workspace)
     spec = tmp_path / "spec.yaml"
     spec.write_text("{}", encoding="utf-8")

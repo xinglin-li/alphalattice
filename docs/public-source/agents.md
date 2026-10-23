@@ -1,12 +1,14 @@
 # Work with research agents
-Date: 2026-10-08
+Last checked: 2026-10-22 against 0.2.3
 
 Claude Code or Codex leads your research; AlphaLattice calculates, validates and
 records it. The installing agent continues in the same session, and a session
 binds itself when it first works on the workspace. The [agent guide](../../AGENTS.md)
 owns setup, delegation and person decisions. Its
 [Research Skill](../../.agents/skills/alphalattice-research/SKILL.md) owns research
-procedures.
+procedures. On Claude Code, the first Host start can ask the person to run the
+offered command once in their own terminal. That startup act is separate from
+research and network decisions; see [Getting started](getting-started.md).
 
 ## Specialists and evidence
 

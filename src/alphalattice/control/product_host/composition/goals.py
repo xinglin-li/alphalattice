@@ -6,7 +6,6 @@ computes research.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, fields, replace
@@ -39,6 +38,7 @@ from alphalattice.control.product_host.composition.first_use_road import (
 from alphalattice.control.product_host.composition.goal_check import (
     goal_schema,
     missing_items,
+    offer_completion,
     offered_attach,
     reference_request,
     resubmit,
@@ -430,62 +430,6 @@ _SESSION_GOAL_OPERATIONS = frozenset(
 )
 """The operations that take the session's own goal when the request names none (V391); a
 write without its hash applies to the goal's current revision."""
-
-
-def completion_template(goal: Goal) -> str:
-    """The open goal's completion to fill: the Host's slots prefilled, the judgment left (V419).
-
-    A GOAL_SUBMIT bound to the goal's revision (V426): each criterion and deliverable slot by
-    id, its words as a comment, the references to cite; the judgment is a placeholder the
-    contract refuses until written.
-
-    Args:
-        goal: The goal's head revision.
-
-    Returns:
-        The request's YAML text, `request --file` sends it once filled.
-    """
-
-    def said(text: str) -> str:
-        return " ".join(text.split())[:160]
-
-    def quoted(value: str) -> str:
-        return json.dumps(value, ensure_ascii=False)
-
-    declared = goal.declaration
-    lines = [
-        f"# The completion of goal {quoted(said(declared.title))}, revision {goal.revision}: your",
-        "# judgment only; the Host adds its own facts (sessions, Tasks, requests). Replace each",
-        "# <...>, then `request --file <this file>`: it completes this goal's revision, and a",
-        "# later revision refuses it (read the goal again). Evidence names a reference by its id:",
-        *(f"#   {ref.reference_id}: {said(ref.label)} ({ref.stage})" for ref in goal.references),
-        "# A read the goal does not hold yet goes under `references:` with its own id.",
-        "operation: GOAL_SUBMIT",
-        f"goal_id: {quoted(str(goal.goal_id))}",
-        f"goal_hash: {quoted(goal.goal_hash)}",
-        "goal_submission:",
-        "  outcome: <ACHIEVED, PARTLY_ACHIEVED or NOT_ACHIEVED>",
-        "  summary: <what the goal reached, in your words>",
-        "  criteria:",
-    ]
-    for criterion in declared.criteria:
-        lines += [
-            f"  # {said(criterion.text)}",
-            f"  - criterion_id: {quoted(criterion.criterion_id)}",
-            "    answer: <MET, NOT_MET or NOT_ASSESSED>",
-            "    evidence: []",
-            '    note: ""',
-        ]
-    if declared.deliverables:
-        lines.append("  deliverables:")
-    for deliverable in declared.deliverables:
-        need = "required" if deliverable.required else "optional"
-        lines += [
-            f"  # {deliverable.kind}, {need}: {said(deliverable.description)}",
-            f"  - deliverable_id: {quoted(deliverable.deliverable_id)}",
-            "    references: [<reference id>]",
-        ]
-    return "\n".join(lines) + "\n"
 
 
 class GoalApplication:
@@ -1401,21 +1345,21 @@ class GoalApplication:
                 raise ValueError("goal.closed_open_a_follow_up")
             return self._save(request, caller, goal, state="ABANDONED")
         goal = self._selected(request)
-        if request.operation == "GOAL_REFERENCE":
-            assert request.goal_reference_id is not None
-            with GoalReferenceReadScope() as scope:
-                return self.reference_readback(goal, request.goal_reference_id, caller, scope=scope)
         readers = {"GOAL_NARRATIVE": self.narrative, "GOAL_PROFILE": self.profile}
         if request.operation in readers:
             return readers[request.operation](goal)
-        if request.operation in {"GOAL_SHOW", "GOAL_EXPORT"}:
+        if request.operation in {"GOAL_SHOW", "GOAL_EXPORT", "GOAL_REFERENCE"}:
             with GoalReferenceReadScope() as scope:
+                if request.operation == "GOAL_REFERENCE":
+                    reference_id = request.goal_reference_id
+                    assert reference_id is not None
+                    return self.reference_readback(goal, reference_id, caller, scope=scope)
                 body = self.readback(goal, caller, scope=scope)
                 if request.operation == "GOAL_EXPORT":
                     return self.export(goal, body, caller, scope=scope)
                 if goal.state == "OPEN":
-                    # Its completion to fill, which `--save-declaration` writes (V419).
-                    body["yaml"] = completion_template(goal)
+                    offer_completion(goal, body, partial(self._resolve, caller=caller, scope=scope))
+                body["verification_counts"] = scope.counts()
                 return body
         if request.operation == "GOAL_CONTINUE":
             if not any(
@@ -1454,7 +1398,7 @@ class GoalApplication:
                     **explain("goal.reference_id_already_used"),
                 }
             with GoalReferenceReadScope() as scope:
-                ref = self._sealed_reference(goal, draft_ref, caller, scope=scope)
+                ref, _ = self._sealed_reference(goal, draft_ref, caller, scope=scope)
             return self._save(request, caller, goal, references=(*goal.references, ref))
         if request.operation == "GOAL_NOTE":
             statement = GoalStatement.model_validate(request.goal_statement)
@@ -1605,6 +1549,7 @@ class GoalApplication:
         return answer
 
     def _submit(self, request: PortfolioResearchOperationRequest, caller: str) -> dict[str, Any]:
+        """Seal once; a failed render still discloses the completed record."""
         assert request.goal_submission is not None
         goal = self._head(request)
         if request.goal_hash is not None and request.goal_hash != goal.goal_hash:
@@ -1624,9 +1569,12 @@ class GoalApplication:
         with GoalReferenceReadScope() as scope:
             added: list[GoalReference] = []
             failures: dict[str, str] = {}
+            checked: dict[str, tuple[GoalReference, dict[str, Any]]] = {}
             for draft in submission.references:
                 try:
-                    added.append(self._sealed_reference(goal, draft, caller, scope=scope))
+                    ref, body = self._sealed_reference(goal, draft, caller, scope=scope)
+                    added.append(ref)
+                    checked[ref.reference_id] = (ref, body)
                 except (ValueError, KeyError, OSError) as error:
                     failures[draft.reference_id] = public_failure(
                         error, "goal.reference_unavailable"
@@ -1640,7 +1588,8 @@ class GoalApplication:
                 if ref is None:
                     return None  # sealed just now, or a file the goal keeps by content
                 try:
-                    self._verified(ref, caller, scope=scope)
+                    body = self._verified(ref, caller, scope=scope)
+                    checked[reference_id] = (ref, body)
                 except (ValueError, KeyError, OSError) as error:
                     return public_failure(error, "goal.reference_unavailable")
                 return None
@@ -1652,45 +1601,60 @@ class GoalApplication:
                 verify=verify,
                 cited_known=frozenset(known | declared),
             )
-        if missing:
-            offered = offered_attach(goal, missing, tasks, lambda r: self._resolve(r, caller))
-            return {
-                "status": "INCOMPLETE",
-                **self._identity_of(goal),
-                "missing": missing,
-                "record": record,
-                "next_requests": {
-                    "resubmit": resubmit(goal, submission, missing, offered),
-                    "show": {"operation": "GOAL_SHOW", "goal_id": str(goal.goal_id)},
-                    **offered,
-                },
-                "claim": "Nothing was sealed. Each item names what the record lacks; the "
-                "Host does not judge whether the summary is true.",
+            if missing:
+                offered = offered_attach(
+                    goal, missing, tasks, lambda r: self._resolve(r, caller, scope=scope)
+                )
+                return {
+                    "status": "INCOMPLETE",
+                    **self._identity_of(goal),
+                    "missing": missing,
+                    "record": record,
+                    "next_requests": {
+                        "resubmit": resubmit(goal, submission, missing, offered),
+                        "complete": resubmit(goal, submission, missing, offered, inline=True),
+                        "show": {"operation": "GOAL_SHOW", "goal_id": str(goal.goal_id)},
+                        **offered,
+                    },
+                    "claim": "Nothing was sealed. Each item names what the record lacks; the "
+                    "Host does not judge whether the summary is true.",
+                }
+            completion = GoalCompletion(
+                checked_at=self.clock(),
+                sessions=tuple(GoalSession.model_validate(s) for s in record["sessions"]),
+                tasks=tasks,
+                request_count=int(record["request_count"]),
+            )
+            answer = self._save(
+                request,
+                caller,
+                goal,
+                reason="Submitted; the Host found the record complete.",
+                state="COMPLETE",
+                submission=submission,
+                completion=completion,
+                references=(*goal.references, *added),
+            )
+            result = {
+                **answer,
+                "status": "COMPLETE",
+                "outcome": submission.outcome,
+                "open_assignments": [],
+                "claim": "Complete means the record is complete and its evidence verified, not "
+                "that the objective was met.",
             }
-        completion = GoalCompletion(
-            checked_at=self.clock(),
-            sessions=tuple(GoalSession.model_validate(s) for s in record["sessions"]),
-            tasks=tasks,
-            request_count=int(record["request_count"]),
-        )
-        answer = self._save(
-            request,
-            caller,
-            goal,
-            reason="Submitted; the Host found the record complete.",
-            state="COMPLETE",
-            submission=submission,
-            completion=completion,
-            references=(*goal.references, *added),
-        )
-        return {
-            **answer,
-            "status": "COMPLETE",
-            "outcome": submission.outcome,
-            "open_assignments": [],
-            "claim": "Complete means the record is complete and its evidence verified, not "
-            "that the objective was met.",
-        }
+            try:
+                sealed = self.store.load(str(answer["goal_hash"]))
+                body = self.readback(sealed, caller, scope=scope, verified=checked, head=sealed)
+                result["report"] = self.export(sealed, body, caller, scope=scope)
+                result["closure_message_id"] = "goal.closure.complete"
+            except Exception as error:
+                result["closure_message_id"] = "goal.closure.report_unavailable"
+                result["report_error"] = {
+                    "failure_code": "goal.closure.report_unavailable",
+                    "cause_failure_code": public_failure(error, "goal.closure.report_unavailable"),
+                }
+            return result
 
     def _sealed_reference(
         self,
@@ -1699,7 +1663,8 @@ class GoalApplication:
         caller: str,
         *,
         scope: GoalReferenceReadScope,
-    ) -> GoalReference:
+    ) -> tuple[GoalReference, dict[str, Any]]:
+        """Seal an owner read and pass that verified body to this request's report."""
         body = self._resolve(draft_ref, caller, scope=scope)
         relation = "POST_HOC"
         research = goal.declaration.research
@@ -1720,7 +1685,7 @@ class GoalApplication:
             identity=identity,
             intent_relation=relation,
             reference_hash=canonical_hash({"request": draft_ref.request, "identity": identity}),
-        )
+        ), body
 
     def _head(self, request: PortfolioResearchOperationRequest) -> Goal:
         if request.goal_id is None:
@@ -2089,9 +2054,14 @@ class GoalApplication:
             **revise,
         }
 
-    def _saved(self, goal: Goal, *, whole_conversation: bool = False) -> dict[str, Any]:
-        """The saved revision's own facts, for the narrative and the verified readback."""
-        head = self.store.head(goal.goal_id)
+    def _saved(
+        self, goal: Goal, *, whole_conversation: bool = False, head: Goal | None = None
+    ) -> dict[str, Any]:
+        """Project saved facts; a supplied head is this request's fresh publication.
+
+        Normal reads resolve the current head here.
+        """
+        head = head if head is not None else self.store.head(goal.goal_id)
         statement_context = {}
         ancestor = goal
         while True:
@@ -2175,16 +2145,28 @@ class GoalApplication:
         }
 
     def _reference_row(
-        self, ref: GoalReference, caller: str, *, scope: GoalReferenceReadScope
+        self,
+        ref: GoalReference,
+        caller: str,
+        *,
+        scope: GoalReferenceReadScope,
+        verified: Mapping[str, tuple[GoalReference, dict[str, Any]]] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any] | None]:
-        """One reference's owner verification, shared by selected and whole revision reads."""
+        """Use a proof only for this identical full reference and request/caller.
+        Public reads pass no proof and always verify at the owner.
+        """
         row: dict[str, Any] = {
             "reference": ref.model_dump(mode="json"),
             "next_requests": {"open": ref.request},
         }
         gap: dict[str, Any] | None = None
         try:
-            body = self._verified(ref, caller, scope=scope)
+            prior = (verified or {}).get(ref.reference_id)
+            body = (
+                prior[1]
+                if prior is not None and prior[0] == ref
+                else self._verified(ref, caller, scope=scope)
+            )
             incomplete = (
                 ref.request["operation"] == "EXPERIMENT_READBACK"
                 and body.get("status") != "EXPERIMENT_PUBLISHED"
@@ -2236,13 +2218,22 @@ class GoalApplication:
         }
 
     def readback(
-        self, goal: Goal, caller: str, *, scope: GoalReferenceReadScope | None = None
+        self,
+        goal: Goal,
+        caller: str,
+        *,
+        scope: GoalReferenceReadScope | None = None,
+        verified: Mapping[str, tuple[GoalReference, dict[str, Any]]] | None = None,
+        head: Goal | None = None,
     ) -> dict[str, Any]:
-        """The revision with every reference re-verified at its owner, and its gaps."""
+        """Read a revision; proofs must belong to this exact request and caller.
+
+        Only completion passes its freshly published head and already verified reads.
+        """
         scope = scope or GoalReferenceReadScope()
         rows, missing = [], []
         for ref in goal.references:
-            row, gap = self._reference_row(ref, caller, scope=scope)
+            row, gap = self._reference_row(ref, caller, scope=scope, verified=verified)
             if gap is not None:
                 missing.append(gap)
             rows.append(row)
@@ -2255,7 +2246,7 @@ class GoalApplication:
         )
         return {
             "status": "GOAL_SHOW",
-            **self._saved(goal),
+            **self._saved(goal, head=head),
             "references": rows,
             "verification_counts": scope.counts(),
             "gaps": missing,

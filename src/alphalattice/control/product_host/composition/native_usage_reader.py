@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from threading import Lock
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from alphalattice.control.product_host.composition import committee
 from alphalattice.interface.local_application.cli_contract import (
@@ -308,3 +308,38 @@ class NativeUsageReader:
             return {"status": "READ", "sessions": sessions}
         finally:
             self._reading.release()
+
+
+class _UsageHost(Protocol):
+    native_usage_reader: NativeUsageReader | None
+
+
+class _UsageObserver(Protocol):
+    native_usage_state: Callable[[], dict[str, object]] | None
+
+
+def attach_native_usage(
+    self: _UsageHost,
+    operations: PortfolioResearchOperations,
+    activity: _UsageObserver,
+) -> None:
+    """Attach optional native usage and its unchanged Activity standing."""
+    # Optional reading owns no research authority and must not prevent serving it.
+    constructor_failure: str | None = None
+    try:
+        self.native_usage_reader = NativeUsageReader(operations)
+        operations.read_native_usage = self.native_usage_reader.read
+    except Exception as error:
+        self.native_usage_reader = None
+        constructor_failure = owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
+
+    def native_usage_state() -> dict[str, object]:
+        """Keep the last reading's standing visible through the activity owner's readback."""
+        if self.native_usage_reader is not None:
+            return self.native_usage_reader.state()
+        return {
+            "status": "UNAVAILABLE",
+            "reason": constructor_failure or "native_bridge.lead_usage_read_failed",
+        }
+
+    activity.native_usage_state = native_usage_state

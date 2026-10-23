@@ -669,22 +669,36 @@ def test_a_session_that_opens_a_goal_here_is_bound_without_a_separate_step(
     _session(monkeypatch, host)
     assert NativeResearchBinding.read(project, session=(host, "fixture-parent")) is None
     client = LocalResearchClient(live.workspace)
-    opened = client.request({"operation": "GOAL_OPEN", "goal_declaration": declaration})
+    opening = {"operation": "GOAL_OPEN", "goal_declaration": declaration}
+    opened = client.request(opening)
     assert opened["status"] == "GOAL_SAVED", opened
     binding = NativeResearchBinding.read(project, session=(host, "fixture-parent"))
     assert binding is not None and binding.workspace == live.workspace.resolve()
     assert binding.usage == "READ"
     record = binding.record_path(project).read_bytes()
-    again = client.request(
-        {"operation": "GOAL_OPEN", "goal_declaration": {**declaration, "title": "Another"}}
-    )
+    again = client.request({**opening, "goal_declaration": {**declaration, "title": "Another"}})
     assert again["status"] == "GOAL_SAVED", again
     assert binding.record_path(project).read_bytes() == record
-    # Each Session's first answer offers the Workbench once, a link opened once; never again.
+    # Startup opens once; ordinary repeats offer none; a sealed Goal opens its own view.
     offered = opened["workbench"]
     assert offered["next_action"] == "OPEN_THE_WORKBENCH" and "workbench" not in again
     assert offered["launch_url"].startswith(live.url.rstrip("/") + "/launch?key=")
     assert [_launch_status(offered["launch_url"]) for _ in "ab"] == [303, 403]
+    done = dict(again["next_requests"]["submit"])
+    done["goal_submission"] = dict(
+        outcome="NOT_ACHIEVED",
+        summary="Fixture",
+        criteria=[dict(criterion_id="done", answer="NOT_ASSESSED", note="Fixture")],
+        deliverables=[dict(deliverable_id="result", references=["f"])],
+        files=[dict(reference_id="f", name="Record", media_type="text/plain", text="Fixture")],
+    )
+    closed = client.request(done)
+    assert closed["status"] == "COMPLETE", closed
+    assert "workbench" in closed
+    link = closed["workbench"]["launch_url"]
+    assert link.endswith("#follow=goal%3A" + closed["goal_id"])
+    assert closed["workbench"]["goal_hash"] == closed["goal_hash"]
+    assert [_launch_status(link) for _ in "ab"] == [303, 403]
     _session(monkeypatch, host, "fixture-other")
     other = client.request({"operation": "GOAL_LIST"})
     assert other["workbench"]["launch_url"] != offered["launch_url"]

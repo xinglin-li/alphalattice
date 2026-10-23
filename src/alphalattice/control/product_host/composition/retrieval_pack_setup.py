@@ -28,11 +28,12 @@ recipe into a workspace is `materialize_evidence_cro_authority.py --recipe`.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
+from alphalattice.interface.local_application.cli_contract import worded
 from alphalattice.interface.local_application.failure_codes import setup_failure
+from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid_contracts import SUPPORTED_RECIPES
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
@@ -128,11 +129,11 @@ def pack_command(*arguments: str) -> list[str]:
 
 def _status_command(store: Path) -> list[str]:
     """The installer's read-only check of this store, as the person runs it."""
-    return pack_command("--status", "--store", str(store))
+    return pack_command("--status", "--view", "summary", "--store", str(store))
 
 
-def _refused(code: str, store: Path, error: Exception) -> int:
-    """Print a refusal with its words and way on, the store it names beside it (V539)."""
+def _refused(code: str, store: Path, error: Exception) -> dict[str, object]:
+    """Build a refusal with its words and way on, the store it names beside it (V539)."""
     base, _sep, subject = code.partition(":")
     detail, next_action = _WORDS.get(
         base,
@@ -151,8 +152,7 @@ def _refused(code: str, store: Path, error: Exception) -> int:
         "store": str(store),
         "next_commands": {"status": _status_command(store)},
     }
-    print(json.dumps(refusal, indent=1))
-    return 2
+    return refusal
 
 
 def _status(store: Path) -> dict[str, object]:
@@ -191,7 +191,7 @@ def _install(store: Path, recipe: str, *, network: bool, source: Path | None) ->
 
         def progress(name: str, index: int, total: int, pack_id: str = pack.pack_id) -> None:
             """Read the captured source document under its admitted contract."""
-            print(f"{pack_id}: {index}/{total} {name}", flush=True)
+            print(f"{pack_id}: {index}/{total} {name}", flush=True)  # noqa: T201  # progress
 
         status = model_store.install_pack(store, pack, fetch, progress=progress)
         results[pack.pack_id] = status.status
@@ -215,7 +215,7 @@ def _bytes_printer(pack_id: str) -> model_store.Received:
         if done - shown.get(name, -step) >= step or done == total:
             shown[name] = done
             whole = f" of {total / 1e6:.1f}" if total else ""
-            print(f"{pack_id}: {name} {done / 1e6:.1f}{whole} MB", flush=True)
+            print(f"{pack_id}: {name} {done / 1e6:.1f}{whole} MB", flush=True)  # noqa: T201  # progress
 
     return received
 
@@ -246,9 +246,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--network", action="store_true", help="Admit the Hub download for --install."
     )
+    parser.add_argument(
+        "--view", choices=("compact", "full", "summary"), help=worded("cli.read.view")
+    )
+    parser.add_argument("--output", type=Path)
+    parser.set_defaults(legacy_indent=1)
     arguments = parser.parse_args(argv)
-    store = (arguments.store or model_store.default_store_root()).resolve()
+    arguments.command_line = tuple(pack_command(*(sys.argv[1:] if argv is None else argv)))
+    if (arguments.view or arguments.output) and (arguments.install or arguments.import_recipe):
+        parser.error(str(worded("read.summary")).format(pointer="--status"))
+    store = arguments.store or model_store.default_store_root()
     try:
+        store = store.resolve()
         if arguments.install:
             payload = _install(
                 _outside_checkout_and_workspaces(store),
@@ -268,23 +277,18 @@ def main(argv: list[str] | None = None) -> int:
         else:
             payload = _status(store)
     except model_store.ModelStoreError as error:
-        return _refused(str(error), store, error)
+        payload = _refused(str(error), store, error)
     except OSError as error:
         # A file or connection error past the store's own checks: what was verified is kept.
-        return _refused(f"model_store.install_interrupted:{type(error).__name__}", store, error)
+        payload = _refused(f"model_store.install_interrupted:{type(error).__name__}", store, error)
     except Exception as error:
-        print(
-            json.dumps(
-                {
-                    **setup_failure(error),
-                    "store": str(store),
-                    "next_commands": {"status": _status_command(store)},
-                }
-            )
-        )
-        return 2
-    print(json.dumps(payload, indent=1, default=str))
-    return 0
+        arguments.legacy_indent = None
+        payload = {
+            **setup_failure(error),
+            "store": str(store),
+            "next_commands": {"status": _status_command(store)},
+        }
+    return emit_owner(arguments, payload)
 
 
 if __name__ == "__main__":

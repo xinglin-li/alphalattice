@@ -5,7 +5,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const MESSAGE_WORDS = JSON.parse(fs.readFileSync(path.join(__dirname,'../../config/registries/messages.json'),'utf8')).entries;
 
 // Create each harness context in one place; only an explicit app directory adds library defaults.
 library.context = function(c, appDir) {
@@ -53,7 +52,8 @@ function library(appDir) {
   const context = {String, BREAKPOINTS, PARAMETER_VALUES};
   library.context(context);
   vm.runInContext(text.slice(from, to) + ';globalThis.out={SHORT,short,LIST_PAGE,LEGEND,LOBBY,param};', context);
-  return {...context.out, BREAKPOINTS, PARAMETER_VALUES, LABELS, MESSAGE_WORDS};
+  // Formal overlays on pre-bridge source retain the legacy-only context; retire with that base.
+  return {...context.out, BREAKPOINTS, PARAMETER_VALUES, LABELS, MESSAGE_WORDS: fs.existsSync(path.join(__dirname,'../../src/alphalattice/interface/local_application/message_catalog.cjs')) ? require('../../src/alphalattice/interface/local_application/message_catalog.cjs')() : {}};
 }
 // the Evidence library's builders (C1): the marked section of components.js evaluated inside the
 // harness's own context, so each builder composes that harness's stubs (html, btnAttrs, panel ...)

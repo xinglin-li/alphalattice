@@ -109,6 +109,9 @@ def _one_line_document(entity_id: str = "AAPL") -> RecordedEvidenceDocument:
 def test_build_and_first_query_embed_the_corpus_exactly_once(tmp_path: Path) -> None:
     """Build and first query embed the corpus exactly once."""
 
+    from alphalattice.kernel.knowledge import runtime as public_runtime
+
+    assert public_runtime.build_chunks is _build_chunks
     runtime, passes = _counted_runtime(tmp_path)
     request, document_set, generation = _built(runtime)
 

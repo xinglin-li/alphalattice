@@ -376,6 +376,7 @@ CLOCK_CORRELATION_POLICY = ObservationSchemaPolicy(
             "system_anchor",
             "monotonic_anchor",
             "uncertainty_seconds",
+            "resolution_seconds",
         }
     ),
 )

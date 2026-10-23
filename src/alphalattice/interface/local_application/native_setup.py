@@ -23,7 +23,7 @@ from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from alphalattice.interface.local_application import workbench_assets
+from alphalattice.interface.local_application import client, workbench_assets
 from alphalattice.interface.local_application.cli_contract import (
     BINDING_NOTICE,
     REQUEST_PROVENANCE,
@@ -59,6 +59,7 @@ from alphalattice.interface.local_application.native_bridge import (
     session_project,
 )
 from alphalattice.interface.local_application.native_usage import codex_thread_spawn
+from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.interface.local_application.retrieval_environment import LOCKED_SETUP_WORDS
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import (
@@ -1405,15 +1406,26 @@ def main() -> int:
     unbind.add_argument("--session-id", required=True)
     unbind.add_argument("--host", choices=HOSTS, help="The exact native host of this Session.")
     doctor = commands.add_parser("doctor", help="Read this Session's binding and readiness.")
+    doctor.set_defaults(view="compact")
+    doctor.add_argument(
+        "--view", choices=("compact", "full", "summary"), help=worded("cli.read.view")
+    )
+    doctor.add_argument("--output", type=Path)
     doctor.add_argument(
         "--host", choices=HOSTS, help="The host to inspect; by default the bound one, else codex."
     )
     args = parser.parse_args()
     if args.project is not None:
         ROOT = args.project.resolve()
-    result: dict[str, Any]
+    result: dict[str, Any] = {}
     doctor_command = _doctor_command()
+    prefix = (sys.executable, "-m", "alphalattice.interface.local_application.native_setup")
+    args.command_line = (*prefix, *sys.argv[1:])
+    output = getattr(args, "output", None)
+    output_error: client.LocalResearchClientError | None = None
+    replace = False
     try:
+        replace = client.output_replacement(output, line=args.command_line, prefix=())
         if args.command == "configure":
             if INSTALLED:
                 _install_declarations(args.host)
@@ -1462,29 +1474,25 @@ def main() -> int:
                 "attachment_preflight": preflight,
                 "host_readiness": host_readiness(ROOT, host, binding),
             }
-        print(json.dumps(result))
-        return 2 if result["status"] == "REFUSED" else 0
+    except client.LocalResearchClientError as error:
+        if str(error).startswith("local_client.output_"):
+            output_error = error
+        else:
+            result = {**setup_failure(error), "next_commands": doctor_command}
     except NativeBridgeError as error:
-        print(
-            json.dumps(
-                {**setup_failure(error), "reason": str(error), "next_commands": doctor_command}
-            )
-        )
-        return 2
+        result = {**setup_failure(error), "reason": str(error), "next_commands": doctor_command}
     except OSError as error:
         # Its files are the checkout's host directories and the workspace's; one it cannot read
         # or write is said with its way on, never a bare code (V539), and the check its words
         # name is offered (V590).
-        refusal = {
+        result = {
             **setup_failure(error),
             **files_unavailable(error, project=ROOT, workspace=getattr(args, "workspace", None)),
             "next_commands": doctor_command,
         }
-        print(json.dumps(refusal))
-        return 2
     except Exception as error:
-        print(json.dumps({**setup_failure(error), "next_commands": doctor_command}))
-        return 2
+        result = {**setup_failure(error), "next_commands": doctor_command}
+    return emit_owner(args, result, output_error=output_error, replace=replace)
 
 
 def _doctor_command() -> dict[str, list[str]]:

@@ -268,6 +268,7 @@ def test_the_tasks_that_run_at_once_are_set_beside_the_waiting_places(live) -> N
 def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
     read_only_live: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:
+    """CLI and Host metadata preserve legacy envelopes, fields and exit codes."""
     live = read_only_live
     code, body, _ = _cli(live.workspace, "task", "list")
     assert (code, body["outcome"]) == (0, "OK")
@@ -282,6 +283,13 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
         "task_control.task_not_found",
     )
     assert body["detail"] and body["next_requests"]
+    info = body["error_info"]
+    assert (info["category"], info["reason"], info["domain"]) == (
+        "NOT_FOUND",
+        "task_control.task_not_found",
+        "task_control",
+    )
+    assert info == body["data"]["error_info"] and info["message_id"] and info["message"]
     # The refusal is the owner's answer and is saved like any other (CLI-6).
     assert json.loads(saved.read_text("utf-8"))["failure_code"] == "task_control.task_not_found"
     assert str(live.workspace) not in stdout
@@ -473,7 +481,7 @@ def test_no_answer_carries_a_failure_field_that_is_not_a_code(
 def test_lang_zh_words_an_answers_detail_and_keeps_its_codes(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Chinese words both owner refusals and parse refusals without changing their codes."""
+    """Chinese localizes detail and metadata without changing codes or legacy fields."""
 
     empty = tmp_path / "no-host"
     (empty / "runtime").mkdir(parents=True)
@@ -481,7 +489,13 @@ def test_lang_zh_words_an_answers_detail_and_keeps_its_codes(
     _code, english, _ = _cli(empty, *asked)
     code, chinese, _ = _cli(empty, "--lang", "zh", *asked)
     assert (code, chinese["failure_code"]) == (1, "local_client.request_timeout_outside_0_600")
-    kept = {"detail", "timing", "session_launches"}
+    for en, zh in zip(english["deprecations"], chinese["deprecations"], strict=True):
+        assert any("一" <= character <= "鿿" for character in zh["reason"])
+        assert zh | {"reason": en["reason"]} == en
+    kept = {"detail", "timing", "session_launches", "deprecations"}
+    en_error, zh_error = english.pop("error_info"), chinese.pop("error_info")
+    assert zh_error | {"message": en_error["message"]} == en_error
+    assert any("一" <= char <= "鿿" for char in zh_error["message"])
     assert {k: v for k, v in chinese.items() if k not in kept} == {
         k: v for k, v in english.items() if k not in kept
     }
@@ -1174,15 +1188,24 @@ def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_
 def test_data_history_stops_have_installed_words_and_preserve_the_owners_way(
     code: str, detail: str, chinese: str
 ) -> None:
-    """regression (DUPD): refused history and transition bindings read as their causes
-    in either installed language, preserving the owner's request and approval requirements.
-    """
+    """Data-history refusals keep bilingual owner words and offers beside optional metadata."""
     from alphalattice.control.product_host.composition.task_recovery import stop_detail
     from alphalattice.interface.local_application import cli_contract
 
     request = {"show": {"operation": "DATA_UPDATE_READBACK"}}
     bare = {"status": "REFUSED", "failure_code": code}
     worded = cli_contract.worded_refusal(bare)
+    info = worded.pop("error_info", None)
+    if code == "data.sanitizer.corrupted_payload":  # Named unregistered legacy control.
+        assert info is None
+    else:
+        assert (info["category"], info["domain"], info["reason"]) == (
+            "FAILED_PRECONDITION",
+            code.partition(".")[0],
+            code,
+        )
+        assert info["message_id"] == "protocol.error.summary" and code in info["message"]
+        assert info["field_violations"] == []
     assert worded == {
         **bare,
         "detail": detail,
@@ -1190,6 +1213,7 @@ def test_data_history_stops_have_installed_words_and_preserve_the_owners_way(
     }
     assert cli_contract.refusal_problem(worded) is None
     offered = cli_contract.worded_refusal({**bare, "next_requests": request})
+    assert offered.pop("error_info", None) == info
     assert offered == {**bare, "detail": detail, "next_requests": request}
     assert cli_contract.refusal_problem(offered) is None
     if code.startswith("data."):
@@ -1396,10 +1420,119 @@ def test_a_compact_answer_holds_its_next_requests_to_the_read(
         "INVALID_INPUT",
         "local_client.next_from_invalid",
     ), refused
+    long_key = "中" * 8000
+    offered = {
+        "show": {"operation": "STATUS", "task_id": str(uuid4())},
+        "note": {
+            "operation": "GOAL_NOTE",
+            "goal_id": str(uuid4()),
+            "goal_statement": {
+                "statement_id": "review",
+                "kind": "CONCLUSION",
+                "attribution": "Analyst",
+                "text": "中" * 6000,
+                "disposition": "OPEN",
+            },
+        },
+    }
+    for status, format in ((s, f) for s in ("OK", "REFUSED") for f in ("json", "yaml")):
+        body = {
+            "status": status,
+            "payload": "x" * 1100000,
+            long_key: True,
+            "owner_hash": "b" * 64,
+            "next_requests": offered,
+            "read_request": {"operation": "TASKS"},
+        }
+        if status == "REFUSED":
+            body.update(failure_code="goal.not_found", detail="missing", next_action="READ_GOALS")
+        fake_host.answer, fake_host.raw = body, json.dumps(body, indent=1).encode()
+        saved = tmp_path / f"summary-{status}.{format}"
+        size, summary = answer("--view", "summary", "--output", str(saved), "--format", format)
+        assert summary["representation"] == "alphalattice.read-summary.v1"
+        assert size <= 32768 and summary["message_id"] == "read.summary"
+        assert summary["full_answer"] == {"file": str(saved.resolve())}
+        assert summary["next_requests"]["show"] == offered["show"]
+        assert "note" not in summary["next_requests"]
+        assert summary["next_page"]["full_answer"] == summary["full_answer"]
+        assert client.saved_answer(saved)["answer"] == body
+        before, sent = saved.read_bytes(), len(fake_host.sent)
+        if format == "json":
+            assert before == fake_host.raw  # The transport's exact bytes, not a projection.
+        command = ["--view", "summary", "answer", "show", "--file", str(saved)]
+        command += ["--section", long_key]
+        assert cli.main(command, serve=lambda _: 99) == 0
+        line = capsys.readouterr().out.strip().splitlines()[-1]
+        assert len(line.encode()) <= 32768 and json.loads(line)["full_answer"]["file"] == str(saved)
+        assert saved.read_bytes() == before and len(fake_host.sent) == sent
+    code, shown, raw = _inprocess_cli(
+        tmp_path, "--view", "summary", "schema", "show", "GOAL_SUBMIT", capsys=capsys
+    )
+    assert code == 0
+    assert len(raw.strip().splitlines()[-1].encode()) <= 32768 and shown["full_answer"]
+    questions = [{"question_code": "network.daily_updates", "detail": "x" * 2000}]
+    for field in ("padding", "summary", "result"):
+        fake_host.answer = {"status": "OK", field: "x" * 30000, "person_questions": questions}
+        size, priority = answer("--view", "summary")
+        assert size <= 32768 and priority["data"]["person_questions"] == questions
+    fake_host.answer = {
+        "status": "OK",
+        "task_id": str(uuid4()),
+        "next_requests": {"note": offered["note"]},
+    }
+    size, oversized = answer("--view", "summary")
+    assert size <= 32768 and not oversized["next_requests"]
+    assert oversized["full_answer"] == {"request": {"operation": "TASKS"}}
+    presentation = tmp_path / "presentation.json"
+    presentation.write_text(json.dumps(oversized), encoding="utf-8")
+    sent = len(fake_host.sent)
+    code, rejected, _ = _inprocess_cli(
+        tmp_path, "study", "show", "--from", str(presentation), capsys=capsys
+    )
+    assert code == 1 and rejected["failure_code"].startswith(
+        "local_client.compact_reference_requires_full_response:"
+    )
+    assert len(fake_host.sent) == sent
+    presentation.write_bytes(json.dumps({"representation": oversized["representation"]}).encode())
+    code, rejected, _ = _inprocess_cli(
+        tmp_path, "answer", "show", "--file", str(presentation), capsys=capsys
+    )
+    assert code == 1
+    assert rejected["failure_code"] == "local_client.saved_answer_incomplete"
+    stream = TextIOWrapper(BytesIO(b'{"operation":"TASKS"}'))
+    monkeypatch.setattr(sys, "stdin", stream)
+    sent = len(fake_host.sent)
+    for args in (("request", "--file", "-"), ("goal", "open", "--file", "-")):
+        with pytest.raises(SystemExit) as stop:
+            cli.main(["--view", "summary", *args], serve=lambda _: 99)
+        refusal = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+        assert stop.value.code == 1 and refusal["failure_code"] == "local_client.usage_invalid"
+        assert "--output PATH" in refusal["usage_error"]["observed"]
+        assert "command" not in refusal["full_answer"]
+        assert stream.tell() == 0 and len(fake_host.sent) == sent
+    with pytest.raises(SystemExit):
+        cli.main(
+            ["--view", "summary", "--lang", long_key, "goal", "open", "--file", "-"],
+            serve=lambda _: 99,
+        )
+    line = capsys.readouterr().out.strip().splitlines()[-1]
+    assert len(line.encode()) <= 32768
+    assert "command" not in json.loads(line)["full_answer"]
+    assert stream.tell() == 0 and len(fake_host.sent) == sent
+    for language in ("en", "zh"):
+        size, summary = answer("--view", "summary", "--lang", language)
+        assert any("\u4e00" <= c <= "\u9fff" for c in summary["summary_detail"]) == (
+            language == "zh"
+        )
+        full = answer("--view", "full", "--lang", language)[1]
+        notice = next(n for n in full["deprecations"] if n["entry"] == "view:full")
+        assert notice["message_id"] == "read.legacy_full_deprecated"
+        assert any("\u4e00" <= c <= "\u9fff" for c in notice["reason"]) == (language == "zh")
+        assert full["data"]["next_requests"] == fake_host.answer["next_requests"]
 
 
 def test_a_refusal_leaves_with_words_and_a_way_on() -> None:
-    """A refusal leaves with words and a way on."""
+    """Owner-supplied words and routes stay exact when registered metadata is added."""
 
     from alphalattice.interface.local_application.cli_contract import (
         refusal_problem,
@@ -1450,7 +1583,14 @@ def test_a_refusal_leaves_with_words_and_a_way_on() -> None:
     vague = {**bare, "detail": "A goal was not found.", "next_action": "REPLAN"}
     assert refusal_problem(vague) == "refusal goal.not_found lacks a usable way on"
     owned = {**bare, "detail": "Its owner's words.", "next_requests": {"goals": {}}}
-    assert worded_refusal(owned) == owned
+    projected = worded_refusal(owned)
+    info = projected.pop("error_info")
+    assert (info["category"], info["reason"], info["domain"]) == (
+        "NOT_FOUND",
+        "goal.not_found",
+        "goal",
+    )
+    assert projected == owned
     assert refusal_problem(owned) == "refusal goal.not_found lacks a usable way on"
     offered = {
         **vague,

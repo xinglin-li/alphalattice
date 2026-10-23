@@ -33,11 +33,23 @@ import tempfile
 import threading
 import time
 import webbrowser
-from contextlib import suppress
+from collections.abc import Callable
+from contextlib import ExitStack, closing, suppress
+from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Any
 
-from alphalattice.interface.local_application.web import LAUNCH_KEY_VARIABLE, OPEN_THE_WORKBENCH
+from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
+from alphalattice.interface.local_application.failure_codes import safe_failure_code
+from alphalattice.interface.local_application.web import (
+    DEFAULT_IDLE_TIMEOUT_SECONDS,
+    LAUNCH_KEY_VARIABLE,
+    OPEN_THE_WORKBENCH,
+)
+from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+
+from .process_job import ChildJob
 
 # The Host's session (and the numerical libraries it brings) is imported in `main`, never here:
 # a Host run as `-m` this module has each spawned worker re-import it first, before the worker
@@ -149,6 +161,8 @@ def _refusal(
     *,
     message_id: str | None = None,
     terminal_command: list[str] | None = None,
+    cause: str | None = None,
+    host_log: str | None = None,
 ) -> int:
     """Print a launch's refusal as an answer: its code, its words and its way on."""
     answer: dict[str, object] = {
@@ -161,8 +175,72 @@ def _refusal(
         answer["message_id"] = message_id
     if terminal_command is not None:
         answer["terminal_command"] = terminal_command
-    print(json.dumps(answer), flush=True)
+    if cause is not None:
+        answer["cause"] = cause
+    if host_log is not None:
+        answer["host_log"] = host_log
+    print(json.dumps(answer), flush=True)  # noqa: T201  # bootstrap/lifecycle
     return 2
+
+
+def attached_child(command: list[str], *, env: dict[str, str]) -> int:
+    """Run the retrieval child with its caller's streams and parent-owned lifetime."""
+    if sys.platform != "win32":
+        return subprocess.call(command, env=env)
+    import _winapi
+
+    try:
+        with closing(ChildJob()) as job, ExitStack() as streams:
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags = subprocess.STARTF_USESTDHANDLES
+            current, handles = _winapi.GetCurrentProcess(), []
+            for field, kind in (
+                ("hStdInput", _winapi.STD_INPUT_HANDLE),
+                ("hStdOutput", _winapi.STD_OUTPUT_HANDLE),
+                ("hStdError", _winapi.STD_ERROR_HANDLE),
+            ):
+                handle = _winapi.GetStdHandle(kind)
+                if handle not in (None, -1):
+                    handle = _winapi.DuplicateHandle(
+                        current, handle, current, 0, True, _winapi.DUPLICATE_SAME_ACCESS
+                    )
+                    streams.callback(_winapi.CloseHandle, handle)
+                    # Popen excludes Windows console pseudo-handles from its allow-list too.
+                    if handle & 3 != 3 or _winapi.GetFileType(handle) != _winapi.FILE_TYPE_CHAR:
+                        handles.append(handle)
+                setattr(startup, field, handle)
+            startup.lpAttributeList = {"handle_list": handles}
+            process, thread, _, _ = _winapi.CreateProcess(
+                None,
+                subprocess.list2cmdline(command),
+                None,
+                None,
+                bool(handles),
+                0x4,
+                env,
+                None,
+                startup,  # CREATE_SUSPENDED; cwd and streams are inherited.
+            )
+            try:
+                job.assign_and_resume(process, thread)
+                _winapi.WaitForSingleObject(process, _winapi.INFINITE)
+                return int(_winapi.GetExitCodeProcess(process))
+            except BaseException:
+                with suppress(OSError):
+                    _winapi.TerminateProcess(process, 1)
+                    _winapi.WaitForSingleObject(process, _winapi.INFINITE)
+                raise
+            finally:
+                _winapi.CloseHandle(thread)
+                _winapi.CloseHandle(process)
+    except OSError:
+        return _refusal(
+            "local_web.child_ownership_unavailable",
+            str(worded("host.child_ownership.unavailable")),
+            "RUN_TERMINAL_COMMAND_FROM_ANOTHER_TERMINAL",
+            message_id="host.child_ownership.unavailable",
+            terminal_command=command,
+        )
 
 
 def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[bytes]:
@@ -247,14 +325,24 @@ def _detach(
         with log_path.open("wb") as log:
             host = _spawn_detached(command, log, key)
     except PermissionError:
-        from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
+        from alphalattice.interface.local_application import client
 
+        with suppress(client.LocalResearchClientError, OSError):
+            if client.LocalResearchConnection.path(arguments.workspace).exists():
+                with log_path.open("a", encoding="utf-8") as failed:
+                    failed.write("local_web.detached_breakaway_denied\n")
+                return _failed_start(arguments.workspace, None, "", log_path)
         log_path.unlink(missing_ok=True)
-        message_id = "host.start.breakaway_denied"
+        panel_host = os.environ.get("ALPHALATTICE_TERMINAL_PANEL_HOST", "")
+        capability = runtime_json("config/registries/host-capabilities.json")["entries"].get(
+            f"{panel_host}.product-host.terminal-panel", {}
+        )
+        panel = os.name == "nt" and capability.get("availability") == "probed"
+        message_id = "host.start.breakaway_denied" + (".panel" if panel else "")
         return _refusal(
             "local_web.detached_breakaway_denied",
             str(worded(message_id)),
-            "SERVE_FROM_A_PERSON_OWNED_TERMINAL",
+            "SERVE_FROM_THE_HOST_TERMINAL_PANEL" if panel else "SERVE_FROM_A_PERSON_OWNED_TERMINAL",
             message_id=message_id,
             terminal_command=[
                 "alphalattice",
@@ -291,7 +379,7 @@ def _detach(
                         arguments, launch.replace(HANDED_KEY, f"key={key}"), host, log_path
                     )
         if host.poll() is not None:
-            return _exited(arguments.workspace, host, text, log_path)
+            return _failed_start(arguments.workspace, host, text, log_path)
         time.sleep(0.2)
     return _refusal(
         "local_web.detached_host_not_ready",
@@ -312,35 +400,67 @@ def _served(
     it lives, and name the next step."""
     address = re.search(r"http://[^/\s?#]+/", launch)
     workspace = arguments.workspace.resolve()
-    print(f"STARTED: a Host now serves {workspace} at {address[0] if address else 'its link'}.")
-    print(launch)
-    print(
+    print(f"STARTED: a Host now serves {workspace} at {address[0] if address else 'its link'}.")  # noqa: T201  # bootstrap/lifecycle
+    print(launch)  # noqa: T201  # bootstrap/lifecycle
+    print(  # noqa: T201  # bootstrap/lifecycle
         f"Loopback only. This Host (process {host.pid}) runs apart from the shell that "
-        f"started it and outlives it; `alphalattice host stop` stops it. Log: {log_path}",
+        f"started it and outlives it; `alphalattice host stop` stops it. Log: {log_path}\n"
+        f"{str(worded('host.idle')).format(seconds=DEFAULT_IDLE_TIMEOUT_SECONDS)}",
         flush=True,
     )
     if arguments.no_browser:
-        print(OPEN_THE_WORKBENCH, flush=True)
+        print(OPEN_THE_WORKBENCH, flush=True)  # noqa: T201  # bootstrap/lifecycle
     return 0
 
 
-def _exited(workspace: Path, host: subprocess.Popen[bytes], text: str, log_path: Path) -> int:
-    """A detached Host that ended before it served: plainly ALREADY_SERVING where another Host
-    serves the workspace (with its address, from its connection record), else its log's reason."""
-    if "workspace_runtime.writer_already_owned" in text:
+def _failed_start(
+    workspace: Path, host: subprocess.Popen[bytes] | None, text: str, log_path: Path
+) -> int:
+    """Reuse only the exact authenticated serving Host; preserve unverified discovery and lease."""
+    if host is None or "workspace_runtime.writer_already_owned" in text:
         from alphalattice.interface.local_application import client
 
+        try:
+            reader = client.LocalResearchClient(workspace, timeout=READY_SECONDS)
+            body = reader.activity(limit=1)
+            observer = body.get("observer")
+            serving = observer.get("host") if isinstance(observer, dict) else None
+            if not isinstance(serving, dict):
+                raise ValueError("local_client.connection_unreadable")
+            pid, since = serving.get("pid"), serving.get("started_at")
+            if (
+                body.get("workspace_id") != reader.connection.workspace_id
+                or serving.get("instance") != reader.connection.instance
+                or type(pid) is not int
+                or pid <= 0
+                or not isinstance(since, str)
+            ):
+                raise ValueError("local_client.connection_unreadable")
+            if datetime.fromisoformat(since).tzinfo is None:
+                raise ValueError("local_client.connection_unreadable")
+        except (client.LocalResearchClientError, OSError, ValueError, TypeError) as error:
+            message_id = "host.reuse.unverified"
+            return _refusal(
+                "local_web.serving_host_unverified",
+                str(worded(message_id)),
+                "READ_THE_HOST_LOG",
+                message_id=message_id,
+                cause=safe_failure_code(str(error)) or "local_client.connection_unreadable",
+                host_log=str(log_path),
+            )
         log_path.unlink(missing_ok=True)
-        address = None
-        with suppress(client.LocalResearchClientError, OSError):
-            address = client.LocalResearchConnection.read(workspace).url
-        detail = (
-            "A Host already serves this workspace, so no second one started. Use it: your "
-            "Session's first answer to it offers the Workbench (`workbench`); "
-            "`alphalattice host stop` stops it."
-        )
-        served = {"workspace": str(workspace.resolve()), "address": address, "detail": detail}
-        print(
+        profile = {key: serving[key] for key in ("instance", "pid", "started_at")}
+        message_id = "host.serving"
+        served = {
+            "workspace": str(workspace.resolve()),
+            "address": reader.connection.url,
+            "host": profile,
+            "message_id": message_id,
+            "detail": str(worded(message_id)).format(**profile),
+        }
+        if "workbench" in body:
+            served["workbench"] = body["workbench"]
+        print(  # noqa: T201  # bootstrap/lifecycle
             json.dumps(
                 {"status": "ALREADY_SERVING", "next_action": "USE_THE_SERVING_HOST", **served}
             ),
@@ -396,6 +516,8 @@ def main(
         arguments.workspace,
         port=arguments.port,
     )
+    if not handed:
+        session.idle_timeout_seconds = 0
     # `start` is inside the cleanup boundary, not before it. It acquires a
     # workspace lease and starts a worker before it binds a socket, so a failure
     # part-way through still has something to release -- and this `finally` is
@@ -409,38 +531,54 @@ def main(
         stop = threading.Event()
 
         def stopping() -> dict[str, object]:
+            if session.dispatcher is not None:
+                session.dispatcher._begin_drain()
             stop.set()
             return dict(STOPPING)
 
         def watched() -> None:
             _wait_for_stop_on_stdin()
-            stop.set()
+            stopping()
 
         if session.operations is not None:
             session.operations.stop_host = stopping
+        needed: Callable[[], bool] = bool
+        if session.operations is not None and session.operations.automation is not None:
+            needed = partial(session.operations.automation.keeps_host, session.operations.goals)
         # A detached launch holds the key it handed over and prints it itself (never on disk).
         shown = re.sub(r"key=[^&#]+", HANDED_KEY, url) if handed else url
-        print(f"Portfolio Research workspace: {shown}")
-        print(
-            "Loopback only. Send 'stop' or close stdin, or run `alphalattice host stop`, to stop."
-            if tied
-            else "Loopback only. No standard input holds this Host, so it serves until "
-            "`alphalattice host stop` or its process ends."
-            if arguments.stop_on_stdin
-            else "Loopback only. Ctrl-C or `alphalattice host stop` to stop.",
+        print(f"Portfolio Research workspace: {shown}")  # noqa: T201  # bootstrap/lifecycle
+        print(  # noqa: T201  # bootstrap/lifecycle
+            (
+                "Loopback only. Send 'stop' or close stdin, or run "
+                "`alphalattice host stop`, to stop."
+                if tied
+                else "Loopback only. No standard input holds this Host, so it serves until "
+                "`alphalattice host stop` or its process ends."
+                if arguments.stop_on_stdin
+                else "Loopback only. Ctrl-C or `alphalattice host stop` to stop."
+            )
+            + (
+                "\n" + str(worded("host.idle")).format(seconds=session.idle_timeout_seconds)
+                if handed
+                else ""
+            ),
             flush=True,
         )
         if arguments.no_browser:
-            print(OPEN_THE_WORKBENCH, flush=True)
+            print(OPEN_THE_WORKBENCH, flush=True)  # noqa: T201  # bootstrap/lifecycle
         else:
             webbrowser.open(url)
         if tied:
             # Either way of stopping ends the wait: the input's own, or `host stop`.
             threading.Thread(target=watched, daemon=True).start()
         while not stop.wait(1):  # a timed wait keeps Ctrl-C heard
-            pass
+            if session.dispatcher is not None and session.dispatcher._idle_expired(
+                session.idle_timeout_seconds, needed
+            ):
+                stopping()
     except KeyboardInterrupt:
-        print("\nStopping.")
+        print("\nStopping.")  # noqa: T201  # bootstrap/lifecycle
     finally:
         # Unbounded on purpose: it joins every request thread and the dispatcher
         # worker before releasing the lease, and a launcher that gave up early

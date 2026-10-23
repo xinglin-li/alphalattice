@@ -1,5 +1,5 @@
 # Use the CLI
-Date: 2026-10-08
+Last checked: 2026-10-22 against 0.2.3
 
 Use `alphalattice <noun> <verb>`. Global `--workspace`, `--view`,
 `--goal` and `--lang` options work before the noun or after the action. Most
@@ -54,7 +54,9 @@ Compact output leads with `status`, `next_action` and `task_id`; the original
 fields remain in `data` and in the saved answer.
 `--save-declaration` writes an editable declaration. Compact view names omitted
 paths in `omitted_sections`; `--section <dotted-path>` selects one for display,
-while `--output` still saves the full answer. `--view full` displays everything.
+while `--output` still saves the full answer. `--view full` preserves an ordinary
+answer's full body; Goal profiles keep a compact display and save their full body
+with `--output`.
 Long workflows announce request steps on stderr; Task waits report changes in
 `current_stage` without adding requests. Stdout remains one answer envelope.
 The compact update readback keeps the positive-position count, five largest
@@ -94,6 +96,16 @@ Authored identifiers, paths and commands stay whole. `--view full`, `--output`
 and `--from` retain whole references. Run returned PowerShell commands as printed,
 including quoting and the call operator; requests with double quotes use JSON
 through stdin to `request --file -`.
+
+## Goal time profiles
+
+A Goal's profile reports recorded requests, Task stages, interval overlap and
+coverage gaps. Follow the Goal's profile read and use `--output` for the complete
+profile. Missing observations stay unobserved; unattributed elapsed time is not
+agent time, and incomplete clocks do not establish a critical path. The
+[0.2.3 release notes](release-notes.md#023) describe the scope of these diagnostics.
+Version 0.2.3 accepts `compact` and `full`; the
+[unreleased read-view changes](release-notes.md#024-unreleased) are separate.
 
 ## Dates and network permission
 

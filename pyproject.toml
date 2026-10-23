@@ -130,6 +130,15 @@ extend-exclude = ["experiments", "tmp", "workspaces"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+extend-select = ["T20", "TID251"]
+
+[tool.ruff.lint.per-file-ignores]
+# Agent answers are product output; maintainers' tools own their diagnostics.
+"!src/alphalattice/**" = ["T20", "TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"sys.stdout" = { msg = "Write through the output owner" }
+"sys.stderr" = { msg = "Write through the output owner or a named stderr exemption" }
 
 [tool.ruff.format]
 line-ending = "lf"
@@ -164,6 +173,9 @@ addopts = "--strict-config --strict-markers -p no:cacheprovider"
 pythonpath = ["src", "scripts"]
 testpaths = ["tests"]
 markers = [
+    "small: registered in-memory test size; resource enforcement follows",
+    "medium: registered local integration test size",
+    "large: registered workflow or expensive test size; candidate and nightly obligation",
     "untyped_failure: the test makes an operation fail without a product code on purpose; the answer check lets it pass (V449)",
     "real_evidence: reads a dogfood evidence root declared in the private evidence-root registry; deselected by the routed gate and run explicitly by scripts/check_playpen.py --evidence",
 ]

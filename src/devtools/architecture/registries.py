@@ -24,10 +24,13 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from alphalattice.interface.local_application.message_catalog import english_message_ids
 from devtools.architecture.git_inputs import read_blobs
 from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
+    PackageArchitectureRegistry,
     discover_table_writes,
+    import_contract_violations,
     load_storage_authority_registry,
     table_writer_violations,
 )
@@ -246,12 +249,97 @@ def inventory(root: Path, files: Iterable[str]) -> dict[str, Counter[str]]:
     return result
 
 
-def baseline(root: Path, name: str) -> dict[str, object]:
+def baseline(
+    root: Path,
+    name: str,
+    *,
+    cached: Mapping[str, dict[str, Any]] = {},
+    errors: list[str] | None = None,
+) -> dict[str, Any]:
+    if name in cached:
+        return cached[name]
     path = root / REGISTRIES / f"{name}.json"
     if not path.is_file():
         return {}
     document = json.loads(path.read_text(encoding="utf-8"))
+    if name == "refusals":
+        try:
+            return refusal_entries(document)
+        except ValueError as error:
+            if errors is None:
+                raise
+            errors.append(str(error))
+            return {}
     return dict(document["entries"])
+
+
+def _category_row(value: Any, fields: Mapping[str, type[Any]]) -> bool:
+    return isinstance(value, dict) and all(
+        isinstance(value.get(key), kind) and bool(value[key]) for key, kind in fields.items()
+    )
+
+
+def _refusal_entry(code: str, entry: Any, declared: set[str], notices: Any) -> None:
+    if not _category_row(entry, {"owner": str}):
+        raise ValueError(f"refusals: {code} category owner missing")
+    if entry.get("kind") == "notice" or code in notices:
+        if (
+            code not in notices
+            or entry.get("kind") != "notice"
+            or "category" in entry
+            or notices[code].get("owner") != entry["owner"]
+        ):
+            raise ValueError(f"refusals: {code} category notice exemption invalid")
+        return
+    category = entry.get("category")
+    if not isinstance(category, str) or category not in declared:
+        raise ValueError(f"refusals: {code} category missing or unknown")
+
+
+def _check_word_selectors(document: Mapping[str, Any], entries: dict[str, Any]) -> None:
+    """A selector is non-emitted word metadata, disjoint from every emitted or legacy key."""
+    policy = document.get("classification", {})
+    selectors = policy.get("word_selectors", {}) if isinstance(policy, dict) else None
+    legacy = document.get("legacy_unregistered_words", [])
+    if not isinstance(selectors, dict) or any(
+        not isinstance(key, str)
+        or not key
+        or not _category_row(row, {"owner": str, "reason": str})
+        or set(row) != {"owner", "reason"}
+        or any(
+            not isinstance(group, (dict, list)) or key in group
+            for group in (entries, policy.get("notices", {}), legacy)
+        )
+        for key, row in selectors.items()
+    ):
+        raise ValueError("refusals: word selector shape or overlap invalid")
+
+
+def refusal_entries(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Check committed categories; assignment rules remain source-review provenance."""
+    entries = document.get("entries", {})
+    if not isinstance(entries, dict):
+        raise ValueError("refusals: entries must be a mapping")
+    _check_word_selectors(document, entries)
+    if not entries:
+        return {}
+    categories = document.get("categories", [])
+    policy = document.get("classification", {})
+    if not _category_row(document, {"categories": list, "classification": dict}):
+        raise ValueError("refusals: category declaration invalid")
+    if any(not isinstance(c, str) or not c for c in categories) or len(set(categories)) != len(
+        categories
+    ):
+        raise ValueError("refusals: category declaration invalid")
+    notices = policy.get("notices", {})
+    if not isinstance(notices, dict) or any(
+        not _category_row(n, {"owner": str, "reason": str}) for n in notices.values()
+    ):
+        raise ValueError("refusals: category notice declaration invalid")
+    declared = set(categories)
+    for code, entry in entries.items():
+        _refusal_entry(code, entry, declared, notices)
+    return dict(entries)
 
 
 def _count(value: object) -> int:
@@ -309,7 +397,7 @@ def problems(root: Path, files: Sequence[str]) -> list[str]:
     found = inventory(root, files)
     out: list[str] = message_problems(root, files)
     for name, entries in found.items():
-        known = baseline(root, name)
+        known = baseline(root, name, errors=out)
         for key, count in sorted(entries.items()):
             registered = known.get(key)
             if name in {"refusals", "formats"}:
@@ -411,13 +499,29 @@ def _declaring_files(root: Path, files: Sequence[str], key: str) -> list[str]:
     ]
 
 
+def _refusals_for_shrink(
+    root: Path, codes: Any, seed: bool
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    refusal_path = root / REGISTRIES / "refusals.json"
+    refusal_document = (
+        json.loads(refusal_path.read_bytes()) if refusal_path.is_file() else {"entries": {}}
+    )
+    registered_refusals = refusal_entries(refusal_document)
+    if seed and codes - registered_refusals.keys():
+        raise ValueError("refusals: register owner and category before seeding")
+    return refusal_document, registered_refusals
+
+
 def shrink(root: Path, files: Sequence[str], *, seed: bool = False) -> dict[str, int]:
     """Rewrite each baseline to what the tree holds, never growing it unless ``seed``."""
 
     found = inventory(root, files)
+    refusal_document, registered_refusals = _refusals_for_shrink(
+        root, found["refusals"].keys(), seed
+    )
     sizes: dict[str, int] = {}
     for name, entries in found.items():
-        known = baseline(root, name)
+        known = baseline(root, name, cached={"refusals": registered_refusals})
         kept: dict[str, object] = {}
         for key, count in sorted(entries.items()):
             registered = known.get(key)
@@ -447,6 +551,7 @@ def shrink(root: Path, files: Sequence[str], *, seed: bool = False) -> dict[str,
         path = root / REGISTRIES / f"{name}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         document = {
+            **{"refusals": refusal_document}.get(name, {}),
             "schema": f"alphalattice.playpen.registry.{name}",
             "note": __doc__.split("\n\n")[1].replace("\n", " ") if name == "parameters" else "",
             "entries": kept,
@@ -730,6 +835,10 @@ def message_problems(text: str | Path, files: Sequence[str] = ()) -> list[str]:
             out.append(f"messages: {code} invalid question contract")
         out.extend(_message_forms(code, row))
         out.extend(_message_aliases(code, row.get("legacy_keys", []), aliases))
+    try:
+        english_message_ids(entries)
+    except ValueError as error:
+        out.append(str(error))
     return out
 
 
@@ -976,19 +1085,139 @@ def _catalog_census(root: Path) -> tuple[list[str], dict[str, Any]]:
     return out, census | ({"legacy_catalog_consumers": consumers} if consumers else {})
 
 
+def _refusal_word_problems(root: Path, stage: str, document: Mapping[str, Any]) -> list[str]:
+    """New refusal words require an entry; reviewed non-refusal allowances only shrink."""
+    path = TARGETS["message-kinds"][0]
+    words = "src/alphalattice/interface/local_application/refusal_words.json"
+    blobs = read_blobs(["HEAD:" + path, stage + words], root)
+    previous = json.loads(blobs.get("HEAD:" + path, "{}"))
+    legacy = set(document.get("legacy_unregistered_words", []))
+    selectors = document.get("classification", {}).get("word_selectors", {})
+    out = [
+        f"refusals: {key} word requires a registered owner and category"
+        for key in sorted(
+            json.loads(blobs.get(stage + words, "{}")).keys()
+            - document.get("entries", {}).keys()
+            - legacy
+            - selectors.keys()
+        )
+    ]
+    # Current-map disjointness cannot see a selector removed in this same change.
+    reviewed_selectors = previous.get("classification", {}).get("word_selectors", {})
+    out.extend(
+        f"refusals: word selector {key} cannot become an emitted reason"
+        for key in sorted(reviewed_selectors.keys() & document.get("entries", {}).keys())
+    )
+    for name, current, before, container in (
+        ("legacy_unregistered_words", legacy, previous, document),
+        (
+            "word_selectors",
+            set(selectors),
+            previous.get("classification", {}),
+            document.get("classification", {}),
+        ),
+    ):
+        if name in before:
+            out.extend(
+                f"refusals: {name} cannot widen to {key}"
+                for key in sorted(current - set(before[name]))
+            )
+            if name not in container:
+                out.append(f"refusals: {name} declaration cannot be removed")
+    return out
+
+
+def _description_rows(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Name registry declarations independently of dictionary or list ordering."""
+    rows = {}
+    for member in ("entries", "nouns", "kinds", "defaults", "large"):
+        values = document.get(member, {})
+        if isinstance(values, list):
+            # A test size's reason is its purpose sentence; it is not written twice.
+            values = {row["pattern"]: {"description": row.get("reason"), **row} for row in values}
+        rows.update({f"{member}:{key}": row for key, row in values.items()})
+    return rows
+
+
+def _has_description(row: Any) -> bool:
+    """Accept one nonempty sentence; the owner's review proves its meaning."""
+    text = row.get("description") if isinstance(row, dict) else None
+    return (
+        isinstance(text, str)
+        and bool(text.strip())
+        and "\n" not in text
+        and text.rstrip().endswith((".", "!", "?"))
+        and re.search(r"[.!?]\s+\S", text) is None
+    )
+
+
+def _description_census(
+    root: Path, stage: str, blobs: dict[str, str], data: dict[str, Any], base: dict[str, Any]
+) -> tuple[list[str], list[str]]:
+    """Read staged declarations once and ratchet their remaining explanation debt."""
+    paths = subprocess.check_output(
+        ["git", "ls-tree", "-r", "--name-only", stage[:-1], "--", "config/registries"],
+        cwd=root,
+        text=True,
+    ).splitlines()
+    excluded = {"refusals.json", "messages.json", "agent-surface.json", "identity-reach.json"}
+    paths = [p for p in paths if p.endswith(".json") and Path(p).name not in excluded]
+    dimension = "undescribed_registry_entries"
+    bootstrap = dimension not in base
+    inputs = [
+        prefix + path for path in paths for prefix in ([stage, "HEAD:"] if bootstrap else [stage])
+    ]
+    blobs.update(read_blobs([key for key in inputs if key not in blobs], root))
+    missing: set[str] = set()
+    previous: set[str] = set()
+    for path in paths:
+        if path not in data:
+            data[path] = json.loads(blobs[stage + path])
+        missing.update(
+            path + "::" + key
+            for key, row in _description_rows(data[path]).items()
+            if not _has_description(row)
+        )
+        if bootstrap:
+            previous.update(
+                path + "::" + key
+                for key, row in _description_rows(
+                    json.loads(blobs.get("HEAD:" + path, "{}"))
+                ).items()
+                if not _has_description(row)
+            )
+    allowed = set(base.get(dimension, previous))
+    return [
+        f"registry-description: {key} needs one purpose sentence."
+        for key in sorted(missing - allowed)
+    ], sorted(missing)
+
+
 def census_check(root: Path, *, baseline: str | None = None, update: bool = False) -> list[str]:
     """Ratchet exact staged findings; unchanged source comes only from cached facts."""
     out, catalog = _catalog_census(root)
+    stage = subprocess.check_output(["git", "write-tree"], cwd=root, text=True).strip() + ":"
+    refusal_key = stage + TARGETS["message-kinds"][0]
+    refusal_blob = read_blobs([refusal_key], root).get(refusal_key, '{"entries":{}}')
+    try:
+        refusal_document = json.loads(refusal_blob)
+        refusal_entries(refusal_document)
+        out.extend(_refusal_word_problems(root, stage, refusal_document))
+    except ValueError as error:
+        return [*out, str(error)]
     if baseline is None:
         print("registry ratchet not configured: set ALPHALATTICE_REGISTRY_BASELINE")
         return out
     anchor = Path(baseline)
     baseline = (anchor.relative_to(root.resolve()) if anchor.is_absolute() else anchor).as_posix()
-    stage = subprocess.check_output(["git", "write-tree"], cwd=root, text=True).strip() + ":"
     command = ["git", "diff", "HEAD", stage[:-1], "--name-only", "--no-renames", "-z"]
     paths = set(subprocess.check_output(command, cwd=root).decode().split("\0")) - {""}
     fixed = {baseline, "config/package-architecture.json", *(p for p, _ in TARGETS.values())}
-    blobs = read_blobs(["HEAD:" + baseline, *(stage + p for p in paths | fixed)], root)
+    blobs = read_blobs(
+        ["HEAD:" + baseline, *(stage + p for p in (paths | fixed) - {TARGETS["message-kinds"][0]})],
+        root,
+    )
+    blobs[refusal_key] = refusal_blob
     data = {p: json.loads(blobs[stage + p]) for p in fixed}
     base = json.loads(blobs.get("HEAD:" + baseline, blobs[stage + baseline]))
     if (
@@ -998,12 +1227,29 @@ def census_check(root: Path, *, baseline: str | None = None, update: bool = Fals
     ):
         return [f"registry-census: {baseline} must name the reviewed bootstrap source SHA."]
     facts = base.get("by_file", {}).copy()
+    description_errors, undescribed = _description_census(root, stage, blobs, data, base)
+    out.extend(description_errors)
     for path in sorted(p for p in paths if p.startswith("src/") and p.endswith(".py")):
         if stage + path in blobs:
             facts[path] = _census_file_facts(path, blobs[stage + path])
         else:
             facts.pop(path, None)
     gaps = _census_gaps(facts, data, blobs[stage + "config/package-architecture.json"])
+
+    def check_imports() -> list[str]:
+        selected = set(facts)
+        if "config/package-architecture.json" not in paths:
+            selected.intersection_update(paths)
+        checked = {p for p in selected if p.startswith("src/alphalattice/") and p.endswith(".py")}
+        blobs.update(read_blobs([stage + p for p in checked if stage + p not in blobs], root))
+        sources = {p[4:-3].replace("/", "."): blobs[stage + p] for p in checked}
+        known = {p[4:-3].replace("/", ".").removesuffix(".__init__") for p in facts}
+        policy = PackageArchitectureRegistry.model_validate(
+            data["config/package-architecture.json"]
+        )
+        return list(import_contract_violations(sources, registry=policy, modules=known))
+
+    out.extend(check_imports())
     for key in sorted(gaps.keys() - base.get("automatic_gaps", {}).keys()):
         kind, item = key.split("|", 1)
         registry, member = TARGETS[kind]
@@ -1012,7 +1258,12 @@ def census_check(root: Path, *, baseline: str | None = None, update: bool = Fals
             form = f"packages[] with package_id and physical_namespace_target={item!r}"
         out.append(f"Unregistered {kind} {item} {gaps[key]}; add {registry} {form}.")
     nouns = sorted(data[TARGETS["nouns"][0]]["nouns"])
-    expected = {"by_file": facts, "automatic_gaps": gaps, "registered_nouns": nouns} | catalog
+    expected = {
+        "by_file": facts,
+        "automatic_gaps": gaps,
+        "registered_nouns": nouns,
+        "undescribed_registry_entries": undescribed,
+    } | catalog
     if not out and any(data[baseline].get(key) != value for key, value in expected.items()):
         if update:
             (root / baseline).write_text(
@@ -1055,6 +1306,44 @@ def main(argv: Sequence[str] | None = None) -> int:
     for line in found:
         print(line)
     return 1 if found else 0
+
+
+def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
+    """Materialize each test's registered size and declaring owner during collection."""
+    import pytest
+
+    from devtools.architecture.test_sizes import classify, included, load_policy
+
+    policy = load_policy(Path(__file__).resolve().parents[3])
+    lane = os.environ.get("ALPHALATTICE_TEST_LANE", "")
+    if lane and lane not in policy["lanes"]:
+        raise pytest.UsageError("test_size.lane_unknown")
+    kept: list[Any] = []
+    omitted: list[Any] = []
+    seen: set[str] = set()
+    try:
+        for item in items:
+            if lane and item.nodeid in seen:
+                omitted.append(item)
+                continue
+            seen.add(item.nodeid)
+            declared = [m.name for m in item.iter_markers() if m.name in policy["sizes"]]
+            size, owner, declaration = classify(item.nodeid, declared, policy)
+            if not declared:
+                item.add_marker(size)
+            item.user_properties.extend(
+                [
+                    ("test_size", size),
+                    ("test_size_owner", owner),
+                    ("test_size_declaration", declaration),
+                ]
+            )
+            (kept if included(item.nodeid, size, lane, policy) else omitted).append(item)
+    except ValueError as error:
+        raise pytest.UsageError(str(error)) from error
+    if lane:
+        config.hook.pytest_deselected(items=omitted)
+        items[:] = kept
 
 
 if __name__ == "__main__":

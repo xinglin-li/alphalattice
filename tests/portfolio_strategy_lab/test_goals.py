@@ -1,8 +1,4 @@
-"""Goals: the Host's ledger of what agents are asked to achieve (LAWS OP13, GR1).
-
-Metadata integrity, the exact-read reference seam, the Host's record by session and the
-submission check; numerical owners are stand-ins, never duplicated here.
-"""
+"""Goals ledger and exact-read references; numerical owners are stand-ins (OP13, GR1)."""
 
 from __future__ import annotations
 
@@ -12,7 +8,7 @@ import shlex
 import subprocess
 import sys
 from copy import deepcopy
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal
@@ -34,66 +30,17 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests.portfolio_strategy_lab.goal_support import (
+    DECLARATION,
+    NOW,
+    _attach,
+    _reference,
+    _submission,
+)
+from tests.portfolio_strategy_lab.goal_support import goal_app as goal_app
 
-NOW = datetime(2026, 9, 15, tzinfo=UTC)
-DECLARATION = {
-    "title": "A study",
-    "objective": "Does the signal survive costs?",
-    "kind": "RESEARCH",
-    "scope": "One admitted historical input; full declared support",
-    "criteria": [{"criterion_id": "folds", "text": "Inspect all folds, including negative ones"}],
-    "deliverables": [
-        {"deliverable_id": "evidence", "kind": "RESULT", "description": "The exact result"}
-    ],
-    "budget": {"maximum_tasks": 2, "maximum_numerical_calls": 10, "maximum_model_calls": 2},
-    "research": {
-        "purpose": "NEW_RESEARCH",
-        "comparison_design": "Same target and costs; no retuning",
-        "required_stages": ["ALPHA", "RISK"],
-    },
-}
 SESSION = RequestProvenance(vendor="claude-code", session="00000000-0000-4000-8000-000000000001")
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
-
-
-@pytest.fixture
-def goal_app(tmp_path):
-    calls = []
-    tasks: dict[UUID, tuple[Any, ...]] = {}
-    body = {
-        "status": "EXPERIMENT_PUBLISHED",
-        "task_id": str(UUID(int=2)),
-        "program": {"program_hash": "a" * 64, "kind": "alpha.model-development"},
-        "evidence": {"evidence_hash": "b" * 64},
-        "result": {"candidates": [{"score": -1}]},
-        "next_requests": {
-            "continue": {"operation": "EXPERIMENT_DRAFT", "task_id": str(UUID(int=2))}
-        },
-    }
-
-    def read(request, caller):
-        calls.append((request.operation, caller))
-        assert request.operation not in {"EXPERIMENT_RUN", "RUN"}
-        return deepcopy(body)
-
-    app = GoalApplication(
-        GoalStore(tmp_path, "workspace"),
-        lambda: NOW,
-        read,
-        lambda _: NOW + timedelta(seconds=10),
-        tasks.get,
-        workspace=tmp_path,
-    )
-    opened = app.operate(
-        Request(
-            operation="GOAL_OPEN",
-            goal_id=UUID(int=1),
-            goal_declaration=DECLARATION,
-            change_reason="Register before execution",
-        ),
-        "HUMAN",
-    )
-    return app, opened, calls, body, tasks
 
 
 @pytest.mark.parametrize("selector", ["preview", "publication", "receipt", "case"])
@@ -184,34 +131,6 @@ def test_decision_attribution_preserves_the_named_corruption_refusal(goal_app, m
         app.decision_attribution()
 
 
-def _attach(app, opened, reference_id="alpha"):
-    return app.operate(
-        Request(
-            operation="GOAL_ATTACH",
-            goal_hash=opened["goal_hash"],
-            change_reason="Attach exact result",
-            goal_reference={
-                "reference_id": reference_id,
-                "label": "Alpha result",
-                "stage": "ALPHA",
-                "request": {"operation": "EXPERIMENT_READBACK", "task_id": str(UUID(int=2))},
-            },
-        ),
-        "EXTERNAL_AUTOMATION",
-    )
-
-
-def _submission(**overrides: Any) -> dict[str, Any]:
-    document: dict[str, Any] = {
-        "outcome": "ACHIEVED",
-        "summary": "The signal survives costs on every fold.",
-        "criteria": [{"criterion_id": "folds", "answer": "MET", "evidence": ["alpha"]}],
-        "deliverables": [{"deliverable_id": "evidence", "references": ["alpha"]}],
-    }
-    document.update(overrides)
-    return document
-
-
 def test_a_bound_session_names_neither_its_goal_nor_its_hash(goal_app):
     """A bound session names neither its goal nor its hash."""
 
@@ -224,12 +143,7 @@ def test_a_bound_session_names_neither_its_goal_nor_its_hash(goal_app):
         Request(
             operation="GOAL_ATTACH",
             change_reason="Attach exact result",
-            goal_reference={
-                "reference_id": "alpha",
-                "label": "Alpha result",
-                "stage": "ALPHA",
-                "request": {"operation": "EXPERIMENT_READBACK", "task_id": str(UUID(int=2))},
-            },
+            goal_reference=_reference(),
         ),
         "EXTERNAL_AUTOMATION",
         SESSION,
@@ -252,12 +166,7 @@ def test_a_held_reference_declared_again_is_refused_with_its_way_on(goal_app):
 
     app, opened = goal_app[:2]
     held = _attach(app, opened)
-    again = {
-        "reference_id": "alpha",
-        "label": "Alpha result",
-        "stage": "ALPHA",
-        "request": {"operation": "EXPERIMENT_READBACK", "task_id": str(UUID(int=2))},
-    }
+    again = _reference()
     refused = app.operate(
         Request(
             operation="GOAL_SUBMIT",
@@ -473,15 +382,13 @@ def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_ap
                 operation="GOAL_ATTACH",
                 goal_hash=opened["goal_hash"],
                 change_reason="No implicit latest book",
-                goal_reference={
-                    "reference_id": "review",
-                    "label": "Review",
-                    "stage": "EVIDENCE_CRO",
-                    "request": {
-                        "operation": "EVIDENCE_CRO_EXPORT",
-                        "review_publication_hash": "a" * 64,
-                    },
-                },
+                goal_reference=_reference(
+                    "review",
+                    "Review",
+                    "EVIDENCE_CRO",
+                    operation="EVIDENCE_CRO_EXPORT",
+                    review_publication_hash="a" * 64,
+                ),
             ),
             "HUMAN",
         )
@@ -493,12 +400,9 @@ def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_ap
                     operation="GOAL_ATTACH",
                     goal_hash=opened["goal_hash"],
                     change_reason="Bad reference",
-                    goal_reference={
-                        "reference_id": "bad",
-                        "label": "Bad",
-                        "stage": stage,
-                        "request": {"operation": op, "task_id": str(UUID(int=2))},
-                    },
+                    goal_reference=_reference(
+                        "bad", "Bad", stage, operation=op, task_id=str(UUID(int=2))
+                    ),
                 ),
                 "HUMAN",
             )
@@ -904,16 +808,14 @@ def test_changed_objective_does_not_relabel_old_intent_and_comparison_refusal_is
             operation="GOAL_ATTACH",
             goal_hash=revised["goal_hash"],
             change_reason="Preserve incompatibility",
-            goal_reference={
-                "reference_id": "incompatible",
-                "label": "Not comparable",
-                "stage": "PORTFOLIO",
-                "request": {
-                    "operation": "EXPERIMENT_COMPARE",
-                    "left_task_id": str(UUID(int=2)),
-                    "right_task_id": str(UUID(int=3)),
-                },
-            },
+            goal_reference=_reference(
+                "incompatible",
+                "Not comparable",
+                "PORTFOLIO",
+                operation="EXPERIMENT_COMPARE",
+                left_task_id=str(UUID(int=2)),
+                right_task_id=str(UUID(int=3)),
+            ),
         ),
         "HUMAN",
     )
@@ -947,18 +849,15 @@ def test_goal_keeps_descriptive_alpha_comparison_fold_evidence(goal_app):
             operation="GOAL_ATTACH",
             goal_hash=opened["goal_hash"],
             change_reason="Attach exact descriptive Alpha comparison",
-            goal_reference={
-                "reference_id": "alpha-comparison",
-                "label": "Ridge regularization comparison",
-                "stage": "ALPHA",
-                "request": {
-                    "operation": "EXPERIMENT_ALPHA_COMPARE",
-                    "left_task_id": str(UUID(int=2)),
-                    "left_candidate_id": "ridge-alpha-1",
-                    "right_task_id": str(UUID(int=3)),
-                    "right_candidate_id": "ridge-alpha-100",
-                },
-            },
+            goal_reference=_reference(
+                "alpha-comparison",
+                "Ridge regularization comparison",
+                operation="EXPERIMENT_ALPHA_COMPARE",
+                left_task_id=str(UUID(int=2)),
+                left_candidate_id="ridge-alpha-1",
+                right_task_id=str(UUID(int=3)),
+                right_candidate_id="ridge-alpha-100",
+            ),
         ),
         "HUMAN",
     )
@@ -1058,12 +957,7 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
             operation="GOAL_ATTACH",
             goal_hash=opened["goal_hash"],
             change_reason="Attach the exact result",
-            goal_reference={
-                "reference_id": "alpha",
-                "label": "Alpha result",
-                "stage": "ALPHA",
-                "request": {"operation": "EXPERIMENT_READBACK", "task_id": str(task.task_id)},
-            },
+            goal_reference=_reference(operation="EXPERIMENT_READBACK", task_id=str(task.task_id)),
         )
     )
     assert attached.get("failure_code") is None, attached
@@ -1154,16 +1048,14 @@ def test_goal_reference_verifies_only_selected_owner_and_preserves_full_readback
             operation="GOAL_ATTACH",
             goal_hash=duplicated["goal_hash"],
             change_reason="Retain the unrelated comparison refusal",
-            goal_reference={
-                "reference_id": "comparison",
-                "label": "Unrelated comparison",
-                "stage": "PORTFOLIO",
-                "request": {
-                    "operation": "EXPERIMENT_COMPARE",
-                    "left_task_id": str(UUID(int=2)),
-                    "right_task_id": str(UUID(int=3)),
-                },
-            },
+            goal_reference=_reference(
+                "comparison",
+                "Unrelated comparison",
+                "PORTFOLIO",
+                operation="EXPERIMENT_COMPARE",
+                left_task_id=str(UUID(int=2)),
+                right_task_id=str(UUID(int=3)),
+            ),
         ),
         "HUMAN",
     )
@@ -1633,50 +1525,37 @@ def test_an_unmet_objective_completes_but_an_answer_that_contradicts_it_does_not
 
     app, opened, _calls, _body, _tasks = goal_app
     _attach(app, opened)
-    contradicted = app.operate(
-        Request(
-            operation="GOAL_SUBMIT",
-            goal_id=UUID(int=1),
-            goal_submission=_submission(
-                criteria=[{"criterion_id": "folds", "answer": "NOT_MET", "evidence": ["alpha"]}]
+
+    def submit(**fields):
+        return app.operate(
+            Request(
+                operation="GOAL_SUBMIT", goal_id=UUID(int=1), goal_submission=_submission(**fields)
             ),
-        ),
-        "EXTERNAL_AUTOMATION",
+            "EXTERNAL_AUTOMATION",
+        )
+
+    contradicted = submit(
+        criteria=[{"criterion_id": "folds", "answer": "NOT_MET", "evidence": ["alpha"]}]
     )
     assert [m["code"] for m in contradicted["missing"]] == ["goal.outcome_contradicts_criteria"]
     # regression (the fresh-folder run): PARTLY_ACHIEVED beside its only criterion MET was sealed;
     # the outcome is the criteria's, so the answer offers the same submission with it corrected.
     partly = _submission(outcome="PARTLY_ACHIEVED")
-    request = Request(operation="GOAL_SUBMIT", goal_id=UUID(int=1), goal_submission=partly)
-    understated = app.operate(request, "EXTERNAL_AUTOMATION")
+    understated = submit(**partly)
     assert understated["missing"] == [
         {"code": "goal.outcome_contradicts_criteria", "outcome": "ACHIEVED"}
     ]
     corrected = understated["next_requests"]["resubmit"]["goal_submission"]
     assert corrected == {**partly, "outcome": "ACHIEVED"}
-    unreasoned = app.operate(
-        Request(
-            operation="GOAL_SUBMIT",
-            goal_id=UUID(int=1),
-            goal_submission=_submission(
-                outcome="PARTLY_ACHIEVED",
-                criteria=[{"criterion_id": "folds", "answer": "NOT_ASSESSED"}],
-            ),
-        ),
-        "EXTERNAL_AUTOMATION",
+    unreasoned = submit(
+        outcome="PARTLY_ACHIEVED",
+        criteria=[{"criterion_id": "folds", "answer": "NOT_ASSESSED"}],
     )
     assert [m["code"] for m in unreasoned["missing"]] == ["goal.criterion_reason_required"]
-    sealed = app.operate(
-        Request(
-            operation="GOAL_SUBMIT",
-            goal_id=UUID(int=1),
-            goal_submission=_submission(
-                outcome="NOT_ACHIEVED",
-                summary="Costs erase the signal.",
-                criteria=[{"criterion_id": "folds", "answer": "NOT_MET", "evidence": ["alpha"]}],
-            ),
-        ),
-        "EXTERNAL_AUTOMATION",
+    sealed = submit(
+        outcome="NOT_ACHIEVED",
+        summary="Costs erase the signal.",
+        criteria=[{"criterion_id": "folds", "answer": "NOT_MET", "evidence": ["alpha"]}],
     )
     assert sealed["status"] == "COMPLETE" and sealed["outcome"] == "NOT_ACHIEVED"
 
@@ -1999,14 +1878,14 @@ def test_an_open_goal_offers_its_completion_to_fill(goal_app, tmp_path):
 
     import yaml
 
-    from alphalattice.interface.local_application import cli
-    from alphalattice.interface.local_application.client import LocalResearchClientError
+    from alphalattice.interface.local_application import cli, client
     from alphalattice.interface.local_application.goals import GoalSubmission
 
     app, opened, *_ = goal_app
     attached = _attach(app, opened)
     show = Request(operation="GOAL_SHOW", goal_id=UUID(int=1))
-    text = app.operate(show, "HUMAN")["yaml"]
+    shown = app.operate(show, "HUMAN")
+    text = shown["yaml"]
     assert "#   alpha: Alpha result (ALPHA)" in text
     assert "# Inspect all folds, including negative ones" in text
     template = yaml.safe_load(text)
@@ -2017,6 +1896,31 @@ def test_an_open_goal_offers_its_completion_to_fill(goal_app, tmp_path):
     assert [row["deliverable_id"] for row in filled["deliverables"]] == ["evidence"]
     with pytest.raises(ValueError, match="outcome"):
         GoalSubmission.model_validate(filled)
+
+    offered = shown["next_requests"]
+    assert offered["submit"]["goal_submission"] is None
+    assert offered["revise"]["goal_declaration"] is None
+    assert offered["revise"]["change_reason"] is None
+    offered["complete"] = {**offered["submit"], "goal_submission": _submission()}
+    assert {"submit", "complete"} <= client.offered_requests(shown).keys()
+    allowed = frozenset({"goal_id", "goal_hash", "goal_submission"})
+    saved = tmp_path / "goal.json"
+    saved.write_text(json.dumps(shown), encoding="utf-8")
+    sent = client.continuation("GOAL_SUBMIT", saved, {"goal_submission": _submission()}, allowed)
+    assert sent == {
+        "operation": "GOAL_SUBMIT",
+        "goal_id": str(UUID(int=1)),
+        "goal_hash": attached["goal_hash"],
+        "goal_submission": _submission(),
+    }
+
+    only = {"next_requests": {"complete": offered["complete"]}}
+    assert client.continued("GOAL_SUBMIT", only, {}, allowed) == offered["complete"]
+    twice = {"next_requests": {**offered, "another": offered["submit"]}}
+    with pytest.raises(
+        client.LocalResearchClientError, match=r"local_client\.next_request_required"
+    ):
+        client.continued("GOAL_SUBMIT", twice, {}, allowed)
 
     def written(document: dict[str, Any]) -> Request:
         judged = document["goal_submission"]
@@ -2049,7 +1953,7 @@ def test_an_open_goal_offers_its_completion_to_fill(goal_app, tmp_path):
     (saved := tmp_path / "completion.yaml").write_text(yaml.safe_dump(current), "utf-8")
     line = ["goal", "submit", current["goal_id"], "--revision", current["goal_hash"]]
     assert cli.request_of([*line, "--file", str(saved)]) == current
-    with pytest.raises(LocalResearchClientError, match="field_given_twice:goal_hash"):
+    with pytest.raises(client.LocalResearchClientError, match="field_given_twice:goal_hash"):
         cli.request_of([*line[:-1], "f" * 64, "--file", str(saved)])
 
 
@@ -2076,34 +1980,6 @@ def test_a_closed_goal_refuses_with_its_standing_and_the_follow_up_start() -> No
         Request(operation="GOAL_SUBMIT", goal_submission={}),
     )
     assert held["next_requests"]["show"] == {"operation": "GOAL_SHOW"}  # the session's own
-
-
-def test_an_open_goals_requests_leave_their_documents_to_give(goal_app, tmp_path) -> None:
-    """An open goal's requests leave their documents to give."""
-
-    from alphalattice.interface.local_application import client
-
-    app, opened, *_ = goal_app
-    attached = _attach(app, opened)
-    shown = app.operate(Request(operation="GOAL_SHOW", goal_id=UUID(int=1)), "HUMAN")
-    offered = shown["next_requests"]
-    assert offered["submit"]["goal_submission"] is None
-    assert offered["revise"]["goal_declaration"] is None
-    assert offered["revise"]["change_reason"] is None
-    saved = tmp_path / "goal.json"
-    saved.write_text(json.dumps(shown), encoding="utf-8")
-    sent = client.continuation(
-        "GOAL_SUBMIT",
-        saved,
-        {"goal_submission": _submission()},
-        frozenset({"goal_id", "goal_hash", "goal_submission"}),
-    )
-    assert sent == {
-        "operation": "GOAL_SUBMIT",
-        "goal_id": str(UUID(int=1)),
-        "goal_hash": attached["goal_hash"],
-        "goal_submission": _submission(),
-    }
 
 
 def test_a_goals_head_keeps_a_missing_or_corrupt_revisions_refusal(goal_app):
@@ -2347,3 +2223,70 @@ def test_dated_goal_lookup_shares_records_and_bounds_rule_disclosure(goal_app):
     assert app.store.rule_audits(task, records[str(goal)]) == (("L1", "r"),)
     absent = app.store.listing(limit=1, cursor=None, task_id=UUID(int=34), records={})
     assert absent["current_goal"] is None
+
+
+@pytest.mark.parametrize("repair", [False, True])
+def test_one_bound_offer_selects_the_inline_refs_and_reuses_recovery_reads(goal_app, repair):
+    """A ready offer binds references and revision; recovery reuses this request's owner read."""
+    app, _, calls, body, tasks = goal_app
+    task = UUID(int=17)
+    tasks[task] = ("portfolio_public_watermark_advancement", "SUCCEEDED", None)
+    body.update(
+        task_id=str(task),
+        review_selector={
+            "update_task_id": str(task),
+            "update_publication_hash": "e" * 64,
+            "position_basis": "CONDITIONAL_ESTIMATE",
+        },
+        review_standing={"status": "REVIEWED", "review_publication_hash": "c" * 64},
+    )
+    app.attribute(
+        app.store.head(UUID(int=1)),
+        Request(operation="RESEARCH_UPDATE_RUN", update_plan_hash="d" * 64),
+        {"status": "ADMITTED", "task_id": str(task)},
+        SESSION,
+    )
+
+    def send(document):
+        return app.operate(
+            PortfolioResearchRequestDocument.model_validate(document).to_operation_request(),
+            "HUMAN",
+        )
+
+    show = Request(operation="GOAL_SHOW", goal_id=UUID(int=1))
+    offered = app.operate(show, "HUMAN")["next_requests"]
+    assert "complete" in offered
+    request = offered["complete"]
+    assert {v["stage"] for v in request["goal_submission"]["references"]} == {
+        "PORTFOLIO",
+        "EVIDENCE_CRO",
+    }
+    assert request["goal_submission"]["criteria"][0]["answer"] is None
+    with pytest.raises(ValueError, match="outcome"):
+        send(request)
+    if repair:
+        send(
+            {
+                "operation": "GOAL_ATTACH",
+                "goal_id": str(UUID(int=1)),
+                "goal_reference": request["goal_submission"]["references"][0],
+                "change_reason": "Fixture",
+            }
+        )
+        request = app.operate(show, "HUMAN")["next_requests"]["complete"]
+    assert request["goal_hash"] == app.store.head(UUID(int=1)).goal_hash
+    submission = request["goal_submission"]
+    submission.update(outcome="NOT_ACHIEVED", summary="Fixture")
+    submission["criteria"][0].update(answer="NOT_ASSESSED", note="Fixture")
+
+    if repair:
+        submission["references"] = []
+        calls.clear()
+        missing = send(request)
+        assert missing["status"] == "INCOMPLETE" and len(calls) == 1
+        request = missing["next_requests"]["complete"]
+        assert request["goal_hash"] == missing["goal_hash"]
+    calls.clear()
+    answer = send(request)
+    assert answer["status"] == "COMPLETE" and answer["outcome"] == "NOT_ACHIEVED"
+    assert len(calls) == 2 and app.store.head(UUID(int=1)).state == "COMPLETE"

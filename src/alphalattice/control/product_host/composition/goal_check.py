@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import json
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast
 from uuid import UUID
 
@@ -243,19 +244,33 @@ def submission_grammar(reference_operations: Mapping[str, tuple[str, ...]]) -> d
 
 
 def resubmit(
-    goal: Goal, submission: GoalSubmission, missing: list[dict[str, Any]], offered: dict[str, Any]
+    goal: Goal,
+    submission: GoalSubmission,
+    missing: list[dict[str, Any]],
+    offered: dict[str, Any],
+    *,
+    inline: bool = False,
 ) -> dict[str, Any]:
     """The resubmit an INCOMPLETE answer offers: the submission as the Host can correct it.
 
     Left open when nothing is correctable; bound to the goal's revision unless an offered
     attach revises the goal first.
     """
-    request = {
+    request: dict[str, Any] = {
         "operation": "GOAL_SUBMIT",
         "goal_id": str(goal.goal_id),
         "goal_submission": corrected(submission, missing, offered),
     }
-    if not offered:
+    if inline:
+        document = request["goal_submission"] or submission.model_dump(mode="json")
+        held = {r["reference_id"] for r in document.get("references", [])}
+        document["references"] = document.get("references", []) + [
+            v["goal_reference"]
+            for v in offered.values()
+            if v["goal_reference"]["reference_id"] not in held
+        ]
+        request["goal_submission"] = document
+    if not offered or inline:
         request["goal_hash"] = goal.goal_hash
     return request
 
@@ -343,6 +358,68 @@ def goal_refusal(
     return answer
 
 
+def completion_template(goal: Goal, references: Sequence[dict[str, Any]] = ()) -> str:
+    """The open goal's completion to fill: the Host's slots prefilled, the judgment left.
+
+    A GOAL_SUBMIT bound to the goal's revision: each criterion and deliverable slot by
+    id, its words as a comment, the references to cite; the judgment is a placeholder the
+    contract refuses until written.
+
+    Args:
+        goal: The goal's head revision.
+        references: Exact owner-selected reads to submit inline.
+
+    Returns:
+        The request's YAML text, `request --file` sends it once filled.
+    """
+
+    def said(text: str) -> str:
+        return " ".join(text.split())[:160]
+
+    def quoted(value: str) -> str:
+        return json.dumps(value, ensure_ascii=False)
+
+    declared = goal.declaration
+    selected = [r.reference_id for r in goal.references] + [
+        str(r["reference_id"]) for r in references
+    ]
+    lines = [
+        f"# The completion of goal {quoted(said(declared.title))}, revision {goal.revision}: your",
+        "# judgment only; the Host adds its own facts (sessions, Tasks, requests). Replace each",
+        "# <...>, then `request --file <this file>`: it completes this goal's revision, and a",
+        "# later revision refuses it (read the goal again). Evidence names a reference by its id:",
+        *(f"#   {ref.reference_id}: {said(ref.label)} ({ref.stage})" for ref in goal.references),
+        "# A read the goal does not hold yet goes under `references:` with its own id.",
+        "operation: GOAL_SUBMIT",
+        f"goal_id: {quoted(str(goal.goal_id))}",
+        f"goal_hash: {quoted(goal.goal_hash)}",
+        "goal_submission:",
+        "  outcome: <ACHIEVED, PARTLY_ACHIEVED or NOT_ACHIEVED>",
+        "  summary: <what the goal reached, in your words>",
+        "  criteria:",
+    ]
+    for criterion in declared.criteria:
+        lines += [
+            f"  # {said(criterion.text)}",
+            f"  - criterion_id: {quoted(criterion.criterion_id)}",
+            "    answer: <MET, NOT_MET or NOT_ASSESSED>",
+            f"    evidence: {json.dumps(selected)}",
+            '    note: ""',
+        ]
+    if declared.deliverables:
+        lines.append("  deliverables:")
+    for deliverable in declared.deliverables:
+        need = "required" if deliverable.required else "optional"
+        lines += [
+            f"  # {deliverable.kind}, {need}: {said(deliverable.description)}",
+            f"  - deliverable_id: {quoted(deliverable.deliverable_id)}",
+            f"    references: {json.dumps(selected or ['<reference id>'])}",
+        ]
+    if references:
+        lines += ["  references:", *(f"  - {json.dumps(ref)}" for ref in references)]
+    return "\n".join(lines) + "\n"
+
+
 def goal_schema(operations: Mapping[str, tuple[str, ...]], template: object) -> dict[str, Any]:
     """The existing declaration and submission schema, composed beside its grammar."""
     return {
@@ -361,3 +438,26 @@ def goal_schema(operations: Mapping[str, tuple[str, ...]], template: object) -> 
         "claim": "Contracts and declared budgets are not permission grants; the Host "
         "checks a submission against its own record, never the truth of its summary.",
     }
+
+
+def offer_completion(
+    goal: Goal, body: dict[str, Any], resolve: Callable[[GoalReferenceRequest], dict[str, Any]]
+) -> None:
+    """Select exact reads once and leave only the author's judgments to fill."""
+    import yaml  # type: ignore[import-untyped]
+
+    refs = offered_attach(
+        goal,
+        [{"code": NO_EVIDENCE}],
+        tuple(GoalTaskFact.model_validate(t) for t in body["record"]["tasks"]),
+        resolve,
+    )
+    body["yaml"] = completion_template(goal, [v["goal_reference"] for v in refs.values()])
+    if not goal.references and not refs:
+        return
+    request = yaml.safe_load(body["yaml"])
+    request["goal_submission"].update(outcome=None, summary=None)
+    for criterion in request["goal_submission"]["criteria"]:
+        criterion["answer"] = None
+    body["next_requests"]["complete"] = request
+    body["detail"] = "goal.closure.ready"

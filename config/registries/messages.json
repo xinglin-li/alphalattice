@@ -2,6 +2,24 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "feature.plan.document_invalid": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The feature document is invalid. Read the offered controls or inputs, correct the invalid fields and plan again; keep your research choices.",
+        "zh-CN": "特征文档无效。读取提供的控制项或输入，修正无效字段后重新规划；保留你的研究选择。"
+      }
+    },
+    "strategy.plan.declaration_invalid": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The strategy declaration is invalid. Read the offered strategy controls, correct the invalid fields and plan again; keep your research choices.",
+        "zh-CN": "策略声明无效。读取提供的策略控制项，修正无效字段后重新规划；保留你的研究选择。"
+      }
+    },
     "network.daily_updates": {
       "owner": "alphalattice.interface.local_application",
       "kind": "PERSON_QUESTION",
@@ -55,6 +73,35 @@
         "zh-CN": "首次使用之外的网络访问由本人决定：用一句话询问本人，得到明确同意后，携带 --person-said 和 --asked 再次发送同一请求；`network show` 可查看决定网络状态的依据。"
       }
     },
+    "read.summary": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [
+        "pointer"
+      ],
+      "words": {
+        "en": "Summary only. Read the complete answer at {pointer}.",
+        "zh-CN": "这里只显示摘要。完整答复请读取 {pointer}。"
+      }
+    },
+    "read.legacy_full_deprecated": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Full stdout is deprecated; use the summary view and --output for the complete answer.",
+        "zh-CN": "标准输出中的完整答复已弃用；请使用摘要视图，并通过 --output 保存完整答复。"
+      }
+    },
+    "cli.read.view": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Read a bounded summary with pointers to the complete answer.",
+        "zh-CN": "读取有大小限制的摘要，其中提供完整答复的读取位置。"
+      }
+    },
     "goal.profile.time": {
       "owner": "alphalattice.control.observation_runtime",
       "kind": "MESSAGE",
@@ -105,8 +152,8 @@
       "kind": "MESSAGE",
       "arguments": [],
       "words": {
-        "en": "This launch could not prove escape from Windows Job containment, so it left no detached Host running. Run terminal_command in a terminal you own outside the agent's shell (Claude Code desktop: its Terminal panel). Or keep it attached for this session with --stop-on-stdin; a held update then waits for the next session.",
-        "zh-CN": "本次启动无法证明已脱离 Windows Job 的约束，因此没有留下独立运行的 Host。请在你自己持有、位于代理 shell 之外的终端运行 terminal_command（Claude Code 桌面端可使用其 Terminal 面板）。也可以通过 --stop-on-stdin 仅为本次会话保持连接；此时暂存的更新须等到下次会话。"
+        "en": "This launch could not prove escape from Windows Job containment, so it left no detached Host running. Give the person terminal_command to run in a terminal they own outside the agent's shell, then wait for their word before any further command for this workspace.",
+        "zh-CN": "本次启动无法证明已脱离 Windows Job 的约束，因此没有留下独立运行的 Host。请将 terminal_command 交给本人，在其自己持有、位于代理 shell 之外的终端运行，然后等待本人的话，再对此工作区执行任何命令。"
       }
     },
     "cli.confirmation.question_code": {
@@ -118,6 +165,75 @@
         "zh-CN": "与 --person-said 同用：问题旁的已注册代码。"
       }
     },
+    "goal.closure.ready": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Fill the remaining judgments and send this one request; its references are selected.",
+        "zh-CN": "填写余下的判断并发送这一条请求；引用已选好。"
+      }
+    },
+    "host.closing": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This Host is stopping and did not admit this request. Once it has stopped, serve this workspace again and retry the refused request.",
+        "zh-CN": "此主机正在停止，未接纳本次请求。主机停止后，请重新启动此工作区的主机，再重试被拒绝的请求。"
+      }
+    },
+    "host.idle": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [
+        "seconds"
+      ],
+      "words": {
+        "en": "A detached Host stays while a held update, Task, request or enabled automation needs it; otherwise it stops after {seconds} idle seconds (0 disables idle shutdown).",
+        "zh-CN": "分离运行的主机在待执行的更新、任务、请求或已启用的自动更新仍需要它时会继续运行；否则，空闲 {seconds} 秒后会自动停止（0 表示禁用空闲自动停止）。"
+      }
+    },
+    "host.start.breakaway_denied.panel": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This launch could not prove escape from Windows Job containment, so it left no detached Host running. Run terminal_command yourself in the desktop app's Terminal panel whose shell you probed outside every Job; the same escape and readiness checks still apply. The app may ask the person to approve that one command line.",
+        "zh-CN": "本次启动无法证明已脱离 Windows Job 的约束，因此没有留下独立运行的 Host。请自行在桌面应用的 Terminal 面板运行 terminal_command；你已探测确认该面板的 shell 不在任何 Job 中。同样的脱离约束与就绪检查仍然适用。 应用可能要求本人批准这一行命令。"
+      }
+    },
+    "host.serving": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [
+        "instance",
+        "pid",
+        "started_at"
+      ],
+      "words": {
+        "en": "Host {instance} (process {pid}) has served this workspace since {started_at}.",
+        "zh-CN": "宿主 {instance}（进程 {pid}）自 {started_at} 起为此工作区提供服务。"
+      }
+    },
+    "host.reuse.unverified": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The recorded Host could not be authenticated. Read host_log and identify this workspace's owning Host before retrying the original serve command; leave the descriptor and writer lease unchanged.",
+        "zh-CN": "无法验证所记录的 宿主。请先读取 host_log 并确认此工作区由哪个 宿主 持有，再重试原来的 serve 命令；不要改动连接描述或写入租约。"
+      }
+    },
+    "host.reuse.guide": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "A matching serving Host can be reused even when this shell cannot detach a new process. ALREADY_SERVING reuses only an authenticated Host for this workspace and instance, preserving its authority and idle policy. Activity's observer names its instance, process and start time; the Workbench shows the same Host. On an unverified or stale descriptor, read the named Host log and identify its owning process before retrying the original serve command; leave the descriptor and writer lease unchanged.",
+        "zh-CN": "即使当前命令环境无法另起独立进程，仍可复用经过验证、匹配的已有宿主。ALREADY_SERVING 只复用经过验证、属于此工作区及实例的 宿主，并保留其权限和空闲策略。工作区活动的观察信息会列出其实例、进程和启动时间；工作台显示同一个 宿主。若连接描述过期或无法验证，请先读取所指出的 宿主 日志并确认持有它的进程，再重试原来的 serve 命令；不要改动连接描述或写入租约。"
+      }
+    },
     "goal.profile.operation": {
       "owner": "alphalattice.control.observation_runtime",
       "kind": "MESSAGE",
@@ -125,6 +241,55 @@
       "words": {
         "en": "Goal time profile",
         "zh-CN": "目标用时分析"
+      }
+    },
+    "goal.closure.complete": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The record is complete; read its outcome, limitations and report here.",
+        "zh-CN": "记录已完整；请在这里查看结果、限制和报告。"
+      }
+    },
+    "goal.closure.report_unavailable": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Goal is sealed; the report is unavailable. Use its offered repair request.",
+        "zh-CN": "目标已封存；报告暂不可用。请使用提供的修复请求。"
+      }
+    },
+    "host.child_ownership.unavailable": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This launch could not own its attached child and left no Host running. Run terminal_command in another terminal.",
+        "zh-CN": "本次启动无法持有附属子进程，因此未留下运行中的宿主。请在另一个终端执行 terminal_command。"
+      }
+    },
+    "protocol.error.summary": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [
+        "reason"
+      ],
+      "words": {
+        "en": "The operation could not be completed ({reason}).",
+        "zh-CN": "操作未能完成（{reason}）。"
+      }
+    },
+    "protocol.error.field": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [
+        "field"
+      ],
+      "words": {
+        "en": "The request field {field} is invalid.",
+        "zh-CN": "请求字段 {field} 无效。"
       }
     }
   }

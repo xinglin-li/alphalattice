@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
 INTERNAL_ID_BASELINE = "census/public-internal-id-baseline.json"
+REVIEW_KEY = "alphalattice.release.review-key.v1"
 RULES = [
     {
         "rule": "PRIVATE_CREDENTIAL",
@@ -1022,7 +1023,7 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
                 }
                 for line, targets in sorted(imports.items())
             )
-        for number, line in enumerate(text.splitlines(), 1):
+        for number, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
             for rule, pattern in SCANS.items():
                 for match in pattern.finditer(line):
                     assessment = "REVIEW_REQUIRED"
@@ -1236,6 +1237,7 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
         [*findings, *ratchet["violations"]],
         key=lambda row: (row["path"], row["line"], row["rule"], row.get("column", 0)),
     )
+    content_keys(findings, blobs)
     audit = {
         "source_sha": sha,
         "er3_source_sha": er3.get("base"),
@@ -1392,6 +1394,77 @@ def render(audit: dict) -> str:
     return "\n".join(lines)
 
 
+def content_keys(rows: list[dict], blobs: dict[str, bytes]) -> None:
+    """Bind findings to exact UTF-8 lines, normalizing CRLF only; cache each path and line."""
+    lines, hashes = {}, {}
+    for row in rows:
+        path, number = row["path"], row["line"]
+        if path not in lines:
+            lines[path] = blobs[path].decode("utf-8").replace("\r\n", "\n").split("\n")
+        if not 0 < number <= len(lines[path]):
+            raise ValueError("review key has no source line")
+        if (path, number) not in hashes:
+            hashes[path, number] = hashlib.sha256(
+                lines[path][number - 1].encode("utf-8")
+            ).hexdigest()
+        row["review_key"] = [REVIEW_KEY, path, row["rule"], hashes[path, number]]
+
+
+def attach_reviews(audit: dict, verification: dict, repo: Path, blobs: dict[str, bytes]) -> None:
+    """Admit emitted keys only; reserved example contacts retain their declared policy."""
+    held = verification["standalone"]
+    accepted = held.get("current_findings", [])
+    reopened = held.setdefault("reopened_findings", [])
+    reviews = {}
+    for row in accepted:
+        key = row.get("review_key")
+        if (
+            not isinstance(key, list)
+            or len(key) != 4
+            or key[:3] != [REVIEW_KEY, row["path"], row["rule"]]
+            or not isinstance(key[3], str)
+            or not re.fullmatch("[0-9a-f]{64}", key[3])
+        ):
+            raise ValueError("invalid review key")
+        value, key = row, tuple(key)
+        prior = reviews.setdefault(key, {"disposition": value["disposition"], "evidence": {}})
+        if prior["disposition"] != value["disposition"]:
+            raise ValueError("conflicting review key")
+        prior["evidence"][value["evidence"]] = None
+    current = {tuple(row["review_key"]) for row in audit["findings"]}
+    held["current_findings"] = []
+    for row in accepted:
+        if tuple(row["review_key"]) in current:
+            held["current_findings"].append(row)
+        else:
+            reopened.append(dict(row, reopen_reason="content_changed"))
+    lines = {}
+    for row in audit["findings"]:
+        if tuple(row["review_key"]) in reviews:
+            prior = reviews[tuple(row["review_key"])]
+            row["review"] = {**prior, "evidence": "\n".join(prior["evidence"])}
+        elif row["rule"] == "NO_PERSONAL_CONTACT":
+            path = row["path"]
+            if path not in lines:
+                lines[path] = blobs[path].decode("utf-8").replace("\r\n", "\n").split("\n")
+            text = lines[path][row["line"] - 1]
+            addresses = re.findall(r"[\w.+-]+@((?:[\w-]+\.)+[\w-]+)", text)
+            if addresses and all(
+                re.search(r"(^|\.)(example\.(com|org|net)|invalid|test|example)$", d, re.I)
+                for d in addresses
+            ):
+                row["review"] = {
+                    "disposition": "KEEP_SYNTHETIC",
+                    "evidence": (
+                        f"{path}:{row['line']} at {audit['source_sha'][:9]}: every address on the "
+                        "line uses a reserved example domain (RFC 2606/6761); a fixture, "
+                        "not anyone's contact."
+                    ),
+                }
+                held["current_findings"].append({**row, **row["review"]})
+    audit["standalone"] = held
+
+
 def main() -> int:
     """Rebuild manifest/audit or compare them byte for byte without writing."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1410,18 +1483,9 @@ def main() -> int:
         validate_internal_id_history(args.repo, sha, admissions_from="develop")
     manifest, audit = generate(sha, blobs, modes)
     if args.verification_json:
-        audit["standalone"] = json.loads(args.verification_json.read_text(encoding="utf-8"))[
-            "standalone"
-        ]
+        verification = json.loads(args.verification_json.read_text(encoding="utf-8"))
+        attach_reviews(audit, verification, args.repo, blobs)
         audit["command"] += " --verification-json census/public_release.json"
-        reviews = {
-            (row["path"], row["line"], row["rule"], row.get("column", 0)): row
-            for row in audit["standalone"].get("current_findings", [])
-        }
-        for row in audit["findings"]:
-            key = (row["path"], row["line"], row["rule"], row.get("column", 0))
-            if key in reviews:
-                row["review"] = {name: reviews[key][name] for name in ("disposition", "evidence")}
     outputs = {
         "config/release/public-manifest.json": json.dumps(manifest, indent=2, ensure_ascii=False)
         + "\n",

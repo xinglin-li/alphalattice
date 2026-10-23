@@ -1,4 +1,19 @@
 {
+ "feature_research.document_invalid": {
+  "message_id": "feature.plan.document_invalid",
+  "detail": "feature.plan.document_invalid",
+  "next_action": "READ_FEATURE_CATALOG_CONTROLS_AND_CORRECT_DOCUMENT"
+ },
+ "research_strategy.declaration_invalid": {
+  "message_id": "strategy.plan.declaration_invalid",
+  "detail": "strategy.plan.declaration_invalid",
+  "next_action": "CORRECT_DECLARATION_AND_REPLAN"
+ },
+ "local_application.dispatcher_closed": {
+  "message_id": "host.closing",
+  "detail": "host.closing",
+  "next_action": "SERVE_AGAIN_WHEN_WORK_NEEDS_IT"
+ },
  "person_confirmation.question_unknown": {
   "detail": "The question code is not registered. Read the offered question and relay its code with the person's words.",
   "next_action": "READ_THE_OFFERED_QUESTION"

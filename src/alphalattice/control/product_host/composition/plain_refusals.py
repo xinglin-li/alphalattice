@@ -13,7 +13,9 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from pydantic import ValidationError
 
 from alphalattice.foundation.factor_research.experiments.authoring import (
     INSTALLED_REDUNDANCY_POLICIES,
@@ -24,7 +26,66 @@ from alphalattice.interface.local_application.cli_contract import (
     refusal_words,
     schema_request,
 )
+from alphalattice.interface.local_application.failure_codes import located_failure
 from alphalattice.interface.local_application.questions import person_question
+
+if TYPE_CHECKING:
+    from alphalattice.control.product_host.composition.research_workspace import (
+        ResearchWorkspaceManifest,
+    )
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+
+
+def invalid_plan_document(
+    error: BaseException,
+    request: PortfolioResearchOperationRequest,
+    manifest: ResearchWorkspaceManifest,
+) -> dict[str, Any]:
+    """Keep located validation and offer editable controls without choosing the research."""
+    feature = request.operation.startswith("FEATURE_CATALOG_")
+    code = (
+        "feature_research.document_invalid" if feature else "research_strategy.declaration_invalid"
+    )
+    body = {
+        "status": "REFUSED",
+        **located_failure(error, code),
+        "next_action": "READ_FEATURE_CATALOG_CONTROLS_AND_CORRECT_DOCUMENT"
+        if feature
+        else "CORRECT_DECLARATION_AND_REPLAN",
+    }
+    if request.operation not in {"FEATURE_CATALOG_PLAN", "RESEARCH_STRATEGY_PLAN"}:
+        return body
+    offers: dict[str, Any] = {"controls": {"operation": "RESEARCH_STRATEGY_CONTROLS"}}
+    if feature:
+        from alphalattice.interface.local_application.portfolio_research import (
+            PortfolioResearchRequestDocument,
+        )
+
+        document = request.feature_document or {}
+        binding = document.get("input_binding_hash")
+        offers = {"inputs": {"operation": "RESEARCH_INPUTS"}}
+        if isinstance(binding, str) and binding in {
+            v.binding_hash for v in manifest.experiment_inputs or ()
+        }:
+            controls = {
+                "operation": "FEATURE_CATALOG_CONTROLS",
+                "input_binding_hash": binding,
+                **(
+                    {"feature_plan_hash": document["parent_plan_hash"]}
+                    if document.get("parent_plan_hash") is not None
+                    else {}
+                ),
+            }
+            try:
+                PortfolioResearchRequestDocument.model_validate(controls)
+            except ValidationError:
+                pass
+            else:
+                offers = {"controls": controls, **offers}
+    return {**body, **refusal_words(code), "next_requests": offers}
+
 
 _CHANGED = frozenset(
     {

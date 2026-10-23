@@ -33,6 +33,9 @@ from alphalattice.control.product_host.composition.local_web_session import (
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     PortfolioRunCommand,
 )
+from alphalattice.control.product_host.composition.research_workspace import (
+    publish_research_workspace_manifest,
+)
 from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.registry import TaskQueueFull
 from alphalattice.interface.local_application import client, native_bridge
@@ -469,6 +472,11 @@ def test_run_admission_returns_before_the_work_and_the_task_progresses(
         held = _json(live, f"/api/status?task_id={admitted['task_id']}")
         assert held["lifecycle"] == "RUNNING"
         assert held["task_id"] == admitted["task_id"]
+        cutoff = live.dispatcher._last_needed + 901
+        monkeypatch.setattr(
+            "alphalattice.interface.local_application.dispatcher.monotonic", lambda: cutoff
+        )
+        assert not live.dispatcher._idle_expired(900, lambda: False)
     finally:
         release.set()
     live.dispatcher.drain_for_tests()
@@ -476,6 +484,90 @@ def test_run_admission_returns_before_the_work_and_the_task_progresses(
     assert final["lifecycle"] == "SUCCEEDED"
     assert final["verified_stage_count"] == final["total_stage_count"]
     assert final["worker_failure"] is None
+
+    assert not live.dispatcher._idle_expired(900, lambda: False)
+
+
+def test_an_invalid_strategy_declaration_offers_its_real_repair_route(live):
+    """Invalid declarations offer a verbatim repair route before research parents are read."""
+    publish_research_workspace_manifest(live.workspace, live.workspace_manifest)
+    request = PortfolioResearchAgentRequest(
+        operation="RESEARCH_STRATEGY_PLAN", experiment_document={}
+    ).to_operation_request()
+    body = live.operations._execute(request, caller="HUMAN", agent_execution=None)
+    assert body["failure_code"] == "research_strategy.declaration_invalid"
+    assert ["alpha_task_ids"] in body["fields"]
+    assert body["next_action"] == "CORRECT_DECLARATION_AND_REPLAN"
+    offer = body.get("next_requests", {}).get("controls")
+    assert offer == {"operation": "RESEARCH_STRATEGY_CONTROLS"}
+    parsed = PortfolioResearchAgentRequest.model_validate(offer).to_operation_request()
+    controls = live.operations.execute(parsed)
+    assert controls["status"] == "AVAILABLE"
+    assert "alpha_task_ids" in controls["declaration_schema"]["properties"]
+
+
+def test_read_routes_and_registered_read_requests_do_not_refresh_activity(live, monkeypatch):
+    from alphalattice.interface.local_application import dispatcher
+
+    before = live.dispatcher._last_needed
+    ticks = [before + 100]
+    monkeypatch.setattr(dispatcher, "monotonic", lambda: ticks[0])
+    assert _json(live, "/api/session")["workspace_id"] == "qa-local-web"
+    client.LocalResearchClient(live.workspace).request({"operation": "OPERATION_LIST"})
+    assert live.dispatcher._last_needed == before
+    live.web.application.route("POST", "/api/qa-write", mutates=True)(lambda *_: {"written": True})
+    assert _json(live, "/api/qa-write", method="POST", payload={})["written"]
+    assert live.dispatcher._last_needed == ticks[0]
+    from alphalattice.interface.local_application import cli_contract
+
+    ticks[0] += 901
+
+    def admission_wins():
+        assert _json(live, "/api/qa-write", method="POST", payload={})["written"]
+        ticks[0] += 901
+        return False
+
+    assert not live.dispatcher._idle_expired(900, admission_wins)
+
+    def unreadable():
+        raise OSError("synthetic owner read")
+
+    ticks[0] += 901
+    assert not live.dispatcher._idle_expired(900, unreadable)
+    ticks[0] += 901
+    assert not live.dispatcher._idle_expired(0, lambda: False)
+    assert live.dispatcher._idle_expired(900, lambda: False)
+    admitted = live.dispatcher.admissions
+    live.dispatcher._begin_drain()
+    status, _, raw = _request(live, "/api/qa-write", method="POST", payload={})
+    refused = json.loads(raw)
+    assert status == 400 and refused["status"] == "REFUSED"
+    assert refused["failure_code"] == "local_application.dispatcher_closed"
+    assert refused["next_action"] == "SERVE_AGAIN_WHEN_WORK_NEEDS_IT"
+    words = cli_contract.runtime_json("config/registries/messages.json")["entries"]["host.closing"][
+        "words"
+    ]
+    assert refused["detail"] == words["en"]
+    assert refused["terminal_command"] == [
+        "alphalattice",
+        "--workspace",
+        str(live.workspace),
+        "serve",
+        "--no-browser",
+        "--detach",
+    ]
+    from alphalattice.interface.local_application.cli import main
+
+    assert main(refused["terminal_command"][1:], serve=lambda _: 99) == 99
+    denied, _, private = _request(live, "/api/qa-write", method="POST", payload={}, token=None)
+    assert denied == 403 and "terminal_command" not in json.loads(private)
+    for language, locale in (("en", "en"), ("zh", "zh-CN")):
+        token = cli_contract.ANSWER_LANGUAGE.set(language)
+        try:
+            assert cli_contract.worded(refused["detail"]) == words[locale]
+        finally:
+            cli_contract.ANSWER_LANGUAGE.reset(token)
+    assert live.dispatcher.admissions == admitted
 
 
 def test_capacity_is_the_workspaces_own_and_is_reported_truthfully(
@@ -647,57 +739,101 @@ def test_shutdown_joins_a_slow_authenticated_handler(live: LocalPortfolioWebSess
     assert live.session is None
 
 
-def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(tmp_path: Path) -> None:
+@pytest.mark.parametrize("path", ["command", "held", "admission", "handoff", "idle"])
+def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(
+    tmp_path, monkeypatch, path
+):
     "The old bounded join returned with the worker alive. Now it refuses to."
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    session = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=_manifest("qa-bounded"),
-        resolver=_Resolver(_resolved()),
-    )
+    options = {"workspace": workspace, "workspace_manifest": _manifest("qa-bounded")}
+    session = LocalPortfolioWebSession(**options, resolver=_Resolver(_resolved()))
     session.start()
-    running = threading.Event()
-    release = threading.Event()
+    running, release = threading.Event(), threading.Event()
+    handoff, executed = threading.Event(), threading.Event()
+    errors = []
+    stopper = threading.Thread(target=session.stop, daemon=True)
 
     class _SlowCommand:
         command_kind = "qa_slow_command"
 
         def admit(self) -> CommandAdmission:
+            if path == "admission":
+                running.set()
+                assert handoff.wait(20)
             return CommandAdmission(task_id=uuid4(), lifecycle="QUEUED")
 
         def execute(self, task_id: UUID) -> None:
             del task_id
+            if path == "idle" and not running.is_set():
+                return
+            executed.set()
             running.set()
             release.wait(timeout=60.0)
 
+    def submit():
+        try:
+            if path in {"handoff", "idle"}:
+                running.set()
+                assert handoff.wait(20)
+            session.dispatcher.submit(_SlowCommand())
+        except Exception as error:
+            errors.append(error)
+
+    producer = threading.Thread(target=submit, daemon=True)
+    if path == "idle":
+        session.dispatcher.on_idle = submit
+
     try:
-        session.dispatcher.submit(_SlowCommand())
+        if path in {"held", "handoff"}:
+            owner = session.operations.automation
+            close = owner.held_host.close
+            monkeypatch.setattr(owner.held_host, "close", lambda **_: close(timeout=0))
+            owner.hold(
+                session.clock(),
+                submit if path == "handoff" else lambda: _SlowCommand().execute(uuid4()),
+            )
+        elif path == "admission":
+            producer.start()
+        else:
+            session.dispatcher.submit(_SlowCommand())
         assert running.wait(timeout=20.0)
+        cutoff = session.dispatcher._last_needed + 901
+        monkeypatch.setattr(
+            "alphalattice.interface.local_application.dispatcher.monotonic", lambda: cutoff
+        )
+        assert not session.dispatcher._idle_expired(900, lambda: False)
         with pytest.raises(LocalWebSessionError):
             session.stop(timeout=0.05)
         assert session.session is not None
         assert session.dispatcher is not None
-        assert session.dispatcher.worker_alive
-        contender = LocalPortfolioWebSession(
-            workspace=workspace,
-            workspace_manifest=_manifest("qa-bounded"),
-            resolver=_Resolver(_resolved()),
-        )
+        if path == "command":
+            assert session.dispatcher.worker_alive
+        contender = LocalPortfolioWebSession(**options, resolver=_Resolver(_resolved()))
         with pytest.raises(RuntimeError, match="writer_already_owned"):
             contender.start()
+        stopper.start()
+        stopper.join(timeout=0.4)
+        assert stopper.is_alive() and session.session is not None
+        handoff.set()
         release.set()
+        stopper.join(timeout=30.0)
+        assert not stopper.is_alive()
+        if producer.ident is not None:
+            producer.join(5)
+        assert executed.is_set() and not errors
         session.stop()
         assert session.session is None
     finally:
+        handoff.set()
         release.set()
         with suppress(Exception):
             session.stop()
-    successor = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=_manifest("qa-bounded"),
-        resolver=_Resolver(_resolved()),
-    )
+        if stopper.ident is not None:
+            stopper.join(timeout=30.0)
+        if producer.ident is not None:
+            producer.join(5)
+    successor = LocalPortfolioWebSession(**options, resolver=_Resolver(_resolved()))
     successor.start()
     try:
         assert _json(successor, "/api/session")["workspace_id"] == "qa-bounded"

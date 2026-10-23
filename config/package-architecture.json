@@ -502,5 +502,157 @@
       "artifact_writer": false,
       "physical_namespace_target": "devtools.evaluation"
     }
-  ]
+  ],
+  "deferred_imports": {
+    "alphalattice.capabilities.alpha_modeling.adapters.hist_gradient_boosting": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.capabilities.alpha_modeling.adapters.huber": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.capabilities.alpha_modeling.adapters.rank_composite": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.capabilities.alpha_modeling.adapters.regularized_linear": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.capabilities.alpha_modeling.catalog": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.capabilities.alpha_modeling.declaration": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.capabilities.alpha_modeling.extension": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.capabilities.alpha_modeling.model_contract": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.capabilities.alpha_modeling.model_scaffold": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.capabilities.portfolio_backtesting.contracts": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.data_platform.maintenance.registry": "Defer this numerical or optional implementation until its owner requests it; dependencies: duckdb.",
+    "alphalattice.control.observation_runtime.telemetry.progress": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.composition.committee": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.composition.evidence_review_delivery": "Defer this numerical or optional implementation until its owner requests it; dependencies: duckdb.",
+    "alphalattice.control.product_host.composition.first_use_road": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.composition.foundation_summary": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.control.product_host.composition.local_web_session": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.composition.portfolio_result_context": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.composition.research_authoring": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.control.product_host.composition.research_delivery": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.composition.research_workspace": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.composition.retrieval_pack_setup": "Defer this numerical or optional implementation until its owner requests it; dependencies: torch.",
+    "alphalattice.control.product_host.composition.rolling_portfolio_report": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.maintenance.data_update": "Defer this numerical or optional implementation until its owner requests it; dependencies: duckdb.",
+    "alphalattice.control.product_host.publication.goals": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.research_authoring.execution": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.research_authoring.factor_inputs": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.control.product_host.research_authoring.feature_extensions": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.research_authoring.model_extensions": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.research_authoring.panel_methodology_sources": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.product_host.storage.backup": "Defer this numerical or optional implementation until its owner requests it; dependencies: duckdb.",
+    "alphalattice.control.workspace_runtime.network_access": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.control.workspace_runtime.writer_lease": "Defer this numerical or optional implementation until its owner requests it; dependencies: duckdb.",
+    "alphalattice.foundation.causal_outcomes.execution.readers": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.foundation.factor_research.experiments.development_evidence": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.foundation.factor_research.programs.program": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.foundation.feature_engine.panels.development_overlay": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.foundation.feature_engine.runtime.closure_genesis": "Defer this numerical or optional implementation until its owner requests it; dependencies: duckdb.",
+    "alphalattice.foundation.market_data_ops.publication.session_marks": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.foundation.research_foundation.publication.sponsorship": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.interface.local_application": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.interface.local_application.cli": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.interface.local_application.client": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.interface.local_application.experiment_report": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.interface.local_application.native_bridge": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.interface.local_application.native_setup": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.interface.local_application.operations": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.interface.local_application.portfolio_research": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.alpha_research.experiments.authoring": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.investment.alpha_research.experiments.comparison": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.investment.alpha_research.experiments.development_artifacts": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.alpha_research.experiments.lifecycle_authoring": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.alpha_research.experiments.mandate": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.alpha_research.experiments.policies": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.alpha_research.experiments.verification": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.alpha_research.publication.artifacts": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.alpha_research.scores.model_renewal": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.alpha_research.targets.standardization": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.application.decision_updates": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.application.research_experiment": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.evaluation.walk_forward": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.policies.buffered_equal_weight": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.policies.buffered_inverse_volatility": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.policies.buffered_rank_return": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.policies.current_universe_equal_weight": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.policies.minimum_variance": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.policies.return_scaled_total_signal": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.policies.score_risk_cost": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.policies.stratified_equal_weight": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.policies.top_k_equal_weight": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.policies.tranche_book": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.publication.rolling_history": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.research_loop": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.portfolio_strategy_lab.research_loop.panel_methodology_execution": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.risk_research.estimators.covariance": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.risk_research.estimators.diagonal": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.risk_research.estimators.fast_slow": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.risk_research.experiments.compiler": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.risk_research.experiments.verification": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.risk_research.experiments.window": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.investment.sector_research.inputs.storage": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.kernel.data.calendar": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.kernel.knowledge._embeddings": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
+    "alphalattice.kernel.knowledge._reranking": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
+    "alphalattice.kernel.knowledge._torch": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
+    "alphalattice.kernel.knowledge.model_store": "Defer this numerical or optional implementation until its owner requests it; dependencies: torch.",
+    "alphalattice.kernel.live_evidence.online_sources": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
+    "alphalattice.oversight.chief_risk_officer.decision.book_evidence": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.kernel.knowledge.runtime": "Shared verified-pack and numerical work handles are loaded only when the inference/retrieval owner needs them."
+  },
+  "private_import_fences": {
+    "alphalattice.capabilities.portfolio_inputs.tradability.surface::<module>": {
+      "alphalattice.kernel.shared_kernel.identity._CANONICAL_ENCODER": "Streaming canonical bytes remain the same identity fence; no whole-buffer substitute is proved."
+    },
+    "alphalattice.control.data_platform.candidate_requalification::<module>": {
+      "alphalattice.foundation.market_data_ops.runtime.universe_onboarding._ten_calendar_year_anniversary": "The exact decade calendar boundary is retained until a public equivalent is proved."
+    },
+    "alphalattice.control.data_platform.readiness::<module>": {
+      "alphalattice.foundation.market_data_ops.runtime.universe_onboarding._ten_calendar_year_anniversary": "The exact decade calendar boundary is retained until a public equivalent is proved."
+    },
+    "alphalattice.control.product_host.composition.decision_advancement::<module>": {
+      "alphalattice.control.data_platform.readiness._latest_common_us_session": "The common US session boundary is retained until a public equivalent is proved."
+    },
+    "alphalattice.control.product_host.composition.portfolio_research_operations::<module>": {
+      "alphalattice.interface.local_application.portfolio_research._spec_document": "The exact request serialization, including omitted fields, remains the equality fence."
+    },
+    "alphalattice.control.product_host.composition.portfolio_result_context::<module>": {
+      "alphalattice.investment.portfolio_strategy_lab.application.resolution._risk_surface": "The existing Risk axes and projection remain the equality fence.",
+      "alphalattice.investment.portfolio_strategy_lab.application.resolution._sector_map": "The existing sector axes and projection remain the equality fence."
+    },
+    "alphalattice.control.product_host.composition.strategy_activation::<module>": {
+      "alphalattice.control.data_platform.readiness._latest_common_us_session": "The common US session boundary is retained until a public equivalent is proved."
+    },
+    "alphalattice.control.product_host.composition.strategy_score_inputs::<module>": {
+      "alphalattice.foundation.causal_outcomes.execution.compile._action_dividends": "The exact dividend outcome projection remains the equality fence."
+    },
+    "alphalattice.control.product_host.composition.strategy_scoring::<module>": {
+      "alphalattice.control.data_platform.readiness._latest_common_us_session": "The common US session boundary is retained until a public equivalent is proved."
+    },
+    "alphalattice.control.product_host.data_preparation.application::<module>": {
+      "alphalattice.control.data_platform.readiness._latest_common_us_session": "The common US session boundary is retained until a public equivalent is proved."
+    },
+    "alphalattice.control.product_host.data_preparation.host::<module>": {
+      "alphalattice.control.data_platform.readiness._latest_common_us_session": "The common US session boundary is retained until a public equivalent is proved."
+    },
+    "alphalattice.control.product_host.maintenance.data_update::<module>": {
+      "alphalattice.control.data_platform.readiness._latest_common_us_session": "The common US session boundary is retained until a public equivalent is proved."
+    },
+    "alphalattice.control.product_host.research_authoring.feature_materialization::<module>": {
+      "alphalattice.foundation.feature_engine.producers.base_materializer._REQUIRED_COLUMNS": "The existing materialization column contract remains the equality fence."
+    },
+    "alphalattice.control.product_host.research_authoring.panel_methodology_sources::<module>": {
+      "alphalattice.investment.portfolio_strategy_lab.inputs.development._tradability_matrices": "The exact tradability masks and axes remain the equality fence."
+    },
+    "alphalattice.foundation.feature_engine.storage.repositories::<module>": {
+      "alphalattice.foundation.market_data_ops.storage.duckdb._canonical_hash": "The existing Arrow, UTC and storage hash bytes remain the equality fence.",
+      "alphalattice.foundation.market_data_ops.storage.duckdb._selected_providers": "The existing Arrow, UTC and storage hash bytes remain the equality fence.",
+      "alphalattice.foundation.market_data_ops.storage.duckdb._source_prefix_arrow_hash": "The existing Arrow, UTC and storage hash bytes remain the equality fence.",
+      "alphalattice.foundation.market_data_ops.storage.duckdb._utc_aware": "The existing Arrow, UTC and storage hash bytes remain the equality fence.",
+      "alphalattice.foundation.market_data_ops.storage.duckdb._utc_naive": "The existing Arrow, UTC and storage hash bytes remain the equality fence."
+    },
+    "alphalattice.interface.local_application.goals::_earliest_entry": {
+      "alphalattice.foundation.market_data_ops.runtime.universe_onboarding._ten_calendar_year_anniversary": "The exact decade calendar boundary is retained until a public equivalent is proved."
+    },
+    "alphalattice.investment.portfolio_strategy_lab.application.decision_updates::<module>": {
+      "alphalattice.foundation.causal_outcomes.execution.compile._ELIGIBLE": "The existing eligible decision states remain the equality fence."
+    }
+  }
 }

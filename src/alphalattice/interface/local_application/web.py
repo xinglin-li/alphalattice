@@ -49,10 +49,12 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, Final, Protocol, cast
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from alphalattice.interface.local_application.cli_contract import (
     BINDING_NOTICE,
@@ -62,6 +64,7 @@ from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     WORKSPACE_HEADER,
     RequestProvenance,
+    command_table,
     refusal_words,
     request_provenance,
     with_binding_notice,
@@ -208,6 +211,8 @@ class AdmittedRequest:
     provenance: RequestProvenance | None = None
 
 
+DEFAULT_IDLE_TIMEOUT_SECONDS: Final = 900
+
 LAUNCH_KEY_VARIABLE = "ALPHALATTICE_LAUNCH_KEY"
 """Where a detached launch hands the Host the launch key it made (`web_launcher`)."""
 
@@ -239,12 +244,16 @@ class LocalWebApplication:
     external_token: str = field(default_factory=lambda: secrets.token_urlsafe(32), repr=False)
     external_instance: str = field(default_factory=lambda: secrets.token_hex(16))
     external_workspace_id: str | None = None
+    workspace: Path | None = field(default=None, repr=False)
     cookie_name: str = field(default=SESSION_COOKIE, init=False, repr=False)
     routes: dict[tuple[str, str], Route] = field(default_factory=dict)
     assets: dict[str, tuple[bytes, str, str | None]] = field(default_factory=dict)
     allowed_hosts: frozenset[str] = frozenset()
     refusals: int = 0
     served: int = 0
+    admission: Callable[[Callable[[], object], bool], object] | None = field(
+        default=None, repr=False
+    )
 
     def route(
         self,
@@ -481,29 +490,41 @@ class LocalWebApplication:
             launch=True,
         )
 
-    def _offer_workbench(self, answer: object, provenance: RequestProvenance | None) -> object:
-        """An agent Session's first answer this run, with the Workbench offered once.
+    def _offer_workbench(
+        self, answer: object, provenance: RequestProvenance | None, *, operation: str | None = None
+    ) -> object:
+        """Offer this Session's first view and its sealed Goal, each with a one-use key.
 
         A daily Session works on a Host already serving and never sees `serve`'s launch line, so
         its first answer carries `workbench`: OPEN_THE_WORKBENCH's words and a launch link of its
         own that opens the Workbench once. The Host's own launch key never leaves its line.
+
+        Completion is identified by operation and status, never a nested report.
+        Its new key stays one-use even when the first key was spent.
+        The fragment follows that closed Goal; goal_hash binds its sealed revision.
+        Other repeated reads keep the existing no-key behavior.
         """
         session = (getattr(provenance, "vendor", None), getattr(provenance, "session", None))
         loopback = [host for host in self.allowed_hosts if host.startswith(LOOPBACK_HOST)]
         if not (session[0] and session[1]) or not isinstance(answer, dict) or not loopback:
             return answer
+        closing = operation == "GOAL_SUBMIT" and answer.get("status") == "COMPLETE"
         with self._offers:
-            if session in self.offered:
+            if session in self.offered and not closing:
                 return answer
             self.offered.add((str(session[0]), str(session[1])))
             key = secrets.token_urlsafe(32)
             self.offer_keys.add(key)
         url = f"http://{loopback[0]}{LAUNCH_PATH}?key={key}"
+        if closing:
+            url += "#" + urlencode({"follow": "goal:" + str(answer["goal_id"])})
         offer = {
             "next_action": "OPEN_THE_WORKBENCH",
             "launch_url": url,
             "words": OPEN_THE_WORKBENCH,
         }
+        if closing:
+            offer["goal_hash"] = answer["goal_hash"]
         return {**answer, "workbench": offer}
 
     def _spent_offer(self, key: str) -> bool:
@@ -547,8 +568,15 @@ class LocalWebApplication:
         scope = REQUEST_PROVENANCE.set(admitted.provenance)
         notice = BINDING_NOTICE.set(None)
         try:
+            action = partial(route.handler, admitted.query, payload)
+            operation = payload.get("operation")
+            writes = route.mutates and (
+                not isinstance(operation, str) or operation not in command_table()["reads"]
+            )
+            if self.admission is not None:
+                action = partial(self.admission, action, writes)
             answer = self._offer_workbench(
-                with_binding_notice(route.handler(admitted.query, payload)), admitted.provenance
+                with_binding_notice(action()), admitted.provenance, operation=operation
             )
         except LocalWebError as error:
             return self._refuse(
@@ -590,9 +618,8 @@ class LocalWebApplication:
             "application/json; charset=utf-8",
         )
 
-    @staticmethod
     def _refuse(
-        status: HTTPStatus, reason: str, *, next_action: str | None = None
+        self, status: HTTPStatus, reason: str, *, next_action: str | None = None
     ) -> LocalWebResponse:
         body: dict[str, object] = {"refused": reason}
         # A raised refusal carries its code's words and way on, as a returned one does (OP4,
@@ -605,6 +632,15 @@ class LocalWebApplication:
                 **({"detail": words["detail"]} if words else {}),
                 next_action=next_action or words["next_action"],
             )
+        if reason == "local_application.dispatcher_closed" and self.workspace is not None:
+            body["terminal_command"] = [
+                "alphalattice",
+                "--workspace",
+                str(self.workspace),
+                "serve",
+                "--no-browser",
+                "--detach",
+            ]
         return LocalWebResponse(
             status,
             json.dumps(body).encode("utf-8"),

@@ -23,7 +23,7 @@ from uuid import UUID
 
 from alphalattice.interface.local_application.cli_contract import schema_request
 
-from .cli_contract import refusal_words
+from .cli_contract import error_projection, refusal_words
 
 FAILURE_DETAIL_WITHHELD = "activity.failure_detail_withheld"
 """Served or persisted in place of any failure text that is not a typed product code."""
@@ -33,6 +33,20 @@ _FAILURE_CODE = re.compile(
 )
 _FIELD = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 _FAILURE_FIELDS = frozenset({"failure_code", "refused", "latest_failure_code"})
+
+
+class LocalResearchClientError(ValueError):
+    """A bounded client failure, never an exception containing connection secrets."""
+
+    document_location: dict[str, int | str] | None = None
+    document_size: dict[str, int | None] | None = None
+    """Oversized document bytes (None for stdin) and limit_bytes."""
+    short_reference: dict[str, object] | None = None
+    """Ambiguous short reference: field, value and candidates."""
+    sections: list[str] | None = None
+    """The available sibling paths when a saved answer lacks the requested section."""
+    binding_context: dict[str, Any] | None = None
+    next_commands: list[str] | None = None
 
 
 def safe_failure_code(value: object) -> str | None:
@@ -225,7 +239,11 @@ def within(error: BaseException, *place: str) -> BaseException:
 
 
 def located_failure(
-    error: BaseException, fallback: str, *, request: Mapping[str, object] | None = None
+    error: BaseException,
+    fallback: str,
+    *,
+    request: Mapping[str, object] | None = None,
+    schema: Mapping[str, Any] | None = None,
 ) -> dict[str, object]:
     """The code an answer gives for `error`, and each field a contract refused.
 
@@ -238,9 +256,11 @@ def located_failure(
     from pydantic import ValidationError
 
     if not isinstance(error, ValidationError):
-        return {"failure_code": public_failure(error, fallback)}
+        failure = {"failure_code": public_failure(error, fallback)}
+        return {**failure, **error_projection(failure)}
 
     fields: list[list[str]] = []
+    paths: list[tuple[Any, ...]] = []
     reasons: dict[str, str] = {}
     allowed: dict[str, list[str]] = {}
     words: list[str] = []
@@ -269,8 +289,10 @@ def located_failure(
             r"portfolio_research\.operation_field_(required|not_allowed):(.+)", reason
         )
         if named:
+            paths.extend((*item["loc"], name) for name in named[2].split(","))
             words.append(_contract_fields(named, location, cause, (fields, reasons, allowed)))
             continue
+        paths.append(item["loc"])
         fields.append(location)
         reasons[".".join(location)] = reason
         said = reason if kind == "value_error" else str(item.get("msg", kind))
@@ -287,7 +309,10 @@ def located_failure(
     if request is not None:
         answer["next_action"] = "READ_CAPABILITIES_SCHEMA"
         answer.update(_way_back(fields, reasons, request, fallback))
-    return answer
+    return {
+        **answer,
+        **error_projection(answer, locations=paths, schema=schema),
+    }
 
 
 def _contract_fields(

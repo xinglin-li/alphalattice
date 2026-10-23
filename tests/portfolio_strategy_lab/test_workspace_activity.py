@@ -10,7 +10,9 @@ the public observer without admitting or running a scientific Task.
 from __future__ import annotations
 
 import json
+import os
 import re
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -974,8 +976,11 @@ def test_observer_failure_degrades_visibly_without_failing_or_repeating_work(
 
 
 def test_cursor_reconnect_restart_and_typed_read_refusals(
-    live: LocalPortfolioWebSession, tmp_path: Path
+    live: LocalPortfolioWebSession, tmp_path: Path, read_only_live, capsys, monkeypatch
 ) -> None:
+    from alphalattice.control.product_host.composition import local_web_connection
+    from tests.portfolio_strategy_lab.local_web_support import serve_conflict
+
     client = LocalResearchClient(live.workspace)
     for sequence in range(3):
         assert client.publish_event(_event(sequence))["status"] == "APPENDED"
@@ -983,6 +988,25 @@ def test_cursor_reconnect_restart_and_typed_read_refusals(
     assert tail["disposition"] == "TAIL" and tail["more"] and len(tail["items"]) == 2
     assert tail["items"][-1]["payload"]["producer_sequence"] == 2
     epoch = tail["epoch"]
+    host = tail["observer"]["host"]
+    assert host["instance"] == client.connection.instance and host["pid"] == os.getpid()
+    assert datetime.fromisoformat(host["started_at"]).tzinfo is not None
+    assert client.activity(limit=1)["observer"]["host"] == host
+    original = client.connection
+    for change in ({"token": "0" * 32}, {"instance": "f" * 32}, {"url": read_only_live.url}):
+        altered = replace(original, **change)
+        local_web_connection.publish_client_connection(altered)
+        assert serve_conflict(live.workspace, monkeypatch) == 2
+        assert (
+            json.loads(capsys.readouterr().out)["failure_code"]
+            == "local_web.serving_host_unverified"
+        )
+        assert type(original).read(live.workspace) == altered
+    local_web_connection.publish_client_connection(original)
+    assert serve_conflict(live.workspace, monkeypatch) == 0
+    reused = json.loads(capsys.readouterr().out)
+    assert reused["host"] == client.activity(limit=1)["observer"]["host"] == host
+    assert type(original).read(live.workspace) == original
 
     # A client that missed pages continues from where it stopped, in order, once.
     early = f"{epoch}:1"
@@ -1021,6 +1045,7 @@ def test_cursor_reconnect_restart_and_typed_read_refusals(
     client = LocalResearchClient(live.workspace)
     assert client.connection.instance != old_instance
     resumed = _json(live, f"/api/activity?after={rest['cursor']}")
+    assert resumed["observer"]["host"]["instance"] == client.connection.instance
     assert resumed["disposition"] == "CONTINUED" and resumed["items"] == []
     assert resumed["epoch"] == epoch
     spec = tmp_path / "spec.yaml"
@@ -1030,6 +1055,12 @@ def test_cursor_reconnect_restart_and_typed_read_refusals(
     sources = {item["source_id"] for item in after_restart["items"]}
     assert sources == {f"local-web:{client.connection.instance}"}
     assert client.activity(after=rest["cursor"])["items"] == after_restart["items"]
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    monkeypatch.setenv("CODEX_THREAD_ID", "reuse-control")
+    assert serve_conflict(live.workspace, monkeypatch) == 0
+    offered = json.loads(capsys.readouterr().out)
+    assert offered["workbench"]["launch_url"].startswith(client.connection.url)
+    assert client.connection.token not in json.dumps(offered)
 
 
 def test_declared_sessions_are_read_from_their_owner_not_the_feed_tail(

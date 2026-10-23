@@ -56,9 +56,11 @@ from alphalattice.control.product_host.composition.goal_case_routes import (
 from alphalattice.control.product_host.composition.local_web_connection import (
     publish_client_connection,
     remove_client_connection,
+    workspace_web,
 )
 from alphalattice.control.product_host.composition.native_usage_reader import (
     NativeUsageReader,
+    attach_native_usage,
     read_usage,
 )
 from alphalattice.control.product_host.composition.portfolio_application import (
@@ -184,7 +186,6 @@ from alphalattice.interface.local_application.cli_contract import (
 )
 from alphalattice.interface.local_application.client import (
     LocalResearchConnection,
-    workspace_connection_key,
 )
 from alphalattice.interface.local_application.dispatcher import (
     LocalApplicationCommand,
@@ -213,6 +214,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
 from alphalattice.interface.local_application.web import (
+    DEFAULT_IDLE_TIMEOUT_SECONDS,
     LocalWebApplication,
     LocalWebError,
     LocalWebResponse,
@@ -562,6 +564,7 @@ class LocalPortfolioWebSession:
     workspace_manifest: ResearchWorkspaceManifest
     resolver: PortfolioExecutionResolver | None
     port: int = 0
+    idle_timeout_seconds: int = field(default=DEFAULT_IDLE_TIMEOUT_SECONDS, kw_only=True)
 
     review_authority: EvidenceReviewAuthority | None = None
     data_provider: MarketDataProvider | None = None
@@ -753,6 +756,7 @@ class LocalPortfolioWebSession:
             operations=self.operations,
             activity=activity,
         )
+        web_application.admission = self.dispatcher._admit
         self.web = LocalWebService(application=web_application, port=self.port)
         url = self.web.start()
         connection = LocalResearchConnection(
@@ -762,7 +766,7 @@ class LocalPortfolioWebSession:
             instance=web_application.external_instance,
             token=web_application.external_token,
         )
-        publish_client_connection(connection)
+        publish_client_connection(connection, serving_host=activity.serving_host)
         self.client_connection = connection
         self.resumed_task_ids = self.resume()
         # A Codex lead's wake whose Task ended, stopped or deferred while no Host ran (WAKE).
@@ -775,27 +779,7 @@ class LocalPortfolioWebSession:
         # Guanyin's Supervisor reads the unfinished Tasks from here on (GY2).
         self.operations.supervisor.start()
         self.forward_prewarm.start()
-        # Optional reading owns no research authority and must not prevent serving it.
-        constructor_failure: str | None = None
-        try:
-            self.native_usage_reader = NativeUsageReader(self.operations)
-            self.operations.read_native_usage = self.native_usage_reader.read
-        except Exception as error:
-            self.native_usage_reader = None
-            constructor_failure = (
-                owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
-            )
-
-        def native_usage_state() -> dict[str, object]:
-            """Keep the last reading's standing visible through the activity owner's readback."""
-            if self.native_usage_reader is not None:
-                return self.native_usage_reader.state()
-            return {
-                "status": "UNAVAILABLE",
-                "reason": constructor_failure or "native_bridge.lead_usage_read_failed",
-            }
-
-        activity.native_usage_state = native_usage_state
+        attach_native_usage(self, self.operations, activity)
         return url
 
     def resume(
@@ -1013,6 +997,8 @@ class LocalPortfolioWebSession:
         joinable -- so calling `stop()` again finishes the job rather than
         starting from a half-released state.
         """
+        if self.dispatcher is not None:
+            self.dispatcher._begin_drain()
         if not self._teardown(timeout=timeout):
             raise LocalWebSessionError("local_web_session.writer_still_live")
 
@@ -1415,15 +1401,10 @@ def build_local_web_application(
     activity: WorkspaceActivity | None = None,
 ) -> LocalWebApplication:
     """Register the routes. Every one of them is a projection or a command."""
-    workspace_key = workspace_connection_key(operations.workspace_session.workspace)
-    if activity is None:
-        web = LocalWebApplication(external_workspace_id=workspace_key)
-    else:
-        # One launch identity: the client connection's instance and the
-        # observations' source id name the same service start.
-        web = LocalWebApplication(
-            external_workspace_id=workspace_key, external_instance=activity.instance
-        )
+    web = workspace_web(
+        operations.workspace_session.workspace, activity.instance if activity else None
+    )
+    if activity is not None:
         _activity_routes(web, activity)
     _native_session_routes(web, operations)
 

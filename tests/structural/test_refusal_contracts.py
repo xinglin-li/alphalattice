@@ -140,6 +140,9 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ("interface/local_application/cli_contract.py", "entry"): (
             "the full form, for every workspace but the bound one"
         ),
+        ("interface/local_application/web.py", "LocalWebApplication._refuse"): (
+            "an idle-closing Host offers a detached restart bound to its own workspace"
+        ),
         ("interface/local_application/client.py", "_write_bundle"): (
             "where an entry's workspace ends, never printed"
         ),

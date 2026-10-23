@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +24,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
     publish_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.web_launcher import OPEN_THE_WORKBENCH
+from alphalattice.kernel.shared_kernel.clocks import ReplayClock
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 
 WINDOWS = pytest.mark.skipif(sys.platform != "win32", reason="Windows process control")
@@ -118,6 +120,7 @@ def test_attached_launcher_stops_on_explicit_stdin_or_eof(tmp_path, monkeypatch,
     class Session:
         launch_url = "http://127.0.0.1:12345/launch?key=k"  # printed and opened (HB)
         operations = None
+        dispatcher = None
 
         def start(self):
             root = Path(__file__).resolve().parents[2]
@@ -141,16 +144,192 @@ def test_attached_launcher_stops_on_explicit_stdin_or_eof(tmp_path, monkeypatch,
     launcher = run_local_portfolio_web.LocalPortfolioWebSession
     monkeypatch.setattr(launcher, "from_workspace", lambda *a, **k: Session())
     monkeypatch.setattr(sys, "stdin", StringIO(lines))
-    assert (
-        main(
-            ["--workspace", str(tmp_path), "serve", "--no-browser", "--stop-on-stdin"],
-            serve=run_local_portfolio_web.main,
-        )
-        == 0
-    )
+    args = ["--workspace", str(tmp_path), "serve", "--no-browser", "--stop-on-stdin"]
+    assert main(args, serve=run_local_portfolio_web.main) == 0
     assert calls == ["start", "stop"]
     shown = capsys.readouterr().out.splitlines()
     assert shown[0].endswith(Session.launch_url) and shown[2] == OPEN_THE_WORKBENCH
+
+
+@WINDOWS
+def test_attached_retrieval_host_ends_when_its_cli_parent_is_terminated(tmp_path):
+    import threading
+
+    import psutil
+
+    from alphalattice.interface.local_application.client import LocalResearchClient
+
+    root = Path(__file__).resolve().parents[2]
+    script = """
+import importlib.util, sys
+from tests.portfolio_strategy_lab.test_runtime_launchers import _job
+kernel, job = _job(0)
+original = importlib.util.find_spec
+importlib.util.find_spec = lambda name, *a, **k: (
+    None if name == 'fastembed' else original(name, *a, **k)
+)
+from alphalattice.control.product_host.composition.entry import main
+raise SystemExit(main(sys.argv[1:]))
+"""
+    sources = (str(root), str(root / "src"), str(Path(sys.prefix) / "Lib/site-packages"))
+    environment = dict(os.environ, PYTHONPATH=os.pathsep.join(sources))
+    arguments = ["--workspace", str(tmp_path), "serve", "--no-browser", "--stop-on-stdin"]
+    parent = subprocess.Popen(
+        [_PYTHON, "-c", script, *arguments],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=environment,
+        creationflags=_FLAGS,
+    )
+    assert parent.stdout is not None and parent.stdin is not None
+    ready, lines = threading.Event(), []
+
+    def read_ready():
+        for line in parent.stdout:
+            lines.append(line)
+            if OPEN_THE_WORKBENCH in line:
+                ready.set()
+
+    reader = threading.Thread(target=read_ready, daemon=True)
+    reader.start()
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.restype = ctypes.c_void_p
+    owned = []
+
+    def capture():
+        for child in psutil.Process(parent.pid).children(recursive=True):
+            handle = ctypes.c_void_p(kernel.OpenProcess(0x100001, False, child.pid))
+            assert handle
+            owned.append((child.pid, handle))
+
+    try:
+        assert ready.wait(45), "".join(lines)
+        host = LocalResearchClient(tmp_path).activity(limit=1)["observer"]["host"]
+        capture()
+        assert host["pid"] in {pid for pid, _ in owned}
+        parent.terminate()
+        parent.wait(timeout=5)
+        assert not parent.stdin.closed
+        for _, handle in owned:
+            assert kernel.WaitForSingleObject(handle, 5000) == 0
+    finally:
+        if not owned:
+            with contextlib.suppress(psutil.NoSuchProcess):
+                capture()
+        with contextlib.suppress(OSError):
+            parent.terminate()
+        parent.wait(timeout=5)
+        for _, handle in owned:
+            kernel.TerminateProcess(handle, 1)
+            kernel.WaitForSingleObject(handle, 5000)
+            kernel.CloseHandle(handle)
+        parent.stdin.close()
+        reader.join(timeout=5)
+        parent.stdout.close()
+
+
+@WINDOWS
+@pytest.mark.parametrize("method", ["legacy", "attached"])
+@pytest.mark.parametrize("noninheritable", [False, True])
+def test_attached_child_preserves_streams_and_refuses_unrelated_handles(
+    tmp_path, method, noninheritable
+):
+    stray = tmp_path / "unrelated"
+    stray.write_bytes(b"unrelated")
+    child = """
+import json, msvcrt, os, sys
+try:
+    value = os.read(msvcrt.open_osfhandle(int(sys.argv[1]), os.O_RDONLY), 64).decode()
+except OSError:
+    value = None
+print(json.dumps(dict(stdin=sys.stdin.read(), stray=value)))
+print('stderr-ok', file=sys.stderr)
+"""
+    program = f"""
+import _winapi, msvcrt, os, subprocess, sys
+from alphalattice.control.product_host.composition.web_launcher import attached_child
+if sys.argv[3] == 'True':
+    for kind in (-10, -11, -12):
+        os.set_handle_inheritable(_winapi.GetStdHandle(kind), False)
+call = subprocess.call if sys.argv[2] == 'legacy' else attached_child
+with open(sys.argv[1], 'rb') as stray:
+    handle = msvcrt.get_osfhandle(stray.fileno())
+    os.set_handle_inheritable(handle, True)
+    raise SystemExit(call([sys.executable, '-c', {child!r}, str(handle)], env=dict(os.environ)))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", program, str(stray), method, str(noninheritable)],
+        input="owned-input\n",
+        capture_output=True,
+        text=True,
+        timeout=20,
+        creationflags=_FLAGS,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"stdin": "owned-input\n", "stray": None}
+    assert result.stderr == "stderr-ok\n"
+
+
+IDLE_TIME = SimpleNamespace(ticks=0.0, wall=datetime(2026, 10, 9, tzinfo=UTC))
+IDLE_CLOCK = ReplayClock(IDLE_TIME.wall, ticks=lambda: IDLE_TIME.ticks, wall=lambda: IDLE_TIME.wall)
+
+
+@pytest.mark.parametrize("held", [False, True])
+@pytest.mark.parametrize("language", ["en", "zh"])
+@pytest.mark.parametrize("live", [IDLE_CLOCK], indirect=True)
+def test_a_served_detached_host_expires_only_after_its_held_work_finishes(
+    live, monkeypatch, capsys, held, language
+):
+    from alphalattice.control.product_host.composition import web_launcher
+    from alphalattice.interface.local_application import cli_contract, dispatcher
+    from tests.portfolio_strategy_lab.local_web_support import _json
+
+    origin = live.dispatcher._last_needed
+    monkeypatch.setattr(IDLE_TIME, "ticks", 0.0)
+    monkeypatch.setattr(IDLE_TIME, "wall", datetime.now(UTC) + timedelta(days=30))
+    monkeypatch.setattr(dispatcher, "monotonic", lambda: origin + IDLE_TIME.ticks)
+    owner, ran = live.operations.automation, []
+    if held:
+        owner.hold(live.clock() + timedelta(hours=7), lambda: ran.append(1))
+
+    class Timer:
+        stopped, turn = False, 0
+
+        def set(self):
+            self.stopped = True
+
+        def wait(self, seconds):
+            assert seconds == 1
+            if self.stopped:
+                return True
+            self.turn += 1
+            assert self.turn <= (3 if held else 1), "idle.expiry_not_observed"
+            IDLE_TIME.ticks += 7 * 3600 if held and self.turn == 2 else 901
+            assert _json(live, "/api/session")["workspace_id"] == "qa-local-web"
+            if held and self.turn == 2:
+                owner.held_host.run_once()
+                assert ran == [1]
+            return False
+
+    monkeypatch.setenv(web_launcher.LAUNCH_KEY_VARIABLE, "controlled-child-key")
+    monkeypatch.setattr(web_launcher, "threading", SimpleNamespace(Event=Timer))
+    monkeypatch.setattr(type(live), "from_workspace", lambda *a, **k: live)
+    monkeypatch.setattr(type(live), "start", lambda self: live.url)
+    token = cli_contract.ANSWER_LANGUAGE.set(language)
+    try:
+        assert web_launcher.main(["--workspace", str(live.workspace), "--no-browser"]) == 0
+    finally:
+        cli_contract.ANSWER_LANGUAGE.reset(token)
+    words = runtime_json("config/registries/messages.json")["entries"]["host.idle"]["words"]
+    sentence = words["zh-CN" if language == "zh" else "en"].format(seconds=900)
+    assert sentence in capsys.readouterr().out
+    if language == "zh":
+        assert any("\u4e00" <= ch <= "\u9fff" for ch in sentence)
+    assert live.clock.phase_metadata()["clock_drift"]
+    assert ran == ([1] if held else [])
+    assert live.session is None and live.web is None
 
 
 _TURN = """
@@ -282,14 +461,16 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
 
 @pytest.mark.parametrize("escape", ["escaped", "denied", "unproven"])
 @pytest.mark.parametrize("lang", ["en", "zh"])
+@pytest.mark.parametrize("panel_host", [None, "claude-code", "codex"])
 def test_a_detached_launch_refuses_what_it_cannot_serve(
-    tmp_path, monkeypatch, capsys, escape, lang
+    tmp_path, monkeypatch, capsys, escape, lang, panel_host
 ):
     """A detached Host that exits before serving answers its code and log, and a detached launch
     tied to standard input is refused by name, before anything starts."""
     from alphalattice.control.product_host.composition import web_launcher
     from alphalattice.interface.local_application.cli import main
 
+    monkeypatch.setenv("ALPHALATTICE_TERMINAL_PANEL_HOST", panel_host or "")
     for name in ("TEMP", "TMP", "TMPDIR"):
         monkeypatch.setenv(name, str(tmp_path))
     monkeypatch.setattr(web_launcher.tempfile, "tempdir", None)
@@ -331,8 +512,11 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
             assert log.read_text(encoding="utf-8").split() == ["False"]
     else:
         assert exited["failure_code"] == "local_web.detached_breakaway_denied"
-        assert exited["next_action"] == "SERVE_FROM_A_PERSON_OWNED_TERMINAL"
-        message_id = "host.start.breakaway_denied"
+        panel = panel_host == "claude-code"
+        assert exited["next_action"] == (
+            "SERVE_FROM_THE_HOST_TERMINAL_PANEL" if panel else "SERVE_FROM_A_PERSON_OWNED_TERMINAL"
+        )
+        message_id = "host.start.breakaway_denied" + (".panel" if panel else "")
         assert exited["message_id"] == message_id
         words = runtime_json("config/registries/messages.json")["entries"][message_id]["words"]
         assert exited["detail"] == words["zh-CN" if lang == "zh" else "en"]
@@ -342,6 +526,25 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
     assert web_launcher.main(["--workspace", str(tmp_path), "--detach", "--stop-on-stdin"]) == 2
     tied = json.loads(capsys.readouterr().out)
     assert tied["failure_code"] == "local_web.detach_with_stop_on_stdin"
+    if os.name == "nt":
+
+        def denied():
+            raise OSError("private operating-system detail")
+
+        monkeypatch.setattr(web_launcher, "ChildJob", denied, raising=False)
+        token = web_launcher.ANSWER_LANGUAGE.set(lang)
+        command = [_PYTHON, "-c", "pass"]
+        try:
+            assert web_launcher.attached_child(command, env=dict(os.environ)) == 2
+        finally:
+            web_launcher.ANSWER_LANGUAGE.reset(token)
+        answer = json.loads(capsys.readouterr().out)
+        assert answer["failure_code"] == "local_web.child_ownership_unavailable"
+        assert answer["terminal_command"] == command
+        assert answer["message_id"] == "host.child_ownership.unavailable"
+        words = runtime_json("config/registries/messages.json")["entries"][answer["message_id"]]
+        assert answer["detail"] == words["words"]["zh-CN" if lang == "zh" else "en"]
+        assert "private" not in json.dumps(answer)
 
 
 def test_the_launchers_module_loads_no_numerical_library() -> None:

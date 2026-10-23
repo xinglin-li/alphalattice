@@ -36,6 +36,12 @@
     "kind": "string",
     "required": true,
     "meaning": "What the schemas do not grant: contracts and budgets are not permission, and a submission is checked against the Host's record, not for truth."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -70,6 +76,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Goal items whose recorded metadata could not be read, each named by goal_id with a typed refusal and workspace, backup, schema and listing requests; no revision or session affiliation is inferred."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -140,6 +152,12 @@
     "kind": "string",
     "required": false,
     "meaning": "What binding means: every request the session sends is recorded under the goal. Only when the request came from an agent session."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -192,6 +210,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The requests that read the goal and, while it is open, take, submit or revise it, each ready to send."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -298,6 +322,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The completion document to fill in, as YAML text. Only for an open goal."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ],
   "declaration_exceptions": [
@@ -396,6 +426,12 @@
     "kind": "string",
     "required": true,
     "meaning": "What this read proves: the revision's identity is verified; references are as recorded, not read again; `GOAL_SHOW` verifies them."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -448,6 +484,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The requests that read the goal and, while it is open, take, submit or revise it, each ready to send."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -506,6 +548,12 @@
     "kind": "object",
     "required": false,
     "meaning": "On a missing-evidence refusal, the ids of the references already attached to this exact revision; relevance remains the author's choice."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -636,6 +684,12 @@
     "kind": "string",
     "required": true,
     "meaning": "The export's identity: a hash over the record and its page."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -742,6 +796,12 @@
     "kind": "array",
     "required": true,
     "meaning": "What the draft does not settle, as codes such as `DATES_PRESERVED` and `PREVIEW_REQUIRED`."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -788,6 +848,12 @@
     "kind": "string",
     "required": true,
     "meaning": "What binding means: every request the session sends is recorded under the goal until it is submitted, abandoned or another goal is taken."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -882,6 +948,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The agent's declared outcome: `ACHIEVED`, `PARTLY_ACHIEVED` or `NOT_ACHIEVED`. Only with `COMPLETE`."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -934,6 +1006,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The requests that read the closed goal: show, narrative and export, each ready to send."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -980,6 +1058,12 @@
     "kind": "string",
     "required": true,
     "meaning": "What the comparison claims: an observed research comparison, with no winner, refit, publication or independent validation."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -1062,6 +1146,12 @@
     "kind": "object",
     "required": false,
     "meaning": "`reopen`: the request that reads this comparison again, ready to send; only when `COMPARABLE`."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -1168,6 +1258,12 @@
     "kind": "string",
     "required": false,
     "meaning": "Where this answer ends a date's road: that the road ends here, and how to complete its open goal from the offered `goal` read."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -1274,6 +1370,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -1320,6 +1422,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -1366,6 +1474,12 @@
     "kind": "object",
     "required": true,
     "meaning": "Controls bound to the published input revision; no controls before publication."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -1460,6 +1574,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -1548,6 +1668,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The existing Task that refused this admission; next_requests.read and next_requests.wait read that exact Task. No new Task was admitted."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -1612,6 +1738,12 @@
     "kind": "string",
     "required": true,
     "meaning": "What the answer claims: `RECORDED_INPUT_PREPARATION_ONLY_NO_MODEL_FITS`."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -1748,6 +1880,12 @@
     "kind": "object",
     "required": false,
     "meaning": "What a trial of a factor on this input needs: the flow, its completed studies held, what is missing and the requests that go on."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -1860,6 +1998,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -1966,6 +2110,12 @@
     "kind": "string",
     "required": true,
     "meaning": "What a trial of the feature runs against, in words: a completed Alpha study handed off from a Factor study on this input, or the Portfolio study built on one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2054,6 +2204,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2118,6 +2274,12 @@
     "kind": "object",
     "required": true,
     "meaning": "What the build's input can claim about time, from its Panel: `status` (`RECORDED` or `NOT_RECORDED`), its window, price basis, universe and plain statements."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2218,6 +2380,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2324,6 +2492,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The requests that go on: `deactivate` while active, `activate` when a person may activate it; empty otherwise."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2346,6 +2520,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2368,6 +2548,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2420,6 +2606,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Feature plan records that could not be read, each named by feature_plan_hash with a typed refusal and requests to inspect workspace/input availability and recover from a kept backup."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2514,6 +2706,12 @@
     "kind": "object",
     "required": true,
     "meaning": "What the trial can claim, from its owners' marks: `comparison`, `execution`, `contract`, `evidence` and `activation`, the code behind each held value in `reasons`, one statement each in `statements`."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2542,6 +2740,12 @@
     "kind": "integer",
     "required": true,
     "meaning": "How many numerical calls this answer made; always 0."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2618,6 +2822,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2676,6 +2886,12 @@
     "kind": "string",
     "required": true,
     "meaning": "What the controls offer, in words: exact completed parents on one input; preparation runs no Portfolio."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2740,6 +2956,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2786,6 +3008,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The request that goes on: `install_non_default` once prepared, `replan` on a gap; empty before the Task succeeds."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2850,6 +3078,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -2926,6 +3160,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The Factor study, curation and Foundation an Alpha draft builds on; absent for other study kinds."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -3020,6 +3260,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -3102,6 +3348,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -3244,6 +3496,12 @@
     "kind": "string|null",
     "required": false,
     "meaning": "When a deferred Task may be confirmed again, in ISO 8601; none without a retry time; carried only when deferred."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -3446,6 +3704,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -3498,6 +3762,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -3574,6 +3844,12 @@
     "kind": "array",
     "required": true,
     "meaning": "The approved clean-ups waiting to be resumed, by plan hash; empty when none."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -3656,6 +3932,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -3690,6 +3972,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -3718,6 +4006,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -3824,6 +4118,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -3984,6 +4284,12 @@
     "kind": "integer",
     "required": false,
     "meaning": "How many numerical calls this made: 0; only on `DRAFT_READY`."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ],
   "declaration_exceptions": [
@@ -4053,6 +4359,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -4081,6 +4393,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Stored links that could not be read or bound to this book, each with its link hash, REFUSED status, code, words and recovery requests; no report is inferred."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -4121,6 +4439,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The Risk evaluations inside the post-observed Portfolio window the link names: window, evaluations, assessed listing scopes and source hashes; only for a window link."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -4275,6 +4599,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -4429,6 +4759,12 @@
     "kind": "object",
     "required": false,
     "meaning": "`run` and `replan` while available, `replan` alone once expired or invalid; absent when no preview is held."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ],
   "declaration_exceptions": [
@@ -4503,6 +4839,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -4645,6 +4987,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The prepared training source the lifecycle study read; only for such a study."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -4937,6 +5285,12 @@
     "kind": "string",
     "required": false,
     "meaning": "For a Task that has not succeeded, in words: its lifecycle and where its results read once it has."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -4971,6 +5325,12 @@
     "kind": "string",
     "required": true,
     "meaning": "The export's hash, over its status, JSON, YAML and HTML."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5017,6 +5377,12 @@
     "kind": "object",
     "required": true,
     "meaning": "`curate`: the decision request for this study, its receipt hash filled."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5057,6 +5423,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5175,6 +5547,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5191,6 +5569,12 @@
     "kind": "array",
     "required": true,
     "meaning": "Each recorded Foundation admission: a verified read has its admission and `standing` (`CURRENT`, or `HISTORICAL` with `standing_code`); an item-local `REFUSED` read names its admission hash, failure, words and next requests, plus the missing Factor Task when known. A refused item claims no standing or verified graph."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5237,6 +5621,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5289,6 +5679,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5335,6 +5731,12 @@
     "kind": "array",
     "required": true,
     "meaning": "What the Foundation does not claim, as codes: `RESEARCH_ONLY_NOT_CURRENT`, `NO_PROSPECTIVE_VALIDATION`, `RISK_AND_STRATEGY_NOT_ADMITTED`, `SEALED_HOLDOUT_UNREAD`."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5387,6 +5789,12 @@
     "kind": "string",
     "required": true,
     "meaning": "The answer's other fields as JSON text."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5487,6 +5895,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The sealed Program of the complete draft; only when no field is missing."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5563,6 +5977,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The `study plan` request that plans this book once its declaration is edited, naming its input."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5603,6 +6023,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5685,6 +6111,12 @@
     "kind": "object|null",
     "required": true,
     "meaning": "The strategy owner's sealed-record dates: information_cutoff is the latest over all required component records, or null with information_cutoff_detail and per-source words when any date is unavailable; information_sources names each file, record, field and through date, while latest_dated_information preserves the known lower bound. forward_book_first_decided_session is the active book's first forward decision or a conditional continuation of the sealed book. first_actionable_session is the first planned entry whose entry_at is strictly after activation (or the current clock, conditionally); first_actionable_source names that entry timestamp and the activation or clock. Each has its own basis, source and words. replayed_in_sample_forward_sessions names count, first and last forward sessions before actionable and through the information cutoff; causal replay, never out-of-sample. book_sessions_after_cutoff keeps the readback comparison. model_renewals names each active component's remaining_fit_vintages, next_fit_vintage and renewal_through from its grant, with grant_file/hash; inactive names none in words."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5833,6 +6265,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5879,6 +6317,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5907,6 +6351,12 @@
     "kind": "string",
     "required": true,
     "meaning": "The count in words, or that no incident has been found."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -5965,6 +6415,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6137,6 +6593,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6219,6 +6681,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6271,6 +6739,12 @@
     "kind": "string",
     "required": false,
     "meaning": "While the first use's delegation holds the network open: that this never answers the daily question, which stays open until the person's words come, and how their yes is relayed."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6329,6 +6803,12 @@
     "kind": "string",
     "required": false,
     "meaning": "While the first use's delegation holds the network open: that this never answers the daily question, which stays open until the person's words come, and how their yes is relayed."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6351,6 +6831,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The default budget a first use's delegation may give, in the same fields."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6373,6 +6859,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The default budget a first use's delegation may give, in the same fields."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6419,6 +6911,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6531,6 +7029,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The same Task's `task` read while cancellation is pending; its owner's bound `replan` after cancellation, only if the person or the lead that cancelled it wants to continue."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6691,6 +7195,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The verified installed result's execution/contract/evidence marks and the activation owner's current admission mark; separate from its published CRO review."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6737,6 +7247,12 @@
     "kind": "array",
     "required": true,
     "meaning": "The facts side by side in groups (`HOLDINGS`, `CONCENTRATION`, `COST`, `TURNOVER`, `PERFORMANCE`, `RISK`, `LIMITATIONS`), each metric with its label, unit and both values."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6819,6 +7335,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6889,6 +7411,12 @@
     "kind": "boolean",
     "required": true,
     "meaning": "Always false: this read grants no final-stage action."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -6989,6 +7517,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The declared book as a spec document: strategy package, score source, top_k, tranches, exit rank, weight rule, cost, benchmark view, report unit and study window."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -7251,6 +7785,12 @@
     "kind": "string",
     "required": false,
     "meaning": "Where this answer ends a date's road: that the road ends here, and how to complete its open goal from the offered `goal` read."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -7399,6 +7939,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The filter the page applied: `entity_id` and `unit_id`, each none when unused; on a spans page only."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -7463,6 +8009,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -7533,6 +8085,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -7705,6 +8263,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -7823,6 +8387,12 @@
     "kind": "object",
     "required": false,
     "meaning": "For `EVIDENCE_TOPIC_COVERAGE` and `EVIDENCE_TIME_VIEW`: the issuer-topic coverage with its bundles, or the bundles of a time interval, with the view rule."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -7881,6 +8451,12 @@
     "kind": "string",
     "required": true,
     "meaning": "What the ledger is, in words: derived annotations of sealed receipts and span sets, with no excerpt and no model work."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -7939,6 +8515,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Unreadable source commitments, named by their artifact kind and hash with REFUSED status, code, words and recovery requests; no issuer/document metadata is guessed."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -7985,6 +8567,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8067,6 +8655,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8125,6 +8719,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8171,6 +8771,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8265,6 +8871,12 @@
     "kind": "object",
     "required": true,
     "meaning": "How this response was delivered: byte budget and its source, whole or in parts, part and part count, findings delivered and remaining, and `next_request` for the next part."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8341,6 +8953,12 @@
     "kind": "string",
     "required": true,
     "meaning": "What the package claims, in words: the excerpts are verified source text, the claim is the analyst's, the disposition the reviewer's; the product adjudicates nothing."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8411,6 +9029,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8523,6 +9147,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8623,6 +9253,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The answer's named Task state, independently of answer_status. Its offered task read or --wait follows that Task; an accepted submission exits 0."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8711,6 +9347,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8781,6 +9423,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8911,6 +9559,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The request that resumes the update, as `resume`: a deferred one's, or a stopped one's whose stop its plan's rerun resumes; carried only then."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -8945,6 +9599,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9027,6 +9687,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Cases whose recorded manifest cannot be read, each with its case token, REFUSED status, code, words and workspace/backup recovery requests."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9097,6 +9763,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9161,6 +9833,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9201,6 +9879,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9223,6 +9907,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9293,6 +9983,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9351,6 +10047,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9397,6 +10099,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Calibration bound to this package and published score snapshot; empty until publication. Not carried by NO_SCORE_PUBLICATION."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9461,6 +10169,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9525,6 +10239,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9571,6 +10291,12 @@
     "kind": "object|null",
     "required": false,
     "meaning": "The input's readout: its formation session and each component's sizing, support and calibration facts; none until published."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9641,6 +10367,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9705,6 +10437,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9787,6 +10525,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The later sealed review bound to this exact publication. publication.cro_status records its standing at publication time; next_requests.published_review opens the later review when one exists. Its `cutoff_words` name Evidence read on a session after the positions' formation. If its lineage cannot be read, review_standing is UNREADABLE with detail and failure_code; the sealed positions and original continuation requests remain readable."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9917,6 +10661,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -9975,6 +10725,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10105,6 +10861,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The failure code when the goal record the date's floor is read from cannot be read; no committee request is offered until it is repaired."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10163,6 +10925,12 @@
     "kind": "object",
     "required": true,
     "meaning": "A person's requests: `enable` for exactly the strategies in `runs_forward` when it does not already run for them, `disable` while it is not off; empty otherwise."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10227,6 +10995,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10297,6 +11071,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The person's daily committee setting, as `committee daily` answers it: `ON`, `OFF` or `UNANSWERED` (off), its meaning and the request that turns it."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10367,6 +11147,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The named package's installed controls, as `CONTROLS` answers them. Only when a strategy package was named."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10437,6 +11223,12 @@
     "kind": "object",
     "required": true,
     "meaning": "What this read cost: observations returned, Task projections joined and elapsed milliseconds."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10465,6 +11257,12 @@
     "kind": "object",
     "required": false,
     "meaning": "Whether recording is trustworthy right now and whether observations were lost. Only when storage is unavailable."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10523,6 +11321,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the event was recorded under, by its id. Only when the sending session holds a goal."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10545,6 +11349,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The wake: its `registration_id`, `thread_id` and `read_command`, the Task's `lifecycle`, its `state` (`PENDING`, `ATTEMPTED`, `DELIVERED` -- queued to the thread, which Codex takes while the thread is idle -- or `UNDELIVERED`) and, once sent, its `event` and `result` (`delivered`: queued, or the named `failure`). The same thread's pending wake is the one held; a settled one is answered again while the Task has not moved."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10585,6 +11395,12 @@
     "kind": "string",
     "required": false,
     "meaning": "For a session that did not open the floor: the PM's key and route are that session's, its wait goes on there, and this session reads the floor."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10601,6 +11417,12 @@
     "kind": "string",
     "required": true,
     "meaning": "The message's id on the floor."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10755,6 +11577,12 @@
     "kind": "object",
     "required": true,
     "meaning": "While the member's discussion turn is open, `challenge`: its CHALLENGE on what it objects to, its text to write, and `pass`: its PASS, ready to send as it stands; once the floor closed, `report`: the delivery that carries it as commentary."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10783,6 +11611,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10811,6 +11645,12 @@
     "kind": "object",
     "required": true,
     "meaning": "The request that turns reading the other way, as `set`; only a person sends it."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10845,6 +11685,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -10921,6 +11767,12 @@
     "kind": "string",
     "required": true,
     "meaning": "How to choose a budget, in words."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11003,6 +11855,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11025,6 +11883,12 @@
     "kind": "string",
     "required": true,
     "meaning": "`SERVE_AGAIN_WHEN_WORK_NEEDS_IT`: start the Host again for the next work."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11065,6 +11929,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11105,6 +11975,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Unreadable backup-root records, each named by generation_file with REFUSED status, code, words and workspace/backup requests. generation_hash, when present, is only the unverified 16-hex filename locator; it is not a sealed full hash or a restore selection."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11121,6 +11997,12 @@
     "kind": "array",
     "required": true,
     "meaning": "Each installed or extension Alpha model with its review packet. An unreadable model has REFUSED status, its model id, code, words, model-list request and a model-check command where its id is valid; no contract, sandbox or activation state is inferred."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11143,6 +12025,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11165,6 +12053,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11271,6 +12165,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11299,6 +12199,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11327,6 +12233,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The request to set the cap to auto or a positive whole byte count."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11355,6 +12267,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The request to set the cap to auto or a positive whole byte count."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11395,6 +12313,12 @@
     "kind": "string",
     "required": true,
     "meaning": "The verification scope; no current/scientific approval or retention pin."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11471,6 +12395,12 @@
     "kind": "array",
     "required": true,
     "meaning": "The metadata reading’s verification limits."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11511,6 +12441,12 @@
     "kind": "object",
     "required": false,
     "meaning": "The latest retained proposed positions with formation and entry dates, or their unavailable state."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11539,6 +12475,12 @@
     "kind": "string",
     "required": true,
     "meaning": "FORMAT_ONLY_PLAN_REQUIRED: conversion admits no plan or Task."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  },
@@ -11579,6 +12521,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "error_info",
+    "kind": "error_info|null",
+    "required": false,
+    "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
    }
   ]
  }

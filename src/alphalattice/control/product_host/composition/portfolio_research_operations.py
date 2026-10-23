@@ -79,6 +79,7 @@ from alphalattice.control.product_host.composition.plain_refusals import (
     STALE_PACKET,
     deferral,
     explain,
+    invalid_plan_document,
     refused,
     stale_packet_refusal,
     task_record_refusal,
@@ -117,6 +118,7 @@ from alphalattice.control.product_host.composition.research_update_automation im
     ResearchUpdateAutomation,
     dated_plan,
     first_update,
+    require_service_operation,
     resume_held,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
@@ -695,6 +697,7 @@ class PortfolioResearchOperations:
             clock=self.dispatcher.clock,
             execute=lambda request: self.execute(request, caller="SERVICE_AUTOMATION"),
             resume=partial(resume_held, self),
+            admit=self.dispatcher._admit,
         )
 
     def _compose_input_owners(self) -> None:
@@ -1281,7 +1284,8 @@ class PortfolioResearchOperations:
         )
         if refusal is not None:
             return refusal
-        body = self._execute(request, caller=caller, agent_execution=agent_execution)
+        action = partial(self._execute, request, caller=caller, agent_execution=agent_execution)
+        body = self.dispatcher._admit(action) if request.operation == "RECOVER" else action()
         gate.plan_answered(request.operation, body)
         task_id = body.get("task_id")
         if isinstance(task_id, str):
@@ -1328,17 +1332,7 @@ class PortfolioResearchOperations:
         caller: OperationCaller,
         agent_execution: AgentExecutionBinding | None,
     ) -> dict[str, object]:
-        if caller == "SERVICE_AUTOMATION" and request.operation not in {
-            "RESEARCH_UPDATE_PLAN",
-            "RESEARCH_UPDATE_RUN",
-            "RESEARCH_UPDATE_READBACK",
-            # The Host's Forward prewarm reads only retained results and updates.
-            "REPORT",
-            "EXPERIMENT_READBACK",
-            "PORTFOLIO_UPDATE_READBACK",
-            "PORTFOLIO_READBACK",
-        }:
-            raise ValueError("research_update.automation_operation_not_admitted")
+        require_service_operation(request.operation, caller)
         client = self._client_operation(request, caller=caller)
         if client is not None:
             return client
@@ -2927,11 +2921,7 @@ class PortfolioResearchOperations:
                     assert request.feature_plan_hash is not None
                     return _with_trial(definitions.readback(request.feature_plan_hash))
                 except ValidationError as error:
-                    return {
-                        "status": "REFUSED",
-                        **located_failure(error, "feature_research.document_invalid"),
-                        "next_action": "READ_FEATURE_CATALOG_CONTROLS_AND_CORRECT_DOCUMENT",
-                    }
+                    return invalid_plan_document(error, request, self.experiments.manifest)
                 except FeatureCatalogCrudError as error:
                     return {
                         "status": "REFUSED",
@@ -2992,11 +2982,7 @@ class PortfolioResearchOperations:
                         return self._install(request.task_id)
                     return self.research_strategies.readback(request.task_id)
                 except ValidationError as error:
-                    return {
-                        "status": "REFUSED",
-                        **located_failure(error, "research_strategy.declaration_invalid"),
-                        "next_action": "CORRECT_DECLARATION_AND_REPLAN",
-                    }
+                    return invalid_plan_document(error, request, self.experiments.manifest)
                 except (ValueError, OSError, KeyError) as error:
                     if (
                         str(error) == "research_strategy.preview_required"

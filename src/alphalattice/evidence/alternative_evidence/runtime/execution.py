@@ -41,11 +41,11 @@ from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     busy_logical_processors,
     runtime_machine_capacity,
 )
-from alphalattice.kernel.knowledge._embeddings import VERIFIED_PACKS
 from alphalattice.kernel.knowledge.hybrid_contracts import (
     MAXIMUM_SESSION_THREADS,
     safe_intra_op_threads,
 )
+from alphalattice.kernel.knowledge.runtime import VERIFIED_PACKS
 
 EXECUTION_DIRECTORY = "execution"
 """Under the workspace's `runtime/`, beside the Host's own state and outside the managed

@@ -1,9 +1,21 @@
-# AlphaLattice first release
+# AlphaLattice release notes
+Last checked: 2026-10-22 against 0.2.3
+
+Latest released version: [0.2.3](#023). Unreleased changes are separate below;
+earlier measurements describe their own versions.
+
+## 0.2.4 (unreleased)
+
+### Deprecated
+
+- `view:full` full stdout is deprecated (`read.legacy_full_deprecated`); use `--view summary --output PATH` for bounded display and the complete saved answer. Full stdout remains available; earliest removal is 0.3.0.
+
+## 0.1.0
 Date: 2026-10-08
 
 The `0.1.0` first release is a local equity research workstation for a person and a Claude Code or Codex agent. Factor evidence and curation lead to Alpha; Risk runs on the same input. Portfolio consumes Alpha and only uses Risk when its allocation reads it. Evidence and the CRO review the exact book and retain coverage gaps. A report-only Risk association does not mean weights used a Risk model.
 
-## Included capabilities
+### Included capabilities
 
 The maintained CLI and Local Web reach the same calculation, permission, Task and publication owners. Local Web includes Chinese; `--lang zh` selects available Chinese CLI detail with English fallback. Editable declarations go through installed schemas. Answers record outcomes, refusals and continuations; saved reads retain their full selection, `--wait` follows named Task state, and Portfolio position metrics may include units. See [CLI](cli.md).
 
@@ -15,9 +27,9 @@ Data updates preserve earlier inputs; issues expose evidence and permitted choic
 
 Readbacks carry temporal statements for evaluated window, earlier input history, T0 membership backfill, survivorship, Sector treatment and price basis. A later observation does not rewrite a published session. Research publication does not establish future returns or an operating trading service. See [Temporal statements](temporal-statements.md).
 
-## Platform and terms
+### Platform and terms
 
-Windows is verified for this source-checkout release; macOS and Linux are unverified. On 2026-09-30 at checkout `c109a7bc`, an empty-workspace preparation through its data decision took 407.1 seconds and 3.99 GB peak memory, using eight logical processors on four P-cores. The machine was Windows 11 Pro, Intel Core i9-13900K (24 cores, 32 logical processors) and 128 GB memory; a comparison ran concurrently on disjoint cores. This observation is neither a hardware minimum nor a runtime guarantee. [Getting started](getting-started.md) has the measurement context.
+Windows is verified for this source-checkout release; macOS and Linux are unverified. On 2026-09-30 at checkout `c109a7bc`, an empty-workspace preparation through its data decision took 407.1 seconds and 3.99 GB peak memory, using eight logical processors on four P-cores. The machine was Windows 11 Pro, Intel Core i9-13900K (24 cores, 32 logical processors) and 128 GB memory; a comparison ran concurrently on disjoint cores. This observation is neither a hardware minimum nor a runtime guarantee. This is a historical preparation observation for this version; current workload context is in the [0.2.3 notes](#023).
 
 Xinglin Li created AlphaLattice alone and made this release. It is Apache-2.0; [NOTICE](../../NOTICE) lists included third-party material and separately installed software/model licenses. The release takes no outside contributions; see the [contributing note](../../CONTRIBUTING.md).
 

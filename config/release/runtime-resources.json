@@ -14,7 +14,8 @@
     "config/market-profiles/us-current-index-research.yaml": "The retained data-update source profile.",
     "config/release/runtime-resources.json": "The distribution's explicit resource and development exception contract.",
     "skills/alternative-evidence/governed-evidence-analysis/SKILL.md": "Evidence Analyst's task procedure.",
-    "skills/chief-risk-officer/review-portfolio-evidence/SKILL.md": "CRO's task procedure."
+    "skills/chief-risk-officer/review-portfolio-evidence/SKILL.md": "CRO's task procedure.",
+    "config/registries/refusals.json": "The shared refusal categories and their owning domains for structured error answers."
   },
   "directories": {
     ".agents/skills": "The Codex Skills and their unchanged references.",

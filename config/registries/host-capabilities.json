@@ -4,6 +4,7 @@
     "codex.doctor.python": {
       "host": "codex",
       "capability": "doctor.python",
+      "description": "Checks that the recorded interpreter is Python 3.12 so the Host can identify whether the locked research environment uses its required Python version.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -94,6 +95,7 @@
     "claude-code.doctor.python": {
       "host": "claude-code",
       "capability": "doctor.python",
+      "description": "Checks that the recorded interpreter is Python 3.12 so the Host can identify whether the locked research environment uses its required Python version.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -184,6 +186,7 @@
     "codex.doctor.uv": {
       "host": "codex",
       "capability": "doctor.uv",
+      "description": "Checks the selected uv command with --version so the Host can identify whether locked dependencies can be repaired, without authorizing installation.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -274,6 +277,7 @@
     "claude-code.doctor.uv": {
       "host": "claude-code",
       "capability": "doctor.uv",
+      "description": "Checks the selected uv command with --version so the Host can identify whether locked dependencies can be repaired, without authorizing installation.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -364,6 +368,7 @@
     "codex.doctor.installed_leg": {
       "host": "codex",
       "capability": "doctor.installed_leg",
+      "description": "Checks clean command setup and reports the installed distribution against the checkout so specialists can use the documented alphalattice command, with PATH ownership left unproved when necessary.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -461,6 +466,7 @@
     "claude-code.doctor.installed_leg": {
       "host": "claude-code",
       "capability": "doctor.installed_leg",
+      "description": "Checks clean command setup and reports the installed distribution against the checkout so specialists can use the documented alphalattice command, with PATH ownership left unproved when necessary.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -558,6 +564,7 @@
     "codex.doctor.workbench_build": {
       "host": "codex",
       "capability": "doctor.workbench_build",
+      "description": "Checks that built Workbench files match their sources so the Host can serve the current interface, without asserting browser availability.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -652,6 +659,7 @@
     "claude-code.doctor.workbench_build": {
       "host": "claude-code",
       "capability": "doctor.workbench_build",
+      "description": "Checks that built Workbench files match their sources so the Host can serve the current interface, without asserting browser availability.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -746,6 +754,7 @@
     "codex.doctor.retrieval_runtime": {
       "host": "codex",
       "capability": "doctor.retrieval_runtime",
+      "description": "Checks the retrieval environment and reports the pinned Evidence pack recipe readiness so the Host can identify missing setup without authorizing downloads.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -843,6 +852,7 @@
     "claude-code.doctor.retrieval_runtime": {
       "host": "claude-code",
       "capability": "doctor.retrieval_runtime",
+      "description": "Checks the retrieval environment and reports the pinned Evidence pack recipe readiness so the Host can identify missing setup without authorizing downloads.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -940,6 +950,7 @@
     "codex.doctor.background_notices": {
       "host": "codex",
       "capability": "doctor.background_notices",
+      "description": "Reports Codex queue readiness from the Workspace Host when available or the local command so background work has a continuation route, without proving notice receipt.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -1034,6 +1045,7 @@
     "claude-code.doctor.background_notices": {
       "host": "claude-code",
       "capability": "doctor.background_notices",
+      "description": "Declares Claude Code background Bash completion guidance so the agent can resume after background work, while leaving native notice delivery unproved.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -1129,6 +1141,7 @@
     "codex.doctor.disk": {
       "host": "codex",
       "capability": "doctor.disk",
+      "description": "Checks reported Host storage capacity and recovery headroom so admitted data can fit, leaving readiness unknown when only local free space is available.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -1219,6 +1232,7 @@
     "claude-code.doctor.disk": {
       "host": "claude-code",
       "capability": "doctor.disk",
+      "description": "Checks reported Host storage capacity and recovery headroom so admitted data can fit, leaving readiness unknown when only local free space is available.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -1309,6 +1323,7 @@
     "codex.doctor.cpu": {
       "host": "codex",
       "capability": "doctor.cpu",
+      "description": "Reports logical cores and any Host CPU budget so the agent can size Task workers within the reported budget.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -1399,6 +1414,7 @@
     "claude-code.doctor.cpu": {
       "host": "claude-code",
       "capability": "doctor.cpu",
+      "description": "Reports logical cores and any Host CPU budget so the agent can size Task workers within the reported budget.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -1489,6 +1505,7 @@
     "codex.doctor.network": {
       "host": "codex",
       "capability": "doctor.network",
+      "description": "Reports the Host network setting and local offline state so acquisition can follow the admitted setting, with a closed network remaining valid.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -1579,6 +1596,7 @@
     "claude-code.doctor.network": {
       "host": "claude-code",
       "capability": "doctor.network",
+      "description": "Reports the Host network setting and local offline state so acquisition can follow the admitted setting, with a closed network remaining valid.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -1669,6 +1687,7 @@
     "codex.doctor.system_libraries": {
       "host": "codex",
       "capability": "doctor.system_libraries",
+      "description": "Checks the platform libraries required by locked packages so the Host can name missing dependencies without installing them.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -1766,6 +1785,7 @@
     "claude-code.doctor.system_libraries": {
       "host": "claude-code",
       "capability": "doctor.system_libraries",
+      "description": "Checks the platform libraries required by locked packages so the Host can name missing dependencies without installing them.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -1863,6 +1883,7 @@
     "codex.doctor.user_layer": {
       "host": "codex",
       "capability": "doctor.user_layer",
+      "description": "Checks the optional user layer against its size and review bounds so local tuning can be reviewed when due or over a bound.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -1963,6 +1984,7 @@
     "claude-code.doctor.user_layer": {
       "host": "claude-code",
       "capability": "doctor.user_layer",
+      "description": "Checks the optional user layer against its size and review bounds so local tuning can be reviewed when due or over a bound.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -2063,6 +2085,7 @@
     "codex.doctor.user_backup": {
       "host": "codex",
       "capability": "doctor.user_backup",
+      "description": "Reports the latest optional user-layer backup folder so upgrade preparation can identify a recorded backup, without proving restoration or refusing research when absent.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -2157,6 +2180,7 @@
     "claude-code.doctor.user_backup": {
       "host": "claude-code",
       "capability": "doctor.user_backup",
+      "description": "Reports the latest optional user-layer backup folder so upgrade preparation can identify a recorded backup, without proving restoration or refusing research when absent.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
@@ -2251,6 +2275,7 @@
     "codex.session.binding": {
       "host": "codex",
       "capability": "session.binding",
+      "description": "Binds an exact Codex Session to one existing workspace, resolving a child's lead through the bounded spawn chain so commands and usage keep the admitted scope.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::bind_session",
       "definition_line": 1004,
@@ -2463,6 +2488,7 @@
     "codex.session.usage": {
       "host": "codex",
       "capability": "session.usage",
+      "description": "Reads bounded usage with saved read positions from the bound Codex Session and direct children whose metadata proves parentage so the Host can report participation only when both reading switches allow it.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::read_session_usage",
       "definition_line": 1341,
@@ -2615,6 +2641,7 @@
     "codex.session.members-attribution": {
       "host": "codex",
       "capability": "session.members-attribution",
+      "description": "Uses Codex child rollout metadata to verify direct-parent participation and read the spawn role while preserving declared submission identities and treating file observation as source information rather than authentication.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::read_session_usage",
       "definition_line": 1341,
@@ -2732,6 +2759,7 @@
     "codex.session.protected-project-binding-fallback": {
       "host": "codex",
       "capability": "session.protected-project-binding-fallback",
+      "description": "Retries a binding in the workspace-owned folder only when a permission error names the configured project binding path, so a protected project can retain exact Session scope without bypassing other write refusals.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::_sandboxed_binding",
       "definition_line": 1170,
@@ -2802,7 +2830,7 @@
           ".claude/skills/alphalattice-research/references/operating.md:54",
           "AGENTS.md:46",
           "config/registries/agent-surface.json:46804",
-          "config/registries/refusals.json:6663",
+          "config/registries/refusals.json:9024",
           "scripts/release/public_outputs.py:323",
           "src/alphalattice/control/product_host/composition/local_web_session.py:2016",
           "src/alphalattice/control/product_host/composition/portfolio_research_operations.py:962",
@@ -2840,6 +2868,7 @@
     "codex.workbench.visible-browser-open-guidance": {
       "host": "codex",
       "capability": "workbench.visible-browser-open-guidance",
+      "description": "Offers a one-use Workbench launch link with guidance for the Codex built-in browser so the person can see the workspace, without probing or opening a browser tool.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/web.py::OPEN_THE_WORKBENCH",
       "definition_line": 94,
@@ -2922,24 +2951,29 @@
     "codex.product-host.detached-launch": {
       "host": "codex",
       "capability": "product-host.detached-launch",
+      "description": "Starts an independent workspace Host with Windows Job escape and authenticated readiness checks so research can outlive the agent shell, or reuses an authenticated serving instance with its existing lifetime.",
       "owner": "alphalattice.control.product_host.composition",
       "defined_by": "src/alphalattice/control/product_host/composition/web_launcher.py::_spawn_detached",
-      "definition_line": 168,
+      "definition_line": 184,
       "conditions": [
         "Both Claude Code and Codex use serve --no-browser --detach; STARTED requires an authenticated ready Host.",
         "The launcher uses DEVNULL stdin and a separate process group/session; Windows requests no window and Job breakaway.",
         "Denied breakaway refuses local_web.detached_breakaway_denied with host.start.breakaway_denied; no still-held process is started.",
         "Attached --stop-on-stdin and old flags keep their existing behavior; host stop owns shutdown.",
         "Detachment is admitted in the caller runtime before any retrieval-interpreter trampoline; only the detached Host uses the declared retrieval interpreter.",
-        "Immediately after Windows spawn, IsProcessInJob(child, NULL) must prove no Job ownership; true or failed proof stops this child and refuses, with no broker."
+        "Immediately after Windows spawn, IsProcessInJob(child, NULL) must prove no Job ownership; true or failed proof stops this child and refuses, with no broker.",
+        "ALREADY_SERVING requires the current authenticated Activity read to match workspace and instance; it preserves the serving Host authority and idle policy and reports instance, process and start time.",
+        "Authenticated reuse forwards the first-session Workbench launch offer unchanged rather than consuming it inside the verification read.",
+        "When the caller cannot detach a new child, an existing descriptor is still authenticated for reuse; absence keeps the named detachment refusal, and unverified discovery cannot claim ALREADY_SERVING."
       ],
       "limitations": [
-        "Any remaining Job ownership, even where breakaway was permitted, is unproven and refused; use a person-owned terminal outside the agent shell or explicitly session-only attached mode.",
+        "Any remaining Job ownership, even where breakaway was permitted, is unproven and refused; use the declared probed host Terminal panel or a person-owned terminal outside the agent shell, or explicitly session-only attached mode.",
         "No logout or reboot survival guarantee; no broker, scheduler or service escape is used."
       ],
       "supporting_definitions": [
-        "src/alphalattice/control/product_host/composition/web_launcher.py::_detach:215",
-        "src/alphalattice/control/product_host/composition/web_launcher.py::_served:305"
+        "src/alphalattice/control/product_host/composition/web_launcher.py::_detach:231",
+        "src/alphalattice/control/product_host/composition/web_launcher.py::_served:331",
+        "src/alphalattice/control/product_host/composition/web_launcher.py::_failed_start:354"
       ],
       "consumers": {
         "import": [
@@ -3003,6 +3037,7 @@
     "codex.session.identity-producer-channel": {
       "host": "codex",
       "capability": "session.identity-producer-channel",
+      "description": "Maps Codex to its native producer and Session-file usage channel so Host observations retain their declared source, without asserting authentication or native lifecycle support.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::HOSTS",
       "definition_line": 203,
@@ -3115,6 +3150,7 @@
     "claude-code.session.binding": {
       "host": "claude-code",
       "capability": "session.binding",
+      "description": "Binds an exact Claude Code lead Session to one existing workspace so its commands and specialists use the admitted roles and usage-reading setting.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::bind_session",
       "definition_line": 1004,
@@ -3327,6 +3363,7 @@
     "claude-code.session.usage": {
       "host": "claude-code",
       "capability": "session.usage",
+      "description": "Reads bounded usage with saved read positions from the bound Claude Code Session and direct subagents whose metadata proves parentage so the Host can report participation only when both reading switches allow it.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::read_session_usage",
       "definition_line": 1341,
@@ -3479,6 +3516,7 @@
     "claude-code.session.members-attribution": {
       "host": "claude-code",
       "capability": "session.members-attribution",
+      "description": "Uses direct Claude Code subagent metadata and committee-verified command claims to attribute accepted messages to a unique specialist so the Host can show authorship while preserving stored declarations.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::read_session_usage",
       "definition_line": 1341,
@@ -3592,6 +3630,7 @@
     "claude-code.session.protected-project-binding-fallback": {
       "host": "claude-code",
       "capability": "session.protected-project-binding-fallback",
+      "description": "Retries a binding in the workspace-owned folder only when a permission error names the configured project binding path, so a protected project can retain exact Session scope without bypassing other write refusals.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::_sandboxed_binding",
       "definition_line": 1170,
@@ -3662,7 +3701,7 @@
           ".claude/skills/alphalattice-research/references/operating.md:54",
           "AGENTS.md:46",
           "config/registries/agent-surface.json:46804",
-          "config/registries/refusals.json:6663",
+          "config/registries/refusals.json:9024",
           "scripts/release/public_outputs.py:323",
           "src/alphalattice/control/product_host/composition/local_web_session.py:2016",
           "src/alphalattice/control/product_host/composition/portfolio_research_operations.py:962",
@@ -3700,6 +3739,7 @@
     "claude-code.workbench.visible-browser-open-guidance": {
       "host": "claude-code",
       "capability": "workbench.visible-browser-open-guidance",
+      "description": "Offers a one-use Workbench launch link with visible Claude Code desktop browser guidance so the person can see the workspace, without probing or invoking preview_start.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/web.py::OPEN_THE_WORKBENCH",
       "definition_line": 94,
@@ -3782,24 +3822,29 @@
     "claude-code.product-host.detached-launch": {
       "host": "claude-code",
       "capability": "product-host.detached-launch",
+      "description": "Starts an independent workspace Host with Windows Job escape and authenticated readiness checks so research can outlive the agent shell, or reuses an authenticated serving instance with its existing lifetime.",
       "owner": "alphalattice.control.product_host.composition",
       "defined_by": "src/alphalattice/control/product_host/composition/web_launcher.py::_spawn_detached",
-      "definition_line": 168,
+      "definition_line": 184,
       "conditions": [
         "Both Claude Code and Codex use serve --no-browser --detach; STARTED requires an authenticated ready Host.",
         "The launcher uses DEVNULL stdin and a separate process group/session; Windows requests no window and Job breakaway.",
         "Denied breakaway refuses local_web.detached_breakaway_denied with host.start.breakaway_denied; no still-held process is started.",
         "Attached --stop-on-stdin and old flags keep their existing behavior; host stop owns shutdown.",
         "Detachment is admitted in the caller runtime before any retrieval-interpreter trampoline; only the detached Host uses the declared retrieval interpreter.",
-        "Immediately after Windows spawn, IsProcessInJob(child, NULL) must prove no Job ownership; true or failed proof stops this child and refuses, with no broker."
+        "Immediately after Windows spawn, IsProcessInJob(child, NULL) must prove no Job ownership; true or failed proof stops this child and refuses, with no broker.",
+        "ALREADY_SERVING requires the current authenticated Activity read to match workspace and instance; it preserves the serving Host authority and idle policy and reports instance, process and start time.",
+        "Authenticated reuse forwards the first-session Workbench launch offer unchanged rather than consuming it inside the verification read.",
+        "When the caller cannot detach a new child, an existing descriptor is still authenticated for reuse; absence keeps the named detachment refusal, and unverified discovery cannot claim ALREADY_SERVING."
       ],
       "limitations": [
-        "Any remaining Job ownership, even where breakaway was permitted, is unproven and refused; use a person-owned terminal outside the agent shell or explicitly session-only attached mode.",
+        "Any remaining Job ownership, even where breakaway was permitted, is unproven and refused; use the declared probed host Terminal panel or a person-owned terminal outside the agent shell, or explicitly session-only attached mode.",
         "No logout or reboot survival guarantee; no broker, scheduler or service escape is used."
       ],
       "supporting_definitions": [
-        "src/alphalattice/control/product_host/composition/web_launcher.py::_detach:215",
-        "src/alphalattice/control/product_host/composition/web_launcher.py::_served:305"
+        "src/alphalattice/control/product_host/composition/web_launcher.py::_detach:231",
+        "src/alphalattice/control/product_host/composition/web_launcher.py::_served:331",
+        "src/alphalattice/control/product_host/composition/web_launcher.py::_failed_start:354"
       ],
       "consumers": {
         "import": [
@@ -3863,6 +3908,7 @@
     "claude-code.session.identity-producer-channel": {
       "host": "claude-code",
       "capability": "session.identity-producer-channel",
+      "description": "Maps Claude Code to its native producer and Session-file usage channel so Host observations retain their declared source, without asserting authentication or native lifecycle support.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::HOSTS",
       "definition_line": 203,
@@ -4099,6 +4145,7 @@
     "codex.task.wake-queue": {
       "host": "codex",
       "capability": "task.wake-queue",
+      "description": "Registers a wake for a known Task that still moves by itself after Host store reach is proved, then queues a bounded event line so the lead can resume without claiming model receipt.",
       "owner": "alphalattice.control.product_host.composition",
       "defined_by": "src/alphalattice/control/product_host/composition/workspace_activity.py::_queue_wake",
       "definition_line": 1341,
@@ -4203,6 +4250,7 @@
     "codex.command.queue-readiness-and-store-reach": {
       "host": "codex",
       "capability": "command.queue-readiness-and-store-reach",
+      "description": "Checks the Codex queue command and probes store reach with a sentinel thread so the Host can admit a Task wake, without proving real message delivery.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::codex_queue_readiness",
       "definition_line": 105,
@@ -4299,6 +4347,7 @@
     "claude_code.specialist.tool_limits": {
       "host": "claude_code",
       "capability": "specialist.tool_limits",
+      "description": "Materializes role-specific Claude Code tool lists and command-scoped review tools so specialists receive their permitted working surface, without granting product authority or proving native enforcement.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "scripts/materialize_claude_host.py::CLAUDE_TOOLS",
       "definition_line": 47,
@@ -4328,6 +4377,70 @@
       "consumer_basis": {
         "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
         "scope": "Static public definition/use references; private maintainer evidence is retained separately, not runtime proof."
+      }
+    },
+    "claude-code.product-host.terminal-panel": {
+      "host": "claude-code",
+      "capability": "product-host.terminal-panel",
+      "description": "Offers the Claude Code desktop Terminal-panel recovery only when this invocation declares its recorded outside-Job capability so a refused launch can be retried with the same child-escape and ready-Host checks.",
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": "src/alphalattice/control/product_host/composition/web_launcher.py::_detach",
+      "availability": "probed",
+      "declaration_environment": "ALPHALATTICE_TERMINAL_PANEL_HOST",
+      "conditions": [
+        "The host guide declares this host for one serve invocation only after its desktop Terminal panel shell is probed successfully outside every Windows Job.",
+        "Only a registered probed host declaration offers the agent the Terminal-panel route; absent, unknown or undeclared hosts offer the person-owned terminal.",
+        "The 2026-10-21 typed Claude Code desktop probe returned successful IsProcessInJob with in_job false in the Terminal panel; its command tool had Job LimitFlags 0x0.",
+        "The desktop run_in_terminal tool executes one literal line in the panel; the app may ask the person to approve it. A declaration requires both this executor and the outside-Job shell probe; auto mode remains the app classifier decision."
+      ],
+      "limitations": [
+        "A declaration selects guidance only; it grants no escape authority. The same child Job-escape and authenticated ready-Host checks still decide STARTED.",
+        "No broker, service, scheduler or separate system browser is used."
+      ],
+      "consumers": {
+        "import": [],
+        "path": [],
+        "string": [
+          "AGENTS.md",
+          ".agents/skills/alphalattice-research/references/operating.md",
+          "src/alphalattice/control/product_host/composition/web_launcher.py::_detach"
+        ]
+      },
+      "consumer_basis": {
+        "source_commit": "79e9566c3",
+        "scope": "Registered host guide declaration and refusal consumer; typed environment probe supplied before this change, not new native acceptance."
+      },
+      "executor": "run_in_terminal"
+    },
+    "codex.product-host.terminal-panel": {
+      "host": "codex",
+      "capability": "product-host.terminal-panel",
+      "description": "Records that Codex Terminal-panel recovery is undeclared so a refused detached launch offers a person-owned terminal instead of assuming a probed panel route.",
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": "src/alphalattice/control/product_host/composition/web_launcher.py::_detach",
+      "availability": "undeclared",
+      "declaration_environment": "ALPHALATTICE_TERMINAL_PANEL_HOST",
+      "conditions": [
+        "The host guide declares this host for one serve invocation only after its desktop Terminal panel shell is probed successfully outside every Windows Job.",
+        "Only a registered probed host declaration offers the agent the Terminal-panel route; absent, unknown or undeclared hosts offer the person-owned terminal.",
+        "No Codex Terminal-panel escape probe is recorded; the capability remains undeclared."
+      ],
+      "limitations": [
+        "A declaration selects guidance only; it grants no escape authority. The same child Job-escape and authenticated ready-Host checks still decide STARTED.",
+        "No broker, service, scheduler or separate system browser is used."
+      ],
+      "consumers": {
+        "import": [],
+        "path": [],
+        "string": [
+          "AGENTS.md",
+          ".agents/skills/alphalattice-research/references/operating.md",
+          "src/alphalattice/control/product_host/composition/web_launcher.py::_detach"
+        ]
+      },
+      "consumer_basis": {
+        "source_commit": "79e9566c3",
+        "scope": "Registered host guide declaration and refusal consumer; typed environment probe supplied before this change, not new native acceptance."
       }
     }
   }

@@ -124,9 +124,10 @@ from alphalattice.evidence.alternative_evidence.sources.recorded import (
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
-from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell
+from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell, worded
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import setup_failure
+from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.interface.local_application.retrieval_environment import (
     fill_command,
     load,
@@ -1819,6 +1820,7 @@ def _typed(arguments: argparse.Namespace, options: list[str], host: bool) -> str
         return join(
             [*command_prefix(), "--workspace", workspace, "evidence", "install", setup], shell()
         )
+    options = [*options, "--view", "summary"] if "--preflight" in options else options
     return join([*_setup_entry(), "--workspace", str(arguments.workspace), *options], shell())
 
 
@@ -1904,7 +1906,7 @@ def _ways_on(arguments: argparse.Namespace, error: Exception, host: bool) -> dic
         # Never the same check again: the runtime's fill and the packs' status come first.
         return {
             "environment": join(fill_command(), shell()),
-            "packs": join(pack_command("--status"), shell()),
+            "packs": join(pack_command("--status", "--view", "summary"), shell()),
         }
     if arguments.acquire_sec:
         cutoff, entities = arguments.evidence_as_of, arguments.entities or ()
@@ -1924,14 +1926,22 @@ def _ways_on(arguments: argparse.Namespace, error: Exception, host: bool) -> dic
 
 def main(argv: list[str] | None = None) -> int:
     """Run the declared command and return its exit status."""
-    arguments = _parser().parse_args(argv)
+    parser = _parser()
+    parser.add_argument(
+        "--view", choices=("compact", "full", "summary"), help=worded("cli.read.view")
+    )
+    parser.add_argument("--output", type=Path)
+    parser.set_defaults(legacy_indent=2)
+    arguments = parser.parse_args(argv)
+    arguments.command_line = tuple([*_setup_entry(), *(sys.argv[1:] if argv is None else argv)])
+    if (arguments.view or arguments.output) and not arguments.preflight:
+        parser.error(str(worded("read.summary")).format(pointer="--preflight"))
     try:
         result = materialize(arguments)
     except Exception as error:
-        print(json.dumps(setup_refusal(arguments, error, now=datetime.now(UTC), script=True)))
-        return 2
-    print(json.dumps(result, indent=2, default=str))
-    return 0
+        arguments.legacy_indent = None
+        result = setup_refusal(arguments, error, now=datetime.now(UTC), script=True)
+    return emit_owner(arguments, result)
 
 
 if __name__ == "__main__":
