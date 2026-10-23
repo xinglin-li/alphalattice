@@ -2,6 +2,25 @@
   "schema": "alphalattice.playpen.registry.caches",
   "note": "Source-declared cache keys, bounds and rebuild conditions. Unbounded is literal; per-context limits are not aggregate quotas. Drop safety is conditional documentation, not deletion authority. Fixed successors name their own commits when this base predates them.",
   "entries": {
+    "src/devtools/evaluation/golden_workspaces.py::golden_run::invocation-golden-root": {
+      "description": "Keeps the controller-provided golden location within one pytest invocation.",
+      "owner": "devtools.evaluation",
+      "defined_by": [
+        "src/devtools/evaluation/golden_workspaces.py::golden_run"
+      ],
+      "definition_line": 27,
+      "key": "canonical invocation basetemp shared by xdist workers",
+      "dependency_coverage": "Root descriptor only; served recipe identity remains the legacy adapter's until the input-identity cut",
+      "invalidation_rule": "Context reset at invocation teardown; a new invocation has a fresh root",
+      "size_bound": "1 descriptor",
+      "bound_scope": "per worker's active invocation context; no copied payload in this memo",
+      "eviction": "context reset",
+      "safe_to_drop": "Only when the invocation and its fixture readers have closed; fixture cleanup retains its existing owner",
+      "location": {
+        "scope": "invocation",
+        "path_expression": "GoldenRun.root / golden-workspaces under the canonical external pytest basetemp"
+      }
+    },
     "src/alphalattice/control/product_host/research_authoring/timing.py::installed_price_basis::module-installed-price-basis": {
       "owner": "alphalattice.control.product_host",
       "defined_by": [

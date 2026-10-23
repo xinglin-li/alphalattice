@@ -282,6 +282,57 @@ def test_derived_memos_keep_falsy_values_and_evict_lru_with_a_machine_budget(mon
     small = bounded_memo.BoundedMemo().capacity
     monkeypatch.setattr(bounded_memo, "cpu_count", lambda: 2)
     assert bounded_memo.BoundedMemo().capacity > small
+    from alphalattice.kernel.shared_kernel.spans import collect, readout
+
+    sizes = []
+    measured = bounded_memo.BoundedMemo(
+        capacity=1,
+        cache_id="fixture",
+        retained_size_estimate=lambda key, value: sizes.append((key, value)) or len(value),
+    )
+    with collect() as first:
+        measured["a"] = b"xx"
+        assert measured["a"] == b"xx" and measured.get("missing") is None
+        measured["a"] = b"abc"
+        measured["b"] = b"z"
+    observation = readout(first)["cache_observations"][0]
+    assert observation["outcome_scope"] == "LOOKUP"
+    fields = ("hits", "misses", "capacity_evictions", "retained_bytes_estimate")
+    assert all(observation[field] == 1 for field in fields)
+    assert sizes == [("a", b"xx"), ("a", b"abc"), ("b", b"z")]
+    with collect() as second:
+        del measured["b"]
+        measured.clear()
+    cleared = readout(second)["cache_observations"][0]
+    assert cleared["instance_ref"] == observation["instance_ref"]
+    assert cleared["retained_bytes_estimate"] == 0 and cleared["capacity_evictions"] == 0
+    assert cleared["sequence"] > observation["sequence"]
+    assert observation["retained_bytes_estimate"] == 1
+
+    def size(key, value):
+        if value == b"bad":
+            raise RuntimeError("size unavailable")
+        return len(value)
+
+    for callback in (None, lambda k, v: -1, lambda k, v: True, size):
+        unknown = bounded_memo.BoundedMemo(
+            capacity=1, cache_id="unknown", retained_size_estimate=callback
+        )
+        with collect() as failed:
+            unknown["a"] = b"bad"
+            assert unknown["a"] == b"bad"
+        row = readout(failed)["cache_observations"][0]
+        assert (
+            row["retained_size_status"] == "UNOBSERVED" and row["retained_bytes_estimate"] is None
+        )
+        assert row["missing"] == ["CACHE_RETAINED_BYTES_UNOBSERVED"]
+    with collect() as recovered:
+        unknown["b"] = b"ok"
+    assert readout(recovered)["cache_observations"][0]["retained_bytes_estimate"] == 2
+    with collect() as collector_failed:
+        monkeypatch.setattr(collector_failed, "observe_cache", lambda _: 1 / 0)
+        assert unknown["b"] == b"ok"
+    assert readout(collector_failed)["cache_observation_gaps"] == ["CACHE_OBSERVATION_FAILED"]
 
 
 def test_pair_scores_are_answered_from_a_bounded_cache() -> None:

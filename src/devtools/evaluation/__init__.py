@@ -17,6 +17,7 @@ from .forms import (
     Trace,
     TraceEvent,
 )
+from .golden_workspaces import golden_run
 from .intent import CommandCatalog, IntentGrader, command_errors, contains, grade, proposes
 from .session import session_findings
 
@@ -41,6 +42,7 @@ __all__ = [
     "collect_feedback",
     "command_errors",
     "contains",
+    "golden_run",
     "grade",
     "proposes",
     "session_findings",

@@ -167,6 +167,12 @@
       "admitted": "2026-10-23: setup timed out at the 60 s Medium limit in a merge-lane gate; returns to Medium with the build-once fixture."
     },
     {
+      "pattern": "tests/workspace_maintenance/test_membership_change_recovery.py::test_a_change_stopped_before_the_cycle_record_is_adopted_through_its_admission*",
+      "owner": "tests.workspace_maintenance",
+      "reason": "Its cold seed setup takes 45 to 54 s, so the whole test sits at the 60 s Medium limit until the build-once fixture lands.",
+      "admitted": "2026-10-23: timed out at the 60 s Medium limit in a merge-lane gate after taking 51.9 s and 59.3 s in the two gates before; returns to Medium with the build-once fixture."
+    },
+    {
       "pattern": "tests/agent_eval/test_first_use_completion.py::test_a_first_use_sealed_under_the_last_release_still_verifies_here*",
       "owner": "tests.agent_eval",
       "reason": "Builds with the released wheel and verifies the sealed first use after upgrading.",

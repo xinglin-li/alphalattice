@@ -6,58 +6,18 @@ read-only Portfolio consumers may link the seed's immutable Parquet objects.
 
 from __future__ import annotations
 
-import ctypes
 import hashlib
 import json
 import os
 import shutil
 import time
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-
-@contextmanager
-def _build_lock(path: Path) -> Iterator[None]:
-    """Wait for the builder's OS lock, without polling or a fixed sleep."""
-    if os.name != "nt":
-        import fcntl
-
-        with path.open("a") as stream:
-            fcntl.flock(stream, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(stream, fcntl.LOCK_UN)
-        return
-
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p)
-    kernel.CreateMutexW.restype = ctypes.c_void_p
-    kernel.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
-    kernel.WaitForSingleObject.restype = ctypes.c_uint32
-    kernel.ReleaseMutex.argtypes = (ctypes.c_void_p,)
-    kernel.CloseHandle.argtypes = (ctypes.c_void_p,)
-    name = (
-        "Local\\AlphaLatticeTestWorkspace-"
-        + hashlib.sha256(str(path.resolve()).casefold().encode()).hexdigest()
-    )
-    handle = kernel.CreateMutexW(None, False, name)
-    if not handle:
-        raise ctypes.WinError(ctypes.get_last_error())
-    try:
-        status = kernel.WaitForSingleObject(handle, 900_000)
-        if status not in (0, 0x80):  # acquired, or released by a dead builder
-            raise TimeoutError(f"session workspace builder did not release {path.name}: {status}")
-        try:
-            yield
-        finally:
-            kernel.ReleaseMutex(handle)
-    finally:
-        kernel.CloseHandle(handle)
+from devtools.evaluation.golden_workspaces import build_lock
 
 
 def _files(root: Path) -> dict[str, str]:
@@ -86,7 +46,7 @@ def session_workspace(
     target = cache / name
     record = target / "complete.json"
     started = time.perf_counter()
-    with _build_lock(cache / f"{name}.lock"):
+    with build_lock(cache / f"{name}.lock"):
         built = not target.exists()
         if built:
             target.mkdir()

@@ -2847,6 +2847,20 @@ class PortfolioResearchOperations:
         *,
         caller: OperationCaller,
     ) -> dict[str, object] | None:
+        match request.operation.partition("_")[0]:
+            case "FEATURE":
+                return self._feature_routes(request, caller=caller)
+            case "RESEARCH" | "MODEL" | "WORKSPACE":
+                return self._research_routes(request, caller=caller)
+            case "DATA" | "STORAGE":
+                return self._data_routes(request, caller=caller)
+            case "STATUS" | "TASK" | "TASKS" | "RECOVER" | "CANCEL":
+                return self._task_routes(request, caller=caller)
+        return None
+
+    def _feature_routes(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object] | None:
         match request.operation:
             case "FEATURE_CATALOG_BUILD":
                 assert request.feature_plan_hash is not None
@@ -2857,109 +2871,17 @@ class PortfolioResearchOperations:
                     preprocess=request.feature_output == "PREPROCESSED_VALUES",
                 )
             case "FEATURE_TRIAL" | "FEATURE_TRIAL_READBACK" | "FEATURE_TRIALS":
-                try:
-                    if request.operation == "FEATURE_TRIALS":
-                        return self.trials.listing()
-                    if request.operation == "FEATURE_TRIAL_READBACK":
-                        assert request.feature_trial_id is not None
-                        return self.trials.readback(request.feature_trial_id)
-                    assert request.feature_plan_hash is not None and request.task_id is not None
-                    return self.trials.start(
-                        request.feature_plan_hash, request.task_id, caller=caller
-                    )
-                except ValueError as error:
-                    code = public_failure(error, "feature_trial.refused")
-                    return refused(
-                        code,
-                        task_id=str(request.task_id or "") or None,
-                        # A study the trial cannot run against names the way on (V354).
-                        trial=self.trials.way_on(request.feature_plan_hash)
-                        if code == "feature_trial.study_not_from_factor_evidence"
-                        and request.feature_plan_hash is not None
-                        else None,
-                    )
+                return self._feature_trial(request, caller=caller)
             case "FEATURE_CATALOG_BUILD_READBACK":
-                assert request.task_id is not None
-                build = self.feature_builds.readback(request.task_id)
-                # The readback checked the Task's contract; its input is the build's source.
-                binding = str(
-                    self.workspace_session.task_control_registry.task(
-                        request.task_id
-                    ).input.payload["input_binding_hash"]
-                )
-                # What the build's source can claim about time, from its input's Panel (V347).
-                return {
-                    **build,
-                    "temporal_scope": binding_temporal_scope(
-                        self.workspace_session.workspace,
-                        binding,
-                        window_start=None,
-                        window_end=None,
-                    ),
-                }
+                return self._feature_build(request, caller=caller)
             case "FEATURE_CATALOG_CONTROLS" | "FEATURE_CATALOG_PLAN" | "FEATURE_CATALOG_READBACK":
-                definitions = ResearchFeatureDefinitions(
-                    self.workspace_session.workspace,
-                )
-                try:
-                    if request.operation == "FEATURE_CATALOG_CONTROLS":
-                        assert request.input_binding_hash is not None
-                        return {
-                            **definitions.controls(
-                                request.input_binding_hash, request.feature_plan_hash
-                            ),
-                            # V367, V354: trial controls precede the factor build.
-                            **self.experiments.prerequisites_of(
-                                "FEATURE_TRIAL", binding_hash=request.input_binding_hash
-                            ),
-                        }
-                    if request.operation == "FEATURE_CATALOG_PLAN":
-                        assert request.feature_document is not None
-                        with self.workspace_session.mutation_gate.hold():
-                            plan = definitions.plan(request.feature_document)
-                        return _with_trial(definitions.readback(plan.plan_hash))
-                    assert request.feature_plan_hash is not None
-                    return _with_trial(definitions.readback(request.feature_plan_hash))
-                except ValidationError as error:
-                    return invalid_plan_document(error, request, self.experiments.manifest)
-                except FeatureCatalogCrudError as error:
-                    return {
-                        "status": "REFUSED",
-                        "failure_code": error.failure_code,
-                        "message": str(error),
-                    }
-                except (ValueError, OSError, KeyError) as error:
-                    named = request.input_binding_hash or str(
-                        (request.feature_document or {}).get("input_binding_hash") or ""
-                    )
-                    held = [
-                        v.binding_hash for v in self.experiments.manifest.experiment_inputs or ()
-                    ]
-                    if isinstance(error, FileNotFoundError) and named and named not in held:
-                        # V380: refused bindings offer their field and admitted controls.
-                        return {
-                            "status": "REFUSED",
-                            "failure_code": "feature_research.input_binding_unresolved",
-                            "fields": [["input_binding_hash"]],
-                            "expected": {"input_binding_hash": held},
-                            **explain("feature_research.input_binding_unresolved"),
-                            "next_requests": {
-                                **{
-                                    f"controls:{binding[:12]}": {
-                                        "operation": "FEATURE_CATALOG_CONTROLS",
-                                        "input_binding_hash": binding,
-                                    }
-                                    for binding in held
-                                },
-                                "inputs": {"operation": "WORKSPACE_SHOW"},
-                            },
-                        }
-                    return {
-                        "status": "REFUSED",
-                        "failure_code": public_failure(
-                            error, "feature_research.definition_or_source_unavailable"
-                        ),
-                    }
+                return self._feature_catalog(request, caller=caller)
+        return None
+
+    def _research_routes(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object] | None:
+        match request.operation:
             case "RESEARCH_STRATEGY_CONTROLS":
                 return self.research_strategies.controls()
             case (
@@ -2968,48 +2890,7 @@ class PortfolioResearchOperations:
                 | "RESEARCH_STRATEGY_READBACK"
                 | "RESEARCH_STRATEGY_INSTALL"
             ):
-                try:
-                    if request.operation == "RESEARCH_STRATEGY_PLAN":
-                        assert request.experiment_document is not None
-                        return self.research_strategies.plan(request.experiment_document)
-                    if request.operation == "RESEARCH_STRATEGY_PREPARE":
-                        assert request.experiment_plan_hash is not None
-                        return self.research_strategies.prepare(
-                            request.experiment_plan_hash, caller=caller, dispatcher=self.dispatcher
-                        )
-                    assert request.task_id is not None
-                    if request.operation == "RESEARCH_STRATEGY_INSTALL":
-                        return self._install(request.task_id)
-                    return self.research_strategies.readback(request.task_id)
-                except ValidationError as error:
-                    return invalid_plan_document(error, request, self.experiments.manifest)
-                except (ValueError, OSError, KeyError) as error:
-                    if (
-                        str(error) == "research_strategy.preview_required"
-                        and request.experiment_plan_hash is not None
-                    ):
-                        return {
-                            **refused("research_strategy.preview_required"),
-                            "next_requests": self.research_strategies.replan_requests(
-                                request.experiment_plan_hash
-                            ),
-                        }
-                    refusal: dict[str, object] = {
-                        "status": "REFUSED",
-                        **located_failure(error, "research_strategy.refused"),
-                    }
-                    if str(refusal.get("failure_code", "")).startswith(
-                        (
-                            "research_strategy.risk_parent_support_incomplete",
-                            "research_strategy.risk_history_insufficient",
-                        )
-                    ):
-                        recovery = self.research_strategies.controls(
-                            (request.experiment_document or {}).get("input_binding_hash")
-                        )
-                        refusal["risk_windows"] = recovery["risk_windows"]
-                        refusal["next_requests"] = recovery["next_requests"]
-                    return refusal
+                return self._strategy(request, caller=caller)
             case "MODEL_TRAINING_INPUT_PLAN":
                 assert request.research_input_id is not None and request.component_id is not None
                 return self.model_training_inputs.plan(
@@ -3023,23 +2904,33 @@ class PortfolioResearchOperations:
                     ),
                 )
             case "MODEL_TRAINING_INPUT_PREPARE":
-                assert request.experiment_plan_hash is not None
-                try:
-                    return self.model_training_inputs.prepare(
-                        request.experiment_plan_hash, caller=caller, dispatcher=self.dispatcher
-                    )
-                except ValueError as error:
-                    if str(error) != "model_training.preview_required":
-                        raise
-                    return {
-                        **refused("model_training.preview_required"),
-                        "next_requests": self.model_training_inputs.replan_requests(
-                            request.experiment_plan_hash
-                        ),
-                    }
+                return self._training_input(request, caller=caller)
             case "MODEL_TRAINING_INPUT_READBACK":
                 assert request.task_id is not None
                 return self.model_training_inputs.readback(request.task_id)
+            case "RESEARCH_INPUTS":
+                # Discovery isolates unreadable publications; exact selection stays strict.
+                return self.input_capture.revisions.versions()
+            case "RESEARCH_INPUT_PLAN":
+                assert request.research_input_id is not None
+                return self.input_capture.plan(request.research_input_id)
+            case "RESEARCH_INPUT_CONFIRM":
+                return self._input_confirm(request, caller=caller)
+            case "RESEARCH_INPUT_READBACK":
+                assert request.task_id is not None
+                return self.input_capture.readback(request.task_id)
+            case "WORKSPACE_PREPARE_READBACK":
+                return self._preparation_readback(request.task_id)
+            case "WORKSPACE_PREPARE_PLAN":
+                return self.goals.prepare(request, caller, self.preparation.plan)
+            case "WORKSPACE_PREPARE_CONFIRM":
+                return self._prepare_confirm(request, caller=caller)
+        return None
+
+    def _data_routes(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object] | None:
+        match request.operation:
             case "DATA_ISSUES":
                 return cast(
                     dict[str, object],
@@ -3062,87 +2953,6 @@ class PortfolioResearchOperations:
                     dict[str, object],
                     self.data_issues.operate(request, caller, self._data_decisions(caller)),
                 )
-            case "RESEARCH_INPUTS":
-                # Discovery isolates unreadable publications; exact selection stays strict.
-                return self.input_capture.revisions.versions()
-            case "RESEARCH_INPUT_PLAN":
-                assert request.research_input_id is not None
-                return self.input_capture.plan(request.research_input_id)
-            case "RESEARCH_INPUT_CONFIRM":
-                assert request.research_input_plan_hash is not None
-                try:
-                    return self.input_capture.confirm(
-                        request.research_input_plan_hash, caller=caller, dispatcher=self.dispatcher
-                    )
-                except ValueError as error:
-                    if str(error) != "research_input.preview_required":
-                        raise
-                    return {
-                        **refused("research_input.preview_required"),
-                        "next_requests": self.input_capture.replan_requests(
-                            request.research_input_plan_hash
-                        ),
-                    }
-            case "RESEARCH_INPUT_READBACK":
-                assert request.task_id is not None
-                return self.input_capture.readback(request.task_id)
-            case "WORKSPACE_PREPARE_READBACK":
-                return self._preparation_readback(request.task_id)
-            case "WORKSPACE_PREPARE_PLAN":
-                return self.goals.prepare(request, caller, self.preparation.plan)
-            case "WORKSPACE_PREPARE_CONFIRM":
-                assert request.preparation_plan_hash is not None
-                try:
-                    self.preparation.require_confirmation_caller(
-                        request.preparation_plan_hash,
-                        caller=caller,
-                        grant_hash=request.data_issue_grant_hash,
-                        **self.goals.preparation_scope(),
-                    )
-                except ValueError as error:
-                    if str(error) != "workspace_preparation.preview_stale":
-                        raise
-                    return {
-                        **refused("workspace_preparation.preview_stale"),
-                        "next_requests": {"replan": {"operation": "WORKSPACE_PREPARE_PLAN"}},
-                    }
-                previous = next(
-                    (
-                        t
-                        for t in self.preparation.tasks()
-                        if t.input.payload["plan"]["plan_hash"] == request.preparation_plan_hash
-                        and t.lifecycle.value != "CANCELLED"
-                    ),
-                    None,
-                )
-                if previous is not None:
-                    tid = str(previous.task_id)
-                    reused = {
-                        TaskLifecycle.SUCCEEDED: ("REUSED_EXACT", None, tid),
-                        **dict.fromkeys(_PREPARATION_IN_FLIGHT, ("REUSED_IN_FLIGHT", tid)),
-                    }.get(previous.lifecycle)
-                    if reused is not None:
-                        return dict(
-                            zip(("status", "task_id", "publication_task_id"), reused, strict=False)
-                        )
-                sent = self.dispatcher.submit(
-                    WorkspacePreparationCommand(
-                        self.preparation,
-                        request.preparation_plan_hash,
-                        caller=caller,
-                        grant_hash=request.data_issue_grant_hash,
-                    )
-                )
-                return {
-                    **self._run_answer(sent),
-                    **explain(sent.refusal_detail or "", **self._network()),
-                    **{
-                        None: {},
-                        "workspace_preparation.preview_required": {
-                            "next_requests": {"replan": {"operation": "WORKSPACE_PREPARE_PLAN"}}
-                        },
-                    }.get(sent.refusal_detail, {}),
-                }
             case "STORAGE_CAP_SHOW":
                 return self.storage.cap_readback()
             case "STORAGE_CAP_SET":
@@ -3164,97 +2974,15 @@ class PortfolioResearchOperations:
                 assert request.evidence_index_id is not None
                 return self.storage.rebuild_evidence_index(request.evidence_index_id, caller=caller)
             case "DATA_CHANGE_CONFIRM":
-                if self.data_update is None or request.update_plan_hash is None:
-                    raise ValueError("workspace_data_update.not_configured")
-                admitted = self.data_update.confirm(request.update_plan_hash, caller=caller)
-                return {
-                    "status": "APPROVED",
-                    "task_id": str(admitted.task_id),
-                    "lifecycle": admitted.lifecycle,
-                    "next_action": "DATA_UPDATE_RUN",
-                    "next_requests": {
-                        "run": {
-                            "operation": "DATA_UPDATE_RUN",
-                            "update_plan_hash": request.update_plan_hash,
-                        }
-                    },
-                }
+                return self._data_confirm(request, caller=caller)
             case "DATA_UPDATE_PLAN" | "DATA_UPDATE_RUN" | "DATA_UPDATE_READBACK":
-                try:
-                    if self.data_update is None:
-                        raise ValueError("workspace_data_update.not_configured")
-                    if request.operation == "DATA_UPDATE_PLAN":
-                        return self.data_update.plan(recovery_task_id=request.recovery_task_id)
-                    if request.operation == "DATA_UPDATE_READBACK":
-                        return self._data_update_readback(request.task_id)
-                    assert request.update_plan_hash is not None
-                    plan = self.data_update.prepare(request.update_plan_hash)
-                    reused = self.data_update.reusable(plan)
-                    if reused is not None:
-                        # V449: follow the Task that sealed the reused update.
-                        sealed = self.data_update.receipt_task(reused)
-                        return {
-                            "status": "REUSED_EXACT",
-                            "task_id": None,
-                            **(
-                                {}
-                                if sealed is None
-                                else {
-                                    "publication_task_id": str(sealed),
-                                    "next_requests": {
-                                        "read": {
-                                            "operation": "DATA_UPDATE_READBACK",
-                                            "task_id": str(sealed),
-                                        }
-                                    },
-                                }
-                            ),
-                            "receipt": reused.model_dump(mode="json"),
-                        }
-                    submitted = self.dispatcher.submit(
-                        WorkspaceDataUpdateCommand(self.data_update, plan)
-                    )
-                    # Read the Task's current state after any admitted reopening.
-                    answer = self._run_answer(submitted, plan)
-                    return {
-                        **answer,
-                        # A refused admission's words, a provider's wait among them (V375).
-                        **(
-                            explain(submitted.refusal_detail, **self._network())
-                            if submitted.refusal_detail
-                            else {}
-                        ),
-                        # The update it started, read by its Task (V418).
-                        **(
-                            {
-                                "next_requests": {
-                                    **cast(dict[str, Any], answer.get("next_requests") or {}),
-                                    "show": {
-                                        "operation": "DATA_UPDATE_READBACK",
-                                        "task_id": str(submitted.task_id),
-                                    },
-                                }
-                            }
-                            if submitted.task_id
-                            else {}
-                        ),
-                    }
-                except FileNotFoundError:
-                    return {
-                        "status": "REFUSED",
-                        "failure_code": "workspace_data_update.artifact_missing",
-                    }
-                except (ValueError, KeyError) as error:
-                    update_refusal: dict[str, object] = {
-                        "status": "REFUSED",
-                        **located_failure(error, "workspace_data_update.refused"),
-                    }
-                    if update_refusal["failure_code"] == "workspace_data_update.plan_required":
-                        # A plan past its hour or never kept here: plan the update again (V543).
-                        update_refusal["next_requests"] = {
-                            "replan": {"operation": "DATA_UPDATE_PLAN"}
-                        }
-                    return update_refusal
+                return self._data_update(request, caller=caller)
+        return None
+
+    def _task_routes(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object] | None:
+        match request.operation:
             case "STATUS":
                 assert request.task_id is not None
                 return self.status(request.task_id, wait_seconds=request.wait_seconds)
@@ -3273,94 +3001,7 @@ class PortfolioResearchOperations:
                     else "AGENT_PROPOSAL",
                 )
             case "RECOVER":
-                assert request.task_id is not None
-                before = self.status(request.task_id)
-                stale = self._stale_confirmation(request, before)
-                if stale is not None:
-                    return stale
-                confirmed = request.expected_task_hash
-                retry: dict[str, object] | None = None
-                if before["lifecycle"] == "BLOCKED":
-                    # Reopen the confirmed BLOCKED version only for a repairable artifact.
-                    record = self.workspace_session.task_control_registry.task(request.task_id)
-                    raised = _runner_retry_reason(record) is not None
-                    if record.task_kind != RESEARCH_EXPERIMENT_TASK_KIND and not raised:
-                        return {**before, "disposition": "NOT_RECOVERY_REQUIRED"}
-                    if confirmed is None:
-                        return {
-                            "status": "REFUSED",
-                            "failure_code": "local_application.expected_task_hash_required",
-                            "task_id": before["task_id"],
-                            "task_record_hash": before["task_record_hash"],
-                            # The view that offers it bound to this version (V443).
-                            "next_requests": {
-                                "recovery": {
-                                    "operation": "TASK_RECOVERY",
-                                    "task_id": str(request.task_id),
-                                }
-                            },
-                        }
-                    # Task Control checks the confirmed version again at the write;
-                    # a Task that moved during plan validation is refused as stale.
-                    retry = (
-                        self._reopen_runner_block(record, confirmed)
-                        if raised
-                        else self.experiments.retry_blocked(
-                            request.task_id,
-                            now=self.dispatcher.clock(),
-                            expected_task_hash=confirmed,
-                        )
-                    )
-                    if retry.get("failure_code") == "task_control.recovery_version_stale":
-                        return {
-                            "status": "REFUSED",
-                            "failure_code": "local_application.confirmation_stale",
-                            "task_id": str(retry["task_id"]),
-                            "lifecycle": retry["lifecycle"],
-                            "task_record_hash": retry["task_record_hash"],
-                            "refused_at": "TASK_CONTROL",
-                        }
-                    if retry.get("disposition") != "RETRY_ADMITTED":
-                        return {**before, **retry}
-                    # Resume confirms the reopened version, the confirmed version's successor.
-                    confirmed = str(retry["task_record_hash"])
-                    before = self.status(request.task_id)
-                if before["lifecycle"] not in {"RECOVERY_REQUIRED", "QUEUED"}:
-                    return {**before, "disposition": "NOT_RECOVERY_REQUIRED"}
-                if before["resume_refusal"] is not None:
-                    return self._resume_refused(before)
-                if self.recover_task is None:
-                    return {
-                        **before,
-                        **refused(
-                            "local_application.task_recovery_not_configured",
-                            task_id=str(request.task_id),
-                        ),
-                    }
-                resumed = self.recover_task(request.task_id, expected_task_hash=confirmed)
-                if request.task_id not in resumed:
-                    failure = self.dispatcher.failure(request.task_id)
-                    if failure:
-                        return {
-                            **self.status(request.task_id),
-                            "status": "REFUSED",
-                            "failure_code": failure,
-                            "detail": (
-                                "The resume was not handed to the worker; the Task's recovery "
-                                "view says what stopped it and what may resume it."
-                            ),
-                            "next_requests": {
-                                "recovery": {
-                                    "operation": "TASK_RECOVERY",
-                                    "task_id": str(request.task_id),
-                                }
-                            },
-                        }
-                return {
-                    **self.status(request.task_id),
-                    **({"retry": retry} if retry is not None else {}),
-                    "resumed_task_ids": [str(v) for v in resumed],
-                }
+                return self._recover(request, caller=caller)
             case "TASKS":
                 return self.tasks(
                     agent_session=request.agent_session,
@@ -3368,12 +3009,446 @@ class PortfolioResearchOperations:
                     cursor=request.history_cursor,
                 )
             case "CANCEL":
-                assert request.task_id is not None
-                stale = self._stale_confirmation(request, self.status(request.task_id))
-                if stale is not None:
-                    return stale
-                return self.cancel(request.task_id, expected_task_hash=request.expected_task_hash)
+                return self._cancel(request, caller=caller)
         return None
+
+    def _feature_trial(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        try:
+            if request.operation == "FEATURE_TRIALS":
+                return self.trials.listing()
+            if request.operation == "FEATURE_TRIAL_READBACK":
+                assert request.feature_trial_id is not None
+                return self.trials.readback(request.feature_trial_id)
+            assert request.feature_plan_hash is not None and request.task_id is not None
+            return self.trials.start(request.feature_plan_hash, request.task_id, caller=caller)
+        except ValueError as error:
+            code = public_failure(error, "feature_trial.refused")
+            return refused(
+                code,
+                task_id=str(request.task_id or "") or None,
+                # A study the trial cannot run against names the way on (V354).
+                trial=self.trials.way_on(request.feature_plan_hash)
+                if code == "feature_trial.study_not_from_factor_evidence"
+                and request.feature_plan_hash is not None
+                else None,
+            )
+
+    def _feature_build(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        assert request.task_id is not None
+        build = self.feature_builds.readback(request.task_id)
+        # The readback checked the Task's contract; its input is the build's source.
+        binding = str(
+            self.workspace_session.task_control_registry.task(request.task_id).input.payload[
+                "input_binding_hash"
+            ]
+        )
+        # What the build's source can claim about time, from its input's Panel (V347).
+        return {
+            **build,
+            "temporal_scope": binding_temporal_scope(
+                self.workspace_session.workspace,
+                binding,
+                window_start=None,
+                window_end=None,
+            ),
+        }
+
+    def _feature_catalog(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        definitions = ResearchFeatureDefinitions(
+            self.workspace_session.workspace,
+        )
+        try:
+            if request.operation == "FEATURE_CATALOG_CONTROLS":
+                assert request.input_binding_hash is not None
+                return {
+                    **definitions.controls(request.input_binding_hash, request.feature_plan_hash),
+                    # V367, V354: trial controls precede the factor build.
+                    **self.experiments.prerequisites_of(
+                        "FEATURE_TRIAL", binding_hash=request.input_binding_hash
+                    ),
+                }
+            if request.operation == "FEATURE_CATALOG_PLAN":
+                assert request.feature_document is not None
+                with self.workspace_session.mutation_gate.hold():
+                    plan = definitions.plan(request.feature_document)
+                return _with_trial(definitions.readback(plan.plan_hash))
+            assert request.feature_plan_hash is not None
+            return _with_trial(definitions.readback(request.feature_plan_hash))
+        except ValidationError as error:
+            return invalid_plan_document(error, request, self.experiments.manifest)
+        except FeatureCatalogCrudError as error:
+            return {
+                "status": "REFUSED",
+                "failure_code": error.failure_code,
+                "message": str(error),
+            }
+        except (ValueError, OSError, KeyError) as error:
+            named = request.input_binding_hash or str(
+                (request.feature_document or {}).get("input_binding_hash") or ""
+            )
+            held = [v.binding_hash for v in self.experiments.manifest.experiment_inputs or ()]
+            if isinstance(error, FileNotFoundError) and named and named not in held:
+                # V380: refused bindings offer their field and admitted controls.
+                return {
+                    "status": "REFUSED",
+                    "failure_code": "feature_research.input_binding_unresolved",
+                    "fields": [["input_binding_hash"]],
+                    "expected": {"input_binding_hash": held},
+                    **explain("feature_research.input_binding_unresolved"),
+                    "next_requests": {
+                        **{
+                            f"controls:{binding[:12]}": {
+                                "operation": "FEATURE_CATALOG_CONTROLS",
+                                "input_binding_hash": binding,
+                            }
+                            for binding in held
+                        },
+                        "inputs": {"operation": "WORKSPACE_SHOW"},
+                    },
+                }
+            return {
+                "status": "REFUSED",
+                "failure_code": public_failure(
+                    error, "feature_research.definition_or_source_unavailable"
+                ),
+            }
+
+    def _strategy(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        try:
+            if request.operation == "RESEARCH_STRATEGY_PLAN":
+                assert request.experiment_document is not None
+                return self.research_strategies.plan(request.experiment_document)
+            if request.operation == "RESEARCH_STRATEGY_PREPARE":
+                assert request.experiment_plan_hash is not None
+                return self.research_strategies.prepare(
+                    request.experiment_plan_hash, caller=caller, dispatcher=self.dispatcher
+                )
+            assert request.task_id is not None
+            if request.operation == "RESEARCH_STRATEGY_INSTALL":
+                return self._install(request.task_id)
+            return self.research_strategies.readback(request.task_id)
+        except ValidationError as error:
+            return invalid_plan_document(error, request, self.experiments.manifest)
+        except (ValueError, OSError, KeyError) as error:
+            if (
+                str(error) == "research_strategy.preview_required"
+                and request.experiment_plan_hash is not None
+            ):
+                return {
+                    **refused("research_strategy.preview_required"),
+                    "next_requests": self.research_strategies.replan_requests(
+                        request.experiment_plan_hash
+                    ),
+                }
+            refusal: dict[str, object] = {
+                "status": "REFUSED",
+                **located_failure(error, "research_strategy.refused"),
+            }
+            if str(refusal.get("failure_code", "")).startswith(
+                (
+                    "research_strategy.risk_parent_support_incomplete",
+                    "research_strategy.risk_history_insufficient",
+                )
+            ):
+                recovery = self.research_strategies.controls(
+                    (request.experiment_document or {}).get("input_binding_hash")
+                )
+                refusal["risk_windows"] = recovery["risk_windows"]
+                refusal["next_requests"] = recovery["next_requests"]
+            return refusal
+
+    def _training_input(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        assert request.experiment_plan_hash is not None
+        try:
+            return self.model_training_inputs.prepare(
+                request.experiment_plan_hash, caller=caller, dispatcher=self.dispatcher
+            )
+        except ValueError as error:
+            if str(error) != "model_training.preview_required":
+                raise
+            return {
+                **refused("model_training.preview_required"),
+                "next_requests": self.model_training_inputs.replan_requests(
+                    request.experiment_plan_hash
+                ),
+            }
+
+    def _input_confirm(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        assert request.research_input_plan_hash is not None
+        try:
+            return self.input_capture.confirm(
+                request.research_input_plan_hash, caller=caller, dispatcher=self.dispatcher
+            )
+        except ValueError as error:
+            if str(error) != "research_input.preview_required":
+                raise
+            return {
+                **refused("research_input.preview_required"),
+                "next_requests": self.input_capture.replan_requests(
+                    request.research_input_plan_hash
+                ),
+            }
+
+    def _prepare_confirm(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        assert request.preparation_plan_hash is not None
+        try:
+            self.preparation.require_confirmation_caller(
+                request.preparation_plan_hash,
+                caller=caller,
+                grant_hash=request.data_issue_grant_hash,
+                **self.goals.preparation_scope(),
+            )
+        except ValueError as error:
+            if str(error) != "workspace_preparation.preview_stale":
+                raise
+            return {
+                **refused("workspace_preparation.preview_stale"),
+                "next_requests": {"replan": {"operation": "WORKSPACE_PREPARE_PLAN"}},
+            }
+        previous = next(
+            (
+                t
+                for t in self.preparation.tasks()
+                if t.input.payload["plan"]["plan_hash"] == request.preparation_plan_hash
+                and t.lifecycle.value != "CANCELLED"
+            ),
+            None,
+        )
+        if previous is not None:
+            tid = str(previous.task_id)
+            reused = {
+                TaskLifecycle.SUCCEEDED: ("REUSED_EXACT", None, tid),
+                **dict.fromkeys(_PREPARATION_IN_FLIGHT, ("REUSED_IN_FLIGHT", tid)),
+            }.get(previous.lifecycle)
+            if reused is not None:
+                return dict(zip(("status", "task_id", "publication_task_id"), reused, strict=False))
+        sent = self.dispatcher.submit(
+            WorkspacePreparationCommand(
+                self.preparation,
+                request.preparation_plan_hash,
+                caller=caller,
+                grant_hash=request.data_issue_grant_hash,
+            )
+        )
+        return {
+            **self._run_answer(sent),
+            **explain(sent.refusal_detail or "", **self._network()),
+            **{
+                None: {},
+                "workspace_preparation.preview_required": {
+                    "next_requests": {"replan": {"operation": "WORKSPACE_PREPARE_PLAN"}}
+                },
+            }.get(sent.refusal_detail, {}),
+        }
+
+    def _data_confirm(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        if self.data_update is None or request.update_plan_hash is None:
+            raise ValueError("workspace_data_update.not_configured")
+        admitted = self.data_update.confirm(request.update_plan_hash, caller=caller)
+        return {
+            "status": "APPROVED",
+            "task_id": str(admitted.task_id),
+            "lifecycle": admitted.lifecycle,
+            "next_action": "DATA_UPDATE_RUN",
+            "next_requests": {
+                "run": {
+                    "operation": "DATA_UPDATE_RUN",
+                    "update_plan_hash": request.update_plan_hash,
+                }
+            },
+        }
+
+    def _data_update(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        try:
+            if self.data_update is None:
+                raise ValueError("workspace_data_update.not_configured")
+            if request.operation == "DATA_UPDATE_PLAN":
+                return self.data_update.plan(recovery_task_id=request.recovery_task_id)
+            if request.operation == "DATA_UPDATE_READBACK":
+                return self._data_update_readback(request.task_id)
+            assert request.update_plan_hash is not None
+            plan = self.data_update.prepare(request.update_plan_hash)
+            reused = self.data_update.reusable(plan)
+            if reused is not None:
+                # V449: follow the Task that sealed the reused update.
+                sealed = self.data_update.receipt_task(reused)
+                return {
+                    "status": "REUSED_EXACT",
+                    "task_id": None,
+                    **(
+                        {}
+                        if sealed is None
+                        else {
+                            "publication_task_id": str(sealed),
+                            "next_requests": {
+                                "read": {
+                                    "operation": "DATA_UPDATE_READBACK",
+                                    "task_id": str(sealed),
+                                }
+                            },
+                        }
+                    ),
+                    "receipt": reused.model_dump(mode="json"),
+                }
+            submitted = self.dispatcher.submit(WorkspaceDataUpdateCommand(self.data_update, plan))
+            # Read the Task's current state after any admitted reopening.
+            answer = self._run_answer(submitted, plan)
+            return {
+                **answer,
+                # A refused admission's words, a provider's wait among them (V375).
+                **(
+                    explain(submitted.refusal_detail, **self._network())
+                    if submitted.refusal_detail
+                    else {}
+                ),
+                # The update it started, read by its Task (V418).
+                **(
+                    {
+                        "next_requests": {
+                            **cast(dict[str, Any], answer.get("next_requests") or {}),
+                            "show": {
+                                "operation": "DATA_UPDATE_READBACK",
+                                "task_id": str(submitted.task_id),
+                            },
+                        }
+                    }
+                    if submitted.task_id
+                    else {}
+                ),
+            }
+        except FileNotFoundError:
+            return {
+                "status": "REFUSED",
+                "failure_code": "workspace_data_update.artifact_missing",
+            }
+        except (ValueError, KeyError) as error:
+            update_refusal: dict[str, object] = {
+                "status": "REFUSED",
+                **located_failure(error, "workspace_data_update.refused"),
+            }
+            if update_refusal["failure_code"] == "workspace_data_update.plan_required":
+                # A plan past its hour or never kept here: plan the update again (V543).
+                update_refusal["next_requests"] = {"replan": {"operation": "DATA_UPDATE_PLAN"}}
+            return update_refusal
+
+    def _recover(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        assert request.task_id is not None
+        before = self.status(request.task_id)
+        stale = self._stale_confirmation(request, before)
+        if stale is not None:
+            return stale
+        confirmed = request.expected_task_hash
+        retry: dict[str, object] | None = None
+        if before["lifecycle"] == "BLOCKED":
+            # Reopen the confirmed BLOCKED version only for a repairable artifact.
+            record = self.workspace_session.task_control_registry.task(request.task_id)
+            raised = _runner_retry_reason(record) is not None
+            if record.task_kind != RESEARCH_EXPERIMENT_TASK_KIND and not raised:
+                return {**before, "disposition": "NOT_RECOVERY_REQUIRED"}
+            if confirmed is None:
+                return {
+                    "status": "REFUSED",
+                    "failure_code": "local_application.expected_task_hash_required",
+                    "task_id": before["task_id"],
+                    "task_record_hash": before["task_record_hash"],
+                    # The view that offers it bound to this version (V443).
+                    "next_requests": {
+                        "recovery": {
+                            "operation": "TASK_RECOVERY",
+                            "task_id": str(request.task_id),
+                        }
+                    },
+                }
+            # Task Control checks the confirmed version again at the write;
+            # a Task that moved during plan validation is refused as stale.
+            retry = (
+                self._reopen_runner_block(record, confirmed)
+                if raised
+                else self.experiments.retry_blocked(
+                    request.task_id,
+                    now=self.dispatcher.clock(),
+                    expected_task_hash=confirmed,
+                )
+            )
+            if retry.get("failure_code") == "task_control.recovery_version_stale":
+                return {
+                    "status": "REFUSED",
+                    "failure_code": "local_application.confirmation_stale",
+                    "task_id": str(retry["task_id"]),
+                    "lifecycle": retry["lifecycle"],
+                    "task_record_hash": retry["task_record_hash"],
+                    "refused_at": "TASK_CONTROL",
+                }
+            if retry.get("disposition") != "RETRY_ADMITTED":
+                return {**before, **retry}
+            # Resume confirms the reopened version, the confirmed version's successor.
+            confirmed = str(retry["task_record_hash"])
+            before = self.status(request.task_id)
+        if before["lifecycle"] not in {"RECOVERY_REQUIRED", "QUEUED"}:
+            return {**before, "disposition": "NOT_RECOVERY_REQUIRED"}
+        if before["resume_refusal"] is not None:
+            return self._resume_refused(before)
+        if self.recover_task is None:
+            return {
+                **before,
+                **refused(
+                    "local_application.task_recovery_not_configured",
+                    task_id=str(request.task_id),
+                ),
+            }
+        resumed = self.recover_task(request.task_id, expected_task_hash=confirmed)
+        if request.task_id not in resumed:
+            failure = self.dispatcher.failure(request.task_id)
+            if failure:
+                return {
+                    **self.status(request.task_id),
+                    "status": "REFUSED",
+                    "failure_code": failure,
+                    "detail": (
+                        "The resume was not handed to the worker; the Task's recovery "
+                        "view says what stopped it and what may resume it."
+                    ),
+                    "next_requests": {
+                        "recovery": {
+                            "operation": "TASK_RECOVERY",
+                            "task_id": str(request.task_id),
+                        }
+                    },
+                }
+        return {
+            **self.status(request.task_id),
+            **({"retry": retry} if retry is not None else {}),
+            "resumed_task_ids": [str(v) for v in resumed],
+        }
+
+    def _cancel(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        assert request.task_id is not None
+        stale = self._stale_confirmation(request, self.status(request.task_id))
+        if stale is not None:
+            return stale
+        return self.cancel(request.task_id, expected_task_hash=request.expected_task_hash)
 
     @staticmethod
     def _stale_confirmation(

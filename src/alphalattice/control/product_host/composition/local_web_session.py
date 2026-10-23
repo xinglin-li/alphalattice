@@ -1438,14 +1438,6 @@ def build_local_web_application(
 
     serve_assets(web, ASSET_ROOT)
 
-    def _spec_document(payload: Mapping[str, Any]) -> dict[str, object]:
-        document = payload.get("spec")
-        if document is None:
-            document = {}
-        if not isinstance(document, dict):
-            raise LocalWebError("local_web.spec_not_an_object")
-        return cast(dict[str, object], document)
-
     # The token goes only to the browser holding the cookie the launch URL set (HB).
     @web.route("GET", "/api/session", session=True)
     def _session(_query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
@@ -1480,6 +1472,46 @@ def build_local_web_application(
             )
         )
 
+    _maintenance_routes(web, operations)
+    _planning_routes(web, operations)
+
+    @web.route("GET", "/api/status")
+    def _status(query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
+        return _task_read_response(
+            operations.execute(
+                PortfolioResearchOperationRequest(
+                    operation="STATUS",
+                    task_id=_task_uuid(_one(query, "task_id")),
+                    wait_seconds=_wait_seconds(query.get("wait_seconds")),
+                )
+            )
+        )
+
+    _result_routes(web, operations)
+    _dispatch_routes(web, operations, service)
+
+    def case_route(operation: str):  # type: ignore[no-untyped-def]
+        """The case page's call, answered by the goal it names until the UI pass (U23)."""
+
+        def handle(query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+            fields = {**payload, **{key: _one(query, key) for key in query}}
+            fields.pop("operation", None)
+            try:
+                request = case_request(operation, fields)
+            except (TypeError, ValueError) as error:
+                raise LocalWebError(owner_failure_code(error) or str(error)) from error
+            body = operations.execute(request)
+            return case_answer(operation, body, operations.goals.store)
+
+        return handle
+
+    for method, path, operation in CASE_ROUTES:
+        web.route(method, path, mutates=method == "POST")(case_route(operation))
+
+    return web
+
+
+def _maintenance_routes(web: LocalWebApplication, operations: PortfolioResearchOperations) -> None:
     @web.route(
         "GET",
         "/api/data-update",
@@ -1592,6 +1624,16 @@ def build_local_web_application(
             )
         )
 
+
+def _planning_routes(web: LocalWebApplication, operations: PortfolioResearchOperations) -> None:
+    def _spec_document(payload: Mapping[str, Any]) -> dict[str, object]:
+        document = payload.get("spec")
+        if document is None:
+            document = {}
+        if not isinstance(document, dict):
+            raise LocalWebError("local_web.spec_not_an_object")
+        return cast(dict[str, object], document)
+
     @web.route(*_HANDLED_ROUTE["PORTFOLIO_UPDATE_PLAN"], mutates=True)
     def _portfolio_update_plan(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
         if (
@@ -1694,18 +1736,8 @@ def build_local_web_application(
             PortfolioResearchOperationRequest(operation="RUN", spec=_spec_document(payload))
         )
 
-    @web.route("GET", "/api/status")
-    def _status(query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
-        return _task_read_response(
-            operations.execute(
-                PortfolioResearchOperationRequest(
-                    operation="STATUS",
-                    task_id=_task_uuid(_one(query, "task_id")),
-                    wait_seconds=_wait_seconds(query.get("wait_seconds")),
-                )
-            )
-        )
 
+def _result_routes(web: LocalWebApplication, operations: PortfolioResearchOperations) -> None:
     @web.route("POST", "/api/cancel", mutates=True)
     def _cancel(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
         task_id = payload.get("task_id")
@@ -1820,6 +1852,12 @@ def build_local_web_application(
             )
         )
 
+
+def _dispatch_routes(
+    web: LocalWebApplication,
+    operations: PortfolioResearchOperations,
+    service: LocalPortfolioResearchService | None,
+) -> None:
     @web.route(*_HANDLED_ROUTE["EVIDENCE_CRO_EXPORT"])
     def _review_export(query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
         return operations.execute(
@@ -1935,26 +1973,6 @@ def build_local_web_application(
         web.route(method, path, mutates=method == "POST" and operation not in READ_OPERATIONS)(
             operation_route(operation)
         )
-
-    def case_route(operation: str):  # type: ignore[no-untyped-def]
-        """The case page's call, answered by the goal it names until the UI pass (U23)."""
-
-        def handle(query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
-            fields = {**payload, **{key: _one(query, key) for key in query}}
-            fields.pop("operation", None)
-            try:
-                request = case_request(operation, fields)
-            except (TypeError, ValueError) as error:
-                raise LocalWebError(owner_failure_code(error) or str(error)) from error
-            body = operations.execute(request)
-            return case_answer(operation, body, operations.goals.store)
-
-        return handle
-
-    for method, path, operation in CASE_ROUTES:
-        web.route(method, path, mutates=method == "POST")(case_route(operation))
-
-    return web
 
 
 def _native_session_refusal(code: str) -> dict[str, Any]:

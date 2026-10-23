@@ -542,6 +542,53 @@ def _compare(path: str, before: bytes, after: bytes) -> NeutralVerdict:
 _Definitions = dict[str, str]
 
 
+def extracted_bodies(
+    before: Mapping[str, Sequence[ast.stmt]], after: ast.ClassDef | ast.Module
+) -> frozenset[str]:
+    """Prove named body equality, without admitting files as neutral moves."""
+    methods = {n.name: n for n in after.body if isinstance(n, ast.FunctionDef)}
+    return frozenset(
+        name
+        for name, body in before.items()
+        if name in methods
+        and ast.dump(ast.Module(body=list(body), type_ignores=[]), include_attributes=False)
+        == ast.dump(ast.Module(body=methods[name].body, type_ignores=[]), include_attributes=False)
+    )
+
+
+def extracted_match_bodies(
+    before: ast.FunctionDef,
+    after: ast.ClassDef,
+    moves: Mapping[tuple[str, ...], str],
+) -> frozenset[str]:
+    """Prove only named match-arm bodies, without admitting files as neutral moves.
+
+    Selectors, guards, statements and their order must match exactly; this proof
+    makes no claim about new dispatch wiring or its argument/authority handling.
+    """
+    matches = [node for node in before.body if isinstance(node, ast.Match)]
+    if len(matches) != 1 or len(set(moves.values())) != len(moves):
+        return frozenset()
+    selected: dict[str, Sequence[ast.stmt]] = {}
+    for selectors, name in moves.items():
+        if not selectors:
+            continue
+        expected = ast.parse(
+            "match value:\n    case " + " | ".join(repr(s) for s in selectors) + ":\n        pass"
+        ).body[0]
+        assert isinstance(expected, ast.Match)
+        pattern = ast.dump(expected.cases[0].pattern, include_attributes=False)
+        candidates = [
+            arm
+            for arm in matches[0].cases
+            if ast.dump(arm.pattern, include_attributes=False) == pattern
+        ]
+        if len(candidates) != 1 or candidates[0].guard is not None:
+            continue
+        selected[name] = candidates[0].body
+    return extracted_bodies(selected, after)
+
+
 def moved_files(
     root: Path, changed: Iterable[str], previous: Callable[[str], bytes | None]
 ) -> dict[str, frozenset[str]]:

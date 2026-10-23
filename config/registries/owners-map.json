@@ -3,6 +3,16 @@
   "version": 1,
   "note": "G1: each core noun's one owner package, from the plan's owner table (develop-wave-2, \"G1's map\"; the contested choices decided by the user on 2026-09-27). The owner defines a noun -- its types, state and decisions -- and every other package only imports it. A noun is recognised by the public types its `defined_by` modules export. `folds_in` lists what other packages still define of it and the card that moves it: G2 refuses a new definition outside the owner, naming the owner, against this list, which only shrinks. An owner a card creates names it (`created_by`).",
   "nouns": {
+    "test golden workspace": {
+      "description": "Owns one invocation's shared product-written fixtures and independent consumer copies.",
+      "covers": "one run's product-written fixture acquisition, shared build ownership and independent consumer copies; input identity and persistent admission follow in later approved cuts",
+      "owner": "devtools.evaluation",
+      "defined_by": [
+        "devtools.evaluation.golden_workspaces"
+      ],
+      "folds_in": [],
+      "note": "Consumers: the canonical pytest session golden_cache and project-discovery fixtures, explorer_host's served golden adapter and the existing session_workspace OS-lock consumer. This cut exposes only invocation-scoped sharing, no persistent store or cached test result."
+    },
     "book observation parts": {
       "description": "Book observation parts store complete observation snapshots as shared immutable pieces so Portfolio ledgers can reuse unchanged source content while preserving each snapshot's identity.",
       "covers": "immutable structurally shared storage of complete book observation sources, preserving their logical snapshot identity",
@@ -659,7 +669,16 @@
         "alphalattice.kernel.shared_kernel.bounded_memo"
       ],
       "folds_in": [],
-      "note": "OrderedDict LRU with typed owner capacity and a machine-derived default; consumers retain their existing keys, validation and close authority."
+      "note": "OrderedDict LRU with typed owner capacity and a machine-derived default; consumers retain their existing keys, validation and close authority. Optional registered cache identity and owner-charged retained-byte estimates feed scoped execution-span cache observations; measurement changes no cached value and never claims physical memory."
+    },
+    "cache observation": {
+      "covers": "per-phase cache lookup and capacity-eviction counts, with per-instance retained-byte estimate gauges and explicit missing measurements; worker readouts preserve their outcome scope",
+      "description": "Keeps scoped cache outcomes and retained-byte estimates in the Task's execution spans without changing cached results.",
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "alphalattice.kernel.shared_kernel.spans"
+      ],
+      "folds_in": []
     },
     "Alpha development chunk identity": {
       "description": "Alpha development chunk identity binds a chunk's declared identity, schema and rows to one content hash so publication and readback share an exact proof with bounded reuse for unchanged bytes.",
@@ -2407,10 +2426,11 @@
         "alphalattice.control.product_host.composition.web_launcher",
         "alphalattice.control.product_host.composition.native_usage_reader",
         "alphalattice.control.product_host.composition.research_update_automation",
-        "alphalattice.control.product_host.composition.process_job"
+        "alphalattice.control.product_host.composition.process_job",
+        "alphalattice.control.product_host.composition.portfolio_research_operations"
       ],
       "folds_in": [],
-      "note": "This root composes the registered noun owners; it does not redefine their records or decisions. The committee and first-use entries retain their narrower composition ownership. HTTP routing, authorization, request/response types, service transport and connection metadata remain the interface.local_application definitions that this root consumes.",
+      "note": "This root composes the registered noun owners; it does not redefine their records or decisions. The committee and first-use entries retain their narrower composition ownership. HTTP routing, authorization, request/response types, service transport and connection metadata remain the interface.local_application definitions that this root consumes. Workspace operation routing stays in PortfolioResearchOperations; its family dispatch retains the selected operation arm and its existing caller and field guards in the same class. HTTP route groups stay in local_web_session and take the same web application and existing operations instance, preserving caller, session and ReferenceLedger lifetimes and the literal route tables.",
       "consumers": {
         "import": [
           "scripts/agent_eval/runners/owned_runner.py:16",

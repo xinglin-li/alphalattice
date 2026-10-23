@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -26,7 +27,9 @@ from alphalattice.control.task_control.timing import (
     task_timing,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.spans import (
+    absorb,
     collect,
     readout,
     span,
@@ -78,7 +81,11 @@ def test_a_thread_an_owner_starts_counts_toward_the_one_open_ledger() -> None:
     """requirement (A4): a thread an owner starts inherits no context, so its spans count
     toward the one open ledger; with two open, toward neither, and both say they overlapped."""
 
+    memo = BoundedMemo(cache_id="threads", retained_size_estimate=lambda k, v: len(v))
+    memo["held"] = b"x"
+
     def work() -> None:
+        assert memo["held"] == b"x"
         with span("hash", "thread"):
             time.sleep(0.01)
 
@@ -88,6 +95,7 @@ def test_a_thread_an_owner_starts_counts_toward_the_one_open_ledger() -> None:
         thread.join()
     assert ("hash", "thread", "host") in _rows(readout(ledger))
     assert readout(ledger)["process"]["overlapped"] is False
+    assert readout(ledger)["cache_observations"][0]["hits"] == 1
 
     with collect() as first, collect() as second:
         thread = threading.Thread(target=work)
@@ -95,9 +103,23 @@ def test_a_thread_an_owner_starts_counts_toward_the_one_open_ledger() -> None:
         thread.join()
     assert not readout(first)["spans"] and not readout(second)["spans"]
     assert readout(first)["process"]["overlapped"] and readout(second)["process"]["overlapped"]
+    assert not readout(first)["cache_observations"] and not readout(second)["cache_observations"]
+    barrier = threading.Barrier(2)
+
+    def scoped(_):
+        with collect() as own:
+            assert memo["held"] == b"x"
+            barrier.wait(timeout=5)
+        return readout(own)["cache_observations"][0]["hits"]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert list(pool.map(scoped, range(2))) == [1, 1]
 
 
 def spanned_work(*, seconds: float, cancelled) -> int:  # type: ignore[no-untyped-def]
+    memo = BoundedMemo(cache_id="worker", retained_size_estimate=lambda k, v: len(v))
+    memo["held"] = b"worker"
+    assert memo["held"] == b"worker"
     with span("fit", "fixture"):
         time.sleep(seconds)
     return 1
@@ -120,6 +142,52 @@ def test_a_worker_call_brings_its_spans_back_to_its_stage() -> None:
     assert rows["wait", "worker", "host"]["count"] == 4
     assert value["workers"]["calls"] == 4
     assert value["workers"]["wall_seconds"] >= 0.11
+    observations = value["cache_observations"]
+    assert len({row["instance_ref"] for row in observations}) == 4
+    assert all(row["hits"] == 1 and row["retained_bytes_estimate"] == 6 for row in observations)
+    assert all(row["origin"] == "worker" and row["source_pid"] > 0 for row in observations)
+
+
+def test_cache_observations_merge_counts_and_keep_the_latest_instance_gauge(monkeypatch) -> None:
+    """Transport keeps scoped counts and each instance's latest retained bytes (estimate)."""
+    row = dict(cache_id="fixture", instance_ref="one", source_pid=123)
+    row.update(sequence=2, hits=2, misses=1, capacity_evictions=0, retained_bytes_estimate=8)
+    row.update(retained_size_status="OBSERVED", missing=[], outcome_scope="LOOKUP")
+    missing = row | dict(hits=0, misses=0, sequence=0, retained_bytes_estimate=None)
+    missing.update(retained_size_status="UNOBSERVED", missing=["CACHE_RETAINED_BYTES_UNOBSERVED"])
+    with collect() as ledger:
+        absorb(dict(cache_observations=[missing]))
+        absorb(dict(cache_observations=[row], cache_observation_gaps=[]))
+        absorb(
+            dict(cache_observations=[row | dict(sequence=1, hits=1, retained_bytes_estimate=99)])
+        )
+    rows = readout(ledger).get("cache_observations", [])
+    assert len(rows) == 1
+    assert rows[0] == row | dict(hits=3, misses=2, origin="worker")
+    snapshot = readout(ledger)
+    ledger.observe_cache(row | dict(sequence=3, retained_bytes_estimate=0))
+    assert (
+        snapshot["cache_observations"][0]["retained_bytes_estimate"],
+        snapshot["cache_observation_gaps"],
+    ) == (8, ["CACHE_RETAINED_BYTES_UNOBSERVED"])
+    from alphalattice.kernel.shared_kernel import spans
+
+    monkeypatch.setattr(spans, "MAXIMUM_SPAN_KEYS", 2)
+    with collect() as limited:
+        absorb(
+            dict(
+                cache_observations=[row | dict(instance_ref=str(i)) for i in range(3)],
+                cache_observation_gaps=["FIXTURE_MISSING"],
+            )
+        )
+        absorb({"spans": []})
+    bounded = readout(limited)
+    assert len(bounded["cache_observations"]) == 2 and bounded["dropped_cache_observations"] == 1
+    assert bounded["cache_observation_gaps"] == [
+        "CACHE_CHANNEL_UNOBSERVED",
+        "CACHE_OBSERVATIONS_DROPPED",
+        "FIXTURE_MISSING",
+    ]
 
 
 class _SpannedAdapter:
@@ -132,6 +200,9 @@ class _SpannedAdapter:
         del task, execution
         with span("compute", work_item.stage_id):
             time.sleep(0.01)
+        memo = BoundedMemo(cache_id="stage", retained_size_estimate=lambda k, v: len(v))
+        memo["held"] = work_item.stage_id.encode()
+        assert memo["held"] == work_item.stage_id.encode()
         kind = {"resolve_inputs": "input_binding", "publish_result": "screening_report"}
         return StageExecutionResult(
             disposition=StageDisposition.READY,
@@ -210,6 +281,8 @@ def test_each_stage_phase_keeps_its_spans_and_its_timing_reads_them_back(tmp_pat
     assert ("compute", "resolve_inputs", "host") in _rows(first[0])
     assert ("verify", "fixture", "host") in _rows(first[1])
     assert all(phase["execution_id"] for phase in first)
+    assert first[0]["cache_observations"][0]["retained_bytes_estimate"] == 14
+    assert first[0]["cache_observations"] == kept[0]["cache_observations"]
     plain = task_timing(record, items, now=now + timedelta(seconds=2), selected_stage="absent")
     assert plain["selected_stage"] is None
     assert all(stage["phases"] == [] for stage in plain["stages"])  # type: ignore[union-attr]

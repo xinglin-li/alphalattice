@@ -154,7 +154,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
     "holding the running place too, which they would only queue behind (V604)",
     (
         "control/product_host/composition/portfolio_research_operations.py",
-        "PortfolioResearchOperations._workspace_operation",
+        "PortfolioResearchOperations._recover",
         "QUEUED,RECOVERY_REQUIRED",
     ): RESUMABLE,
     (

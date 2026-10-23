@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterator
+from contextlib import nullcontext
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ from typing import Any
 import pytest
 
 from alphalattice.interface.local_application.cli_contract import AGENT_SESSION_VARIABLES
+from devtools import evaluation
 from devtools.architecture.evidence_roots import EvidenceRoots
 from devtools.evaluation.round_trip import (
     AdmissionPolicy,
@@ -38,10 +40,18 @@ pytest_plugins = ["devtools.architecture.registries"]
 
 
 @pytest.fixture(autouse=True)
-def project_discovery(tmp_path, tmp_path_factory):
+def project_discovery(tmp_path, golden_cache):
     """Every test scopes project discovery and rejects outside reads without changing cwd."""
-    with project_scope(tmp_path, tmp_path_factory.getbasetemp()):
+    with project_scope(tmp_path, golden_cache):
         yield
+
+
+@pytest.fixture(scope="session")
+def golden_cache(tmp_path_factory):
+    """Workers bind acquisition and discovery to the same invocation, never another run."""
+    # Old-source counterfactuals retain their original per-worker discovery scope.
+    with getattr(evaluation, "golden_run", nullcontext)(tmp_path_factory.getbasetemp()) as root:
+        yield root
 
 
 @pytest.fixture
