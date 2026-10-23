@@ -45,6 +45,7 @@ from alphalattice.control.workspace_runtime.network_access import NetworkAccess,
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
+    worded,
 )
 from alphalattice.interface.local_application.goals import (
     DAILY_NETWORK_ASK,
@@ -606,10 +607,12 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
     assert app.delegation(goal, "NETWORK_ACCESS_SET", caller) is None
     assert app.first_use_delegation(goal)["active"] is False
 
+    missing_history = "data.current_universe_no_feature_ready_listings"
+
     def history_refused(**scope: Any) -> dict[str, Any]:
         assert scope["network_delegation"] is None
         assert scope["requested_formation_session"].isoformat() == "2026-10-01"
-        raise ValueError("data.current_universe_no_feature_ready_listings")
+        raise ValueError(missing_history)
 
     preparation = Request(operation="WORKSPACE_PREPARE_PLAN")
     for provenance in (
@@ -622,6 +625,14 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
             recovery = app.prepare(preparation, "HUMAN", history_refused)
         finally:
             REQUEST_PROVENANCE.reset(token)
+    recovery["error_info"] = {
+        "category": "FAILED_PRECONDITION",
+        "domain": "data",
+        "reason": missing_history,
+        "message_id": "protocol.error.summary",
+        "message": worded("protocol.error.summary").format(reason=missing_history),
+        "field_violations": [],
+    }
     with monkeypatch.context() as web:
         web.setattr(live.operations.preparation, "plan", history_refused)
         assert _json(live, "/api/workspace/preparation/plan", method="POST", payload={}) == recovery

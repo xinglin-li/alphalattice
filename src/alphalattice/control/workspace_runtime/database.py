@@ -935,6 +935,27 @@ class WorkspaceRepository:
     def _connect(self, *, read_only: bool = False) -> duckdb.DuckDBPyConnection:
         return self.database.connect(read_only=read_only)
 
+    @contextmanager
+    def _catalog_read(self, failure_code: str) -> Iterator[duckdb.DuckDBPyConnection]:
+        """Read a required catalog without changing its schema or creating storage.
+
+        Args:
+            failure_code: The domain owner's registered refusal for unavailable schema.
+
+        Yields:
+            The physical owner's guarded read-only connection.
+
+        Raises:
+            ValueError: A required catalog table or column cannot be read.
+        """
+        connection = self._connect(read_only=True)
+        try:
+            yield connection
+        except duckdb.CatalogException as error:
+            raise ValueError(failure_code) from error
+        finally:
+            connection.close()
+
 
 __all__ = [
     "LiveConnections",

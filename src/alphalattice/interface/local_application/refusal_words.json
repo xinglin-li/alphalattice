@@ -1,4 +1,10 @@
 {
+ "feature_input.case_store_unavailable": {
+  "message_id": "feature.input.case_store_unavailable",
+  "detail": "feature.input.case_store_unavailable",
+  "next_action": "READ_WORKSPACE_AND_RETAINED_BACKUPS",
+  "next_requests": {"workspace": {"operation": "WORKSPACE_SHOW"}}
+ },
  "feature_research.document_invalid": {
   "message_id": "feature.plan.document_invalid",
   "detail": "feature.plan.document_invalid",

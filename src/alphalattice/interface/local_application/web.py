@@ -631,6 +631,7 @@ class LocalWebApplication:
                 status="REFUSED",
                 failure_code=reason,
                 **({"detail": words["detail"]} if words else {}),
+                **({"next_requests": words["next_requests"]} if words.get("next_requests") else {}),
                 next_action=next_action or words["next_action"],
             )
         if reason == "local_application.dispatcher_closed" and self.workspace is not None:

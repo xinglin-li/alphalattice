@@ -1,5 +1,355 @@
 {
 "entries": {
+"CODEX_COMMAND_MISSING": {
+"owner": "activity",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The configured native command cannot be resolved before queueing; missing installation/configuration, not caller authority."
+},
+"CODEX_QUEUE_FAILED": {
+"owner": "activity",
+"category": "UNAVAILABLE",
+"classification_note": "The queue subprocess returned nonzero. The code conflates native command rejection and service failure; it proves no delivery and authorizes no automatic retry."
+},
+"CODEX_QUEUE_START_FAILED": {
+"owner": "activity",
+"category": "FAILED_PRECONDITION",
+"classification_note": "An OS error prevented starting the configured queue command. This includes invalid executable/setup and access/I/O failures; it is not by itself missing person authority."
+},
+"CODEX_QUEUE_TIMED_OUT": {
+"owner": "activity",
+"category": "DEADLINE_EXCEEDED",
+"classification_note": "The queue subprocess exceeded its actual 60-second execution deadline. Delivery may have occurred before timeout; this supplies no repeat authority."
+},
+"CODEX_WAKE_DELIVERY_UNCERTAIN": {
+"owner": "task_control",
+"category": "UNAVAILABLE",
+"classification_note": "The Host recorded a wake attempt without its completion after restart; whether it queued is unknown, so no automatic resend is admitted."
+},
+"INVALID_EXPERIMENT": {
+"owner": "alpha_research",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Training inputs fail their bound target, feature, row or causal-time authority before fitting. Includes mismatched row lengths; not a new permission request or an internal default."
+},
+"INVALID_MEDIA_TYPE": {
+"owner": "alternative_evidence",
+"category": "INVALID_ARGUMENT",
+"classification_note": "The acquired document's media_type is outside the declared admitted formats; DocumentRejectionCode is carried by the quality exception."
+},
+"REFUSED_ALTERNATIVE_EVIDENCE_EXPIRED": {
+"owner": "evidence_review",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The selected stored analysis has expired; refresh the evidence prerequisite, with no invented retry authority."
+},
+"REFUSED_AWAITING_ALTERNATIVE_EVIDENCE": {
+"owner": "evidence_review",
+"category": "FAILED_PRECONDITION",
+"classification_note": "No current analysis answers the selected issuer scope; this is missing prepared evidence, not an addressed resource lookup."
+},
+"REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY": {
+"owner": "evidence_review",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The workspace lacks admitted issuer/listing source authority. This is installation/source setup, not a caller lacking person permission."
+},
+"REFUSED_NO_ADMITTED_EVIDENCE_RUNTIME": {
+"owner": "evidence_review",
+"category": "FAILED_PRECONDITION",
+"classification_note": "No evidence adapter/publication runtime is installed for this workspace."
+},
+"REFUSED_NO_ADMITTED_REVIEW_ACTOR": {
+"owner": "evidence_review",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The workspace has no typed review actor configured, so attribution is unavailable; this is setup, not a rejected actor's authority."
+},
+"REFUSED_NO_BOOK_TO_REVIEW": {
+"owner": "evidence_review",
+"category": "FAILED_PRECONDITION",
+"classification_note": "No book can be selected. Overload: empty workspace, or an incomplete Task/unit selector when history could name an existing book; not proof of absence of every book."
+},
+"activity.event_invalid": {
+"owner": "activity",
+"category": "INVALID_ARGUMENT",
+"classification_note": "The supplied external-event document fails its canonical schema validation."
+},
+"activity.event_task_unknown": {
+"owner": "activity",
+"category": "NOT_FOUND",
+"classification_note": "The addressed valid Task identifier does not resolve in the live registry."
+},
+"agent_bundle.analyst_unit_required": {
+"owner": "agent_bundle",
+"category": "INVALID_ARGUMENT",
+"classification_note": "A coverage preparation needs its offered evidence_unit_id beside its Task; a request selector is incomplete."
+},
+"agent_bundle.not_prepared": {
+"owner": "agent_bundle",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The named directory is not a prepared bundle in this workspace; no answer is submitted."
+},
+"agent_bundle.preparation_stale": {
+"owner": "agent_bundle",
+"category": "ABORTED",
+"classification_note": "Prepared bundle evidence, book scope or review policy no longer matches the owner's current bound transaction; the owner requires a newly prepared bundle or the offered published-review route, never a blind answer resend."
+},
+"agent_bundle.seal_bound_exceeded": {
+"owner": "agent_bundle",
+"category": "RESOURCE_EXHAUSTED",
+"classification_note": "A format-valid answer would exceed a sealed Host record's explicit bounds; these are Host resource limits, not answer-shape errors."
+},
+"alpha_modeling.lightgbm_thread_canary_mismatch": {
+"owner": "alpha_modeling",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The admitted thread count fails the deterministic tree-equality canary in this runtime; execution stops before using different numbers."
+},
+"alternative_evidence.answer_problems": {
+"owner": "alternative_evidence",
+"category": "INVALID_ARGUMENT",
+"classification_note": "The Analyst's submitted answer failed screening and is returned for correction; accepted/DONE paths use other verdicts."
+},
+"alternative_evidence.delivery_budget_below_minimum_unit": {
+"owner": "alternative_evidence",
+"category": "RESOURCE_EXHAUSTED",
+"classification_note": "One complete delivery item exceeds the declared byte budget; raising the delivery budget is an execution choice, not scientific authority."
+},
+"alternative_evidence.table_view_correspondence_unproved": {
+"owner": "alternative_evidence",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The stored source's table ordinal or row count cannot prove correspondence with its placeholder; reconstruct the source binding, not an arbitrary new request value."
+},
+"catalog.replace_blocked": {
+"owner": "shared_kernel",
+"category": "ABORTED",
+"classification_note": "The shared persistence owner exhausted bounded atomic-replace attempts after PermissionError and raises its typed workspace conflict; current readers treat it as blocked replacement requiring the owner's readback/resume route, not a caller-authority refusal."
+},
+"chief_risk_officer.answer_problems": {
+"owner": "chief_risk_officer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "The submitted CRO answer failed screening and needs correction before any accepted review is sealed."
+},
+"committee.daily_setting_human_only": {
+"owner": "committee",
+"category": "PERMISSION_DENIED",
+"classification_note": "An agent caller attempted to change the person's daily-committee setting without the admitted HUMAN route."
+},
+"data.maintenance_stale_payload": {
+"owner": "data",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Provider bars stop before the declared target session; no unverified tail is admitted. Departing members may retain a separately proved prefix."
+},
+"data.sanitizer.corrupted_payload": {
+"owner": "data",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Acquired provider history fails sanitization before publication. Includes CorruptedPayload, ValueError and maintenance KeyError; persisted/source input condition, not a presumed Host crash."
+},
+"data.truth_review_required": {
+"owner": "data",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Maintenance awaits a data-truth decision or has unresolved failure reasons; a valid request cannot proceed until the cases are settled. Human and delegated paths share the reason."
+},
+"data.unrepaired_split_adjustment": {
+"owner": "data",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Provider history violates split-adjusted integrity. Overload includes unexplained split-sized ratios, invalid dates, nonpositive/nonnumeric/nonfinite prices and invalid split ratios."
+},
+"domain.invalid": {
+"owner": "shared_kernel",
+"category": "INVALID_ARGUMENT",
+"classification_note": "Default domain-value contract failure. Current serialization callers override it with specific json.* codes; retain the declared default, not a claim of a current unqualified emitter."
+},
+"evidence_review.replan_book_selection_required": {
+"owner": "evidence_review",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A recorded evidence-only Task retains no unique book subject for replan; its current source must be selected before continuation."
+},
+"factor_research.evidence_curation_not_host_admitted": {
+"owner": "factor_research",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The selected decision's retained evidence/review binding fails the Host admission verifier; the wrapper keeps the inner authority refusal."
+},
+"factor_research.review_limitations_incomplete": {
+"owner": "factor_research",
+"category": "INVALID_ARGUMENT",
+"classification_note": "The supplied review proposal omits a required acknowledged research limitation."
+},
+"feature_extension.extensions_page_out_of_range": {
+"owner": "feature_extension",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The requested positive page exceeds the current catalog's page count, which changes with its entries. Direct calls also reject a page below one; the public request schema rejects that lower-bound case before listing."
+},
+"feature_extension.human_confirmation_required": {
+"owner": "feature_extension",
+"category": "PERMISSION_DENIED",
+"classification_note": "Only the person may activate/deactivate a feature extension; the non-HUMAN caller is refused."
+},
+"feature_input.case_already_decided": {
+"owner": "feature_input",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The data case already has an effective resolution; refresh the current issues instead of applying a second decision."
+},
+"guanyin.remedy_not_offered": {
+"owner": "guanyin",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The selected incident remedy is absent or unavailable in its current recovery view; only a currently offered remedy may run."
+},
+"knowledge.access_denied": {
+"owner": "knowledge",
+"category": "INVALID_ARGUMENT",
+"classification_note": "The system catalog was asked to resolve a non-SYSTEM namespace; this is an unsupported reference for this catalog, not a caller-permission check despite the historical name."
+},
+"live_evidence.causal_time_invalid": {
+"owner": "live_evidence",
+"category": "INVALID_ARGUMENT",
+"classification_note": "declared in the owner's admitted code set; no current emitter; meaning taken from its user words."
+},
+"local_application.strategy_package_not_installed": {
+"owner": "local_application",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The requested strategy package is absent from this workspace's installed package map; installation is a prerequisite, not evidence that the global package resource does not exist."
+},
+"model_store.download_interrupted": {
+"owner": "model_store",
+"category": "UNAVAILABLE",
+"classification_note": "All bounded attempts ended in transport failure or retryable HTTP status. A partial file may remain; only the offered installation route resumes it."
+},
+"native_bridge.accepted_context_unavailable": {
+"owner": "native_bridge",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The first-acceptance context receipt is absent or disagrees with session/Task/bundle/answer/role/verdict; current evidence cannot prove conversation attribution."
+},
+"native_bridge.usage_catching_up": {
+"owner": "native_bridge",
+"kind": "notice",
+"classification_note": "A bounded usage reader is PARTIAL/OBSERVING while reading remaining bytes. This is progress, not a research refusal or an UNAVAILABLE failure."
+},
+"native_bridge.usage_cumulative_mismatch": {
+"owner": "native_bridge",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The native usage record has inconsistent cumulative accounting; the reader withholds totals rather than guessing partial or zero usage."
+},
+"native_bridge.usage_reading_human_only": {
+"owner": "native_bridge",
+"category": "PERMISSION_DENIED",
+"classification_note": "Only the person may change the privacy setting for native usage reading; non-HUMAN callers are refused."
+},
+"portfolio_research.book_end_under_scored": {
+"owner": "portfolio_research",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The selected score surface lacks enough scored names at its first or last required session; interior filtering cannot repair either end."
+},
+"portfolio_research.eligible_pool_short": {
+"owner": "portfolio_research",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The bound research inputs have fewer tradable finite-scored names than the declared selection size on a required session."
+},
+"portfolio_strategy_lab.artifact_absent": {
+"owner": "portfolio_strategy_lab",
+"category": "NOT_FOUND",
+"classification_note": "A sealed study child is missing from content-addressed storage; damaged artifacts remain a separate tampering refusal with backup recovery unchanged."
+},
+"portfolio_strategy_lab.eligible_pool_short": {
+"owner": "portfolio_strategy_lab",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A component formation has too few tradable scored names before book execution begins."
+},
+"portfolio_update.eligible_pool_short": {
+"owner": "portfolio_update",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The update formation cannot supply the declared top_k tradable scored names; proposal and settlement share this preflight."
+},
+"product_host.evidence_review_input_incomplete": {
+"owner": "chief_risk_officer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "SealedBook's review projection lacks required book inputs; the CRO owner raises the typed incomplete-input exception, despite the old product_host prefix."
+},
+"quant.black_litterman_ineligible": {
+"owner": "quant",
+"category": "INVALID_ARGUMENT",
+"classification_note": "declared in the owner's admitted code set; no current emitter; meaning taken from its user words."
+},
+"research_authoring.evidence_artifact_invalid": {
+"owner": "research_authoring",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A stored research-evidence file is not an object or fails the execution-evidence contract; its identity conflict has a separate code."
+},
+"research_experiment.insufficient_listing_support": {
+"owner": "research_experiment",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The admitted foundation's listing axis is shorter than the experiment executor's minimum support."
+},
+"research_experiment.outcomes_after_declared_cutoff": {
+"owner": "research_experiment",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The selected development-outcome schedule matures after the frozen cutoff; no look-ahead or changed authority is allowed."
+},
+"research_experiment.preview_expired": {
+"owner": "research_experiment",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The retained preview expired before commit; replan via its offered route, without altering the expired plan."
+},
+"research_experiment.refused": {
+"owner": "research_experiment",
+"category": "INTERNAL",
+"classification_note": "The experiment operation boundary and retained-plan listing expose unexpected unclassified owner exceptions as research_experiment.refused:<exception>:<incident>. Typed owner reasons and operation-document validation retain their own routes. The stale execution-binding branch emits its named owner reason rather than this fallback. Retained-plan validation can also use this base with field suffixes; that validates Host-kept Task state, not a caller declaration. No category-based retry is admitted."
+},
+"research_strategy.risk_history_insufficient": {
+"owner": "research_strategy",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Selected Risk inputs lack the required return sessions before the first formation; the offered longer-history inputs remain the way on."
+},
+"research_update.input_source_access_not_admitted": {
+"owner": "research_update",
+"category": "PERMISSION_DENIED",
+"classification_note": "The required input source lacks effective network admission for this request; this covers missing source consent, a run held offline and the operator offline switch, while the underlying source-access result retains its distinct recovery and grants no new consent or repeat authority."
+},
+"research_workspace.prepared_before_renames": {
+"owner": "research_workspace",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A stored object retains a retired spelling and needs current preparation; this is persistent input compatibility, not new request syntax."
+},
+"storage.input_binding_missing": {
+"owner": "storage",
+"category": "NOT_FOUND",
+"classification_note": "The addressed retained research-input binding is missing; a present invalid binding remains separately refused."
+},
+"validation.artifact_invalid": {
+"owner": "validation",
+"category": "INVALID_ARGUMENT",
+"classification_note": "declared in the owner's admitted code set; no current emitter; meaning taken from its user words."
+},
+"workspace.conflict": {
+"owner": "workspace",
+"category": "ABORTED",
+"classification_note": "The workspace lock owner could not acquire its nonblocking exclusive writer lock and raises the default workspace.conflict; let the current owner release it and follow the request's existing recovery route without inferring permission to bypass the lock."
+},
+"workspace.corruption": {
+"owner": "workspace",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The durable workspace is missing its root, required directory or valid durable state; repair/recovery is required before use."
+},
+"workspace.path_rejected": {
+"owner": "workspace",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Most current emitters reject unsafe stored paths or an invalid workspace root; also covers link/reparse/hardlink escape and an already-existing immutable target. These are state/path safety checks, not a person-authority decision."
+},
+"workspace_data_update.refused": {
+"owner": "workspace_data_update",
+"category": "INTERNAL",
+"classification_note": "The DATA_UPDATE_PLAN, DATA_UPDATE_RUN and DATA_UPDATE_READBACK boundary fingerprints unclassified owner ValueError or KeyError after named product reasons retain their own code. Located ValidationError can also expose this bare base when Host-kept Task plans fail their contract; the current route does not accept a caller update document there. FileNotFoundError has its separate artifact_missing reason. Retain INTERNAL for these owner faults without adding retry authority."
+},
+"workspace_preparation.inputs_already_published": {
+"owner": "workspace_preparation",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A stopped preparation cannot resume because the workspace already published experiment inputs; the existing inputs remain authoritative."
+},
+"workspace_preparation.nothing_captured_to_resume": {
+"owner": "workspace_preparation",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The cancelled preparation holds no captured stage to resume; this is not a new cancellation event."
+},
+"workspace_preparation.resume_in_place": {
+"owner": "workspace_preparation",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The Task is already RECOVERY_REQUIRED and must use its in-place recovery route rather than creating a competing plan."
+},
 "feature_research.document_invalid": {
 "owner": "feature_research",
 "category": "INVALID_ARGUMENT",
@@ -18329,6 +18679,12 @@
 "owner": "devtools.architecture",
 "category": "INVALID_ARGUMENT",
 "reason": "Duplicate Large declarations cannot evade the count ratchet."
+},
+"feature_input.case_store_unavailable": {
+"owner": "feature_input",
+"category": "FAILED_PRECONDITION",
+"message_id": "feature.input.case_store_unavailable",
+"classification_note": "The read-only decision catalog lacks a required table or column. Inspect storage and restore an intact workspace before retry; no absence of decisions is inferred."
 }
 },
 "note": "",
@@ -18367,81 +18723,22 @@
 "sector.recoverable_exclusion_applied": {
 "owner": "sector",
 "reason": "Successful recoverable exclusion is a continuing RUNNING maintenance diagnostic, never error_info."
+},
+"native_bridge.usage_catching_up": {
+"owner": "native_bridge",
+"reason": "A bounded usage reader is PARTIAL/OBSERVING while reading remaining bytes. This is progress, not a research refusal or an UNAVAILABLE failure."
+}
+},
+"word_selectors": {
+"alternative_evidence.unit_failed": {
+"owner": "alternative_evidence",
+"reason": "Only selects fallback detail/next_action for the unit's actual inner failure; never emitted as the unit's failure reason."
+},
+"local_client.problem_report_ready": {
+"owner": "local_client",
+"reason": "Only selects words for the successful PROBLEM_REPORT result; never emitted as a failure reason."
 }
 }
 },
-"legacy_unregistered_words": [
-"CODEX_COMMAND_MISSING",
-"CODEX_QUEUE_FAILED",
-"CODEX_QUEUE_START_FAILED",
-"CODEX_QUEUE_TIMED_OUT",
-"CODEX_WAKE_DELIVERY_UNCERTAIN",
-"INVALID_EXPERIMENT",
-"INVALID_MEDIA_TYPE",
-"REFUSED_ALTERNATIVE_EVIDENCE_EXPIRED",
-"REFUSED_AWAITING_ALTERNATIVE_EVIDENCE",
-"REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY",
-"REFUSED_NO_ADMITTED_EVIDENCE_RUNTIME",
-"REFUSED_NO_ADMITTED_REVIEW_ACTOR",
-"REFUSED_NO_BOOK_TO_REVIEW",
-"activity.event_invalid",
-"activity.event_task_unknown",
-"agent_bundle.analyst_unit_required",
-"agent_bundle.not_prepared",
-"agent_bundle.preparation_stale",
-"agent_bundle.seal_bound_exceeded",
-"alpha_modeling.lightgbm_thread_canary_mismatch",
-"alternative_evidence.answer_problems",
-"alternative_evidence.delivery_budget_below_minimum_unit",
-"alternative_evidence.table_view_correspondence_unproved",
-"alternative_evidence.unit_failed",
-"catalog.replace_blocked",
-"chief_risk_officer.answer_problems",
-"committee.daily_setting_human_only",
-"data.maintenance_stale_payload",
-"data.sanitizer.corrupted_payload",
-"data.truth_review_required",
-"data.unrepaired_split_adjustment",
-"domain.invalid",
-"evidence_review.replan_book_selection_required",
-"factor_research.evidence_curation_not_host_admitted",
-"factor_research.review_limitations_incomplete",
-"feature_extension.extensions_page_out_of_range",
-"feature_extension.human_confirmation_required",
-"feature_input.case_already_decided",
-"guanyin.remedy_not_offered",
-"knowledge.access_denied",
-"live_evidence.causal_time_invalid",
-"local_application.strategy_package_not_installed",
-"local_client.problem_report_ready",
-"model_store.download_interrupted",
-"native_bridge.accepted_context_unavailable",
-"native_bridge.usage_catching_up",
-"native_bridge.usage_cumulative_mismatch",
-"native_bridge.usage_reading_human_only",
-"portfolio_research.book_end_under_scored",
-"portfolio_research.eligible_pool_short",
-"portfolio_strategy_lab.artifact_absent",
-"portfolio_strategy_lab.eligible_pool_short",
-"portfolio_update.eligible_pool_short",
-"product_host.evidence_review_input_incomplete",
-"quant.black_litterman_ineligible",
-"research_authoring.evidence_artifact_invalid",
-"research_experiment.insufficient_listing_support",
-"research_experiment.outcomes_after_declared_cutoff",
-"research_experiment.preview_expired",
-"research_experiment.refused",
-"research_strategy.risk_history_insufficient",
-"research_update.input_source_access_not_admitted",
-"research_workspace.prepared_before_renames",
-"storage.input_binding_missing",
-"validation.artifact_invalid",
-"workspace.conflict",
-"workspace.corruption",
-"workspace.path_rejected",
-"workspace_data_update.refused",
-"workspace_preparation.inputs_already_published",
-"workspace_preparation.nothing_captured_to_resume",
-"workspace_preparation.resume_in_place"
-]
+"legacy_unregistered_words": []
 }

@@ -1198,16 +1198,13 @@ def test_data_history_stops_have_installed_words_and_preserve_the_owners_way(
     bare = {"status": "REFUSED", "failure_code": code}
     worded = cli_contract.worded_refusal(bare)
     info = worded.pop("error_info", None)
-    if code == "data.sanitizer.corrupted_payload":  # Named unregistered legacy control.
-        assert info is None
-    else:
-        assert (info["category"], info["domain"], info["reason"]) == (
-            "FAILED_PRECONDITION",
-            code.partition(".")[0],
-            code,
-        )
-        assert info["message_id"] == "protocol.error.summary" and code in info["message"]
-        assert info["field_violations"] == []
+    assert (info["category"], info["domain"], info["reason"]) == (
+        "FAILED_PRECONDITION",
+        code.partition(".")[0],
+        code,
+    )
+    assert info["message_id"] == "protocol.error.summary" and code in info["message"]
+    assert info["field_violations"] == []
     assert worded == {
         **bare,
         "detail": detail,

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from uuid import uuid4
+
+import duckdb
 
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.verification_sweep import SWEEP_TASK_KIND
@@ -20,7 +23,7 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, _run_badge_browser, run_node
+from tests.portfolio_strategy_lab import local_web_support as web
 from tests.workspace_task_runner.task_control_support import digest, task_contract
 
 
@@ -113,14 +116,12 @@ def test_real_task_records_drive_home_badges_and_grouped_history(
                     observed_at=now,
                 )
             )
-        # The runner publishes this public readout at a checkpoint. TASKS reads
-        # persisted projections, so the Registry fixture must publish it as well.
-        projection = registry.safe_projection(task.task_id)
-        assert projection.task_record_hash == task.record_hash
+        # Publish the fixture's projection as the runner does at a checkpoint.
+        assert registry.safe_projection(task.task_id).task_record_hash == task.record_hash
         return task
 
     rebuilt = record("badge-unrecoverable", "task_control.ledger_rebuilt")
-    first = _json(live, "/api/decisions")
+    first = web._json(live, "/api/decisions")
     assert first["counts"].get("STOPPED_TASK", 0) == 0
     peer = record("badge-normal-stop", "study_verification_sweep.not_admitted")
     source = record("badge-exact-plan", "study_verification_sweep.not_admitted")
@@ -128,7 +129,7 @@ def test_real_task_records_drive_home_badges_and_grouped_history(
     assert source.admitted_at == successor.admitted_at
     assert source.plan.plan_hash == successor.plan.plan_hash
     assert successor.lifecycle is TaskLifecycle.SUCCEEDED
-    listing = _json(live, "/api/tasks")
+    listing = web._json(live, "/api/tasks")
     tasks = {row["task_id"]: row for row in listing["tasks"]}
     expected_ids = {str(row.task_id) for row in (rebuilt, peer, source, successor)}
     assert expected_ids <= tasks.keys(), {
@@ -140,23 +141,23 @@ def test_real_task_records_drive_home_badges_and_grouped_history(
     }
     assert tasks[str(rebuilt.task_id)]["attention"]["resolution"] == "UNRECOVERABLE"
     assert tasks[str(source.task_id)]["attention"]["successor_task_hash"] == successor.record_hash
-    decisions = _json(live, "/api/decisions")
+    decisions = web._json(live, "/api/decisions")
     stopped = [row for row in decisions["decisions"] if row["kind"] == "STOPPED_TASK"]
     assert [row["task_id"] for row in stopped] == [str(peer.task_id)]
     assert stopped[0]["waits_on"] == "AGENT"
     assert decisions["counts"]["STOPPED_TASK"] == 1
     assert not [row for row in decisions["decisions"] if row["waits_on"] == "PERSON"]
-    history = {row["task_id"]: row for row in _json(live, "/api/research-history")["entries"]}
+    history = {row["task_id"]: row for row in web._json(live, "/api/research-history")["entries"]}
     assert {str(row.task_id) for row in (rebuilt, peer, source, successor)} <= history.keys()
     assert history[str(rebuilt.task_id)]["failure_code"] == "task_control.ledger_rebuilt"
     assert history[str(source.task_id)]["status"] == "BLOCKED"
     assert history[str(successor.task_id)]["status"] == "SUCCEEDED"
-    context = _json(live, "/api/session?context=1")["research_context"]["tasks"]["tasks"]
+    context = web._json(live, "/api/session?context=1")["research_context"]["tasks"]["tasks"]
     context_versions = {row["task_id"]: row["task_record_hash"] for row in context}
     assert context_versions == {
         str(row.task_id): row.record_hash for row in (rebuilt, peer, source, successor)
     }
-    _run_badge_browser(
+    web._run_badge_browser(
         live,
         tmp_path / "badge-browser",
         "badge",
@@ -187,6 +188,15 @@ def test_real_task_records_drive_home_badges_and_grouped_history(
     )
     assert agent_closed["lifecycle"] == "CANCELLED"
     assert registry.task(agent_stop.task_id).failure_code == "task_control.ledger_rebuilt"
+    # An existing table-less database cannot prove that no decisions are pending.
+    duckdb.connect(str(live.workspace / "market-data.duckdb")).close()
+    status, _headers, body = web._request(live, "/api/decisions")
+    refusal = json.loads(body)
+    unavailable = "feature_input.case_store_unavailable"
+    assert (status, refusal["failure_code"]) == (400, unavailable)
+    recovery = PortfolioResearchOperationRequest(**refusal["next_requests"]["workspace"])
+    continued = live.operations.execute(recovery, caller="EXTERNAL_AUTOMATION")
+    assert "research_context" in continued and continued["caller"] == "EXTERNAL_AUTOMATION"
 
 
 def test_activity_task_merge_keeps_only_same_version_attention() -> None:
@@ -248,7 +258,7 @@ assert.equal(D.taskSuccessor(D.taskOf('source')), null,
   'a changed successor version invalidates the relation');
 assert.equal(grouped().length, 2, 'successor identity remains exact after an activity merge');
 """
-    run_node(
+    web.run_node(
         ["-e", code, str(source), str(Path(__file__).with_name("workbench_library.cjs"))],
         missing="BADGE requires the UI's Node.js development runtime",
         required=True,

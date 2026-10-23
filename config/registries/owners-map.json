@@ -4,6 +4,7 @@
   "note": "G1: each core noun's one owner package, from the plan's owner table (develop-wave-2, \"G1's map\"; the contested choices decided by the user on 2026-09-27). The owner defines a noun -- its types, state and decisions -- and every other package only imports it. A noun is recognised by the public types its `defined_by` modules export. `folds_in` lists what other packages still define of it and the card that moves it: G2 refuses a new definition outside the owner, naming the owner, against this list, which only shrinks. An owner a card creates names it (`created_by`).",
   "nouns": {
     "book observation parts": {
+      "description": "Book observation parts store complete observation snapshots as shared immutable pieces so Portfolio ledgers can reuse unchanged source content while preserving each snapshot's identity.",
       "covers": "immutable structurally shared storage of complete book observation sources, preserving their logical snapshot identity",
       "owner": "alphalattice.investment.portfolio_strategy_lab",
       "defined_by": [
@@ -13,6 +14,7 @@
       "note": "Consumers: PortfolioLedgerStore and the separate AdvancementLedgerStore, Portfolio update/advancement source sealing and readback, calibration preparation, the as-of grader and book-value replay. Private advancement roots stay private. Full LocalQAMarketSnapshot content and legacy records remain authoritative; parts change only storage."
     },
     "workspace": {
+      "description": "A workspace is the local root for durable research files and system records, providing the confined directory layout their owners use.",
       "covers": "paths, lock, persistence, databases, artifacts, checkpoints, writer lease, mutation gate",
       "note": "WorkspaceLock owns LOCK_SUFFIX; the backup consumer omits these transient files and retains their durable ledgers.",
       "owner": "alphalattice.control.workspace_runtime",
@@ -28,6 +30,7 @@
       "folds_in": []
     },
     "network access": {
+      "description": "Network access is the effective permission to use the network, resolved from the offline switch and workspace control so consumers can refuse unadmitted network work.",
       "covers": "whether a process may reach the network",
       "owner": "alphalattice.control.workspace_runtime",
       "defined_by": [
@@ -36,6 +39,7 @@
       "folds_in": []
     },
     "task": {
+      "description": "A Task is a durable unit of work that binds declared inputs, a research deliverable, a stage plan, and lifecycle state so the Host can execute and recover it.",
       "covers": "lifecycle, registry, recovery, jobs",
       "owner": "alphalattice.control.task_control",
       "defined_by": [
@@ -45,6 +49,7 @@
       "note": "The Host's composition/task_recovery.py stays its composition (O3, 2026-09-29): it composes Task Control's board with Guanyin's maintenance detail and the interface's failure codes, level 4 modules Task Control (level 1) may not import; the recovery decisions it shapes are Task Control's own transitions. ResearchPlan.from_stages owns the existing prefix-dependency plan construction used by research experiments and strategy calibration; their canonical plans and WorkItem identities remain equal."
     },
     "data platform": {
+      "description": "The data platform combines workspace readiness, data-truth preflight, and remediation selections so the Host can prepare and check data before research.",
       "covers": "readiness, preflight, remediation, update, maintenance",
       "owner": "alphalattice.control.data_platform",
       "defined_by": [
@@ -55,6 +60,7 @@
       "note": "DataDecisionRule.panel_precision/panel_floor bound kept Panel cells; PANEL_CELLS_KEPT records count, agreement and rule hash on the Goal. Maintenance consumes these bounds and persists escalated Feature cells through its existing change set."
     },
     "market data": {
+      "description": "Market data consists of provider price and volume observations and source contracts used to prepare and refresh the workspace's stored price history.",
       "covers": "the stored data and its numbers; provider composition from the admitted source profile, retaining injected providers and workspace cache layout",
       "owner": "alphalattice.foundation.market_data_ops",
       "defined_by": [
@@ -74,6 +80,7 @@
       "provider_injection": "A non-None override is retained, including a falsey provider; defaults resolve once per Host owner from the admitted source profile."
     },
     "raw bar rebase": {
+      "description": "A raw bar rebase records one split's price and volume factors so stored history and later reads apply the same adjustment.",
       "covers": "a split-adjusting provider's rebase of a listing's stored bars, kept as factors (CRSP's CFACPR and CFACSHR): its one record a split, and the factors the kept history and frozen observations apply when read",
       "owner": "alphalattice.foundation.market_data_ops",
       "defined_by": [
@@ -83,6 +90,7 @@
       "note": "Consumers: universe maintenance (recognises and writes it), Feature invalidation (by the change document's raw corrections), the kept workspace history (reuse and load), frozen observation publication and load, the execution source watermark (data_revision_hash), and the data rule's kept record on the Goal and delivery roads."
     },
     "feature": {
+      "description": "Features are computed research inputs retained in lineage-bound Panels so studies can use a consistent history of values and their source authorities.",
       "covers": "features, Panels and their state",
       "owner": "alphalattice.foundation.feature_engine",
       "defined_by": [
@@ -95,6 +103,7 @@
       "note": "Consumers: Feature build and maintenance rebase cutoff use the installed Panel preprocessing; the data-platform rule bounds kept Panel cells, records their count and agreement on the Goal, and escalates disagreement to persisted Feature work. Kept workers use bounded cutoff derivations and Panel materializers. The runtime keeps cutoff memo configuration and dispatch; cross_section owns actual Panel chunk computation and its materializer memo; the existing worker entry route re-exports the actual function."
     },
     "factor": {
+      "description": "Factor research evaluates feature signals against declared outcomes and records curated selections so downstream research can use a qualified foundation.",
       "covers": "factor studies, curation and publication",
       "owner": "alphalattice.foundation.factor_research",
       "defined_by": [
@@ -103,6 +112,7 @@
       "folds_in": []
     },
     "alpha": {
+      "description": "Alpha research develops, evaluates and publishes models and score evidence so Portfolio research can consume signals tied to their exact inputs and model state.",
       "covers": "Alpha studies, models, scores and publication",
       "owner": "alphalattice.investment.alpha_research",
       "with": [
@@ -119,6 +129,7 @@
       "folds_in": []
     },
     "risk": {
+      "description": "Risk research publishes identity-bound covariance estimates and diagnostics so Portfolio studies can consume risk evidence with its source lineage and limitations.",
       "covers": "risk models, estimates and publication",
       "owner": "alphalattice.investment.risk_research",
       "defined_by": [
@@ -129,6 +140,7 @@
       "folds_in": []
     },
     "sector": {
+      "description": "Sector research compares forecast methods on declared sector targets and publishes evaluation evidence so their methods can be assessed within the recorded classification limits.",
       "covers": "sector research",
       "owner": "alphalattice.investment.sector_research",
       "defined_by": [
@@ -139,6 +151,7 @@
       "folds_in": []
     },
     "portfolio research": {
+      "description": "Portfolio research turns declared strategy controls and research inputs into sealed book paths and reports so a study can be replayed, continued or reused under its exact authorities.",
       "covers": "strategies, books, backtests, finalization",
       "owner": "alphalattice.investment.portfolio_strategy_lab",
       "with": [
@@ -158,6 +171,7 @@
       "folds_in": []
     },
     "the PM's planning": {
+      "description": "Portfolio management supplies admitted Alpha, Risk and Portfolio candidate inventories and shared Portfolio comparison grids so research requests and execution use the same governed choices.",
       "covers": "mandates and the planning surface",
       "owner": "alphalattice.investment.portfolio_management",
       "defined_by": [
@@ -167,6 +181,7 @@
       "note": "the planning desk retired (RT V312) and its contracts with V327; what is left is the research desk's candidate inventory and the paired panel grid (V1's route)"
     },
     "alternative evidence": {
+      "description": "Alternative evidence preserves issuer sources, scoped readings and cited findings so a portfolio review can trace the evidence it considers.",
       "covers": "sources, reading, review",
       "owner": "alphalattice.evidence.alternative_evidence",
       "defined_by": [
@@ -180,6 +195,7 @@
       "folds_in": []
     },
     "the CRO": {
+      "description": "The CRO reviews cited portfolio risks and issue resolutions so the Host can record an assessment and derive its recommendation under the declared policy.",
       "covers": "review and decisions",
       "owner": "alphalattice.oversight.chief_risk_officer",
       "defined_by": [
@@ -189,6 +205,7 @@
       "folds_in": []
     },
     "research program": {
+      "description": "A research Program is the sealed form of an authored experiment that its workflow can execute or replay so the admitted request and its execution evidence remain connected.",
       "covers": "authoring, cases, experiments, history, delivery",
       "owner": "alphalattice.control.research_program",
       "with": [
@@ -202,6 +219,7 @@
       "note": "level 1 with no peers: only code importing level 0 alone may move there (V213) The Host's research_authoring files are its composition (O3, 2026-09-29): the Desk handoffs, the drafts that compose the Host's input envelope with a Desk's installed domain, the authority resolver over the workspace, and the paired methodology's source resolver over five owners' stores; their one-owner helpers adapt an owner's store to the workspace or translate its refusal into the authoring vocabulary. The Desk computations they held moved: the execution-outcome selection to causal outcomes and the development Alpha mandate to Alpha. One component's lifecycle admission moved to Alpha's scores/lifecycle_preparation.py with MODEL_KERNEL's rotation for V365 and V366 (V325, 2026-10-01). The Host composition/research_experiment_plan.py owns its existing sealed Task-plan adapter and validation; application-local bounded plan memos rebuild through that same validator. composition/plain_refusals owns invalid Feature and strategy document recovery for the two PLAN consumers in portfolio_research_operations; CLI, Host and Workbench read the same located refusal and bound discovery offers."
     },
     "the agent seam": {
+      "description": "The agent seam binds an actor's submitted proposal to its producer and execution provenance so domain owners can seal a response with its origin recorded.",
       "covers": "an agent's submissions, provenance and readable answer/bundle moments",
       "owner": "alphalattice.protocols.actor_execution",
       "defined_by": [
@@ -213,6 +231,7 @@
       "note": "the built-in agent's modules retired with AG2 (2026-09-27)"
     },
     "observation": {
+      "description": "An observation is a ledger record that binds a runtime event to its source, scope, payload, and recording policy so later views can read what was recorded.",
       "covers": "what ran, recorded",
       "owner": "alphalattice.control.observation_runtime",
       "defined_by": [
@@ -221,6 +240,7 @@
       "folds_in": []
     },
     "the guardian": {
+      "description": "The guardian classifies unfinished Task facts into incidents and preserves offered remedies and recovery attempts so the Host can surface actionable recovery.",
       "covers": "judging what ran and offering recovery",
       "owner": "alphalattice.control.guanyin",
       "defined_by": [],
@@ -228,6 +248,7 @@
       "note": "GY and GY2 settle its contracts"
     },
     "validation": {
+      "description": "Validation provides shared research checks and sealed split contracts so research stages use explicit timing, fold and holdout rules.",
       "covers": "the checks and their contracts",
       "owner": "alphalattice.kernel.validation",
       "defined_by": [
@@ -236,6 +257,7 @@
       "folds_in": []
     },
     "protected validation": {
+      "description": "Protected validation binds a frozen candidate to one evaluation permit and a closure receipt so final evaluation stays tied to its admitted candidate.",
       "covers": "the permit gate for protected evidence",
       "owner": "alphalattice.oversight.model_validation",
       "defined_by": [
@@ -245,6 +267,7 @@
       "note": "an independent permission gate, kept apart from validation (corrected 2026-09-27)"
     },
     "alpha candidates": {
+      "description": "Alpha candidates retain recipe lifecycles, qualification and selected peer evidence so a family of development studies yields a checkable candidate set.",
       "covers": "the Alpha candidate registry: the qualification over a family of development studies and the candidate set it seals for the Portfolio",
       "owner": "alphalattice.investment.alpha_research.candidates",
       "defined_by": [
@@ -254,6 +277,7 @@
       "note": "left the retired goal loop's package in GR4; a goal is the Host's ledger (GR1)"
     },
     "the committee": {
+      "description": "The committee is the dated discussion of published positions whose member messages and verdict are kept on a Goal's floor so the update can produce its committee report.",
       "covers": "the investment committee on a date's published positions: its floor, its report, and the person's daily committee setting, stored at runtime/committee-daily.json in the workspace",
       "owner": "alphalattice.control.product_host.composition",
       "defined_by": [
@@ -284,6 +308,7 @@
       ]
     },
     "host setup": {
+      "description": "Host setup identifies the command, retrieval runtime, and host dependencies a research session still needs so the doctor and first-use gate can offer the same preparation steps.",
       "covers": "what a checkout needs before research: the doctor's host readiness and a first use's setup gate, each item present or missing, who fills it and its commands; one source supplies agent fills, including online installation of locked retrieval dependencies with one disclosure; software outside the lock needs the person's permission",
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
@@ -388,6 +413,7 @@
       }
     },
     "agent memory": {
+      "description": "Agent memory is the person's user layer and workspace notes, counted by tier and domain so the agent can review items that exceed bounds or are due for review.",
       "covers": "the person's .alphalattice/user/ layer and a workspace's agent-notes: two tiers and five domains counted against their bounds (one declaration the maintenance Skill states), and the due-for-review list with each item's reason; the doctor's user_layer item and a sealing answer's record offer offer the review first",
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
@@ -396,6 +422,7 @@
       "folds_in": []
     },
     "native session": {
+      "description": "A native Session binds a Codex or Claude agent session and its roles to one workspace so the Host can associate research and observed usage with the right participants.",
       "covers": "an agent Session bound to the workspace and its members: the binding, each member's usage read from the host's own session files, which role each member is by the key evidence its file holds, and the wake, and one-use Workbench launches on each Session's first answer and its completed Goal, with the sealed Goal selector",
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
@@ -507,6 +534,7 @@
       "description": "Binds native host sessions and their configured research guidance to the workspace."
     },
     "the first use": {
+      "description": "The first use is a project's initial research Goal, whose completed workspace and forward strategy direct later dated requests to the daily update road.",
       "covers": "the project's one first use: its FIRST_USE goal opened from the person's sentence and date, its road, and, once it is complete with a strategy running forward, the daily road a later date's sentence takes in that workspace instead of a second first use",
       "owner": "alphalattice.control.product_host.composition",
       "defined_by": [
@@ -600,6 +628,7 @@
       "description": "Check architecture contracts and retain reviewed registry gaps so unexplained source and registry additions are refused."
     },
     "knowledge retrieval": {
+      "description": "Knowledge retrieval searches committed local indexes and returns ranked cited passages with their source and recipe trace so evidence readers can find the material they need.",
       "covers": "local retrieval contracts, verified model-pack proofs and leased model sessions",
       "owner": "alphalattice.kernel.knowledge",
       "defined_by": [
@@ -614,6 +643,7 @@
       "note": "VerifiedPackRegistry owns typed machine-derived capacity, capability-report LRU and lease-aware idle model-pool retirement; active leases remain valid. PairScoreAdmission carries the workspace caller's committed block names and storage-admission callback into Knowledge; constructing this input does not seal or publish a Knowledge decision."
     },
     "source identity": {
+      "description": "Source identity names source components and hashes their executable syntax and declared import closure so records can bind to code independently of checkout layout.",
       "covers": "source syntax and import closure identity, including the fixed-install AST memo",
       "owner": "alphalattice.kernel.shared_kernel",
       "defined_by": [
@@ -622,6 +652,7 @@
       "folds_in": []
     },
     "memo cache": {
+      "description": "A memo cache holds derived values within an owner's capacity so callers can reuse known work and recompute values after eviction.",
       "covers": "bounded derived values with exact recomputation on a miss; no admission state or active leases",
       "owner": "alphalattice.kernel.shared_kernel",
       "defined_by": [
@@ -631,6 +662,7 @@
       "note": "OrderedDict LRU with typed owner capacity and a machine-derived default; consumers retain their existing keys, validation and close authority."
     },
     "Alpha development chunk identity": {
+      "description": "Alpha development chunk identity binds a chunk's declared identity, schema and rows to one content hash so publication and readback share an exact proof with bounded reuse for unchanged bytes.",
       "covers": "canonical development chunk content and bounded full-byte proof reuse",
       "owner": "alphalattice.investment.alpha_research",
       "defined_by": [
@@ -640,6 +672,7 @@
       "note": "Consumed by AlphaDevelopmentArtifactStore publication and readback; independent of stored artifact models and graph verification."
     },
     "product resource data": {
+      "description": "Product resource data is the immutable package catalog and reference payloads that verified loaders use for Knowledge articles and supported package arguments.",
       "covers": "immutable package data shipped in the base wheel: the system resource catalog, Knowledge articles, package-argument specifications, and recorded demonstration and evidence payload bytes",
       "owner": "alphalattice.kernel.resources",
       "defined_by": [
@@ -661,6 +694,7 @@
       }
     },
     "shared kernel": {
+      "description": "The shared kernel provides common immutable records, identity functions and persistence primitives so domain owners can share these basic contracts and operations.",
       "covers": "shared domain validation, failure and value records; canonical JSON, content, source and recipe identity and seals; durable-file and resource-layout primitives; environment provenance, execution-span readouts and sector-history treatment vocabulary",
       "owner": "alphalattice.kernel.shared_kernel",
       "defined_by": [
@@ -1496,6 +1530,7 @@
       }
     },
     "market data mechanics": {
+      "description": "Market data mechanics provide shared universe, table and quality rules so observations can be normalized and checked against eligible symbols and calendar sessions.",
       "covers": "market-data truth and provenance contracts and vocabulary; frozen daily-price table and calendar mechanics, deterministic row-quality checks, current-universe source parsing and symbol normalization",
       "owner": "alphalattice.kernel.data",
       "defined_by": [
@@ -1574,6 +1609,7 @@
       }
     },
     "factor and return mechanics": {
+      "description": "Factor and return mechanics provide shared numerical primitives and contracts so research owners reuse factor formulas, input conventions and package argument checks.",
       "covers": "deterministic factor specifications and formula arithmetic, return-model fit and predict mechanics, robust cross-section mathematics and session-aware sector-history arithmetic",
       "owner": "alphalattice.kernel.quant",
       "defined_by": [
@@ -1708,6 +1744,7 @@
       }
     },
     "causal inputs": {
+      "description": "Causal inputs describe input availability and strategy decision clocks and admit their joint information set so a strategy uses evidence available by its declared decision time.",
       "owner": "alphalattice.capabilities.causal_inputs",
       "covers": "strategy-neutral input clocks, strategy decision schedules and installed schedule bindings, temporal input admission and source information availability; execution method values remain with causal outcomes",
       "defined_by": [
@@ -1769,6 +1806,7 @@
       }
     },
     "causal outcomes": {
+      "description": "Causal outcomes are source-bound execution rows and published outcome tables that give research an explicit formation, entry and holding-end return axis.",
       "owner": "alphalattice.foundation.causal_outcomes",
       "covers": "causal execution schedules, method recipes and installed method/publication policy catalogues, content-addressed outcome publication and readback, local QA outcome preparation, claim-bound Policy Holdout release, and outcome selection by listing-set identity",
       "defined_by": [
@@ -1972,6 +2010,7 @@
       }
     },
     "live evidence sources": {
+      "description": "Live evidence sources define bounded HTML and table extraction rules that turn acquired documents into canonical text for evidence reading.",
       "owner": "alphalattice.kernel.live_evidence",
       "covers": "source-specific HTML canonicalization and table extraction primitives, table carry policy, canonical extraction rule identity, acquisition/extraction bounds and stable Live Evidence failures; acquired-document provenance and SEC filing selection remain with alternative evidence",
       "defined_by": [
@@ -2016,6 +2055,7 @@
       }
     },
     "research foundation": {
+      "description": "The research foundation is a published binding of admitted Feature, Factor and execution evidence that gives downstream research one explicit input lineage to select and verify.",
       "owner": "alphalattice.foundation.research_foundation",
       "covers": "cross-Desk Research Foundation evidence bindings, admission and marker-last publication, verified Pre-Research HEAD/candidate/delta/update transition contracts and their compare-and-swap state store, and post-membership rebuild lifecycle",
       "defined_by": [
@@ -2096,6 +2136,7 @@
       }
     },
     "research authoring": {
+      "description": "Research authoring is the common request envelope that binds a Desk experiment's data handles, sessions, budget, and execution policy so the Host and Desk can seal a Program from the same declared request.",
       "owner": "alphalattice.protocols.research_authoring",
       "covers": "actor-neutral research request envelope and unresolved selections, Host-resolved authority and sealed Program/execution evidence contracts, shared execution-plan budget admission, and the selection-only declaration dialect; Desk methodology and the control research program remain with their existing owners",
       "defined_by": [
@@ -2243,6 +2284,7 @@
       }
     },
     "portfolio inputs": {
+      "description": "Portfolio inputs adapt signed scores, tradability, observed execution availability, session marks and benchmarks so Portfolio studies can assemble aligned, identity-bound input surfaces from their producers.",
       "owner": "alphalattice.capabilities.portfolio_inputs",
       "covers": "producer-neutral signed-score consumer contracts and execution-event projection, causal decision-time tradability and observed execution-availability surfaces with their publication/readback, session-mark input authority adaptation, and local benchmark source binding/construction/storage; strategy and book decisions remain with portfolio research",
       "defined_by": [
@@ -2354,6 +2396,7 @@
       }
     },
     "product Host composition": {
+      "description": "The product Host composition assembles a workspace's application owners into the Local Web Host and manages their shared lifecycle so the served research interface uses one workspace session.",
       "covers": "the served product composition for a workspace: constructing its application session and operation owners, wiring their routes into the local Web service, publishing and removing live client discovery, and starting and closing the Host and its owned components; authenticated reuse and serving instance/process/start-time provenance through the existing Activity observer; Windows attached retrieval-child Job lifetime, owned by its CLI parent",
       "owner": "alphalattice.control.product_host",
       "defined_by": [
@@ -3625,6 +3668,7 @@
       }
     },
     "alpha model capability": {
+      "description": "The Alpha model capability validates installed numerical recipes and executes fitting and prediction on Host-bound arrays so Alpha research can use deterministic estimators under recorded numerical policies.",
       "covers": "deterministic model-adapter recipes, search domains, learned estimator content, fit provenance and prediction contracts; installed and declared adapter catalogs, implementation checks, scaffold and bounded numerical execution services",
       "owner": "alphalattice.capabilities.alpha_modeling",
       "defined_by": [
@@ -4093,6 +4137,7 @@
       ]
     },
     "portfolio path simulation": {
+      "description": "Portfolio path simulation executes supplied targets or holds on aligned market inputs and evaluates the resulting return and cost paths so Portfolio studies share one causal execution calculation.",
       "covers": "causal Portfolio path simulation contracts and arithmetic: fill and failed-fill execution, holdings and cash drift, carried book and optimizer-reference state, rebalance clocks and reference marks, passive holds, path metrics, transaction-cost lanes, benchmark and bootstrap calculations",
       "owner": "alphalattice.capabilities.portfolio_backtesting",
       "defined_by": [
@@ -4306,8 +4351,9 @@
       ]
     },
     "evaluation workflows": {
+      "description": "Evaluation workflows define scenarios, observations and graders so product routes can be walked and checked against declared behavior.",
       "owner": "devtools.evaluation",
-      "covers": "evaluation scenarios, validated replay inputs and fixture acquisition receipts, deterministic and model-free baseline walks, graders, issued native tool and CLI observations with result-less and resumed calls, and evaluation records; daily closure readiness from owner snapshots and final Goal/report/rendered-page fidelity including observed paginated numeric cells and the supplied closing link; committee evaluation participants use their own role sessions and staged admission receipts, with historical fixture adapters explicitly named; served scripted actors keep actual issued CLI and file tool receipts distinct from native execution and continue from their admitted PM verdict",
+      "covers": "evaluation scenarios, validated replay inputs and fixture acquisition receipts, deterministic and model-free baseline walks, graders, issued native tool and CLI observations with result-less and resumed calls, and evaluation records; daily closure readiness from owner snapshots and final Goal/report/rendered-page fidelity including observed paginated numeric cells and the supplied closing link; committee evaluation participants use their own role sessions and staged admission receipts, with historical fixture adapters explicitly named; served scripted actors keep actual issued CLI and file tool receipts distinct from native execution and continue from their admitted PM verdict; declared closure budgets bind issued lead calls and Host mutation requests in the existing daily walker and fidelity grader; normal-host native launches reuse child admission, native archives and recorded PID/birth ownership without adding a containment Job",
       "defined_by": [
         "devtools.evaluation.forms",
         "devtools.evaluation.committee",
@@ -4333,6 +4379,7 @@
       }
     },
     "verified model packs": {
+      "description": "Verified model packs pair content-checked local model files with reusable reports and leased sessions so retrieval can avoid repeated loading while keeping active sessions valid.",
       "owner": "alphalattice.kernel.knowledge",
       "covers": "VerifiedPackRegistry, verified model-pack proof/report entries and lease-aware model-session pools",
       "defined_by": [
@@ -4393,6 +4440,7 @@
       }
     },
     "source AST memo": {
+      "description": "The source AST memo reuses a module's syntax digest and import list by source-byte hash and package context so source identity avoids parsing unchanged input again.",
       "owner": "alphalattice.kernel.shared_kernel",
       "covers": "source-byte and relative-package keyed parsed syntax/import memo used by source identity",
       "defined_by": [
@@ -4466,6 +4514,7 @@
       }
     },
     "person question": {
+      "description": "A person question is a catalogued request for the person's decision, carrying its bilingual wording, scope, and reply route so an answer can name exactly which decision is being asked.",
       "covers": "registered person-question codes, bilingual words, reply metadata and code-only asked/answered observations projected from the existing ledger; authority stays with the existing decision owners; current observed instances project per code and Goal, else session, without granting authority",
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
@@ -4474,6 +4523,7 @@
       "folds_in": []
     },
     "message catalog": {
+      "description": "The message catalog maps registered message identifiers and checked English aliases to locale text so CLI and Workbench readers render the same registered wording.",
       "owner": "alphalattice.interface.local_application",
       "covers": "stable semantic message ids, locale forms and named arguments; the registry guard holds the contract before owner migrations",
       "defined_by": [
@@ -4648,6 +4698,7 @@
       "projection_bridge": "src/alphalattice/interface/local_application/message_catalog.cjs"
     },
     "terminal read representation": {
+      "description": "A terminal read representation is the selected bounded view of a CLI answer, keeping complete owner JSON available through a saved file or full read so large answers remain usable in the terminal.",
       "owner": "alphalattice.interface.local_application",
       "covers": "the versioned bounded summary of a CLI read; exact owner answers remain available by saved file or a read-only pointer",
       "defined_by": [
@@ -4671,15 +4722,17 @@
       "guard": "pyproject.toml Ruff T20/TID251 through the pre-commit hook"
     },
     "goal time profile": {
+      "description": "A Goal time profile is a windowed view of observed RPC and stage-phase occupancy that shows provenance and coverage gaps so elapsed work can be inspected without inferring an unrecorded causal path.",
       "owner": "alphalattice.control.observation_runtime",
       "covers": "read-only windowed RPC and stage-phase occupancy, coverage gaps and provenance; no causal path without recorded links",
       "defined_by": [
         "alphalattice.control.observation_runtime.profile"
       ],
       "folds_in": [],
-      "note": "Host composition is its consumer; Task Control retains phase ownership and the tuple reader contract. TaskHeartbeatReader retains canonical runtime origins for this consumer; phase readers deduplicate origins by parent directory."
+      "note": "Host composition and the release budget projection consume its stage and coverage values; Task Control retains phase ownership and the tuple reader contract. TaskHeartbeatReader retains canonical runtime origins for this consumer; phase readers deduplicate origins by parent directory."
     },
     "package import contract": {
+      "description": "The package import contract declares allowed deferred imports and cross-owner private links so static checks can enforce registered module boundaries.",
       "covers": "build-time module deferral declarations, explained function imports, a non-growing retained-site census and exact cross-owner private equality fences; internal private links stay with their owner",
       "owner": "devtools.architecture",
       "legacy_lazy_imports": "config/import-hygiene.json",
@@ -4695,6 +4748,7 @@
       "description": "Keeps function import deferrals explicit and cross-owner private references fenced so the structural guard refuses new dependency shortcuts."
     },
     "goal": {
+      "description": "A Goal is the revisioned ledger record of a research objective, its work, and completion checks so the Host can follow progress and retain its report.",
       "owner": "alphalattice.control.product_host.composition",
       "covers": "the existing revisioned Goal ledger, exact-reference completion offers, request-scoped sealing and report receipts that pass verified reference results through; judgments remain the agent's",
       "defined_by": [
@@ -4713,6 +4767,7 @@
       "note": "Existing wire contracts and storage retain their owners; no identity or scientific role moves."
     },
     "offered_request": {
+      "description": "An offered request is a named continuation supplied by an owner's answer, keeping nested subjects and aliases distinguishable so a caller can select the request to send next.",
       "owner": "alphalattice.interface.local_application",
       "covers": "Named requests an owner answer offers, including distinct nested subjects and sendable aliases.",
       "defined_by": [
@@ -4734,6 +4789,7 @@
       "note": "The CLI contract retains its imported collector binding; its legacy operation-only consumer prefers an existing Goal submit form while explicit actions retain all offers. Collection does not admit or execute a request."
     },
     "local_client_error": {
+      "description": "A local client error carries a bounded product failure and its document, reference or recovery context so callers can present a useful refusal.",
       "owner": "alphalattice.interface.local_application",
       "covers": "Bounded client failures and their structured document, reference and recovery context.",
       "defined_by": [
@@ -4746,6 +4802,7 @@
       "note": "The client retains its public imported type binding; its callers receive the same error class and fields."
     },
     "test execution size": {
+      "description": "Test execution size assigns each test a registered size and declaring owner so collection can reject conflicts and select the requested test lane.",
       "owner": "devtools.architecture",
       "covers": "registered test size, declaring owner and collection-time conflicts",
       "defined_by": [

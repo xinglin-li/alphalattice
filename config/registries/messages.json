@@ -2,6 +2,15 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "feature.input.case_store_unavailable": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The data decision catalog cannot be read. Read the offered workspace view and retained backups; restore an intact workspace before retrying. Nothing was changed.",
+        "zh-CN": "无法读取数据决策目录。请读取提供的工作区视图并检查保留的备份，恢复完整的工作区后重试。本次读取未作任何更改。"
+      }
+    },
     "feature.plan.document_invalid": {
       "owner": "alphalattice.control.product_host",
       "kind": "MESSAGE",

@@ -501,6 +501,10 @@ def refusal_words(
     }
     if found.get("message_id"):
         words["detail"] = worded(found["message_id"])
+    if "next_requests" in found:
+        words["next_requests"] = {
+            name: dict(request) for name, request in found["next_requests"].items()
+        }
     if base == "task_control.queue_full":
         words["next_requests"] = {"capacity": {"operation": "CPU_BUDGET_SHOW"}}
     if base in NETWORK_ACCESS_REFUSALS:

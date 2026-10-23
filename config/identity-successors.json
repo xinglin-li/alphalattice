@@ -14575,6 +14575,27 @@
    "successor": "959d0dccd313a31a5f48adb7eb5129efca7cab084fc2728bfa6710b06c2bd1f7",
    "change": "Daily update recovery: own-move resume, cancel compensation and proven orphan release",
    "reason": "A stopped resume revalidates the move it recorded itself, a cancel puts back the membership its half-done step changed, and a plan releases an older unowned bind only when the cancelled Task's own plan proves ownership; reviewed independently, red on the previous code and green after, including on a workspace made by the released 0.2.3."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "959d0dccd313a31a5f48adb7eb5129efca7cab084fc2728bfa6710b06c2bd1f7",
+   "successor": "4be30ce9472ac32fb851b3f6c37d3e95db9f147a5fca0e375539d06592fcd02a",
+   "change": "Unavailable decision-catalog reads refuse by name",
+   "reason": "A decision-catalog read whose case store is missing now refuses by name with a way to recover instead of failing untyped; the positive read path, its queries and the seal verification are unchanged, reviewed independently and red on the previous code."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "5534d63b94095ab283368c2e2c22a0ae794f72f59da0a6e33ac90e844d76a7cb",
+   "successor": "7fb0433764693644f41d217113920c5d5d8ea8c473108880a911f821d3db3f82",
+   "change": "Unavailable decision-catalog reads refuse by name",
+   "reason": "A decision-catalog read whose case store is missing now refuses by name with a way to recover instead of failing untyped; the positive read path, its queries and the seal verification are unchanged, reviewed independently and red on the previous code."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "51272978ba405711330beebc5ee5ef6ad836adcfe7aa38293f1f576a2baac091",
+   "successor": "00243c1acced70a0aa7c136ea5ac3acc0fa16a2caccb90f9eb53233956876f8b",
+   "change": "Unavailable decision-catalog reads refuse by name",
+   "reason": "A decision-catalog read whose case store is missing now refuses by name with a way to recover instead of failing untyped; the positive read path, its queries and the seal verification are unchanged, reviewed independently and red on the previous code."
   }
  ]
 }
