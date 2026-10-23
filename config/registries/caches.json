@@ -8,12 +8,12 @@
       "defined_by": [
         "src/devtools/evaluation/golden_workspaces.py::golden_run"
       ],
-      "definition_line": 27,
-      "key": "canonical invocation basetemp shared by xdist workers",
-      "dependency_coverage": "Root descriptor only; served recipe identity remains the legacy adapter's until the input-identity cut",
-      "invalidation_rule": "Context reset at invocation teardown; a new invocation has a fresh root",
-      "size_bound": "1 descriptor",
-      "bound_scope": "per worker's active invocation context; no copied payload in this memo",
+      "definition_line": 29,
+      "key": "canonical invocation root; managed input SHA-256 locators use 16 hex characters with the complete key checked in complete.json before reuse",
+      "dependency_coverage": "Root descriptor plus each managed current-checkout acquisition tree's CHECKOUT raw-content manifest and recipe/external-file/parent keys; foreign-source/runtime attestation follows separately",
+      "invalidation_rule": "Fresh input manifest per acquisition tree; raw-content recheck before cold publication; served payloads require a closed writer and validated immutable manifest before writable private copying; root context resets at invocation teardown",
+      "size_bound": "1 root descriptor and 1 manifest per active acquisition tree",
+      "bound_scope": "per worker's active invocation/acquisition tree; no copied payload or persistent digest memo",
       "eviction": "context reset",
       "safe_to_drop": "Only when the invocation and its fixture readers have closed; fixture cleanup retains its existing owner",
       "location": {

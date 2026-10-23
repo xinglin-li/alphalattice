@@ -5,13 +5,13 @@
   "nouns": {
     "test golden workspace": {
       "description": "Owns one invocation's shared product-written fixtures and independent consumer copies.",
-      "covers": "one run's product-written fixture acquisition, shared build ownership and independent consumer copies; input identity and persistent admission follow in later approved cuts",
+      "covers": "one run's fixture acquisition, shared build ownership, declared input manifests, validated immutable payloads and closed no-follow writable consumer copies; controller leases, runtime attestation and persistence follow separately",
       "owner": "devtools.evaluation",
       "defined_by": [
         "devtools.evaluation.golden_workspaces"
       ],
       "folds_in": [],
-      "note": "Consumers: the canonical pytest session golden_cache and project-discovery fixtures, explorer_host's served golden adapter and the existing session_workspace OS-lock consumer. This cut exposes only invocation-scoped sharing, no persistent store or cached test result."
+      "note": "Consumers: the canonical pytest session golden_cache and project-discovery fixtures, explorer_host's served golden adapter and the existing session_workspace OS-lock consumer. The served adapter supplies the product-specific Host and writer-lease admission to the generic payload owner; evaluation imports no product implementation. It seals closed payloads and validates private writable copies through this owner. Managed current-checkout acquisitions bind full CHECKOUT content, recipe and external files, deliberately including unrelated source/tests/guides. Foreign-source attestation is separate; foreign/native legacy naming remains until its runtime/adapter cut. No persistent store or cached test result is introduced."
     },
     "book observation parts": {
       "description": "Book observation parts store complete observation snapshots as shared immutable pieces so Portfolio ledgers can reuse unchanged source content while preserving each snapshot's identity.",
