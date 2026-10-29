@@ -115,27 +115,43 @@ class SessionUsage:
         return tuple(_model_usage(model, rows[model]) for model in sorted(rows))
 
 
-def session_root(host: str) -> Path:
+def session_root(
+    host: str, environ: Mapping[str, str] | None = None, *, home: str | Path | None = None
+) -> Path:
     """Where the host keeps its session files: the only place the reader opens one.
 
     Args:
         host: ``claude-code`` or ``codex``.
+        environ: The environment whose home applies; this process's own when None.
+        home: An explicitly owned home, taking precedence over the environment.
 
     Returns:
         The root directory; Claude Code honours ``CLAUDE_CONFIG_DIR`` and Codex ``CODEX_HOME``.
     """
+    environ = os.environ if environ is None else environ
     if host == HOST_CLAUDE_CODE:
-        return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "projects"
-    return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "sessions"
+        return (
+            Path(home or environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "projects"
+        )
+    return Path(home or environ.get("CODEX_HOME") or Path.home() / ".codex") / "sessions"
 
 
-def admitted_session_file(path: object, *, host: str, stem: str) -> Path | None:
+def admitted_session_file(
+    path: object,
+    *,
+    host: str,
+    stem: str,
+    environ: Mapping[str, str] | None = None,
+    home: str | Path | None = None,
+) -> Path | None:
     """The session file a hook named, when it is that host's file of that session or agent.
 
     Args:
         path: The path the hook's payload carried.
         host: The host whose session root admits it.
         stem: The file name the session or agent id gives it, without ``.jsonl``.
+        environ: The environment whose home applies; this process's own when None.
+        home: The same explicitly owned home used to discover this file.
 
     Returns:
         The resolved file, or ``None`` for another name, a link, a path outside the root or
@@ -150,27 +166,28 @@ def admitted_session_file(path: object, *, host: str, stem: str) -> Path | None:
         if not candidate.is_absolute() or candidate.is_symlink():
             return None
         resolved = candidate.resolve()
-        root = session_root(host).resolve()
+        root = session_root(host, environ, home=home).resolve()
     except (OSError, RuntimeError, ValueError):
         return None
     return resolved if resolved.is_relative_to(root) and resolved.is_file() else None
 
 
-def codex_session_file(thread_id: str) -> Path | None:
+def codex_session_file(thread_id: str, *, home: str | Path | None = None) -> Path | None:
     """The newest Codex rollout file of a thread, found by the id its name ends with.
 
     Args:
         thread_id: The Codex thread (a session or a native subagent).
+        home: The run's Codex home, when distinct from the reader's environment.
 
     Returns:
         The file, or ``None`` when the thread has none or the id is not a plain token.
     """
     if not 0 < len(thread_id) <= 128 or not all(c.isalnum() or c == "-" for c in thread_id):
         return None
-    files = sorted(session_root(HOST_CODEX).glob(f"*/*/*/rollout-*{thread_id}.jsonl"))
+    files = sorted(session_root(HOST_CODEX, home=home).glob(f"*/*/*/rollout-*{thread_id}.jsonl"))
     if not files:
         return None
-    return admitted_session_file(str(files[-1]), host=HOST_CODEX, stem=files[-1].stem)
+    return admitted_session_file(str(files[-1]), host=HOST_CODEX, stem=files[-1].stem, home=home)
 
 
 FIRST_RECORD_BYTES = 1_048_576
@@ -186,7 +203,7 @@ class ThreadSpawn:
     agent_role: str | None
 
 
-def codex_thread_spawn(thread_id: str) -> ThreadSpawn | None:
+def codex_thread_spawn(thread_id: str, *, home: str | Path | None = None) -> ThreadSpawn | None:
     """Which thread spawned a Codex thread, as the thread's own rollout first records it.
 
     Codex opens each rollout with its ``session_meta``; a native subagent's names
@@ -196,12 +213,13 @@ def codex_thread_spawn(thread_id: str) -> ThreadSpawn | None:
 
     Args:
         thread_id: The thread, by the id its rollout's name ends with.
+        home: The same owned home used for session discovery and admission.
 
     Returns:
         Its spawn; None for a thread with no rollout, one no thread spawned, or a first record
         past the bound, of another thread or of another shape.
     """
-    path = codex_session_file(thread_id)
+    path = codex_session_file(thread_id, home=home)
     if path is None:
         return None
     try:
@@ -230,7 +248,13 @@ def _codex_spawn_record(first: bytes, thread_id: str) -> ThreadSpawn | None:
     return ThreadSpawn(parent_thread_id=parent, agent_role=_text(spawn.get("agent_role")))
 
 
-def session_file(host: str, session_id: str, agent_id: str | None = None) -> Path | None:
+def session_file(
+    host: str,
+    session_id: str,
+    agent_id: str | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> Path | None:
     """A session's file, or one of its subagents', found by their ids where no hook names it.
 
     A command run inside a session knows the session and nothing else (V301), so the file is
@@ -242,6 +266,7 @@ def session_file(host: str, session_id: str, agent_id: str | None = None) -> Pat
         host: ``claude-code`` or ``codex``.
         session_id: The lead's session.
         agent_id: One of its subagents; the lead's own file when None.
+        environ: The environment whose home applies; this process's own when None.
 
     Returns:
         The selected Codex rollout or unique Claude file, or ``None`` when the ids or source
@@ -253,16 +278,22 @@ def session_file(host: str, session_id: str, agent_id: str | None = None) -> Pat
     if not all(0 < len(v) <= 128 and all(c.isalnum() or c in "-_" for c in v) for v in ids):
         return None
     if agent_id is not None:
-        parent = session_file(host, session_id)
+        parent = session_file(host, session_id, environ=environ)
         if parent is None:
             return None
         candidate = parent.parent / session_id / "subagents" / f"agent-{agent_id}.jsonl"
-        admitted = admitted_session_file(str(candidate), host=host, stem=f"agent-{agent_id}")
+        admitted = admitted_session_file(
+            str(candidate), host=host, stem=f"agent-{agent_id}", environ=environ
+        )
         return admitted if admitted == candidate else None
     files = {
         admitted
-        for candidate in session_root(host).glob(f"*/{session_id}.jsonl")
-        if (admitted := admitted_session_file(str(candidate), host=host, stem=session_id))
+        for candidate in session_root(host, environ).glob(f"*/{session_id}.jsonl")
+        if (
+            admitted := admitted_session_file(
+                str(candidate), host=host, stem=session_id, environ=environ
+            )
+        )
         is not None
         and admitted == candidate
     }
@@ -273,7 +304,9 @@ CLAUDE_METADATA_BYTES = 16_384
 """The bound for one Claude agent sidecar; no description or prompt leaves its read."""
 
 
-def claude_thread_spawn(session_id: str, agent_id: str) -> ThreadSpawn | None:
+def claude_thread_spawn(
+    session_id: str, agent_id: str, *, environ: Mapping[str, str] | None = None
+) -> ThreadSpawn | None:
     """Read an exactly named Claude child's direct-parent and specialist-role metadata.
 
     Claude Code writes ``agentType``, ``spawnDepth`` and an optional ``parentAgentId`` beside
@@ -285,6 +318,7 @@ def claude_thread_spawn(session_id: str, agent_id: str) -> ThreadSpawn | None:
     Args:
         session_id: The bound lead Session, never a path or role alias.
         agent_id: The exact native child id, as the lead's own Session directory names it.
+        environ: The environment whose home applies; this process's own when None.
 
     Returns:
         The direct-parent and explicit role tuple, or None for unavailable, invalid or
@@ -293,7 +327,7 @@ def claude_thread_spawn(session_id: str, agent_id: str) -> ThreadSpawn | None:
     if agent_id == session_id:
         return None
     try:
-        path = session_file(HOST_CLAUDE_CODE, session_id, agent_id)
+        path = session_file(HOST_CLAUDE_CODE, session_id, agent_id, environ=environ)
         if path is None:
             return None
         metadata = path.with_suffix(".meta.json")
@@ -321,7 +355,9 @@ def claude_thread_spawn(session_id: str, agent_id: str) -> ThreadSpawn | None:
     return ThreadSpawn(parent_thread_id=session_id, agent_role=role)
 
 
-def claude_children(session_id: str) -> tuple[str, ...]:
+def claude_children(
+    session_id: str, *, environ: Mapping[str, str] | None = None
+) -> tuple[str, ...]:
     """The children a Claude Code lead keeps under its own Session directory.
 
     Only ``<project>/<session>/subagents/agent-<id>.jsonl`` beside the lead's own file is
@@ -329,11 +365,12 @@ def claude_children(session_id: str) -> tuple[str, ...]:
 
     Args:
         session_id: The bound lead Session.
+        environ: The environment whose home applies; this process's own when None.
 
     Returns:
         The child ids in name order; none when the lead's file or its directory is missing.
     """
-    lead = session_file(HOST_CLAUDE_CODE, session_id)
+    lead = session_file(HOST_CLAUDE_CODE, session_id, environ=environ)
     if lead is None:
         return ()
     directory = lead.parent / session_id / "subagents"

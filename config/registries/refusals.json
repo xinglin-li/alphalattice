@@ -18526,6 +18526,14 @@
 }
 ]
 },
+"host_facts.observation_incomplete": {
+"owner": "devtools.evaluation",
+"category": "INVALID_ARGUMENT"
+},
+"host_facts.observed_at_without_offset": {
+"owner": "devtools.evaluation",
+"category": "INVALID_ARGUMENT"
+},
 "replay.receipt_binding": {
 "owner": "devtools.evaluation",
 "category": "INVALID_ARGUMENT"

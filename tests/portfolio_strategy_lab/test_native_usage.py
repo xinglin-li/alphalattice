@@ -877,6 +877,11 @@ def test_claude_children_are_listed_from_the_leads_own_directory_alone(tmp_path,
     for number in range(65):
         _write(config / f"projects/p/lead-session/subagents/agent-many{number}.jsonl", [])
     assert len(claude_children("lead-session")) == 67
+    # A run-owned config passed explicitly is read instead of the process's own root.
+    leg = tmp_path / "leg"
+    _write(leg / "projects/q/lead-session.jsonl", _lead_records())
+    _write(leg / "projects/q/lead-session/subagents/agent-z.jsonl", [])
+    assert claude_children("lead-session", environ={"CLAUDE_CONFIG_DIR": str(leg)}) == ("z",)
 
 
 @pytest.mark.parametrize("off", ["binding", "person", "unknown_control", "unreadable_control"])
