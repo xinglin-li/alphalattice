@@ -352,11 +352,13 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
     started = perf_counter()
     sys.path.insert(0, str(ROOT / "src"))
     try:
+        from devtools.architecture.moved_names import problems as moved_names
         from devtools.architecture.registries import census_check, private_test_growth, problems
         from devtools.architecture.test_sizes import validate_policy
     finally:
         sys.path.pop(0)
-    found = problems(ROOT, changed)
+    # A reference left at a moved name's old place, found before the rename lands.
+    found = problems(ROOT, changed) + moved_names(ROOT, staged=staged)
     if staged:
         found += census_check(ROOT, baseline=baseline)
     # The tests' ratchet against the registry this change started from: registering a new
