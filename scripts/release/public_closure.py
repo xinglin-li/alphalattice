@@ -444,7 +444,7 @@ def _installed_node(target: str, blobs: dict[str, bytes], public: set[str]) -> b
     return bool(name in declared and entry.get("version") == declared[name])
 
 
-def violations(manifest: dict, blobs: dict[str, bytes]) -> list[Reference]:
+def violations(manifest: dict, blobs: dict[str, bytes], readers=None) -> list[Reference]:
     """Refuse a PUBLIC source's dependency absent from the manifest's PUBLIC set.
 
     The caller supplies its manifest. No default private inventory or workspace is read.
@@ -455,7 +455,7 @@ def violations(manifest: dict, blobs: dict[str, bytes]) -> list[Reference]:
     files = set(blobs)
     produced = generated_outputs(blobs, public)
     failures = set()
-    for path in sorted(public):
+    for path in sorted(public if readers is None else public & readers):
         if path not in blobs:
             failures.add(Reference(path, 1, path, "PUBLIC_BLOB_MISSING"))
             continue

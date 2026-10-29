@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+import sys
 from collections import Counter
 from collections.abc import Mapping
 from enum import StrEnum
@@ -1295,6 +1296,32 @@ def content_store_absence_violations(sources: Mapping[str, str]) -> tuple[str, .
     return tuple(sorted(failures))
 
 
+def evaluation_imports(sources: Mapping[str, str], entry: str) -> list[tuple[str, int, str]]:
+    """Evaluation imports past its forms, stdlib, YAML and the `module:name` entry; dynamic ones."""
+    (module, _, name), failures = entry.partition(":"), []
+    for path, text in sources.items():
+        for node in ast.walk(ast.parse(text)):
+            names = [item.name for item in node.names] if isinstance(node, ast.Import) else []
+            if isinstance(node, ast.ImportFrom) and node.level:
+                failures += [(path, node.lineno, "outside package")] if node.level != 1 else []
+            elif isinstance(node, ast.ImportFrom) and not (
+                node.module == module and all(alias.name == name for alias in node.names)
+            ):
+                names = [node.module or ""]
+            for imported in names:
+                if not (
+                    imported.split(".")[0] in sys.stdlib_module_names | {"yaml"}
+                    or imported.startswith("devtools.evaluation.")
+                ):
+                    failures.append((path, getattr(node, "lineno", 0), imported))
+            if isinstance(node, ast.Call) and (
+                (isinstance(node.func, ast.Name) and node.func.id in {"__import__", "eval", "exec"})
+                or (isinstance(node.func, ast.Attribute) and node.func.attr == "import_module")
+            ):
+                failures.append((path, node.lineno, "dynamic import"))
+    return failures
+
+
 __all__ = [
     "ArtifactAuthorityRegistry",
     "GenerationModel",
@@ -1314,6 +1341,7 @@ __all__ = [
     "discover_store_surface",
     "duckdb_access_mode_violations",
     "empty_python_package_directories",
+    "evaluation_imports",
     "import_contract_violations",
     "load_artifact_authority_registry",
     "load_package_architecture_registry",
