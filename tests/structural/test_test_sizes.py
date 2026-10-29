@@ -149,3 +149,31 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
             node += "::test_coverage_names_the_owner_a_request_escapes"
             expected = ("medium", scope.replace("/", "."), scope + "/*", 60)
             assert classify(node, (), policy) == expected
+
+
+def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch):
+    """A per_file scan runs scoped unless its own file or input changed; a cross-file check runs
+    when its inputs change; an undeclared structural test and nightly stay whole."""
+    from devtools.architecture.test_sizes import changed_paths, included, scoped
+
+    scan, closure = "tests/structural/test_scan.py::test_a", "tests/structural/test_closure.py::t"
+    reason = {"owner": "tests.structural", "reason": "declared"}
+    policy = {
+        "mandatory": ["tests/structural/*"],
+        "reach": [
+            {"pattern": scan, "per_file": True, "inputs": ["src/rules.py"], **reason},
+            {"pattern": closure, "inputs": ["config/release/*", "+*"], **reason},
+        ],
+    }
+    listing = tmp_path / "changed.log"
+    listing.write_text("M\tsrc/a.py\nA\tsrc/new.py\n", encoding="utf-8")
+    monkeypatch.setenv("ALPHALATTICE_CHANGED_PATHS", str(listing))
+    changed = changed_paths()
+    assert changed == {"src/a.py", "src/new.py", "+src/new.py"}
+    assert scoped(scan, policy, changed) and included(scan, "medium", "fast", policy, changed)
+    assert not scoped(scan, policy, changed | {"src/rules.py"})
+    assert included(closure, "large", "merge", policy, changed)
+    assert not included(closure, "large", "merge", policy, {"src/a.py"})
+    assert not included(closure, "medium", "fast", policy, changed)
+    assert included("tests/structural/test_other.py::t", "medium", "merge", policy, changed)
+    assert included(closure, "large", "nightly", policy, None) and not scoped(scan, policy, None)

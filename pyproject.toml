@@ -178,5 +178,6 @@ markers = [
     "medium: registered local integration test size",
     "large: registered workflow or expensive test size; candidate and nightly obligation",
     "untyped_failure: the test makes an operation fail without a product code on purpose; the answer check lets it pass (V449)",
+    "per_file: a structural scan scoped to the changed files; it reads source only through scanned()",
     "real_evidence: reads a dogfood evidence root declared in the private evidence-root registry; deselected by the routed gate and run explicitly by scripts/check_playpen.py --evidence",
 ]

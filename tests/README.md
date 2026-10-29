@@ -112,6 +112,17 @@ use the owning checkout.
    integration set deselects it otherwise.
 5. Tests run offline (`ALPHALATTICE_NETWORK_DISABLED=1`), and their temporary data
    is released when the work is handed back.
+6. `tests/structural` reads source as text, which import selection cannot see, so
+   every structural test runs in every lane unless it declares its reach in
+   `config/registries/test-sizes.json`.
+   - A `per_file` scan reads repository Python only through `scanned()` or
+     `in_scope()` (tests/structural/source_shape_samples.py). The fast guard and the
+     merge lane run it over the changed files only. A read outside that scope fails
+     the test, and a change to the test's own file or a declared input runs it whole.
+   - A cross-file check declares `inputs`, and the merge lane runs it when one of
+     them changes. `+*` matches any added or deleted file.
+   - Nightly and candidate runs keep every structural test whole, so a wrong
+     declaration surfaces within a day.
 
 ## Packages
 

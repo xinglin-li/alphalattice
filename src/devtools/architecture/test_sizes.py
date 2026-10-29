@@ -1,6 +1,7 @@
 """Registered test sizes consumed by pytest collection and the canonical gate."""
 
 import json
+import os
 from collections.abc import Iterable
 from fnmatch import fnmatchcase
 from math import isfinite
@@ -40,8 +41,18 @@ def validate_policy(value: Any) -> dict[str, Any]:
         not isinstance(value["mandatory"], list) or "tests/structural/*" not in value["mandatory"]
     ):
         raise ValueError("test_size.mandatory_missing")
+    _reach(value)
     _limits(value)
     return value
+
+
+def _reach(policy: dict[str, Any]) -> None:
+    """Refuse a reach row outside tests/structural, without a reason, or declaring nothing."""
+    for row in policy.get("reach", []):  # a structural node's reach: per_file or declared inputs
+        if not (row.get("pattern", "").startswith("tests/structural/") and row.get("reason")) or (
+            row.get("per_file") is not True and not row.get("inputs")
+        ):
+            raise ValueError("test_size.reach_invalid:" + str(row.get("pattern")))
 
 
 def _limits(policy: dict[str, Any]) -> None:
@@ -107,8 +118,48 @@ def classify(
     return str(size), str(rule["owner"]), str(origin), float(seconds)
 
 
-def included(nodeid: str, size: str, lane: str, policy: dict[str, Any]) -> bool:
-    """Mandatory holders always run; each lane otherwise admits its declared sizes."""
+def changed_paths() -> frozenset[str] | None:
+    """A scoped run's changed paths from its `git diff --name-status --no-renames` listing,
+    an added or deleted one also as `+path`; None outside a scoped run."""
+    named = os.environ.get("ALPHALATTICE_CHANGED_PATHS")
+    rows = [r.split("\t") for r in Path(named).read_text("utf-8").splitlines()] if named else []
+    found = {f"+{r[-1]}" for r in rows if r[0] in {"A", "D"}} | {r[-1] for r in rows if r[0]}
+    return frozenset(found) if named else None
+
+
+def reach(nodeid: str, policy: dict[str, Any]) -> dict[str, Any] | None:
+    """The declared reach of a structural node, which a scoped merge or fast run honours."""
+    return _rule(nodeid.replace("\\", "/"), policy.get("reach", []))
+
+
+def _triggered(nodeid: str, row: dict[str, Any], changed: frozenset[str]) -> bool:
+    own = nodeid.replace("\\", "/").split("::")[0]  # its own file or a declared input changed
+    return own in changed or any(fnmatchcase(p, g) for p in changed for g in row.get("inputs", ()))
+
+
+def scoped(nodeid: str, policy: dict[str, Any], changed: frozenset[str] | None) -> bool:
+    """A per_file node scans only the changed files, unless its own file or an input changed."""
+    row = reach(nodeid, policy) if changed is not None else None
+    return bool(
+        row and row.get("per_file") is True and not _triggered(nodeid, row, changed or frozenset())
+    )
+
+
+def included(
+    nodeid: str,
+    size: str,
+    lane: str,
+    policy: dict[str, Any],
+    changed: frozenset[str] | None = None,
+) -> bool:
+    """Mandatory holders always run, except that a scoped merge run keeps a reach-declared node
+    only when it is per_file or triggered, and the fast lane keeps only scoped per_file nodes;
+    each lane otherwise admits its declared sizes."""
+    row = reach(nodeid, policy) if changed is not None else None
+    if lane == "fast":
+        return scoped(nodeid, policy, changed)
+    if lane == "merge" and row:
+        return row.get("per_file") is True or _triggered(nodeid, row, changed or frozenset())
     return (
         not lane
         or any(fnmatchcase(nodeid, p) for p in policy["mandatory"])

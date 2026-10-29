@@ -37,7 +37,7 @@ from devtools.architecture.structural import (
     load_storage_authority_registry,
     table_writer_violations,
 )
-from devtools.architecture.test_sizes import classify, included, load_policy
+from devtools.architecture.test_sizes import changed_paths, classify, included, load_policy, scoped
 
 REGISTRIES = Path("config") / "registries"
 _CLASSES = frozenset({"METHOD", "EXECUTION", "LIMIT"})
@@ -1342,10 +1342,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 1 if found else 0
 
 
+CHANGED = pytest.StashKey[frozenset[str] | None]()  # a scoped run's changed paths, read once
+
+
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
 
     lane = os.environ.get("ALPHALATTICE_TEST_LANE", "")
+    changed = changed_paths() if lane in {"merge", "fast"} else None
+    empty = pytest.mark.skip(reason="the change holds no Python file for this per_file scan")
+    python = any(path.endswith(".py") for path in changed or ())
+    config.stash[CHANGED] = changed
     kept: list[Any] = []
     omitted: list[Any] = []
     seen: set[str] = set()
@@ -1376,7 +1383,11 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
                     ("test_timeout_seconds", seconds),
                 ]
             )
-            (kept if included(item.nodeid, size, lane, policy) else omitted).append(item)
+            if scoped(item.nodeid, policy, changed):
+                item.add_marker("per_file")  # it reads only the changed files, through scanned()
+                if not python:
+                    item.add_marker(empty)
+            (kept if included(item.nodeid, size, lane, policy, changed) else omitted).append(item)
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error
     if lane:

@@ -356,3 +356,18 @@ def tracked_python_files(root: Path) -> tuple[Path, ...]:
         ).stdout.splitlines()
         if value and (root / value).is_file()
     )
+
+
+SCOPE: frozenset[str] | None = None  # set by the conftest for a scoped per_file node
+
+
+def in_scope(paths):
+    """All of these files, or in a scoped per_file node only the changed ones."""
+    return tuple(
+        paths if SCOPE is None else (p for p in paths if p.relative_to(ROOT).as_posix() in SCOPE)
+    )
+
+
+def scanned(root: Path, pattern: str = "*.py", *, recursive: bool = True) -> tuple[Path, ...]:
+    """The files a per_file scan reads: root's, or when scoped only the changed ones."""
+    return in_scope(sorted(root.rglob(pattern) if recursive else root.glob(pattern)))
