@@ -20,6 +20,17 @@ if TYPE_CHECKING:
 PROJECT_ROOT: ContextVar[Path | None] = ContextVar("pytest_project_root", default=None)
 
 
+def golden_runtime():
+    """Supply public OS drivers without importing the private explorer into pytest setup."""
+    import portalocker  # lazy: only contemporary golden counterfactuals need these drivers.
+    import psutil
+
+    from alphalattice.control.workspace_runtime.paths import resolve_confined
+    from devtools.evaluation import GoldenRuntime
+
+    return GoldenRuntime.from_os(psutil, portalocker, resolve_confined)
+
+
 def configure_temporary_roots(checkout: Path, basetemp: str | None) -> None:
     """Refuse checkout temp before collection and confine the existing backup root."""
     if basetemp is not None:

@@ -13,7 +13,7 @@ from contextlib import AbstractContextManager, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,57 @@ class GoldenRuntime:
     birth: Callable[[int], float | None]
     held: Callable[[Path], bool]
     confined: Callable[[Path, str], Path]
+
+    @classmethod
+    def from_os(
+        cls,
+        processes: Any,
+        locking: Any,
+        confined: Callable[[Path, str], Path],
+    ) -> GoldenRuntime:
+        """Compose caller-owned OS drivers without product or private implementation imports."""
+
+        @contextmanager
+        def build_lock(
+            path: Path, *, shared: bool = False, blocking: bool = True, ready: Path | None = None
+        ) -> Iterator[bool | None]:
+            """Share complete entries; exclusively own an incomplete entry after releasing it."""
+            path = confined(payload_path(path.parent), path.name)
+            locker = locking.portalocker.Win32Locker() if os.name == "nt" else locking
+            nonblocking = locking.LockFlags(0) if blocking else locking.LOCK_NB
+            flags = locking.LOCK_SH if shared or ready is not None else locking.LOCK_EX
+            with path.open("a+b") as stream:
+                locker.lock(stream, flags | nonblocking)
+                held = True
+                try:
+                    complete = ready.is_file() if ready is not None else None
+                    if ready is not None and not complete:
+                        locker.unlock(stream)
+                        held = False
+                        locker.lock(stream, locking.LOCK_EX | nonblocking)
+                        held = True
+                        complete = ready.is_file()
+                    yield complete
+                finally:
+                    if held:
+                        locker.unlock(stream)
+
+        def birth(pid: int) -> float | None:
+            try:
+                return cast(float, processes.Process(pid).create_time())
+            except processes.NoSuchProcess:
+                return None
+            except processes.Error as error:
+                raise RuntimeError("golden controller birth is unverified") from error
+
+        def held(path: Path) -> bool:
+            try:
+                with build_lock(path, blocking=False):
+                    return False
+            except locking.AlreadyLocked:
+                return True
+
+        return cls(build_lock, birth, held, confined)
 
 
 @dataclass(frozen=True)

@@ -34,7 +34,7 @@ from devtools.evaluation.round_trip import (
 from devtools.evaluation.round_trip import (
     plan_admission_problem as observed_plan_admission_problem,
 )
-from tests.pytest_environment import configure_temporary_roots, project_scope
+from tests import pytest_environment as environment
 
 pytest_plugins = ["devtools.architecture.registries"]
 
@@ -42,7 +42,7 @@ pytest_plugins = ["devtools.architecture.registries"]
 @pytest.fixture(autouse=True)
 def project_discovery(tmp_path, golden_cache):
     """Every test scopes project discovery and rejects outside reads without changing cwd."""
-    with project_scope(tmp_path, golden_cache):
+    with environment.project_scope(tmp_path, golden_cache):
         yield
 
 
@@ -50,7 +50,11 @@ def project_discovery(tmp_path, golden_cache):
 def golden_cache(tmp_path_factory):
     """Workers bind acquisition and discovery to the same invocation, never another run."""
     # Old-source counterfactuals retain their original per-worker discovery scope.
-    with getattr(evaluation, "golden_run", nullcontext)(tmp_path_factory.getbasetemp()) as root:
+    kwargs = {}
+    if hasattr(evaluation, "GoldenRuntime"):
+        kwargs.update(runtime=environment.golden_runtime(), controller=False)
+    base = tmp_path_factory.getbasetemp()
+    with getattr(evaluation, "golden_run", nullcontext)(base, **kwargs) as root:
         yield root
 
 
@@ -406,7 +410,7 @@ def pytest_configure(config: pytest.Config) -> None:
     """Refuse checkout temp before collection; keep the workers' longest-first queue."""
     checkout = Path(__file__).resolve().parents[1]
     try:
-        configure_temporary_roots(checkout, config.getoption("basetemp"))
+        environment.configure_temporary_roots(checkout, config.getoption("basetemp"))
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error
     if (
@@ -443,6 +447,11 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     """
     if hasattr(session.config, "workerinput") or session.config.option.collectonly:
         return
+    if factory := getattr(evaluation, "golden_controller", None):
+        session.config._golden_controller = factory(
+            session.config._tmp_path_factory.getbasetemp(), runtime=environment.golden_runtime()
+        )
+        session.config._golden_controller.__enter__()
     checkout = Path(__file__).resolve().parents[1]
     command = [sys.executable, str(checkout / "scripts/build_local_web_ui.py"), "--product"]
 
@@ -521,6 +530,8 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """The main process merges what this run measured into the recorded seconds."""
+    if controller := getattr(session.config, "_golden_controller", None):
+        controller.__exit__(None, None, None)
     if os.environ.get(_WORKER) or not _measured:
         return
     merged = _recorded_durations()

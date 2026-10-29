@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from devtools.evaluation.golden_workspaces import build_lock
+from tests.pytest_environment import golden_runtime
 
 
 def _files(root: Path) -> dict[str, str]:
@@ -46,7 +46,7 @@ def session_workspace(
     target = cache / name
     record = target / "complete.json"
     started = time.perf_counter()
-    with build_lock(cache / f"{name}.lock"):
+    with golden_runtime().lock(cache / f"{name}.lock"):
         built = not target.exists()
         if built:
             target.mkdir()
