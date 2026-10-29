@@ -2415,7 +2415,7 @@
     },
     "product Host composition": {
       "description": "The product Host composition assembles a workspace's application owners into the Local Web Host and manages their shared lifecycle so the served research interface uses one workspace session.",
-      "covers": "the served product composition for a workspace: constructing its application session and operation owners, wiring their routes into the local Web service, publishing and removing live client discovery, and starting and closing the Host and its owned components; authenticated reuse and serving instance/process/start-time provenance through the existing Activity observer; Windows attached retrieval-child Job lifetime, owned by its CLI parent",
+      "covers": "the served product composition for a workspace: constructing its application session and operation owners, wiring their routes into the local Web service, publishing and removing live client discovery, and starting and closing the Host and its owned components; authenticated reuse and serving instance/process/start-time provenance through the existing Activity observer; Windows attached retrieval-child Job lifetime, owned by its CLI parent; detached refusal launch_context reports numeric Win32 error and current Job limit flags, with null for unverified facts",
       "owner": "alphalattice.control.product_host",
       "defined_by": [
         "alphalattice.control.product_host.composition.entry",

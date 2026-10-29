@@ -422,6 +422,7 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
     if out.startswith("{"):
         refusal = json.loads(out)
         assert refusal["failure_code"] == "local_web.detached_breakaway_denied"
+        assert refusal["launch_context"] == {"win32_error": 5, "job_limit_flags": 0x2000}
         assert not connection.exists() and not list(temp.iterdir())
         return
     assert "Portfolio Research workspace:" in out and "outlives it" in out
@@ -489,8 +490,14 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
 
     monkeypatch.setattr(subprocess, "Popen", spawn)
     if os.name == "nt":
-        kernel = SimpleNamespace(IsProcessInJob=proof)
+
+        def limits(_job, _kind, output, _size, _length):
+            output._obj.BasicLimitInformation.LimitFlags = 0x2000
+            return escape != "unproven"
+
+        kernel = SimpleNamespace(IsProcessInJob=proof, QueryInformationJobObject=limits)
         monkeypatch.setattr(ctypes, "WinDLL", lambda *_a, **_k: kernel)
+        monkeypatch.setattr(ctypes, "get_last_error", lambda: 87 if escape == "unproven" else 0)
     taken = tmp_path / "taken"
     taken.mkdir()
     (taken / "stray.txt").write_text("not a workspace", encoding="utf-8")
@@ -511,6 +518,14 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
             assert log.read_text(encoding="utf-8").split() == ["False"]
     else:
         assert exited["failure_code"] == "local_web.detached_breakaway_denied"
+        assert exited["launch_context"] == {
+            "win32_error": 87 if escape == "unproven" else 0,
+            "job_limit_flags": None if escape == "unproven" else 0x2000,
+        }
+        context_schema = runtime_json("config/registries/refusals.json")["entries"][
+            exited["failure_code"]
+        ]["launch_context_schema"]
+        assert sorted(exited["launch_context"]) == sorted(context_schema["required"])
         panel = panel_host == "claude-code"
         assert exited["next_action"] == (
             "SERVE_FROM_THE_HOST_TERMINAL_PANEL" if panel else "SERVE_FROM_A_PERSON_OWNED_TERMINAL"

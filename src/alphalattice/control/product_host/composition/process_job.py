@@ -34,6 +34,28 @@ class _ExtendedLimits(ctypes.Structure):
 class ChildJob:
     """Keep the sole non-inheritable kill-on-close Job handle in its parent owner."""
 
+    @staticmethod
+    def current_limit_flags() -> int | None:
+        """Read this process's current Job limits; unknown facts remain unknown."""
+        try:
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.QueryInformationJobObject.argtypes = [
+                wintypes.HANDLE,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+            ]
+            kernel.QueryInformationJobObject.restype = wintypes.BOOL
+            limits = _ExtendedLimits()
+            if kernel.QueryInformationJobObject(
+                None, 9, ctypes.byref(limits), ctypes.sizeof(limits), None
+            ):
+                return int(limits.BasicLimitInformation.LimitFlags)
+        except OSError:
+            pass
+        return None
+
     def __init__(self, *, affinity: int | None = None, priority: int | None = None) -> None:
         """Create this parent's Job with its caller's optional affinity and priority."""
         self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)

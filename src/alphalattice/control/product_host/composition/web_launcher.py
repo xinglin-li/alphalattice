@@ -162,6 +162,7 @@ def _refusal(
     message_id: str | None = None,
     terminal_command: list[str] | None = None,
     terminal_routes: list[dict[str, str]] | None = None,
+    launch_context: dict[str, int | None] | None = None,
     cause: str | None = None,
     host_log: str | None = None,
 ) -> int:
@@ -178,6 +179,8 @@ def _refusal(
         answer["terminal_command"] = terminal_command
     if terminal_routes is not None:
         answer["terminal_routes"] = terminal_routes
+    if launch_context is not None:
+        answer["launch_context"] = launch_context
     if cause is not None:
         answer["cause"] = cause
     if host_log is not None:
@@ -286,10 +289,14 @@ def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[
     # Windows Popen exposes a native handle absent from the cross-platform stub.
     native: Any = child
     handle = ctypes.c_void_p(int(native._handle))
-    if not kernel32.IsProcessInJob(handle, None, ctypes.byref(in_job)) or in_job.value:
+    proved = kernel32.IsProcessInJob(handle, None, ctypes.byref(in_job))
+    error_code = ctypes.get_last_error() if not proved else 0
+    if not proved or in_job.value:
         child.terminate()
         child.wait()
-        raise PermissionError("local_web.detached_breakaway_denied")
+        error = PermissionError("local_web.detached_breakaway_denied")
+        error.winerror = error_code
+        raise error
     return child
 
 
@@ -327,7 +334,7 @@ def _detach(
     try:
         with log_path.open("wb") as log:
             host = _spawn_detached(command, log, key)
-    except PermissionError:
+    except PermissionError as error:
         from alphalattice.interface.local_application import client
 
         with suppress(client.LocalResearchClientError, OSError):
@@ -347,6 +354,12 @@ def _detach(
             str(worded(message_id)),
             "SERVE_FROM_THE_HOST_TERMINAL_PANEL" if panel else "SERVE_FROM_A_PERSON_OWNED_TERMINAL",
             message_id=message_id,
+            launch_context={
+                "win32_error": error.winerror if sys.platform == "win32" else None,
+                "job_limit_flags": ChildJob.current_limit_flags()
+                if sys.platform == "win32"
+                else None,
+            },
             terminal_routes=[
                 dict(route)
                 for route in runtime_json("config/registries/refusals.json")["entries"][

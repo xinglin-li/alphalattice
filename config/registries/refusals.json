@@ -18506,6 +18506,15 @@
 },
 "local_web.detached_breakaway_denied": {
 "owner": "alphalattice.control.product_host.composition",
+"launch_context_schema": {
+"type": "object",
+"required": ["win32_error", "job_limit_flags"],
+"properties": {
+"win32_error": {"type": ["integer", "null"]},
+"job_limit_flags": {"type": ["integer", "null"]}
+},
+"additionalProperties": false
+},
 "message_id": "host.start.breakaway_denied",
 "next_action": "SERVE_FROM_A_PERSON_OWNED_TERMINAL",
 "recovery": "terminal_routes are ordered and refer to the unchanged terminal_command; the agent chooses from its available tools, and legacy next_action remains compatible",
