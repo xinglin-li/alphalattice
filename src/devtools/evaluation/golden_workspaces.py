@@ -279,6 +279,10 @@ def copy_payload(
         if target.exists():
             raise RuntimeError("payload destination already exists")
         expected = json.loads((workspace.parent / "payload.json").read_bytes())
+        # A derived variant's own folder, under a parent that exists, never through a link.
+        staged.parent.mkdir(exist_ok=True)
+        if staged.parent.is_symlink() or staged.parent.is_junction():
+            raise RuntimeError("payload destination is reached through a link")
         staged.mkdir()
 
         def copy_one(path: Path) -> str:
