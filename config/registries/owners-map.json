@@ -5,13 +5,13 @@
   "nouns": {
     "test golden workspace": {
       "description": "Owns one invocation's shared product-written fixtures and independent consumer copies.",
-      "covers": "one run's fixture acquisition, shared build ownership, declared input manifests, validated immutable payloads and closed no-follow writable consumer copies; controller leases, runtime attestation and persistence follow separately",
+      "covers": "one invocation and its controller PID/birth, requested-key pins, shared key/payload readers, exclusive cold fill, input and payload manifests, private copies, and explicit-close/death retention evidence; runtime attestation and persistent publication follow separately",
       "owner": "devtools.evaluation",
       "defined_by": [
         "devtools.evaluation.golden_workspaces"
       ],
       "folds_in": [],
-      "note": "Consumers: the canonical pytest session golden_cache and project-discovery fixtures, explorer_host's served golden adapter and the existing session_workspace OS-lock consumer. The served adapter supplies the product-specific Host and writer-lease admission to the generic payload owner; evaluation imports no product implementation. It seals closed payloads and validates private writable copies through this owner. Managed current-checkout acquisitions bind full CHECKOUT content, recipe and external files, deliberately including unrelated source/tests/guides. Foreign-source attestation is separate; foreign/native legacy naming remains until its runtime/adapter cut. No persistent store or cached test result is introduced."
+      "note": "Consumers: the canonical pytest session golden_cache and project-discovery fixtures, explorer_host's served golden adapter and the existing session_workspace OS-lock consumer. The served adapter supplies the product-specific Host and writer-lease admission to the generic payload owner; evaluation imports no product implementation or OS-lock dependency. The adapter owns the portalocker primitive (Win32Locker OS-blocking on Windows) used by served goldens and session_workspace, while the generic owner provides no-follow payload paths. It seals closed payloads and validates private writable copies through this owner. Managed current-checkout acquisitions bind full CHECKOUT content, recipe and external files, deliberately including unrelated source/tests/guides. Foreign-source attestation is separate; foreign/native legacy naming remains until its runtime/adapter cut. No persistent store or cached test result is introduced. GoldenRuntime is the public evaluation callback bundle; explorer_host supplies confined paths, the existing OS lock and strict psutil birth reads (gone differs from unknown). Pytest owns controller start/close and workers pin through the shared index. Unknown liveness retains; no deletion authority or second store."
     },
     "book observation parts": {
       "description": "Book observation parts store complete observation snapshots as shared immutable pieces so Portfolio ledgers can reuse unchanged source content while preserving each snapshot's identity.",
@@ -432,7 +432,7 @@
       "folds_in": []
     },
     "native session": {
-      "description": "A native Session binds a Codex or Claude agent session and its roles to one workspace so the Host can associate research and observed usage with the right participants.",
+      "description": "Binds native host sessions and their configured research guidance to the workspace.",
       "covers": "an agent Session bound to the workspace and its members: the binding, each member's usage read from the host's own session files, which role each member is by the key evidence its file holds, and the wake, and one-use Workbench launches on each Session's first answer and its completed Goal, with the sealed Goal selector",
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
@@ -540,8 +540,7 @@
       "consumer_basis": {
         "source_commit": "814997a8aec5acb67770805c2b393bf76f3b5368",
         "scope": "Static import, path and string references to public consumers; matches do not prove runtime execution."
-      },
-      "description": "Binds native host sessions and their configured research guidance to the workspace."
+      }
     },
     "the first use": {
       "description": "The first use is a project's initial research Goal, whose completed workspace and forward strategy direct later dated requests to the daily update road.",
@@ -4752,7 +4751,7 @@
       "note": "Host composition and the release budget projection consume its stage and coverage values; Task Control retains phase ownership and the tuple reader contract. TaskHeartbeatReader retains canonical runtime origins for this consumer; phase readers deduplicate origins by parent directory."
     },
     "package import contract": {
-      "description": "The package import contract declares allowed deferred imports and cross-owner private links so static checks can enforce registered module boundaries.",
+      "description": "Keeps function import deferrals explicit and cross-owner private references fenced so the structural guard refuses new dependency shortcuts.",
       "covers": "build-time module deferral declarations, explained function imports, a non-growing retained-site census and exact cross-owner private equality fences; internal private links stay with their owner",
       "owner": "devtools.architecture",
       "legacy_lazy_imports": "config/import-hygiene.json",
@@ -4764,8 +4763,7 @@
         "devtools.architecture.structural"
       ],
       "folds_in": [],
-      "note": "Threat model: product and build-tool import statements and importlib.import_module aliases or __import__ with a literal name or module-level literal constant, including annotated constants. Positional and keyword names and explicit literal or constant package contexts are resolved; package initializers retain their relative context. Runtime-computed names, package contexts and argument expansions remain with the typed opaque extension/worker contracts or code review. The checker does not execute expressions or claim arbitrary reflection analysis. New function loads require a lazy reason on the opening import line or a counted retained site; direct module imports cannot be repeated inside a function.",
-      "description": "Keeps function import deferrals explicit and cross-owner private references fenced so the structural guard refuses new dependency shortcuts."
+      "note": "Threat model: product and build-tool import statements and importlib.import_module aliases or __import__ with a literal name or module-level literal constant, including annotated constants. Positional and keyword names and explicit literal or constant package contexts are resolved; package initializers retain their relative context. Runtime-computed names, package contexts and argument expansions remain with the typed opaque extension/worker contracts or code review. The checker does not execute expressions or claim arbitrary reflection analysis. New function loads require a lazy reason on the opening import line or a counted retained site; direct module imports cannot be repeated inside a function."
     },
     "goal": {
       "description": "A Goal is the revisioned ledger record of a research objective, its work, and completion checks so the Host can follow progress and retain its report.",

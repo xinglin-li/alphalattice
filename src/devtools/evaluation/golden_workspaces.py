@@ -2,19 +2,28 @@
 
 from __future__ import annotations
 
-import ctypes
 import hashlib
 import io
 import json
 import os
 import stat
-import sys
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+
+@dataclass(frozen=True)
+class GoldenRuntime:
+    """Caller-supplied OS ownership primitives, never product imports in evaluation."""
+
+    lock: Callable[..., AbstractContextManager[object]]
+    birth: Callable[[int], float | None]
+    held: Callable[[Path], bool]
+    confined: Callable[[Path, str], Path]
 
 
 @dataclass(frozen=True)
@@ -22,20 +31,93 @@ class GoldenRun:
     """The canonical invocation root shared by its workers, never a persistent cache."""
 
     root: Path
+    runtime: GoldenRuntime
+
+    def pin(self, key: str) -> None:
+        with self.runtime.lock(self.root / "index.lock"):
+            state = _run_state(self.root, self.runtime)
+            if (
+                state["closed"]
+                or self.runtime.birth(state["pid"]) != state["birth"]
+                or not self.runtime.held(self.root / "controller.lock")
+            ):
+                raise RuntimeError("golden controller is not live; start a fresh run")
+            if key not in state["keys"]:
+                state["keys"].append(key)
+                self.runtime.confined(self.root, "run.json").write_text(
+                    json.dumps(state), encoding="utf-8"
+                )
+
+
+def _run_state(root: Path, runtime: GoldenRuntime) -> dict[str, Any]:
+    state: dict[str, Any] = json.loads(runtime.confined(root, "run.json").read_bytes())
+    types = {"pid": int, "birth": float, "run": str, "keys": list, "closed": bool}
+    if (
+        not isinstance(state, dict)
+        or state.get("schema") != "alphalattice.golden-run.v1"
+        or any(type(state.get(key)) is not kind for key, kind in types.items())
+    ):
+        raise RuntimeError("golden controller record is unverified")
+    if (
+        state["run"] != str(payload_path(root))
+        or state["pid"] <= 0
+        or not 0 < state["birth"] < float("inf")
+        or not all(isinstance(key, str) for key in state["keys"])
+    ):
+        raise RuntimeError("golden controller identity is unverified")
+    return state
+
+
+@contextmanager
+def golden_controller(root: Path, *, runtime: GoldenRuntime) -> Iterator[Path]:
+    """Keep the controller's actual birth and requested keys until its explicit close or death."""
+    root = payload_path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    with runtime.lock(root / "controller.lock", blocking=False):
+        with runtime.lock(root / "index.lock"):
+            path = runtime.confined(root, "run.json")
+            if path.exists():
+                raise RuntimeError("golden controller root already used; choose a fresh run")
+            state = dict(
+                schema="alphalattice.golden-run.v1",
+                run=str(root),
+                pid=os.getpid(),
+                birth=runtime.birth(os.getpid()),
+                keys=[],
+                closed=False,
+            )
+            path.write_text(json.dumps(state), encoding="utf-8")
+        try:
+            yield root
+        finally:
+            with runtime.lock(root / "index.lock"):
+                state = _run_state(root, runtime)
+                state["closed"] = True
+                path.write_text(json.dumps(state), encoding="utf-8")
+
+
+def controller_reclaimable(root: Path, *, runtime: GoldenRuntime) -> bool:
+    """Retain busy or unprovable controllers; PID reuse never revives a closed owner."""
+    with runtime.lock(root / "index.lock"):
+        state = _run_state(root, runtime)
+        if runtime.held(root / "controller.lock"):
+            return False
+        return bool(state["closed"] or runtime.birth(state["pid"]) != state["birth"])
 
 
 _RUN: ContextVar[GoldenRun | None] = ContextVar("golden_run", default=None)
 
 
 @contextmanager
-def golden_run(root: Path) -> Iterator[Path]:
-    """Bind acquisition and project discovery to one controller-provided invocation root."""
-    run = GoldenRun(root.parent if os.environ.get("PYTEST_XDIST_WORKER") else root)
-    token = _RUN.set(run)
-    try:
-        yield run.root
-    finally:
-        _RUN.reset(token)
+def golden_run(root: Path, *, runtime: GoldenRuntime, controller: bool = True) -> Iterator[Path]:
+    """Bind acquisition and discovery to the controller's invocation and lifetime lease."""
+    run = GoldenRun(root.parent if os.environ.get("PYTEST_XDIST_WORKER") else root, runtime)
+    with golden_controller(run.root, runtime=runtime) if controller else nullcontext():
+        token = _RUN.set(run)
+        try:
+            yield run.root
+        finally:
+            _RUN.reset(token)
 
 
 def golden_root(fallback: Path) -> Path:
@@ -90,7 +172,8 @@ def _manifest(
     return contents
 
 
-def _long(path: Path) -> Path:
+def payload_path(path: Path) -> Path:
+    """Admit a no-follow payload or lock path using the platform's long-path spelling."""
     path = path.absolute()
     for ancestor in (path, *path.parents):
         try:
@@ -112,7 +195,7 @@ def seal_payload(
     workspace: Path, *, closed: Callable[[Path], AbstractContextManager[None]]
 ) -> None:
     """Seal only a closed, regular-file payload; immutable bytes never include outward links."""
-    workspace = _long(workspace)
+    workspace = payload_path(workspace)
     try:
         with closed(workspace):
             contents = _manifest(workspace, (".",), filtered=False)
@@ -139,7 +222,7 @@ def copy_payload(
     workspace: Path, target: Path, *, closed: Callable[[Path], AbstractContextManager[None]]
 ) -> None:
     """Validate and copy each immutable source byte once into a private writable destination."""
-    workspace, target = _long(workspace), _long(target)
+    workspace, target = payload_path(workspace), payload_path(target)
     staged = target.with_name(target.name + ".copying")
     try:
         if target.exists():
@@ -196,7 +279,10 @@ class GoldenInputs:
                 self.external[path] = _manifest(path.parent, (path.name,))[path.name]
             selected[str(path)] = self.external[path]
         value = json.dumps([self.contents, recipe, selected], sort_keys=True).encode()
-        return hashlib.sha256(value).hexdigest()
+        key = hashlib.sha256(value).hexdigest()
+        if run := _RUN.get():
+            run.pin(key)
+        return key
 
     def verify(self) -> None:
         """Refuse publication if a declared input changed while its real builder ran."""
@@ -210,43 +296,3 @@ class GoldenInputs:
 def golden_inputs(root: Path, parts: tuple[str, ...]) -> GoldenInputs | None:
     """Capture managed-run inputs once; native compatibility waits for its adapter cut."""
     return GoldenInputs(root, parts, _manifest(root, parts)) if _RUN.get() is not None else None
-
-
-@contextmanager
-def build_lock(path: Path) -> Iterator[None]:
-    """Wait for OS build ownership; the caller's existing producer budget bounds the work."""
-    if sys.platform != "win32":
-        import fcntl  # lazy: POSIX-only lock backend, loaded where the OS lock is taken.
-
-        with path.open("a") as stream:
-            fcntl.flock(stream, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(stream, fcntl.LOCK_UN)
-        return
-
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p)
-    kernel.CreateMutexW.restype = ctypes.c_void_p
-    kernel.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
-    kernel.WaitForSingleObject.restype = ctypes.c_uint32
-    kernel.ReleaseMutex.argtypes = (ctypes.c_void_p,)
-    kernel.CloseHandle.argtypes = (ctypes.c_void_p,)
-    name = (
-        "Local\\AlphaLatticeTestWorkspace-"
-        + hashlib.sha256(str(path.resolve()).casefold().encode()).hexdigest()
-    )
-    handle = kernel.CreateMutexW(None, False, name)
-    if not handle:
-        raise ctypes.WinError(ctypes.get_last_error())
-    try:
-        status = kernel.WaitForSingleObject(handle, 0xFFFFFFFF)
-        if status not in (0, 0x80):  # acquired, or released by a dead builder
-            raise OSError(f"session workspace build lock failed: {path.name}: {status}")
-        try:
-            yield
-        finally:
-            kernel.ReleaseMutex(handle)
-    finally:
-        kernel.CloseHandle(handle)

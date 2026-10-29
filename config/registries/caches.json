@@ -8,14 +8,14 @@
       "defined_by": [
         "src/devtools/evaluation/golden_workspaces.py::golden_run"
       ],
-      "definition_line": 29,
+      "definition_line": 112,
       "key": "canonical invocation root; managed input SHA-256 locators use 16 hex characters with the complete key checked in complete.json before reuse",
       "dependency_coverage": "Root descriptor plus each managed current-checkout acquisition tree's CHECKOUT raw-content manifest and recipe/external-file/parent keys; foreign-source/runtime attestation follows separately",
-      "invalidation_rule": "Fresh input manifest per acquisition tree; raw-content recheck before cold publication; served payloads require a closed writer and validated immutable manifest before writable private copying; root context resets at invocation teardown",
-      "size_bound": "1 root descriptor and 1 manifest per active acquisition tree",
+      "invalidation_rule": "Fresh input manifest per acquisition tree; raw-content recheck before cold publication; served payloads require a closed writer and validated immutable manifest before writable private copying; root context resets at invocation teardown; run.json records explicit close while the controller lease is still held, and birth-matched controllers pin admitted keys under index ownership",
+      "size_bound": "1 controller record and requested-key list per invocation, 1 input manifest per active acquisition tree",
       "bound_scope": "per worker's active invocation/acquisition tree; no copied payload or persistent digest memo",
       "eviction": "context reset",
-      "safe_to_drop": "Only when the invocation and its fixture readers have closed; fixture cleanup retains its existing owner",
+      "safe_to_drop": "Only after verified explicit close or PID birth mismatch/NoSuchProcess and no shared key or payload reader; AccessDenied or any other unknown retains. This reports retention evidence only; fixture cleanup keeps its existing owner and authority.",
       "location": {
         "scope": "invocation",
         "path_expression": "GoldenRun.root / golden-workspaces under the canonical external pytest basetemp"

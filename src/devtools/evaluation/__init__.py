@@ -17,7 +17,7 @@ from .forms import (
     Trace,
     TraceEvent,
 )
-from .golden_workspaces import golden_run
+from .golden_workspaces import GoldenRuntime, golden_controller, golden_run
 from .intent import CommandCatalog, IntentGrader, command_errors, contains, grade, proposes
 from .session import session_findings
 
@@ -27,6 +27,7 @@ __all__ = [
     "Environment",
     "EvaluationDataset",
     "FeedbackGrader",
+    "GoldenRuntime",
     "Grade",
     "Grader",
     "GradingIssue",
@@ -42,6 +43,7 @@ __all__ = [
     "collect_feedback",
     "command_errors",
     "contains",
+    "golden_controller",
     "golden_run",
     "grade",
     "proposes",
