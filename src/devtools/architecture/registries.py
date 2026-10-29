@@ -215,13 +215,13 @@ def areas(root: Path) -> list[str]:
     """Each registered package whose product area is not the namespace it lives in."""
 
     document = json.loads((root / "config" / "package-architecture.json").read_text("utf-8"))
-    # Evaluation is engineering tooling; other namespaces keep their physical area.
+    # devtools is engineering tooling; other namespaces keep their physical area.
     return sorted(
         package["package_id"]
         for package in document["packages"]
         if (
             "engineering"
-            if package["physical_namespace_target"] == "devtools.evaluation"
+            if package["physical_namespace_target"].startswith("devtools.")
             else package["physical_namespace_target"].split(".")[1]
         )
         != package["product_area"]

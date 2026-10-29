@@ -1075,11 +1075,17 @@ def _logical_module_name(module: str) -> str:
         return ""
     if len(parts) >= 3 and parts[0] == "alphalattice" and parts[1] in (_PHYSICAL_NAMESPACE_GROUPS):
         parts = parts[2:]
-    elif len(parts) >= 2 and parts[:2] == ["devtools", "architecture"]:
-        parts = ["playpen_governance", *parts[2:]]
-    elif len(parts) >= 2 and parts[:2] == ["devtools", "evaluation"]:
-        parts = ["evaluation", *parts[2:]]
+    elif len(parts) >= 2 and parts[0] == "devtools" and parts[1] in _DEVTOOLS_PACKAGES:
+        parts = [_DEVTOOLS_PACKAGES[parts[1]], *parts[2:]]
     return ".".join(parts)
+
+
+_DEVTOOLS_PACKAGES = {
+    "architecture": "playpen_governance",
+    "evaluation": "evaluation",
+    "pipeline": "pipeline",
+}
+"""Each registered devtools package's id; an unregistered one keeps its dotted name."""
 
 
 def discover_module_dependencies(

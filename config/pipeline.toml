@@ -1,0 +1,180 @@
+# The pipeline's one definition: every stage of delivery and the rows it runs, in order.
+# A row is a port: what it proves, its owner and where it runs. Each host supplies one adapter
+# for it: the product's own command here, or the workshop's. The test sizes' limits stay in
+# config/registries/test-sizes.json; a stage names only its sizes and lane, until the layout move.
+
+schema = "alphalattice.pipeline.v1"
+owner = "devtools.pipeline"
+
+[stages.local]
+order = 1
+reason = "A commit's own check before it is made: lint, types and the guards on the staged files."
+trigger = "commit hook"
+range = "staged"
+bound_minutes = 1
+rows = ["staged-guard"]
+
+[stages.commit]
+order = 2
+reason = "A line proves its card before handing it back; the receipt admits the hand-back."
+trigger = "line"
+range = "card"
+lane = "merge"
+sizes = ["small", "medium"]
+bound_minutes = 15
+place = "gate"
+rows = ["environment", "fast-guard", "tests", "load-timeouts", "public-scan", "wheel", "platforms"]
+
+[stages.merge-queue]
+order = 3
+reason = "The commit stage on the composed batch, with each card held to its own test budget."
+trigger = "queue"
+range = "each-card"
+lane = "merge"
+sizes = ["small", "medium"]
+bound_minutes = 15
+place = "gate"
+rows = ["environment", "fast-guard", "card-budget", "tests", "load-timeouts", "public-scan"]
+
+[stages.post-merge]
+order = 4
+reason = "Every affected test file whole on develop after a merge; a red is bisected and reverted on evidence."
+trigger = "develop"
+range = "set"
+lane = "merge"
+sizes = ["small", "medium"]
+bound_minutes = 20
+rows = ["environment", "affected-tests", "load-timeouts", "public-scan", "culprit-revert"]
+
+[stages.nightly]
+order = 5
+reason = "Every test on develop's tip, Large ones included, uncached."
+trigger = "schedule"
+range = "tree"
+lane = "nightly"
+sizes = ["small", "medium", "large"]
+bound_minutes = 120
+rows = ["environment", "nightly-tests", "load-timeouts", "public-scan"]
+
+[stages.release]
+order = 6
+reason = "A release promotes the last known good commit after its candidate tests and one native confirmation per host."
+trigger = "person"
+range = "tree"
+lane = "candidate"
+sizes = ["small", "medium", "large"]
+bound_minutes = 240
+rows = ["environment", "candidate-tests", "load-timeouts", "public-scan", "native-confirmation"]
+
+[rows.staged-guard]
+kind = "command"
+owner = "devtools.architecture"
+reason = "Lint, format, strict types and the registry, boundary, shape and budget guards on the staged files."
+hosts = ["workshop", "public"]
+run = ["{python}", "scripts/check_playpen.py", "--staged", "--fast"]
+escape = "a defect the static guards name, committed"
+review = "2026-12-01"
+
+[rows.environment]
+kind = "command"
+owner = "devtools.pipeline"
+reason = "The locked environment the stage runs in, installed offline."
+hosts = ["workshop", "public"]
+run = ["uv", "sync", "--locked", "--all-extras", "--offline"]
+
+[rows.fast-guard]
+kind = "command"
+owner = "devtools.architecture"
+reason = "Lint, format, strict types and the registry, boundary, shape and budget guards on the change."
+hosts = ["workshop", "public"]
+run = ["{python}", "scripts/check_playpen.py", "--all-python", "--fast"]
+escape = "a defect the static guards name, reaching review"
+review = "2026-12-01"
+
+[rows.card-budget]
+kind = "workshop"
+owner = "workshop"
+reason = "Each card in a batch is held to its own test budget, measured against the batch before it."
+hosts = ["workshop"]
+escape = "tests growing faster than source"
+review = "2026-12-01"
+
+[rows.tests]
+kind = "pytest"
+owner = "devtools.pipeline"
+reason = "The structural, mandatory, changed and affected tests, within the selection budget."
+hosts = ["workshop", "public"]
+selection = { budget_test_seconds = 3600 }
+plugins = ["receipt-events"]
+public = [
+  "tests/portfolio_strategy_lab/test_local_web_service.py",
+  "tests/portfolio_strategy_lab/test_local_web_client.py",
+  "tests/portfolio_strategy_lab/test_research_flow_answers.py",
+  "tests/alternative_evidence_desk/test_evidence_review_http_route.py",
+  "tests/structural/test_local_web_build.py",
+]
+
+[rows.load-timeouts]
+kind = "workshop"
+owner = "workshop"
+reason = "A node that times out leaves its cause and the heavy places then held, and is rerun alone once."
+hosts = ["workshop"]
+
+[rows.receipt-events]
+kind = "pytest-plugin"
+owner = "devtools.pipeline"
+reason = "Each node's result, phase, failure signature and seconds, into the stage's receipt."
+hosts = ["workshop", "public"]
+module = "devtools.pipeline.receipt"
+
+[rows.public-scan]
+kind = "workshop"
+owner = "workshop"
+reason = "The export's scan: no internal label or private file reaches the public tree."
+hosts = ["workshop"]
+escape = "an internal label or a private file in the export"
+review = "2026-12-01"
+
+[rows.wheel]
+kind = "ci-job"
+owner = "devtools.pipeline"
+reason = "The built wheel installs as the setup guide says and its runtime tests pass."
+hosts = ["public"]
+job = "wheel"
+
+[rows.platforms]
+kind = "ci-job"
+owner = "devtools.pipeline"
+reason = "The offline first use runs on Windows, macOS and Linux."
+hosts = ["public"]
+job = "platforms"
+
+[rows.affected-tests]
+kind = "workshop"
+owner = "workshop"
+reason = "Every test file the merged set affects, whole, once."
+hosts = ["workshop"]
+
+[rows.culprit-revert]
+kind = "workshop"
+owner = "workshop"
+reason = "Each real red is bisected over the set and its culprit reverted, its owner named."
+hosts = ["workshop"]
+
+[rows.nightly-tests]
+kind = "workshop"
+owner = "workshop"
+reason = "Every test, Large ones included, on develop's tip in the nightly worktree."
+hosts = ["workshop"]
+
+[rows.candidate-tests]
+kind = "workshop"
+owner = "workshop"
+reason = "Every test on the release candidate, Large ones included."
+hosts = ["workshop"]
+
+[rows.native-confirmation]
+kind = "workshop"
+owner = "workshop"
+reason = "One native agent run per host confirms the promoted commit."
+hosts = ["workshop"]

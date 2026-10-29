@@ -7534,6 +7534,27 @@
           "src/devtools/architecture/registries.py"
         ]
       }
+    },
+    "env:ALPHALATTICE_PIPELINE_EVENTS": {
+      "key": "env:ALPHALATTICE_PIPELINE_EVENTS",
+      "description": "Names the stream a stage's pytest run writes each node's result to, which the stage folds into its receipt.",
+      "owner": "devtools.pipeline",
+      "type": "path | absent",
+      "default": {
+        "value": "",
+        "resolution": "No result stream outside a pipeline stage",
+        "source": "src/devtools/pipeline/receipt.py::pytest_configure"
+      },
+      "defined_by": [
+        "src/devtools/pipeline/receipt.py::pytest_configure"
+      ],
+      "identity_bearing": false,
+      "identity_scope": "test execution record",
+      "readers": {
+        "literal": [
+          "src/devtools/pipeline/receipt.py"
+        ]
+      }
     }
   }
 }

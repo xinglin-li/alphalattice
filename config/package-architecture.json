@@ -501,6 +501,19 @@
       "allowed_peer_dependencies": [],
       "artifact_writer": false,
       "physical_namespace_target": "devtools.evaluation"
+    },
+    {
+      "package_id": "pipeline",
+      "product_area": "engineering",
+      "capability_owner": "Delivery Pipeline",
+      "role": "ENGINEERING_TOOL",
+      "dependency_level": 5,
+      "authority_kind": "BUILD_TIME_GUARD",
+      "allowed_peer_dependencies": [
+        "playpen_governance"
+      ],
+      "artifact_writer": false,
+      "physical_namespace_target": "devtools.pipeline"
     }
   ],
   "deferred_imports": {

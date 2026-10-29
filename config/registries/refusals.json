@@ -18702,6 +18702,70 @@
 "category": "FAILED_PRECONDITION",
 "message_id": "feature.input.case_store_unavailable",
 "classification_note": "The read-only decision catalog lacks a required table or column. Inspect storage and restore an intact workspace before retry; no absence of decisions is inferred."
+},
+"pipeline.definition_missing": {
+"owner": "devtools.pipeline",
+"category": "NOT_FOUND"
+},
+"pipeline.definition_unreadable": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT"
+},
+"pipeline.plugin_unknown": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT"
+},
+"pipeline.row_invalid": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT"
+},
+"pipeline.row_unregistered": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT"
+},
+"pipeline.row_unused": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT"
+},
+"pipeline.schema_unknown": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT"
+},
+"pipeline.stage_invalid": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT"
+},
+"pipeline.stage_unknown": {
+"owner": "devtools.pipeline",
+"category": "NOT_FOUND"
+},
+"pipeline.receipt_incomplete": {
+"owner": "devtools.pipeline",
+"category": "FAILED_PRECONDITION"
+},
+"pipeline.receipt_mismatch": {
+"owner": "devtools.pipeline",
+"category": "FAILED_PRECONDITION"
+},
+"pipeline.receipt_unknown": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT"
+},
+"pipeline.receipt_unreadable": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT"
+},
+"pipeline.receipt_inconsistent": {
+"owner": "devtools.pipeline",
+"category": "FAILED_PRECONDITION"
+},
+"pipeline.receipt_malformed": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT"
+},
+"pipeline.receipt_missing": {
+"owner": "devtools.pipeline",
+"category": "NOT_FOUND"
 }
 },
 "note": "",

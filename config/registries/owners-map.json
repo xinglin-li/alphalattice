@@ -4840,6 +4840,26 @@
       ],
       "folds_in": [],
       "note": "Current consumers: failure_codes located failures, shared CLI envelopes and authenticated Host worded refusals. The existing safe_failure_code owner and reader paths remain unchanged. The registry census holds the exact legacy words and validated word-selector declaration, including the committed selector classification against promotion into emitted entries. HTTP, Task, startup, four typed validating contexts, Activity, summary and Workbench are deferred to 0.2.6 after oversized-owner pruning. No full series completion is claimed by this declaration."
+    },
+    "pipeline stage": {
+      "description": "A pipeline stage is one registered step of delivery, from a commit's own check to a release; it runs only the rows its definition names, in order.",
+      "owner": "devtools.pipeline",
+      "covers": "config/pipeline.toml: the stages, their rows (kind, owner, reason, hosts, the product's own command) and bounds, the test sizes and lane each stage names, and the definition's load checks",
+      "defined_by": [
+        "devtools.pipeline.definition"
+      ],
+      "folds_in": [],
+      "note": "Consumers: scripts/pipeline.py show. The test sizes' limits stay in config/registries/test-sizes.json, which owns them; a stage only names its sizes and lane."
+    },
+    "stage receipt": {
+      "description": "A stage receipt is one stage run's record, one event per line in the form of Bazel's Build Event Protocol, complete only when every event it announced arrived.",
+      "owner": "devtools.pipeline",
+      "covers": "the receipt's events (started, workspace, configuration, step, test_result, test_summary, metrics, finished), its writer, its one reader verify, and the pytest plugin that writes each node's result",
+      "defined_by": [
+        "devtools.pipeline.receipt"
+      ],
+      "folds_in": [],
+      "note": "Consumers: scripts/pipeline.py verify; the READY check, the merge queue and the test manager read receipts only through verify. The stage runner that writes receipts follows."
     }
   }
 }
