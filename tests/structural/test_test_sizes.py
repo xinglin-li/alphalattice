@@ -189,3 +189,12 @@ def test_a_card_whose_tests_outgrow_its_source_is_refused_by_name():
     assert budget_problems([("scripts/a.py", -50), ("tests/b.py", 1)], [], "")
     assert budget_problems([("scripts/a.py", -50), ("tests/b.py", -9)], [], "") == []
     assert budget_problems([("tests/b.py", 31)], ["t1", "t2", "t3", "t4"], "R1 R2") == []
+
+
+def test_a_quarantined_node_needs_its_owner_reason_and_date():
+    """A flaky node leaves the blocking tier only with an owner, a reason and an until date."""
+    from devtools.architecture.test_sizes import load_policy, validate_policy
+
+    row = {"node": "tests/a.py::t", "owner": "tests.a", "reason": "flaky", "until": "2026-99-99"}
+    with pytest.raises(ValueError, match="quarantine_invalid"):
+        validate_policy(load_policy(Path(__file__).resolve().parents[2]) | {"quarantine": [row]})

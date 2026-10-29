@@ -106,8 +106,15 @@ use the owning checkout.
 
 1. While working, run the nodes you changed or that fail, with one or two
    workers, plus a test file you changed. Never a directory or the whole suite.
-2. Every affected file runs whole once, in the integration set before a merge;
-   its `--durations` report is the test timing. No separate timing run.
+2. The merge gate has two tiers (`tools/lead_check.py --tier pre|post`).
+   - The pre tier blocks; its target is about 15 minutes at four workers, unmeasured until its
+     first runs. It always runs the fast guard over the whole set, the registry's mandatory
+     files, tests/structural and the changed tests, naming any overrun of the budget. The tests
+     that import a changed module then join, rarest import first, within 3,600 estimated
+     test-seconds (60 s for a file without a recorded duration).
+   - A line runs the same pre tier on its card before READY, so defects are found in parallel.
+   - The post tier runs every affected file whole once, after the merge; its `--durations`
+     report is the test timing. No separate timing run.
 3. A passing test is not rerun unchanged. After a fix, rerun the failed node; the
    integration set reruns its file.
 4. The real-evidence lane (`scripts/check_playpen.py --evidence`) runs once a day

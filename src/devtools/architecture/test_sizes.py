@@ -3,6 +3,7 @@
 import json
 import os
 from collections.abc import Iterable
+from datetime import date
 from fnmatch import fnmatchcase
 from math import isfinite
 from pathlib import Path
@@ -43,6 +44,7 @@ def validate_policy(value: Any) -> dict[str, Any]:
         raise ValueError("test_size.mandatory_missing")
     _reach(value)
     _limits(value)
+    _quarantine(value)
     return value
 
 
@@ -53,6 +55,22 @@ def _reach(policy: dict[str, Any]) -> None:
             row.get("per_file") is not True and not row.get("inputs")
         ):
             raise ValueError("test_size.reach_invalid:" + str(row.get("pattern")))
+
+
+def _quarantine(policy: dict[str, Any]) -> None:
+    """Refuse a quarantined node without an owner, a reason or an until date."""
+    for row in policy.get("quarantine", []):  # a flaky node runs post-merge only, until its date
+        try:  # a real calendar date in ISO form, so 2026-99-99 is refused
+            dated = date.fromisoformat(str(row.get("until"))).isoformat() == row.get("until")
+        except ValueError:
+            dated = False
+        if not (
+            str(row.get("node")).startswith("tests/")
+            and row.get("owner")
+            and row.get("reason")
+            and dated
+        ):
+            raise ValueError("test_size.quarantine_invalid:" + str(row.get("node")))
 
 
 def _limits(policy: dict[str, Any]) -> None:
