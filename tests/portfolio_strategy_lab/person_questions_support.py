@@ -1,8 +1,8 @@
 from alphalattice.interface.local_application import questions
 
 
-def question_row(at, state, *, goal="goal-a", session="session-a", catalog=None):
-    definition = questions.person_question("network.workspace_access")
+def question_row(at, state, *, goal="goal-a", session="session-a", catalog=None, code=None):
+    definition = questions.person_question(code or "network.workspace_access")
     refs = dict(operation_ref=at, agent_session=session)
     if goal is not None:
         refs["goal_id"] = goal
