@@ -58,6 +58,9 @@ The Workbench parity guard refuses a write without an agent route, an added name
    replace it. A requirement is tested once, in its owner's suite, not again in
    another file or another harness. A fix extends the test that should have
    caught the defect; only a new requirement gets a new test.
+   The fast guard measures each card from its merge base with develop. Net test lines stay
+   within max(10, 30% of net source), and the card adds at most 3 test functions; an
+   exception is a `Test-Budget-Exception: <ids>` trailer on the branch.
 3. Test at the owner's seam: drive the producer's real output through the real
    consumer. Only `tests/structural` reads source text; elsewhere a test does not
    call `inspect.getsource` or test a private helper whose owner's public call

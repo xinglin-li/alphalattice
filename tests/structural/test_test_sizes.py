@@ -177,3 +177,15 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch)
     assert not included(closure, "medium", "fast", policy, changed)
     assert included("tests/structural/test_other.py::t", "medium", "merge", policy, changed)
     assert included(closure, "large", "nightly", policy, None) and not scoped(scan, policy, None)
+
+
+def test_a_card_whose_tests_outgrow_its_source_is_refused_by_name():
+    """Net tests within max(10, 30% of net source), pruning tests fall, at most 3 new functions."""
+    from devtools.architecture.test_sizes import budget_problems
+
+    assert "tests/b.py +31" in budget_problems([("src/a.py", 100), ("tests/b.py", 31)], [], "")[0]
+    assert budget_problems([("src/a.py", 100), ("tests/b.py", 30)], ["t1", "t2", "t3"], "") == []
+    assert "4 new test functions" in budget_problems([], ["t1", "t2", "t3", "t4"], "")[0]
+    assert budget_problems([("scripts/a.py", -50), ("tests/b.py", 1)], [], "")
+    assert budget_problems([("scripts/a.py", -50), ("tests/b.py", -9)], [], "") == []
+    assert budget_problems([("tests/b.py", 31)], ["t1", "t2", "t3", "t4"], "R1 R2") == []
