@@ -116,6 +116,12 @@
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 10
+    },
+    "local_application.node_invocation_preserves_runtime_environment": {
+      "description": "Node test invocation preserves availability and caller environment while resolving absolute browser directory aliases to their physical targets.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 1.313
     }
   }
 }

@@ -747,6 +747,12 @@ def run_node(
             NODE_PATH=str(root / "third_party/playwright/node_modules"),
             PLAYWRIGHT_BROWSERS_PATH=str(root / "third_party/playwright/.browsers"),
         )
+    browser = environment.get("PLAYWRIGHT_BROWSERS_PATH")
+    if isinstance(browser, str):
+        directory = Path(browser)
+        # Leave relative paths and default modes for Playwright to interpret.
+        if directory.is_absolute():
+            environment["PLAYWRIGHT_BROWSERS_PATH"] = str(directory.resolve())
     kwargs["env"] = environment
     return subprocess.run([node, *arguments], **kwargs)
 
