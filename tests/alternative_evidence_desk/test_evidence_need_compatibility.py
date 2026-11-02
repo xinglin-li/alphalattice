@@ -28,13 +28,17 @@ from alphalattice.evidence.alternative_evidence.analysis.contracts import (
 )
 from alphalattice.evidence.alternative_evidence.analysis.matters import EvidenceNeed
 from alphalattice.evidence.alternative_evidence.contracts import seal_contract
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text as _document,
 )
 from tests.alternative_evidence_desk.document_intelligence_support import _open_recorded
 from tests.alternative_evidence_desk.litigation_support import _matters_filing
 
-FIXTURE = Path(__file__).resolve().parent / "fixtures" / "candidate-receipt-486cea54.json"
+FIXTURE = (
+    resolve_playpen_root(Path(__file__))
+    / "tests/alternative_evidence_desk/fixtures/candidate-receipt-486cea54.json"
+)
 
 
 def historical_serialization(record: LitigationMatterRecord) -> dict[str, Any]:

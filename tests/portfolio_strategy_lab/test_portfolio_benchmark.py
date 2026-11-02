@@ -9,8 +9,9 @@ from types import SimpleNamespace
 import pytest
 
 from alphalattice.capabilities.portfolio_inputs import benchmark as benchmark_owner
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
-PLAYPEN_ROOT = Path(__file__).resolve().parents[2]
+PLAYPEN_ROOT = resolve_playpen_root(Path(__file__))
 PLAYPEN_SRC = PLAYPEN_ROOT / "src"
 
 

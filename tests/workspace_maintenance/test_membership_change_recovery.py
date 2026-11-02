@@ -24,6 +24,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as Request,
 )
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
     _json,
@@ -39,7 +40,7 @@ from tests.workspace_maintenance.local_data_provider import (
     unchanged_membership_source,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = resolve_playpen_root(Path(__file__))
 PROFILE = "us-current-index-research"
 MEMBERS = SYMBOLS[:7]
 """One Sector of seven: after a leaver and a sectorless joiner it keeps the five-member floor."""
