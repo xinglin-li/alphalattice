@@ -1,5 +1,6 @@
 // V659 / TE12: owner declarations drive the vocabulary boundary, not a scene's few values.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+assert.equal(process.env.TZ,'UTC');
 const library=require('./workbench_library.cjs'),finish=library.guard('workbench_owner_words');
 const appDir=process.argv[2],groups=JSON.parse(process.argv[3]),details=JSON.parse(process.argv[4]),w=library.words(appDir);
 assert.ok(Object.isFrozen(w.I18N.catalog));

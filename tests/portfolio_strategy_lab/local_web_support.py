@@ -736,14 +736,18 @@ def run_node(
         pytest.skip(missing)
     if arguments is None:
         return None
+    supplied = kwargs.get("env")
+    environment = dict(os.environ) if pinned_browser or supplied is None else {}
+    if supplied is not None:
+        environment.update(supplied)
+    environment["TZ"] = "UTC"
     if pinned_browser:
         root = Path(kwargs.get("cwd") or Path(__file__).resolve().parents[2])
-        kwargs["env"] = {
-            **os.environ,
-            **kwargs.get("env", {}),
-            "NODE_PATH": str(root / "third_party/playwright/node_modules"),
-            "PLAYWRIGHT_BROWSERS_PATH": str(root / "third_party/playwright/.browsers"),
-        }
+        environment.update(
+            NODE_PATH=str(root / "third_party/playwright/node_modules"),
+            PLAYWRIGHT_BROWSERS_PATH=str(root / "third_party/playwright/.browsers"),
+        )
+    kwargs["env"] = environment
     return subprocess.run([node, *arguments], **kwargs)
 
 
