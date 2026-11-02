@@ -27,6 +27,7 @@ REQUIRED = pytest.StashKey[tuple[tuple[str, ...], tuple[str, ...]]]()
 CHANGED = pytest.StashKey[frozenset[str] | None]()  # a scoped run's changed paths, read once
 CONTRACT = pytest.StashKey[LayerContract]()
 PHASES = pytest.StashKey[dict[str, float]]()
+FAILED = pytest.StashKey[bool]()
 FRAMEWORK = pytest.StashKey[frozenset[CodeType]]()
 BACKENDS = pytest.StashKey[Backends]()
 FIND = 'register its requirement first (python scripts/tests_registry.py find "<words>")'
@@ -100,11 +101,13 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
     report = result.get_result()
     if CONTRACT not in item.stash or item.stash[CONTRACT].layer != "unit":
         return
+    if report.failed:
+        item.stash[FAILED] = True
     phases = item.stash.setdefault(PHASES, {})
     phases[report.when] = report.duration
     item.user_properties.append((report.when + "_seconds", report.duration))
     report.user_properties = list(item.user_properties)
-    if report.when != "teardown":
+    if report.when != "teardown" or item.stash.get(FAILED, False):
         return
     measured = set(phases) == {"setup", "call", "teardown"} and all(
         type(v) in (int, float) and isfinite(v) and v >= 0 for v in phases.values()

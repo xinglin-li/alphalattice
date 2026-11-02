@@ -407,6 +407,8 @@ def _memory_checks_read_no_host():
             "-p",
             "pytest_timeout",
             *phase_args,
+            "--junitxml",
+            str(tmp_path / "child.xml"),
             "-c",
             str(root / "pyproject.toml"),
             "--rootdir",
@@ -444,6 +446,12 @@ def _memory_checks_read_no_host():
         ), output
     else:
         assert result.returncode == 0, output
+    if case in {"database", "fixture-setup", "fixture-teardown", "numpy-save"}:
+        from xml.etree import ElementTree as ET
+
+        cases = list(ET.parse(tmp_path / "child.xml").iter("testcase"))
+        assert len(cases) == 1
+        assert sum(len(c.findall("error")) + len(c.findall("failure")) for c in cases) == 1
     if case == "own-over":
         assert '"event": "TIMEOUT"' in (tmp_path / "events.log").read_text("utf-8")
     if case == "numpy-save":
