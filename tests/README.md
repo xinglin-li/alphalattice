@@ -30,8 +30,8 @@ smallest red change to the holder. Each rule names what enforces it; a rule mark
    derived from the row, never written by hand.
    - Admission is by exception. A row that passes the checks (owner, sentence,
      layer, budget, no near-duplicate in its owner) is admitted at once.
-   - A new end-to-end or native journey, a test over 60 s, a budget overrun or a
-     near-duplicate needs the test manager's decision, asked once. The decision is
+   - A new end-to-end or native journey, a test over 60 s or a near-duplicate
+     needs the test manager's decision, asked once. The decision is
      copied into the row.
    - Existing tests are counted per file in a list beside that registry, and the
      count only falls.
@@ -74,11 +74,16 @@ smallest red change to the holder. Each rule names what enforces it; a rule mark
      requirement nobody had.
    - A reviewer who asks for a test names the requirement.
    - In force now.
-5. **The author sees the cost.** A card's net test lines stay within max(20, 30%
-   of its net source), with at most three new test functions, each for a new
-   requirement named in the change's record.
-   - An exception is a `Test-Budget-Exception: <ids>` trailer the test manager agreed.
-   - The fast guard holds the lines now.
+5. **Tests stay proportionate, judged by outcome.** The reviewer judges whether a
+   card's tests fit its change: one holder per requirement, extended before a new
+   one is added, and every test naming its requirement. There is no per-card line
+   formula and no exception to ask for.
+   - Each merge set's report shows its tests against its source. The targets: tests
+     fall toward 40% of source, a median of at most one new test function per card,
+     and no set growing tests faster than source. The test manager audits each set
+     after it merges.
+   - Until the fast guard's per-card line check is removed, a card it refuses
+     declares `Test-Budget-Exception: outcome rule`.
    - *From the pipeline's receipts:* each card's receipt also carries its
      test-seconds, against each owner's seconds budget, which the test manager
      sets from the inventory.
@@ -104,8 +109,8 @@ smallest red change to the holder. Each rule names what enforces it; a rule mark
    Only product and test defects block or revert. The quarantine list is in
    force; the classifier comes *from the protocol's guards*.
 8. **Owned and budgeted.** Folder, domain and owner match.
-   - The test manager, a maintainer role, owns the tests. It admits the
-     exceptions, leads deletions, runs the daily flake duty and reports test
+   - The test manager, a maintainer role, owns the tests. It admits new
+     requirements and Large tests, leads deletions, runs the daily flake duty and reports test
      health daily.
    - A question about a test's place or budget goes to the test manager.
 
@@ -156,9 +161,7 @@ The Workbench parity guard refuses a write without an agent route, an added name
    rule 2) and extend or replace the holder it names. A requirement is tested once, in its owner's suite, not again in
    another file or another harness. A fix extends the test that should have
    caught the defect; only a new requirement gets a new test.
-   The fast guard measures each card from its merge base with develop. Net test lines stay
-   within max(20, 30% of net source), and the card adds at most 3 test functions; an exception is a
-   `Test-Budget-Exception: <ids>` trailer the test manager agreed (protocol rule 5).
+   The reviewer judges a card's tests against its change (protocol rule 5).
 3. Test at the owner's seam: drive the producer's real output through the real
    consumer. Only `tests/structural` reads source text; elsewhere a test does not
    call `inspect.getsource` or test a private helper whose owner's public call
@@ -178,11 +181,8 @@ The Workbench parity guard refuses a write without an agent route, an added name
 8. A Workbench behaviour is checked once, in the Node harness. A real-browser
    class checks only what needs real layout: widths, focus, scrolling and motion.
 9. A test file stays under 100 KB, and one already over it only shrinks.
-10. Across a merge set, test lines do not grow more than source lines; the
-    maintainer's merge stops a set that does. A single card is bound by rule 2's
-    per-card budget instead. Only the test manager admits an
-    exception, such as a small fix whose regression case outweighs it, and its
-    reason is recorded. A test over 10 s names why
+10. Across a merge set, tests do not grow faster than source (protocol rule 5).
+    A test over 10 s names why
     in its docstring; one over 60 s is a Large exception the test manager decides
     (protocol rule 1), with a specific registry reason; the declaration ratchet refuses growth.
     Pytest-timeout enforces the registered bound over setup, call and teardown, naming overruns.
