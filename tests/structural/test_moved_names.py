@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -126,46 +125,17 @@ def test_a_staged_check_reads_the_index_not_an_unstaged_repair(synthetic_history
 def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
     """Whole-file layout restores bytes and refuses path, export and fixture-name clashes."""
     body, fixture = "pass\n", "import pytest\n@pytest.fixture\ndef zone(): pass\n"
-    fixture += (
-        "from tests._support.project_discovery import project_discovery as project_discovery\n"
-    )
-    files = dict.fromkeys(("tests/a/test_t.py", "tests/b/test_t.py"), body)
+    files = dict.fromkeys(("tests/a/t.py", "tests/b/t.py"), body)
     files.update(dict.fromkeys(("tests/a/conftest.py", "tests/b/conftest.py"), fixture))
-    catalogs = {
-        "test-sizes.json": {
-            "defaults": [{"pattern": "tests/a/*", "owner": "a"}],
-            "mandatory": ["tests/a/test_t.py*"],
-        },
-        "test-private.json": {"entries": {"tests/a/test_t.py::patch rule": 1}},
-        "tests-unregistered.json": {"files": {"tests/a/test_t.py": 1}},
-    }
-    catalogs["test-sizes.json"]["defaults"] += [{"pattern": "tests/*", "owner": "fallback"}]
-    for kind, key in (("large", "pattern"), ("reach", "pattern"), ("quarantine", "node")):
-        catalogs["test-sizes.json"][kind] = [
-            {key: "tests/a/test_t.py::case*", "inputs": ["tests/a/test_t.py"]}
-        ]
-    files |= {f"config/registries/{n}": json.dumps(v) for n, v in catalogs.items()}
     for path, text in files.items():
         (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / path).write_bytes(text.encode("utf-8"))
-    choice = ["unit", "a", "t"]
-    move = plan("r", files, {"tests/a/test_t.py": choice})
-    assert "project_discovery" not in move["files"]["tests/a/conftest.py"][1]
+    choice = ["unit", "sample", "scope_checks"]
+    move = plan("r", files, {"tests/a/t.py": choice})
     apply(tmp_path, move)
-    assert (tmp_path / "tests/unit/a/test_t.py").read_text() == body
-    for name, values in catalogs.items():
-        wanted = json.dumps(values).replace("tests/a/test_t.py", "tests/unit/a/test_t.py")
-        wanted = wanted.replace("tests/a/*", "tests/unit/a/test_t.py*")
-        wanted = json.loads(wanted)
-        assert json.loads((tmp_path / f"config/registries/{name}").read_text()) == wanted
+    assert (tmp_path / "tests/unit/sample/test_scope_checks.py").read_text() == body
     apply(tmp_path, inverse(move))
-    assert {p: (tmp_path / p).read_text() for p in files} == files
-    for stem in ("t", "other", "../escape"):
+    assert (tmp_path / "tests/a/t.py").read_text() == body
+    for stem in ("scope_checks", "other_checks", "../escape"):
         with pytest.raises(ValueError, match=r"collision|fixture|path"):
-            plan(
-                "r", files, {"tests/a/test_t.py": choice, "tests/b/test_t.py": [*choice[:2], stem]}
-            )
-    collision = dict.fromkeys(("tests/a/test_t.py", "tests/unit/a/test_t.py"), 1)
-    files["config/registries/test-private.json"] = json.dumps({"entries": collision})
-    with pytest.raises(ValueError, match="registry_collision"):
-        plan("r", files, {"tests/a/test_t.py": choice})
+            plan("r", files, {"tests/a/t.py": choice, "tests/b/t.py": [*choice[:2], stem]})

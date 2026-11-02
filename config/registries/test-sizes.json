@@ -83,12 +83,6 @@
       "size": "medium"
     },
     {
-      "pattern": "tests/unit/portfolio_inputs/test_decision_eligibility_windows.py*",
-      "owner": "tests.portfolio_strategy_lab",
-      "size": "medium",
-      "reason": "Preserve the registered owner and execution bound for these relocated decision window tests."
-    },
-    {
       "pattern": "tests/release/*",
       "owner": "tests.release",
       "size": "medium"

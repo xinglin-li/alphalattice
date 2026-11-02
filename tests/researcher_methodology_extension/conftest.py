@@ -10,7 +10,6 @@ own, imported by name.
 
 from __future__ import annotations
 
-from tests._support.project_discovery import project_discovery as project_discovery
 from tests.researcher_methodology_surface.session_fixtures import (
     extension_feature_workspace,
     external_factor_workspace,

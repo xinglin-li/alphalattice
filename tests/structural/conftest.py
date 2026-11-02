@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 
 from devtools.testing.collection import CHANGED
-from tests._support.project_discovery import project_discovery as project_discovery
 from tests.structural import source_shape_samples as samples
 
 

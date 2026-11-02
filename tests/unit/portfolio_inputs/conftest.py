@@ -1,1 +1,0 @@
-from tests._support.portfolio_strategy_lab_fixtures import reader_zone_utc as reader_zone_utc

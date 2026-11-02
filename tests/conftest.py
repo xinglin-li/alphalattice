@@ -40,11 +40,9 @@ pytest_plugins = ["devtools.testing.collection"]
 
 
 @pytest.fixture(autouse=True)
-def project_isolation(tmp_path, tmp_path_factory):
-    """Every test confines discovery and reads to its invocation's temporary roots."""
-    base = tmp_path_factory.getbasetemp()
-    allowed = base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base
-    with environment.project_scope(tmp_path, allowed):
+def project_discovery(tmp_path, golden_cache):
+    """Every test scopes project discovery and rejects outside reads without changing cwd."""
+    with environment.project_scope(tmp_path, golden_cache):
         yield
 
 
