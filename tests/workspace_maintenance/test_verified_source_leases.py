@@ -1,4 +1,4 @@
-"""BEHAVIOUR: unchanged sealed reads reuse proofs; OS changes always reverify (V691)."""
+"""Unchanged sealed reads reuse proofs; OS changes always reverify."""
 
 from __future__ import annotations
 

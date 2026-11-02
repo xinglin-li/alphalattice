@@ -944,7 +944,7 @@ def test_dataset_reuse_mutates_every_binning_field_and_preserves_operator_parame
 def test_a_booster_cache_scope_parses_each_model_once_and_predicts_the_same_bits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """requirement (PERF-1 lever 3): a scoring loop reuses each model's Booster by its text."""
+    """A scoring loop reuses each model's Booster by its text."""
     import lightgbm
 
     from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological import (

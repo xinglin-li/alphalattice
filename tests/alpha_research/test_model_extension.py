@@ -24,8 +24,9 @@ from alphalattice.control.product_host.research_authoring.model_extensions impor
     ModelSandboxRecord,
     activated_models,
 )
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = resolve_playpen_root(Path(__file__))
 MODEL = "numpy_ridge_probe"
 DECLARATION = f"""model_id: {MODEL}
 family: linear
@@ -323,7 +324,9 @@ def test_a_person_activates_a_sandboxed_model_and_the_workspace_catalog_installs
     )
     unproved = trial.model_copy(update={"study_model_id": None})
     another = trial.model_copy(update={"study_model_id": "regularized_linear"})
-    assert trial.passed and not unproved.passed and not another.passed, "V414"
+    assert trial.passed and not unproved.passed and not another.passed, (
+        "sandbox status follows model"
+    )
     ModelExtensionRegistry(sandboxes=(unproved, another)).write(workspace)
     with pytest.raises(ValueError, match=re.escape(f"model_extension.sandbox_required:{MODEL}")):
         models.activate(MODEL)

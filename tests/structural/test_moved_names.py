@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import ast
 import json
 from inspect import signature
 from pathlib import Path
 
 import pytest
 
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from devtools.architecture.moved_names import moved_name_problems, problems
 from devtools.testing.layout import apply, inverse, plan
 
@@ -126,6 +128,18 @@ def test_a_staged_check_reads_the_index_not_an_unstaged_repair(synthetic_history
 @pytest.mark.proves("testing.whole_file_relocation_restores_bytes")
 def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
     """Whole-file layout restores bytes and refuses path, export and fixture-name clashes."""
+    (tmp_path / "pyproject.toml").touch()
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config/package-architecture.json").touch()
+    origin = resolve_playpen_root(Path(__file__))
+    for name in ("test_model_contract.py", "test_model_extension.py"):
+        module = ast.parse((origin / "tests/alpha_research" / name).read_text("utf-8"))
+        assignments = (n for n in module.body if isinstance(n, ast.Assign))
+        resource = next(n for n in assignments if getattr(n.targets[0], "id", None) == "ROOT")
+        target = tmp_path / "tests/integration/alpha_modeling" / name
+        scope = {**globals(), "__file__": str(target)}
+        exec(compile(ast.Module(body=[resource], type_ignores=[]), str(target), "exec"), scope)
+        assert scope["ROOT"] == tmp_path, name
     body, fixture = "pass\n", "import pytest\n@pytest.fixture\ndef zone(): pass\n"
     fixture += (
         "from tests._support.project_discovery import project_discovery as project_discovery\n"
