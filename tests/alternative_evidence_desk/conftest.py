@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from tests._support.project_discovery import project_discovery as project_discovery
 from tests.alternative_evidence_desk.review_http_support import build_workspace
 
 

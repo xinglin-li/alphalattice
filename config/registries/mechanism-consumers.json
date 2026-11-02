@@ -98,7 +98,8 @@
       "consumers": [
         "tests/conftest.py",
         "tests/structural/conftest.py",
-        "scripts/check_playpen.py"
+        "scripts/check_playpen.py",
+        "src/devtools/testing/layout.py"
       ],
       "input_registry": "config/registries/test-sizes.json",
       "projection": "src/devtools/testing/sizes.py",
@@ -112,7 +113,8 @@
       "consumers": [
         "scripts/check_playpen.py",
         "src/devtools/testing/collection.py",
-        "scripts/tests_registry.py"
+        "scripts/tests_registry.py",
+        "src/devtools/testing/layout.py"
       ],
       "input_registry": "config/registries/requirements.json",
       "projection": "src/devtools/testing/requirements.py",

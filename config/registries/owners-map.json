@@ -4884,12 +4884,12 @@
     "test layout move": {
       "description": "A test layout move preserves whole-file bodies while reviewed placement decisions relocate tests and their inherited fixture bindings.",
       "owner": "devtools.testing",
-      "covers": "revision-bound plans, checked file images, explicit pytest fixture providers, import wiring, inverse and collision refusals",
+      "covers": "revision-bound plans, checked file images, explicit pytest fixture providers, import wiring, inverse and collision refusals; coupled size, private-use and legacy registry images; universal root isolation and explicit layer cache bindings",
       "defined_by": [
         "devtools.testing.layout"
       ],
       "folds_in": [],
-      "note": "Consumers: the structural round-trip holder and the layout pilot call snapshot, plan, apply and inverse. The pipeline consumes this one API; no second command parser or loader. The testing package entry matches TEST-REGISTRY A."
+      "note": "Consumers: the structural round-trip holder and the layout pilot call snapshot, plan, apply and inverse. The pipeline consumes this one API; no second command parser or loader. The testing package entry matches TEST-REGISTRY A. Every legacy-area project_discovery binding retires when that move empties its area; unit nodes never activate that binding or golden_cache. Consumers include all existing legacy areas and the integration, contract, e2e and native layer conftests. Root project_isolation applies to every test, including unit and root-only probes, without golden-cache setup. The compatible project_discovery layer fixture only activates golden_cache; it does not install a second discovery guard."
     }
   }
 }

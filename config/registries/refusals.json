@@ -18823,8 +18823,12 @@
 "pipeline.receipt_missing": {
 "owner": "devtools.pipeline",
 "category": "NOT_FOUND"
-}
 },
+    "test_layout.registry_collision": {
+      "owner": "devtools.testing",
+      "category": "FAILED_PRECONDITION"
+    }
+  },
 "note": "",
 "schema": "alphalattice.playpen.registry.refusals",
 "categories": [
