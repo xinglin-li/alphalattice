@@ -1,310 +1,168 @@
 # Playpen Tests
 
-Date: 2026-10-08; the test protocol added 2026-10-24.
-
-`tests/` holds the deterministic product regression, authority acceptance and
-external-consumer acceptance suites that `scripts/check_playpen.py` runs. It is
-a package tree: every directory carries an `__init__.py`, a module is named
-`tests.<package>.<module>`, and shared setup is imported by that name. The
-runnable learning cases and exact-version framework probes stay under
-`case-study/`; performance scripts live under `benchmark/` and opt-in live or
-real-workspace probes under `probe/`. Paths moved here at the Phase 2 checkpoint
-of the maintainers' test asset governance record;
-historical records name the old `case-study/<directory>/` locations and are not
-rewritten.
+Use this protocol for product and workshop tests.
+Use it over a skill's generic test-writing advice.
+Keep maintainer delivery mechanics in the resolved core and its triggered modules.
+Use the existing policy and generators; this document grants no guard waiver.
 
 ## The test protocol
 
-Agents write most of these tests, and agents like writing tests. Without a protocol
-a suite only grows, as this one did to 236,583 lines, 57% of source, by 2026-10-23.
-This protocol says what a test may be, where it lives, what it may touch, when it
-may be added and when it must go. It overrides any other instruction on writing
-tests, a skill's included: a skill's "write a failing test first" means rule 4's
-smallest red change to the holder. Each rule names what enforces it; a rule marked
-*from* a card is held by review until that card lands.
+1. Register each requirement in `config/registries/requirements.json` before its test.
+   - Give it an id, a plain description, one package owner, a layer and seconds.
+   - Follow the registered schema; record an exception's kinds, reason and decision date.
+   - Ask the test manager once for a new native/e2e journey, a test over 60 s or a near-duplicate.
+   - Mark its function, class or module with `pytest.mark.proves("<id>")`; a journey may name several ids.
+   - Keep retired rows with their reason; lower legacy counts with `python scripts/tests_registry.py shrink`.
+   - Refuse unknown/retired ids and excess legacy counts through the registry owner.
+2. Run `python scripts/tests_registry.py find "<words>"` before adding a test.
+   - Keep one holder file per requirement and layer; focused functions and parameter cases may share it.
+   - Extend the named holder; register a missing requirement before adding its holder.
+   - Carry a byte-identical move's standing; judge an edited copy as new.
+   - Move all remaining holders together when a partial move would create a second file.
+3. Choose the lowest layer that proves the requirement.
+   - Keep the registered primary layer authoritative during migration.
+   - Reject a conflicting explicit layer folder or mixed registered layers; separate focused tests.
+4. Make the smallest regression change to the existing holder and prove it red on the base.
+   - Name the requirement when requesting a regression test.
+   - Add a function only for a newly registered requirement or to split an existing chained check.
+5. Judge test proportion in review; keep every test tied to its requirement.
+   - Use existing outcome metrics; do not invent a per-card allowance or exception trailer.
+   - Read observed costs from canonical receipts; leave unavailable summaries unmeasured.
+6. Delete redundant tests only with evidence and the admitted removal review.
+   - Name covering tests; require no unique covered lines, no unique killed mutant and no recorded caught defect.
+   - Inspect uncovered source as a possible dead-code candidate before adding a test.
+   - Keep snapshots and frozen transcripts as provenance.
+7. Class each red through the execution and receipt owners.
+   - Generate test data through support factories.
+   - Confirm it alone before attribution: passing within its bound is a flake; passing over it is a slow-test defect.
+   - Give an admitted quarantine an owner and expiry; use the existing post-merge and recovery route.
+   - Keep product defects, test defects, infrastructure and environment failures distinct.
+   - Obtain valid evidence after a tool/environment failure; unknown is not a passing result.
+8. Keep folder, domain and registered owner consistent.
+   - Ask the test manager about requirement admission, placement, Large tests and test health.
 
-1. **Every test proves a registered requirement.** A requirement is a row in
-   the requirements registry, which the registry's cards add: an id, one plain sentence that is its
-   reason, the owner package, a layer and a time budget. A test names the ids it
-   proves with `@pytest.mark.proves("<id>")`. Its layer, owner, size and time are
-   derived from the row, never written by hand.
-   - Admission is by exception. A row that passes the checks (owner, sentence,
-     layer, budget, no near-duplicate in its owner) is admitted at once.
-   - A new end-to-end or native journey, a test over 60 s or a near-duplicate
-     needs the test manager's decision, asked once. The decision is
-     copied into the row.
-   - Existing tests are counted per file in a list beside that registry, and the
-     count only falls.
-   - A row in config/registries/requirements.json holds its id
-     (`<owner's last segment>.<words>`), a `description` of one sentence of 5 to 40
-     plain public words, its `owner` (a package that owns a noun in the owner map),
-     its `layer` (unit, integration, contract, e2e or native; a layer's limit is
-     test-sizes.json's for its size) and its `seconds`. A decided exception is recorded
-     as `"exception": {"kinds": [...], "why": "...", "decided": "<date>: <decision>"}`.
-     A row is never removed: it is retired with `"retired": "<date>: <why>"`.
-   - The marker goes on a function, a class or a module's `pytestmark`, and a journey
-     may name several ids. A marked test needs no docstring sentence: its row holds it.
-   - Held by the fast guard's TEST-REGISTRY step (each new test and each added or
-     edited row), and in a gate lane by collection, which refuses an unknown or retired
-     id and a file past its count in the private legacy count list.
-     `python scripts/tests_registry.py shrink` lowers the counts.
-2. **Find before you write.** `python scripts/tests_registry.py find "<words>"` returns the
-   matching requirements and the tests that hold them, requirements first. One holder per requirement
-   per layer: the holder is one file, which may contain focused functions, classes and
-   parameter cases. The TEST-REGISTRY guard refuses a new second file and names the
-   file to extend. A partial move cannot introduce another file; move the remaining
-   holders too, or merge them into one file;
-   an unchanged definition moved to another file keeps its standing. Explicit
-   a registered layer remains authoritative during path migration.
-   - A refused new test shows that search's result for its name and docstring, then
-     the next step: add the case to the holder it names (an unregistered holder
-     registers its requirement and takes the marker), or register the row first and
-     mark the test.
-3. **The lowest layer that can prove it.** The folder is the layer, with the
-   owning domain below it.
-   - **unit:** no file outside tmp, no DuckDB, subprocess, network or Host; 1 s.
-   - **integration:** files, DuckDB and an in-process Host; no network; 60 s.
-   - **contract:** one port's suite, run on every adapter of that port.
-   - **e2e:** only the registered journeys. Each boots the real composition,
-     re-reads the world from outside (files, ledger rows, the page) rather than
-     trusting the agent's own report, checks that untouched files are
-     byte-identical, and keeps test doubles to the model, the network and the
-     clock.
-   - **native:** real host agents, in the nightly smoke and the release.
-   - The registered primary layer activates its resource contract during fixture
-     setup, call and teardown, including on legacy paths during migration. An explicit
-     layer folder must agree with the row; mixed registered layers refuse with the
-     recovery of separate focused tests. Unit imports cannot reach DuckDB or the product
-     Host; audited subprocess, network and outside-temporary file operations refuse.
-     Integration permits its files and database, but refuses network operations.
-     Resource contracts share one scoped process audit hook with the test recorder;
-     imports install no extra hook, and subscriptions are released on every exit.
-     Exact root framework fixtures are registered with their own reasons in
-     test-sizes.json. They may inspect the loaded-module inventory; their selected
-     bindings and runtime resource operations remain guarded. Units retain root
-     isolation without a Host adapter, and Host-only controls stay inactive.
-     One reasoned backend catalog names database, socket, process, native file and
-     Host bindings, including array fromfile and memmap file readers. Native numeric
-     computation remains allowed; array save/load operations meet the file audit.
-     These are Python contracts,
-     not an operating-system sandbox. Other layer folders retain their existing
-     contracts; unregistered legacy folders retain their current runtime behaviour.
-   - The existing collection size owner gives unit tests its Small bound, including
-     fixtures. Cost is the node's own setup, enclosing call and teardown, not the raw
-     subtest total. A unit over its bound uses the existing gate's solo confirmation;
-     missing, malformed or aborted evidence is not a pass. No second timer is used.
-4. **Test-first by this protocol.** The red is the holder's smallest change, and
-   it fails on the card's base (writing rule 12).
-   - A bug extends the holder of the requirement it broke, or registers the
-     requirement nobody had.
-   - A reviewer who asks for a test names the requirement.
-   - In force now.
-5. **Tests stay proportionate, judged by outcome.** The reviewer judges whether a
-   card's tests fit its change: one holder per requirement, extended before a new
-   one is added, and every test naming its requirement. There is no per-card line
-   formula and no exception to ask for.
-   - Each merge set's report shows its tests against its source. The targets: tests
-     fall toward 40% of source, a median of at most one new test function per card,
-     and no set growing tests faster than source. The test manager audits each set
-     after it merges.
-   - Until the fast guard's per-card line check is removed, a card it refuses
-     declares `Test-Budget-Exception: outcome rule`.
-   - *From the pipeline's receipts:* each card's receipt also carries its
-     test-seconds, against each owner's seconds budget, which the test manager
-     sets from the inventory.
-6. **Deletion is a normal change.** A requirement's holders change or go with it.
-   - A test that is deleted on evidence, without anyone's permission, is one whose
-     covered lines are a subset of other tests', that kills no mutant another test
-     does not, and that has caught nothing. The change names the covering tests.
-   - An uncovered source line is first a candidate for deletion as dead code, not
-     a missing test.
-   - Snapshots and frozen transcripts are provenance, never gates.
-   - *The inventory supplies the evidence.*
-7. **Deterministic, and every red classed.** No real clock where the product has
-   a clock seam, no sleeps and no network; data comes from the support factories.
-   A red is one of these:
-   - a flake: it passes alone, within its layer's time. It is quarantined with an
-     owner and an expiry (`config/registries/test-sizes.json`) and runs post-merge
-     only;
-   - a slow test: it passes alone, but only over its time. That is a test defect;
-   - a test defect;
-   - a product defect;
-   - infrastructure (a tool error);
-   - the environment.
-   Only product and test defects block or revert. The quarantine list is in
-   force; the classifier comes *from the protocol's guards*.
-8. **Owned and budgeted.** Folder, domain and owner match.
-   - The test manager, a maintainer role, owns the tests. It admits new
-     requirements and Large tests, leads deletions, runs the daily flake duty and reports test
-     health daily.
-   - A question about a test's place or budget goes to the test manager.
+| Layer | Contract |
+| --- | --- |
+| Unit | Use temporary files only; no database, subprocess, socket, network or Host. |
+| Integration | Use files, databases and an in-process Host; no network. |
+| Contract | Run one port's suite against every adapter. |
+| E2E | Use registered journeys, real composition and external readback; check that untouched files are byte-identical; keep doubles to model, network and clock. |
+| Native | Use real host agents in admitted nightly and release lanes. |
+
+- Apply layer contracts during setup, call and teardown, including registered legacy paths.
+- Keep unit root isolation; admit only exact registered framework-fixture exceptions.
+- Keep selected-binding and runtime checks active inside those exceptions.
+- Use the reasoned backend catalog; permit ordinary compiled standard-library and numeric computation.
+- Keep file operations under their audit, including native array file readers and writers.
+- Share one scoped process audit hook with the recorder; release subscriptions on every exit.
+- Treat these as Python contracts, not an operating-system sandbox.
+- Keep unregistered legacy folders' existing behavior until migration.
 
 ## Boundary rules
 
-1. One lifecycle per file. A test that reads a dogfood evidence root carries
-   `@pytest.mark.real_evidence`, resolves the root by name through
-   `devtools.architecture.evidence_roots` (declared in
-   the private evidence-root declaration), and runs in the explicit lane
-   (`scripts/check_playpen.py --evidence`). The routed gate deselects it and
-   names its file as `REQUIRED`.
-2. Tests import shared setup by package name, never by editing `sys.path` and
-   never through a drive-letter path. `src/` and `scripts/` are on the pytest
-   `pythonpath`; a test module that another test still imports is a Phase 3
-   extraction item, not a pattern to extend.
-3. A helper module lives beside the owner that consumes it; the runner routes a
-   changed helper to its importers by dotted name, a changed `conftest.py` to
-   its whole subtree, and an unparsable file to its directory.
-4. A new test extends its owner's suite. A new package needs an independent
-   acceptance boundary or runnable question; a new real-workspace build belongs
-   in the owner's support module, not in a test body.
-5. Protected classes (numerical goldens, authority, tamper, recovery,
-   fail-closed, historical readback, replay, Holdout/OOS firewalls) change only
-   how they are built; their assertions and `match` strings stay equal or
-   stricter.
-6. Automated pytest assets belong only under `tests/`: do not add `test_*.py`
-   or `conftest.py` beneath `case-study/`. A runnable example may have its own
-   ordinary assertions, but when it becomes a regression or acceptance
-   contract, move that contract into its owning test package here.
+1. Keep one lifecycle per file.
+   - Mark real-evidence readers with `pytest.mark.real_evidence`.
+   - Resolve named roots through `devtools.architecture.evidence_roots`.
+   - Use the explicit evidence lane; let routed selection deselect those files and report `REQUIRED`.
+2. Import shared setup by package name; never edit `sys.path` or use drive-letter imports.
+   - Extract existing test-to-test dependencies instead of adding new ones.
+3. Keep helpers beside their owner.
+   - Route changed helpers to importers, conftests to their subtree and unparsable files to their directory.
+4. Extend the owner's suite; require an independent acceptance boundary for a new package.
+   - Put real-workspace builders in owner support modules.
+5. Preserve numerical, authority, tamper, recovery, fail-closed, historical-readback, replay and Holdout/OOS assertions and match strings.
+   - Change their setup only with equal or stricter proof.
+6. Keep automated pytest assets under `tests/`; do not add them under `case-study/`.
+   - Move a runnable example's regression or acceptance contract into its owning test package.
 
 ## Writing a test
 
-The protocol above governs; these rules are its detail. A test is kept only while it holds a requirement nothing else holds. The fast
-guard (`scripts/check_test_shape.py`, run by `scripts/check_playpen.py --staged
---fast`) refuses rules 1, 3, 7 and 9, a sentence pin of five or more words (rule 4)
-and the docstring bound in rule 1 on what a change adds; review holds the rest.
-Source growth past 100 KiB or 120 function lines/20 decisions, copied eight-line blocks and added performance lints are refused by the fast guard; owner count-budget excess is a COUNT STOP, and a higher pin needs maintainer approval.
-The Workbench parity guard refuses a write without an agent route, an added named UI-only exception, or a UI-origin check that blocks the person's relay.
+1. State an unmarked test's requirement in one plain sentence of at most three docstring lines.
+   - Let a `proves` marker use its registry sentence; keep further reasoning in the change record.
+   - Use public behavior words rather than internal labels.
+2. Extend or replace the holder returned by the registry search.
+3. Drive the real producer's output through its real consumer at the owner's seam.
+   - Read source only in `tests/structural`; test behavior elsewhere.
+   - Prefer a real component; make a necessary double match the real structure.
+   - Assert behavior rather than the mock itself or a private helper's incidental layout.
+4. Check declared word keys and facts; avoid snapshots, markup and whole-sentence pins.
+   - Check translations by key and their difference from English.
+5. Apply the parameter rule in [Tests are cheap by construction](#tests-are-cheap-by-construction).
+6. Apply its shared-setup rule; keep builders in owner support.
+7. Drive the clock or supervisor step; do not sleep for time to pass.
+8. Check Workbench behavior once in the Node harness; reserve a browser for real layout, width, focus, scrolling or motion.
+9. Keep files within the existing test-shape size ratchet; an oversized file may only shrink.
+10. Judge test/source proportion by the protocol's outcome rule; use registered bounds and Large reasons.
+11. Correct or delete obsolete tests; never loosen them.
+   - Name the covering test when deleting one.
+12. Prove a new regression red on the base; name a base-passing addition as a specific control.
+   - Treat a wording/private-layout change detector as a redesign or deletion candidate, not a requirement.
 
-1. A test holds one requirement: a behaviour a user or a consumer relies on, a
-   regression, a tamper or recovery case, or a boundary nothing else covers. An
-   unmarked test's docstring states that requirement in one sentence, at most three
-   lines, in words rather than internal card or ledger ids; the guard refuses new
-   functions without it. A test marked `@pytest.mark.proves("<id>")` takes the
-   sentence from its registered row instead (protocol rule 1).
-   The change's record carries any further reasoning.
-2. Before writing one, run `python scripts/tests_registry.py find "<words>"` (protocol
-   rule 2) and extend or replace the holder it names. A requirement is tested once, in its owner's suite, not again in
-   another file or another harness. A fix extends the test that should have
-   caught the defect; only a new requirement gets a new test.
-   The reviewer judges a card's tests against its change (protocol rule 5).
-3. Test at the owner's seam: drive the producer's real output through the real
-   consumer. Only `tests/structural` reads source text; elsewhere a test does not
-   call `inspect.getsource` or test a private helper whose owner's public call
-   shows the behaviour. Prefer the real component to a mock. A mock is not itself
-   asserted on, and it mirrors the real structure completely where one is needed.
-4. Assert the requirement, not the incidental. No snapshot, markup or
-   whole-sentence pins outside the declared door words: check words by their key
-   and the facts they carry (counts, dates, codes), and a Chinese translation by
-   its key and that it differs from the English.
-5. A parameter dimension (width, language, theme, class) appears only when that
-   dimension is the requirement.
-6. Expensive setup (a built workspace, a started Host, a browser) is shared at
-   module or session scope unless the test mutates it; a new real-workspace build
-   belongs in the owner's support module (boundary rule 4).
-7. A test does not sleep for time to pass; it drives the clock or the
-   supervisor's step.
-8. A Workbench behaviour is checked once, in the Node harness. A real-browser
-   class checks only what needs real layout: widths, focus, scrolling and motion.
-9. A test file stays under 100 KB, and one already over it only shrinks.
-10. Across a merge set, tests do not grow faster than source (protocol rule 5).
-    A test's time follows "Tests are cheap by construction" below; a Large test has a
-    specific registry reason, and the declaration ratchet refuses growth.
-    Pytest-timeout enforces the registered bound over setup, call and teardown, naming overruns.
-11. An outdated test is deleted or changed, never loosened. A deleted test names
-    its covering test in the change's record; protected classes (boundary rule 5)
-    change only how they are built.
-12. A new or changed test fails on the change's base, without its product
-    change, and the maintainer's merge checks this. One that passes there is a
-    declared control for a named behaviour, or it is removed. A test that only an
-    intended change can break (a pinned wording, a private layout) is a change
-    detector, not a requirement.
+Use `scripts/check_test_shape.py` through the normal fast guard.
+Read numeric shape limits from that owner; this protocol does not duplicate them.
+Require an agent route or an existing named UI-only exception for UI writes; refuse UI-origin checks that block the person relay.
 
 ## Tests are cheap by construction
 
-These hold for every test, in the maintainers' own words:
-
-- **A parameter multiplies only what reads it.** A check that reads no parameter lives outside the parametrized function, never inside it.
-- **Expensive setup is built once.** An environment, an export, a repository with history or a model run is a module or session fixture, shared read-only. No case rebuilds what another case already built.
-- **One function, one behaviour.** Independent end-to-end checks are separate functions, so the workers run them in parallel. A function never chains dozens of runs one after another.
-- **Time is part of correctness.** A test is Small under 1 s, Medium under 10 s, and Large above that. The merge refuses a new or grown test over 60 s, read from the gate's JUnit durations. A Large test runs after the merge, never before it.
-- **The reviewer checks cost as well as behaviour.** The READY gives the touched tests' durations before and after. A card that makes a holder slower without a stated reason is refused in review.
+- Parameterize a dimension only when it is the requirement; multiply only the work that reads it.
+- Move parameter-independent checks out of the parametrized function.
+- Build an expensive environment, export, history, workspace, Host or model once in a shared module/session fixture.
+- Share setup read-only; isolate each case's mutations.
+- Give each function one behavior; split chained checks so workers can run them in parallel.
+- Keep Small under 1 s and Medium under 10 s; classify slower work as Large.
+- Measure own setup, enclosing call and teardown through the receipt producer; never use double-counted subtest time.
+- Confirm an overage through the clean-solo/load route; keep missing, malformed or aborted proof unmeasured.
+- Refuse a new or grown test over 60 s from that evidence.
+- Run Large work after merge unless mandatory or explicit admission selection requires it.
+- Read watchdog settings from `config/registries/test-sizes.json`; a larger mechanical bound does not change the 1 s/10 s rule.
+- Give Large work a specific registered reason and keep its declaration shrink-only.
+- Report touched-node durations before and after; explain slowdown without weakening its check.
 
 ## Running tests
 
-The shared fixture confines first-use discovery without changing the process cwd. Project and
-workspace reads outside the declared temporary scope fail by name. QA Host launches and default
-golden caches use that scope; consumers read the producer's scoped receipt. Existing managed
-producers pass their validated run root explicitly. Source paths and offered source commands
-use the owning checkout.
-
-1. While working, run the nodes you changed or that fail, with one or two
-   workers, plus a test file you changed. Never a directory or the whole suite.
-2. The merge gate has two tiers (`tools/lead_check.py --tier pre|post`).
-   - The pre tier blocks; its target is about 15 minutes at four workers, unmeasured until its
-     first runs. It always runs the fast guard over the whole set, the registry's mandatory
-     files, tests/structural and the changed tests, naming any overrun of the budget. The tests
-     that import a changed module then join, rarest import first, within 3,600 estimated
-     test-seconds (60 s for a file without a recorded duration).
-   - A line runs the same pre tier on its card before READY, so defects are found in parallel.
-   - The post tier runs every affected file whole once, after the merge; its `--durations`
-     report is the test timing. No separate timing run.
-3. A passing test is not rerun unchanged. After a fix, rerun the failed node; the
-   integration set reruns its file.
-4. The real-evidence lane (`scripts/check_playpen.py --evidence`) runs once a day
-   and for a change on the data update, deferral or activation owners; the
-   integration set deselects it otherwise.
-5. Tests run offline (`ALPHALATTICE_NETWORK_DISABLED=1`), and their temporary data
-   is released when the work is handed back.
-6. `tests/structural` reads source as text, which import selection cannot see, so
-   every structural test runs in every lane unless it declares its reach in
-   `config/registries/test-sizes.json`.
-   - A `per_file` scan reads repository Python only through `scanned()` or
-     `in_scope()` (tests/structural/source_shape_samples.py). The fast guard and the
-     merge lane run it over the changed files only. A read outside that scope fails
-     the test, and a change to the test's own file or a declared input runs it whole.
-   - A cross-file check declares `inputs`, and the merge lane runs it when one of
-     them changes. `+*` matches any added or deleted file.
-   - Nightly and candidate runs keep every structural test whole, so a wrong
-     declaration surfaces within a day.
+- Use the locked environment and select touched or failed nodes, or changed test files.
+- Keep tests offline with `ALPHALATTICE_NETWORK_DISABLED=1`.
+- Let the managed runner own temporary roots, reports, plugins and workers.
+- Keep first-use discovery, workspace reads, QA launches and golden caches inside their validated scope.
+- Use the owning checkout for source paths and offered source commands.
+- Follow applicable maintainer instructions for managed output, heavy admission and READY.
+- Reuse unchanged passing proof; rerun changed or failed nodes.
+- Use normal stage producers for steps a failed stage never reached.
+- Keep mandatory files and declared reach in selection; a size edit alone cannot defer them.
+- Use `scripts/check_playpen.py --evidence` for the admitted daily or affected-owner evidence run.
+- Declare structural reach in `config/registries/test-sizes.json`; undeclared structural checks stay whole.
+- Make `per_file` scans read Python through `scanned()` or `in_scope()` in `tests/structural/source_shape_samples.py`.
+- Run a scoped scan whole when its own file or a declared input changes; refuse reads outside the changed scope.
+- Declare cross-file inputs; use `+*` for additions or deletions.
+- Keep nightly and candidate structural checks whole.
+- Take timing from the owning gate's reports; do not repeat a run solely for another timing.
 
 ## Packages
 
-One package per former case-study directory, named by replacing hyphens with
-underscores; `structural-guards` became `structural`, and the two thin loaders
-over documented runnable cases sit in `cases/`. `researcher_methodology_extension`
-holds the two methodology cases that install a catalog revision: they need the
-extension and external workspaces, which nothing else does, so they run in
-their own process while the shipped-catalog cases run in parallel. The shared
-session fixtures are defined once in
-`researcher_methodology_surface/session_fixtures.py` and imported by name into
-each package's `conftest.py`.
+- Keep deterministic regression and acceptance assets in the `tests` package tree with `__init__.py` files.
+- Keep runnable learning/framework cases in `case-study/`, performance scripts in `benchmark/` and opt-in probes in `probe/`.
+- Preserve fixture scope, instances and consumer groups when changing placement.
+- Import shared methodology session fixtures by name from `researcher_methodology_surface/session_fixtures.py`.
+- Keep `researcher_methodology_extension` external-catalog cases isolated from shipped-catalog cases.
+- Leave historical paths in historical records.
 
 ## Process policy
 
-The impact runner runs one file per process by default, because Agent and model
-frameworks are process-global. A package may run as one process only after an
-audit shows its one-process result equals its per-file result and it imports no
-such framework; the allow-list is `_BATCH_SAFE_TEST_DIRS` in
-`scripts/check_alpha_verification_impact.py`, and the runner revokes an entry
-by itself the moment a process-global import appears in the package.
-
-Files declared in `post_merge_only` are deferred from the commit stage, while their
-mandatory standing keeps them whole post-merge, in candidates and nightly. Structural
-holders cannot be deferred by this field.
-
-A cost commit stage may receive explicit required test nodes from its admission producer.
-Those nodes run at their declared limits, Large included, and their outcomes are recorded
-in the same receipt. Ordinary commit selection stays unchanged; only a head declaring
-`Change-Kind: cost` accepts the required-node input.
-
+- Keep the impact runner's file-per-process default.
+- Batch only through its audited safe list; revoke batching on a process-global framework import.
+- Defer `post_merge_only` files from commit while retaining whole post-merge, candidate and nightly standing.
+- Do not defer structural holders through that field.
+- Admit explicit required cost nodes only for a head declaring `Change-Kind: cost`.
+- Run those nodes at declared limits, including Large and quarantined nodes; record them in the same receipt.
+- Leave ordinary commit selection unchanged.
 
 ### Verified result reuse
 
-The pipeline accepts `--result-cache <directory>`, `--result-cache-bytes <positive bytes>`
-and `--cache off|record|shadow|on`. The default is off. Record and shadow execute every
-selected group; explicit on mode may reuse only a verified passing first attempt. Each
-cache decision and the original bounded node metadata stay in the receipt. Dirty stages
-never publish. A shadow mismatch disables the shared store; repair it before reenabling
-reuse. Promotion still requires the reviewed shadow and recall evidence. Large, quarantined,
-end-to-end and native results are never stored. Required cost checks still run even when
-quarantined, because they are evidence for admission.
+- Use `--result-cache <directory>`, `--result-cache-bytes <positive bytes>` and `--cache off|record|shadow|on`.
+- Keep the default off; record and shadow execute every selected group.
+- Reuse only a verified passing first attempt in explicit on mode.
+- Keep cache decisions, original bounded metadata and provenance in the receipt.
+- Never publish a dirty stage.
+- Disable the shared store on a shadow mismatch; repair it before reenabling reuse.
+- Require reviewed shadow and recall evidence before promotion.
+- Never store Large, quarantined, end-to-end or native results.
