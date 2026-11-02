@@ -32,6 +32,7 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResolvedResearchAuthority,
     SealedResearchProgram,
 )
+from tests._support.project_discovery import project_discovery as project_discovery
 from tests.portfolio_strategy_lab.local_web_support import _json, _manifest
 from tests.researcher_methodology_surface.factor_web_support import (
     _alpha_payload,
