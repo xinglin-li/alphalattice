@@ -677,7 +677,32 @@
     "fast"
   ],
   "reach": [],
-  "quarantine": [],
+  "quarantine": [
+    {
+      "node": "tests/portfolio_strategy_lab/test_cli_contract.py::test_an_operation_only_a_person_completes_is_marked_so",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "About 25 separate CLI process starts, one per checked operation, each importing the product: 50 s alone against its 60 s limit, over it under any gate load, and it is selected in every pre tier. It runs post-merge only until its owner drives the person-only checks through one process; no assertion or limit changes.",
+      "until": "2026-10-28"
+    },
+    {
+      "node": "tests/researcher_methodology_surface/test_real_workspace.py::test_the_host_admits_a_successor_panel_only_after_its_observation_close",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "Builds its own workspace and times out at its 60 s limit alone on develop 15941a858 (59.4 s, failed). It runs post-merge only until its owner cuts the build out of its body; no assertion or limit changes.",
+      "until": "2026-10-28"
+    },
+    {
+      "node": "tests/workspace_maintenance/test_membership_change_recovery.py::test_a_cancelled_tasks_orphaned_candidate_list_returns_to_its_panels_own[DEFERRED]",
+      "owner": "tests.workspace_maintenance",
+      "reason": "Times out at its 60 s limit alone on develop 15941a858 and on the near-limit head alike. It runs post-merge only until its owner cuts its setup; no assertion or limit changes.",
+      "until": "2026-10-28"
+    },
+    {
+      "node": "tests/structural/test_registries.py::test_staged_registry_census_refuses_new_unregistered_items",
+      "owner": "tests.structural",
+      "reason": "The census holder's git calls (about 475 per run) put it at 38-49 s alone against 60 s, and the merge queue's solo rerun timed out at 63 s on 2026-10-25, ejecting cards. It runs post-merge only until the fix that reads each Git fact once per census run lands and removes this row; no assertion or limit changes.",
+      "until": "2026-10-28"
+    }
+  ],
   "mandatory": [
     "tests/structural/*",
     "tests/portfolio_strategy_lab/test_cli_contract.py*"
