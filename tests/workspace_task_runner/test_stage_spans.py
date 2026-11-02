@@ -37,7 +37,7 @@ from alphalattice.kernel.shared_kernel.spans import (
 )
 from tests.workspace_task_runner.task_control_support import compatibility, digest, task_contract
 
-HERE = "tests.workspace_task_runner.test_stage_spans"
+HERE = __name__  # this module, wherever it lives
 
 
 def _rows(value: dict[str, object]) -> dict[tuple[object, object, object], dict[str, object]]:
