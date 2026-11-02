@@ -62,7 +62,12 @@ CASES = {  # where, key, value (GONE deletes it), the refusal's code
 def test_a_malformed_definition_is_refused_by_code_and_the_shipped_one_loads(case):
     """The pipeline runs only from config/pipeline.toml: a malformed stage or row stops on load."""
     if CASES[case] is None:
-        assert definition.load(ROOT).stage("commit").place == "gate"
+        stage = definition.load(ROOT).stage("commit")
+        assert stage.place == "gate"
+        assert (stage.target_minutes, stage.stop_minutes) == (
+            10,
+            40,
+        )  # Retire with the temporary loaded stop.
         return
     policy, named = REGISTRIES
     assert definition.check(copy.deepcopy(VALID), "", policy, named).stage("commit").rows

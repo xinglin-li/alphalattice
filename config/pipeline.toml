@@ -22,8 +22,9 @@ range = "card"
 lane = "merge"
 sizes = ["small", "medium"]
 # Measured uncached gate: 788 to 900 seconds plus one rule-7 rerun.
+# Under shared load, 845 to 909 seconds of pytest plus the public scan exhausted 25 minutes.
 # Retire this temporary stop bound when the cached stage holds its target.
-stop_minutes = 25
+stop_minutes = 40
 target_minutes = 10
 place = "gate"
 rows = ["environment", "fast-guard", "tests", "load-timeouts", "public-scan", "wheel", "platforms"]
