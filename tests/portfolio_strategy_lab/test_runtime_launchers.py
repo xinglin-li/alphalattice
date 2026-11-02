@@ -154,6 +154,7 @@ def test_attached_launcher_stops_on_explicit_stdin_or_eof(tmp_path, monkeypatch,
 
 @WINDOWS
 def test_attached_retrieval_host_ends_when_its_cli_parent_is_terminated(tmp_path):
+    """A forced retrieval-forwarded Host and its children die with their CLI parent."""
     import threading
 
     import psutil
@@ -169,8 +170,10 @@ original = importlib.util.find_spec
 importlib.util.find_spec = lambda name, *a, **k: (
     None if name == 'fastembed' else original(name, *a, **k)
 )
-from alphalattice.control.product_host.composition.entry import main
-raise SystemExit(main(sys.argv[1:]))
+from pathlib import Path
+from alphalattice.control.product_host.composition import entry
+entry.interpreter_path = lambda: Path(sys.executable)
+raise SystemExit(entry.main(sys.argv[1:]))
 """
     sources = (str(root), str(root / "src"), str(Path(sys.prefix) / "Lib/site-packages"))
     environment = dict(os.environ, PYTHONPATH=os.pathsep.join(sources))
