@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from datetime import date
 from pathlib import Path
@@ -65,6 +66,8 @@ class Stage:
     lane: str = ""
     sizes: tuple[str, ...] = ()
     place: str = ""
+    target_minutes: float | None = None
+    stop_minutes: float | None = None
 
 
 @dataclass(frozen=True)
@@ -172,12 +175,10 @@ def _stage(name: str, value: Any, rows: dict[str, Row], policy: dict[str, Any]) 
         refuse(f"its keys are among {', '.join(sorted(STAGE_KEYS))}")
     if not all(_listed(value[key]) for key in ("rows", "sizes") if key in value):
         refuse("its rows and sizes are lists of non-empty strings")
-    bound, names = value.get("bound_minutes"), tuple(value.get("rows", ()))
+    bound, names = _budget(value, refuse), tuple(value.get("rows", ()))
     sizes = tuple(value.get("sizes", ()))
     if type(value.get("order")) is not int or not value.get("reason"):
         refuse("it needs an integer order and a reason")
-    if not isinstance(bound, int | float) or isinstance(bound, bool) or not 0 < bound < math.inf:
-        refuse("bound_minutes is a positive number")
     if value.get("trigger") not in TRIGGERS or value.get("range") not in RANGES:
         refuse(f"trigger is one of {sorted(TRIGGERS)}, and range one of {sorted(RANGES)}")
     if value.get("lane", "merge") not in policy["lanes"] or set(sizes) - set(policy["sizes"]):
@@ -190,7 +191,27 @@ def _stage(name: str, value: Any, rows: dict[str, Row], policy: dict[str, Any]) 
             f"stage {name} names row {missing[0]}; register it under [rows] with its kind, "
             "owner, reason and hosts",
         )
-    return Stage(**{**value, "id": name, "rows": names, "sizes": sizes})
+    return Stage(**{**value, "bound_minutes": bound, "id": name, "rows": names, "sizes": sizes})
+
+
+def _budget(value: dict[str, Any], refuse: Callable[[str], NoReturn]) -> float:
+    """Check the typed target/stop pair, retaining the existing single-bound definition."""
+    bound = value.get("bound_minutes", value.get("stop_minutes"))
+    if {"target_minutes", "stop_minutes"} & value.keys():
+        if "bound_minutes" in value:
+            refuse("bound_minutes cannot be combined with target_minutes or stop_minutes")
+        for key in ("target_minutes", "stop_minutes"):
+            minutes = value.get(key)
+            if (
+                not isinstance(minutes, int | float)
+                or isinstance(minutes, bool)
+                or not 0 < minutes < math.inf
+            ):
+                refuse(f"{key} is required and is a positive finite number")
+        return float(value["stop_minutes"])
+    if not isinstance(bound, int | float) or isinstance(bound, bool) or not 0 < bound < math.inf:
+        refuse("bound_minutes is a positive number")
+    return bound
 
 
 def _kind_problem(kind: str, hosts: tuple[str, ...], value: dict[str, Any]) -> str:

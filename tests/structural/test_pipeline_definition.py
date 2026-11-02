@@ -7,6 +7,7 @@ from devtools.pipeline import definition
 from devtools.testing.sizes import load_policy
 
 ROOT = Path(__file__).resolve().parents[2]
+REGISTRIES = load_policy(ROOT), definition.owners(ROOT)
 ROW = {"kind": "command", "owner": "devtools.pipeline", "reason": "r", "hosts": ["public"]}
 STAGE = dict(order=1, reason="r", trigger="line", range="card", bound_minutes=10, lane="merge")
 VALID = {
@@ -19,6 +20,10 @@ VALID = {
         "events": {**ROW, "kind": "pytest-plugin", "module": "m"},
     },
 }
+LEGACY = copy.deepcopy(VALID)
+VALID["stages"]["commit"].update(target_minutes=10, stop_minutes=15)
+MIXED = copy.deepcopy(VALID["stages"]["commit"])
+VALID["stages"]["commit"].pop("bound_minutes")
 GONE = object()
 CASES = {  # where, key, value (GONE deletes it), the refusal's code
     "an unknown key": ((), "extra", 1, "schema_unknown"),
@@ -29,6 +34,7 @@ CASES = {  # where, key, value (GONE deletes it), the refusal's code
     "an unregistered owner": (("rows", "guard"), "owner", "x", "row_invalid"),
     "an escape without its review": (("rows", "guard"), "review", GONE, "row_invalid"),
     "an unknown trigger": (("stages", "commit"), "trigger", "x", "stage_invalid"),
+    "a bound beside a stop": (("stages",), "commit", MIXED, "stage_invalid"),
     "a zero bound": (("stages", "commit"), "bound_minutes", 0, "stage_invalid"),
     "an unregistered lane": (("stages", "commit"), "lane", "x", "stage_invalid"),
     "a plugin that is no plugin": (("rows", "tests"), "plugins", ["guard"], "plugin_unknown"),
@@ -43,25 +49,25 @@ CASES = {  # where, key, value (GONE deletes it), the refusal's code
     ),
     "a nan bound": (("stages", "commit"), "bound_minutes", float("nan"), "stage_invalid"),
     "the shipped definition": None,
+    **{
+        f"{key}:{i}": (("stages", "commit"), key, bad, "stage_invalid")
+        for key in ("target_minutes", "stop_minutes")
+        for i, bad in enumerate((GONE, 0, -1, True, "bad", float("nan"), float("inf")))
+    },
 }
-
-
-@pytest.fixture(scope="module")
-def registries():  # the checkout's test sizes and owners, read once
-    return load_policy(ROOT), definition.owners(ROOT)
 
 
 @pytest.mark.proves("pipeline.definition_refuses_malformed_rows")
 @pytest.mark.parametrize("case", CASES)
-def test_a_malformed_definition_is_refused_by_code_and_the_shipped_one_loads(case, registries):
+def test_a_malformed_definition_is_refused_by_code_and_the_shipped_one_loads(case):
     """The pipeline runs only from config/pipeline.toml: a malformed stage or row stops on load."""
     if CASES[case] is None:
         assert definition.load(ROOT).stage("commit").place == "gate"
         return
-    policy, named = registries
+    policy, named = REGISTRIES
     assert definition.check(copy.deepcopy(VALID), "", policy, named).stage("commit").rows
     where, key, value, code = CASES[case]
-    document = copy.deepcopy(VALID)
+    document = copy.deepcopy(LEGACY if key == "bound_minutes" else VALID)
     parent = document
     for step in where:
         parent = parent[step]

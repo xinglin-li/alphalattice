@@ -74,6 +74,12 @@
       "owner": "devtools.evaluation",
       "layer": "integration",
       "seconds": 5
+    },
+    "pipeline.stage_target_is_separate_from_stop": {
+      "description": "A stage enforces its declared stop while recording wall time from which its target breach can be derived.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
     }
   }
 }

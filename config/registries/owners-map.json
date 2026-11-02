@@ -4854,7 +4854,7 @@
     "pipeline stage": {
       "description": "A pipeline stage is one registered step of delivery, from a commit's own check to a release; it runs only the rows its definition names, in order.",
       "owner": "devtools.pipeline",
-      "covers": "config/pipeline.toml: the stages, their rows (kind, owner, reason, hosts, the product's own command) and bounds, the test sizes and lane each stage names, and the definition's load checks",
+      "covers": "config/pipeline.toml: the stages, their rows (kind, owner, reason, hosts, the product's own command) and bounds, the test sizes and lane each stage names, and the definition's load checks; typed target_minutes and stop_minutes separate a non-failing target breach from the hard stop, retaining the legacy single-bound form",
       "defined_by": [
         "devtools.pipeline.definition"
       ],

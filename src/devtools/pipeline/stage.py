@@ -141,12 +141,16 @@ def run(
     writer.write({"workspace": {}}, workspace)
     configuration: dict[str, Any] = {"definition": PATH, "definition_sha256": definition.sha256}
     configuration |= {"rows": list(stage.rows), "providers": providers, "workers": workers}
-    writer.write({"configuration": {}}, configuration | {"bound_seconds": stage.bound_minutes * 60})
-    deadline = started + stage.bound_minutes * 60
+    stop = stage.bound_minutes * 60
+    writer.write({"configuration": {}}, configuration | {"bound_seconds": stop})
+    deadline = started + stop
     context = Context(root, workspace["base"], out, host, workers, deadline, definition)
     try:  # an interrupted run leaves its receipt without finished, which counts as none
         statuses, red = _rows(writer, stage, providers, provides, context)
-        writer.write({"metrics": {}}, {"wall_seconds": round(time.monotonic() - started, 3)})
+        elapsed = time.monotonic() - started
+        writer.write({"metrics": {}}, {"wall_seconds": round(elapsed, 3)})
+        if elapsed > stop:
+            statuses.append("ERROR")
         failed = "FAIL" in statuses or red
         result = "ERROR" if "ERROR" in statuses else "FAIL" if failed else "PASS"
         writer.finish(

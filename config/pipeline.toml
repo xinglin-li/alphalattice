@@ -21,7 +21,10 @@ trigger = "line"
 range = "card"
 lane = "merge"
 sizes = ["small", "medium"]
-bound_minutes = 15
+# Measured uncached gate: 788 to 900 seconds plus one rule-7 rerun.
+# Retire this temporary stop bound when the cached stage holds its target.
+stop_minutes = 25
+target_minutes = 10
 place = "gate"
 rows = ["environment", "fast-guard", "tests", "load-timeouts", "public-scan", "wheel", "platforms"]
 
