@@ -59,6 +59,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_execution import (
     EligiblePoolShort,
 )
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.portfolio_strategy_lab.local_web_support import (
     TEST_PACKAGE,
     _InterruptsOnce,
@@ -1037,7 +1038,7 @@ def test_every_owner_that_offers_a_plan_is_its_stopped_tasks_re_plan(
 
     registry = json.loads(
         (
-            Path(__file__).resolve().parents[2]
+            resolve_playpen_root(Path(__file__))
             / "src/alphalattice/interface/local_application/operations.json"
         ).read_text(encoding="utf-8")
     )

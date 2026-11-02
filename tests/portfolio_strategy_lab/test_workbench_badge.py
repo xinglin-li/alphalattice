@@ -23,6 +23,7 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.portfolio_strategy_lab import local_web_support as web
 from tests.workspace_task_runner.task_control_support import digest, task_contract
 
@@ -202,7 +203,7 @@ def test_real_task_records_drive_home_badges_and_grouped_history(
 def test_activity_task_merge_keeps_only_same_version_attention() -> None:
     """Sparse activity projections cannot ungroup a resolved stop or retain stale attention."""
 
-    source = Path(__file__).resolve().parents[2] / (
+    source = resolve_playpen_root(Path(__file__)) / (
         "src/alphalattice/interface/local_application/assets/workbench-source/js/app/data.js"
     )
     code = r"""
@@ -259,7 +260,15 @@ assert.equal(D.taskSuccessor(D.taskOf('source')), null,
 assert.equal(grouped().length, 2, 'successor identity remains exact after an activity merge');
 """
     web.run_node(
-        ["-e", code, str(source), str(Path(__file__).with_name("workbench_library.cjs"))],
+        [
+            "-e",
+            code,
+            str(source),
+            str(
+                resolve_playpen_root(Path(__file__))
+                / "tests/portfolio_strategy_lab/workbench_library.cjs"
+            ),
+        ],
         missing="BADGE requires the UI's Node.js development runtime",
         required=True,
         check=True,

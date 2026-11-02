@@ -142,8 +142,9 @@ def test_a_staged_check_reads_the_index_not_an_unstaged_repair(synthetic_history
     assert problems(tmp_path, staged=False) == []
 
 
-def _model_sources(root: Path) -> dict[str, Path]:
-    names = ("test_model_contract.py", "test_model_extension.py")
+def _model_sources(
+    root: Path, names=("test_model_contract.py", "test_model_extension.py")
+) -> dict[str, Path]:
     found: dict[str, list[Path]] = {name: [] for name in names}
     for path in (root / "tests").rglob("*.py"):
         if path.name in found:
@@ -175,14 +176,33 @@ def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
     )
     with pytest.raises(ValueError, match="subject_source_ambiguous"):
         _model_sources(tmp_path)
-    for name, subject_path in _model_sources(origin).items():
-        module = ast.parse(subject_path.read_text("utf-8"))
+    resources = {
+        "test_team_scene_evidence_correction.py": {
+            "MODULES": tmp_path
+            / "src/alphalattice/interface/local_application/assets/workbench-source/js/app",
+            "RUNNER": tmp_path / "tests/portfolio_strategy_lab/workbench_team_readback.cjs",
+        },
+        "test_portfolio_walk_forward.py": {"PLAYPEN_ROOT": tmp_path},
+        "test_platform_seams.py": {"ROOT": tmp_path},
+    }
+    models = ("test_model_contract.py", "test_model_extension.py")
+    subjects = _model_sources(origin, (*models, *resources))
+    for name in models:
+        module = ast.parse(subjects[name].read_text("utf-8"))
         assignments = (n for n in module.body if isinstance(n, ast.Assign))
         resource = next(n for n in assignments if getattr(n.targets[0], "id", None) == "ROOT")
         target = tmp_path / "tests/integration/alpha_modeling" / name
         scope = {**globals(), "resolve_playpen_root": resolve_playpen_root, "__file__": str(target)}
         exec(compile(ast.Module(body=[resource], type_ignores=[]), str(target), "exec"), scope)
         assert scope["ROOT"] == tmp_path, name
+    for name, wanted in resources.items():
+        subject_path = subjects[name]
+        target = tmp_path / "tests/integration/owner" / name
+        scope = {**globals(), "__file__": str(target)}
+        for node in ast.parse(subject_path.read_text("utf-8")).body:
+            if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", None) in wanted:
+                exec(compile(ast.Module(body=[node], type_ignores=[]), str(target), "exec"), scope)
+        assert {key: scope[key] for key in wanted} == wanted, name
     body, fixture = "pass\n", "import pytest\n@pytest.fixture\ndef zone(): pass\n"
     fixture += (
         "from tests._support.project_discovery import project_discovery as project_discovery\n"

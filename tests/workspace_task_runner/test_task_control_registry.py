@@ -65,6 +65,7 @@ from alphalattice.interface.local_application.dispatcher import (
     TaskVersionMovedError,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 from tests.workspace_task_runner.task_control_support import (
     FixtureTaskAdapter as _FixtureTaskAdapter,
 )
@@ -74,9 +75,6 @@ from tests.workspace_task_runner.task_control_support import (
     task_contract,
     work_item,
 )
-
-CASE_ROOT = Path(__file__).resolve().parent
-PLAYPEN_ROOT = CASE_ROOT.parents[1]
 
 
 def _complete_stage(
@@ -2356,9 +2354,7 @@ def end_child_for_start_check(*, cancelled):
     "task_kind",
     sorted(
         key.removeprefix("task_kind:")
-        for key in json.loads(
-            (Path(__file__).resolve().parents[2] / "config/registries/formats.json").read_text()
-        )["entries"]
+        for key in runtime_json("config/registries/formats.json")["entries"]
         if key.startswith("task_kind:")
     ),
 )

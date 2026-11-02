@@ -36,6 +36,7 @@ from alphalattice.control.product_host.composition.evidence_review_bundles impor
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, answer_slot
 from tests.alternative_evidence_desk.planted_corpus import _CitingActor
 from tests.alternative_evidence_desk.review_dossiers import controlled_answer
@@ -48,10 +49,13 @@ from tests.alternative_evidence_desk.review_http_support import (
 from tests.portfolio_strategy_lab.local_web_support import run_node
 
 MODULES = (
-    Path(__file__).resolve().parents[2]
+    resolve_playpen_root(Path(__file__))
     / "src/alphalattice/interface/local_application/assets/workbench-source/js/app"
 )
-RUNNER = Path(__file__).resolve().parents[1] / "portfolio_strategy_lab/workbench_team_readback.cjs"
+RUNNER = (
+    resolve_playpen_root(Path(__file__))
+    / "tests/portfolio_strategy_lab/workbench_team_readback.cjs"
+)
 SESSION = "019a0b1c-parent-session"
 SCOPE = sha256(b"parent-session|evidence").hexdigest()
 

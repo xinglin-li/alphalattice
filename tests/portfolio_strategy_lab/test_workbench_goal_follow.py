@@ -35,6 +35,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
     PortfolioExperimentSource,
 )
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
     portfolio_review_task_contract,
 )
@@ -404,10 +405,13 @@ def test_real_task_events_follow_the_attributed_goal_and_preserve_manual_reading
     }
     path = tmp_path / "goal-follow-fixture.json"
     path.write_text(json.dumps(fixture), encoding="utf-8", newline="\n")
-    root = Path(__file__).resolve().parents[2]
+    root = resolve_playpen_root(Path(__file__))
     run_node(
         [
-            str(Path(__file__).with_name("workbench_goal_follow.cjs")),
+            str(
+                resolve_playpen_root(Path(__file__))
+                / "tests/portfolio_strategy_lab/workbench_goal_follow.cjs"
+            ),
             str(
                 root / "src/alphalattice/interface/local_application/assets/workbench-source/js/app"
             ),
