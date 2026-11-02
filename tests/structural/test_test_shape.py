@@ -43,11 +43,14 @@ def _git_backend(texts, paths, state=None):
         action = command[1]
         output = "base" if action == "rev-list" else "1\t0\tsrc/example.py\n"
         if "-z" in command:
-            output = "\0".join(paths) + "\0"
+            output = (state or {}).get("raw", "") if "--raw" in command else "\0".join(paths) + "\0"
         if action == "cat-file":
-            rows = [texts[spec].encode() for spec in kwargs["input"].decode().splitlines()]
+            rows = [texts.get(spec) for spec in kwargs["input"].decode().splitlines()]
             output = b"".join(
-                f"{'0' * 40} blob {len(row)}\n".encode() + row + b"\n" for row in rows
+                f"{'0' * 40} blob {len(row.encode())}\n".encode() + row.encode() + b"\n"
+                if row is not None
+                else b"x missing\n"
+                for row in rows
             )
         code = int(action == "rev-parse" and not (state or {}).get("merge"))
         return shape.subprocess.CompletedProcess(command, code, output)
@@ -185,6 +188,18 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
     assert shape.main([]) == 0
     texts[":" + asset] += "\0"
     assert shape.main([]) == 1
+    old, new, legacy = (
+        "tests/area/test_kept.py",
+        "tests/unit/test_kept.py",
+        "def test_kept(): pass\n",
+    )
+    rows = [(f"{'a' * 40} {'0' * 40}", "D", old), (f"{'0' * 40} {'a' * 40}", "A", new)]
+    raw = "".join(f":100644 100644 {blobs} {kind}\0{path}\0" for blobs, kind, path in rows)
+    texts = {":" + new: legacy, "HEAD:" + old: legacy}  # a byte-identical move keeps its old debt
+    for blob, code in (("a", 0), ("b", 1)):  # an edited move is new: its missing docstring refuses
+        state = {"raw": raw.replace(f"{'a' * 40} A", f"{blob * 40} A")}
+        monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [new], state))
+        assert shape.main([]) == code
 
 
 def test_weekly_report_lists_static_candidates_and_respects_config_string_readers(
