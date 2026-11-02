@@ -159,7 +159,7 @@ OBSERVED = {
     "native": ("import duckdb", "undeclared_input"),
     "scandir": ("list(os.scandir(root))", "metadata_read"),
     "unobserved": ("p.read_text()", "undeclared_input"),
-    "borrowed-list": ("originals[3](root)", None),
+    "borrowed-list": ("saved[3](root)", None),
     "bytecode-import": ("sys.path.insert(0,str(root)); import b", None),
     "bytecode-loose": ("(root/'__pycache__'/'loose.pyc').read_bytes()", "undeclared_input"),
     "bytecode-direct": (
@@ -171,33 +171,89 @@ OBSERVED = {
         "undeclared_input",
     ),
 }
+OBSERVED |= {
+    "stat-metadata": (
+        "value=os.stat(p); assert type(value) is os.stat_result and value==native_stat",
+        "metadata_read",
+    ),
+    "lstat-metadata": (
+        "value=os.lstat(p); assert type(value) is os.stat_result and value==native_lstat",
+        "metadata_read",
+    ),
+    "metadata-missing": ("os.stat(root/'absent')", "metadata_read"),
+    "path-probe": ("assert p.exists() and p.is_file() and not p.is_dir()", None),
+    "fast-probes": (
+        "for f,v in ((os.path.exists,True),(os.path.isfile,True),(os.path.isdir,False)):\n"
+        " n=stats.call_count; assert f(p) is v and stats.call_count==n+1",
+        None,
+    ),
+    "lexists-probe": ("assert os.path.lexists(p)", None),
+    "absent-probe": ("assert not (root/'later').exists()", None),
+    "unreadable-probe": ("p.exists()", "undeclared_input"),
+    "unmodelled-kind": ("assert not p.is_file()", "undeclared_input"),
+    "environment": ("assert os.getenv('RC_WRAPPER_INPUT')=='first'", None),
+    "environment-absent": (
+        "assert os.environ.get('RC_WRAPPER_ABSENT','fallback')=='fallback'",
+        None,
+    ),
+    "environment-key-type": (
+        "try: os.environ[object()]\nexcept TypeError: pass\nelse: raise AssertionError",
+        "undeclared_input",
+    ),
+    "environment-list": ("assert list(os.environ)", "undeclared_input"),
+    "environment-length": ("assert len(os.environ)>0", "undeclared_input"),
+    "environment-repr": ("assert bool(repr(os.environ))", "undeclared_input"),
+    "environment-write": ("os.environ['RC_WRAPPER_INPUT']='during'", "undeclared_input"),
+    **{
+        f"opaque-{event}": (f"sys.audit('{event}',p,1)", "undeclared_input")
+        for event in ("socket.sendto", "socket.sendmsg", "ctypes.dlopen", "os.truncate", "os.chown")
+    },
+}
 OBSERVER_CHILD = """import os,sys,json,socket,subprocess,builtins,io; from pathlib import Path
 from devtools.pipeline import cache; from devtools.pipeline.observe import Recorder
 from unittest.mock import patch
 from importlib.util import cache_from_source
+os.environ['RC_WRAPPER_INPUT']='first'; os.environ.pop('RC_WRAPPER_ABSENT',None)
 root,temp=map(Path,sys.argv[1:3]);p=root/'a.py';outside=temp.parent/'outside'
 flags=getattr(subprocess,'CREATE_NO_WINDOW',0)|getattr(subprocess,'BELOW_NORMAL_PRIORITY_CLASS',0)
 tree=cache.Tree(Path(sys.prefix).parent,{}) if sys.argv[4]=='locked' else cache.Tree.read(root)
-originals=(os.open,builtins.open,io.open,os.listdir)
+def originals():
+ return (os.open,builtins.open,io.open,os.listdir,os.stat,os.lstat,
+  os.path.exists,os.path.isfile,os.path.isdir,os.path.lexists,
+  *[getattr(type(os.environ),n) for n in ('__getitem__','__iter__','__len__','__repr__')])
+saved=originals();native_stat=os.stat(p);native_lstat=os.lstat(p);exception=None
 if sys.argv[4]=='unobserved':
  sys.addaudithook(lambda e,a: (_ for _ in ()).throw(RuntimeError())
                   if e=='sys.addaudithook' else None)
 try:
- with patch('sys.addaudithook', wraps=sys.addaudithook) as added:
+ with patch('sys.addaudithook', wraps=sys.addaudithook) as added, \
+      patch('os.stat',wraps=os.stat) as stats:
+  if sys.argv[4]=='unreadable-probe':
+   stats.side_effect=PermissionError('controlled unreadable path')
+  if sys.argv[4]=='unmodelled-kind':
+   stats.side_effect=None;stats.return_value=os.stat_result((4096,0,0,0,0,0,0,0,0,0))
   with Recorder(tree,temp,('duckdb','pyarrow.dataset','polars')) as seen: exec(sys.argv[3])
   if sys.argv[4]=='contents':
    with Recorder(tree,temp,()) as again:
     assert p.read_text()=='tracked' and again.reason is None and added.call_count==1
     stale(root)
     assert again.inputs['listings']=={'.':cache.digest(['.git','a.py','loose'])}
-except OSError: pass
+except OSError as error: exception=type(error).__name__
 item=cache.Entry.sealed(key=cache.action_key(group='test'),**seen.inputs,
  results={'test_x':('PASSED',0.1)},
  writer={'line':'test','head':'0'*40,'invocation':'i','at':'t'}
 ) if seen.reason is None else None
 before=tree.holds(item) if item else False
-restored=originals==(os.open,builtins.open,io.open,os.listdir)
-print(json.dumps({'reason':seen.reason,'inputs':seen.inputs,'before':before,'restored':restored}))
+restored=saved==originals()
+after=before
+if sys.argv[4]=='absent-probe':
+ (root/'later').write_text('appeared')
+ after=cache.Tree.read(root).holds(item) if item else False
+if sys.argv[4] in ('environment','environment-absent'):
+ os.environ['RC_WRAPPER_INPUT' if sys.argv[4]=='environment' else 'RC_WRAPPER_ABSENT']='changed'
+ after=cache.Tree.read(root).holds(item) if item else False
+print(json.dumps({'reason':seen.reason,'inputs':seen.inputs,'before':before,'after':after,
+ 'restored':restored,'exception':exception}))
 """
 
 
@@ -240,3 +296,24 @@ def test_a_recorder_keeps_only_inputs_the_shared_cache_can_verify(tmp_path, case
     assert case not in ("own-temp", "borrowed-list") or found["inputs"]["listings"] == {
         ".": cache.digest([".git", "a.py", "loose"])
     }
+
+    if case in ("path-probe", "fast-probes", "lexists-probe", "absent-probe"):
+        assert found["inputs"]["probes"] == (
+            {"later": None} if case == "absent-probe" else {"a.py": "file"}
+        )
+    if case in ("absent-probe", "environment", "environment-absent"):
+        assert found["after"] is False
+    if case in ("environment", "environment-absent"):
+        key = "RC_WRAPPER_INPUT" if case == "environment" else "RC_WRAPPER_ABSENT"
+        assert found["inputs"]["env"] == {
+            key: cache.digest("first" if case == "environment" else None)
+        }
+    if case in ("metadata-missing", "unreadable-probe", "environment-key-type"):
+        assert (
+            found["exception"]
+            == {
+                "metadata-missing": "FileNotFoundError",
+                "unreadable-probe": "PermissionError",
+                "environment-key-type": None,
+            }[case]
+        )

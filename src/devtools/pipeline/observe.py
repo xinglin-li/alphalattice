@@ -3,22 +3,55 @@
 from __future__ import annotations
 
 import builtins
+import genericpath
 import io
 import os
+import stat
 import sys
 import threading
 import weakref
 from contextlib import ExitStack
+from functools import wraps
 from importlib.util import source_from_cache
 from pathlib import Path
+from types import FrameType
 from typing import Any
 from unittest.mock import patch
 
 from devtools.pipeline.cache import Tree, digest
 
-FORBIDDEN = frozenset(["subprocess.Popen", "os.system", "os.startfile", "socket.connect"])
-WRITES = frozenset(["remove", "rename", "mkdir", "rmdir", "chmod", "utime", "link", "symlink"])
+FORBIDDEN = frozenset(
+    [
+        "subprocess.Popen",
+        "os.system",
+        "os.startfile",
+        "socket.connect",
+        "socket.sendto",
+        "socket.sendmsg",
+        "ctypes.dlopen",
+        "os.putenv",
+        "os.unsetenv",
+    ]
+)
+WRITES = frozenset(
+    ["remove", "rename", "mkdir", "rmdir", "chmod", "utime", "link", "symlink", "truncate", "chown"]
+)
 _LISTDIR = globals().get("_LISTDIR") or os.listdir  # the original, bound before any recorder
+
+
+_PATH_STAT = Path.stat.__code__
+_PREDICATES = frozenset(
+    function.__code__
+    for function in (
+        genericpath.exists,
+        genericpath.isfile,
+        genericpath.isdir,
+        os.path.lexists,
+        Path.exists,
+        Path.is_file,
+        Path.is_dir,
+    )
+)
 
 
 _ACTIVE: weakref.ReferenceType[Recorder] | None = globals().get("_ACTIVE")
@@ -39,6 +72,7 @@ class Recorder:
         }
         self.previous: weakref.ReferenceType[Recorder] | None = None
         self.reason: str | None = None
+        self.environ = os.environ
         self.local, self.written, self.active = threading.local(), set[str](), False
         self.roots = (
             ("locked", Path(sys.prefix)),
@@ -65,6 +99,21 @@ class Recorder:
                         self.stack.enter_context(
                             patch.object(target, name, self.wrap(getattr(target, name), name))
                         )
+                for name in ("stat", "lstat"):
+                    self.stack.enter_context(patch.object(os, name, self.stat(getattr(os, name))))
+                for name in ("exists", "isfile", "isdir"):
+                    self.stack.enter_context(
+                        patch.object(os.path, name, getattr(genericpath, name))
+                    )
+                for name in ("__getitem__", "__iter__", "__len__", "__repr__"):
+                    environment_type = type(self.environ)
+                    self.stack.enter_context(
+                        patch.object(
+                            environment_type,
+                            name,
+                            self.environment(getattr(environment_type, name), name),
+                        )
+                    )
                 _ACTIVE = weakref.ref(self)
                 if not _INSTALLED:
                     _INSTALLED = True  # failed or vetoed installation stays ineligible
@@ -83,6 +132,8 @@ class Recorder:
     def __exit__(self, *exc: Any) -> None:
         global _ACTIVE
         with _LOCK:
+            if os.environ is not self.environ:
+                self.reason = self.reason or "result_cache.undeclared_input"
             self.active = False
             if _ACTIVE is not None and _ACTIVE() is self:
                 _ACTIVE = self.previous
@@ -114,6 +165,87 @@ class Recorder:
             return result
 
         return call
+
+    def stat(self, original: Any) -> Any:
+        @wraps(original)
+        def call(*args: Any, **kwargs: Any) -> Any:
+            owner = _ACTIVE() if _ACTIVE else None
+            if owner is None or not owner.active or getattr(owner.local, "busy", False):
+                return original(*args, **kwargs)
+            caller: FrameType | None = sys._getframe(1)
+            if caller is not None and caller.f_code is _PATH_STAT:
+                caller = caller.f_back
+            if caller is None or caller.f_code not in _PREDICATES:
+                owner.reason = owner.reason or "result_cache.metadata_read"
+                return original(*args, **kwargs)
+            path = args[0] if args else kwargs.get("path")
+            try:
+                value = original(*args, **kwargs)
+            except OSError as error:
+                owner.note("probe", (path,), error)
+                raise
+            except BaseException:
+                owner.reason = owner.reason or "result_cache.undeclared_input"
+                raise
+            owner.note("probe", (path,), value)
+            return value
+
+        return call
+
+    def environment(self, original: Any, name: str) -> Any:
+        @wraps(original)
+        def call(*args: Any, **kwargs: Any) -> Any:
+            owner = _ACTIVE() if _ACTIVE else None
+            if (
+                owner is None
+                or not owner.active
+                or getattr(owner.local, "busy", False)
+                or (args[0] is not owner.environ and args[0] is not getattr(os, "environb", None))
+            ):
+                return original(*args, **kwargs)
+            if name != "__getitem__":
+                owner.reason = owner.reason or "result_cache.undeclared_input"
+                return original(*args, **kwargs)
+            key = args[1] if len(args) > 1 else kwargs.get("key")
+            try:
+                value = original(*args, **kwargs)
+            except KeyError:
+                owner.note("env", (key,), None)
+                raise
+            except BaseException:
+                owner.reason = owner.reason or "result_cache.undeclared_input"
+                raise
+            owner.note("env", (key,), value)
+            return value
+
+        return call
+
+    def probe(self, raw: Any, value: Any) -> None:
+        missing = isinstance(value, (FileNotFoundError, NotADirectoryError))
+        if isinstance(value, OSError) and not missing:
+            self.reason = "result_cache.undeclared_input"
+            return
+        kind, path = self.location(raw)
+        if kind == "locked" or (kind == "temp" and path in self.written):
+            return
+        if kind != "repo":
+            self.reason = "result_cache.undeclared_input"
+        elif missing:
+            self.inputs["probes"][path] = None
+        elif stat.S_ISREG(value.st_mode) or stat.S_ISDIR(value.st_mode):
+            self.inputs["probes"][path] = "dir" if stat.S_ISDIR(value.st_mode) else "file"
+        else:
+            self.reason = "result_cache.undeclared_input"
+
+    def environment_value(self, raw: Any, value: Any) -> None:
+        key = os.fsdecode(raw)
+        key.encode(
+            "utf-8"
+        )  # entry keys must serialize; the original lookup still returns its value
+        found = digest(None if value is None else os.fsdecode(value))
+        if key in self.inputs["env"] and self.inputs["env"][key] != found:
+            self.reason = "result_cache.undeclared_input"
+        self.inputs["env"][key] = found
 
     def location(self, raw: Any) -> tuple[str, str]:
         path = Path(os.fsdecode(raw)).absolute()
@@ -170,6 +302,10 @@ class Recorder:
             self.observed = True
         elif event == "open":
             self.file(args[0], args[2])
+        elif event == "probe":
+            self.probe(args[0], value)
+        elif event == "env":
+            self.environment_value(args[0], value)
         elif event == "listdir":
             kind, path = self.location(args[0] if args else ".")
             if kind == "repo":
