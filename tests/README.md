@@ -182,9 +182,8 @@ The Workbench parity guard refuses a write without an agent route, an added name
    class checks only what needs real layout: widths, focus, scrolling and motion.
 9. A test file stays under 100 KB, and one already over it only shrinks.
 10. Across a merge set, tests do not grow faster than source (protocol rule 5).
-    A test over 10 s names why
-    in its docstring; one over 60 s is a Large exception the test manager decides
-    (protocol rule 1), with a specific registry reason; the declaration ratchet refuses growth.
+    A test's time follows "Tests are cheap by construction" below; a Large test has a
+    specific registry reason, and the declaration ratchet refuses growth.
     Pytest-timeout enforces the registered bound over setup, call and teardown, naming overruns.
 11. An outdated test is deleted or changed, never loosened. A deleted test names
     its covering test in the change's record; protected classes (boundary rule 5)
@@ -194,6 +193,16 @@ The Workbench parity guard refuses a write without an agent route, an added name
     declared control for a named behaviour, or it is removed. A test that only an
     intended change can break (a pinned wording, a private layout) is a change
     detector, not a requirement.
+
+## Tests are cheap by construction
+
+These hold for every test, in the maintainers' own words:
+
+- **A parameter multiplies only what reads it.** A check that reads no parameter lives outside the parametrized function, never inside it.
+- **Expensive setup is built once.** An environment, an export, a repository with history or a model run is a module or session fixture, shared read-only. No case rebuilds what another case already built.
+- **One function, one behaviour.** Independent end-to-end checks are separate functions, so the workers run them in parallel. A function never chains dozens of runs one after another.
+- **Time is part of correctness.** A test is Small under 1 s, Medium under 10 s, and Large above that. The merge refuses a new or grown test over 60 s, read from the gate's JUnit durations. A Large test runs after the merge, never before it.
+- **The reviewer checks cost as well as behaviour.** The READY gives the touched tests' durations before and after. A card that makes a holder slower without a stated reason is refused in review.
 
 ## Running tests
 
