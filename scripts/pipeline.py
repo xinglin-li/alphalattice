@@ -3,18 +3,21 @@
 ``show`` lists the stages in order, or one stage's rows: what each proves, its kind, owner and
 hosts. ``run`` runs one stage on this host into its own folder and prints its receipt's summary;
 it exits 0 only when the stage passed. ``verify`` prints a stage receipt's summary as JSON, or
-refuses it.
+refuses it. ``health`` prints the day's test-health report from the checkout and the commit-stage
+receipts it is given.
 """
 
 import argparse
 import json
 import os
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from devtools.pipeline.definition import Definition, DefinitionError, load  # noqa: E402
+from devtools.pipeline.health import report  # noqa: E402
 from devtools.pipeline.receipt import verify  # noqa: E402
 from devtools.pipeline.stage import run  # noqa: E402
 
@@ -60,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
         "--required-tests", nargs="+", default=[], help="passing nodes or families"
     )
     checking.add_argument("--within-limits", action="store_true", help="require bounded test times")
+    health = commands.add_parser("health", help="the day's test-health report as JSON")
+    health.add_argument("receipts", type=Path, nargs="*", help="commit-stage receipts")
     args = parser.parse_args(argv)
     if args.command == "run" and args.workers < 1:
         parser.error("--workers is at least 1")
@@ -82,6 +87,8 @@ def main(argv: list[str] | None = None) -> int:
             path = asked.pop("receipt")
             asked.pop("command")
             print(json.dumps(verify(path, **asked), indent=2))
+        elif args.command == "health":
+            print(json.dumps(report(ROOT, args.receipts, date.today()), indent=2))
         else:
             print(show(load(ROOT), args.stage))
     except DefinitionError as error:

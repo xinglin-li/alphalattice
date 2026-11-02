@@ -149,3 +149,103 @@ def test_the_plugin_writes_each_node_once_with_its_failure_and_disposes_of_itsel
     assert a["failure"]["signature"] == b["failure"]["signature"] != ""
     assert c["status"] == d["status"] == "ERROR"
     assert (c["phase"], d["phase"]) == ("???", "incomplete")
+
+
+@pytest.mark.parametrize("fault", ["duplicate", "clock", "tree"])
+@pytest.mark.proves("pipeline.health_report_counts_the_test_metrics")
+def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_history, fault):
+    """The report counts what the tree and the receipts hold; an unreadable one gives no verdict."""
+    from datetime import date
+    from pathlib import Path
+
+    from devtools.pipeline.definition import DefinitionError
+    from devtools.pipeline.health import report
+    from devtools.pipeline.health import stages as stage_health
+
+    _, commit = synthetic_history
+    root = Path(__file__).resolve().parents[2]
+    policy = json.loads((root / "config/registries/test-sizes.json").read_bytes())
+    held = {"node": "tests/a/test_x.py::test_c", "owner": "tests.a", "until": "2026-10-28"}
+    sizes = tmp_path / "config/registries/test-sizes.json"
+    sizes.parent.mkdir(parents=True)
+    sizes.write_text(json.dumps(policy | {"quarantine": [held | {"reason": "r"}]}))
+    (tmp_path / "tests/a").mkdir(parents=True)
+    mark = '@pytest.mark.proves("a.b")\n'
+    body = (
+        f"import pytest\n{mark}def test_a(): pass\n{mark}def test_b(): pass\ndef test_c(): pass\n"
+    )
+    (tmp_path / "tests/a/test_x.py").write_text(body + "#" * 102400 + "\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/m.py").write_text("x = 1\n" * 14)
+    commit("A tree to report on")
+    flaky = {"node": "t::f", "attempt": 1, "solo": False, "status": "FAILED", "seconds": 1}
+    results = [RESULT, RESULT | {"node": "t::slow", "seconds": 12}, flaky]
+    results.append(flaky | {"attempt": 2, "solo": True, "status": "PASSED"})
+    paths = []
+    for name, result, tested in (("pass", "PASS", results), ("error", "ERROR", [])):
+        events, path = tmp_path / f"{name}.jsonl", tmp_path / f"{name}-receipt.jsonl"
+        events.write_text("\n".join(map(json.dumps, tested)))
+        started = {"stage": "commit", "host": "workshop", "command": ["x"]}
+        children = [{"workspace": {}}, {"configuration": {}}]
+        writer = receipt.Writer(path, started, children)
+        writer.write(
+            {"workspace": {}}, {"repo": "r", "base": "b" * 40, "head": HEAD, "clean": True}
+        )
+        writer.write({"configuration": {}}, CONFIGURATION)
+        if tested:
+            writer.tests(
+                "tests", {"status": "PASS", "exit": 0, "seconds": 1, "provider": "p"}, events
+            )
+        writer.finish({"result": result, "exit": int(result != "PASS"), "red_nodes": []})
+        paths.append(path)
+    found = report(tmp_path, [*paths, tmp_path / "missing.jsonl"], date(2026, 10, 25))
+    tree, stages = found["tree"], found["stages"]
+    assert (tree["test_lines"], tree["source_lines"], tree["test_to_source"]) == (7, 14, 0.5)
+    assert (tree["test_functions"], tree["registered_functions"]) == (3, 2)
+    assert tree["requirements_with_several_holders"] == ["a.b"]
+    assert tree["files_over_100kb"] == ["tests/a/test_x.py"]
+    assert tree["quarantine"] == [held | {"days_left": 3}]
+    assert stages["by_result"] == {"PASS": 1, "ERROR": 1, "UNREADABLE": 1}
+    assert stages["error_rate"] == 0.667 and stages["unreadable"][0]["code"].endswith("missing")
+    assert (stages["flaked_nodes"], stages["flake_rate"]) == (["t::f"], 0.3333)
+    assert (stages["slow_tests"], stages["slow_share"]) == (1, 0.8)
+    assert report(tmp_path, [], date(2026, 10, 25))["stages"]["error_rate"] is None
+
+    if fault == "duplicate":
+        copied = tmp_path / "copied.jsonl"
+        copied.write_bytes(paths[0].read_bytes())
+        assert (
+            stage_health([paths[0], paths[0], copied, *paths[1:], tmp_path / "missing.jsonl"])
+            == stages
+        )
+    elif fault == "clock":
+        clocks = []
+        for name, stamp in (
+            ("newer", "2026-10-25T12:00:00+00:00"),
+            ("older", "2026-10-25T13:00:00+02:00"),
+        ):
+            data = [json.loads(line) for line in paths[0].read_text().splitlines()]
+            data[0]["started"]["invocation"] = name
+            data[-1]["finished"]["finished_at"] = stamp
+            path = tmp_path / (name + ".jsonl")
+            path.write_text("\n".join(map(json.dumps, data)) + "\n")
+            clocks.append(path)
+        assert stage_health(clocks)["slow_from"] == str(clocks[0])
+        for stamp in ("not-a-time", "2026-10-25T12:00:00"):
+            data[-1]["finished"]["finished_at"] = stamp
+            clocks[1].write_text("\n".join(map(json.dumps, data)) + "\n")
+            invalid = stage_health([clocks[1]])
+            assert (
+                invalid["by_result"] == {"UNREADABLE": 1}
+                and invalid["unreadable"][0]["code"] == "pipeline.receipt_malformed"
+            )
+    else:
+        bad = tmp_path / "tests/a/test_x.py"
+        bad.write_bytes(b"\xff")
+        with pytest.raises(Exception) as caught:
+            report(tmp_path, [], date(2026, 10, 25))
+        assert (
+            isinstance(caught.value, DefinitionError)
+            and caught.value.code == "pipeline.workspace_unreadable"
+            and str(bad) in str(caught.value)
+        )

@@ -4864,12 +4864,22 @@
     "stage receipt": {
       "description": "A stage receipt is one stage run's record, one event per line in the form of Bazel's Build Event Protocol, complete only when every event it announced arrived.",
       "owner": "devtools.pipeline",
-      "covers": "the receipt's events (started, workspace, configuration, step, test_result, test_summary, metrics, finished), its writer, its one reader verify, and the pytest plugin that writes each node's result",
+      "covers": "the receipt's events (started, workspace, configuration, step, test_result, test_summary, metrics, finished), its writer, its one reader read and the checks verify adds, and the pytest plugin that writes each node's result",
       "defined_by": [
         "devtools.pipeline.receipt"
       ],
       "folds_in": [],
-      "note": "Consumers: scripts/pipeline.py verify; the READY check, the merge queue and the test manager read receipts only through verify. The stage runner that writes receipts follows."
+      "note": "Consumers: scripts/pipeline.py verify and health; the READY check and the merge queue read receipts only through verify, and the test-health report through read, the one reader verify checks with. The stage runner that writes receipts follows."
+    },
+    "test health report": {
+      "description": "The test health report is the day's test rows of the quality metrics, computed from the checkout and the commit-stage receipts it is given, which the test manager publishes.",
+      "owner": "devtools.pipeline",
+      "covers": "test and source lines, test functions and the registered share, requirements held more than once, tracked test files over 100 KB, quarantine rows by days left, stage results with unreadable receipts as no verdict, the flake rate and the latest passing stage's tests of 10 s or more",
+      "defined_by": [
+        "devtools.pipeline.health"
+      ],
+      "folds_in": [],
+      "note": "Consumers: scripts/pipeline.py health, which the test manager runs daily; the harness's daily metrics reader takes its JSON. It reads receipts through devtools.pipeline.receipt.read and holders through devtools.testing.requirements.file_holders, each file once."
     },
     "result cache": {
       "description": "A result cache entry is a test group's passing result, reused only while every input its group was seen to read is unchanged.",

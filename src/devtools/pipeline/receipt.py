@@ -292,6 +292,23 @@ class Receipt(_Strict):
         return self
 
 
+def read(path: Path) -> tuple[bytes, list[Any]]:
+    """The receipt's bytes and its validated events, read once, refused unless whole."""
+    try:
+        data = path.read_bytes()
+        lines = [json.loads(line) for line in data.decode("utf-8").splitlines()]
+        return data, Receipt.model_validate({"events": lines}).events
+    except OSError as error:
+        raise ReceiptError("pipeline.receipt_missing", f"{path}: {error.strerror}") from None
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ReceiptError("pipeline.receipt_unreadable", f"{path}: {error}") from None
+    except ValidationError as error:
+        first = error.errors()[0]
+        code = first["type"] if first["type"].startswith("receipt_") else "receipt_malformed"
+        where = ".".join(map(str, first["loc"]))
+        raise ReceiptError("pipeline." + code, f"{path}: {where}: {first['msg']}") from None
+
+
 def verify(
     path: Path,
     *,
@@ -303,19 +320,7 @@ def verify(
     within_limits: bool = False,
 ) -> dict[str, Any]:
     """The receipt's summary, refused unless it is whole, consistent and what the reader asks."""
-    try:
-        data = path.read_bytes()
-        lines = [json.loads(line) for line in data.decode("utf-8").splitlines()]
-        events: list[Any] = Receipt.model_validate({"events": lines}).events
-    except OSError as error:
-        raise ReceiptError("pipeline.receipt_missing", f"{path}: {error.strerror}") from None
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ReceiptError("pipeline.receipt_unreadable", f"{path}: {error}") from None
-    except ValidationError as error:
-        first = error.errors()[0]
-        code = first["type"] if first["type"].startswith("receipt_") else "receipt_malformed"
-        where = ".".join(map(str, first["loc"]))
-        raise ReceiptError("pipeline." + code, f"{path}: {where}: {first['msg']}") from None
+    data, events = read(path)
     found = {next(iter(event.id)): getattr(event, next(iter(event.id))) for event in events}
     started, workspace, finished = found["started"], found["workspace"], found["finished"]
     summary = {"schema": SCHEMA, "stage": started.stage, "host": started.host}
