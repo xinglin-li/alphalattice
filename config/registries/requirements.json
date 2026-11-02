@@ -122,6 +122,12 @@
       "owner": "alphalattice.interface.local_application",
       "layer": "integration",
       "seconds": 1.313
+    },
+    "observation_runtime.process_is_held_to_half_the_machine_or_its_narrower_allowance": {
+      "description": "A runner binds its process to at most half the machine's logical processors, or to the narrower allowance it already inherited, and reads the bound back from the operating system.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "integration",
+      "seconds": 4.0
     }
   }
 }

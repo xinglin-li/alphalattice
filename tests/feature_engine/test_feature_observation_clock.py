@@ -724,6 +724,9 @@ def test_the_panel_driver_never_deletes_a_development_workspace(
     assert opened == []
 
 
+@pytest.mark.proves(
+    "observation_runtime.process_is_held_to_half_the_machine_or_its_narrower_allowance"
+)
 def test_the_runner_is_capacity_bounded_before_any_stage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
