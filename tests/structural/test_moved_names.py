@@ -125,6 +125,21 @@ def test_a_staged_check_reads_the_index_not_an_unstaged_repair(synthetic_history
     assert problems(tmp_path, staged=False) == []
 
 
+def _model_sources(root: Path) -> dict[str, Path]:
+    names = ("test_model_contract.py", "test_model_extension.py")
+    found: dict[str, list[Path]] = {name: [] for name in names}
+    for path in (root / "tests").rglob("*.py"):
+        if path.name in found:
+            found[path.name].append(path)
+    for name, paths in found.items():
+        if len(paths) != 1:
+            state = "absent" if not paths else "ambiguous"
+            raise ValueError(
+                f"test_layout.subject_source_{state}: {name}; keep one defining source under tests/"
+            )
+    return {name: paths[0] for name, paths in found.items()}
+
+
 @pytest.mark.proves("testing.whole_file_relocation_restores_bytes")
 def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
     """Whole-file layout restores bytes and refuses path, export and fixture-name clashes."""
@@ -132,12 +147,23 @@ def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
     (tmp_path / "config").mkdir()
     (tmp_path / "config/package-architecture.json").touch()
     origin = resolve_playpen_root(Path(__file__))
-    for name in ("test_model_contract.py", "test_model_extension.py"):
-        module = ast.parse((origin / "tests/alpha_research" / name).read_text("utf-8"))
+    with pytest.raises(ValueError, match="subject_source_absent"):
+        _model_sources(tmp_path)
+    for folder in ("a", "b"):
+        directory = tmp_path / "tests" / folder
+        directory.mkdir(parents=True)
+        (directory / "test_model_contract.py").write_text("# duplicate subject\n", encoding="utf-8")
+    (tmp_path / "tests/a/test_model_extension.py").write_text(
+        "# unique subject\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="subject_source_ambiguous"):
+        _model_sources(tmp_path)
+    for name, subject_path in _model_sources(origin).items():
+        module = ast.parse(subject_path.read_text("utf-8"))
         assignments = (n for n in module.body if isinstance(n, ast.Assign))
         resource = next(n for n in assignments if getattr(n.targets[0], "id", None) == "ROOT")
         target = tmp_path / "tests/integration/alpha_modeling" / name
-        scope = {**globals(), "__file__": str(target)}
+        scope = {**globals(), "resolve_playpen_root": resolve_playpen_root, "__file__": str(target)}
         exec(compile(ast.Module(body=[resource], type_ignores=[]), str(target), "exec"), scope)
         assert scope["ROOT"] == tmp_path, name
     body, fixture = "pass\n", "import pytest\n@pytest.fixture\ndef zone(): pass\n"

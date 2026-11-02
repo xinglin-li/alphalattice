@@ -21,7 +21,7 @@ from alphalattice.control.task_control.child import (
     run_in_child,
 )
 
-HERE = "tests.workspace_task_runner.test_task_child"
+HERE = __spec__.name if __spec__ else __name__
 
 
 @pytest.fixture(autouse=True)

@@ -26,7 +26,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.composition.web_launcher import OPEN_THE_WORKBENCH
 from alphalattice.kernel.shared_kernel.clocks import ReplayClock
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root, runtime_json
 
 WINDOWS = pytest.mark.skipif(sys.platform != "win32", reason="Windows process control")
 _FLAGS = 0x08004000 if sys.platform == "win32" else 0  # no window, below normal
@@ -124,7 +124,7 @@ def test_attached_launcher_stops_on_explicit_stdin_or_eof(tmp_path, monkeypatch,
         dispatcher = None
 
         def start(self):
-            root = Path(__file__).resolve().parents[2]
+            root = resolve_playpen_root(Path(__file__))
             host = subprocess.Popen(
                 [sys.executable, "-c", _WATCHED_STDIN, str(root)],
                 stdin=subprocess.PIPE,
@@ -161,10 +161,10 @@ def test_attached_retrieval_host_ends_when_its_cli_parent_is_terminated(tmp_path
 
     from alphalattice.interface.local_application.client import LocalResearchClient
 
-    root = Path(__file__).resolve().parents[2]
+    root = resolve_playpen_root(Path(__file__))
     script = """
 import importlib.util, sys
-from tests.portfolio_strategy_lab.test_runtime_launchers import _job
+from __SELF_TEST_MODULE__ import _job
 kernel, job = _job(0)
 original = importlib.util.find_spec
 importlib.util.find_spec = lambda name, *a, **k: (
@@ -174,7 +174,7 @@ from pathlib import Path
 from alphalattice.control.product_host.composition import entry
 entry.interpreter_path = lambda: Path(sys.executable)
 raise SystemExit(entry.main(sys.argv[1:]))
-"""
+""".replace("__SELF_TEST_MODULE__", __spec__.name if __spec__ else __name__)
     sources = (str(root), str(root / "src"), str(Path(sys.prefix) / "Lib/site-packages"))
     environment = dict(os.environ, PYTHONPATH=os.pathsep.join(sources))
     arguments = ["--workspace", str(tmp_path), "serve", "--no-browser", "--stop-on-stdin"]
@@ -339,7 +339,7 @@ def test_a_served_detached_host_expires_only_after_its_held_work_finishes(
 _TURN = """
 import ctypes, os, sys
 if os.name == "nt":
-    from tests.portfolio_strategy_lab.test_runtime_launchers import _job
+    from __SELF_TEST_MODULE__ import _job
     k, job = _job(0x2800 if os.environ["ALPHALATTICE_TEST_JOB_MODE"] == "escaped" else 0x2000)
 from alphalattice.control.product_host.composition.entry import main
 result = main(sys.argv[1:])  # this CLI is inside the verified finite Job; only its Host escapes
@@ -348,7 +348,7 @@ if os.name == "nt" and result == 2:
     assert k.QueryInformationJobObject(job, 1, accounting, 48, None)
     assert ctypes.c_uint32.from_buffer(accounting, 40).value == 1  # no held child before Job close
 sys.exit(result)
-"""
+""".replace("__SELF_TEST_MODULE__", __spec__.name if __spec__ else __name__)
 
 
 def _end_turn_after(command: list[str], root: Path, temp: Path) -> str:
@@ -414,7 +414,7 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
     from alphalattice.control.product_host.composition.entry import main
     from alphalattice.interface.local_application import client
 
-    root = Path(__file__).resolve().parents[2]
+    root = resolve_playpen_root(Path(__file__))
     budgets = runtime_json("config/registries/process-budgets.json")
     host_budget = budgets["kinds"]["host"]
     workspace = tmp_path / "workspace"
@@ -592,7 +592,7 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
 def test_the_launchers_module_loads_no_numerical_library() -> None:
     """A Host run as `-m web_launcher` has each spawned worker re-import it before the worker's
     one-thread setting: imported, it loads no numerical library, so BLAS starts on one thread."""
-    root = Path(__file__).resolve().parents[2]
+    root = resolve_playpen_root(Path(__file__))
     probe = (
         "import sys; import alphalattice.control.product_host.composition.web_launcher; "
         "print(sorted({'numpy', 'scipy', 'lightgbm', 'sklearn'} & set(sys.modules)))"
@@ -624,7 +624,7 @@ def _visible_windows(pids: set[int]) -> int:
 def test_a_token_count_needs_no_network_and_writes_no_temporary_file(tmp_path: Path) -> None:
     """The proxy token count reads the encoding the package ships: with the network unreachable
     and an empty temporary directory it counts, and writes nothing there."""
-    root = Path(__file__).resolve().parents[2]
+    root = resolve_playpen_root(Path(__file__))
     temp = tmp_path / "temp"
     temp.mkdir()
     dead = "http://127.0.0.1:9"  # no proxy answers there: any download fails at once

@@ -32,6 +32,7 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResolvedResearchAuthority,
     SealedResearchProgram,
 )
+from devtools.architecture.evidence_roots import PLAYPEN_ROOT
 from tests._support.project_discovery import project_discovery as project_discovery
 from tests.portfolio_strategy_lab.local_web_support import _json, _manifest
 from tests.researcher_methodology_surface.factor_web_support import (
@@ -52,8 +53,7 @@ from tests.researcher_methodology_surface.session_workspace import copy_workspac
 
 __all__ = ["offline_execution_environment", "real_risk_workspace"]
 
-CASE_ROOT = Path(__file__).resolve().parent
-PLAYPEN_ROOT = CASE_ROOT.parents[1]
+CASE_ROOT = PLAYPEN_ROOT / "tests" / "researcher_methodology_surface"
 
 
 @dataclass(frozen=True, slots=True)
