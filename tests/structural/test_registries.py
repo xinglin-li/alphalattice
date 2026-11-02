@@ -185,7 +185,9 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(value if isinstance(value, str) else json.dumps(value), encoding="utf-8")
 
-    def stage():
+    def stage(relative=None, value=None):
+        if relative is not None:
+            write(relative, value)
         git("-c", "core.longpaths=true", "add", "--all")
 
     def check(expected, *extra):
@@ -222,8 +224,7 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     hygiene = {"schema": "alphalattice.import-hygiene", "legacy_lazy_imports": {import_key: 1}}
 
     def retained(counts, expected=0, *extra):
-        write(hygiene_path, {**hygiene, "legacy_lazy_imports": counts})
-        stage()
+        stage(hygiene_path, {**hygiene, "legacy_lazy_imports": counts})
         return check(expected, "--baseline", baseline, *extra)
 
     monkeypatch.setenv("ALPHALATTICE_REGISTRY_BASELINE", str(tmp_path / baseline))
@@ -264,36 +265,43 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     retained({})
     check(0, "--baseline", baseline)
     cache_rows["entries"]["new"] = {}
-    write(caches, cache_rows)
-    stage()
+    stage(caches, cache_rows)
     assert "description" in check(1)
     current = json.loads((tmp_path / baseline).read_text("utf-8"))
     current["undescribed_registry_entries"].append(caches + "::entries:new")
-    write(baseline, current)
-    stage()
+    stage(baseline, current)
     assert "description" in check(1, "--update")
     for invalid in (None, "", "   ", "Two sentences. More text.", "Two\nlines."):
         cache_rows["entries"]["new"]["description"] = invalid
-        write(caches, cache_rows)
-        stage()
+        stage(caches, cache_rows)
         assert "description" in check(1)
     cache_rows["entries"]["new"]["description"] = "Cache fixture values until the input changes."
     cache_rows["entries"]["legacy"]["description"] = "Retain the fixture lookup for its caller."
-    write(caches, cache_rows)
-    stage()
+    stage(caches, cache_rows)
     check(0, "--update")
-    stage()
-    git("commit", "-qm", "Explain registry entries and retire description debt")
-    cache_rows["entries"]["legacy"] = {}
+    commit("Explain registry entries and retire description debt")
+    git("branch", "card")
+    git("checkout", "-qb", "develop")
+    cache_rows["entries"]["inherited"] = {}
     write(caches, cache_rows)
-    stage()
+    commit("Develop owns rows missing from its recorded description debt")
+    git("checkout", "card")
+    write("README.md", "Independent card change\n")
+    commit("Card advances independently")
+    git("merge", "--no-ff", "--no-commit", "develop")
+    git("checkout", "HEAD", "--", baseline)
+    check(0, "--update")
+    git("checkout", "HEAD", "--", baseline)
+    commit("Merge develop keeping the card baseline for regeneration")
+    check(0, "--update")
+    cache_rows["entries"].pop("inherited")
+    cache_rows["entries"]["legacy"] = {}
+    stage(caches, cache_rows)
     assert "description" in check(1)
     cache_rows["entries"]["legacy"]["description"] = "Retain the fixture lookup for its caller."
-    write(caches, cache_rows)
-    stage()
+    stage(caches, cache_rows)
     deferred = client + "/deferred.py"
-    write(deferred, f"def load():\n    from {namespace} import legacy\n")
-    stage()
+    stage(deferred, f"def load():\n    from {namespace} import legacy\n")
     write(deferred, "pass\n")
     assert "unlisted-function-import" in check(1, "--baseline", baseline)
     stage()
@@ -348,8 +356,7 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     check(0)
     for path, text in sources.items():
         write(path, text)
-    write(refusals, registrations[refusals])
-    stage()
+    stage(refusals, registrations[refusals])
     git("-c", "core.longpaths=true", "commit", "-qm", "Registered source facts")
     words = "src/alphalattice/interface/local_application/refusal_words.json"
     declared_refusals = registrations[refusals]
@@ -366,8 +373,7 @@ def test_staged_registry_census_refuses_new_unregistered_items(
 
     def word_check(expected, document=declared_refusals, keys=()):
         write(refusals, document)
-        write(words, {key: {} for key in ["census.legacy_word", *keys]})
-        stage()
+        stage(words, {key: {} for key in ["census.legacy_word", *keys]})
         return check(expected)
 
     word_check(0, keys=selectors)
@@ -402,31 +408,24 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     for value in ({}, {"category": "UNDECLARED_CATEGORY"}):
         invalid = json.loads(json.dumps(registrations[refusals]))
         invalid["entries"]["census.unregistered"] = {"owner": fresh, **value}
-        write(refusals, invalid)
-        stage()
+        stage(refusals, invalid)
         assert "refusals:" in check(1)
-    write(refusals, registrations[refusals])
-    stage()
+    stage(refusals, registrations[refusals])
     owners["nouns"].pop("census_registered_alias")
-    write("config/registries/owners-map.json", owners)
-    stage()
+    stage("config/registries/owners-map.json", owners)
     assert "census_registered_alias" in check(1)
-    write(refusals, {"entries": {}})
-    stage()
+    stage(refusals, {"entries": {}})
     assert "census.unregistered" in check(1)
     write(refusals, registrations[refusals])
-    write(legacy, "raise ValueError('census.swap')\n")
-    stage()
+    stage(legacy, "raise ValueError('census.swap')\n")
     assert "census.swap" in check(1)
-    write(legacy, "")
-    stage()
+    stage(legacy, "")
     assert baseline in check(1)
     check(0, "--update")
     stage()
     check(0)
     architecture["packages"].pop()
-    write("config/package-architecture.json", architecture)
-    stage()
+    stage("config/package-architecture.json", architecture)
     assert "packages[] with package_id and physical_namespace_target=" in check(1)
 
 

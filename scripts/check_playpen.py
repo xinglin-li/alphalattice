@@ -526,7 +526,10 @@ def _check_test_budget(*, staged: bool) -> bool:
         return done.stdout
 
     try:
-        base = git("merge-base", "HEAD", "develop").strip()
+        pending = ROOT / git("rev-parse", "--git-path", "MERGE_HEAD").strip()
+        parents = pending.read_text("ascii").splitlines() if staged and pending.is_file() else []
+        # Git compares develop with the hypothetical merge of these parent tips.
+        base = git("merge-base", "develop", "HEAD", *parents).strip()
         diff = ("diff", *["--cached"] * staged, "--numstat", "--no-renames", base, "--")
         rows = [r.split("\t") for r in git(*diff, "src", "scripts", "tests").splitlines()]
         nets = [(path, int(a) - int(d)) for a, d, path in rows if a != "-"]
@@ -552,7 +555,7 @@ def _check_test_budget(*, staged: bool) -> bool:
         marks = git(
             "log", "--format=%(trailers:key=Test-Budget-Exception,valueonly)", f"{base}..HEAD"
         )
-    except RuntimeError as error:
+    except (RuntimeError, OSError, UnicodeError) as error:
         print(
             f"TEST-BUDGET unmeasured, refused: {error}. Repair the index, or create a local "
             "develop (git branch develop <its commit>); an unread budget is never zero.",

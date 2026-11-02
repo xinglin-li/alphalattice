@@ -1165,8 +1165,25 @@ def _description_census(
     paths = [p for p in paths if p.endswith(".json") and Path(p).name not in excluded]
     dimension = "undescribed_registry_entries"
     bootstrap = dimension not in base
+    basis = "HEAD:"
+    pending = subprocess.run(
+        ["git", "rev-parse", "--verify", "MERGE_HEAD"], cwd=root, capture_output=True, text=True
+    )
+    parents = subprocess.check_output(
+        ["git", "rev-list", "--parents", "-n", "1", "HEAD"], cwd=root, text=True
+    ).split()
+    if pending.returncode == 0 or len(parents) > 2:
+        ancestor = subprocess.run(
+            ["git", "merge-base", "develop", "HEAD", *pending.stdout.split()],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        if ancestor.returncode == 0:
+            # Develop owns its existing rows, even if its recorded census is stale.
+            basis, bootstrap = ancestor.stdout.strip() + ":", True
     inputs = [
-        prefix + path for path in paths for prefix in ([stage, "HEAD:"] if bootstrap else [stage])
+        prefix + path for path in paths for prefix in ([stage, basis] if bootstrap else [stage])
     ]
     blobs.update(read_blobs([key for key in inputs if key not in blobs], root))
     missing: set[str] = set()
@@ -1182,12 +1199,10 @@ def _description_census(
         if bootstrap:
             previous.update(
                 path + "::" + key
-                for key, row in _description_rows(
-                    json.loads(blobs.get("HEAD:" + path, "{}"))
-                ).items()
+                for key, row in _description_rows(json.loads(blobs.get(basis + path, "{}"))).items()
                 if not _has_description(row)
             )
-    allowed = set(base.get(dimension, previous))
+    allowed = set(base.get(dimension, [])) | previous
     return [
         f"registry-description: {key} needs one purpose sentence."
         for key in sorted(missing - allowed)
