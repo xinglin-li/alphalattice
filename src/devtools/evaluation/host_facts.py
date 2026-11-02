@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import ast
 import re
+import unicodedata
 from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
 _OBSERVATION = ("capability", "key", "value", "host_version", "observed_at", "source")
+_FAKE_CLASS = re.compile(r"\bclass[\s\\]+Fake")
 _SEAMS = re.compile(
     r'IsProcessInJob|PermissionError\("local_web\.detached_breakaway_denied"\)|claude\.cmd'
     r'|setattr\([^,]+, *"(OwnedRunner|person_terminal|fresh_host|fresh_terminal_offer'
@@ -29,15 +31,18 @@ def discover_fakes(
     found: set[str] = set()
     for path, text in sources.items():
         hits = {text.count("\n", 0, hit.start()) + 1 for hit in _SEAMS.finditer(text)}
+        if not hits and not _FAKE_CLASS.search(unicodedata.normalize("NFKC", text)):
+            continue
+        tree = trees[path]
         hits.update(
             n.lineno
-            for n in ast.walk(trees[path])
+            for n in ast.walk(tree)
             if isinstance(n, ast.ClassDef) and re.fullmatch(r"Fake\w*(Runner|Owner)", n.name)
         )
         module = path.removesuffix(".py").removesuffix("/__init__").replace("/", ".")
         found.update(
             f"{module}:{node.name}"
-            for node in trees[path].body
+            for node in tree.body
             if isinstance(node, ast.FunctionDef | ast.ClassDef)
             and any(node.lineno <= line <= (node.end_lineno or node.lineno) for line in hits)
         )
