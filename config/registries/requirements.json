@@ -28,7 +28,7 @@
       "seconds": 5
     },
     "pipeline.receipt_verifies_only_complete_and_as_asked": {
-      "description": "A stage receipt verifies only when every announced event arrived and it is the stage, host, head and result its reader asked for.",
+      "description": "A stage receipt verifies only when every announced event arrived and it meets the requested stage, host, head, result and optional passing test and time-limit checks.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5

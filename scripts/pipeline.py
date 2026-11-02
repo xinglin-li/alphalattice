@@ -56,6 +56,10 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("stage", "host", "head"):
         checking.add_argument(f"--{name}", default="", help=f"refuse a receipt of another {name}")
     checking.add_argument("--passing", action="store_true", help="refuse one that did not pass")
+    checking.add_argument(
+        "--required-tests", nargs="+", default=[], help="passing nodes or families"
+    )
+    checking.add_argument("--within-limits", action="store_true", help="require bounded test times")
     args = parser.parse_args(argv)
     if args.command == "run" and args.workers < 1:
         parser.error("--workers is at least 1")
@@ -74,8 +78,10 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(summary, indent=2))
             return 0 if summary["result"] == "PASS" else 1
         if args.command == "verify":
-            asked = {key: getattr(args, key) for key in ("stage", "host", "head", "passing")}
-            print(json.dumps(verify(args.receipt, **asked), indent=2))
+            asked = vars(args).copy()
+            path = asked.pop("receipt")
+            asked.pop("command")
+            print(json.dumps(verify(path, **asked), indent=2))
         else:
             print(show(load(ROOT), args.stage))
     except DefinitionError as error:

@@ -3,11 +3,12 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from scripts import pipeline as cli
 
 from devtools.pipeline import receipt
 
 HEAD = "a" * 40
-RESULT = {"node": "t::a", "attempt": 1, "solo": False, "status": "PASSED", "seconds": 1}
+RESULT = {"node": "t::alpha[x::y]", "attempt": 1, "solo": False, "status": "PASSED", "seconds": 1}
 CONFIGURATION = {"definition": "d", "definition_sha256": "d" * 64, "rows": ["tests"]}
 CONFIGURATION |= {"providers": {"tests": "product"}, "workers": 1, "bound_seconds": 900}
 TAIL = '{"id": {"metrics": {}}, "metrics": {}}'
@@ -17,12 +18,21 @@ FIRST = {**RESULT, "status": "FAILED", "timeout_seconds": 1}
 ALONE = {**FIRST, "attempt": 2, "solo": True, "status": "PASSED"}
 RERUNS = {  # a case's node results in file order, its red nodes and the classes it writes
     "a red node its solo rerun passed": ([ALONE, FIRST], [], ["flake"]),  # workers finish unordered
-    "a solo rerun past its time": ([FIRST, {**ALONE, "seconds": 2}], ["t::a"], ["slow"]),
-    "a node still red alone": ([FIRST, {**ALONE, "status": "FAILED"}], ["t::a"], []),
+    "a solo rerun past its time": ([FIRST, {**ALONE, "seconds": 2}], [RESULT["node"]], ["slow"]),
+    "a node still red alone": ([FIRST, {**ALONE, "status": "FAILED"}], [RESULT["node"]], []),
+    "required skipped": ([RESULT | {"status": "SKIPPED"}], [], []),
+    "required over": ([RESULT | {"timeout_seconds": 0.5}], [], []),
 }
+RERUNS |= {"required missing": ([ALONE], [], []), "required empty": ([], [], [])}
+SIBLING = ALONE | {"node": RESULT["node"] + "[z]"}
+RERUNS |= {
+    "exact missing": ([SIBLING], [], []),
+    "exact skip": ([ALONE, SIBLING | {"status": "SKIPPED"}], [], []),
+}
+NEEDED = {"required_tests": ["t::alpha"], "within_limits": True}
 CASES = {  # line i's (old, new): ("", new) puts a line before it, (old, None) drops it
     "complete": ({}, {"stage": "commit", "head": HEAD, "passing": True}, None),
-    "a red node its solo rerun passed": ({}, {"passing": True}, None),  # the writer's own run
+    "a red node its solo rerun passed": ({}, NEEDED | {"passing": True}, None),
     "a solo rerun past its time": ({}, {}, None),
     "a node still red alone": ({}, {}, None),
     "a host-skipped step": (
@@ -66,12 +76,21 @@ CASES = {  # line i's (old, new): ("", new) puts a line before it, (old, None) d
         {},
         "receipt_malformed",
     ),
+    "required missing": ({}, NEEDED | {"required_tests": ["t::alpha", "t::a"]}, "receipt_mismatch"),
+    "required skipped": ({}, NEEDED, "receipt_mismatch"),
+    "required unbounded": ({}, NEEDED, "receipt_mismatch"),
+    "required over": ({}, NEEDED, "receipt_mismatch"),
+    "required empty": ({}, {"within_limits": True}, "receipt_mismatch"),
+}
+CASES |= {
+    name: ({}, NEEDED | {"required_tests": [RESULT["node"]]}, code)
+    for name, code in (("exact missing", "receipt_mismatch"), ("exact skip", None))
 }
 
 
 @pytest.mark.proves("pipeline.receipt_verifies_only_complete_and_as_asked")
 @pytest.mark.parametrize("case", CASES)
-def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, case):
+def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, case):
     """A receipt counts only whole, with its claim standing over its events, and as asked."""
     spoil, asked, code = CASES[case]
     events, path = tmp_path / "events.jsonl", tmp_path / "receipt.jsonl"
@@ -89,6 +108,17 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, case):
     for i, (old, new) in sorted((spoil or {}).items(), reverse=True):
         s[i : i + bool(old)] = [] if new is None else [s[i].replace(old, new) if old else new]
     _ = path.unlink() if spoil is None else path.write_text("\n".join(s))
+    if asked.get("required_tests"):  # CLI and the unchanged default summary
+        names = asked["required_tests"]
+        argv = ["verify", str(path), "--passing", "--head", HEAD, "--within-limits"]
+        argv += ["--required-tests", *names]
+        try:
+            status = cli.main(argv)
+        except SystemExit as error:
+            status = error.code
+        out = capsys.readouterr()
+        assert status == (2 if code else 0) and (not code or code in out.err)
+        assert code or json.loads(out.out) == receipt.verify(path)
     with pytest.raises(receipt.ReceiptError) if code else contextlib.nullcontext() as refused:
         assert receipt.verify(path, **asked)["head"] == HEAD
     assert not code or refused.value.code == "pipeline." + code

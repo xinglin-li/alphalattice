@@ -293,7 +293,14 @@ class Receipt(_Strict):
 
 
 def verify(
-    path: Path, *, stage: str = "", host: str = "", head: str = "", passing: bool = False
+    path: Path,
+    *,
+    stage: str = "",
+    host: str = "",
+    head: str = "",
+    passing: bool = False,
+    required_tests: Sequence[str] = (),
+    within_limits: bool = False,
 ) -> dict[str, Any]:
     """The receipt's summary, refused unless it is whole, consistent and what the reader asks."""
     try:
@@ -323,7 +330,42 @@ def verify(
             "pipeline.receipt_mismatch",
             f"{path}: its {wrong[0]} is {summary[wrong[0]]!r}, not {asked[wrong[0]]!r}",
         )
+    _verify_tests(events, required_tests, within_limits)
     return summary
+
+
+def _verify_tests(
+    events: Sequence[Any], required_tests: Sequence[str], within_limits: bool
+) -> None:
+    """Check requested outcomes and observed limits without another read or parse."""
+    if not (required_tests or within_limits):
+        return
+    results = [e.test_result for e in events if "test_result" in e.id]
+    latest = {r.node: r for r in sorted(results, key=lambda r: r.attempt)}
+    missing = set(required_tests)
+    for node, result in latest.items():
+        matched = {
+            n
+            for n in required_tests
+            if node == n or ("[" not in n.split("::", 1)[-1] and node.startswith(n + "["))
+        }
+        if required_tests and not matched:
+            continue
+        missing -= matched
+        why = "" if result.status == "PASSED" else result.status.lower()
+        limit = result.timeout_seconds
+        if within_limits and not why:
+            why = "unbounded" if not limit else "over-limit" if result.seconds > limit else ""
+        if why:
+            raise ReceiptError(
+                "pipeline.receipt_mismatch",
+                f"test {node!r}: {why}; record a passing bounded outcome",
+            )
+    if missing or not latest:
+        raise ReceiptError(
+            "pipeline.receipt_mismatch",
+            f"missing required tests or outcomes: {sorted(missing)!r}; record them",
+        )
 
 
 class _Events:
