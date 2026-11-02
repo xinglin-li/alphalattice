@@ -757,7 +757,12 @@ def test_the_runner_is_capacity_bounded_before_any_stage(
         )
     }
     try:
-        _assert_capacity_ceiling_holds(detected, monkeypatch, runner=path)
+        _assert_capacity_ceiling_holds(
+            detected,
+            monkeypatch,
+            runner=path,
+            half=min(default_logical_processor_budget(), len(restore_processors)),
+        )
     finally:
         if os.name == "nt":
             process_metrics._windows_affinity(sum(1 << i for i in restore_processors))
@@ -986,13 +991,13 @@ def test_process_resource_monitor_reports_a_time_aligned_live_child_tree() -> No
 
 
 def _assert_capacity_ceiling_holds(
-    detected: int, monkeypatch: pytest.MonkeyPatch, *, runner: Path
+    detected: int, monkeypatch: pytest.MonkeyPatch, *, runner: Path, half: int
 ) -> None:
     """The ceiling body, split out so the caller can restore process state."""
 
     receipt = bind_process_logical_processors()
     assert receipt["enforcement"] == "PROCESS_AFFINITY"
-    assert receipt["configured_logical_processors"] == default_logical_processor_budget()
+    assert receipt["configured_logical_processors"] == half
     # Read back from the operating system, not echoed from the request: a bound
     # that was asked for and silently ignored is worse than no bound, because
     # the run would then report a ceiling it is not under.
@@ -1011,7 +1016,6 @@ def _assert_capacity_ceiling_holds(
     # `--logical-processors 32` was accepted and returned the whole machine while
     # the help text promised it could not. Every value above the half-machine
     # budget is refused now, including ones comfortably below `cpu_count`.
-    half = default_logical_processor_budget()
     for refused in (detected + 1, detected, half + 1, 0, -1):
         with pytest.raises(ProcessCapacityError, match="logical_processor_budget_invalid"):
             bind_process_logical_processors(refused)
