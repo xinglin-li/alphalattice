@@ -392,6 +392,24 @@
         "zh-CN": "在 Claude Code 桌面应用中，通过 `run_in_terminal` 使用可用的 Terminal 面板；在 Codex 中，同样使用可由代理操作的面板。独立启动遭拒时，选择 `terminal_routes` 中首条适用路径，并自行在那里运行 `terminal_command`。只有没有这种面板时，才把同一命令交给本人在其持有的终端运行，然后等待本人的话。宿主 无法查看你的工具；能否返回 STARTED 仍由脱离约束和身份验证后的就绪检查决定。"
       },
       "description": "Explains the ordered agent-panel and person-terminal recovery routes without claiming the Host can inspect agent tools."
+    },
+    "result_cache.undeclared_input": {
+      "owner": "devtools.pipeline",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This group used an input the result cache cannot verify. Run it without reuse.",
+        "zh-CN": "此测试组使用了结果缓存无法验证的输入。请直接运行，不复用结果。"
+      }
+    },
+    "result_cache.metadata_read": {
+      "owner": "devtools.pipeline",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This group read native file metadata that the result cache does not track. Run it without reuse.",
+        "zh-CN": "此测试组读取了结果缓存未跟踪的原生文件元数据。请直接运行，不复用结果。"
+      }
     }
   }
 }

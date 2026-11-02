@@ -80,6 +80,12 @@
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5
+    },
+    "pipeline.result_cache_refuses_undeclared_inputs": {
+      "description": "A recorder keeps only declared file, directory, probe and environment inputs, declining unobserved operations and direct native metadata reads without changing their outcomes.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
     }
   }
 }
