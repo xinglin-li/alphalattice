@@ -177,6 +177,17 @@ def golden_root(fallback: Path) -> Path:
     return run.root / "golden-workspaces" if run is not None else fallback
 
 
+GOLDEN_ROOT_VARIABLE = "ALPHALATTICE_TEST_GOLDEN_ROOT"
+
+
+def persistent_golden_root(default: Path) -> Path:
+    """The cross-invocation golden cache: the operator's shared root when set, else the checkout's.
+
+    Its entries are keyed by their build closure and leased, so checkouts may share one root.
+    """
+    return Path(configured) if (configured := os.environ.get(GOLDEN_ROOT_VARIABLE)) else default
+
+
 def _manifest(
     root: Path,
     parts: tuple[str, ...],

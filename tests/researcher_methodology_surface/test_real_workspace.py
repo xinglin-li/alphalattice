@@ -38,7 +38,6 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from tests.researcher_methodology_surface.real_workspace import (
-    _GOLDEN_ROOT,
     AS_OF,
     MARKET_PROFILE_ID,
     SYMBOLS,
@@ -46,6 +45,7 @@ from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
     _golden_is_complete,
     _golden_key,
+    _golden_root,
     build_real_risk_workspace,
 )
 
@@ -278,7 +278,7 @@ def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identitie
         fresh_workspace.return_reader.available_sessions(fresh_workspace.return_surface)
     )
     key = _golden_key(again.feature_catalog, again.feature_kernels, SYMBOLS)
-    golden = _GOLDEN_ROOT / key
+    golden = _golden_root() / key
     assert (golden / "golden.json").is_file()
     assert not golden.with_name(golden.name + ".building").exists()
     assert not golden.with_name(golden.name + ".lock").exists()
@@ -306,10 +306,8 @@ def test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired(
     build_real_risk_workspace(tmp_path / "published")  # publishes the golden when absent
     private_root = tmp_path / "goldens"
     golden = private_root / key
-    shutil.copytree(_GOLDEN_ROOT / key, golden)
-    monkeypatch.setattr(
-        "tests.researcher_methodology_surface.real_workspace._GOLDEN_ROOT", private_root
-    )
+    shutil.copytree(_golden_root() / key, golden)
+    monkeypatch.setenv("ALPHALATTICE_TEST_GOLDEN_ROOT", str(private_root))
     assert _golden_is_complete(golden, key)
 
     sidecar_path = golden / "golden.json"
@@ -542,3 +540,14 @@ def test_cache_environment_tracks_thread_settings_in_the_current_process(monkeyp
     first = cache._environment_digest()
     monkeypatch.setenv("OMP_NUM_THREADS", "2")
     assert cache._environment_digest() != first
+
+
+@pytest.mark.proves("evaluation.persistent_golden_root_follows_its_setting")
+def test_the_persistent_golden_root_follows_its_shared_setting(tmp_path, monkeypatch):
+    """Checkouts share one golden root through the setting; without it each keeps its own."""
+    from devtools.evaluation.golden_workspaces import GOLDEN_ROOT_VARIABLE, persistent_golden_root
+
+    monkeypatch.delenv(GOLDEN_ROOT_VARIABLE, raising=False)
+    assert persistent_golden_root(tmp_path / "own") == tmp_path / "own"
+    monkeypatch.setenv(GOLDEN_ROOT_VARIABLE, str(tmp_path / "shared"))
+    assert persistent_golden_root(tmp_path / "own") == tmp_path / "shared"

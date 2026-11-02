@@ -44,6 +44,12 @@
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 6.248
+    },
+    "evaluation.persistent_golden_root_follows_its_setting": {
+      "description": "The persistent golden cache root is the operator's shared setting when present and the checkout's own folder when absent.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5
     }
   }
 }

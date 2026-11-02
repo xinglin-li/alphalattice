@@ -7517,21 +7517,21 @@
     "env:ALPHALATTICE_TEST_LANE": {
       "key": "env:ALPHALATTICE_TEST_LANE",
       "description": "Selects which test sizes a gate runs, so merge gates skip large tests and the nightly lane runs them.",
-      "owner": "devtools.architecture",
+      "owner": "devtools.testing",
       "type": "str | absent",
       "default": {
         "value": "",
         "resolution": "No size selection outside an admitted gate lane",
-        "source": "src/devtools/architecture/registries.py::pytest_collection_modifyitems"
+        "source": "src/devtools/testing/collection.py::pytest_collection_modifyitems"
       },
       "defined_by": [
-        "src/devtools/architecture/registries.py::pytest_collection_modifyitems"
+        "src/devtools/testing/collection.py::pytest_collection_modifyitems"
       ],
       "identity_bearing": false,
       "identity_scope": "test execution selection",
       "readers": {
         "literal": [
-          "src/devtools/architecture/registries.py"
+          "src/devtools/testing/collection.py"
         ]
       }
     },
@@ -7553,6 +7553,27 @@
       "readers": {
         "literal": [
           "src/devtools/pipeline/receipt.py"
+        ]
+      }
+    },
+    "env:ALPHALATTICE_TEST_GOLDEN_ROOT": {
+      "key": "env:ALPHALATTICE_TEST_GOLDEN_ROOT",
+      "description": "Points the cross-invocation golden workspace cache at one root that several checkouts share, so a fresh gate checkout reuses a build keyed by the same closure.",
+      "owner": "devtools.evaluation",
+      "type": "path | absent",
+      "default": {
+        "value": "",
+        "resolution": "The checkout's own tmp/golden-workspaces",
+        "source": "src/devtools/evaluation/golden_workspaces.py::persistent_golden_root"
+      },
+      "defined_by": [
+        "src/devtools/evaluation/golden_workspaces.py::persistent_golden_root"
+      ],
+      "identity_bearing": false,
+      "identity_scope": "test execution location; entries stay keyed by their build closure",
+      "readers": {
+        "literal": [
+          "src/devtools/evaluation/golden_workspaces.py"
         ]
       }
     }

@@ -47,7 +47,8 @@ def real_risk_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWor
     """The product's own writers, end to end, once per source tree.
 
     Session scope shares the copy inside one process; the golden cache under
-    ``tmp/golden-workspaces`` shares the eighty-second build across processes,
+    ``tmp/golden-workspaces``, or the shared ``ALPHALATTICE_TEST_GOLDEN_ROOT``, shares the
+    eighty-second build across processes and checkouts,
     so a gate that runs several groups needing this workspace builds it once
     and each group pays a copy of a few seconds.
     """

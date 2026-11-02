@@ -481,6 +481,15 @@ def pytest_sessionstart(session: pytest.Session) -> None:
             )
 
 
+def pytest_collection_finish(session: pytest.Session) -> None:
+    """A collected module that may build the shared risk golden finds it published first."""
+    builder = sys.modules.get("tests.researcher_methodology_surface.real_workspace")
+    if builder is not None and not session.config.option.collectonly:
+        (root := builder._golden_root()).mkdir(parents=True, exist_ok=True)
+        with environment.project_scope(root, root):  # confined like any test's build
+            builder.warm_real_risk_golden()
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Start the longest work first, at the scheduler's own unit of dispatch.
 

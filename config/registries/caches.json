@@ -3827,6 +3827,21 @@
       },
       "source_commit": "3e6a7f3293e6d624ab2c0602ef2db62ab1c671b2",
       "description": "Caches the installed strategies' source identity, computed on first use rather than at import, until process restart."
+    },
+    "tests/researcher_methodology_surface/real_workspace.py::build_real_risk_workspace::persistent-golden-workspaces": {
+      "description": "Keeps finished golden research workspaces across pytest invocations, and across checkouts that share the setting, so a build is paid once per build closure.",
+      "owner": "devtools.evaluation",
+      "defined_by": [
+        "tests/researcher_methodology_surface/real_workspace.py::build_real_risk_workspace"
+      ],
+      "key": "24 hex characters of the builder import/source/resource closure, runtime configuration, lock, environment and universe identities",
+      "invalidation_rule": "A changed closure makes a new key; a sidecar disagreeing with its workspace refuses, never repairs",
+      "eviction": "Keys unused for 3 days are dropped under their own lease; qa_retention keeps the 3 newest by last use",
+      "safe_to_drop": "Any key not held by a builder lease",
+      "location": {
+        "scope": "cross-invocation",
+        "path_expression": "persistent_golden_root(ROOT / tmp / golden-workspaces)"
+      }
     }
   }
 }

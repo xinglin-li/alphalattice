@@ -454,7 +454,8 @@ def build_real_risk_workspace(
     default, the eighty-name product QA universe for the suites that need it.
 
     The build runs once per source tree: its result is materialized under
-    ``tmp/golden-workspaces/<key>`` and every caller receives a private copy,
+    ``tmp/golden-workspaces/<key>``, or under ``ALPHALATTICE_TEST_GOLDEN_ROOT`` where
+    checkouts share one root, and every caller receives a private copy,
     restored through the product's own readers. The key binds the builder's
     import/source-identity/resource closure, runtime configuration, lock and
     fixture modules plus the catalog, kernel and
@@ -477,7 +478,7 @@ def build_real_risk_workspace(
             root / "workspace", installed_catalog, installed_kernels, symbols, sector_size
         )
     key = _golden_key(installed_catalog, installed_kernels, symbols, sector_size)
-    golden = _GOLDEN_ROOT / key
+    golden = _golden_root() / key
     workspace = root / "workspace"
     started = time.perf_counter()
     with _golden_lease(golden):
@@ -499,6 +500,24 @@ def build_real_risk_workspace(
         flush=True,
     )
     return _restore(workspace, installed_catalog, installed_kernels, symbols, key, sidecar)
+
+
+def warm_real_risk_golden() -> None:
+    """Publish the default golden before any test's timer: a timer cut a cold build short."""
+    catalog, kernels = FeatureCatalog.load(), default_extension_kernel_registry()
+    key = _golden_key(catalog, kernels, SYMBOLS)
+    with _golden_lease(golden := _golden_root() / key):
+        if not golden.exists():
+            _materialize_golden(golden, key, catalog, kernels, SYMBOLS, 5)
+
+
+def _golden_root() -> Path:
+    """The persistent golden root: the shared setting when present, else ``_GOLDEN_ROOT``."""
+    try:
+        from devtools.evaluation.golden_workspaces import persistent_golden_root
+    except ImportError:  # a base without the setting, as red-on-base runs it; retire next change
+        return _GOLDEN_ROOT
+    return persistent_golden_root(_GOLDEN_ROOT)
 
 
 _GOLDEN_ROOT = ROOT / "tmp" / "golden-workspaces"
@@ -917,7 +936,7 @@ def _prune_goldens(*, keep: Path) -> None:
     """Drop goldens of source trees nobody has used for days; best effort."""
 
     horizon = time.time() - _GOLDEN_KEEP_DAYS * 86400
-    for candidate in _GOLDEN_ROOT.iterdir():
+    for candidate in keep.parent.iterdir():
         sidecar = candidate / "golden.json"
         if (
             candidate == keep
@@ -928,7 +947,7 @@ def _prune_goldens(*, keep: Path) -> None:
             continue
         if sidecar.stat().st_mtime < horizon:
             try:
-                lease = WorkspaceWriterLease.acquire(_GOLDEN_ROOT / ".locks" / candidate.name)
+                lease = WorkspaceWriterLease.acquire(keep.parent / ".locks" / candidate.name)
             except RuntimeError:
                 continue
             try:
@@ -960,7 +979,7 @@ def retain_golden_workspaces(
         One row per golden: its key, last use, bytes and disposition.
     """
 
-    base = _GOLDEN_ROOT if root is None else root
+    base = _golden_root() if root is None else root
     found: list[tuple[float, Path]] = []
     for candidate in sorted(base.iterdir()) if base.is_dir() else ():
         sidecar = candidate / "golden.json"
