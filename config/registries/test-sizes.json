@@ -707,6 +707,12 @@
       "owner": "tests.structural",
       "reason": "The census holder's git calls (about 475 per run) put it at 38-49 s alone against 60 s, and the merge queue's solo rerun timed out at 63 s on 2026-10-25, ejecting cards. It runs post-merge only until the fix that reads each Git fact once per census run lands and removes this row; no assertion or limit changes.",
       "until": "2026-10-28"
+    },
+    {
+      "node": "tests/workspace_maintenance/test_membership_change_recovery.py::test_a_working_membership_names_the_task_whose_cycle_bound_it",
+      "owner": "tests.workspace_maintenance",
+      "reason": "Times out at its 60 s limit alone on develop and on a later head alike (2026-10-25), the same file and setup cost as the quarantined DEFERRED case. It runs post-merge only until its owner cuts its setup; no assertion or limit changes.",
+      "until": "2026-10-28"
     }
   ],
   "mandatory": [
