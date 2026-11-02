@@ -4871,6 +4871,16 @@
       "folds_in": [],
       "note": "Consumers: scripts/pipeline.py verify; the READY check, the merge queue and the test manager read receipts only through verify. The stage runner that writes receipts follows."
     },
+    "result cache": {
+      "description": "A result cache entry is a test group's passing result, reused only while every input its group was seen to read is unchanged.",
+      "owner": "devtools.pipeline",
+      "covers": "the action key, the strict entry and its digest, the tree a lookup checks entries against, the verified read, the atomic write, the breaker, and eviction by idle time and byte cap",
+      "defined_by": [
+        "devtools.pipeline.cache"
+      ],
+      "folds_in": [],
+      "note": "Consumers to come, each in its own card of the result-cache plan: the recorder plugin (devtools.pipeline.observe), the impact runner's lookup, and the recall replay. Until then no stage reads or writes the store."
+    },
     "test layout move": {
       "description": "A test layout move preserves whole-file bodies while reviewed placement decisions relocate tests and their inherited fixture bindings.",
       "owner": "devtools.testing",

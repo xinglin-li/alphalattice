@@ -3842,6 +3842,22 @@
         "scope": "cross-invocation",
         "path_expression": "persistent_golden_root(ROOT / tmp / golden-workspaces)"
       }
+    },
+    "src/devtools/pipeline/cache.py::Store::result-cache": {
+      "description": "Keeps a test group's passing result across stage runs and checkouts, so a group whose every observed input is unchanged runs once.",
+      "owner": "devtools.pipeline",
+      "defined_by": [
+        "src/devtools/pipeline/cache.py::Store"
+      ],
+      "key": "SHA-256 action key over the cache schema, recorder digest, uv.lock, Python, behaviour-changing arguments, the group's registry holders, its module digest and its bound registry rows; the stored key is compared whole with its file name",
+      "dependency_coverage": "Each entry lists what its group was observed to read: tracked files by Git blob, existence probes, directory listings and environment values by digest; a lookup checks every one against the tree",
+      "invalidation_rule": "Any changed input misses; an entry whose digest, schema or key disagrees, or that names a path outside the checkout, is a miss and is never trusted; the breaker file 'disabled' at the root turns the cache off, as do an unwritable root (result_cache.unwritable) and a Git read past 10 s (result_cache.git_timeout)",
+      "eviction": "Once a stage: entries not hit for 14 days, then the oldest while the root holds more bytes than its cap (a hundredth of the volume, at most 4 GiB)",
+      "safe_to_drop": "Yes: a derived store; receipts stay the record and a dropped entry only reruns its group",
+      "location": {
+        "scope": "cross-invocation",
+        "path_expression": "Store.open(root): ALPHALATTICE_RESULT_CACHE or --result-cache, off when neither is set"
+      }
     }
   }
 }
