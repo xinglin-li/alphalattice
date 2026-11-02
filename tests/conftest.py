@@ -39,12 +39,20 @@ from tests import pytest_environment as environment
 pytest_plugins = ["devtools.testing.collection"]
 
 
+def _unit_contract(request: pytest.FixtureRequest) -> bool:
+    """Old-source counterfactuals keep their adapters until the unit producer exists."""
+    from devtools.testing import collection
+
+    key = getattr(collection, "CONTRACT", None)
+    return key is not None and key in request.node.stash and request.node.stash[key].layer == "unit"
+
+
 @pytest.fixture(autouse=True)
-def project_isolation(tmp_path, tmp_path_factory):
+def project_isolation(tmp_path, tmp_path_factory, request):
     """Every test confines discovery and reads to its invocation's temporary roots."""
     base = tmp_path_factory.getbasetemp()
     allowed = base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base
-    with environment.project_scope(tmp_path, allowed):
+    with environment.project_scope(tmp_path, allowed, host_reads=not _unit_contract(request)):
         yield
 
 
@@ -272,13 +280,17 @@ def _host_plan_admission(host, owner, operation, body):
 
 
 @pytest.fixture(autouse=True)
-def _memory_checks_read_no_host(monkeypatch: pytest.MonkeyPatch) -> None:
+def _memory_checks_read_no_host(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
     """The early memory refusal reads unknown memory, and skips, unless a test sets it.
 
     The refusal compares a plan's estimate with the machine's free memory. A fixture's work
     passes or fails by its own code, never by what else the host runs (PERF-1 item 3: a
     preparation fixture was refused while another heavy set held commit).
     """
+    if _unit_contract(request):
+        return
     # Found by its class among the loaded modules, as below: any test that can reach the gate
     # loaded it at collection through the Host's composition.
     for module in list(sys.modules.values()):
@@ -296,6 +308,9 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
     SC3), at the one door every caller's request passes, `PortfolioResearchOperations.execute`;
     a test that never loaded the Host's operations pays nothing.
     """
+    if _unit_contract(request):
+        yield
+        return
     # Found by its class among the loaded modules, never by a quoted module path, which the
     # impact walk reads as every test's dependency: the wrapper reaches only the tests that run
     # an operation, and they select themselves by their own imports.

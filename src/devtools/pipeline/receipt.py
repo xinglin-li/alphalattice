@@ -447,6 +447,7 @@ class _Events:
             node["status"] = "SKIPPED"
         if report.when not in ("setup", "call"):  # its teardown, or a crashed worker's "???"
             found = dict(report.user_properties)
+            node["seconds"] = found.get("unit_own_seconds", node["seconds"])
             node.update(size=found.get("test_size"), owner=found.get("test_size_owner"))
             node.update({key: found.get(key) for key in ("requirement_layer", "requirement_owner")})
             node.update(requirements=found.get("requirements", []), **{"class": None})

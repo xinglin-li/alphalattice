@@ -55,7 +55,7 @@ smallest red change to the holder. Each rule names what enforces it; a rule mark
    file to extend. A partial move cannot introduce another file; move the remaining
    holders too, or merge them into one file;
    an unchanged definition moved to another file keeps its standing. Explicit
-   layer folders take precedence over a legacy holder's registered default layer.
+   a registered layer remains authoritative during path migration.
    - A refused new test shows that search's result for its name and docstring, then
      the next step: add the case to the holder it names (an unregistered holder
      registers its requirement and takes the marker), or register the row first and
@@ -71,8 +71,28 @@ smallest red change to the holder. Each rule names what enforces it; a rule mark
      byte-identical, and keeps test doubles to the model, the network and the
      clock.
    - **native:** real host agents, in the nightly smoke and the release.
-   - *From the layout move* (the folders) *and the protocol's guards* (each
-     layer's contract enforced while the test runs).
+   - The registered primary layer activates its resource contract during fixture
+     setup, call and teardown, including on legacy paths during migration. An explicit
+     layer folder must agree with the row; mixed registered layers refuse with the
+     recovery of separate focused tests. Unit imports cannot reach DuckDB or the product
+     Host; audited subprocess, network and outside-temporary file operations refuse.
+     Integration permits its files and database, but refuses network operations.
+     Resource contracts share one scoped process audit hook with the test recorder;
+     imports install no extra hook, and subscriptions are released on every exit.
+     Exact root framework fixtures are registered with their own reasons in
+     test-sizes.json. They may inspect the loaded-module inventory; their selected
+     bindings and runtime resource operations remain guarded. Units retain root
+     isolation without a Host adapter, and Host-only controls stay inactive.
+     One reasoned backend catalog names database, socket, process, native file and
+     Host bindings, including array fromfile and memmap file readers. Native numeric
+     computation remains allowed; array save/load operations meet the file audit.
+     These are Python contracts,
+     not an operating-system sandbox. Other layer folders retain their existing
+     contracts; unregistered legacy folders retain their current runtime behaviour.
+   - The existing collection size owner gives unit tests its Small bound, including
+     fixtures. Cost is the node's own setup, enclosing call and teardown, not the raw
+     subtest total. A unit over its bound uses the existing gate's solo confirmation;
+     missing, malformed or aborted evidence is not a pass. No second timer is used.
 4. **Test-first by this protocol.** The red is the holder's smallest change, and
    it fails on the card's base (writing rule 12).
    - A bug extends the holder of the requirement it broke, or registers the

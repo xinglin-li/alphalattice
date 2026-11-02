@@ -35,6 +35,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from devtools.pipeline.cache import Entry, Hex64, Store, Text, Tree, digest
 from devtools.pipeline.receipt import TestResult, register
 from devtools.pipeline.receipt import pytest_configure as receipt_configure
+from devtools.testing.audit import dispatch
+from devtools.testing.audit import subscribe as subscribe
 from devtools.testing.requirements import file_holders
 from devtools.testing.sizes import classify, load_policy
 
@@ -88,19 +90,19 @@ _PREDICATES = frozenset(
 )
 
 
+_audit = dispatch  # existing observer seam; the kernel owns the only dispatcher
+
 _ACTIVE: weakref.ReferenceType[Recorder] | None = globals().get("_ACTIVE")
-_INSTALLED: bool = globals().get("_INSTALLED", False)
 _LOCK = globals().get("_LOCK") or threading.RLock()
-
-
-def _audit(event: str, args: tuple[Any, ...]) -> None:
-    if _ACTIVE is not None and (owner := _ACTIVE()) is not None:
-        owner.note(event, args)
 
 
 def _caller() -> FrameType | None:
     frame: FrameType | None = sys._getframe(1)
-    while frame and frame.f_globals.get("__name__") in {__name__, "pathlib"}:
+    while frame and frame.f_globals.get("__name__") in {
+        __name__,
+        "devtools.testing.audit",
+        "pathlib",
+    }:
         frame = frame.f_back
     return frame
 
@@ -139,7 +141,7 @@ class Recorder:
         )
 
     def __enter__(self) -> Recorder:
-        global _ACTIVE, _INSTALLED
+        global _ACTIVE
         if self.active:
             self.reason = "result_cache.undeclared_input"
             return self
@@ -176,10 +178,8 @@ class Recorder:
                         patch("_pytest.assertion.rewrite._read_pyc", lambda *args: None)
                     )
                 _ACTIVE = weakref.ref(self)
-                if not _INSTALLED:
-                    _INSTALLED = True  # failed or vetoed installation stays ineligible
-                    sys.addaudithook(_audit)
                 self.active, self.observed = True, False
+                self.stack.enter_context(subscribe(self.note))
                 sys.audit("alphalattice.result_cache.ready", self)
                 if not self.observed:
                     self.reason = "result_cache.undeclared_input"

@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 import os
 from collections import Counter
+from math import isfinite
 from pathlib import Path
+from types import CodeType
 from typing import Any
 
 import pytest
 
 from devtools.testing import requirements
+from devtools.testing.contracts import Backends, LayerContract
 from devtools.testing.sizes import (
     changed_paths,
     classify,
@@ -22,6 +25,10 @@ from devtools.testing.sizes import (
 
 REQUIRED = pytest.StashKey[tuple[tuple[str, ...], tuple[str, ...]]]()
 CHANGED = pytest.StashKey[frozenset[str] | None]()  # a scoped run's changed paths, read once
+CONTRACT = pytest.StashKey[LayerContract]()
+PHASES = pytest.StashKey[dict[str, float]]()
+FRAMEWORK = pytest.StashKey[frozenset[CodeType]]()
+BACKENDS = pytest.StashKey[Backends]()
 FIND = 'register its requirement first (python scripts/tests_registry.py find "<words>")'
 
 
@@ -35,9 +42,110 @@ def _proven(
     if len(known) != len(ids):
         raise ValueError(f"requirements.unknown_id:{item.nodeid} proves {ids}; {FIND}")
     row = known[0] if known else {}
+    primary = requirements.primary_layer(
+        item.nodeid, {key: row["layer"] for key, row in zip(ids, known, strict=True)}
+    )
+    if primary:
+        row = row | {"layer": primary}
     declared = [m.name for m in item.iter_markers() if m.name in policy["sizes"]]
     layer = [requirements.SIZES[row["layer"]]] if row else []
     return ids, row, declared, classify(item.nodeid, declared + layer, policy)
+
+
+@pytest.hookimpl(wrapper=True, trylast=True)  # type: ignore[untyped-decorator]
+def pytest_runtest_setup(item: Any) -> Any:
+    level = dict(item.user_properties).get("requirement_layer") or requirements.layer(item.nodeid)
+    if level not in {"unit", "integration"}:
+        return (yield)
+    contract = LayerContract(
+        level, item.config._tmp_path_factory.getbasetemp(), item.config.stash.get(BACKENDS, None)
+    )
+    item.stash[CONTRACT] = contract
+    definitions = item._fixtureinfo.name2fixturedefs
+    functions = [values[-1].func for values in definitions.values() if values]
+    framework = item.config.stash.get(FRAMEWORK, frozenset())
+    contract.references(
+        [item.obj, *(f for f in functions if getattr(f, "__code__", None) not in framework)]
+    )
+    with contract.active():
+        contract.references(
+            [f for f in functions if getattr(f, "__code__", None) in framework],
+            module_inventory=framework,
+        )
+        return (yield)
+
+
+@pytest.hookimpl(wrapper=True, trylast=True)  # type: ignore[untyped-decorator]
+def pytest_runtest_call(item: Any) -> Any:
+    if CONTRACT not in item.stash:
+        return (yield)
+    contract = item.stash[CONTRACT]
+    contract.references(list(item.funcargs.values()))
+    with contract.active():
+        return (yield)
+
+
+@pytest.hookimpl(wrapper=True, trylast=True)  # type: ignore[untyped-decorator]
+def pytest_runtest_teardown(item: Any) -> Any:
+    if CONTRACT not in item.stash:
+        return (yield)
+    with item.stash[CONTRACT].active():
+        return (yield)
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)  # type: ignore[untyped-decorator]
+def pytest_runtest_makereport(item: Any, call: Any) -> Any:
+    """Judge unit cost from its enclosing phases, using the existing solo-timeout route."""
+    result = yield
+    report = result.get_result()
+    if CONTRACT not in item.stash or item.stash[CONTRACT].layer != "unit":
+        return
+    phases = item.stash.setdefault(PHASES, {})
+    phases[report.when] = report.duration
+    item.user_properties.append((report.when + "_seconds", report.duration))
+    report.user_properties = list(item.user_properties)
+    if report.when != "teardown":
+        return
+    measured = set(phases) == {"setup", "call", "teardown"} and all(
+        type(v) in (int, float) and isfinite(v) and v >= 0 for v in phases.values()
+    )
+    if not measured:
+        report.outcome, report.longrepr = (
+            "failed",
+            (
+                "testing.layer_contract_unmeasured: incomplete or invalid own phases; "
+                "rerun the exact unit node"
+            ),
+        )
+        return
+    seconds = sum(phases.values())
+    item.user_properties.append(("unit_own_seconds", seconds))
+    report.user_properties = list(item.user_properties)
+    limit = dict(item.user_properties)["test_timeout_seconds"]
+    if seconds <= limit:
+        return
+    report.outcome, report.longrepr = (
+        "failed",
+        (
+            f"testing.layer_contract: unit own phases {seconds:g} s exceed {limit:g} s; "
+            "share setup or move the test to integration"
+        ),
+    )
+    event = dict(
+        event="TIMEOUT",
+        nodeid=item.nodeid,
+        phase="teardown",
+        limit_seconds=limit,
+        elapsed_seconds=seconds,
+        cause="unit-own-phases",
+    )
+    log_file = item.config.getoption("log_file") or item.config.getini("log_file")
+    if log_file:
+        try:
+            with Path(log_file).open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(event) + "\n")
+        except OSError as error:
+            report.longrepr += f"; testing.layer_contract_unmeasured: retry evidence: {error}"
 
 
 def gate(
@@ -109,6 +217,31 @@ def _required_selection(config: Any, items: list[Any]) -> tuple[tuple[str, ...],
     return required, deselect
 
 
+def framework_fixtures(
+    config: Any, items: list[Any], policy: dict[str, Any]
+) -> frozenset[CodeType]:
+    """Resolve exact registered root fixture names once, never a module or name pattern."""
+    names = {row["node"] for row in policy.get("framework_fixtures", [])}
+    functions = {
+        values[-1].func
+        for item in items
+        for values in item._fixtureinfo.name2fixturedefs.values()
+        if values
+    }
+    codes: set[CodeType] = set()
+    for function in functions:
+        code = getattr(function, "__code__", None)
+        if code is None:
+            continue
+        try:
+            path = Path(code.co_filename).absolute().relative_to(config.rootpath).as_posix()
+        except ValueError:
+            continue
+        if f"{path}::{function.__qualname__}" in names:
+            codes.add(code)
+    return frozenset(codes)
+
+
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
 
@@ -131,6 +264,8 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
         )
         if lane and lane not in policy["lanes"]:
             raise ValueError("test_size.lane_unknown")
+        config.stash[FRAMEWORK] = framework_fixtures(config, items, policy)
+        config.stash[BACKENDS] = policy.get("unit_backends", [])
         stage = os.environ.get("ALPHALATTICE_PIPELINE_STAGE", "")
         files = {item.nodeid.split("::", 1)[0].replace("\\", "/") for item in items}
         permitted = set(stage_files(policy, stage, files, lane=lane))

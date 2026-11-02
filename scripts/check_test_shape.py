@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
 from devtools.architecture.git_inputs import staged_moves
+from devtools.testing.contracts import import_violations
 from devtools.testing.requirements import file_holders
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -134,6 +135,14 @@ def _lint(path: str, tree: ast.Module) -> set[str]:
         return ""
 
     found = set()
+    if path.startswith("tests/unit/"):
+        found.update(
+            import_violations(
+                tuple(imports.values())
+                + tuple(called(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)),
+                "unit",
+            )
+        )
     definitions = list(_definitions(tree))
     factories = {
         node.name
@@ -385,6 +394,10 @@ def problems(path: str, old: str | None, new: str) -> list[str]:
                 )
     if not path.endswith(".py"):
         return found
+    if path.startswith("tests/unit/"):
+        found.extend(
+            row for row in _lint(path, _tree(new)) if row.startswith("testing.layer_contract:")
+        )
     if not path.startswith("tests/structural/") and any("inspect.getsource(" in x for x in added):
         found.append(f"{path}: reads source text; test the behaviour at the owner's seam (rule 3)")
     for line in added:

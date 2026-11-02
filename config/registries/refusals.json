@@ -2,6 +2,9 @@
 "entries": {
 "host_facts.fake_source_missing": {"owner": "devtools.evaluation", "category": "FAILED_PRECONDITION"},
 "test_layout.registry_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
+"test_size.framework_fixtures_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
+"testing.layer_contract": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
+"testing.layer_contract_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE"},
 "test_size.required_selection_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "message_id": "test_size.required_selection_invalid"},
 "result_cache.request_invalid": {
 "owner": "devtools.pipeline",

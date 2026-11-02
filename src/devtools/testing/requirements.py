@@ -283,11 +283,10 @@ def _places(
     """One physical holder per id/layer, independent of its focused functions and cases."""
     found: dict[tuple[str, str], set[str]] = {}
     for test in tests:
-        for key in dict.fromkeys(test.ids):
-            if key in rows:
-                found.setdefault((key, layer(test.node, rows[key]["layer"])), set()).add(
-                    test.node.partition("::")[0]
-                )
+        declared = {key: rows[key]["layer"] for key in test.ids if key in rows}
+        level = primary_layer(test.node, declared)
+        for key in declared:
+            found.setdefault((key, level), set()).add(test.node.partition("::")[0])
     return found
 
 
@@ -361,6 +360,25 @@ def layer(node: str, fallback: str = "") -> str:
     return parts[1] if len(parts) > 1 and parts[0] == "tests" and parts[1] in LAYERS else fallback
 
 
+def primary_layer(node: str, declared: Mapping[str, str]) -> str:
+    """Registered layers are authoritative; an explicit folder must agree before grouping."""
+    explicit, levels = layer(node), set(declared.values())
+    named = ", ".join(declared)
+    if len(levels) > 1:
+        raise ValueError(
+            f"testing.layer_contract: {node} proves mixed layers for {named}: {sorted(levels)}; "
+            "split them into focused tests at each registered layer"
+        )
+    primary = next(iter(levels), explicit)
+    if explicit and primary != explicit:
+        raise ValueError(
+            f"testing.layer_contract: {node} folder {explicit} disagrees with "
+            f"registered layer {primary} for {named}; move the file there "
+            "or register its true layer"
+        )
+    return primary
+
+
 def registration(
     root: Path,
     new: Iterable[Holder],
@@ -390,7 +408,7 @@ def registration(
         bad = [key for key in test.ids if key not in rows or rows[key].get("retired")]
         if test.ids and not bad:
             for key in dict.fromkeys(test.ids):
-                level = layer(test.node, rows[key]["layer"])
+                level = rows[key]["layer"]
                 place = test.node.partition("::")[0]
                 peer = min(set(anchors.get((key, level), ())) - {place}, default=None)
                 if peer and place not in prior.get((key, level), set()):
@@ -509,27 +527,25 @@ def guard(
         return []
     try:
         rows, before = parse(text) if text else {}, parse(base) if base else {}
+        new = list(new)
+        if not new and rows == before and before_tests is None:
+            return []
+        at = index(root, rows, tests=tests)
+        added_nodes = {test.node for test in new}
+        prior = _places(
+            before,
+            (test for test in at.tests if test.node not in added_nodes)
+            if before_tests is None
+            else before_tests,
+        )
     except ValueError as error:
         return [f"TEST-REGISTRY {REGISTRY.as_posix()} is refused: {error}."]
-    new = list(new)
-    if not new and rows == before and before_tests is None:
-        return []
-    at = index(root, rows, tests=tests)
-    added_nodes = {test.node for test in new}
-    prior = _places(
-        before,
-        (test for test in at.tests if test.node not in added_nodes)
-        if before_tests is None
-        else before_tests,
-    )
     changed_rows = {key for key, row in rows.items() if row != before.get(key)}
     affected = at.duplicates(prior) | set(product(changed_rows, LAYERS))
     candidates = {test.node: test for test in new}
     for test in at.tests:
         ids = tuple(
-            key
-            for key in test.ids
-            if (key, layer(test.node, rows.get(key, {}).get("layer", ""))) in affected
+            key for key in test.ids if (key, rows.get(key, {}).get("layer", "")) in affected
         )
         if ids:
             previous = candidates.get(test.node)

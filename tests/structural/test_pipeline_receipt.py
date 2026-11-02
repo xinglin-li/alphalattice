@@ -181,15 +181,20 @@ def test_the_plugin_writes_each_node_once_with_its_failure_and_disposes_of_itsel
             report = pytest.TestReport(node, ("t", 1, node), {}, outcome, line, when, duration=0.5)
             report.user_properties = [("test_size", "small")]
             plugin.pytest_runtest_logreport(report)
+    for when in ("setup", "call", "call", "call", "teardown"):
+        report = pytest.TestReport("t::u", ("t", 1, "u"), {}, "passed", "", when, duration=0.4)
+        report.user_properties = [("unit_own_seconds", 0.8)] if when == "teardown" else []
+        plugin.pytest_runtest_logreport(report)
     for node, when in (("t::c", "setup"), ("t::c", "???"), ("t::d", "setup")):  # crash; open
         report = pytest.TestReport(node, ("t", 1, node), {}, "passed", "gw1 crashed", when)
         report.outcome = "failed" if when == "???" else "passed"
         plugin.pytest_runtest_logreport(report)
     receipt.pytest_unconfigure(config)
     assert config.pluginmanager.get_plugin("pipeline-events") is None and plugin.stream.closed
-    a, b, c, d = map(json.loads, (tmp_path / "events.jsonl").read_text("utf-8").splitlines())
+    a, b, unit, c, d = map(json.loads, (tmp_path / "events.jsonl").read_text("utf-8").splitlines())
     assert (a["status"], a["phase"], a["seconds"], a["size"]) == ("FAILED", "call", 1.5, "small")
     assert a["failure"]["signature"] == b["failure"]["signature"] != ""
+    assert unit["seconds"] == 0.8 and unit["status"] == "PASSED"
     assert c["status"] == d["status"] == "ERROR"
     assert (c["phase"], d["phase"]) == ("???", "incomplete")
 
@@ -262,6 +267,12 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
             )
         writer.finish({"result": result, "exit": int(result != "PASS"), "red_nodes": []})
         paths.append(path)
+    if fault == "holder-layers":
+        with pytest.raises(DefinitionError, match=r"testing\.layer_contract") as refused:
+            report(tmp_path, paths, date(2026, 10, 25))
+        assert "registered layer integration" in str(refused.value)
+        assert "register its true layer" in str(refused.value)
+        return
     found = report(tmp_path, [*paths, tmp_path / "missing.jsonl"], date(2026, 10, 25))
     tree, stages = found["tree"], found["stages"]
     additional = fault in {"holder-files", "holder-layers"}

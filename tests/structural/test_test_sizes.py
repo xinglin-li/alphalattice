@@ -1,12 +1,455 @@
 """Collection resolves one owned size and refuses contradictory declarations."""
 
+import ast
 import json
 import os
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
+
+
+@pytest.mark.proves("testing.layer_contract")
+@pytest.mark.parametrize(
+    "case,layer,header,body,refused",
+    [
+        ("module-inventory", "unit", "", "import sys; sys.modules.get('duckdb')", True),
+        ("root-pure", "unit", "", "", False),
+        ("root-lookalike", "unit", "", "", True),
+        ("root-runtime", "unit", "", "", True),
+        ("root-cached", "unit", "", "", True),
+        ("database", "unit", "", "import duckdb; duckdb.connect(':memory:').close()", True),
+        (
+            "bound-database",
+            "unit",
+            "from duckdb import connect\n",
+            "connect(':memory:').close()",
+            True,
+        ),
+        ("preloaded-pure", "unit", "import duckdb\n", "assert 2 + 2 == 4", False),
+        (
+            "integration",
+            "integration",
+            "",
+            "import duckdb; duckdb.connect(':memory:').close()",
+            False,
+        ),
+        ("legacy", "old_area", "", "import duckdb; duckdb.connect(':memory:').close()", False),
+        (
+            "process",
+            "unit",
+            "",
+            "import subprocess,sys; subprocess.run([sys.executable,'-c','pass'],check=True)",
+            True,
+        ),
+        ("network", "unit", "", "import socket; socket.socket().close()", True),
+        ("integration-network", "integration", "", "import socket; socket.socket().close()", True),
+        (
+            "outside-write",
+            "unit",
+            "from pathlib import Path\n",
+            "Path('outside.txt').write_text('x')",
+            True,
+        ),
+        (
+            "outside-report-root",
+            "unit",
+            "from pathlib import Path\n",
+            "import tempfile; Path(tempfile.gettempdir(),'user-output').write_text('x')",
+            True,
+        ),
+        (
+            "temporary",
+            "unit",
+            "",
+            "p=tmp_path/'x'; p.write_text('x'); assert p.read_text() == 'x'",
+            False,
+        ),
+        (
+            "stdlib",
+            "unit",
+            "",
+            "import math,_json,fractions; assert math.sqrt(4) == fractions.Fraction(2)",
+            False,
+        ),
+        (
+            "host",
+            "unit",
+            "",
+            "from alphalattice.control.product_host.composition.application_session "
+            "import WorkspaceApplicationSession",
+            True,
+        ),
+        ("slow", "unit", "", "import threading; threading.Event().wait(1.2)", True),
+        ("own-over", "unit", "", "assert True", True),
+        ("own-under", "unit", "", "assert True", False),
+        ("own-boundary", "unit", "", "assert True", False),
+        ("own-bad", "unit", "", "assert True", True),
+        (
+            "own-subtests",
+            "unit",
+            "",
+            "for i in range(3):\n    with subtests.test(i=i): assert i < 3",
+            False,
+        ),
+        (
+            "cached-connection",
+            "unit",
+            "import duckdb\nconnection=duckdb.connect(':memory:')\n",
+            "connection.sql('select 1').fetchall()",
+            True,
+        ),
+        ("primary-agree", "unit", "", "", False),
+        ("primary-mismatch", "integration", "", "", True),
+        ("primary-legacy", "old_area", "", "", False),
+        ("primary-mixed", "unit", "", "", True),
+        (
+            "bound-helper",
+            "unit",
+            "from duckdb import connect\ndef helper(): connect(':memory:').close()\n",
+            "helper()",
+            True,
+        ),
+        (
+            "bound-native",
+            "unit",
+            "from numpy import arange\n",
+            "assert list(arange(2)) == [0, 1]",
+            False,
+        ),
+        ("native-file", "unit", "from numpy import fromfile\n", "fromfile('outside.bin')", True),
+        ("native-local", "unit", "", "import numpy as np; np.fromfile('outside.bin')", True),
+        (
+            "native-lookalike",
+            "unit",
+            "class Compute:\n    @staticmethod\n    def fromfile(): return 2\n",
+            "import numpy as np\nassert Compute.fromfile() == 2 and list(np.arange(2)) == [0, 1]",
+            False,
+        ),
+        ("native-memmap", "unit", "import numpy as np\n", "np.memmap('outside.bin')", True),
+        (
+            "numpy-save",
+            "unit",
+            "import numpy as np\n",
+            "np.save('outside.npy', np.arange(2))",
+            True,
+        ),
+        ("dynamic-import", "unit", "import importlib\n", "importlib.import_module('duckdb')", True),
+        (
+            "dynamic-stdlib",
+            "unit",
+            "import importlib\n",
+            "assert importlib.import_module('math').sqrt(4) == 2",
+            False,
+        ),
+        (
+            "bound-loader",
+            "unit",
+            "from importlib import import_module\n",
+            "import_module('duckdb')",
+            True,
+        ),
+        (
+            "outside-read",
+            "unit",
+            "from pathlib import Path\nPath('outside.txt').write_text('x')\n",
+            "Path('outside.txt').read_text()",
+            True,
+        ),
+        (
+            "fixture-setup",
+            "unit",
+            """import pytest
+@pytest.fixture(autouse=True)
+def held():
+ import duckdb; duckdb.connect(':memory:').close()
+""",
+            "pass",
+            True,
+        ),
+        (
+            "fixture-teardown",
+            "unit",
+            """import pytest
+@pytest.fixture(autouse=True)
+def held():
+ yield
+ import duckdb; duckdb.connect(':memory:').close()
+""",
+            "pass",
+            True,
+        ),
+        ("shape", "old_area", "", "", False),
+        (
+            "hook",
+            "old_area",
+            "",
+            """
+from devtools.pipeline import observe
+seen=[]
+with observe.subscribe(lambda event,args: seen.append(('a',event))):
+    with observe.subscribe(lambda event,args: seen.append(('b',event))):
+        __import__('sys').audit('test.contract.first')
+with observe.subscribe(lambda event,args: seen.append(('c',event))):
+    __import__('sys').audit('test.contract.second')
+assert seen.count(('a','test.contract.first')) == 1
+assert seen.count(('b','test.contract.first')) == 1
+assert seen.count(('c','test.contract.second')) == 1
+assert ('a','test.contract.second') not in seen
+import pytest
+calls=[]
+def stopped(event,args):
+    if event == 'test.contract.failure':
+        calls.append(event)
+        raise ValueError('stopped')
+with pytest.raises(ValueError):
+    with observe.subscribe(stopped):
+        __import__('sys').audit('test.contract.failure')
+__import__('sys').audit('test.contract.failure')
+assert calls == ['test.contract.failure']
+""",
+            False,
+        ),
+    ],
+    ids=[
+        "module-inventory",
+        "root-pure",
+        "root-lookalike",
+        "root-runtime",
+        "root-cached",
+        "database",
+        "bound-database",
+        "preloaded-pure",
+        "integration",
+        "legacy",
+        "process",
+        "network",
+        "integration-network",
+        "outside-write",
+        "outside-report-root",
+        "temporary",
+        "stdlib",
+        "host",
+        "slow",
+        "own-over",
+        "own-under",
+        "own-boundary",
+        "own-bad",
+        "own-subtests",
+        "cached-connection",
+        "primary-agree",
+        "primary-mismatch",
+        "primary-legacy",
+        "primary-mixed",
+        "bound-helper",
+        "bound-native",
+        "native-file",
+        "native-local",
+        "native-lookalike",
+        "native-memmap",
+        "numpy-save",
+        "dynamic-import",
+        "dynamic-stdlib",
+        "bound-loader",
+        "outside-read",
+        "fixture-setup",
+        "fixture-teardown",
+        "shape",
+        "hook",
+    ],
+)
+def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
+    tmp_path, case, layer, header, body, refused
+):
+    root = Path(__file__).resolve().parents[2]
+    if case.startswith("root-"):
+        from tests.structural.pytest_support import pytest_checkout
+
+        checkout, environment = pytest_checkout(tmp_path, root)
+        marker = Path(environment["TEMP"]) / "given" / "framework-entered"
+        if case == "root-lookalike":
+            target = checkout / "tests/unit/test_collection_probe.py"
+            target.write_text(
+                target.read_text("utf-8")
+                + """
+from duckdb import connect as cached_backend
+import pytest
+@pytest.fixture(autouse=True)
+def _memory_checks_read_no_host():
+    cached_backend(':memory:').close()
+""",
+                encoding="utf-8",
+            )
+        elif case in {"root-runtime", "root-cached"}:
+            target = checkout / "tests/conftest.py"
+            text = target.read_text("utf-8")
+            if case == "root-cached":
+                text = text.replace(
+                    "import pytest\n",
+                    "import pytest\nfrom duckdb import connect as cached_backend\n",
+                    1,
+                )
+            function = next(
+                node
+                for node in ast.parse(text).body
+                if isinstance(node, ast.FunctionDef) and node.name == "_memory_checks_read_no_host"
+            )
+            lines = text.splitlines(keepends=True)
+            offset = function.body[1].lineno - 1  # after its docstring, before the unit no-op
+            fault = [
+                "    request.getfixturevalue('tmp_path_factory').getbasetemp()"
+                ".joinpath('framework-entered').write_text('entered')\n"
+            ]
+            fault += (
+                ["    cached_backend(':memory:').close()\n"]
+                if case == "root-cached"
+                else ["    import duckdb\n", "    duckdb.connect(':memory:').close()\n"]
+            )
+            lines[offset:offset] = fault
+            target.write_text("".join(lines), encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-B",
+                "-m",
+                "pytest",
+                "-q",
+                "--basetemp",
+                str(marker.parent),
+                str(checkout / "tests" / "unit" / "test_collection_probe.py"),
+            ],
+            cwd=checkout,
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0),
+        )
+        output = result.stdout + result.stderr
+        assert result.returncode == (1 if refused else 0), output
+        if refused:
+            assert "testing.layer_contract" in output
+        if case == "root-runtime":
+            assert marker.is_file() and "unit dependency duckdb" in output
+        else:
+            assert not marker.exists()
+        if case in {"root-cached", "root-lookalike"}:
+            assert "_duckdb" in output  # selected cached binding, before the fixture's body
+        return
+    if case == "shape":
+        from scripts.check_test_shape import problems
+
+        assert any(
+            "testing.layer_contract" in row
+            for row in problems("tests/unit/test_x.py", "", "import duckdb\n")
+        )
+        assert not problems("tests/integration/test_x.py", "", "import duckdb\n")
+        assert not problems("tests/unit/test_x.py", "", "import math, _json\n")
+        return
+    if case.startswith("primary-"):
+        from types import SimpleNamespace
+
+        from devtools.testing.collection import _proven
+        from devtools.testing.sizes import load_policy
+
+        rows = {"testing.a": {"layer": "unit"}, "testing.b": {"layer": "integration"}}
+        ids = ["testing.a", "testing.b"] if case == "primary-mixed" else ["testing.a"]
+        item = SimpleNamespace(
+            nodeid=f"tests/{layer}/test_sample.py::test_sample",
+            iter_markers=lambda *args: [SimpleNamespace(name="proves", args=ids)],
+        )
+        if refused:
+            with pytest.raises(ValueError, match=r"testing\.layer_contract"):
+                _proven(item, rows, load_policy(root))
+        else:
+            assert _proven(item, rows, load_policy(root))[1]["layer"] == "unit"
+        return
+    target = tmp_path / "tests" / layer / "test_sample.py"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        header
+        + (
+            "def test_sample(tmp_path, subtests):\n"
+            if case == "own-subtests"
+            else "def test_sample(tmp_path):\n"
+        )
+        + textwrap.indent(textwrap.dedent(body).strip(), "    ")
+        + "\n",
+        encoding="utf-8",
+    )
+    phase_args = []
+    if case.startswith("own-"):
+        call_seconds = {"own-bad": "float('nan')", "own-over": "0.7", "own-boundary": "0.6"}.get(
+            case, "0.4"
+        )
+        (tmp_path / "phase_probe.py").write_text(
+            "import pytest\n"
+            "@pytest.hookimpl(wrapper=True, tryfirst=True)\n"
+            "def pytest_runtest_makereport(item, call):\n"
+            f"    call.duration = {{'setup': 0.2, 'call': {call_seconds}, "
+            "'teardown': 0.2}[call.when]\n"
+            "    return (yield)\n",
+            encoding="utf-8",
+        )
+        phase_args = ["-p", "phase_probe", "--log-file", str(tmp_path / "events.log")]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-m",
+            "pytest",
+            "-p",
+            "devtools.testing.collection",
+            "-p",
+            "pytest_timeout",
+            *phase_args,
+            "-c",
+            str(root / "pyproject.toml"),
+            "--rootdir",
+            str(tmp_path),
+            "--noconftest",
+            "--basetemp",
+            str(tmp_path / "child-temp"),
+            "-o",
+            "addopts=",
+            "-q",
+            str(target),
+        ],
+        cwd=tmp_path,
+        env=dict(
+            os.environ,
+            PYTHONPATH=os.pathsep.join([str(tmp_path), str(root / "src")]),
+            ALPHALATTICE_NETWORK_DISABLED="1",
+            ALPHALATTICE_TEST_LANE="",
+            ALPHALATTICE_PIPELINE_STAGE="",
+            PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+            PYTEST_PLUGINS="",
+        ),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=20,
+        creationflags=getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
+        | getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    output = result.stdout + result.stderr
+    if refused:
+        assert (
+            result.returncode == 1
+            and ("Timeout" if case == "slow" else "testing.layer_contract") in output
+        ), output
+    else:
+        assert result.returncode == 0, output
+    if case == "own-over":
+        assert '"event": "TIMEOUT"' in (tmp_path / "events.log").read_text("utf-8")
+    if case == "numpy-save":
+        assert "file outside temporary root" in output
+    if case in {"native-file", "native-local", "native-memmap"}:
+        assert "dependency numpy." in output
 
 
 @pytest.mark.parametrize(
@@ -16,11 +459,58 @@ import pytest
     + [("strict",)]
     + [("post_" + stage,) for stage in ("commit", "post-merge", "candidate", "nightly")]
     + [("post-kind",), ("post-structural",), ("post-repeat",)]
-    + [("lane_" + lane,) for lane in ("merge", "candidate", "nightly")],
+    + [("lane_" + lane,) for lane in ("merge", "candidate", "nightly")]
+    + [("framework-" + case,) for case in ("entry", "reason", "pattern", "module")]
+    + [("backend-" + case,) for case in ("empty", "kind", "type", "reason", "duplicate")],
 )
+@pytest.mark.proves("testing.layer_contract")
 def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared):
     """Owned size declarations enforce their bounds and provenance, refusing invalid catalogs."""
     root = Path(__file__).resolve().parents[2]
+    if declared and declared[0].startswith("backend-"):
+        from devtools.testing.sizes import validate_policy
+
+        policy = json.loads((root / "config/registries/test-sizes.json").read_text("utf-8"))
+        policy.setdefault(
+            "unit_backends",
+            [{"kind": "module", "name": "duckdb", "reason": "Database resource."}],
+        )
+        row = policy["unit_backends"][0]
+        faults = {
+            "backend-empty": [],
+            "backend-kind": [row | {"kind": "native"}],
+            "backend-type": [row | {"kind": ["module"]}],
+            "backend-reason": [row | {"reason": ""}],
+            "backend-duplicate": [row, row],
+        }
+        assert validate_policy(policy) is policy
+        with pytest.raises(ValueError, match=r"testing\.layer_contract_unmeasured"):
+            validate_policy(policy | {"unit_backends": faults[declared[0]]})
+        return
+    if declared and declared[0].startswith("framework-"):
+        from devtools.testing.sizes import validate_policy
+
+        policy = json.loads((root / "config/registries/test-sizes.json").read_text("utf-8"))
+        policy.setdefault(
+            "framework_fixtures",
+            [
+                {
+                    "node": "tests/conftest.py::project_isolation",
+                    "reason": "Confines the test invocation.",
+                }
+            ],
+        )
+        row = policy["framework_fixtures"][0]
+        faults = {
+            "framework-entry": [row["node"]],
+            "framework-reason": [{"node": row["node"]}],
+            "framework-pattern": [row | {"node": "tests/conftest.py::*"}],
+            "framework-module": [row | {"node": "tests.conftest"}],
+        }
+        assert validate_policy(policy) is policy
+        with pytest.raises(ValueError, match=r"test_size\.framework_fixtures_invalid"):
+            validate_policy(policy | {"framework_fixtures": faults[declared[0]]})
+        return
     lane = declared[0][5:] if declared and declared[0].startswith("lane_") else ""
     public = tmp_path / "public-only"
     policy_file = public / "config/registries/test-sizes.json"
@@ -515,6 +1005,7 @@ class TestFocused:
     )
     found = r.guard(tmp_path, added, document, document, tests=tests, before_tests=before)
     refused = case in {
+        "different-layer",
         "split-file",
         "second",
         "edited-copy",
@@ -524,6 +1015,10 @@ class TestFocused:
         "legacy-extra-file",
     }
     assert bool(found) == refused
+    if case == "different-layer":
+        assert key in " ".join(found) and "testing.layer_contract" in " ".join(found)
+        assert "register its true layer" in " ".join(found)
+        return
     if refused:
         assert (
             key in " ".join(found)

@@ -221,8 +221,50 @@ OBSERVED |= {
         for event in ("socket.sendto", "socket.sendmsg", "ctypes.dlopen", "os.truncate", "os.chown")
     },
 }
+OBSERVED |= {
+    "shared-hook": (
+        """events=[]
+original=seen.capture
+original_layer=contract.note
+def cached(event,args,value):
+ if event=='test.shared': events.append('cache')
+ return original(event,args,value)
+def layered(event,args):
+ if event=='test.shared': events.append('layer')
+ return original_layer(event,args)
+with (patch.object(seen,'capture',side_effect=cached),
+      patch.object(contract,'note',side_effect=layered)):
+ with contract.active(): sys.audit('test.shared')
+ sys.audit('test.shared')
+assert events==['cache','layer','cache'] and added.call_count==1
+""",
+        None,
+    ),
+    "reimport-hook": ("p.read_text()", None),
+    "unobserved-again": ("p.read_text()", "undeclared_input"),
+    "thread-hooks": (
+        """import threading
+barrier=threading.Barrier(2); events=[]
+def callback(event,args):
+ if event=='test.thread':
+  events.append(threading.current_thread().name)
+  barrier.wait(timeout=2)
+  sys.audit('test.nested')
+ elif event=='test.nested': events.append('recursive')
+with subscribe(callback):
+ threads=[threading.Thread(target=lambda: sys.audit('test.thread'),name=str(i)) for i in range(2)]
+ for thread in threads: thread.start()
+ for thread in threads: thread.join(timeout=3)
+assert sorted(events)==['0','1']
+""",
+        None,
+    ),
+}
+
 OBSERVER_CHILD = """import os,sys,json,socket,subprocess,builtins,io; from pathlib import Path
-from devtools.pipeline import cache; from devtools.pipeline.observe import Recorder
+from devtools.pipeline import cache; from devtools.pipeline.observe import Recorder,subscribe
+from devtools.testing import audit
+from devtools.testing.contracts import LayerContract
 from unittest.mock import patch
 from importlib.util import cache_from_source
 os.environ['RC_WRAPPER_INPUT']='first'; os.environ.pop('RC_WRAPPER_ABSENT',None)
@@ -235,8 +277,9 @@ def originals():
  return (os.open,builtins.open,io.open,os.listdir,os.stat,os.lstat,
   os.path.exists,os.path.isfile,os.path.isdir,os.path.lexists,
   *[getattr(type(os.environ),n) for n in ('__getitem__','__iter__','__len__','__repr__')])
+contract=LayerContract('integration',temp)
 saved=originals();native_stat=os.stat(p);native_lstat=os.lstat(p);exception=None
-if sys.argv[4]=='unobserved':
+if sys.argv[4] in ('unobserved','unobserved-again'):
  sys.addaudithook(lambda e,a: (_ for _ in ()).throw(RuntimeError())
                   if e=='sys.addaudithook' else None)
 try:
@@ -340,6 +383,7 @@ def _record_pytest(tmp_path, case, *, prepare_only=False):
         "pipeline/cache.py",
         "pipeline/receipt.py",
         "pipeline/definition.py",
+        "testing/audit.py",
         "testing/sizes.py",
         "testing/requirements.py",
     ):

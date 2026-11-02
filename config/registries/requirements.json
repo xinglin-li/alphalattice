@@ -110,6 +110,12 @@
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 5
+    },
+    "testing.layer_contract": {
+      "description": "Registered unit layers obey resource and own-phase time boundaries, while integration layers retain their declared database and file access.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10
     }
   }
 }

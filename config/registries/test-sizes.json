@@ -753,5 +753,131 @@
   "shrink_only_list": "large",
   "post_merge_only": [
     "tests/portfolio_strategy_lab/test_cli_contract.py"
+  ],
+  "unit_backends": [
+    {
+      "kind": "module",
+      "name": "duckdb",
+      "reason": "Database connections and stores belong in integration."
+    },
+    {
+      "kind": "module",
+      "name": "_duckdb",
+      "reason": "Cached database C bindings retain the database boundary."
+    },
+    {
+      "kind": "module",
+      "name": "sqlite3",
+      "reason": "SQLite connections are database resources."
+    },
+    {
+      "kind": "module",
+      "name": "_sqlite3",
+      "reason": "Cached SQLite C bindings retain the database boundary."
+    },
+    {
+      "kind": "module",
+      "name": "socket",
+      "reason": "Socket resources belong in network journeys."
+    },
+    {
+      "kind": "module",
+      "name": "_socket",
+      "reason": "Cached socket C bindings retain the network boundary."
+    },
+    {
+      "kind": "module",
+      "name": "subprocess",
+      "reason": "Child processes belong in integration."
+    },
+    {
+      "kind": "module",
+      "name": "_winapi",
+      "reason": "Windows process creation can bypass Python subprocess wrappers."
+    },
+    {
+      "kind": "module",
+      "name": "win32file",
+      "reason": "Native Windows file handles bypass the Python open audit."
+    },
+    {
+      "kind": "module",
+      "name": "win32process",
+      "reason": "Native Windows process handles are process resources."
+    },
+    {
+      "kind": "module",
+      "name": "alphalattice.control.product_host",
+      "reason": "Host operations belong in integration."
+    },
+    {
+      "kind": "module",
+      "name": "product_host",
+      "reason": "The Host alias retains the same resource boundary."
+    },
+    {
+      "kind": "callable",
+      "name": "numpy.fromfile",
+      "reason": "This array reader opens a file in native code."
+    },
+    {
+      "kind": "callable",
+      "name": "numpy.memmap",
+      "reason": "Mapped arrays acquire a native file resource."
+    },
+    {
+      "kind": "callable",
+      "name": "os.system",
+      "reason": "Shell process creation is a process resource."
+    },
+    {
+      "kind": "callable",
+      "name": "os.startfile",
+      "reason": "Opening a registered application starts another process."
+    },
+    {
+      "kind": "callable",
+      "name": "os.fork",
+      "reason": "Forking creates another process."
+    },
+    {
+      "kind": "callable",
+      "name": "os.posix_spawn",
+      "reason": "Native spawn creates another process."
+    },
+    {
+      "kind": "callable",
+      "name": "os.posix_spawnp",
+      "reason": "Native path-search spawn creates another process."
+    },
+    {
+      "kind": "callable",
+      "name": "win32api.OpenProcess",
+      "reason": "Opening another process is a process resource."
+    },
+    {
+      "kind": "callable",
+      "name": "win32api.ShellExecute",
+      "reason": "Shell execution can start another process."
+    },
+    {
+      "kind": "callable",
+      "name": "win32api.WinExec",
+      "reason": "Native execution starts another process."
+    }
+  ],
+  "framework_fixtures": [
+    {
+      "node": "tests/conftest.py::project_isolation",
+      "reason": "Confines discovery to the invocation; the active unit contract replaces its Host read adapter."
+    },
+    {
+      "node": "tests/conftest.py::_memory_checks_read_no_host",
+      "reason": "Inspects loaded module metadata to normalize Host memory checks and is inactive for units."
+    },
+    {
+      "node": "tests/conftest.py::_answers_hold_their_models",
+      "reason": "Inspects loaded module metadata to validate Host answer schemas and is inactive for units."
+    }
   ]
 }

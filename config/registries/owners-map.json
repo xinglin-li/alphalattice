@@ -4838,7 +4838,7 @@
         "devtools.testing.requirements"
       ],
       "folds_in": [],
-      "note": "Consumers: python scripts/tests_registry.py find and shrink; the fast guard's registration and admission step (scripts/check_playpen.py); and the collection backstop (devtools.testing.collection), which derives a marked test's size from its requirement's layer and, in a gate lane, refuses unknown ids and files over their legacy count (the private legacy count list, shrink-only). Holders, lifecycle and the creating commit are derived from the tree, never stored."
+      "note": "Consumers: python scripts/tests_registry.py find and shrink; the fast guard's registration and admission step (scripts/check_playpen.py); and the collection backstop (devtools.testing.collection), which derives a marked test's size from its requirement's layer and, in a gate lane, refuses unknown ids and files over their legacy count (the private legacy count list, shrink-only). Holders, lifecycle and the creating commit are derived from the tree, never stored. The registered primary layer is validated before Index grouping; collection consumes the same reader before classification."
     },
     "structured error answers": {
       "description": "Gives every refusal a registered category, owner and exact reason so an agent can branch on the kind of error without parsing words.",
@@ -4902,6 +4902,27 @@
       ],
       "folds_in": [],
       "note": "Consumers: the structural round-trip holder and the layout pilot call snapshot, plan, apply and inverse. The pipeline consumes this one API; no second command parser or loader. The testing package entry matches TEST-REGISTRY A. Every legacy-area project_discovery binding retires when that move empties its area; unit nodes never activate that binding or golden_cache. Consumers include all existing legacy areas and the integration, contract, e2e and native layer conftests. Root project_isolation applies to every test, including unit and root-only probes, without golden-cache setup. The compatible project_discovery layer fixture only activates golden_cache; it does not install a second discovery guard."
+    },
+    "test layer contract": {
+      "description": "A test layer contract confines each registered test to its declared resources and own-phase execution bound.",
+      "owner": "devtools.testing",
+      "covers": "registered primary-layer resource and import contracts, folder agreement and own-phase cost, scoped across setup, call and teardown; legacy paths keep their registered layer during migration",
+      "defined_by": [
+        "devtools.testing.collection",
+        "devtools.testing.contracts"
+      ],
+      "folds_in": [],
+      "note": "Collection is the consumer; devtools.testing.audit owns the single process hook shared with pipeline.observe through subscribers. The existing pytest timeout and solo-confirmation route remain the timer and verifier; pipeline receipt events consume the measured unit total. Exact root framework fixture entries and reasons are held in test-sizes; only their module inventory scan is exempt, while selected bindings and runtime resources stay guarded. Root conftest and pytest_environment consume the active unit contract. The same policy owns the reasoned unit_backends catalog: collection passes its existing snapshot and the static shape guard freezes one snapshot per process. Only named resource bindings refuse; in-memory native computation remains lawful."
+    },
+    "test audit subscription": {
+      "description": "A test audit subscription observes process events through one installed hook and releases only its own callback on every exit.",
+      "owner": "devtools.testing",
+      "covers": "one process audit hook, per-thread reentrant dispatch and scoped subscriptions; failed or vetoed installation never becomes observed evidence",
+      "defined_by": [
+        "devtools.testing.audit"
+      ],
+      "folds_in": [],
+      "note": "Consumers: devtools.testing.contracts applies test layer resources, and devtools.pipeline.observe subscribes its existing Recorder. The pipeline re-exports subscribe for current callers; the test package never imports the pipeline."
     }
   }
 }

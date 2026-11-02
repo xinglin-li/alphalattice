@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from collections.abc import Iterable
 from datetime import date
 from fnmatch import fnmatchcase
@@ -46,7 +47,57 @@ def validate_policy(value: Any) -> dict[str, Any]:
     _reach(value)
     _limits(value)
     _quarantine(value)
+    _framework_fixtures(value)
+    _unit_backends(value)
     return value
+
+
+def _unit_backends(policy: dict[str, Any]) -> None:
+    """A backend is a named resource dependency, never an inferred native extension."""
+    rows = policy.get("unit_backends", [])
+    seen: set[str] = set()
+    if not isinstance(rows, list) or ("unit_backends" in policy and not rows):
+        raise ValueError("testing.layer_contract_unmeasured: restore the unit backend catalog")
+    for row in rows:
+        name = row.get("name") if isinstance(row, dict) else None
+        if not (
+            isinstance(name, str)
+            and re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", name)
+            and set(row) == {"kind", "name", "reason"}
+            and isinstance(row.get("kind"), str)
+            and row.get("kind") in {"module", "callable"}
+            and isinstance(row.get("reason"), str)
+            and row["reason"].strip()
+            and name not in seen
+        ):
+            raise ValueError(
+                "testing.layer_contract_unmeasured: name each backend once with its kind "
+                "and reason; restore the unit backend catalog"
+            )
+        seen.add(name)
+
+
+def _framework_fixtures(policy: dict[str, Any]) -> None:
+    """Only exact named root framework fixtures with reasons may skip module inventories."""
+    rows = policy.get("framework_fixtures", [])
+    seen: set[str] = set()
+    if not isinstance(rows, list):
+        raise ValueError("test_size.framework_fixtures_invalid: use named entries with reasons")
+    for row in rows:
+        node = row.get("node") if isinstance(row, dict) else None
+        reason = row.get("reason") if isinstance(row, dict) else None
+        if not (
+            isinstance(node, str)
+            and re.fullmatch(r"tests/conftest\.py::[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", node)
+            and isinstance(reason, str)
+            and reason.strip()
+            and node not in seen
+        ):
+            raise ValueError(
+                "test_size.framework_fixtures_invalid: name each exact root fixture once "
+                "with its own reason; modules and patterns are not entries"
+            )
+        seen.add(node)
 
 
 def _post_merge_only(value: dict[str, Any]) -> None:
