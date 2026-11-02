@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from devtools.architecture.moved_names import moved_name_problems, problems
+from devtools.testing.layout import apply, inverse, plan
 
 LOCAL = "alphalattice.interface.local_application"
 HOST = "alphalattice.control.product_host.composition"
@@ -118,3 +119,23 @@ def test_a_staged_check_reads_the_index_not_an_unstaged_repair(synthetic_history
     )
     assert problems(tmp_path, staged=True)[0].startswith("tests/use.py:1: where.old")
     assert problems(tmp_path, staged=False) == []
+
+
+@pytest.mark.proves("testing.whole_file_relocation_restores_bytes")
+def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
+    """Whole-file layout restores bytes and refuses path, export and fixture-name clashes."""
+    body, fixture = "pass\n", "import pytest\n@pytest.fixture\ndef zone(): pass\n"
+    files = dict.fromkeys(("tests/a/t.py", "tests/b/t.py"), body)
+    files.update(dict.fromkeys(("tests/a/conftest.py", "tests/b/conftest.py"), fixture))
+    for path, text in files.items():
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_bytes(text.encode("utf-8"))
+    choice = ["unit", "sample", "scope_checks"]
+    move = plan("r", files, {"tests/a/t.py": choice})
+    apply(tmp_path, move)
+    assert (tmp_path / "tests/unit/sample/test_scope_checks.py").read_text() == body
+    apply(tmp_path, inverse(move))
+    assert (tmp_path / "tests/a/t.py").read_text() == body
+    for stem in ("scope_checks", "other_checks", "../escape"):
+        with pytest.raises(ValueError, match=r"collision|fixture|path"):
+            plan("r", files, {"tests/a/t.py": choice, "tests/b/t.py": [*choice[:2], stem]})

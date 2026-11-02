@@ -4870,6 +4870,16 @@
       ],
       "folds_in": [],
       "note": "Consumers: scripts/pipeline.py verify; the READY check, the merge queue and the test manager read receipts only through verify. The stage runner that writes receipts follows."
+    },
+    "test layout move": {
+      "description": "A test layout move preserves whole-file bodies while reviewed placement decisions relocate tests and their inherited fixture bindings.",
+      "owner": "devtools.testing",
+      "covers": "revision-bound plans, checked file images, explicit pytest fixture providers, import wiring, inverse and collision refusals",
+      "defined_by": [
+        "devtools.testing.layout"
+      ],
+      "folds_in": [],
+      "note": "Consumers: the structural round-trip holder and the layout pilot call snapshot, plan, apply and inverse. The pipeline consumes this one API; no second command parser or loader. The testing package entry matches TEST-REGISTRY A."
     }
   }
 }

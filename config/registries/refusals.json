@@ -1,5 +1,12 @@
 {
 "entries": {
+"test_layout.path_collision": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION"},
+"test_layout.path_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
+"test_layout.fixture_scope": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION"},
+"test_layout.fixture_visibility": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION"},
+"test_layout.fixture_collision": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION"},
+"test_layout.preimage_changed": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION"},
+"test_layout.unmapped_reference": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION"},
 "CODEX_COMMAND_MISSING": {
 "owner": "activity",
 "category": "FAILED_PRECONDITION",

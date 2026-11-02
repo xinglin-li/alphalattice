@@ -106,6 +106,7 @@
       "policy": "Registered limits drive pytest-timeout across setup, call and teardown; new Large rows require a dated maintainer decision in admitted, verified in review; other finding sets remain shrink-only."
     },
     "test registration": {
+      "description": "Test registration admits owned requirements and refuses holders without a registered requirement beyond each file's legacy count.",
       "owner": "devtools.testing",
       "mechanism": "src/devtools/testing/requirements.py::registration",
       "consumers": [

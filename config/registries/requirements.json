@@ -38,6 +38,12 @@
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5
+    },
+    "testing.whole_file_relocation_restores_bytes": {
+      "description": "Whole-file test relocation restores original bytes and refuses path, export, and fixture-name clashes.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 6.248
     }
   }
 }

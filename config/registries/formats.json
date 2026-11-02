@@ -400,6 +400,7 @@
 "note": "Scanner-owned UTF-8/LF line-content key; differing dispositions conflict, corroborating evidence and immutable conversion sources are retained; changed content reopens. The maintainer harness tools/public_export.py and tools/lead_merge.py consume emitted keys only. Location-based review conversion is retired; reserved example-domain decisions belong to this review owner."
 },
 "schema:alphalattice.requirements.v1": {
+"description": "The requirements registry records the owned requirements that test holders prove.",
 "owner": "devtools.testing",
 "readers": [
 "src/devtools/testing/requirements.py",
@@ -412,6 +413,7 @@
 ]
 },
 "schema:alphalattice.tests-unregistered.v1": {
+"description": "The private legacy count registry bounds unregistered tests per file until each holder registers or retires.",
 "owner": "devtools.testing",
 "readers": [
 "src/devtools/testing/requirements.py",
@@ -447,6 +449,17 @@
 "alphalattice.playpen.registry-census-baseline/v1"
 ],
 "description": "Record reviewed source gaps and remaining undescribed registry entries so the staged census rejects new debt."
+},
+"schema:alphalattice.test-layout.v1": {
+  "description": "Binds reviewed whole-file test placements and reversible file images to one Git source revision.",
+  "owner": "devtools.testing",
+  "readers": [
+    "src/devtools/testing/layout.py"
+  ],
+  "upgraders": [],
+  "version": [
+    "alphalattice.test-layout.v1"
+  ]
 }
 },
 "note": "",
