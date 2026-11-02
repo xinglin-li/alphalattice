@@ -7,6 +7,7 @@ import pytest
 from alphalattice.control.product_host.composition.research_workspace import (
     publish_research_workspace_manifest,
 )
+from tests._support.project_discovery import project_discovery as project_discovery
 from tests.portfolio_strategy_lab.local_web_support import _manifest
 from tests.researcher_methodology_surface.real_workspace import build_real_risk_workspace
 from tests.researcher_methodology_surface.session_workspace import copy_workspace, session_workspace

@@ -1,0 +1,1 @@
+from tests._support.project_discovery import project_discovery as project_discovery
