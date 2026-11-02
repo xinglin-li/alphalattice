@@ -194,7 +194,7 @@ def test_the_plugin_writes_each_node_once_with_its_failure_and_disposes_of_itsel
     assert (c["phase"], d["phase"]) == ("???", "incomplete")
 
 
-@pytest.mark.parametrize("fault", ["duplicate", "clock", "tree"])
+@pytest.mark.parametrize("fault", ["duplicate", "clock", "tree", "holder-files", "holder-layers"])
 @pytest.mark.proves("pipeline.health_report_counts_the_test_metrics")
 def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_history, fault):
     """The report counts what the tree and the receipts hold; an unreadable one gives no verdict."""
@@ -212,12 +212,33 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
     sizes = tmp_path / "config/registries/test-sizes.json"
     sizes.parent.mkdir(parents=True)
     sizes.write_text(json.dumps(policy | {"quarantine": [held | {"reason": "r"}]}))
+    (tmp_path / "config/registries/requirements.json").write_text(
+        json.dumps(
+            {
+                "schema": "alphalattice.requirements.v1",
+                "entries": {
+                    "a.b": {
+                        "description": "One place owns the recorded requirement.",
+                        "owner": "devtools.testing",
+                        "layer": "integration",
+                        "seconds": 1,
+                    }
+                },
+            }
+        )
+    )
     (tmp_path / "tests/a").mkdir(parents=True)
     mark = '@pytest.mark.proves("a.b")\n'
     body = (
         f"import pytest\n{mark}def test_a(): pass\n{mark}def test_b(): pass\ndef test_c(): pass\n"
     )
     (tmp_path / "tests/a/test_x.py").write_text(body + "#" * 102400 + "\n")
+    if fault in {"holder-files", "holder-layers"}:
+        extra = tmp_path / (
+            "tests/unit/test_y.py" if fault == "holder-layers" else "tests/a/test_y.py"
+        )
+        extra.parent.mkdir(exist_ok=True)
+        extra.write_text(f"import pytest\n{mark}def test_more(): pass\n")
     (tmp_path / "src").mkdir()
     (tmp_path / "src/m.py").write_text("x = 1\n" * 14)
     commit("A tree to report on")
@@ -243,9 +264,14 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
         paths.append(path)
     found = report(tmp_path, [*paths, tmp_path / "missing.jsonl"], date(2026, 10, 25))
     tree, stages = found["tree"], found["stages"]
-    assert (tree["test_lines"], tree["source_lines"], tree["test_to_source"]) == (7, 14, 0.5)
-    assert (tree["test_functions"], tree["registered_functions"]) == (3, 2)
-    assert tree["requirements_with_several_holders"] == ["a.b"]
+    additional = fault in {"holder-files", "holder-layers"}
+    assert (tree["test_lines"], tree["source_lines"], tree["test_to_source"]) == (
+        (10, 14, 0.714) if additional else (7, 14, 0.5)
+    )
+    assert (tree["test_functions"], tree["registered_functions"]) == (
+        (4, 3) if additional else (3, 2)
+    )
+    assert tree["requirements_with_several_holders"] == (["a.b"] if fault == "holder-files" else [])
     assert tree["files_over_100kb"] == ["tests/a/test_x.py"]
     assert tree["quarantine"] == [held | {"days_left": 3}]
     assert stages["by_result"] == {"PASS": 1, "ERROR": 1, "UNREADABLE": 1}
@@ -282,7 +308,7 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
                 invalid["by_result"] == {"UNREADABLE": 1}
                 and invalid["unreadable"][0]["code"] == "pipeline.receipt_malformed"
             )
-    else:
+    elif fault == "tree":
         bad = tmp_path / "tests/a/test_x.py"
         bad.write_bytes(b"\xff")
         with pytest.raises(Exception) as caught:

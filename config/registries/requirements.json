@@ -104,6 +104,12 @@
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 30
+    },
+    "testing.one_holder_per_layer": {
+      "description": "A requirement has one holder file in each layer, while focused functions and parameter cases in that file preserve its place.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
     }
   }
 }

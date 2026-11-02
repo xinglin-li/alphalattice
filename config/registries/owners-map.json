@@ -4833,7 +4833,7 @@
     "test requirement": {
       "description": "A test requirement is one registered behaviour a test proves, with its owner, layer and time budget, so a new test finds the holder it extends before it is written.",
       "owner": "devtools.testing",
-      "covers": "config/registries/requirements.json: each requirement's id, sentence, owner package, layer and seconds; the holders that name it with pytest.mark.proves; the derived lifecycle; and tests find over the requirements and the unregistered tests",
+      "covers": "config/registries/requirements.json: each requirement's id, sentence, owner package, layer and seconds; the holders that name it with pytest.mark.proves; the derived lifecycle; and tests find over the requirements and the unregistered tests; admission refuses new duplicate holders within a layer and names the existing holder to extend",
       "defined_by": [
         "devtools.testing.requirements"
       ],

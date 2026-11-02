@@ -50,7 +50,12 @@ smallest red change to the holder. Each rule names what enforces it; a rule mark
      `python scripts/tests_registry.py shrink` lowers the counts.
 2. **Find before you write.** `python scripts/tests_registry.py find "<words>"` returns the
    matching requirements and the tests that hold them, requirements first. One holder per requirement
-   per layer: a new case is a parameter or one assertion in that holder.
+   per layer: the holder is one file, which may contain focused functions, classes and
+   parameter cases. The TEST-REGISTRY guard refuses a new second file and names the
+   file to extend. A partial move cannot introduce another file; move the remaining
+   holders too, or merge them into one file;
+   an unchanged definition moved to another file keeps its standing. Explicit
+   layer folders take precedence over a legacy holder's registered default layer.
    - A refused new test shows that search's result for its name and docstring, then
      the next step: add the case to the holder it names (an unregistered holder
      registers its requirement and takes the marker), or register the row first and

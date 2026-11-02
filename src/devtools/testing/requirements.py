@@ -21,6 +21,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from fnmatch import fnmatchcase
+from itertools import product
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -65,6 +66,18 @@ class Index(NamedTuple):
     tests: list[Holder]
     held: dict[str, list[Holder]]
     entries: dict[str, frozenset[str]]
+    layered: dict[tuple[str, str], set[str]]
+
+    def duplicates(
+        self, prior: Mapping[tuple[str, str], set[str]] | None = None
+    ) -> set[tuple[str, str]]:
+        """Duplicate holder groups, optionally excluding unchanged inherited file debt."""
+        prior = {} if prior is None else prior
+        return {
+            key
+            for key, paths in self.layered.items()
+            if len(paths) > max(1, len(prior.get(key, set())))
+        }
 
 
 def parse(text: str) -> dict[str, dict[str, Any]]:
@@ -132,6 +145,7 @@ def node_matches(node: str, selector: str) -> bool:
 def file_holders(relative: str, text: str) -> list[Holder]:
     """Each test function in one file, with the ids its function, class and module prove."""
     tree, found = ast.parse(text), []
+    lines = text.splitlines(keepends=True)
     module = _proved(
         node.value
         for node in tree.body
@@ -152,21 +166,27 @@ def file_holders(relative: str, text: str) -> list[Holder]:
         if node.name.startswith("test_"):
             text = " ".join((ast.get_docstring(node) or "").split("\n\n")[0].split())
             ids = module + scope + _proved(node.decorator_list)
-            digest = hashlib.sha256(ast.dump(node).encode("utf-8")).hexdigest()
+            start = min([node.lineno, *(d.lineno for d in node.decorator_list)]) - 1
+            image = json.dumps([ids, "".join(lines[start : node.end_lineno])], ensure_ascii=False)
+            digest = hashlib.sha256(image.encode("utf-8")).hexdigest()
             found.append(Holder(prefix + node.name, ids, f"{node.name} {text}", digest))
     return found
 
 
 def fresh(before: Iterable[Holder], after: Iterable[Holder]) -> list[Holder]:
-    """A change's new test functions, by their full node: one whose qualified name and whole
-    definition left another file is a move, not new, and each removal matches one copy only; a
-    basename alone never matches."""
+    """New functions or newly proved ids on an existing function.
+
+    A qualified unchanged definition relocating carries its standing; each removal matches one copy.
+    """
     old, now = {test.node: test for test in before}, {test.node: test for test in after}
     gone = Counter((n.split("::", 1)[1], t.digest) for n, t in old.items() if n not in now)
     found = []
     for node, test in sorted(now.items()):
         identity = (node.split("::", 1)[1], test.digest)
         if node in old:
+            added_ids = tuple(key for key in test.ids if key not in old[node].ids)
+            if added_ids:
+                found.append(test._replace(ids=added_ids))
             continue
         if gone[identity]:
             gone[identity] -= 1  # this copy is the move; a second copy is new
@@ -257,9 +277,29 @@ def matches(query: str, entries: dict[str, frozenset[str]]) -> list[tuple[float,
     return sorted(((s, k) for s, k in scored if s >= 1 / 3), key=lambda pair: (-pair[0], pair[1]))
 
 
-def index(root: Path, rows: dict[str, dict[str, Any]] | None = None) -> Index:
+def _places(
+    rows: Mapping[str, dict[str, Any]], tests: Iterable[Holder]
+) -> dict[tuple[str, str], set[str]]:
+    """One physical holder per id/layer, independent of its focused functions and cases."""
+    found: dict[tuple[str, str], set[str]] = {}
+    for test in tests:
+        for key in dict.fromkeys(test.ids):
+            if key in rows:
+                found.setdefault((key, layer(test.node, rows[key]["layer"])), set()).add(
+                    test.node.partition("::")[0]
+                )
+    return found
+
+
+def index(
+    root: Path,
+    rows: dict[str, dict[str, Any]] | None = None,
+    *,
+    tests: Iterable[Holder] | None = None,
+) -> Index:
     """The requirements and every test, read once for any number of queries."""
-    rows, tests = load(root) if rows is None else rows, holders(root)
+    rows = load(root) if rows is None else rows
+    tests = list(holders(root) if tests is None else tests)
     held: dict[str, list[Holder]] = {key: [] for key in rows}
     for test in tests:
         for key in test.ids:
@@ -268,7 +308,7 @@ def index(root: Path, rows: dict[str, dict[str, Any]] | None = None) -> Index:
         f"R {key}": words(" ".join([key, row["description"], *(t.words for t in held[key])]))
         for key, row in rows.items()
     } | {f"T {test.node}": words(test.words) for test in tests if not test.ids}
-    return Index(rows, tests, held, entries)
+    return Index(rows, tests, held, entries, _places(rows, tests))
 
 
 def _requirement(
@@ -277,11 +317,18 @@ def _requirement(
     """A requirement's lines: its derived lifecycle, layer, budget, owner, sentence and holders."""
     quarantined = any(fnmatchcase(node, q) for node in holding for q in quarantine)
     state = "proposed" if not holding else "quarantined" if quarantined else "active"
+    places: dict[str, list[str]] = {}
+    for node in holding:
+        places.setdefault(node.partition("::")[0], []).append(node)
     return [
         f"{key}  {'retired' if row.get('retired') else state}  {row['layer']}  "
         f"{row['seconds']:g} s  {row['owner']}",
         f"  {row['description']}",
-        *(f"  held by {node}" for node in holding),
+        *(
+            line
+            for nodes in places.values()
+            for line in [f"  held by {nodes[0]}", *(f"    case {node}" for node in nodes[1:])]
+        ),
     ]
 
 
@@ -308,16 +355,51 @@ def find(root: Path, query: str, at: Index | None = None) -> list[str]:
     return [*lines, f"Next: add your case to a holder above; only if none holds it, {REGISTER}."]
 
 
-def registration(root: Path, new: Iterable[Holder], rows: dict[str, dict[str, Any]]) -> list[str]:
+def layer(node: str, fallback: str = "") -> str:
+    """An explicit layer folder, otherwise the registered requirement's default."""
+    parts = node.partition("::")[0].replace("\\", "/").split("/")
+    return parts[1] if len(parts) > 1 and parts[0] == "tests" and parts[1] in LAYERS else fallback
+
+
+def registration(
+    root: Path,
+    new: Iterable[Holder],
+    rows: dict[str, dict[str, Any]],
+    *,
+    at: Index | None = None,
+    prior: Mapping[tuple[str, str], set[str]] | None = None,
+) -> list[str]:
     """Each new test proves registered, unretired ids, or is refused with what ``tests find``
     returns for its name and docstring, and the next lawful step."""
     lines: list[str] = []
-    at: Index | None = None
+    new = list(new)
+    if not new:
+        return lines
+    at = at or index(root, rows)
+    added = {test.node for test in new}
+    prior = (
+        _places(rows, (test for test in at.tests if test.node not in added))
+        if prior is None
+        else prior
+    )
+    anchors = {
+        key: sorted(paths, key=lambda path: (path not in prior.get(key, set()), path))[:2]
+        for key, paths in at.layered.items()
+    }
     for test in new:
         bad = [key for key in test.ids if key not in rows or rows[key].get("retired")]
         if test.ids and not bad:
+            for key in dict.fromkeys(test.ids):
+                level = layer(test.node, rows[key]["layer"])
+                place = test.node.partition("::")[0]
+                peer = min(set(anchors.get((key, level), ())) - {place}, default=None)
+                if peer and place not in prior.get((key, level), set()):
+                    lines.append(
+                        f"TEST-REGISTRY {test.node}: {key} already has its {level} holder {peer}; "
+                        "extend that file, move the remaining holders too, or merge into one file."
+                    )
             continue
-        at, query = at or index(root, rows), " ".join(test.words[5:].replace("_", " ").split())
+        query = " ".join(test.words[5:].replace("_", " ").split())
         others = at._replace(entries={k: v for k, v in at.entries.items() if k != f"T {test.node}"})
         what = f"proves {', '.join(bad)}, unregistered or retired" if bad else "proves nothing"
         lines += [
@@ -366,7 +448,11 @@ def _decided(exception: Any, kinds: list[str]) -> bool:
 
 
 def admission(
-    root: Path, rows: dict[str, dict[str, Any]], before: dict[str, dict[str, Any]]
+    root: Path,
+    rows: dict[str, dict[str, Any]],
+    before: dict[str, dict[str, Any]],
+    *,
+    at: Index | None = None,
 ) -> list[str]:
     """What the change's added or edited rows fail: a check, or an exception the test manager has
     not decided (a journey, a Large test, an overrun, a near-duplicate); a row is only retired."""
@@ -379,7 +465,7 @@ def admission(
     if not changed:
         return found
     nouns = json.loads((root / "config/registries/owners-map.json").read_text("utf-8"))["nouns"]
-    owners, at = {noun["owner"] for noun in nouns.values()}, index(root, rows)
+    owners, at = {noun["owner"] for noun in nouns.values()}, at or index(root, rows)
     idf = _idf(at.entries)
     for key in changed:
         row, mine = rows[key], at.entries[f"R {key}"]
@@ -408,7 +494,15 @@ def admission(
     return found
 
 
-def guard(root: Path, new: Iterable[Holder], text: str | None, base: str | None) -> list[str]:
+def guard(
+    root: Path,
+    new: Iterable[Holder],
+    text: str | None,
+    base: str | None,
+    *,
+    tests: Iterable[Holder] | None = None,
+    before_tests: Iterable[Holder] | None = None,
+) -> list[str]:
     """The fast guard's step over a change: its new tests and its added or edited rows, parsed
     once; a tree with no registry at either end has nothing to register."""
     if text is None and base is None:
@@ -417,4 +511,31 @@ def guard(root: Path, new: Iterable[Holder], text: str | None, base: str | None)
         rows, before = parse(text) if text else {}, parse(base) if base else {}
     except ValueError as error:
         return [f"TEST-REGISTRY {REGISTRY.as_posix()} is refused: {error}."]
-    return registration(root, new, rows) + admission(root, rows, before)
+    new = list(new)
+    if not new and rows == before and before_tests is None:
+        return []
+    at = index(root, rows, tests=tests)
+    added_nodes = {test.node for test in new}
+    prior = _places(
+        before,
+        (test for test in at.tests if test.node not in added_nodes)
+        if before_tests is None
+        else before_tests,
+    )
+    changed_rows = {key for key, row in rows.items() if row != before.get(key)}
+    affected = at.duplicates(prior) | set(product(changed_rows, LAYERS))
+    candidates = {test.node: test for test in new}
+    for test in at.tests:
+        ids = tuple(
+            key
+            for key in test.ids
+            if (key, layer(test.node, rows.get(key, {}).get("layer", ""))) in affected
+        )
+        if ids:
+            previous = candidates.get(test.node)
+            candidates[test.node] = test._replace(
+                ids=tuple(dict.fromkeys((*(previous.ids if previous else ()), *ids)))
+            )
+    return registration(root, candidates.values(), rows, at=at, prior=prior) + admission(
+        root, rows, before, at=at
+    )

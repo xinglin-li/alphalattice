@@ -344,3 +344,205 @@ def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
         entries[case] = row | edit | (decided if edit.get("exception") == "decided" else {})
     found = r.admission(tmp_path, entries, json.loads(base)["entries"])
     assert (refused in " ".join(found)) if refused else found == []
+
+
+@pytest.mark.proves("testing.one_holder_per_layer")
+@pytest.mark.parametrize(
+    "case",
+    [
+        "second",
+        "same-file",
+        "split-file",
+        "whole-file-move",
+        "same-file-class",
+        "legacy-files",
+        "legacy-extension",
+        "legacy-renamed-function",
+        "legacy-extra-file",
+        "different-layer",
+        "parameter",
+        "move",
+        "edited-copy",
+        "edited-move",
+        "legacy",
+        "read-once",
+        "edited-trivia-move",
+        "unchanged",
+        "inherited-proof",
+        "marker-addition",
+        "new-marker",
+    ],
+)
+def test_a_new_holder_is_unique_within_its_requirement_layer(tmp_path, monkeypatch, case):
+    from devtools.testing import requirements as r
+
+    key = "testing.example"
+    rows = {
+        key: {
+            "description": "One recorded expectation has one local owner.",
+            "owner": "devtools.testing",
+            "layer": "unit",
+            "seconds": 1,
+        }
+    }
+    policy = tmp_path / "config/registries/test-sizes.json"
+    policy.parent.mkdir(parents=True)
+    policy.write_bytes(
+        (Path(__file__).resolve().parents[2] / r.REGISTRY.parent / policy.name).read_bytes()
+    )
+    source = """import pytest
+@pytest.mark.proves('testing.example')
+def test_anchor(): assert True
+"""
+    anchor = tmp_path / "tests/unit/test_first.py"
+    anchor.parent.mkdir(parents=True)
+    anchor.write_text(source)
+    before = r.file_holders("tests/unit/test_first.py", source)
+    if case in {"legacy", "split-file", "whole-file-move"}:
+        source += """
+@pytest.mark.proves('testing.example')
+def test_old(): assert True
+"""
+        anchor.write_text(source)
+        before = r.file_holders("tests/unit/test_first.py", source)
+    if case == "split-file":
+        anchor.write_text(
+            source[source.index("import pytest") :].replace(
+                "@pytest.mark.proves('testing.example')\ndef test_anchor(): assert True\n", ""
+            )
+        )
+        (tmp_path / "tests/unit/test_split.py").write_text(
+            """import pytest
+@pytest.mark.proves('testing.example')
+def test_anchor(): assert True
+"""
+        )
+    if case in {"legacy-files", "legacy-extension", "legacy-renamed-function", "legacy-extra-file"}:
+        previous = tmp_path / "tests/unit/test_legacy.py"
+        previous.write_text(source.replace("test_anchor", "test_old_file"))
+        before += r.file_holders("tests/unit/test_legacy.py", previous.read_text(encoding="utf-8"))
+    if case in {"same-file", "legacy-extension"}:
+        anchor.write_text(
+            source
+            + """
+@pytest.mark.proves('testing.example')
+def test_focused(): assert True
+"""
+        )
+    if case == "legacy-renamed-function":
+        anchor.write_text(source.replace("test_anchor", "test_renamed"))
+    if case == "legacy-extra-file":
+        (tmp_path / "tests/unit/test_third.py").write_text(
+            source.replace("test_anchor", "test_third")
+        )
+    if case == "same-file-class":
+        anchor.write_text(
+            source
+            + """
+@pytest.mark.proves('testing.example')
+class TestFocused:
+    def test_one(self): assert True
+    def test_two(self): assert True
+"""
+        )
+    if case == "parameter":
+        anchor.write_text(
+            source.replace(
+                "def test_anchor()", "@pytest.mark.parametrize('x', [1, 2])\ndef test_anchor(x)"
+            )
+        )
+    elif case not in {
+        "legacy",
+        "unchanged",
+        "new-marker",
+        "same-file",
+        "same-file-class",
+        "legacy-files",
+        "legacy-extension",
+        "legacy-renamed-function",
+        "legacy-extra-file",
+        "split-file",
+    }:
+        other = tmp_path / (
+            "tests/integration/test_second.py"
+            if case == "different-layer"
+            else "tests/unit/test_second.py"
+        )
+        other.parent.mkdir(parents=True, exist_ok=True)
+        other.write_text(
+            source
+            if case
+            in {"move", "whole-file-move", "edited-copy", "edited-move", "edited-trivia-move"}
+            else source.replace("test_anchor", "test_added")
+        )
+        if case in {"move", "whole-file-move", "edited-move", "edited-trivia-move"}:
+            anchor.unlink()
+        if case == "edited-trivia-move":
+            other.write_text(source.replace("assert True", "assert True  # changed definition"))
+        if case in {"edited-copy", "edited-move"}:
+            other.write_text(other.read_text().replace("assert True", "assert 1 == 1"))
+    if case == "inherited-proof":
+        rows["testing.other"] = rows[key]
+        inherited = (
+            "import pytest\npytestmark = pytest.mark.proves('testing.other')\n"
+            "def test_moved(): assert True\n"
+        )
+        before += r.file_holders("tests/unit/test_removed.py", inherited)
+        other.write_text(inherited.replace("testing.other", key))
+    if case == "marker-addition":
+        rows["testing.other"] = rows[key]
+        previous = source.replace("testing.example", "testing.other").replace(
+            "test_anchor", "test_added"
+        )
+        before += r.file_holders("tests/unit/test_second.py", previous)
+        other.write_text(
+            previous.replace(
+                "proves('testing.other')", "proves('testing.other', 'testing.example')"
+            )
+        )
+    if case == "new-marker":
+        before = r.file_holders(
+            "tests/unit/test_first.py",
+            source.replace("@pytest.mark.proves('testing.example')\n", ""),
+        )
+    tests = r.holders(tmp_path)
+    added = r.fresh(before, tests)
+    calls = []
+    read = r.holders
+    monkeypatch.setattr(r, "holders", lambda root: calls.append(root) or read(root))
+    document = json.dumps(
+        {"schema": "alphalattice.requirements.v1", "owner": "devtools.testing", "entries": rows}
+    )
+    found = r.guard(tmp_path, added, document, document, tests=tests, before_tests=before)
+    refused = case in {
+        "split-file",
+        "second",
+        "edited-copy",
+        "read-once",
+        "inherited-proof",
+        "marker-addition",
+        "legacy-extra-file",
+    }
+    assert bool(found) == refused
+    if refused:
+        assert (
+            key in " ".join(found)
+            and "tests/unit/test_first.py" in " ".join(found)
+            and "extend" in " ".join(found)
+        )
+    if case in {"same-file", "same-file-class"}:
+        found_cases = r.find(tmp_path, "recorded expectation", r.index(tmp_path, rows))
+        assert sum(line.startswith("  held by ") for line in found_cases) == 1
+        assert any(line.startswith("    case ") for line in found_cases)
+    if case == "read-once":
+        assert not calls
+    if case == "unchanged":
+        assert not calls
+    if case == "legacy":
+        assert "test_old" in " ".join(
+            r.find(tmp_path, "recorded expectation", r.index(tmp_path, rows))
+        )
+    if case in {"edited-move", "edited-trivia-move", "new-marker", "marker-addition"}:
+        assert len(added) == 1
+    if case in {"new-marker", "marker-addition"}:
+        assert added[0].ids == (key,)

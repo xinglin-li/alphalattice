@@ -14,7 +14,7 @@ from typing import Any
 
 from devtools.pipeline.definition import DefinitionError
 from devtools.pipeline.receipt import ReceiptError, classed, read
-from devtools.testing.requirements import file_holders
+from devtools.testing.requirements import file_holders, index
 from devtools.testing.sizes import load_policy
 
 SLOW_SECONDS = 10  # the quality metrics' row: commit-stage tests of 10 s or more
@@ -55,7 +55,7 @@ def tree(root: Path, today: date) -> dict[str, Any]:
         if path.name.startswith("test_")
         for holder in file_holders(path.relative_to(root).as_posix(), text)
     ]
-    held = Counter(i for test in tests for i in test.ids)
+    held = index(root, tests=tests)
     test_lines = sum(text.count("\n") for text in texts.values())
     source_lines = sum(text.count("\n") for text in source.values())
     quarantine = [
@@ -73,7 +73,7 @@ def tree(root: Path, today: date) -> dict[str, Any]:
         "test_to_source": round(test_lines / source_lines, 3) if source_lines else None,
         "test_functions": len(tests),
         "registered_functions": sum(1 for test in tests if test.ids),
-        "requirements_with_several_holders": sorted(i for i, n in held.items() if n > 1),
+        "requirements_with_several_holders": sorted({key for key, _ in held.duplicates()}),
         "files_over_100kb": [
             p.relative_to(root).as_posix() for p in files if p.stat().st_size > LARGE_BYTES
         ],

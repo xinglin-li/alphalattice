@@ -530,6 +530,7 @@ def _check_test_budget(*, staged: bool) -> bool:
     cannot be read is refused by name, never counted as zero."""
     sys.path.insert(0, str(ROOT / "src"))
     try:
+        from devtools.architecture.git_inputs import read_blobs
         from devtools.testing import requirements
         from devtools.testing.sizes import budget_problems
     finally:
@@ -549,32 +550,82 @@ def _check_test_budget(*, staged: bool) -> bool:
         parents = pending.read_text("ascii").splitlines() if staged and pending.is_file() else []
         # Git compares develop with the hypothetical merge of these parent tips.
         base = git("merge-base", "develop", "HEAD", *parents).strip()
-        diff = ("diff", *["--cached"] * staged, "--numstat", "--no-renames", base, "--")
-        rows = [r.split("\t") for r in git(*diff, "src", "scripts", "tests").splitlines()]
+        diff = ("diff", *["--cached"] * staged, "--numstat", "-z", "--no-renames", base, "--")
+        rows = [r.split("\t", 2) for r in git(*diff, "src", "scripts", "tests").split("\0") if r]
         nets = [(path, int(a) - int(d)) for a, d, path in rows if a != "-"]
-        before = set(git("ls-tree", "-r", "--name-only", base, "--", "tests").splitlines())
-        indexed = set(git("ls-files", "--", "tests").splitlines())
+        before = set(git("ls-tree", "-r", "-z", "--name-only", base, "--", "tests").split("\0"))
+        indexed = set(git("ls-files", "-z", "--", "tests").split("\0"))
+        paths = {
+            path
+            for path in indexed
+            if path.startswith("tests/")
+            and Path(path).name.startswith("test_")
+            and path.endswith(".py")
+        }
+        changed_tests = {p for p, _ in nets if p.startswith("tests/") and p.endswith(".py")}
+        specs = [
+            *(":" + path for path in changed_tests & indexed),
+            *(f"{base}:{path}" for path in changed_tests & before),
+        ]
+        blobs = (
+            read_blobs(specs, ROOT)
+            if staged
+            else read_blobs([s for s in specs if not s.startswith(":")], ROOT)
+        )
+        if staged and set(specs) - blobs.keys():
+            raise RuntimeError("test holder snapshot unavailable; repair the index")
+        projected = {
+            path: requirements.file_holders(
+                path, blobs[":" + path] if staged else (ROOT / path).read_text("utf-8")
+            )
+            for path in changed_tests & indexed
+            if staged or (ROOT / path).is_file()
+        }
         earlier: list[requirements.Holder] = []
         later: list[requirements.Holder] = []
-        for path in sorted(p for p, _ in nets if p.startswith("tests/") and p.endswith(".py")):
+        for path in sorted(changed_tests):
             disk = ROOT / path  # a new or deleted test file is absent on one side, not unread
-            now = git("show", f":{path}") if staged and path in indexed else ""
+            now = blobs.get(":" + path, "") if staged and path in indexed else ""
             now = now if staged else disk.read_text("utf-8") if disk.is_file() else ""
-            then = git("show", f"{base}:{path}") if path in before else ""
-            later += requirements.file_holders(path, now) if now else []
+            then = blobs.get(f"{base}:{path}", "") if path in before else ""
+            later += (
+                projected[path]
+                if path in projected
+                else requirements.file_holders(path, now)
+                if now
+                else []
+            )
             earlier += requirements.file_holders(path, then) if then else []
         fresh = requirements.fresh(earlier, later)
-        added = [test.node for test in fresh]
+        old_nodes = {test.node for test in earlier}
+        added = [test.node for test in fresh if test.node not in old_nodes]
         registry = requirements.REGISTRY.as_posix()
         here = git("ls-files", "--", registry).strip() if staged else (ROOT / registry).is_file()
         declared = git("show", f":{registry}") if staged and here else None
         declared = (ROOT / registry).read_text("utf-8") if here and not staged else declared
         listed = git("ls-tree", "--name-only", base, "--", registry).strip()
         declared_then = git("show", f"{base}:{registry}") if listed else None
+        if fresh or declared != declared_then:
+            missing = paths - projected.keys()
+            if staged:
+                more = read_blobs([":" + path for path in missing], ROOT)
+                if len(more) != len(missing):
+                    raise RuntimeError("test holder snapshot unavailable; repair the index")
+            for path in missing:
+                if staged or (ROOT / path).is_file():
+                    projected[path] = requirements.file_holders(
+                        path, more[":" + path] if staged else (ROOT / path).read_text("utf-8")
+                    )
         marks = git(
             "log", "--format=%(trailers:key=Test-Budget-Exception,valueonly)", f"{base}..HEAD"
         )
-    except (RuntimeError, OSError, UnicodeError) as error:
+    except (
+        RuntimeError,
+        OSError,
+        UnicodeError,
+        SyntaxError,
+        subprocess.CalledProcessError,
+    ) as error:
         print(
             f"TEST-BUDGET unmeasured, refused: {error}. Repair the index, or create a local "
             "develop (git branch develop <its commit>); an unread budget is never zero.",
@@ -587,7 +638,17 @@ def _check_test_budget(*, staged: bool) -> bool:
         print(f"TEST-BUDGET {line}; cut them, or declare first: {declare}", flush=True)
     if exception:
         print(f"TEST-BUDGET exception for the Lead's review: {exception}", flush=True)
-    refused = requirements.guard(ROOT, fresh, declared, declared_then)
+    refused = requirements.guard(
+        ROOT,
+        fresh,
+        declared,
+        declared_then,
+        tests=[t for group in projected.values() for t in group],
+        before_tests=[
+            *earlier,
+            *(t for path, group in projected.items() if path not in changed_tests for t in group),
+        ],
+    )
     for line in refused:
         print(line, flush=True)
     return not found and not refused
