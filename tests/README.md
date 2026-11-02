@@ -78,8 +78,7 @@ smallest red change to the holder. Each rule names what enforces it; a rule mark
    of its net source), with at most three new test functions, each for a new
    requirement named in the change's record.
    - An exception is a `Test-Budget-Exception: <ids>` trailer the test manager agreed.
-   - The fast guard holds the lines now; its floor is 10 until the per-card budget
-     card lands.
+   - The fast guard holds the lines now.
    - *From the pipeline's receipts:* each card's receipt also carries its
      test-seconds, against each owner's seconds budget, which the test manager
      sets from the inventory.
@@ -158,8 +157,7 @@ The Workbench parity guard refuses a write without an agent route, an added name
    another file or another harness. A fix extends the test that should have
    caught the defect; only a new requirement gets a new test.
    The fast guard measures each card from its merge base with develop. Net test lines stay
-   within max(20, 30% of net source) (the guard's floor is 10 until the per-card budget card
-   lands), and the card adds at most 3 test functions; an exception is a
+   within max(20, 30% of net source), and the card adds at most 3 test functions; an exception is a
    `Test-Budget-Exception: <ids>` trailer the test manager agreed (protocol rule 5).
 3. Test at the owner's seam: drive the producer's real output through the real
    consumer. Only `tests/structural` reads source text; elsewhere a test does not
