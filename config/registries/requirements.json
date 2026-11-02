@@ -1,0 +1,43 @@
+{
+  "schema": "alphalattice.requirements.v1",
+  "owner": "devtools.testing",
+  "note": "Each requirement a test proves, registered before its test exists. A row holds its id (<owner's last segment>.<words>), one description sentence, the owner package, its layer (unit, integration, contract, e2e or native; a layer's limit is test-sizes.json's for its size) and its seconds budget; a test names the ids it proves with @pytest.mark.proves. Holders, lifecycle (proposed, active, quarantined, retired) and the commit that added a row are derived, never stored. An id is never reused: a retired row stays. Find before writing one: python scripts/tests_registry.py find \"<words>\".",
+  "entries": {
+    "testing.find_matches_requirements_and_unregistered_tests": {
+      "description": "One search returns the registered requirements and the unregistered tests whose words match, best first, with each requirement's lifecycle and holders.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "testing.unregistered_test_refused_with_its_find": {
+      "description": "A new test that proves no registered requirement is refused by the fast guard with what tests find returns for its words and the next lawful step, and in a gate lane beyond its file's legacy count.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "testing.row_admitted_or_refused_by_its_check": {
+      "description": "A new or edited requirement row is admitted at once when its id, owner, sentence, layer and budget pass without a near-duplicate, and is otherwise refused by its failing check or held for the test manager's decision.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.definition_refuses_malformed_rows": {
+      "description": "A malformed pipeline definition is refused on load by code, naming its stage or row, and the shipped definition loads.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.receipt_verifies_only_complete_and_as_asked": {
+      "description": "A stage receipt verifies only when every announced event arrived and it is the stage, host, head and result its reader asked for.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.receipt_plugin_writes_each_node_once": {
+      "description": "The receipt plugin writes each test node once, after its last phase or a crash, with its failure's masked signature, and then disposes of itself.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    }
+  }
+}

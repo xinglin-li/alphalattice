@@ -76,6 +76,7 @@ RULES = [
             "experience/**",
             "census/**",
             "config/release/public-manifest.json",
+            "config/registries/tests-unregistered.json",
         ],
         "reason": (
             "Internal design, development records and release provenance "
@@ -142,6 +143,7 @@ RULES = [
             "tests/alternative_evidence_desk/test_retrieval_product_acceptance.py",
             "tests/feature_engine/test_feature_closure_genesis.py",
             "tests/feature_engine/test_panel_runtime_authority.py",
+            "tests/structural/test_verified_fake_census.py",
             "tests/feature_engine/test_panel_upgrade.py",
             "tests/feature_engine/panel_upgrade.py",
             "tests/portfolio_strategy_lab/test_frozen_strategy_packages.py",
@@ -430,6 +432,8 @@ RULES = [
         "patterns": [
             "src/devtools/**",
             "scripts/check_*.py",
+            "scripts/tests_registry.py",
+            "scripts/pipeline.py",
             "scripts/run_playpen_precommit.py",
             "scripts/configure_playpen_dev.py",
             "scripts/count_ui_laws.py",

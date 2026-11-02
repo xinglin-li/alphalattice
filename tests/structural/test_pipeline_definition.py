@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from devtools.architecture.test_sizes import load_policy
 from devtools.pipeline import definition
+from devtools.testing.sizes import load_policy
 
 ROOT = Path(__file__).resolve().parents[2]
 ROW = {"kind": "command", "owner": "devtools.pipeline", "reason": "r", "hosts": ["public"]}
@@ -51,6 +51,7 @@ def registries():  # the checkout's test sizes and owners, read once
     return load_policy(ROOT), definition.owners(ROOT)
 
 
+@pytest.mark.proves("pipeline.definition_refuses_malformed_rows")
 @pytest.mark.parametrize("case", CASES)
 def test_a_malformed_definition_is_refused_by_code_and_the_shipped_one_loads(case, registries):
     """The pipeline runs only from config/pipeline.toml: a malformed stage or row stops on load."""

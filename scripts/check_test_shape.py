@@ -20,6 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
+from devtools.testing.requirements import file_holders
 
 ROOT = Path(__file__).resolve().parents[1]
 CAP_BYTES = 100 * 1024
@@ -313,9 +314,14 @@ def clone_problems(path: str, old: str | None, new: str, corpus: dict[str, str])
 
 
 def _docstring_lines(text: str) -> dict[str, int]:
+    """A test marked `proves`, on itself, its class or its module, has its sentence in its
+    registered requirement: it counts as one."""
+    tree = _tree(text)
+    held = file_holders("", ast.unparse(tree)) if tree.body else []
+    marked = {test.node.split("::", 1)[1].replace("::", ".") for test in held if test.ids}
     return {
-        name: len((ast.get_docstring(node) or "").splitlines())
-        for name, node in _definitions(_tree(text))
+        name: len((ast.get_docstring(node) or "").splitlines()) or int(name in marked)
+        for name, node in _definitions(tree)
         if isinstance(node, FUNCTION_TYPES) and node.name.startswith("test_")
     }
 

@@ -24,8 +24,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from alphalattice.interface.local_application.message_catalog import english_message_ids
 from devtools.architecture.git_inputs import read_blobs
 from devtools.architecture.nouns import definitions, owner_of
@@ -37,7 +35,6 @@ from devtools.architecture.structural import (
     load_storage_authority_registry,
     table_writer_violations,
 )
-from devtools.architecture.test_sizes import changed_paths, classify, included, load_policy, scoped
 
 REGISTRIES = Path("config") / "registries"
 _CLASSES = frozenset({"METHOD", "EXECUTION", "LIMIT"})
@@ -1340,59 +1337,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     for line in found:
         print(line)
     return 1 if found else 0
-
-
-CHANGED = pytest.StashKey[frozenset[str] | None]()  # a scoped run's changed paths, read once
-
-
-def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
-    """Materialize each test's registered size and declaring owner during collection."""
-
-    lane = os.environ.get("ALPHALATTICE_TEST_LANE", "")
-    changed = changed_paths() if lane in {"merge", "fast"} else None
-    empty = pytest.mark.skip(reason="the change holds no Python file for this per_file scan")
-    python = any(path.endswith(".py") for path in changed or ())
-    config.stash[CHANGED] = changed
-    kept: list[Any] = []
-    omitted: list[Any] = []
-    seen: set[str] = set()
-    try:
-        policy = load_policy(Path(__file__).resolve().parents[3])
-        if lane and lane not in policy["lanes"]:
-            raise ValueError("test_size.lane_unknown")
-        for item in items:
-            if lane and item.nodeid in seen:
-                omitted.append(item)
-                continue
-            seen.add(item.nodeid)
-            declared = [m.name for m in item.iter_markers() if m.name in policy["sizes"]]
-            size, owner, declaration, seconds = classify(item.nodeid, declared, policy)
-            if not declared:
-                item.add_marker(size)
-            previous = item.get_closest_marker("timeout")
-            if previous:
-                limit = previous.args[0] if previous.args else previous.kwargs.get("timeout")
-                if isinstance(limit, (int, float)) and limit > 0:
-                    seconds = min(seconds, limit)
-            item.add_marker(pytest.mark.timeout(seconds, func_only=False), append=False)
-            item.user_properties.extend(
-                [
-                    ("test_size", size),
-                    ("test_size_owner", owner),
-                    ("test_size_declaration", declaration),
-                    ("test_timeout_seconds", seconds),
-                ]
-            )
-            if scoped(item.nodeid, policy, changed):
-                item.add_marker("per_file")  # it reads only the changed files, through scanned()
-                if not python:
-                    item.add_marker(empty)
-            (kept if included(item.nodeid, size, lane, policy, changed) else omitted).append(item)
-    except ValueError as error:
-        raise pytest.UsageError(str(error)) from error
-    if lane:
-        config.hook.pytest_deselected(items=omitted)
-        items[:] = kept
 
 
 if __name__ == "__main__":

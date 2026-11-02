@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import subprocess
 import sys
+import tempfile
+import tomllib
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
@@ -15,6 +18,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"
+PUBLIC_MANIFEST = "config/release/public-manifest.json"
 STRUCTURAL_TESTS = (
     ROOT / "tests" / "structural" / "test_structural_guards.py",
     ROOT / "tests" / "structural" / "test_playpen_gate_routing.py",
@@ -354,7 +358,7 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
     try:
         from devtools.architecture.moved_names import problems as moved_names
         from devtools.architecture.registries import census_check, private_test_growth, problems
-        from devtools.architecture.test_sizes import validate_policy
+        from devtools.testing.sizes import validate_policy
     finally:
         sys.path.pop(0)
     # A reference left at a moved name's old place, found before the rename lands.
@@ -397,6 +401,81 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
     return not found
 
 
+def boundary_problems(blobs: dict[str, bytes], changed: set[str]) -> list[str]:
+    """The merge gate's public-closure and evaluation-layer checks, on the changed readers."""
+    from devtools.architecture.structural import evaluation_imports
+    from release.public_closure import violations  # type: ignore[import-not-found]
+    from release.public_manifest import (  # type: ignore[import-not-found]
+        INTERNAL_ID_BASELINE,
+        RULES,
+        classify,
+        internal_id_ratchet,
+    )
+
+    def public(given: set[str]) -> set[str]:  # by the release rules, given these dependencies
+        return {p for p in blobs if classify(p, given, given, given, given)[0] == "PUBLIC"}
+
+    # Certainly public readers, possibly public targets: a guess never refuses a correct import.
+    readers = public(set()) | {r["path"] for r in json.loads(blobs[PUBLIC_MANIFEST])["public"]}
+    manifest = {"public": [{"path": p} for p in readers | public(set(blobs))], "rules": RULES}
+    refs = violations(manifest, blobs, readers & changed)
+    found = [f"{r.reader}:{r.line}: reaches non-public {r.target} ({r.kind})" for r in refs]
+    named = [{"path": p, "kind": "PUBLIC"} for p in sorted(readers & changed)]  # per file
+    labels = internal_id_ratchet(blobs, named, json.loads(blobs.get(INTERNAL_ID_BASELINE, b"{}")))
+    found += [f"{v['path']}:{v['line']}: internal label {v['rule']}" for v in labels["violations"]]
+    entry = tomllib.loads(blobs["pyproject.toml"].decode())["project"]["scripts"]["alphalattice"]
+    layer = {p: blobs[p].decode() for p in fnmatch.filter(changed, "src/devtools/evaluation/*.py")}
+    rows = evaluation_imports(layer, entry)
+    return found + [f"{p}:{n}: devtools.evaluation imports {what}" for p, n, what in rows]
+
+
+def _check_boundaries(*, staged: bool) -> bool:
+    """Refuse a changed file's import across the public release or evaluation boundary."""
+    from release.public_manifest import read_tree
+
+    def current(path: str) -> bytes | None:  # the index's bytes, or the working tree's
+        if not staged:
+            return (ROOT / path).read_bytes() if (ROOT / path).is_file() else None
+        shown = subprocess.run(["git", "show", f":{path}"], cwd=ROOT, capture_output=True)
+        return shown.stdout if shown.returncode == 0 else None
+
+    started = perf_counter()
+    diff = ("diff", "--cached" if staged else "HEAD", "--name-only", "--no-renames")
+    texts = {path: current(path) for path in _git_lines(*diff)}
+    blobs = {p: b for p, b in (read_tree(ROOT, "HEAD")[1] | texts).items() if b is not None}
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        found = boundary_problems(blobs, {p for p, b in texts.items() if b is not None})
+    finally:
+        sys.path.pop(0)
+    print("".join(f"BOUNDARY {line}\n" for line in found), end="", flush=True)
+    print(f"PLAYPEN_GATE_TIMING boundaries {perf_counter() - started:.3f}s", flush=True)
+    return not found
+
+
+def _check_scoped_structural(*, staged: bool) -> bool:
+    """Run the per_file structural scans over this change's Python files only (the fast lane)."""
+    diff = ("diff", "--cached" if staged else "HEAD", "--name-status", "--no-renames")
+    listing = subprocess.run(("git", *diff), cwd=ROOT, capture_output=True, text=True, check=True)
+    named = {row.split("\t")[-1] for row in listing.stdout.splitlines()}
+    if not any(path.endswith(".py") for path in named):
+        return True
+    if loose := sorted(_git_lines("diff", "--name-only") & named) if staged else []:
+        print(f"STRUCTURAL the scans read the working tree; stage or stash {loose}", flush=True)
+        return False
+    policy = json.loads((ROOT / "config/registries/test-sizes.json").read_text("utf-8"))
+    tests = sorted({r["pattern"].split("::")[0] for r in policy["reach"] if r.get("per_file")})
+    started = perf_counter()
+    with tempfile.TemporaryDirectory() as folder:
+        (Path(folder) / "changed.txt").write_text(listing.stdout, encoding="utf-8")
+        env = dict(os.environ, ALPHALATTICE_TEST_LANE="fast")
+        env["ALPHALATTICE_CHANGED_PATHS"] = str(Path(folder) / "changed.txt")
+        command = (sys.executable, "-m", "pytest", "-q", "--no-cov", "-n", "0", *tests)
+        done = subprocess.run(command, cwd=ROOT, env=env, check=False)
+    print(f"PLAYPEN_GATE_TIMING scoped-structural {perf_counter() - started:.3f}s", flush=True)
+    return done.returncode in (0, 5)  # 5: no per_file node selected
+
+
 def _check_docstrings() -> bool:
     """Refuse a source file whose public docstring findings grew (C2's ratchet, lower only).
 
@@ -424,6 +503,72 @@ def _check_test_shape(*, staged: bool) -> bool:
     )
     print(f"PLAYPEN_GATE_TIMING test-shape {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
+
+
+def _check_test_budget(*, staged: bool) -> bool:
+    """Refuse a card whose tests outgrow its source, or whose new tests or requirement rows are
+    not registered, measured from its merge base with develop in one read. A measurement that
+    cannot be read is refused by name, never counted as zero."""
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from devtools.testing import requirements
+        from devtools.testing.sizes import budget_problems
+    finally:
+        sys.path.pop(0)
+
+    def git(*args: str) -> str:
+        done = subprocess.run(("git", *args), cwd=ROOT, capture_output=True, encoding="utf-8")
+        if done.returncode:
+            said = (done.stderr or done.stdout).strip().splitlines()[:1]
+            raise RuntimeError(
+                f"`git {' '.join(args)}` failed: {' '.join(said) or done.returncode}"
+            )
+        return done.stdout
+
+    try:
+        base = git("merge-base", "HEAD", "develop").strip()
+        diff = ("diff", *["--cached"] * staged, "--numstat", "--no-renames", base, "--")
+        rows = [r.split("\t") for r in git(*diff, "src", "scripts", "tests").splitlines()]
+        nets = [(path, int(a) - int(d)) for a, d, path in rows if a != "-"]
+        before = set(git("ls-tree", "-r", "--name-only", base, "--", "tests").splitlines())
+        indexed = set(git("ls-files", "--", "tests").splitlines())
+        earlier: list[requirements.Holder] = []
+        later: list[requirements.Holder] = []
+        for path in sorted(p for p, _ in nets if p.startswith("tests/") and p.endswith(".py")):
+            disk = ROOT / path  # a new or deleted test file is absent on one side, not unread
+            now = git("show", f":{path}") if staged and path in indexed else ""
+            now = now if staged else disk.read_text("utf-8") if disk.is_file() else ""
+            then = git("show", f"{base}:{path}") if path in before else ""
+            later += requirements.file_holders(path, now) if now else []
+            earlier += requirements.file_holders(path, then) if then else []
+        fresh = requirements.fresh(earlier, later)
+        added = [test.node for test in fresh]
+        registry = requirements.REGISTRY.as_posix()
+        here = git("ls-files", "--", registry).strip() if staged else (ROOT / registry).is_file()
+        declared = git("show", f":{registry}") if staged and here else None
+        declared = (ROOT / registry).read_text("utf-8") if here and not staged else declared
+        listed = git("ls-tree", "--name-only", base, "--", registry).strip()
+        declared_then = git("show", f"{base}:{registry}") if listed else None
+        marks = git(
+            "log", "--format=%(trailers:key=Test-Budget-Exception,valueonly)", f"{base}..HEAD"
+        )
+    except RuntimeError as error:
+        print(
+            f"TEST-BUDGET unmeasured, refused: {error}. Repair the index, or create a local "
+            "develop (git branch develop <its commit>); an unread budget is never zero.",
+            flush=True,
+        )
+        return False
+    found = budget_problems(nets, added, exception := " ".join(marks.split()))
+    declare = "git commit --allow-empty -m <why> -m 'Test-Budget-Exception: <requirement ids>'"
+    for line in found:
+        print(f"TEST-BUDGET {line}; cut them, or declare first: {declare}", flush=True)
+    if exception:
+        print(f"TEST-BUDGET exception for the Lead's review: {exception}", flush=True)
+    refused = requirements.guard(ROOT, fresh, declared, declared_then)
+    for line in refused:
+        print(line, flush=True)
+    return not found and not refused
 
 
 def _check_evidence_bindings() -> bool:
@@ -597,9 +742,15 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         return 1
     if not _check_registries(staged=args.staged, baseline=args.registry_baseline):
         return 1
+    if not _check_boundaries(staged=args.staged):
+        return 1
+    if args.fast and not _check_scoped_structural(staged=args.staged):
+        return 1
     if not _check_docstrings():
         return 1
     if not _check_test_shape(staged=args.staged):
+        return 1
+    if not _check_test_budget(staged=args.staged):
         return 1
     if args.fast:
         # What actually cost minutes per commit: the whole-repo structural guard

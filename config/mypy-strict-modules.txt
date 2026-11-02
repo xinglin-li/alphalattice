@@ -19,6 +19,7 @@ src/alphalattice/kernel/shared_kernel/domain/errors.py
 src/alphalattice/kernel/shared_kernel/domain/models.py
 src/alphalattice/kernel/shared_kernel/domain/serialization.py
 src/devtools/architecture
+src/devtools/testing
 src/devtools/pipeline
 scripts/pipeline.py
 src/alphalattice/foundation/feature_engine/panels/identity.py

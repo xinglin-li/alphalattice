@@ -14,7 +14,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, NoReturn
 
-from devtools.architecture.test_sizes import load_policy
+from devtools.testing.sizes import load_policy
 
 SCHEMA = "alphalattice.pipeline.v1"
 PATH = "config/pipeline.toml"

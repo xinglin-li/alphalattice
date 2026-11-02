@@ -1,12 +1,7 @@
 {
   "schema": "alphalattice.test-sizes.v1",
-  "owner": "devtools.architecture",
+  "owner": "devtools.testing",
   "defaults": [
-    {
-      "pattern": "tests/agent_eval/*",
-      "owner": "tests.agent_eval",
-      "size": "medium"
-    },
     {
       "pattern": "tests/alpha_research/*",
       "owner": "tests.alpha_research",
@@ -70,11 +65,6 @@
     {
       "pattern": "tests/model_validation/*",
       "owner": "tests.model_validation",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/operation_suite/*",
-      "owner": "tests.operation_suite",
       "size": "medium"
     },
     {
@@ -173,132 +163,6 @@
       "admitted": "2026-10-23: timed out at the 60 s Medium limit in a merge-lane gate after taking 51.9 s and 59.3 s in the two gates before; returns to Medium with the build-once fixture."
     },
     {
-      "pattern": "tests/agent_eval/test_first_use_completion.py::test_a_first_use_sealed_under_the_last_release_still_verifies_here*",
-      "owner": "tests.agent_eval",
-      "reason": "Builds with the released wheel and verifies the sealed first use after upgrading.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_intent_eval.py::test_committee_calls_keep_each_sample_blind_until_the_pm_decision*",
-      "owner": "tests.agent_eval",
-      "reason": "Runs isolated scripted committee members through the blind round before the PM decision.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_first_use_review_without_evidence_offers_its_install_ready*",
-      "owner": "tests.agent_eval",
-      "reason": "Builds the first-use review workspace before exercising missing Evidence runtime recovery.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_host_killed_mid_task_resumes_it_when_served_again*",
-      "owner": "tests.agent_eval",
-      "reason": "Builds a prepared workspace, kills its served Host mid-Task and resumes that Task.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_host_started_before_its_retrieval_runtime_reaches_the_evidence_preflight*",
-      "owner": "tests.agent_eval",
-      "reason": "Starts the prepared Host before retrieval installation and walks the Evidence preflight.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_malformed_feature_plan_recovers_through_bound_controls*",
-      "owner": "tests.agent_eval",
-      "reason": "Cold-builds the prepared ten-listing workspace and the UI for each case until the build-once fixture lands.",
-      "admitted": "2026-10-23: retain the previously admitted Large recovery workflow from the approved development integration."
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_preparation_stopped_for_a_data_decision_offers_its_way_on*",
-      "owner": "tests.agent_eval",
-      "reason": "Runs first-use Data preparation through its stopped decision and offered recovery.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_prepared_workspaces_plan_offers_no_confirm_that_reopens_its_stopped_preparation*",
-      "owner": "tests.agent_eval",
-      "reason": "Builds the stopped preparation and verifies that planning does not reopen it.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_ruling_that_names_no_challenge_is_refused_with_the_ruling_corrected*",
-      "owner": "tests.agent_eval",
-      "reason": "Runs a committee floor and submits a ruling against an absent challenge.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_source_not_final_defers_the_update_with_its_resume*",
-      "owner": "tests.agent_eval",
-      "reason": "Runs a dated data update until its source deferral and follows its resume offer.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_stale_binding_offers_exact_recovery_before_a_bundle_reaches_its_host*",
-      "owner": "tests.agent_eval",
-      "reason": "Builds the review-ready workspace and exercises stale bundle binding recovery.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_a_verdict_waits_for_every_ruling_and_the_report_keeps_every_standing_position*",
-      "owner": "tests.agent_eval",
-      "reason": "Runs the committee through every ruling and preserves each standing position.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_daily_consent_admits_only_the_books_real_install_offers*",
-      "owner": "tests.agent_eval",
-      "reason": "Builds the completed first use and exercises its daily committee consent offers.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_daily_start_keeps_the_completed_first_day_and_uses_the_next_session*",
-      "owner": "tests.agent_eval",
-      "reason": "Builds the first-use book then runs the ordinary next-session daily workflow.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_each_committee_member_speaks_in_its_native_session_and_usage_survives_reload*",
-      "owner": "tests.agent_eval",
-      "reason": "Runs each scripted committee member in an isolated session and reloads its usage.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_each_review_member_answers_on_its_own_thread_and_its_mistakes_are_refused*",
-      "owner": "tests.agent_eval",
-      "reason": "Builds the reviewed book then runs Analyst and CRO threads with mistake injection.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_the_committee_ready_golden_copies_its_published_date_risk_and_review*",
-      "owner": "tests.agent_eval",
-      "reason": "Cold-builds the committee-ready workspace and verifies its published risk and review.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_the_hosts_rule_decides_a_first_uses_data_issue_without_a_stop*",
-      "owner": "tests.agent_eval",
-      "reason": "Runs first-use preparation through a governed data issue without a person stop.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_tomorrows_positions_reach_the_committee_and_its_report*",
-      "owner": "tests.agent_eval",
-      "reason": "Builds the completed first-use book and runs tomorrow through its committee report.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/portfolio_strategy_lab/test_cli_golden_transcripts.py::test_golden_transcripts_replay_on_a_qa_copy*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "Replays the complete CLI golden journey on an independent QA workspace.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/portfolio_strategy_lab/test_daily_book_records_gate.py::test_a_daily_source_seal_writes_its_change_under_the_plant_bytes_gate*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "Runs the Host daily through source and book writers in both storage namespaces.",
-      "timeout_seconds": 5400
-    },
-    {
       "pattern": "tests/portfolio_strategy_lab/test_strategy_activation.py::test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session*",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "Runs a deferred daily, its in-place recovery and the following exchange session.",
@@ -321,30 +185,6 @@
       "owner": "tests.researcher_methodology_surface",
       "reason": "Builds the scientific golden and checks interpreter and installed-distribution key changes.",
       "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/structural/test_public_release_closure.py::test_every_public_file_closes_over_the_public_manifest*",
-      "owner": "tests.structural",
-      "reason": "Builds the public wheel and checks every emitted public file against its source manifest.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/structural/test_reuse_spec.py::test_reuse_discovery_has_no_unreviewed_predicate*",
-      "owner": "tests.structural",
-      "reason": "Rebuilds the complete reuse-predicate census across all registered product owners.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/agent_eval/test_path_explorer.py::test_the_native_committee_route_grades_before_the_documented_host_stops*",
-      "owner": "tests.agent_eval",
-      "reason": "Builds the cold committee floor, walks malformed-message recovery and joins the stopped Host.",
-      "timeout_seconds": 3300
-    },
-    {
-      "pattern": "tests/agent_eval/test_first_use_completion.py::test_a_first_use_goal_completes_from_the_attach_its_answer_offers*",
-      "owner": "tests.agent_eval",
-      "reason": "Builds a cold reviewed first use and seals its Goal through offered attachments and resubmission.",
-      "timeout_seconds": 3120
     },
     {
       "pattern": "tests/workspace_readiness/test_input_revisions.py::test_unregistered_or_tampered_versions_refuse_before_work*",
@@ -404,12 +244,6 @@
       "pattern": "tests/researcher_methodology_surface/test_causal_outcome_publication.py::test_executor_creation_and_process_start_refusals_publish_nothing*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "Builds real Risk inputs and injects executor and child-process start failures during publication.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/agent_eval/test_first_use_completion.py::test_a_far_past_first_use_prepares_only_what_its_formation_knew*",
-      "owner": "tests.agent_eval",
-      "reason": "Prepares ten years of 120 listings through a served backdated first-use route.",
       "timeout_seconds": 900
     },
     {
@@ -494,12 +328,6 @@
       "pattern": "tests/feature_engine/test_panel_membership_journey.py::test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reused*",
       "owner": "tests.feature_engine",
       "reason": "Builds real Panel rows across membership joins and leaves and rematerializes their closures.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/portfolio_strategy_lab/test_workbench_readback.py::test_workbench_repaints_and_route_identity_in_a_real_browser*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "Launches the real browser journey and checks route identity, repaint, focus and disclosure state.",
       "timeout_seconds": 900
     },
     {
@@ -647,12 +475,6 @@
       "timeout_seconds": 900
     },
     {
-      "pattern": "tests/agent_eval/test_first_use_and_daily_metrics.py::*",
-      "owner": "tests.agent_eval",
-      "reason": "Runs retained first-use, daily, retry and authority-boundary grader workflows against canonical Host and Workbench records.",
-      "timeout_seconds": 5400
-    },
-    {
       "pattern": "tests/alternative_evidence_desk/test_portfolio_coverage_run.py::test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on*",
       "owner": "tests.alternative_evidence_desk",
       "reason": "historical maximum 74.255 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
@@ -733,20 +555,6 @@
       "pattern": "tests/portfolio_strategy_lab/test_strategy_activation.py::test_installed_book_controls_saves_the_flat_declaration_its_preview_reads*",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "historical maximum 73.370 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/portfolio_strategy_lab/test_workbench_readback.py::test_dead_key_census_direct_entry_resolves_its_own_repository*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "historical maximum 65.222 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/portfolio_strategy_lab/test_workbench_readback.py::test_minor_ui_classes_in_the_pinned_browser*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "historical maximum 93.075 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
       "timeout_seconds": 900,
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
     },
@@ -849,25 +657,11 @@
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
     },
     {
-      "pattern": "tests/workspace_maintenance/test_workspace_backup.py::test_a_qa_copy_restores_and_its_stores_read_back_as_they_did*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "historical maximum 106.791 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
       "pattern": "tests/workspace_readiness/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged*",
       "owner": "tests.workspace_readiness",
       "reason": "historical maximum 795.480 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
       "timeout_seconds": 1200,
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/agent_eval/test_home_read_once.py::*",
-      "owner": "tests.agent_eval",
-      "reason": "Counts seal checks per input on a served Home read, which needs a sealed 120-listing first use (about 16 minutes cold).",
-      "timeout_seconds": 3600,
-      "admitted": "2026-10-22: one Large count gate on the generated 120-listing replay, admitted by the maintainer; returns to Medium with the build-once fixture."
     }
   ],
   "note": "Pytest-timeout enforces setup, call and teardown together; Large declarations form a shrink-only list. Resource confinement is a separate boundary.",
@@ -879,8 +673,11 @@
   "lanes": [
     "merge",
     "candidate",
-    "nightly"
+    "nightly",
+    "fast"
   ],
+  "reach": [],
+  "quarantine": [],
   "mandatory": [
     "tests/structural/*",
     "tests/portfolio_strategy_lab/test_cli_contract.py*"

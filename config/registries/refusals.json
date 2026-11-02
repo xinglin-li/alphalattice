@@ -18612,44 +18612,74 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "The measurement proof is unqualified; execution and output faults also land under this reason. No retry authority is inferred."
 },
+"requirements.schema": {
+"owner": "devtools.testing",
+"category": "INVALID_ARGUMENT",
+"reason": "The requirements registry names its schema."
+},
+"requirements.row_invalid": {
+"owner": "devtools.testing",
+"category": "INVALID_ARGUMENT",
+"reason": "Each requirement row has a description, an owner, one of the five layers and positive seconds."
+},
+"requirements.unknown_id": {
+"owner": "devtools.testing",
+"category": "NOT_FOUND",
+"reason": "A test proves only registered, unretired requirement ids."
+},
+"requirements.legacy_seeded": {
+"owner": "devtools.testing",
+"category": "FAILED_PRECONDITION",
+"reason": "The legacy count list is seeded once; after that it only shrinks."
+},
+"requirements.legacy_missing": {
+"owner": "devtools.testing",
+"category": "FAILED_PRECONDITION",
+"reason": "A private checkout holds the legacy count list; the public export has none."
+},
+"requirements.unregistered": {
+"owner": "devtools.testing",
+"category": "FAILED_PRECONDITION",
+"reason": "An unregistered test does not run in a gate beyond its file's legacy count."
+},
 "test_size.schema": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT"
 },
 "test_size.sizes": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT"
 },
 "test_size.defaults": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT"
 },
 "test_size.large": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT"
 },
 "test_size.rule": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT"
 },
 "test_size.default_size": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT"
 },
 "test_size.conflicting": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT"
 },
 "test_size.owner_missing": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "FAILED_PRECONDITION"
 },
 "test_size.owner_conflict": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT"
 },
 "test_size.declaration_invalid": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT"
 },
 "local_web.child_ownership_unavailable": {
@@ -18660,11 +18690,11 @@
 "recovery": "Run the offered terminal_command directly in another terminal; no child is left running after an ownership failure."
 },
 "test_size.lane_unknown": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT"
 },
 "test_size.mandatory_missing": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "FAILED_PRECONDITION"
 },
 "local_web.handler_failed": {
@@ -18683,17 +18713,17 @@
 "classification_note": "Incident fallback when no specific registered reason is safe to show; retains the safe incident fingerprint. A specific registered reason wins. No retry authority."
 },
 "test_size.limits": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT",
 "reason": "Test execution limits must be finite positive durations."
 },
 "test_size.large_reason": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT",
 "reason": "Large declarations must state their specific one-line reason."
 },
 "test_size.large_duplicate": {
-"owner": "devtools.architecture",
+"owner": "devtools.testing",
 "category": "INVALID_ARGUMENT",
 "reason": "Duplicate Large declarations cannot evade the count ratchet."
 },

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from devtools.architecture.registries import CHANGED
+from devtools.testing.collection import CHANGED
 from tests.structural import source_shape_samples as samples
 
 

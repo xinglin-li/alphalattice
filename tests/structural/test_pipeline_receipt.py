@@ -62,6 +62,7 @@ CASES = {  # line i's (old, new): ("", new) puts a line before it, (old, None) d
 }
 
 
+@pytest.mark.proves("pipeline.receipt_verifies_only_complete_and_as_asked")
 @pytest.mark.parametrize("case", CASES)
 def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, case):
     """A receipt counts only whole, with its claim standing over its events, and as asked."""
@@ -85,6 +86,7 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, case):
     assert not code or refused.value.code == "pipeline." + code
 
 
+@pytest.mark.proves("pipeline.receipt_plugin_writes_each_node_once")
 def test_the_plugin_writes_each_node_once_with_its_failure_and_disposes_of_itself(tmp_path):
     """A node's result follows its teardown; a failure's signature ignores paths and numbers."""
     config = SimpleNamespace(pluginmanager=pytest.PytestPluginManager())

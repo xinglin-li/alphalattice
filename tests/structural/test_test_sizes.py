@@ -68,7 +68,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
         target += "::test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session"
     script = (
         "import pytest,json,sys\nfrom pathlib import Path\n"
-        "from devtools.architecture import test_sizes\nread=test_sizes.load_policy\n"
+        "from devtools.testing import sizes as test_sizes\nread=test_sizes.load_policy\n"
         f"test_sizes.load_policy=lambda _:read(Path({str(public)!r}))\n"
         "class Reader:\n"
         " def pytest_collection_finish(self,session):\n"
@@ -139,7 +139,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
             limit = 5400 if registered else policy["limits"][expected_size]
             assert row.get("test_timeout_seconds") == limit
         if not declared:
-            from devtools.architecture.test_sizes import classify, load_policy
+            from devtools.testing.sizes import classify, load_policy
 
             assert not (public / "tests").exists()
             policy = load_policy(public)
@@ -151,11 +151,14 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
             assert classify(node, (), policy) == expected
 
 
-def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch):
+def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch, request):
     """A per_file scan runs scoped unless its own file or input changed; a cross-file check runs
     when its inputs change; an undeclared structural test and nightly stay whole."""
-    from devtools.architecture.test_sizes import changed_paths, included, scoped
+    from devtools.testing.collection import CHANGED
+    from devtools.testing.sizes import changed_paths, included, scoped
 
+    scoped_run = os.environ.get("ALPHALATTICE_TEST_LANE") in {"merge", "fast"}  # read once
+    assert request.config.stash.get(CHANGED, None) == (changed_paths() if scoped_run else None)
     scan, closure = "tests/structural/test_scan.py::test_a", "tests/structural/test_closure.py::t"
     reason = {"owner": "tests.structural", "reason": "declared"}
     policy = {
@@ -181,7 +184,7 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch)
 
 def test_a_card_whose_tests_outgrow_its_source_is_refused_by_name():
     """Net tests within max(10, 30% of net source), pruning tests fall, at most 3 new functions."""
-    from devtools.architecture.test_sizes import budget_problems
+    from devtools.testing.sizes import budget_problems
 
     assert "tests/b.py +31" in budget_problems([("src/a.py", 100), ("tests/b.py", 31)], [], "")[0]
     assert budget_problems([("src/a.py", 100), ("tests/b.py", 30)], ["t1", "t2", "t3"], "") == []
@@ -189,12 +192,130 @@ def test_a_card_whose_tests_outgrow_its_source_is_refused_by_name():
     assert budget_problems([("scripts/a.py", -50), ("tests/b.py", 1)], [], "")
     assert budget_problems([("scripts/a.py", -50), ("tests/b.py", -9)], [], "") == []
     assert budget_problems([("tests/b.py", 31)], ["t1", "t2", "t3", "t4"], "R1 R2") == []
+    assert budget_problems([("src/a.py", 100), ("tests/README.md", 99)], [], "") == []
 
 
 def test_a_quarantined_node_needs_its_owner_reason_and_date():
     """A flaky node leaves the blocking tier only with an owner, a reason and an until date."""
-    from devtools.architecture.test_sizes import load_policy, validate_policy
+    from devtools.testing.sizes import load_policy, validate_policy
 
     row = {"node": "tests/a.py::t", "owner": "tests.a", "reason": "flaky", "until": "2026-99-99"}
     with pytest.raises(ValueError, match="quarantine_invalid"):
         validate_policy(load_policy(Path(__file__).resolve().parents[2]) | {"quarantine": [row]})
+
+
+HELD = "product_host.detached_start_outlives_the_session"
+
+
+def _registry_tree(tmp_path):
+    """A checkout with one requirement, its holder, an unregistered twin and an unrelated test."""
+    root, registries = Path(__file__).resolve().parents[2], tmp_path / "config/registries"
+    registries.mkdir(parents=True)
+    for name in ("test-sizes.json", "owners-map.json"):
+        (registries / name).write_bytes((root / "config/registries" / name).read_bytes())
+    registry = json.loads((root / "config/registries/requirements.json").read_bytes())
+    row = {"owner": "alphalattice.control.product_host", "layer": "integration", "seconds": 20}
+    registry["entries"] = {HELD: row | {"description": "A held update runs after its session."}}
+    (registries / "requirements.json").write_text(json.dumps(registry), "utf-8")
+    (tmp_path / "tests/a").mkdir(parents=True)
+    (tmp_path / "tests/a/test_host.py").write_text(
+        "import pytest\n"
+        f'@pytest.mark.proves("{HELD}")\n'
+        "def test_breakaway_launch_survives(): pass\n"
+        'def test_idle_expiry_keeps_owed_work():\n    """A detached Host keeps owed work."""\n'
+        "def test_parquet_schema_round_trip(): pass\n",
+        "utf-8",
+    )
+    return registry
+
+
+@pytest.mark.proves("testing.find_matches_requirements_and_unregistered_tests")
+def test_find_returns_requirements_with_holders_then_unregistered_tests(tmp_path, capsys):
+    from scripts.tests_registry import main
+
+    from devtools.testing.requirements import find, load, matches
+
+    registry = _registry_tree(tmp_path)
+    found = find(tmp_path, "detached host survives the session")
+    assert found[0].startswith("1 requirements and 1") and "active" in found[1]
+    assert "  held by tests/a/test_host.py::test_breakaway_launch_survives" in found
+    assert "unregistered  tests/a/test_host.py::test_idle_expiry_keeps_owed_work" in found
+    assert not any("parquet" in line for line in found)
+    assert find(tmp_path, "detached host keeps work")[1].startswith(HELD)  # rows lead
+    assert main(["--root", str(tmp_path), "find", "dividend ledger"]) == 0
+    assert capsys.readouterr().out.startswith("Nothing matches") and matches("x", {}) == []
+    registries, node = tmp_path / "config/registries", "tests/a/test_host.py::test_breakaway_launch"
+    policy = json.loads((registries / "test-sizes.json").read_bytes())
+    for until, state in (("2000-01-01", "active"), ("2999-01-01", "quarantined")):
+        held = {"node": node + "_survives", "owner": "tests", "reason": "r", "until": until}
+        (registries / "test-sizes.json").write_text(json.dumps(policy | {"quarantine": [held]}))
+        assert state in find(tmp_path, "detached host survives the session")[1]
+    bad = {HELD: registry["entries"][HELD] | {"layer": "system"}}
+    for document in ([], registry | {"entries": []}, registry | {"entries": bad}):
+        (registries / "requirements.json").write_text(json.dumps(document), "utf-8")
+        with pytest.raises(ValueError, match=r"requirements\.(schema|row_invalid:product_host\.)"):
+            load(tmp_path)
+
+
+@pytest.mark.proves(
+    "testing.unregistered_test_refused_with_its_find",
+    "testing.row_admitted_or_refused_by_its_check",
+)
+@pytest.mark.parametrize(
+    ("case", "edit", "refused"),
+    [
+        ("unregistered", {}, "proves nothing"),
+        ("unknown", {}, "unregistered or retired"),
+        ("product_host.port_reuse", {}, ""),
+        ("host.port_reuse", {}, "its id is product_host.<words>"),
+        ("product_host.port_reuse", {"description": "One holds. Two hold."}, "one 5-40 word"),
+        ("nowhere.port_reuse", {"owner": "nowhere"}, "owns a noun"),
+        ("product_host.port_reuse", {"layer": "e2e", "seconds": 600}, "(journey, large)"),
+        ("product_host.owed_work", {"description": "A detached Host keeps owed work."}, "near"),
+        ("product_host.port_reuse", {"layer": "e2e", "exception": "decided"}, ""),
+        ("product_host.port_reuse", {"layer": "e2e", "exception": {"decided": True}}, "decision"),
+        ("product_host.port_reuse", {"layer": "e2e", "exception": {"kinds": 1}}, "decision"),
+        (HELD, None, "was removed"),
+    ],
+)
+def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
+    tmp_path, case, edit, refused
+):
+    from devtools.testing import requirements as r
+    from devtools.testing.collection import gate
+
+    registry, node = _registry_tree(tmp_path), "tests/a/test_host.py::test_host_outlives_session"
+    if case in {"unregistered", "unknown"}:
+        test = r.Holder(node, ("x.y",) * (case == "unknown"), node.split("::")[1])
+        found = r.registration(tmp_path, [test], registry["entries"])
+        assert refused in found[0] and found[-1].lstrip().startswith("Next:")
+        assert any(line.strip().startswith(HELD) for line in found)
+        if case == "unknown":
+            return
+        kept, other = (r.Holder(f"t.py::{c}::test_anchor", (), "", "d") for c in ("TestA", "TestB"))
+        assert r.fresh([kept], [kept, other]) == [other]  # a basename never matches
+        moved, copy = (kept._replace(node=f"{f}::TestA::test_anchor") for f in ("u.py", "v.py"))
+        assert r.fresh([kept], [moved]) == [] and r.fresh([kept], [moved, copy]) == [copy]
+        suite, outside = tmp_path / "tests", [(node, [], tmp_path / "child/test_host.py")]
+        gate("merge", outside, {}, suite)  # a child session's own tests are not the suite's
+        with pytest.raises(ValueError, match=r"unregistered:tests/a/test_host\.py"):
+            gate("merge", [(node, [], suite / "a/test_host.py")], {}, suite)
+        gate("merge", [(node, [], suite / "a/test_host.py")], r.legacy(tmp_path), suite)  # public
+        r.shrink(tmp_path, seed=True)
+        with pytest.raises(ValueError, match="legacy_seeded"):  # seeded once, then only shrinks
+            r.shrink(tmp_path, seed=True)
+        (tmp_path / r.LEGACY).unlink()
+        (tmp_path / r.PRIVATE_MARKER).parent.mkdir(parents=True)
+        (tmp_path / r.PRIVATE_MARKER).write_text("{}", "utf-8")
+        with pytest.raises(ValueError, match="legacy_missing"):  # a private checkout needs it
+            r.legacy(tmp_path)
+        return
+    base, entries = json.dumps(registry), registry["entries"]
+    row = entries[HELD] | {"description": "A restarted Host reuses its last free port."}
+    decided = {"exception": {"kinds": ["journey"], "why": "w", "decided": "2026-10-24: w"}}
+    if edit is None:
+        del entries[case]
+    else:
+        entries[case] = row | edit | (decided if edit.get("exception") == "decided" else {})
+    found = r.admission(tmp_path, entries, json.loads(base)["entries"])
+    assert (refused in " ".join(found)) if refused else found == []

@@ -399,12 +399,35 @@
 ],
 "note": "Scanner-owned UTF-8/LF line-content key; differing dispositions conflict, corroborating evidence and immutable conversion sources are retained; changed content reopens. The maintainer harness tools/public_export.py and tools/lead_merge.py consume emitted keys only. Location-based review conversion is retired; reserved example-domain decisions belong to this review owner."
 },
-"schema:alphalattice.test-sizes.v1": {
-"owner": "devtools.architecture",
+"schema:alphalattice.requirements.v1": {
+"owner": "devtools.testing",
 "readers": [
-"src/devtools/architecture/test_sizes.py",
+"src/devtools/testing/requirements.py",
+"src/devtools/testing/collection.py",
+"scripts/check_playpen.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.requirements.v1"
+]
+},
+"schema:alphalattice.tests-unregistered.v1": {
+"owner": "devtools.testing",
+"readers": [
+"src/devtools/testing/requirements.py",
+"src/devtools/testing/collection.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.tests-unregistered.v1"
+]
+},
+"schema:alphalattice.test-sizes.v1": {
+"owner": "devtools.testing",
+"readers": [
+"src/devtools/testing/sizes.py",
 "tests/conftest.py",
-"src/devtools/architecture/registries.py",
+"src/devtools/testing/collection.py",
 "scripts/check_playpen.py"
 ],
 "upgraders": [],

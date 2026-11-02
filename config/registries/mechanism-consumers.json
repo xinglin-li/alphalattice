@@ -93,16 +93,32 @@
       "executor": "tools/run_pytest.py --integration"
     },
     "test size collection": {
-      "owner": "devtools.architecture",
-      "mechanism": "src/devtools/architecture/registries.py::pytest_collection_modifyitems",
+      "owner": "devtools.testing",
+      "mechanism": "src/devtools/testing/collection.py::pytest_collection_modifyitems",
       "consumers": [
         "tests/conftest.py",
+        "tests/structural/conftest.py",
         "scripts/check_playpen.py"
       ],
       "input_registry": "config/registries/test-sizes.json",
-      "projection": "src/devtools/architecture/test_sizes.py",
+      "projection": "src/devtools/testing/sizes.py",
       "admission_guard": "scripts/check_playpen.py::shrink_only_growth",
       "policy": "Registered limits drive pytest-timeout across setup, call and teardown; new Large rows require a dated maintainer decision in admitted, verified in review; other finding sets remain shrink-only."
+    },
+    "test registration": {
+      "owner": "devtools.testing",
+      "mechanism": "src/devtools/testing/requirements.py::registration",
+      "consumers": [
+        "scripts/check_playpen.py",
+        "src/devtools/testing/collection.py",
+        "scripts/tests_registry.py"
+      ],
+      "input_registry": "config/registries/requirements.json",
+      "projection": "src/devtools/testing/requirements.py",
+      "admission_guard": "scripts/check_playpen.py::_check_test_budget",
+      "policy": "A new test proves registered, unretired requirement ids or is refused with what tests find returns and the next lawful step; a new or edited row is admitted at once when its checks pass, and a journey, a Large test, an overrun or a near-duplicate carries the test manager's recorded decision; tests older than the registry run in gates only within their file's shrink-only count.",
+      "escape": "a new test that proves no registered requirement reaching a gate; publicly the fast guard's diff check refuses it, so the private legacy list's collection backstop stands aside in the public export",
+      "review": "2026-12-01"
     },
     "registry entry descriptions": {
       "owner": "devtools.architecture",

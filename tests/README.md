@@ -1,6 +1,6 @@
 # Playpen Tests
 
-Date: 2026-10-08
+Date: 2026-10-08; the test protocol added 2026-10-24.
 
 `tests/` holds the deterministic product regression, authority acceptance and
 external-consumer acceptance suites that `scripts/check_playpen.py` runs. It is
@@ -12,6 +12,103 @@ real-workspace probes under `probe/`. Paths moved here at the Phase 2 checkpoint
 of the maintainers' test asset governance record;
 historical records name the old `case-study/<directory>/` locations and are not
 rewritten.
+
+## The test protocol
+
+Agents write most of these tests, and agents like writing tests. Without a protocol
+a suite only grows, as this one did to 236,583 lines, 57% of source, by 2026-10-23.
+This protocol says what a test may be, where it lives, what it may touch, when it
+may be added and when it must go. It overrides any other instruction on writing
+tests, a skill's included: a skill's "write a failing test first" means rule 4's
+smallest red change to the holder. Each rule names what enforces it; a rule marked
+*from* a card is held by review until that card lands.
+
+1. **Every test proves a registered requirement.** A requirement is a row in
+   the requirements registry, which the registry's cards add: an id, one plain sentence that is its
+   reason, the owner package, a layer and a time budget. A test names the ids it
+   proves with `@pytest.mark.proves("<id>")`. Its layer, owner, size and time are
+   derived from the row, never written by hand.
+   - Admission is by exception. A row that passes the checks (owner, sentence,
+     layer, budget, no near-duplicate in its owner) is admitted at once.
+   - A new end-to-end or native journey, a test over 60 s, a budget overrun or a
+     near-duplicate needs the test manager's decision, asked once. The decision is
+     copied into the row.
+   - Existing tests are counted per file in a list beside that registry, and the
+     count only falls.
+   - A row in config/registries/requirements.json holds its id
+     (`<owner's last segment>.<words>`), a `description` of one sentence of 5 to 40
+     plain public words, its `owner` (a package that owns a noun in the owner map),
+     its `layer` (unit, integration, contract, e2e or native; a layer's limit is
+     test-sizes.json's for its size) and its `seconds`. A decided exception is recorded
+     as `"exception": {"kinds": [...], "why": "...", "decided": "<date>: <decision>"}`.
+     A row is never removed: it is retired with `"retired": "<date>: <why>"`.
+   - The marker goes on a function, a class or a module's `pytestmark`, and a journey
+     may name several ids. A marked test needs no docstring sentence: its row holds it.
+   - Held by the fast guard's TEST-REGISTRY step (each new test and each added or
+     edited row), and in a gate lane by collection, which refuses an unknown or retired
+     id and a file past its count in the private legacy count list.
+     `python scripts/tests_registry.py shrink` lowers the counts.
+2. **Find before you write.** `python scripts/tests_registry.py find "<words>"` returns the
+   matching requirements and the tests that hold them, requirements first. One holder per requirement
+   per layer: a new case is a parameter or one assertion in that holder.
+   - A refused new test shows that search's result for its name and docstring, then
+     the next step: add the case to the holder it names (an unregistered holder
+     registers its requirement and takes the marker), or register the row first and
+     mark the test.
+3. **The lowest layer that can prove it.** The folder is the layer, with the
+   owning domain below it.
+   - **unit:** no file outside tmp, no DuckDB, subprocess, network or Host; 1 s.
+   - **integration:** files, DuckDB and an in-process Host; no network; 60 s.
+   - **contract:** one port's suite, run on every adapter of that port.
+   - **e2e:** only the registered journeys. Each boots the real composition,
+     re-reads the world from outside (files, ledger rows, the page) rather than
+     trusting the agent's own report, checks that untouched files are
+     byte-identical, and keeps test doubles to the model, the network and the
+     clock.
+   - **native:** real host agents, in the nightly smoke and the release.
+   - *From the layout move* (the folders) *and the protocol's guards* (each
+     layer's contract enforced while the test runs).
+4. **Test-first by this protocol.** The red is the holder's smallest change, and
+   it fails on the card's base (writing rule 12).
+   - A bug extends the holder of the requirement it broke, or registers the
+     requirement nobody had.
+   - A reviewer who asks for a test names the requirement.
+   - In force now.
+5. **The author sees the cost.** A card's net test lines stay within max(20, 30%
+   of its net source), with at most three new test functions, each for a new
+   requirement named in the change's record.
+   - An exception is a `Test-Budget-Exception: <ids>` trailer the test manager agreed.
+   - The fast guard holds the lines now; its floor is 10 until the per-card budget
+     card lands.
+   - *From the pipeline's receipts:* each card's receipt also carries its
+     test-seconds, against each owner's seconds budget, which the test manager
+     sets from the inventory.
+6. **Deletion is a normal change.** A requirement's holders change or go with it.
+   - A test that is deleted on evidence, without anyone's permission, is one whose
+     covered lines are a subset of other tests', that kills no mutant another test
+     does not, and that has caught nothing. The change names the covering tests.
+   - An uncovered source line is first a candidate for deletion as dead code, not
+     a missing test.
+   - Snapshots and frozen transcripts are provenance, never gates.
+   - *The inventory supplies the evidence.*
+7. **Deterministic, and every red classed.** No real clock where the product has
+   a clock seam, no sleeps and no network; data comes from the support factories.
+   A red is one of these:
+   - a flake: it passes alone, within its layer's time. It is quarantined with an
+     owner and an expiry (`config/registries/test-sizes.json`) and runs post-merge
+     only;
+   - a slow test: it passes alone, but only over its time. That is a test defect;
+   - a test defect;
+   - a product defect;
+   - infrastructure (a tool error);
+   - the environment.
+   Only product and test defects block or revert. The quarantine list is in
+   force; the classifier comes *from the protocol's guards*.
+8. **Owned and budgeted.** Folder, domain and owner match.
+   - The test manager, a maintainer role, owns the tests. It admits the
+     exceptions, leads deletions, runs the daily flake duty and reports test
+     health daily.
+   - A question about a test's place or budget goes to the test manager.
 
 ## Boundary rules
 
@@ -42,7 +139,7 @@ rewritten.
 
 ## Writing a test
 
-A test is kept only while it holds a requirement nothing else holds. The fast
+The protocol above governs; these rules are its detail. A test is kept only while it holds a requirement nothing else holds. The fast
 guard (`scripts/check_test_shape.py`, run by `scripts/check_playpen.py --staged
 --fast`) refuses rules 1, 3, 7 and 9, a sentence pin of five or more words (rule 4)
 and the docstring bound in rule 1 on what a change adds; review holds the rest.
@@ -50,17 +147,20 @@ Source growth past 100 KiB or 120 function lines/20 decisions, copied eight-line
 The Workbench parity guard refuses a write without an agent route, an added named UI-only exception, or a UI-origin check that blocks the person's relay.
 
 1. A test holds one requirement: a behaviour a user or a consumer relies on, a
-   regression, a tamper or recovery case, or a boundary nothing else covers. Its
-   docstring states that requirement in one sentence, at most three lines, in
-   words rather than internal card or ledger ids; the guard refuses new functions without it.
+   regression, a tamper or recovery case, or a boundary nothing else covers. An
+   unmarked test's docstring states that requirement in one sentence, at most three
+   lines, in words rather than internal card or ledger ids; the guard refuses new
+   functions without it. A test marked `@pytest.mark.proves("<id>")` takes the
+   sentence from its registered row instead (protocol rule 1).
    The change's record carries any further reasoning.
-2. Before writing one, search for a test of the same requirement and extend or
-   replace it. A requirement is tested once, in its owner's suite, not again in
+2. Before writing one, run `python scripts/tests_registry.py find "<words>"` (protocol
+   rule 2) and extend or replace the holder it names. A requirement is tested once, in its owner's suite, not again in
    another file or another harness. A fix extends the test that should have
    caught the defect; only a new requirement gets a new test.
    The fast guard measures each card from its merge base with develop. Net test lines stay
-   within max(10, 30% of net source), and the card adds at most 3 test functions; an
-   exception is a `Test-Budget-Exception: <ids>` trailer on the branch.
+   within max(20, 30% of net source) (the guard's floor is 10 until the per-card budget card
+   lands), and the card adds at most 3 test functions; an exception is a
+   `Test-Budget-Exception: <ids>` trailer the test manager agreed (protocol rule 5).
 3. Test at the owner's seam: drive the producer's real output through the real
    consumer. Only `tests/structural` reads source text; elsewhere a test does not
    call `inspect.getsource` or test a private helper whose owner's public call
@@ -80,12 +180,13 @@ The Workbench parity guard refuses a write without an agent route, an added name
 8. A Workbench behaviour is checked once, in the Node harness. A real-browser
    class checks only what needs real layout: widths, focus, scrolling and motion.
 9. A test file stays under 100 KB, and one already over it only shrinks.
-10. A change's test lines do not grow more than its source lines. The
-    maintainer's merge stops one that does. Only the maintainer admits an
+10. Across a merge set, test lines do not grow more than source lines; the
+    maintainer's merge stops a set that does. A single card is bound by rule 2's
+    per-card budget instead. Only the test manager admits an
     exception, such as a small fix whose regression case outweighs it, and its
     reason is recorded. A test over 10 s names why
-    in its docstring; one over 60 s needs the maintainer's agreement. Large entries need a
-    specific registry reason and the Lead's word; the declaration ratchet refuses growth.
+    in its docstring; one over 60 s is a Large exception the test manager decides
+    (protocol rule 1), with a specific registry reason; the declaration ratchet refuses growth.
     Pytest-timeout enforces the registered bound over setup, call and teardown, naming overruns.
 11. An outdated test is deleted or changed, never loosened. A deleted test names
     its covering test in the change's record; protected classes (boundary rule 5)

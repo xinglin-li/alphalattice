@@ -76,6 +76,9 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps() -
     assert problems(PATH, None, missing) and not problems(PATH, missing, missing)
     reason = 'def test_reason():\n    """Missing authority must refuse publication."""\n    pass\n'
     assert not problems(PATH, None, reason)
+    marked = "import pytest\npytestmark = pytest.mark.proves('x.y')\n" + missing
+    held = "@pytest.mark.proves('x.y')\nclass TestA:\n    " + missing.replace("\n", "\n    ")
+    assert not problems(PATH, None, marked) and not problems(PATH, None, "import pytest\n" + held)
     debt = "class A:\n    " + missing.replace("\n", "\n    ")
     assert problems(PATH, debt, debt.replace("class A", "class B"))
 

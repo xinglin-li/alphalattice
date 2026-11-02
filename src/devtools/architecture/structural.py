@@ -1084,6 +1084,7 @@ _DEVTOOLS_PACKAGES = {
     "architecture": "playpen_governance",
     "evaluation": "evaluation",
     "pipeline": "pipeline",
+    "testing": "testing",
 }
 """Each registered devtools package's id; an unregistered one keeps its dotted name."""
 

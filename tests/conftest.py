@@ -36,7 +36,7 @@ from devtools.evaluation.round_trip import (
 )
 from tests import pytest_environment as environment
 
-pytest_plugins = ["devtools.architecture.registries"]
+pytest_plugins = ["devtools.testing.collection"]
 
 
 @pytest.fixture(autouse=True)

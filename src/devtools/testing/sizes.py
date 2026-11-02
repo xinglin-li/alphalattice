@@ -187,9 +187,10 @@ def included(
 
 def budget_problems(rows: list[tuple[str, int]], added: list[str], exception: str) -> list[str]:
     """A card's net test lines stay within max(10, 30% of its net source), a pruning card's tests
-    fall, and at most 3 new test functions arrive, unless the branch declares an exception."""
+    fall, and at most 3 new test functions arrive, unless the branch declares an exception; prose
+    under tests/ (its Markdown) is not counted."""
     source = sum(net for path, net in rows if path.startswith(("src/", "scripts/")))
-    tests = sorted((net, path) for path, net in rows if path.startswith("tests/"))
+    tests = sorted((n, p) for p, n in rows if p.startswith("tests/") and not p.endswith(".md"))
     total, limit = sum(net for net, _ in tests), max(10, source * 3 // 10) if source >= 0 else 0
     largest = ", ".join(f"{path} {net:+d}" for net, path in tests[::-1][:3] if net > 0)
     found = [f"net test lines {total:+d} exceed {limit:+d} for net source {source:+d}: {largest}"]

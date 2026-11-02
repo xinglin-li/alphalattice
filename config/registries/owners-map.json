@@ -4822,13 +4822,23 @@
     },
     "test execution size": {
       "description": "Test execution size assigns each test a registered size and declaring owner so collection can reject conflicts and select the requested test lane.",
-      "owner": "devtools.architecture",
+      "owner": "devtools.testing",
       "covers": "registered test size, declaring owner and collection-time conflicts",
       "defined_by": [
-        "devtools.architecture.test_sizes"
+        "devtools.testing.sizes"
       ],
       "folds_in": [],
-      "note": "tests/conftest.py consumes classification once per collection; the canonical gate will consume the same item properties."
+      "note": "tests/conftest.py consumes classification once per collection through devtools.testing.collection; the canonical gate will consume the same item properties. Moved unchanged from devtools.architecture so the test noun has one owner package."
+    },
+    "test requirement": {
+      "description": "A test requirement is one registered behaviour a test proves, with its owner, layer and time budget, so a new test finds the holder it extends before it is written.",
+      "owner": "devtools.testing",
+      "covers": "config/registries/requirements.json: each requirement's id, sentence, owner package, layer and seconds; the holders that name it with pytest.mark.proves; the derived lifecycle; and tests find over the requirements and the unregistered tests",
+      "defined_by": [
+        "devtools.testing.requirements"
+      ],
+      "folds_in": [],
+      "note": "Consumers: python scripts/tests_registry.py find and shrink; the fast guard's registration and admission step (scripts/check_playpen.py); and the collection backstop (devtools.testing.collection), which derives a marked test's size from its requirement's layer and, in a gate lane, refuses unknown ids and files over their legacy count (the private legacy count list, shrink-only). Holders, lifecycle and the creating commit are derived from the tree, never stored."
     },
     "structured error answers": {
       "description": "Gives every refusal a registered category, owner and exact reason so an agent can branch on the kind of error without parsing words.",
