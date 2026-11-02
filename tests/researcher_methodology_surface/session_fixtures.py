@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -96,20 +97,26 @@ def external_factor_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealR
     The factor axis is fixed when the closure is opened, so installing a revision
     afterwards would be a rewrite of a workspace that had already committed to a
     different axis.
+
+    A warmed golden's copy: built fresh in setup, it timed out each worker's first case.
     """
+
+    return build_external_factor_workspace(tmp_path_factory.mktemp("external-factor"), fresh=False)
+
+
+def build_external_factor_workspace(root: Path, *, fresh: bool) -> RealRiskWorkspace:
+    """The outside method's catalog revision and kernel registry, installed together."""
 
     from tests.researcher_methodology_surface.external_factor_method import (
         external_feature_catalog,
         external_kernel_registry,
     )
 
-    # Fresh for the same reason as the extension workspace: the outside method
-    # reaching a published Panel is the claim, so the Panel is written, not copied.
     return build_real_risk_workspace(
-        tmp_path_factory.mktemp("external-factor-workspace"),
+        root,
         feature_catalog=external_feature_catalog(),
         feature_kernels=external_kernel_registry(),
-        fresh=True,
+        fresh=fresh,
     )
 
 

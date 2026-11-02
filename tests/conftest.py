@@ -489,7 +489,8 @@ def pytest_collection_finish(session: pytest.Session) -> None:
     if builder is not None and not session.config.option.collectonly:
         (root := builder._golden_root()).mkdir(parents=True, exist_ok=True)
         with environment.project_scope(root, root):  # confined like any test's build
-            builder.warm_real_risk_golden()
+            external = any("external_factor_workspace" in i.fixturenames for i in session.items)
+            builder.warm_real_risk_golden(external=external)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

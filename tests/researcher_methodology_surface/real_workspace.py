@@ -502,13 +502,18 @@ def build_real_risk_workspace(
     return _restore(workspace, installed_catalog, installed_kernels, symbols, key, sidecar)
 
 
-def warm_real_risk_golden() -> None:
-    """Publish the default golden before any test's timer: a timer cut a cold build short."""
-    catalog, kernels = FeatureCatalog.load(), default_extension_kernel_registry()
-    key = _golden_key(catalog, kernels, SYMBOLS)
-    with _golden_lease(golden := _golden_root() / key):
-        if not golden.exists():
-            _materialize_golden(golden, key, catalog, kernels, SYMBOLS, 5)
+def warm_real_risk_golden(*, external: bool = False) -> None:
+    """Publish each golden the session uses before any test's timer: a timer cut a build short."""
+    variants = [(FeatureCatalog.load(), default_extension_kernel_registry())]
+    if external:  # the outside method's variant, when a collected test asks for its workspace
+        from tests.researcher_methodology_surface import external_factor_method as method
+
+        variants.append((method.external_feature_catalog(), method.external_kernel_registry()))
+    for catalog, kernels in variants:
+        key = _golden_key(catalog, kernels, SYMBOLS)
+        with _golden_lease(golden := _golden_root() / key):
+            if not golden.exists():
+                _materialize_golden(golden, key, catalog, kernels, SYMBOLS, 5)
 
 
 def _golden_root() -> Path:
