@@ -257,3 +257,8 @@ by itself the moment a process-global import appears in the package.
 Files declared in `post_merge_only` are deferred from the commit stage, while their
 mandatory standing keeps them whole post-merge, in candidates and nightly. Structural
 holders cannot be deferred by this field.
+
+A cost commit stage may receive explicit required test nodes from its admission producer.
+Those nodes run at their declared limits, Large included, and their outcomes are recorded
+in the same receipt. Ordinary commit selection stays unchanged; only a head declaring
+`Change-Kind: cost` accepts the required-node input.
