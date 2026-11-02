@@ -5,14 +5,19 @@ from __future__ import annotations
 import ast
 import io
 import json
+import ntpath
 import re
 import subprocess
 import tarfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from fnmatch import fnmatchcase
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, BinaryIO, cast
 
+from .layout_references import declarations as reference_declarations
+from .layout_references import images as reference_images
+from .layout_references import provenance as reference_provenance
+from .layout_references import source_paths as reference_source_paths
 from .requirements import LAYERS
 
 REGISTRIES = (
@@ -157,27 +162,39 @@ def _retire_bindings(
             images[context] = [before, after.replace(DISCOVERY, "") if after is not None else None]
 
 
-def snapshot(root: Path, revision: str) -> tuple[str, dict[str, str]]:
+def snapshot(
+    root: Path, revision: str, *, reference_paths: Sequence[str] = ()
+) -> tuple[str, dict[str, str]]:
     """Read one immutable Git tree once, without checking out or importing it."""
     source = subprocess.check_output(
         ["git", "rev-parse", "--verify", revision + "^{commit}"], cwd=root, text=True
     ).strip()
+    paths = reference_source_paths(reference_paths)
+    available = set(
+        subprocess.check_output(
+            ["git", "ls-tree", "-r", "--name-only", source, "--", *sorted(paths | {REGISTRIES[3]})],
+            cwd=root,
+            text=True,
+        ).splitlines()
+    )
+    if paths - available:
+        raise ValueError(
+            "test_layout.registry_invalid: reference source absent: "
+            + ",".join(sorted(paths - available))
+        )
+    roots = ("src", "scripts", "tests", "config/registries")
+    extra = sorted(
+        path for path in paths if not any(path == p or path.startswith(p + "/") for p in roots)
+    )
+    if REGISTRIES[3] in available and REGISTRIES[3] not in extra:
+        extra.append(REGISTRIES[3])
     raw = subprocess.check_output(
         [
             "git",
             "archive",
             source,
-            "src",
-            "scripts",
-            "tests",
-            "config/registries",
-            *(
-                [REGISTRIES[3]]
-                if subprocess.check_output(
-                    ["git", "ls-tree", "--name-only", source, "--", REGISTRIES[3]], cwd=root
-                ).strip()
-                else []
-            ),
+            *roots,
+            *extra,
         ],
         cwd=root,
     )
@@ -185,7 +202,7 @@ def snapshot(root: Path, revision: str) -> tuple[str, dict[str, str]]:
         files = {
             p.name: cast(BinaryIO, tree.extractfile(p)).read().decode("utf-8")
             for p in tree
-            if p.isfile() and (p.name.endswith(".py") or p.name in REGISTRIES)
+            if p.isfile() and (p.name.endswith(".py") or p.name in REGISTRIES or p.name in paths)
         }
     return source, files
 
@@ -281,12 +298,37 @@ def _wire(text: str, package: str, modules: dict[str, str]) -> str:
     return text
 
 
+def _wire_images(
+    files: dict[str, str],
+    moves: dict[str, str],
+    modules: dict[str, str],
+    images: dict[str, list[str | None]],
+) -> None:
+    """Rewrite imported identities without changing the previously checked image footprint."""
+    for old, text in files.items():
+        if not old.endswith(".py"):
+            continue
+        target = moves.get(old, old)
+        current = images.get(target, [None, text])[1]
+        if current is not None:
+            wired = _wire(
+                current,
+                old[:-3].replace("/", ".").rpartition(".")[0] if old in moves else "",
+                modules,
+            )
+            if any(before in wired for before in modules):
+                raise ValueError("test_layout.unmapped_reference:" + old)
+            if wired != current:
+                images[target] = [files.get(target), wired]
+
+
 def plan(
     source: str,
     files: dict[str, str],
     placements: dict[str, list[str]],
     *,
     fixture_closures: dict[str, list[str]] | None = None,
+    references: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Render whole-file images; collisions and incompatible fixture visibility refuse."""
     images: dict[str, list[str | None]] = {}
@@ -371,22 +413,14 @@ def plan(
 
     for context, destinations in inherited.items():
         inherit(context, destinations)
-    for old, text in files.items():
-        if not old.endswith(".py"):
-            continue
-        target = moves.get(old, old)
-        current = images.get(target, [None, text])[1]
-        if current is not None:
-            wired = _wire(
-                current,
-                old[:-3].replace("/", ".").rpartition(".")[0] if old in moves else "",
-                modules,
-            )
-            if any(before in wired for before in modules):
-                raise ValueError("test_layout.unmapped_reference:" + old)
-            if wired != current:
-                images[target] = [files.get(target), wired]
+    coupled, source_references = reference_images(
+        files, moves, modules, reference_declarations(references), blocked=(*REGISTRIES, *images)
+    )
+    images.update(coupled)
+    _wire_images(files, moves, modules, images)
     for path in list(images):
+        if not path.startswith("tests/"):
+            continue
         for parent in PurePosixPath(path).parents:
             init = str(parent / "__init__.py")
             if str(parent) not in {".", "tests"} and init not in files and init not in images:
@@ -397,6 +431,7 @@ def plan(
         "schema": "alphalattice.test-layout.v1",
         "source": source,
         "fixture_closures": observed,
+        "source_references": source_references,
         "moves": moves,
         "modules": modules,
         "files": images,
@@ -412,19 +447,168 @@ def inverse(value: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _check_windows_image_name(path: str) -> None:
+    """The shared Win32 component-name preflight for every layout image."""
+    reference_source_paths((path,))
+    reserved = getattr(ntpath, "isreserved", None)
+    if any(
+        part.rstrip(" .") != part
+        or any(ord(char) < 32 or char in '<>"|?*' for char in part)
+        or (reserved(part) if reserved else PureWindowsPath(part).is_reserved())
+        for part in PurePosixPath(path).parts
+    ):
+        raise ValueError(
+            "test_layout.registry_invalid: reference move images need canonical Windows names"
+        )
+
+
+def _reference_python_module(path: str) -> str:
+    """Keep Python file and dotted module identities losslessly equivalent."""
+    _check_windows_image_name(path)
+    module = path[:-3].replace("/", ".")
+    if not path.endswith(".py") or module.replace(".", "/") + ".py" != path:
+        raise ValueError(
+            "test_layout.registry_invalid: reference move images need canonical Python paths"
+        )
+    return module
+
+
+def _check_reference_modules(
+    value: dict[str, Any], source_moves: dict[str, str], forward: bool
+) -> None:
+    """Derive allowed module identities from move and fixture images."""
+    moves, modules = value["moves"], value["modules"]
+    expected = {_reference_python_module(p): _reference_python_module(q) for p, q in moves.items()}
+    for context, pair in value["files"].items():
+        if not context.endswith("/conftest.py"):
+            continue
+        provider = "tests/_support/" + PurePosixPath(context).parent.name + "_fixtures.py"
+        exported = pair[1 if forward else 0] if isinstance(pair, list) and len(pair) == 2 else None
+        if (
+            any(p.startswith(str(PurePosixPath(context).parent) + "/") for p in source_moves)
+            and provider in value["files"]
+            and isinstance(exported, str)
+            and ("from " + provider[:-3].replace("/", ".") + " import ") in exported
+        ):
+            before, after = _reference_python_module(context), _reference_python_module(provider)
+            expected[before if forward else after] = after if forward else before
+    if modules != expected:
+        raise ValueError(
+            "test_layout.registry_invalid: reference module map does not derive from moves"
+        )
+    source_modules = modules if forward else {b: a for a, b in modules.items()}
+    _check_reference_move_images(value, source_moves, source_modules, forward)
+
+
+def _check_reference_move_images(
+    value: dict[str, Any],
+    source_moves: dict[str, str],
+    source_modules: dict[str, str],
+    forward: bool,
+) -> None:
+    """Bind one-to-one origins and destinations to their checked source images."""
+    unique = len({path.casefold() for path in source_moves.values()}) == len(source_moves) and len(
+        {path.casefold() for path in source_moves}
+    ) == len(source_moves)
+    for old, new in source_moves.items():
+        origin, destination = value["files"].get(old, []), value["files"].get(new, [])
+        if (
+            not unique
+            or not all(isinstance(pair, list) and len(pair) == 2 for pair in (origin, destination))
+            or origin[1 if forward else 0] is not None
+            or destination[0 if forward else 1] is not None
+            or not isinstance(origin[0 if forward else 1], str)
+            or not isinstance(destination[1 if forward else 0], str)
+            or _wire(
+                origin[0 if forward else 1],
+                old[:-3].replace("/", ".").rpartition(".")[0],
+                source_modules,
+            )
+            != destination[1 if forward else 0]
+        ):
+            raise ValueError(
+                "test_layout.registry_invalid: reference move images do not bind module identities"
+            )
+
+
+def _reference_direction(
+    value: dict[str, Any], rows: list[dict[str, Any]]
+) -> tuple[dict[str, str], dict[str, str], bool]:
+    """Bind recorded source identities to one forward or inverse move direction."""
+    moves, modules = value["moves"], value["modules"]
+    targets = {row["target"] for row in rows}
+    forward = targets <= moves.keys() and not targets & set(moves.values())
+    backward = targets <= set(moves.values()) and not targets & moves.keys()
+    if not (forward or backward):
+        raise ValueError(
+            "test_layout.registry_invalid: reference direction does not bind the moves"
+        )
+    source_moves = moves if forward else {b: a for a, b in moves.items()}
+    _check_reference_modules(value, source_moves, forward)
+    source_modules = modules if forward else {b: a for a, b in modules.items()}
+    return source_moves, source_modules, forward
+
+
+def _checked_reference_paths(value: dict[str, Any]) -> set[str]:
+    """Replay coupled source images before admitting any additional write footprint."""
+    records = value.get("source_references", [])
+    rows = reference_provenance(records)
+    if not rows:
+        return set()
+    if len({path.casefold() for path in value["files"]}) != len(value["files"]):
+        raise ValueError("test_layout.registry_invalid: reference move images have aliased paths")
+    source_moves, source_modules, forward = _reference_direction(value, rows)
+    moves = value["moves"]
+    paths = {row["path"] for row in rows}
+    if paths & (moves.keys() | set(moves.values())):
+        raise ValueError("test_layout.registry_invalid: prepare moving-body references first")
+    sources = {}
+    for path in paths:
+        pair = value["files"].get(path)
+        if (
+            not isinstance(pair, list)
+            or len(pair) != 2
+            or not all(isinstance(v, str) for v in pair)
+        ):
+            raise ValueError(
+                "test_layout.registry_invalid: reference images cannot create or delete files"
+            )
+        sources[path] = pair[0 if forward else 1]
+    expected, observed = reference_images(sources, source_moves, source_modules, rows)
+    if observed != records:
+        raise ValueError("test_layout.registry_invalid: reference source records changed")
+    for path, pair in expected.items():
+        if path.endswith(".py"):
+            pair[1] = _wire(pair[1] or "", "", source_modules)
+        if value["files"][path] != (pair if forward else list(reversed(pair))):
+            raise ValueError(
+                "test_layout.registry_invalid: non-location reference payload changed:" + path
+            )
+    return paths
+
+
 def apply(root: Path, value: dict[str, Any]) -> list[str]:
     """Preflight every image and reject aliases before any file changes."""
     root = root.resolve()
+    references = _checked_reference_paths(value)
     paths = {}
     for name, (before, _after) in value["files"].items():
-        path = root / name
-        resolved = path.resolve()
         if (
-            not (name.startswith(("tests/", "src/", "scripts/")) or name in REGISTRIES)
+            not (
+                name.startswith(("tests/", "src/", "scripts/"))
+                or name in REGISTRIES
+                or name in references
+            )
             or "\\" in name
             or ":" in name
             or ".." in PurePosixPath(name).parts
-            or not resolved.is_relative_to(root)
+        ):
+            raise ValueError("test_layout.path_invalid:" + name)
+        _check_windows_image_name(name)
+        path = root / name
+        resolved = path.resolve()
+        if (
+            not resolved.is_relative_to(root)
             or resolved != path.absolute()
             or any(p.is_symlink() for p in [path, *path.parents])
         ):

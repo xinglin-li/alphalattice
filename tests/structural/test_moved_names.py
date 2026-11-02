@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import json
-from inspect import signature
 from pathlib import Path
 
 import pytest
@@ -114,6 +113,7 @@ def test_a_staged_check_reads_the_index_not_an_unstaged_repair(synthetic_history
         "tests/use.py": "from where import old\n",
         "scripts/marker.py": "",
         "config/registries/test-sizes.json": "{}",
+        "README.md": "Source locators\n",
         ".gitattributes": "* text eol=lf\n",
     }.items():
         (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
@@ -126,6 +126,13 @@ def test_a_staged_check_reads_the_index_not_an_unstaged_repair(synthetic_history
     commit("Optional facts")
     captured = snapshot(tmp_path, "HEAD")[1]
     assert fact_path in captured and captured[fact_path] == '{"fakes": []}\n'
+    assert (
+        snapshot(tmp_path, "HEAD", reference_paths=["README.md"])[1]["README.md"]
+        == "Source locators\n"
+    )
+    for address in ("missing.md", "../README.md"):
+        with pytest.raises(ValueError, match="registry_invalid"):
+            snapshot(tmp_path, "HEAD", reference_paths=[address])
     (tmp_path / "src/where.py").write_text("def new(): ...\n", encoding="utf-8", newline="\n")
     git("add", "src/where.py")
     (tmp_path / "tests/use.py").write_text(
@@ -253,12 +260,10 @@ def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
             "@pytest.fixture", "@pytest.fixture(scope='session', name='zone_alias')"
         ),
     }
-    observed = "fixture_closures" in signature(plan).parameters
     for used in (True, False):
         closures = {path: ["zone_alias"] if used else [] for path in paired}
-        supplied = {"fixture_closures": closures} if observed else {}
         try:
-            moved = plan("r", divided, paired, **supplied)
+            moved = plan("r", divided, paired, fixture_closures=closures)
         except ValueError as error:
             assert used and "fixture_scope" in str(error)
         else:
@@ -269,3 +274,248 @@ def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
     files["config/registries/test-private.json"] = json.dumps({"entries": collision})
     with pytest.raises(ValueError, match="registry_collision"):
         plan("r", files, {"tests/a/test_t.py": choice})
+    files["config/registries/test-private.json"] = json.dumps(catalogs["test-private.json"])
+    old, new = "tests/a/test_t.py", "tests/unit/a/test_t.py"
+    document = {
+        "reader": old + "::case",
+        "keys": {"before": 17, old: {"window": 126}, "after": 19},
+        "unchanged": old + "extra",
+    }
+    extra = {
+        "config/locators.json": (
+            '{"owner":"fixture","kind":"fixture","description":"earlier",'
+            + json.dumps(document)[1:-1]
+            + ',"description":"later"}\n'
+        ),
+        "README.md": f"Use `{old}::case`.\n",
+        "src/reader.py": f'REFERENCE = "{old}"\n',
+    }
+    references = [
+        {"path": "config/locators.json", "target": old, "pointer": "/reader"},
+        {
+            "path": "config/locators.json",
+            "target": old,
+            "pointer": "/keys/tests~1a~1test_t.py",
+            "key": True,
+        },
+        {"path": "README.md", "target": old, "line": 1},
+        {"path": "src/reader.py", "target": old, "line": 1},
+    ]
+    files.update(extra)
+    for path, text in extra.items():
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text(text, encoding="utf-8", newline="\n")
+    referenced = plan("r", files, {old: choice}, references=references)
+    assert len(referenced["source_references"]) == len(references)
+    assert "config/__init__.py" not in referenced["files"]
+    with pytest.raises(ValueError, match="path_invalid"):
+        apply(tmp_path, referenced | {"source_references": []})
+    altered = json.loads(referenced["files"]["config/locators.json"][1])
+    altered["keys"][new]["window"] = 127
+    footprint = referenced["files"] | {
+        "config/locators.json": [extra["config/locators.json"], json.dumps(altered)]
+    }
+    with pytest.raises(ValueError, match="registry_invalid"):
+        apply(tmp_path, referenced | {"files": footprint})
+    canonical = json.loads(referenced["files"]["config/locators.json"][1])
+    for changed in (
+        canonical | {"description": "earlier"},
+        {"description": "later"} | canonical,
+    ):
+        with pytest.raises(ValueError, match="registry_invalid"):
+            apply(
+                tmp_path,
+                referenced
+                | {
+                    "files": referenced["files"]
+                    | {"config/locators.json": [extra["config/locators.json"], json.dumps(changed)]}
+                },
+            )
+    apply(tmp_path, referenced)
+    loaded = json.loads((tmp_path / "config/locators.json").read_text("utf-8"))
+    assert loaded == {"owner": "fixture", "kind": "fixture", "description": "later"} | document | {
+        "reader": new + "::case",
+        "keys": {"before": 17, new: {"window": 126}, "after": 19},
+    }
+    assert list(loaded) == ["owner", "kind", "description", "reader", "keys", "unchanged"]
+    assert list(loaded["keys"]) == ["before", new, "after"]
+    assert (tmp_path / "src/reader.py").read_text("utf-8") == f'REFERENCE = "{new}"\n'
+    assert (tmp_path / "README.md").read_text("utf-8") == f"Use `{new}::case`.\n"
+    apply(tmp_path, inverse(referenced))
+    assert {p: (tmp_path / p).read_text("utf-8") for p in files} == files
+    for patch in (
+        {"pointer": "/missing"},
+        {"pointer": "/bad~2pointer"},
+        {"path": "../outside.json"},
+        {"target": "tests/b/test_t.py"},
+        {"key": 1},
+        {"unexpected": 1},
+    ):
+        with pytest.raises(ValueError, match="registry_invalid"):
+            plan("r", files, {old: choice}, references=[references[0] | patch])
+    for changed in (
+        {"README.md": f"{old} and {old}\n"},
+        {"src/reader.py": f'SAFE = "other"; bad = {old}\n'},
+    ):
+        with pytest.raises(ValueError, match="registry_invalid"):
+            plan(
+                "r",
+                files | changed,
+                {old: choice},
+                references=[next(r for r in references if r["path"] in changed)],
+            )
+    with pytest.raises(ValueError, match="registry_invalid"):
+        plan("r", files, {old: choice}, references=[{"path": old, "target": old, "line": 1}])
+    with pytest.raises(ValueError, match="registry_collision"):
+        plan("r", files, {old: choice}, references=[references[0], references[0]])
+    with pytest.raises(ValueError, match="addressed member is duplicated"):
+        plan(
+            "r",
+            files
+            | {
+                "config/locators.json": json.dumps(document)[:-1]
+                + ',"reader":'
+                + json.dumps(old)
+                + "}"
+            },
+            {old: choice},
+            references=[references[0]],
+        )
+    with pytest.raises(ValueError, match="registry_collision"):
+        plan(
+            "r",
+            files | {"config/locators.json": json.dumps(document | {"keys": {old: 1, new: 2}})},
+            {old: choice},
+            references=[references[1]],
+        )
+
+    module_path = "config/module-locator.json"
+    module_text = json.dumps({"module": "tests.a.test_t:case"})
+    files[module_path] = module_text
+    (tmp_path / module_path).write_text(module_text, encoding="utf-8")
+    module_plan = plan(
+        "r",
+        files,
+        {old: choice},
+        references=[{"path": module_path, "target": old, "pointer": "/module"}],
+    )
+    for mutation in ("redirect", "extra"):
+        forged = json.loads(json.dumps(module_plan))
+        if mutation == "redirect":
+            forged["modules"]["tests.a.test_t"] = "tests.unrelated.test_other"
+            forged["source_references"][0]["successor"] = "tests.unrelated.test_other:case"
+            forged["files"][module_path][1] = (
+                json.dumps({"module": "tests.unrelated.test_other:case"}, indent=2) + "\n"
+            )
+        else:
+            forged["modules"]["unrelated.module"] = "another.module"
+        words = ""
+        try:
+            apply(tmp_path, forged)
+        except ValueError as error:
+            words = str(error)
+        assert "reference module map" in words
+        assert {p: (tmp_path / p).read_text("utf-8") for p in files} == files
+    apply(tmp_path, module_plan)
+    assert json.loads((tmp_path / module_path).read_text("utf-8")) == {
+        "module": "tests.unit.a.test_t:case"
+    }
+    apply(tmp_path, inverse(module_plan))
+    assert {p: (tmp_path / p).read_text("utf-8") for p in files} == files
+
+    for mutation in (
+        "move-image",
+        "inverse-key",
+        "missing-key",
+        "collision",
+        "extension",
+        "dotted",
+        "source-alias",
+        "trailing-space",
+        "reserved",
+        "invalid-name",
+        "extra-image",
+        "extra-init",
+        "extra-provider",
+        "ref-alias",
+        "dot-image-alias",
+    ):
+        root = tmp_path / mutation
+        root.mkdir()
+        for path, text in files.items():
+            target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(text.encode("utf-8"))
+        forged = json.loads(json.dumps(module_plan))
+        if mutation == "move-image":
+            forged["moves"][old] = "tests/unrelated/test_other.py"
+            forged["modules"]["tests.a.test_t"] = "tests.unrelated.test_other"
+            forged["source_references"][0]["successor"] = "tests.unrelated.test_other:case"
+            forged["files"][module_path][1] = (
+                json.dumps({"module": "tests.unrelated.test_other:case"}, indent=2) + "\n"
+            )
+        elif mutation == "inverse-key":
+            apply(root, module_plan)
+            forged = inverse(module_plan)
+            forged["modules"]["unrelated.module"] = forged["modules"].pop(
+                "tests._support.a_fixtures"
+            )
+        elif mutation == "missing-key":
+            forged["modules"].pop("tests.a.conftest")
+        elif mutation in {"extension", "dotted", "trailing-space", "reserved", "invalid-name"}:
+            target = {
+                "extension": "tests/unit/a/test_other.json",
+                "dotted": "tests/unit/a.b/test_other.py",
+                "trailing-space": "tests/unit/a /test_other.py",
+                "reserved": "tests/unit/con/test_other.py",
+                "invalid-name": "tests/unit/a?/test_other.py",
+            }[mutation]
+            forged["files"][target] = forged["files"].pop(new)
+            forged["moves"][old] = target
+            module = target[:-3].replace("/", ".")
+            forged["modules"]["tests.a.test_t"] = module
+            forged["source_references"][0]["successor"] = module + ":case"
+            forged["files"][module_path][1] = (
+                json.dumps({"module": module + ":case"}, indent=2) + "\n"
+            )
+        elif mutation in {"extra-image", "extra-init", "extra-provider"}:
+            target = {
+                "extra-image": "src/extra /__init__.py",
+                "extra-init": "tests/unit/extra /__init__.py",
+                "extra-provider": "tests/_support/extra /provider.py",
+            }[mutation]
+            forged["files"][target] = [None, ""]
+        elif mutation == "dot-image-alias":
+            forged["files"]["tests/a/./test_t.py"] = [files[old], None]
+        elif mutation == "ref-alias":
+            alias = "config/MODULE-locator.json"
+            forged["files"][alias] = list(forged["files"][module_path])
+            forged["source_references"].append(forged["source_references"][0] | {"path": alias})
+        elif mutation == "source-alias":
+            alias, other = "tests/a/TEST_T.py", "tests/unit/a/test_upper.py"
+            forged["moves"][alias] = other
+            forged["modules"]["tests.a.TEST_T"] = "tests.unit.a.test_upper"
+            forged["files"][alias] = [files[old], None]
+            forged["files"][other] = [None, files[old]]
+        else:
+            forged["moves"]["tests/b/test_t.py"] = new
+            forged["modules"]["tests.b.test_t"] = "tests.unit.a.test_t"
+            forged["files"]["tests/b/test_t.py"] = [files["tests/b/test_t.py"], None]
+        before = {
+            p: (root / p).read_bytes() if (root / p).is_file() else None for p in forged["files"]
+        }
+        words = ""
+        try:
+            apply(root, forged)
+        except (ValueError, OSError) as error:
+            words = str(error)
+        assert (
+            "reference source path"
+            if mutation == "dot-image-alias"
+            else "reference module map"
+            if mutation in {"inverse-key", "missing-key"}
+            else "reference move images"
+        ) in words
+        assert {
+            p: (root / p).read_bytes() if (root / p).is_file() else None for p in forged["files"]
+        } == before
