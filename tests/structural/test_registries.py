@@ -164,6 +164,7 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     monkeypatch.delenv("ALPHALATTICE_REGISTRY_BASELINE", raising=False)
     assert registry_main(["--staged"]) == 0 and "not configured" in capsys.readouterr().out
     git, commit = synthetic_history
+    git("config", "core.quotePath", "true")
 
     def write(relative, value):
         if relative == "config/package-architecture.json":
@@ -232,7 +233,7 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     write("config/registries/owners-map.json", owners)
     write(refusals, {"entries": {}})
     write(operations, {"fields": {}, "purposes": {}, "commands": {}})
-    caches = "config/registries/caches.json"
+    caches = "config/registries/cache_π.json"
     debt = caches + "::entries:legacy"
     cache_rows = {"entries": {"legacy": {}}}
     write(caches, cache_rows)
@@ -311,7 +312,7 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         {"package_id": "census_noun", "physical_namespace_target": fresh}
     )
     write("config/package-architecture.json", architecture)
-    module = "src/alphalattice/investment/census_noun/__init__.py"
+    module = "src/alphalattice/investment/census_noun/branch_π.py"
     request = client + "/portfolio_research.py"
     sources = {
         module: "class CensusNoun: pass\ndef refuse(): raise ValueError('census.unregistered')\n",
@@ -358,6 +359,25 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         write(path, text)
     stage(refusals, registrations[refusals])
     git("-c", "core.longpaths=true", "commit", "-qm", "Registered source facts")
+    # The identical staged tree must project alike at the branch and its base.
+    projected = (tmp_path / baseline).read_bytes()
+    staged_tree = git("write-tree")
+    stale = json.loads(projected)
+    stale["by_file"].pop(module)
+    write(baseline, stale)
+    commit("Older context omits a registered module's cached facts")
+    context_base = git("rev-parse", "HEAD")
+    (tmp_path / baseline).write_bytes(projected)
+    commit("Branch carries the registered module's cached facts")
+    check(0, "--update")
+    assert (tmp_path / baseline).read_bytes() == projected
+    git("config", "core.quotePath", "false")
+    git("checkout", "--detach", context_base)
+    git("read-tree", "-m", "-u", staged_tree)
+    assert git("write-tree") == staged_tree
+    check(0, "--update")
+    assert (tmp_path / baseline).read_bytes() == projected
+    git("checkout", "-")
     words = "src/alphalattice/interface/local_application/refusal_words.json"
     declared_refusals = registrations[refusals]
     declared_refusals["legacy_unregistered_words"] = ["census.legacy_word"]

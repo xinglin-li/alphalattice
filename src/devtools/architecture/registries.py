@@ -1156,13 +1156,12 @@ def _description_census(
     root: Path, stage: str, blobs: dict[str, str], data: dict[str, Any], base: dict[str, Any]
 ) -> tuple[list[str], list[str]]:
     """Read staged declarations once and ratchet their remaining explanation debt."""
-    paths = subprocess.check_output(
-        ["git", "ls-tree", "-r", "--name-only", stage[:-1], "--", "config/registries"],
+    listing = subprocess.check_output(
+        ["git", "ls-tree", "-r", "-z", "--name-only", stage[:-1], "--", "config/registries"],
         cwd=root,
-        text=True,
-    ).splitlines()
+    ).decode()
     excluded = {"refusals.json", "messages.json", "agent-surface.json", "identity-reach.json"}
-    paths = [p for p in paths if p.endswith(".json") and Path(p).name not in excluded]
+    paths = [p for p in listing.split("\0") if p.endswith(".json") and Path(p).name not in excluded]
     dimension = "undescribed_registry_entries"
     bootstrap = dimension not in base
     basis = "HEAD:"
@@ -1210,7 +1209,7 @@ def _description_census(
 
 
 def census_check(root: Path, *, baseline: str | None = None, update: bool = False) -> list[str]:
-    """Ratchet exact staged findings; unchanged source comes only from cached facts."""
+    """Project staged source facts; committed baselines only cap admission."""
     out, catalog = _catalog_census(root)
     stage = subprocess.check_output(["git", "write-tree"], cwd=root, text=True).strip() + ":"
     refusal_key = stage + TARGETS["message-kinds"][0]
@@ -1228,6 +1227,10 @@ def census_check(root: Path, *, baseline: str | None = None, update: bool = Fals
     baseline = (anchor.relative_to(root.resolve()) if anchor.is_absolute() else anchor).as_posix()
     command = ["git", "diff", "HEAD", stage[:-1], "--name-only", "--no-renames", "-z"]
     paths = set(subprocess.check_output(command, cwd=root).decode().split("\0")) - {""}
+    source_listing = subprocess.check_output(
+        ["git", "ls-tree", "-r", "-z", "--name-only", stage[:-1], "--", "src"], cwd=root
+    ).decode()
+    sources = {path for path in source_listing.split("\0") if path.endswith(".py")}
     legacy_path = "config/import-hygiene.json"
     fixed = {baseline, legacy_path, "config/package-architecture.json"}
     fixed.update(p for p, _ in TARGETS.values())
@@ -1235,7 +1238,7 @@ def census_check(root: Path, *, baseline: str | None = None, update: bool = Fals
         [
             "HEAD:" + baseline,
             "HEAD:" + legacy_path,
-            *(stage + p for p in (paths | fixed) - {TARGETS["message-kinds"][0]}),
+            *(stage + p for p in (paths | fixed | sources) - {TARGETS["message-kinds"][0]}),
         ],
         root,
     )
@@ -1258,14 +1261,11 @@ def census_check(root: Path, *, baseline: str | None = None, update: bool = Fals
         != subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     ):
         return [f"registry-census: {baseline} must name the reviewed bootstrap source SHA."]
-    facts = base.get("by_file", {}).copy()
+    facts: dict[str, Any] = {}
     description_errors, undescribed = _description_census(root, stage, blobs, data, base)
     out.extend(description_errors)
-    for path in sorted(p for p in paths if p.startswith("src/") and p.endswith(".py")):
-        if stage + path in blobs:
-            facts[path] = _census_file_facts(path, blobs[stage + path])
-        else:
-            facts.pop(path, None)
+    for path in sorted(sources):
+        facts[path] = _census_file_facts(path, blobs[stage + path])
     gaps = _census_gaps(facts, data, blobs[stage + "config/package-architecture.json"])
 
     def check_imports(prefix: str = stage) -> list[str]:
