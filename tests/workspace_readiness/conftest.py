@@ -12,7 +12,6 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import b
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from tests._support.project_discovery import project_discovery as project_discovery
 from tests.portfolio_strategy_lab.local_web_support import _json
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,

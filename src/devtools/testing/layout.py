@@ -4,122 +4,11 @@ from __future__ import annotations
 
 import ast
 import io
-import json
 import re
 import subprocess
 import tarfile
-from collections.abc import Iterable
-from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO, cast
-
-from .requirements import LAYERS
-
-REGISTRIES = (
-    "config/registries/test-sizes.json",
-    "config/registries/test-private.json",
-    "config/registries/tests-unregistered.json",
-)
-DISCOVERY = "from tests._support.project_discovery import project_discovery as project_discovery\n"
-
-
-def _patterns(pattern: str, files: Iterable[str], moves: dict[str, str]) -> list[str]:
-    """Split a path rule without changing the remaining files or its node suffix."""
-    path, separator, suffix = pattern.partition("::")
-    changed = [old for old in moves if fnmatchcase(old, path)]
-    remaining = any(p not in moves and fnmatchcase(p, path) for p in files)
-    return ([pattern] if not changed or remaining else []) + [
-        moves[old]
-        + (separator + suffix if separator else "*" if any(c in path for c in "*?[") else "")
-        for old in changed
-    ]
-
-
-def _rules(
-    rows: list[dict[str, Any]], key: str, tests: Iterable[str], moves: dict[str, str]
-) -> list[dict[str, Any]]:
-    """Preserve row payloads and refuse conflicting destination declarations."""
-    mapped: dict[str, dict[str, Any]] = {}
-    widths: dict[str, int] = {}
-    positions: dict[str, int] = {}
-    for index, row in sorted(enumerate(rows), key=lambda p: (-len(p[1][key]), p[1][key])):
-        for pattern in _patterns(row[key], tests, moves):
-            entry = row | {key: pattern}
-            if "inputs" in entry:
-                entry["inputs"] = [v for p in entry["inputs"] for v in _patterns(p, tests, moves)]
-            if pattern in mapped:
-                existing = mapped[pattern]
-                if widths[pattern] == len(row[key]) and (
-                    existing.get("owner"),
-                    existing.get("size", "large"),
-                ) != (entry.get("owner"), entry.get("size", "large")):
-                    raise ValueError("test_layout.registry_collision:" + pattern)
-                continue
-            mapped[pattern] = entry
-            widths[pattern] = len(row[key])
-            positions[pattern] = index
-    return sorted(mapped.values(), key=lambda row: positions[row[key]])
-
-
-def _registry_images(files: dict[str, str], moves: dict[str, str]) -> dict[str, list[str | None]]:
-    """Carry size rules, private-use counts and legacy ownership in the same footprint."""
-    images: dict[str, list[str | None]] = {}
-    tests = [
-        p
-        for p in files
-        if p.startswith("tests/") and Path(p).name.startswith("test_") and p.endswith(".py")
-    ]
-    for path in REGISTRIES:
-        if path not in files:
-            continue
-        document = json.loads(files[path])
-        original = document.copy()
-        if path != REGISTRIES[0]:
-            field = "entries" if path == REGISTRIES[1] else "files"
-            mapped = {}
-            for key, value in document[field].items():
-                old, separator, suffix = key.partition("::")
-                target = moves.get(old, old) + separator + suffix
-                if target in mapped:
-                    raise ValueError("test_layout.registry_collision:" + target)
-                mapped[target] = value
-            document[field] = mapped
-        else:
-            for field, key in (
-                ("defaults", "pattern"),
-                ("large", "pattern"),
-                ("reach", "pattern"),
-                ("quarantine", "node"),
-            ):
-                if field in document:
-                    document[field] = _rules(document[field], key, tests, moves)
-            if "mandatory" in document:
-                document["mandatory"] = list(
-                    dict.fromkeys(
-                        v for p in document["mandatory"] for v in _patterns(p, tests, moves)
-                    )
-                )
-        after = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
-        if document != original:
-            images[path] = [files[path], after]
-    return images
-
-
-def _retire_bindings(
-    files: dict[str, str],
-    moves: dict[str, str],
-    images: dict[str, list[str | None]],
-    contexts: Iterable[str],
-) -> None:
-    """The last test leaving an old area retires its temporary discovery binding."""
-    for context in contexts:
-        area = str(PurePosixPath(context).parent) + "/"
-        if not any(
-            p.startswith(area) and Path(p).name.startswith("test_") and p not in moves
-            for p in files
-        ):
-            before, after = images.get(context, [files[context], files[context]])
-            images[context] = [before, after.replace(DISCOVERY, "") if after is not None else None]
 
 
 def snapshot(root: Path, revision: str) -> tuple[str, dict[str, str]]:
@@ -127,14 +16,12 @@ def snapshot(root: Path, revision: str) -> tuple[str, dict[str, str]]:
     source = subprocess.check_output(
         ["git", "rev-parse", "--verify", revision + "^{commit}"], cwd=root, text=True
     ).strip()
-    raw = subprocess.check_output(
-        ["git", "archive", source, "src", "scripts", "tests", "config/registries"], cwd=root
-    )
+    raw = subprocess.check_output(["git", "archive", source, "src", "scripts", "tests"], cwd=root)
     with tarfile.open(fileobj=io.BytesIO(raw)) as tree:
         files = {
             p.name: cast(BinaryIO, tree.extractfile(p)).read().decode("utf-8")
             for p in tree
-            if p.isfile() and (p.name.endswith(".py") or p.name in REGISTRIES)
+            if p.isfile() and p.name.endswith(".py")
         }
     return source, files
 
@@ -194,7 +81,7 @@ def plan(source: str, files: dict[str, str], placements: dict[str, list[str]]) -
 
     def add_move(old: str, choice: list[str]) -> None:
         layer, domain, stem, *scope = choice
-        if layer not in LAYERS or not all(
+        if layer not in {"unit", "integration", "contract", "e2e", "native"} or not all(
             re.fullmatch(r"[a-z][a-z0-9_]*", p) for p in [domain, stem, *scope]
         ):
             raise ValueError("test_layout.path_invalid")
@@ -224,8 +111,6 @@ def plan(source: str, files: dict[str, str], placements: dict[str, list[str]]) -
     }
 
     def inherit(context: str, destinations: set[str]) -> None:
-        if files[context].strip() == DISCOVERY.strip():
-            return
         provider = "tests/_support/" + PurePosixPath(context).parent.name + "_fixtures.py"
         raw = files.get(provider, files[context])
         names, autouse, session = _fixtures(raw)
@@ -235,13 +120,10 @@ def plan(source: str, files: dict[str, str], placements: dict[str, list[str]]) -
         )
         if "__file__" in raw or not names or (session and len(destinations) > 1):
             raise ValueError("test_layout.fixture_scope:" + context)
-        if provider in files and files[context].replace(DISCOVERY, "") not in {
-            raw.replace(DISCOVERY, ""),
-            export,
-        }:
+        if provider in files and files[context] not in {raw, export}:
             raise ValueError("test_layout.path_collision:" + provider)
         put(provider, _wire(raw, context[:-3].replace("/", ".").rpartition(".")[0], modules))
-        put(context, export + (DISCOVERY if DISCOVERY in files[context] else ""))
+        put(context, export)
         modules[context[:-3].replace("/", ".")] = provider[:-3].replace("/", ".")
         for destination in destinations:
             if autouse and any(
@@ -264,8 +146,6 @@ def plan(source: str, files: dict[str, str], placements: dict[str, list[str]]) -
     for context, destinations in inherited.items():
         inherit(context, destinations)
     for old, text in files.items():
-        if not old.endswith(".py"):
-            continue
         target = moves.get(old, old)
         current = images.get(target, [None, text])[1]
         if current is not None:
@@ -283,8 +163,6 @@ def plan(source: str, files: dict[str, str], placements: dict[str, list[str]]) -
             init = str(parent / "__init__.py")
             if str(parent) not in {".", "tests"} and init not in files and init not in images:
                 put(init, "")
-    _retire_bindings(files, moves, images, inherited)
-    images.update(_registry_images(files, moves))
     return {
         "schema": "alphalattice.test-layout.v1",
         "source": source,
@@ -311,7 +189,7 @@ def apply(root: Path, value: dict[str, Any]) -> list[str]:
         path = root / name
         resolved = path.resolve()
         if (
-            not (name.startswith(("tests/", "src/", "scripts/")) or name in REGISTRIES)
+            not name.startswith(("tests/", "src/", "scripts/"))
             or "\\" in name
             or ":" in name
             or ".." in PurePosixPath(name).parts
