@@ -20,6 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
+from devtools.architecture.git_inputs import staged_moves
 from devtools.testing.requirements import file_holders
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -498,21 +499,6 @@ def weekly_report(root: Path = ROOT) -> dict:
     }
 
 
-def _moves() -> dict[str, str]:
-    """Each staged path whose blob equals a path the change deletes: judged as that old path."""
-    raw = _git(
-        "diff", "--cached", "--raw", "-z", "--no-renames", "--full-index", "--diff-filter=AD"
-    )
-    rows = raw.stdout.split("\0")
-    pairs = [
-        (meta.split(), path)
-        for meta, path in zip(rows[::2], rows[1::2], strict=False)
-        if meta[:1] == ":"
-    ]
-    gone = {meta[2]: path for meta, path in pairs if meta[4] == "D"}
-    return {path: gone[meta[3]] for meta, path in pairs if meta[4] == "A" and meta[3] in gone}
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -530,7 +516,7 @@ def main(argv: list[str] | None = None) -> int:
         for path in staged
         if path.startswith("src/") or (path.startswith("tests/") and path.endswith((".py", ".cjs")))
     ]
-    moved = _moves()  # a byte-identical move keeps its old path's grandfathered findings
+    moved = staged_moves(ROOT)  # a byte-identical move keeps its old path's grandfathered findings
     origin = {path: moved.get(path, path) for path in selected}
     texts = _blobs(
         [":" + path for path in selected]

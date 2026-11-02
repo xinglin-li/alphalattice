@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from alphalattice.interface.local_application.message_catalog import english_message_ids
-from devtools.architecture.git_inputs import read_blobs
+from devtools.architecture.git_inputs import Moves, carried, read_blobs, staged_moves
 from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
     ImportHygiene,
@@ -1153,7 +1153,12 @@ def _has_description(row: Any) -> bool:
 
 
 def _description_census(
-    root: Path, stage: str, blobs: dict[str, str], data: dict[str, Any], base: dict[str, Any]
+    root: Path,
+    stage: str,
+    blobs: dict[str, str],
+    data: dict[str, Any],
+    base: dict[str, Any],
+    moves: Moves | None,
 ) -> tuple[list[str], list[str]]:
     """Read staged declarations once and ratchet their remaining explanation debt."""
     listing = subprocess.check_output(
@@ -1202,13 +1207,17 @@ def _description_census(
                 if not _has_description(row)
             )
     allowed = set(base.get(dimension, [])) | previous
+    # A byte-identical move carries its rows; a caller that read the pairing passes it once.
+    allowed |= carried(allowed, staged_moves(root) if moves is None else moves)
     return [
         f"registry-description: {key} needs one purpose sentence."
         for key in sorted(missing - allowed)
     ], sorted(missing)
 
 
-def census_check(root: Path, *, baseline: str | None = None, update: bool = False) -> list[str]:
+def census_check(
+    root: Path, *, baseline: str | None = None, update: bool = False, moves: Moves | None = None
+) -> list[str]:
     """Project staged source facts; committed baselines only cap admission."""
     out, catalog = _catalog_census(root)
     stage = subprocess.check_output(["git", "write-tree"], cwd=root, text=True).strip() + ":"
@@ -1262,7 +1271,7 @@ def census_check(root: Path, *, baseline: str | None = None, update: bool = Fals
     ):
         return [f"registry-census: {baseline} must name the reviewed bootstrap source SHA."]
     facts: dict[str, Any] = {}
-    description_errors, undescribed = _description_census(root, stage, blobs, data, base)
+    description_errors, undescribed = _description_census(root, stage, blobs, data, base, moves)
     out.extend(description_errors)
     for path in sorted(sources):
         facts[path] = _census_file_facts(path, blobs[stage + path])

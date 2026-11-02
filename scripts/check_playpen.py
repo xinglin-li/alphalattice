@@ -310,8 +310,12 @@ def _check_identity_reach(*, staged: bool) -> bool:
     return result.returncode == 0
 
 
-def shrink_only_growth(path: str, before: dict[str, Any], after: dict[str, Any]) -> list[str]:
-    """Finding sets shrink; new Large declarations require a dated admission for review."""
+def shrink_only_growth(
+    path: str, before: dict[str, Any], after: dict[str, Any], carry: Any = None
+) -> list[str]:
+    """Finding sets shrink; new Large declarations require a dated admission for review.
+
+    ``carry`` restates an old row's values at a byte-identical move's new path."""
     keys = before.get("shrink_only_set")
     if not keys:
         return []
@@ -321,6 +325,7 @@ def shrink_only_growth(path: str, before: dict[str, Any], after: dict[str, Any])
     if after.get("shrink_only_list", "entries") != collection:
         return [f"{path}:1: shrink-only list changed; restore the declared list"]
     old = {(*[r[k] for k in keys], r["owner"]) for r in before[collection]}
+    old |= {tuple(map(carry, row)) for row in old} if carry else set()
     new = {(*[r[k] for k in keys], r["owner"]) for r in after[collection]}
     admitted = set()
     if (
@@ -356,15 +361,21 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
     started = perf_counter()
     sys.path.insert(0, str(ROOT / "src"))
     try:
+        from devtools.architecture.git_inputs import carried, staged_moves
         from devtools.architecture.moved_names import problems as moved_names
         from devtools.architecture.registries import census_check, private_test_growth, problems
         from devtools.testing.sizes import validate_policy
     finally:
         sys.path.pop(0)
+    moves = staged_moves(ROOT) if staged else {}  # a byte-identical move carries its rows
+
+    def carry(value: Any) -> Any:
+        return next(iter(carried([value], moves)), value) if isinstance(value, str) else value
+
     # A reference left at a moved name's old place, found before the rename lands.
     found = problems(ROOT, changed) + moved_names(ROOT, staged=staged)
     if staged:
-        found += census_check(ROOT, baseline=baseline)
+        found += census_check(ROOT, baseline=baseline, moves=moves)  # one pairing read
     # The tests' ratchet against the registry this change started from: registering a new
     # private import by hand passes the scan above, never this (LAWS.md TE5, V16).
     ratchet = "config/registries/test-private.json"
@@ -389,7 +400,7 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
             current = shown("", path) if staged else (ROOT / path).read_text(encoding="utf-8")
             if base is not None and current is not None:
                 previous, value = json.loads(base), json.loads(current)
-                found += shrink_only_growth(path, previous, value)
+                found += shrink_only_growth(path, previous, value, carry if moves else None)
                 if path == "config/registries/test-sizes.json":
                     try:
                         validate_policy(value)

@@ -36,6 +36,18 @@ def test_a_declared_finding_set_only_loses_keys_and_keeps_its_owners() -> None:
     assert not shrink_only_growth(path, sizes, after)
     assert not shrink_only_growth(path, after, sizes)
     assert shrink_only_growth("config/sizes.json", sizes, after)
+    from devtools.architecture.git_inputs import carried
+
+    moves = {"tests/b/test_x.py": "tests/a/test_x.py"}  # a byte-identical move, new to old
+    keys = ["defaults:tests/a/test_x.py*", "x/tests/a/test_x.py", "tests/a/test_x.pyc"]
+    assert carried(keys, moves) == {"defaults:tests/b/test_x.py*"}  # whole paths only
+    wildcards = ["defaults:tests/a/*", "defaults:tests/c/*", "d::large:tests/a/test_[xy].py::t*"]
+    projected = {"defaults:tests/b/test_x.py*", "d::large:tests/b/test_x.py::t*"}  # node kept
+    assert carried(wildcards, moves) == projected
+    held = dict(sizes, large=[dict(pattern="tests/a/test_x.py::t*", owner="tests")])
+    moved = dict(sizes, large=[dict(pattern="tests/b/test_x.py::t*", owner="tests")])
+    assert shrink_only_growth(path, held, moved)  # a rename without its move is growth
+    assert not shrink_only_growth(path, held, moved, lambda v: next(iter(carried([v], moves)), v))
 
 
 def _git_backend(texts, paths, state=None):

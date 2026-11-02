@@ -307,6 +307,11 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     assert "unlisted-function-import" in check(1, "--baseline", baseline)
     stage()
     check(0, "--baseline", baseline, "--update")
+    from devtools.architecture import registries as owner  # one pairing read per check
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(owner, "staged_moves", lambda root: pytest.fail("pairing read twice"))
+        owner.census_check(tmp_path, baseline=str(tmp_path / baseline), moves={})
     fresh = "alphalattice.investment.census_noun"
     architecture["packages"].append(
         {"package_id": "census_noun", "physical_namespace_target": fresh}

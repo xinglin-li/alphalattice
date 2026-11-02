@@ -23,7 +23,7 @@ REGISTRIES = (
 DISCOVERY = "from tests._support.project_discovery import project_discovery as project_discovery\n"
 
 
-def _patterns(pattern: str, files: Iterable[str], moves: dict[str, str]) -> list[str]:
+def rule_patterns(pattern: str, files: Iterable[str], moves: dict[str, str]) -> list[str]:
     """Split a path rule without changing the remaining files or its node suffix."""
     path, separator, suffix = pattern.partition("::")
     changed = [old for old in moves if fnmatchcase(old, path)]
@@ -43,10 +43,12 @@ def _rules(
     widths: dict[str, int] = {}
     positions: dict[str, int] = {}
     for index, row in sorted(enumerate(rows), key=lambda p: (-len(p[1][key]), p[1][key])):
-        for pattern in _patterns(row[key], tests, moves):
+        for pattern in rule_patterns(row[key], tests, moves):
             entry = row | {key: pattern}
             if "inputs" in entry:
-                entry["inputs"] = [v for p in entry["inputs"] for v in _patterns(p, tests, moves)]
+                entry["inputs"] = [
+                    v for p in entry["inputs"] for v in rule_patterns(p, tests, moves)
+                ]
             if pattern in mapped:
                 existing = mapped[pattern]
                 if widths[pattern] == len(row[key]) and (
@@ -96,7 +98,7 @@ def _registry_images(files: dict[str, str], moves: dict[str, str]) -> dict[str, 
             if "mandatory" in document:
                 document["mandatory"] = list(
                     dict.fromkeys(
-                        v for p in document["mandatory"] for v in _patterns(p, tests, moves)
+                        v for p in document["mandatory"] for v in rule_patterns(p, tests, moves)
                     )
                 )
         after = json.dumps(document, indent=2, ensure_ascii=False) + "\n"

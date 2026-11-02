@@ -487,7 +487,9 @@
       "role": "ENGINEERING_TOOL",
       "dependency_level": 5,
       "authority_kind": "BUILD_TIME_GUARD",
-      "allowed_peer_dependencies": [],
+      "allowed_peer_dependencies": [
+        "testing"
+      ],
       "artifact_writer": false,
       "physical_namespace_target": "devtools.architecture"
     },
