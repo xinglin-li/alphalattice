@@ -2,6 +2,15 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "test_size.required_selection_invalid": {
+      "owner": "devtools.testing",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Supply complete relative test node selectors for the required cost checks.",
+        "zh-CN": "请为必需的耗时检查提供完整的相对测试节点选择器。"
+      }
+    },
     "feature.input.case_store_unavailable": {
       "owner": "alphalattice.foundation.feature_engine",
       "kind": "MESSAGE",
