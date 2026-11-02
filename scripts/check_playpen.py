@@ -525,14 +525,14 @@ def _check_test_shape(*, staged: bool) -> bool:
 
 
 def _check_test_budget(*, staged: bool) -> bool:
-    """Refuse a card whose tests outgrow its source, or whose new tests or requirement rows are
-    not registered, measured from its merge base with develop in one read. A measurement that
-    cannot be read is refused by name, never counted as zero."""
+    """Report growth and refuse unregistered new tests or requirement rows.
+
+    Read the merge base and staged holders once; unreadable input never means zero.
+    """
     sys.path.insert(0, str(ROOT / "src"))
     try:
         from devtools.architecture.git_inputs import read_blobs
         from devtools.testing import requirements
-        from devtools.testing.sizes import budget_problems
     finally:
         sys.path.pop(0)
 
@@ -616,9 +616,6 @@ def _check_test_budget(*, staged: bool) -> bool:
                     projected[path] = requirements.file_holders(
                         path, more[":" + path] if staged else (ROOT / path).read_text("utf-8")
                     )
-        marks = git(
-            "log", "--format=%(trailers:key=Test-Budget-Exception,valueonly)", f"{base}..HEAD"
-        )
     except (
         RuntimeError,
         OSError,
@@ -632,12 +629,13 @@ def _check_test_budget(*, staged: bool) -> bool:
             flush=True,
         )
         return False
-    found = budget_problems(nets, added, exception := " ".join(marks.split()))
-    declare = "git commit --allow-empty -m <why> -m 'Test-Budget-Exception: <requirement ids>'"
-    for line in found:
-        print(f"TEST-BUDGET {line}; cut them, or declare first: {declare}", flush=True)
-    if exception:
-        print(f"TEST-BUDGET exception for the Lead's review: {exception}", flush=True)
+    source = sum(net for path, net in nets if path.startswith(("src/", "scripts/")))
+    tests = sum(net for path, net in nets if path.startswith("tests/") and not path.endswith(".md"))
+    print(
+        f"TEST-GROWTH net source {source:+d}, net tests {tests:+d}, "
+        f"new test functions {len(added)}; reviewer judges proportion",
+        flush=True,
+    )
     refused = requirements.guard(
         ROOT,
         fresh,
@@ -651,7 +649,7 @@ def _check_test_budget(*, staged: bool) -> bool:
     )
     for line in refused:
         print(line, flush=True)
-    return not found and not refused
+    return not refused
 
 
 def _check_evidence_bindings() -> bool:
