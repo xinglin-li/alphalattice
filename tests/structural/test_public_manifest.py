@@ -9,6 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from devtools.pipeline import definition
 from release.public_manifest import (
     INTERNAL_ID_BASELINE,
     RULES,
@@ -557,7 +558,11 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public():
     for event in ("push", "pull_request"):
         declared = re.search(rf"  {event}:\s+branches: \[([^]]+)\]", triggers)
         assert declared and {value.strip() for value in declared[1].split(",")} == {"main", "next"}
-    named = set(re.findall(r"tests/[\w/]+\.py", workflow))
+    pipeline = definition.load(root)
+    jobs = {"checkout", *(row.job for row in pipeline.rows.values() if row.kind == "ci-job")}
+    assert set(re.findall(r"^  ([\w-]+):$", workflow.split("\njobs:", 1)[1], re.M)) == jobs
+    assert "scripts/pipeline.py run commit --host public" in workflow
+    named = set(re.findall(r"tests/[\w/]+\.py", workflow)) | {*pipeline.rows["tests"].public}
     assert named
     assert sorted(path for path in named if not (root / path).is_file()) == []
     kinds = {path: classify(path, set(), set(), set())[0] for path in named}

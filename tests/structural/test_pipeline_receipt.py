@@ -12,12 +12,19 @@ CONFIGURATION = {"definition": "d", "definition_sha256": "d" * 64, "rows": ["tes
 CONFIGURATION |= {"providers": {"tests": "product"}, "workers": 1, "bound_seconds": 900}
 TAIL = '{"id": {"metrics": {}}, "metrics": {}}'
 TWIN = TAIL.replace("metrics", "workspace")
-RERUN = json.dumps({"id": {"test_result": {"node": "t::a", "attempt": 2}}, "test_result": RESULT})
-RERUN = RERUN.replace('"attempt": 1, "solo": false', '"attempt": 2, "solo": true')
 END = '{"id": {"finished": {"n": 1}}, "last_message": true, "finished": {"result": "FAIL"}}'
+FIRST = {**RESULT, "status": "FAILED", "timeout_seconds": 1}
+ALONE = {**FIRST, "attempt": 2, "solo": True, "status": "PASSED"}
+RERUNS = {  # a case's node results in file order, its red nodes and the classes it writes
+    "a red node its solo rerun passed": ([ALONE, FIRST], [], ["flake"]),  # workers finish unordered
+    "a solo rerun past its time": ([FIRST, {**ALONE, "seconds": 2}], ["t::a"], ["slow"]),
+    "a node still red alone": ([FIRST, {**ALONE, "status": "FAILED"}], ["t::a"], []),
+}
 CASES = {  # line i's (old, new): ("", new) puts a line before it, (old, None) drops it
     "complete": ({}, {"stage": "commit", "head": HEAD, "passing": True}, None),
-    "a red node its solo rerun passed": ({4: ("PASSED", "FAILED"), 5: ("", RERUN)}, {}, None),
+    "a red node its solo rerun passed": ({}, {"passing": True}, None),  # the writer's own run
+    "a solo rerun past its time": ({}, {}, None),
+    "a node still red alone": ({}, {}, None),
     "a host-skipped step": (
         {3: ('"PASS", "exit": 0', '"SKIPPED_BY_HOST", "exit": null')},
         {},
@@ -68,16 +75,17 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, case):
     """A receipt counts only whole, with its claim standing over its events, and as asked."""
     spoil, asked, code = CASES[case]
     events, path = tmp_path / "events.jsonl", tmp_path / "receipt.jsonl"
-    events.write_text(json.dumps(RESULT))
+    results, red, classes = RERUNS.get(case, ([RESULT], [], []))
+    events.write_text("\n".join(map(json.dumps, results)))
     started = {"stage": "commit", "host": "workshop", "command": ["x"]}
     writer = receipt.Writer(path, started, [{"workspace": {}}, {"configuration": {}}])
     writer.write({"workspace": {}}, {"repo": "r", "base": "b" * 40, "head": HEAD, "clean": True})
     writer.write({"configuration": {}}, CONFIGURATION)
-    writer.tests(
-        "tests", {"status": "PASS", "exit": 0, "seconds": 1, "provider": "product"}, events
-    )
-    writer.finish({"result": "PASS", "exit": 0, "red_nodes": []})
+    step = {"status": "PASS", "exit": 0, "seconds": 1, "provider": "product"}
+    assert writer.tests("tests", step, events) == red  # by its highest attempt, and classed
+    writer.finish({"result": "FAIL" if red else "PASS", "exit": int(bool(red)), "red_nodes": red})
     s = path.read_text("utf-8").splitlines()
+    assert [c for c in ("flake", "slow") if f'"class": "{c}"' in "".join(s)] == classes
     for i, (old, new) in sorted((spoil or {}).items(), reverse=True):
         s[i : i + bool(old)] = [] if new is None else [s[i].replace(old, new) if old else new]
     _ = path.unlink() if spoil is None else path.write_text("\n".join(s))

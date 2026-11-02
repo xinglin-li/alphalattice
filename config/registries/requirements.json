@@ -33,6 +33,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "pipeline.stage_runs_each_row_by_one_provider": {
+      "description": "A stage run resolves each row on its host to exactly one provider, refusing a row with none or two, and writes a receipt that verifies.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
     "pipeline.receipt_plugin_writes_each_node_once": {
       "description": "The receipt plugin writes each test node once, after its last phase or a crash, with its failure's masked signature, and then disposes of itself.",
       "owner": "devtools.pipeline",

@@ -40,20 +40,12 @@ jobs:
         run: uv sync --locked --all-extras
       - name: Build Local Web
         run: uv run python scripts/build_local_web_ui.py --product
-      - name: Check Python
-        run: uv run python scripts/check_playpen.py --all-python --fast
       - name: Check Local Web freshness and syntax
         run: uv run python scripts/build_local_web_ui.py --product --check
-      - name: Run the offline Local Web and Evidence tests
+      - name: Run the commit stage of config/pipeline.toml
         run: >-
-          uv run python -m pytest
-          tests/portfolio_strategy_lab/test_local_web_service.py
-          tests/portfolio_strategy_lab/test_local_web_client.py
-          tests/portfolio_strategy_lab/test_research_flow_answers.py
-          tests/alternative_evidence_desk/test_evidence_review_http_route.py
-          tests/structural/test_local_web_build.py
-          -n auto -m "not real_evidence"
-          --basetemp "${{ runner.temp }}/alphalattice-public-tests"
+          uv run python scripts/pipeline.py run commit --host public --base HEAD --workers 4
+          --out "${{ runner.temp }}/pipeline"
 
   wheel:
     name: Installed wheel

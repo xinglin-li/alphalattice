@@ -18764,6 +18764,26 @@
 "owner": "devtools.pipeline",
 "category": "INVALID_ARGUMENT"
 },
+"pipeline.row_unprovided": {
+"owner": "devtools.pipeline",
+"category": "FAILED_PRECONDITION"
+},
+"pipeline.row_provided_twice": {
+"owner": "devtools.pipeline",
+"category": "FAILED_PRECONDITION"
+},
+"pipeline.plugin_unloadable": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT"
+},
+"pipeline.out_used": {
+"owner": "devtools.pipeline",
+"category": "ALREADY_EXISTS"
+},
+"pipeline.workspace_unreadable": {
+"owner": "devtools.pipeline",
+"category": "FAILED_PRECONDITION"
+},
 "pipeline.schema_unknown": {
 "owner": "devtools.pipeline",
 "category": "INVALID_ARGUMENT"

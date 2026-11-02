@@ -18,6 +18,7 @@ import re
 import uuid
 from collections.abc import Sequence
 from datetime import datetime
+from math import inf
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, TextIO
 
@@ -75,9 +76,14 @@ class Writer:
         self.stream.write(json.dumps(line) + "\n")
         self.stream.flush()
 
-    def tests(self, row: str, step: dict[str, Any], events: Path) -> None:
-        """The tests step, which announces each node's result and size summary, then writes them."""
+    def tests(self, row: str, step: dict[str, Any], events: Path) -> list[str]:
+        """The tests step, which announces each node's result and size summary, then writes them;
+        a red that passed alone carries its class; it returns the nodes ``classed`` holds red."""
         results = [json.loads(line) for line in events.read_text("utf-8").splitlines()]
+        red, classes = classed(results)
+        for result in results:
+            if result["status"] in RED and result["node"] in classes:
+                result["class"] = classes[result["node"]]
         sizes: dict[str, dict[str, Any]] = {}
         for result in results:
             empty = {"total": 0, **dict.fromkeys(COUNTED.values(), 0), "test_seconds": 0.0}
@@ -93,6 +99,7 @@ class Writer:
             *zip(sums, sizes.values(), strict=True),
         ]:
             self.write(key, payload)
+        return red
 
     def finish(self, payload: dict[str, Any]) -> None:
         line = {
@@ -151,6 +158,26 @@ class Step(_Strict):
         if not legal.get(self.status, self.exit != 0):
             raise PydanticCustomError("receipt_inconsistent", "a step's status and exit disagree")
         return self
+
+
+RED = ("FAILED", "ERROR")
+
+
+def classed(results: Sequence[dict[str, Any]]) -> tuple[list[str], dict[str, str]]:
+    """The nodes red by their highest attempt, and the class of each node whose red passed alone
+    (the protocol's rule 7): within its time a flake, which PROTOCOL GUARDS quarantines, and over
+    it a slow test, a test defect that stays red."""
+    latest: dict[str, dict[str, Any]] = {}
+    for result in results:  # by attempt: workers write in the order they finish
+        if result["attempt"] >= latest.get(result["node"], result)["attempt"]:
+            latest[result["node"]] = result
+    classes = {
+        r["node"]: "slow" if last["seconds"] > (last.get("timeout_seconds") or inf) else "flake"
+        for r in results
+        if r["status"] in RED and (last := latest[r["node"]])["status"] not in RED
+    }
+    red = [n for n, r in latest.items() if r["status"] in RED or classes.get(n) == "slow"]
+    return red, classes
 
 
 class TestResult(_Strict):
@@ -247,16 +274,13 @@ class Receipt(_Strict):
     def _consistent(self) -> Receipt:
         """Its result stands over every exit, step and node's latest attempt; a rerun is solo."""
         events: list[Any] = self.events
-        latest: dict[str, TestResult] = {}
         for event in (e for e in events if "test_result" in e.id):
             result = event.test_result
             if event.id["test_result"] != {"node": result.node, "attempt": result.attempt} or (
                 (result.attempt > 1) != result.solo
             ):
                 raise PydanticCustomError("receipt_malformed", "a result's id and attempt disagree")
-            if result.attempt >= latest.get(result.node, result).attempt:
-                latest[result.node] = result
-        red = [r.node for r in latest.values() if r.status in ("FAILED", "ERROR")]
+        red = classed([e.test_result.model_dump() for e in events if "test_result" in e.id])[0]
         red += [
             e.step.provider for e in events if "step" in e.id and e.step.status in ("FAIL", "ERROR")
         ]
