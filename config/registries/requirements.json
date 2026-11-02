@@ -98,6 +98,12 @@
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 15
+    },
+    "pipeline.result_cache_runner_serves_verified_groups": {
+      "description": "The runner reuses only verified passing groups, records cache provenance, and runs misses or shadow comparisons without hiding changed or opaque inputs.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 30
     }
   }
 }

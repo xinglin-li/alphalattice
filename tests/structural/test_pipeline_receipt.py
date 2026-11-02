@@ -88,6 +88,23 @@ CASES |= {
 }
 
 
+for _case in (
+    "cache hit",
+    "cache orphan",
+    "cache shadow",
+    "cache mismatch",
+    "cache mismatch unexplained",
+    "cache wrong mode",
+):
+    CASES[_case] = (
+        {},
+        {},
+        "receipt_inconsistent"
+        if _case in {"cache orphan", "cache mismatch unexplained", "cache wrong mode"}
+        else None,
+    )
+
+
 @pytest.mark.proves("pipeline.receipt_verifies_only_complete_and_as_asked")
 @pytest.mark.parametrize("case", CASES)
 def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, case):
@@ -95,6 +112,27 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, case):
     spoil, asked, code = CASES[case]
     events, path = tmp_path / "events.jsonl", tmp_path / "receipt.jsonl"
     results, red, classes = RERUNS.get(case, ([RESULT], [], []))
+    if case.startswith("cache "):
+        origin = dict(key="a" * 64, digest="d" * 64, head=HEAD)
+        mode = "shadow" if case == "cache shadow" or case.startswith("cache mismatch") else "on"
+        results = [RESULT | ({"cached_from": origin} if mode == "on" else {})]
+        if case != "cache orphan":
+            decision = dict(
+                group="f" * 64,
+                mode=mode,
+                decision="HIT",
+                entry=origin,
+                reason=None,
+                executed=mode != "on",
+                expected={
+                    RESULT["node"]: "SKIPPED" if case.startswith("cache mismatch") else "PASSED"
+                },
+            )
+            if case == "cache mismatch":
+                decision["reason"] = "result_cache.not_passing"
+            if case == "cache wrong mode":
+                decision["mode"] = "record"
+            results = [{"cache": decision}, *results]
     events.write_text("\n".join(map(json.dumps, results)))
     started = {"stage": "commit", "host": "workshop", "command": ["x"]}
     writer = receipt.Writer(path, started, [{"workspace": {}}, {"configuration": {}}])
@@ -120,7 +158,12 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, case):
         assert status == (2 if code else 0) and (not code or code in out.err)
         assert code or json.loads(out.out) == receipt.verify(path)
     with pytest.raises(receipt.ReceiptError) if code else contextlib.nullcontext() as refused:
-        assert receipt.verify(path, **asked)["head"] == HEAD
+        try:
+            found = receipt.verify(path, **asked)
+        except receipt.ReceiptError as error:
+            assert code is not None, f"unexpected receipt refusal: {error.code}"
+            raise
+        assert found["head"] == HEAD
     assert not code or refused.value.code == "pipeline." + code
 
 

@@ -64,6 +64,7 @@ class Writer:
             **started,
             "started_at": _now(),
         }
+        self.invocation = started["invocation"]
         self.write({"started": {}}, started, [*children, {"finished": {}}])
 
     def write(
@@ -80,7 +81,9 @@ class Writer:
     def tests(self, row: str, step: dict[str, Any], events: Path) -> list[str]:
         """The tests step, which announces each node's result and size summary, then writes them;
         a red that passed alone carries its class; it returns the nodes ``classed`` holds red."""
-        results = [json.loads(line) for line in events.read_text("utf-8").splitlines()]
+        raw = [json.loads(line) for line in events.read_text("utf-8").splitlines()]
+        decisions = [r["cache"] for r in raw if "cache" in r]
+        results = [r for r in raw if "cache" not in r]
         red, classes = classed(results)
         for result in results:
             if result["status"] in RED and result["node"] in classes:
@@ -92,12 +95,15 @@ class Writer:
             summary["total"] += 1
             summary[COUNTED[result["status"]]] += 1
             summary["test_seconds"] += result["seconds"]
+            summary["cached"] = summary.get("cached", 0) + bool(result.get("cached_from"))
         keys = [{"test_result": {"node": r["node"], "attempt": r["attempt"]}} for r in results]
         sums = [{"test_summary": {"size": size}} for size in sizes]
-        self.write({"step": {"row": row}}, step, [*keys, *sums])
+        caches = [{"cache": {"group": r["group"]}} for r in decisions]
+        self.write({"step": {"row": row}}, step, [*keys, *sums, *caches])
         for key, payload in [
             *zip(keys, results, strict=True),
             *zip(sums, sizes.values(), strict=True),
+            *zip(caches, decisions, strict=True),
         ]:
             self.write(key, payload)
         return red
@@ -181,6 +187,22 @@ def classed(results: Sequence[dict[str, Any]]) -> tuple[list[str], dict[str, str
     return red, classes
 
 
+class CacheOrigin(_Strict):
+    key: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    digest: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    head: Sha
+
+
+class CacheDecision(_Strict):
+    group: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    mode: Literal["off", "record", "shadow", "on"]
+    decision: Literal["HIT", "MISS", "UNCACHEABLE"]
+    entry: CacheOrigin | None
+    reason: Text | None
+    executed: bool
+    expected: dict[str, Literal["PASSED", "SKIPPED"]]
+
+
 class TestResult(_Strict):
     node: Text
     attempt: Annotated[int, Field(ge=1)]
@@ -195,6 +217,7 @@ class TestResult(_Strict):
     requirement_layer: str | None = None
     requirement_owner: str | None = None
     class_: str | None = Field(None, alias="class")
+    cached_from: CacheOrigin | None = None
     phase: str | None = None
     failure: dict[str, str] | None = None
 
@@ -224,6 +247,7 @@ PAYLOADS: dict[str, Any] = {
     "configuration": Configuration,
     "step": Step,
     "test_result": TestResult,
+    "cache": CacheDecision,
     "test_summary": dict[str, int | float],
     "metrics": Metrics,
     "finished": Finished,
@@ -281,6 +305,9 @@ class Receipt(_Strict):
                 (result.attempt > 1) != result.solo
             ):
                 raise PydanticCustomError("receipt_malformed", "a result's id and attempt disagree")
+        results = [e.test_result for e in events if "test_result" in e.id]
+        caches = [e.cache for e in events if "cache" in e.id]
+        _cache_consistent(caches, results)
         red = classed([e.test_result.model_dump() for e in events if "test_result" in e.id])[0]
         red += [
             e.step.provider for e in events if "step" in e.id and e.step.status in ("FAIL", "ERROR")
@@ -291,6 +318,33 @@ class Receipt(_Strict):
         ):
             raise PydanticCustomError("receipt_inconsistent", "its result denies its parts")
         return self
+
+
+def _cache_consistent(caches: Sequence[CacheDecision], results: Sequence[TestResult]) -> None:
+    for decision in caches:
+        hit = decision.decision == "HIT"
+        if hit != bool(decision.entry and decision.expected) or decision.executed != (
+            not hit or decision.mode != "on"
+        ):
+            raise PydanticCustomError(
+                "receipt_inconsistent", "cache decision and execution disagree"
+            )
+        if hit and decision.mode == "shadow":
+            actual = {r.node: r.status for r in results if r.node in decision.expected}
+            if actual != decision.expected and decision.reason != "result_cache.not_passing":
+                raise PydanticCustomError(
+                    "receipt_inconsistent", "a shadow hit disagrees with execution"
+                )
+
+    for result in results:
+        if result.cached_from and not any(
+            c.decision == "HIT"
+            and c.mode == "on"
+            and c.entry == result.cached_from
+            and c.expected.get(result.node) == result.status
+            for c in caches
+        ):
+            raise PydanticCustomError("receipt_inconsistent", "a cached result has no matching hit")
 
 
 def read(path: Path) -> tuple[bytes, list[Any]]:

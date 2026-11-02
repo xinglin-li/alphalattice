@@ -108,7 +108,7 @@ owner = "devtools.pipeline"
 reason = "The structural, mandatory, changed and affected tests, within the selection budget."
 hosts = ["workshop", "public"]
 selection = { budget_test_seconds = 3600 }
-plugins = ["receipt-events"]
+plugins = ["receipt-events", "result-cache"]
 public = [
   "tests/portfolio_strategy_lab/test_local_web_service.py",
   "tests/portfolio_strategy_lab/test_local_web_client.py",
@@ -181,3 +181,12 @@ kind = "workshop"
 owner = "workshop"
 reason = "One native agent run per host confirms the promoted commit."
 hosts = ["workshop"]
+
+
+[rows.result-cache]
+kind = "pytest-plugin"
+owner = "devtools.pipeline"
+reason = "Observe complete test groups before recording verified reusable results."
+hosts = ["workshop"]
+module = "devtools.pipeline.observe"
+native_readers = ["duckdb", "pyarrow.dataset", "polars"]

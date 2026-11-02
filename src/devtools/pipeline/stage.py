@@ -17,14 +17,15 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import psutil  # type: ignore[import-untyped]
 
 from devtools.pipeline.definition import PATH, Definition, DefinitionError, Row, Stage, load
-from devtools.pipeline.receipt import Writer, verify
+from devtools.pipeline.receipt import Writer, _now, verify
+from devtools.pipeline.reuse import Options
 from devtools.testing.requirements import selection
 
 SKIPPED = "skipped"
@@ -45,6 +46,8 @@ class Context:
     definition: Definition
     stage: str = ""
     required_tests: tuple[str, ...] = ()
+    cache_options: Options = field(default_factory=Options)
+    cache_writer: dict[str, str] = field(default_factory=dict)
 
 
 Outcome = tuple[dict[str, Any], Path | None]
@@ -122,6 +125,8 @@ def run(
     command: Sequence[str],
     paths: Sequence[Path] = (),
     required_tests: Sequence[str] = (),
+    cache_options: Options | None = None,
+    line: str = "pipeline",
 ) -> dict[str, Any]:
     """Run one stage into ``out`` and return its receipt's summary; ``out`` holds one run."""
     started, definition = time.monotonic(), load(root)
@@ -156,7 +161,17 @@ def run(
     writer.write({"configuration": {}}, configuration | {"bound_seconds": stop})
     deadline = started + stop
     context = Context(
-        root, workspace["base"], out, host, workers, deadline, definition, name, required
+        root,
+        workspace["base"],
+        out,
+        host,
+        workers,
+        deadline,
+        definition,
+        name,
+        required,
+        cache_options or Options(),
+        {"line": line, "head": workspace["head"], "invocation": writer.invocation, "at": _now()},
     )
     try:  # an interrupted run leaves its receipt without finished, which counts as none
         statuses, red = _rows(writer, stage, providers, provides, context)

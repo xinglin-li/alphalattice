@@ -16,9 +16,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from devtools.pipeline.definition import Definition, DefinitionError, load  # noqa: E402
+from devtools.pipeline.definition import Definition, load  # noqa: E402
 from devtools.pipeline.health import report  # noqa: E402
 from devtools.pipeline.receipt import verify  # noqa: E402
+from devtools.pipeline.reuse import Options  # noqa: E402
 from devtools.pipeline.stage import run  # noqa: E402
 
 
@@ -57,6 +58,10 @@ def main(argv: list[str] | None = None) -> int:
     running.add_argument(
         "--required-tests", nargs="+", default=[], help="required cost-card nodes, Large included"
     )
+    running.add_argument("--line", default="pipeline", help="the cache writer line")
+    running.add_argument("--result-cache", help="verified result store; absent disables it")
+    running.add_argument("--cache", choices=("off", "record", "shadow", "on"))
+    running.add_argument("--result-cache-bytes", help="positive derived-store byte cap")
     checking = commands.add_parser("verify", help="a receipt's summary, refused unless complete")
     checking.add_argument("receipt", type=Path)
     for name in ("stage", "host", "head"):
@@ -83,6 +88,8 @@ def main(argv: list[str] | None = None) -> int:
                 paths=args.plugin,
                 command=["scripts/pipeline.py", *(sys.argv[1:] if argv is None else argv)],
                 required_tests=args.required_tests,
+                cache_options=Options.read(args.result_cache, args.cache, args.result_cache_bytes),
+                line=args.line,
             )
             print(json.dumps(summary, indent=2))
             return 0 if summary["result"] == "PASS" else 1
@@ -95,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(report(ROOT, args.receipts, date.today()), indent=2))
         else:
             print(show(load(ROOT), args.stage))
-    except DefinitionError as error:
+    except ValueError as error:
         print(f"refused: {error}", file=sys.stderr)
         return 2
     return 0

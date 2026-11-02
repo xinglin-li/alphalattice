@@ -271,3 +271,15 @@ A cost commit stage may receive explicit required test nodes from its admission 
 Those nodes run at their declared limits, Large included, and their outcomes are recorded
 in the same receipt. Ordinary commit selection stays unchanged; only a head declaring
 `Change-Kind: cost` accepts the required-node input.
+
+
+### Verified result reuse
+
+The pipeline accepts `--result-cache <directory>`, `--result-cache-bytes <positive bytes>`
+and `--cache off|record|shadow|on`. The default is off. Record and shadow execute every
+selected group; explicit on mode may reuse only a verified passing first attempt. Each
+cache decision and the original bounded node metadata stay in the receipt. Dirty stages
+never publish. A shadow mismatch disables the shared store; repair it before reenabling
+reuse. Promotion still requires the reviewed shadow and recall evidence. Large, quarantined,
+end-to-end and native results are never stored. Required cost checks still run even when
+quarantined, because they are evidence for admission.

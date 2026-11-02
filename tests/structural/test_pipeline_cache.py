@@ -271,7 +271,15 @@ print(json.dumps({'reason':seen.reason,'inputs':seen.inputs,'before':before,'aft
 """
 PYTEST_RECORDS = {
     "passing": ("assert True", None),
+    "receipt-in-checkout": ("assert True", "request_invalid"),
+    "direct-log-stat": (
+        "import logging; "
+        "h=next(r() for r in logging._handlerList if isinstance(r(),logging.FileHandler)); "
+        "__import__('os').stat(h.baseFilename)",
+        "metadata_read",
+    ),
     "warm-bytecode": ("assert True", None),
+    "stale-bytecode": ("assert True", "not_passing"),
     "skipped": ("pytest.skip()", None),
     "failed": ("assert False", "not_passing"),
     "xfailed": ("pytest.xfail()", "not_passing"),
@@ -322,7 +330,7 @@ PYTEST_RECORDS |= {
 }
 
 
-def _record_pytest(tmp_path, case):
+def _record_pytest(tmp_path, case, *, prepare_only=False):
     from devtools.pipeline import observe
 
     root = tmp_path / "repo"
@@ -330,6 +338,8 @@ def _record_pytest(tmp_path, case):
     for source_relative in (
         "pipeline/observe.py",
         "pipeline/cache.py",
+        "pipeline/receipt.py",
+        "pipeline/definition.py",
         "testing/sizes.py",
         "testing/requirements.py",
     ):
@@ -419,6 +429,8 @@ def _record_pytest(tmp_path, case):
         ],
     ):
         subprocess.run([*GIT, root, *words], check=True)
+    if prepare_only:
+        return root
     request = {
         "store": str(tmp_path / "store"),
         "key": KEY,
@@ -427,6 +439,10 @@ def _record_pytest(tmp_path, case):
         "basetemp": str(tmp_path / "fresh"),
         "verdict": str(tmp_path / "verdict.json"),
     }
+    if case == "direct-log-stat":
+        request["log"] = str(tmp_path / "debug.log")
+    if case == "receipt-in-checkout":
+        request["events"] = str(root / "owned.py")
     if case == "bad-key":
         request["key"] = "not a digest"
     if case == "used-temp":
@@ -443,7 +459,7 @@ def _record_pytest(tmp_path, case):
         PYTHONDONTWRITEBYTECODE="" if case == "bytecode" else "1",
         PATH="" if case == "no-git" else os.environ["PATH"],
     )
-    if case == "warm-bytecode":
+    if case in {"warm-bytecode", "stale-bytecode"}:
         warm = subprocess.run(
             [
                 sys.executable,
@@ -464,6 +480,11 @@ def _record_pytest(tmp_path, case):
             | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0),
         )
         assert warm.returncode == 0, warm.stderr
+    if case == "stale-bytecode":
+        source = root / relative
+        before = source.stat()
+        source.write_bytes(source.read_bytes().replace(b"assert True", b"assert 0   "))
+        os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
     done = subprocess.run(
         [
             sys.executable,
@@ -471,6 +492,7 @@ def _record_pytest(tmp_path, case):
             "-m",
             "pytest",
             "-q",
+            *(["-o", "log_file=" + request["log"]] if case == "direct-log-stat" else []),
             *(["-p", "bound_input"] if case.startswith("bound-") else []),
             *([] if case == "cacheprovider" else ["-p", "no:cacheprovider"]),
             "-p",
@@ -492,7 +514,7 @@ def _record_pytest(tmp_path, case):
         4
         if why == "request_invalid"
         else 1
-        if case in {"failed", "session-error", "session-exception"}
+        if case in {"failed", "session-error", "session-exception", "stale-bytecode"}
         else 0
     ), done.stdout + done.stderr
     if why == "request_invalid" or case == "off":
@@ -585,3 +607,86 @@ def test_a_recorder_keeps_only_inputs_the_shared_cache_can_verify(tmp_path, case
                 "environment-key-type": None,
             }[case]
         )
+
+
+@pytest.mark.proves("pipeline.result_cache_runner_serves_verified_groups")
+@pytest.mark.parametrize("mode", ["record", "shadow", "on", "on-duplicate", "on-move", "options"])
+def test_the_runner_records_checks_and_reuses_one_verified_group(tmp_path, monkeypatch, mode):
+    """Equal inputs may hit; shadow executes, and dirty stages never publish."""
+    import importlib.util
+    import runpy
+
+    assert importlib.util.find_spec("devtools.pipeline.reuse") is not None
+    from devtools.pipeline.reuse import Options, Reuse
+
+    if mode == "options":
+        assert Options.read(mode="off", cap="1").cap == 1
+        for raw in ("0", "-1", "NaN", "true"):
+            with pytest.raises(ValueError, match=r"^result_cache\.request_invalid"):
+                Options.read(cap=raw)
+        with pytest.raises(ValueError, match=r"^result_cache\.request_invalid"):
+            Options.read(mode="unknown")
+        with pytest.raises(ValueError, match=r"^result_cache\.request_invalid"):
+            Options(cap=True)
+        return
+    root = _record_pytest(tmp_path, "passing", prepare_only=True)
+    if mode == "on-duplicate":
+        source = root / "tests/test_sample.py"
+        source.write_text(
+            source.read_text("utf-8").replace(
+                "assert True", "assert Path(__file__).name == 'test_sample.py'"
+            ),
+            "utf-8",
+        )
+        (root / "tests/test_other.py").write_bytes(source.read_bytes())
+    (root / "uv.lock").write_text("locked environment", "utf-8")
+    (root / "config/registries/requirements.json").write_text('{"entries":{}}', "utf-8")
+    subprocess.run([*GIT, root, "add", "-A"], check=True)
+    subprocess.run([*GIT, root, "commit", "-qm", "inputs"], check=True)
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    monkeypatch.setenv("PYTEST_ADDOPTS", "")
+    monkeypatch.setenv("PYTHONPATH", str(root / "src"))
+    runner = runpy.run_path(
+        str(Path(__file__).resolve().parents[2] / "scripts/check_alpha_verification_impact.py")
+    )["_run_group"]
+    writer = {**WRITER, "head": cache._git(root, "rev-parse", "HEAD").strip()}
+    options = Options(tmp_path / "store", mode.split("-")[0], 1048576)
+
+    def run(number):
+        owner = Reuse(root, tmp_path / str(number), options, writer, native_readers=())
+        result = runner(
+            ("tests/test_sample.py",), "-m", "not real_evidence", capture=True, reuse=owner
+        )
+        assert result.code == 0, result.stdout + result.stderr
+        return owner.decisions
+
+    first, second = run(1), run(2)
+    assert first[0]["decision"] == "MISS", first
+    assert second[0]["decision"] == "HIT", second
+    assert second[0]["executed"] == (not mode.startswith("on"))
+    if mode == "on-duplicate":
+        owner = Reuse(root, tmp_path / "duplicate", options, writer, native_readers=())
+        result = runner(
+            ("tests/test_other.py",), "-m", "not real_evidence", capture=True, reuse=owner
+        )
+        assert result.code == 1, (
+            "an equal-body test at another locator must execute its failing assertion"
+        )
+        assert owner.decisions[0]["decision"] != "HIT"
+        return
+    if mode == "on-move":
+        (root / "tests/test_sample.py").rename(root / "tests/test_moved.py")
+        subprocess.run([*GIT, root, "add", "-A"], check=True)
+        subprocess.run([*GIT, root, "commit", "-qm", "relocate"], check=True)
+        writer = {**writer, "head": cache._git(root, "rev-parse", "HEAD").strip()}
+        for number, wanted in ((3, "MISS"), (4, "HIT")):
+            owner = Reuse(root, tmp_path / str(number), options, writer, native_readers=())
+            result = runner(
+                ("tests/test_moved.py",), "-m", "not real_evidence", capture=True, reuse=owner
+            )
+            assert result.code == 0 and owner.decisions[0]["decision"] == wanted
+        return
+    source = root / "tests/test_sample.py"
+    source.write_text(source.read_text("utf-8") + "\n# changed input\n", "utf-8")
+    assert run(3)[0]["decision"] == "MISS"
+    assert len(list((tmp_path / "store/ac").glob("*/*.json"))) == 1

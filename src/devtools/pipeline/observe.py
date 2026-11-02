@@ -6,6 +6,7 @@ import builtins
 import genericpath
 import io
 import json
+import logging
 import os
 import stat
 import sys
@@ -23,6 +24,7 @@ from unittest.mock import patch
 import pytest
 from _pytest.assertion.rewrite import _read_pyc, _rewrite_test
 from _pytest.config import _get_directory
+from _pytest.logging import LoggingPlugin
 from _pytest.main import validate_basetemp
 from _pytest.pathlib import cleanup_dead_symlinks, samefile_nofollow
 from _pytest.runner import _update_current_test_var
@@ -31,6 +33,8 @@ from _pytest.tmpdir import pytest_sessionfinish as _temp_finish
 from pydantic import BaseModel, ConfigDict, Field
 
 from devtools.pipeline.cache import Entry, Hex64, Store, Text, Tree, digest
+from devtools.pipeline.receipt import TestResult, register
+from devtools.pipeline.receipt import pytest_configure as receipt_configure
 from devtools.testing.requirements import file_holders
 from devtools.testing.sizes import classify, load_policy
 
@@ -58,6 +62,7 @@ _PATH_STAT = Path.stat.__code__
 _FRAMEWORK_STATS = frozenset(
     f.__code__
     for f in (
+        LoggingPlugin.__init__,
         _rewrite_test,
         _read_pyc,
         validate_basetemp,
@@ -121,6 +126,8 @@ class Recorder:
         }
         self.previous: weakref.ReferenceType[Recorder] | None = None
         self.reason: str | None = None
+        self.output: tuple[Path, Any, Any] | None = None
+        self.log: Path | None = None
         self.fresh_temp = False  # only the pytest owner may claim an absent basetemp
         self.environ = os.environ
         self.local, self.written, self.active = threading.local(), set[str](), False
@@ -163,6 +170,10 @@ class Recorder:
                             name,
                             self.environment(getattr(environment_type, name), name),
                         )
+                    )
+                if self.fresh_temp:
+                    self.stack.enter_context(
+                        patch("_pytest.assertion.rewrite._read_pyc", lambda *args: None)
                     )
                 _ACTIVE = weakref.ref(self)
                 if not _INSTALLED:
@@ -228,6 +239,8 @@ class Recorder:
             if caller is not None and caller.f_code is _PATH_STAT:
                 caller = caller.f_back
             outer = _caller() if owner.fresh_temp else None
+            while outer and outer.f_code in _PREDICATES:
+                outer = outer.f_back
             framework = outer is not None and outer.f_code in _FRAMEWORK_STATS
             if not framework and (caller is None or caller.f_code not in _PREDICATES):
                 owner.reason = owner.reason or "result_cache.metadata_read"
@@ -307,7 +320,11 @@ class Recorder:
         return (
             not isinstance(value, OSError)
             and stat.S_ISDIR(value.st_mode)
-            and (absolute in self.tree.root.parents or absolute in self.temp.parents)
+            and (
+                absolute in self.tree.root.parents
+                or absolute in self.temp.parents
+                or (self.log is not None and absolute == self.log.parent)
+            )
         )
 
     def environment_value(self, raw: Any, value: Any) -> None:
@@ -401,29 +418,65 @@ class Recorder:
         finally:
             self.local.busy = False
 
+    def output_file(self, raw: Any, flags: int) -> bool:
+        """Only the framework's exact output opener may write its declared sink."""
+        if not flags & os.O_WRONLY:
+            return False
+        caller = _caller()
+        if caller is None:
+            return False
+        if self.output and caller.f_code is self.output[1]:
+            return Path(raw).absolute() == self.output[0]
+        return (
+            self.log is not None
+            and caller.f_code is logging.FileHandler._open.__code__
+            and Path(raw).absolute() == self.log
+        )
+
+    def receipt_environment(self) -> bool:
+        frame = _caller()
+        while frame and frame.f_globals.get("__name__") in {
+            "os",
+            "_collections_abc",
+            "collections.abc",
+        }:
+            frame = frame.f_back
+        return bool(self.output and frame and frame.f_code is self.output[2])
+
     def capture(self, event: str, args: tuple[Any, ...], value: Any) -> None:
         if event == "alphalattice.result_cache.ready" and args == (self,):
             self.observed = True
         elif event == "open":
+            if (self.output or self.log) and self.output_file(args[0], args[2]):
+                return
             self.file(args[0], args[2])
         elif event == "probe":
             self.probe(args[0], value)
         elif event == "framework_probe":
             self.probe(args[0], value, framework=True)
         elif event == "env":
+            if (
+                self.output
+                and args[0] == "ALPHALATTICE_PIPELINE_EVENTS"
+                and self.receipt_environment()
+            ):
+                return
             self.environment_value(args[0], value)
         elif event == "listdir":
-            kind, path = self.location(args[0] if args else ".")
-            if kind == "repo":
-                self.inputs["listings"][path] = digest(sorted(set(value) - {"__pycache__"}))
-            elif kind != "locked" and not (kind == "temp" and self.fresh_temp):
-                self.reason = "result_cache.undeclared_input"
+            self.listing(args[0] if args else ".", value)
         elif event == "os.listdir" and not getattr(self.local, "listing", False):
             path = args[0] if args and args[0] is not None else "."  # a borrowed or bound listdir
             self.capture("listdir", (path,), _LISTDIR(path))
         elif event == "os.scandir":
             self.scandir(args[0])
         elif self.opaque(event, args):
+            self.reason = "result_cache.undeclared_input"
+
+    def listing(self, raw: Any, value: Any) -> None:
+        kind, path = self.location(raw)
+        if kind == "repo":
+            self.inputs["listings"][path] = digest(sorted(set(value) - {"__pycache__"}))
+        elif kind != "locked" and not (kind == "temp" and self.fresh_temp):
             self.reason = "result_cache.undeclared_input"
 
     def scandir(self, raw: Any) -> None:
@@ -469,6 +522,9 @@ class Recorder:
 class _Request(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
     store: Path
+    cap: Annotated[int, Field(gt=0)] | None = None
+    events: Path | None = None
+    log: Path | None = None
     key: Hex64
     writer: Annotated[dict[Literal["line", "head", "invocation", "at"], Text], Field(min_length=4)]
     native_readers: tuple[Text, ...]
@@ -488,7 +544,13 @@ def pytest_load_initial_conftests(early_config: Any) -> None:
         return
     try:
         request = _Request.model_validate_json(Path(options.result_cache_record).read_bytes())
-        paths = (request.basetemp, request.store, request.verdict)
+        paths = (
+            request.basetemp,
+            request.store,
+            request.verdict,
+            *([request.events] if request.events is not None else []),
+            *([request.log] if request.log is not None else []),
+        )
         if (
             not sys.dont_write_bytecode
             or not early_config.pluginmanager.is_blocked("cacheprovider")
@@ -527,8 +589,12 @@ class _PytestRecording:
         )
         if self.seen is not None:
             self.seen.fresh_temp = True
+            self.seen.log = request.log
+            if request.events is not None:
+                self.seen.output = (request.events, register.__code__, receipt_configure.__code__)
         self.session: Any = None
         self.results: dict[str, tuple[str, float]] = {}
+        self.properties: dict[str, dict[str, Any]] = {}
         self.phases: dict[str, set[str]] = {}
         self.nodes: set[str] = set()
         self.bad, self.closed = False, False
@@ -570,6 +636,11 @@ class _PytestRecording:
 
     def pytest_runtest_logreport(self, report: Any) -> None:
         name = report.nodeid.partition("::")[2]
+        self.properties[name] = {
+            k: v
+            for k, v in report.user_properties
+            if k in {"setup_seconds", "call_seconds", "teardown_seconds"}
+        }
         phases = self.phases.setdefault(name, set())
         self.bad |= (
             report.when in phases
@@ -607,7 +678,7 @@ class _PytestRecording:
             if raw.endswith(".pyc"):
                 raw = source_from_cache(raw)
             self.seen.note("open", (raw, "r", os.O_RDONLY))
-            path = Path(raw).absolute()
+            path = Path(os.path.realpath(raw))
             if path.is_relative_to(self.seen.tree.root):
                 key = path.relative_to(self.seen.tree.root).as_posix()
                 if key in self.seen.tree.blobs and any(
@@ -651,11 +722,27 @@ class _PytestRecording:
         request, entry = self.request, None
         try:
             if reason is None and seen is not None:
-                store = Store.open(request.store)
+                store = Store.open(request.store, request.cap)
                 if isinstance(store, str):
                     reason = store
                 else:
+                    details = {}
+                    if request.events is not None:
+                        for line in request.events.read_text("utf-8").splitlines():
+                            result = TestResult.model_validate_json(line).model_dump(
+                                mode="json", by_alias=True
+                            )
+                            node = result.pop("node")
+                            name = node.partition("::")[2]
+                            details[name] = {
+                                **result,
+                                "_node": node,
+                                "_properties": self.properties.get(name, {}),
+                            }
+                        if details.keys() != self.results.keys():
+                            raise ValueError("incomplete receipt outcomes")
                     candidate = Entry.sealed(
+                        details=details,
                         key=request.key,
                         writer=request.writer,
                         results=self.results,
@@ -673,6 +760,7 @@ class _PytestRecording:
                 "decision": "STORED" if entry else "UNCACHEABLE",
                 "reason": reason,
                 "entry": {"key": entry.key, "digest": entry.digest} if entry else None,
+                "properties": self.properties,
             }
             request.verdict.write_text(json.dumps(verdict) + "\n", "utf-8")
         except Exception:

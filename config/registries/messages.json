@@ -446,6 +446,42 @@
         "en": "The result recording request is invalid. Supply a valid request and a fresh base temporary directory.",
         "zh-CN": "结果记录请求无效。请提供有效请求和全新的临时根目录。"
       }
+    },
+    "result_cache.disabled": {
+      "owner": "devtools.pipeline",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The result cache is disabled. Run without reuse.",
+        "zh-CN": "????????????????????"
+      }
+    },
+    "result_cache.unwritable": {
+      "owner": "devtools.pipeline",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The result cache cannot be written. Run without reuse and check its directory.",
+        "zh-CN": "???????????????????????"
+      }
+    },
+    "result_cache.git_timeout": {
+      "owner": "devtools.pipeline",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Reading cache inputs exceeded its Git time limit. Run without reuse.",
+        "zh-CN": "??????? Git ?????????????????"
+      }
+    },
+    "result_cache.tree_unreadable": {
+      "owner": "devtools.pipeline",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The checkout inputs cannot be read. Run without reuse and restore checkout access.",
+        "zh-CN": "??????????????????????????????"
+      }
     }
   }
 }

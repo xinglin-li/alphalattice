@@ -53,6 +53,7 @@ class Entry(BaseModel):  # type: ignore[misc]
     listings: dict[Relative, Hex64]
     env: dict[str, Hex64]  # a value's digest; an unset variable's is digest(None)
     results: Annotated[dict[str, tuple[Literal["PASSED", "SKIPPED"], Seconds]], Field(min_length=1)]
+    details: dict[str, dict[str, Any]] = Field(default_factory=dict)
     writer: Annotated[dict[Literal["line", "head", "invocation", "at"], Text], Field(min_length=4)]
     digest: Hex64
 
@@ -62,7 +63,9 @@ class Entry(BaseModel):  # type: ignore[misc]
         return unsealed.model_copy(update={"digest": digest(unsealed.body())})  # type: ignore[no-any-return]
 
     def body(self) -> dict[str, Any]:
-        return self.model_dump(mode="json", by_alias=True, exclude={"digest"})  # type: ignore[no-any-return]
+        return self.model_dump(  # type: ignore[no-any-return]
+            mode="json", by_alias=True, exclude_defaults=True, exclude={"digest"}
+        )
 
 
 @dataclass
@@ -207,5 +210,12 @@ def _owned(path: Path) -> bool:
 def _git(root: Path, *words: str, stdin: str | None = None) -> str:
     command, bound = ["git", "-C", str(root), *words], GIT_SECONDS  # a hang turns the cache off
     return subprocess.run(
-        command, input=stdin, capture_output=True, encoding="utf-8", check=True, timeout=bound
+        command,
+        input=stdin,
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
+        timeout=bound,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0),
     ).stdout
