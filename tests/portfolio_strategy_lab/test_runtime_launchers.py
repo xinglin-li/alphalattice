@@ -11,8 +11,9 @@ import signal
 import subprocess
 import sys
 import time
+from contextlib import redirect_stdout
 from datetime import UTC, datetime, timedelta
-from io import StringIO
+from io import BytesIO, StringIO, TextIOWrapper
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -363,6 +364,7 @@ def _end_turn_after(command: list[str], root: Path, temp: Path) -> str:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
         env=env,
         start_new_session=sys.platform != "win32",
         creationflags=_FLAGS
@@ -370,7 +372,7 @@ def _end_turn_after(command: list[str], root: Path, temp: Path) -> str:
     )
     try:
         output, error = turn.communicate(timeout=180)
-        assert turn.returncode == (0 if escaped else 2), error
+        assert turn.returncode == (0 if escaped else 2), error or output
         assert output, error
         return output
     finally:
@@ -379,17 +381,33 @@ def _end_turn_after(command: list[str], root: Path, temp: Path) -> str:
                 os.killpg(turn.pid, signal.SIGKILL)
 
 
-@pytest.mark.parametrize("workspace_state", ["fresh", "initialized"])
+@pytest.mark.parametrize("workspace_state", ["fresh", "initialized", "cp1252"])
 def test_a_detached_host_outlives_the_turn_that_started_it(
-    tmp_path: Path, workspace_state: str, request
+    tmp_path: Path, workspace_state: str, request, monkeypatch
 ) -> None:
     """A turn's end kills everything its launch started; the Host `serve --detach` started, on
     a new workspace or an initialized one, serves a later client until `host stop`, with its
     key in no log; a second launch is refused by name and leaves no log."""
+    if workspace_state == "cp1252":
+        from alphalattice.control.product_host.composition import web_launcher
+
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: pytest.fail("output spawned"))
+        data = BytesIO()
+        args = SimpleNamespace(workspace=tmp_path, no_browser=True, pid=1)
+        token = web_launcher.ANSWER_LANGUAGE.set("zh")
+        try:
+            with TextIOWrapper(data, encoding="cp1252") as stream, redirect_stdout(stream):
+                assert web_launcher._served(args, "http://127.0.0.1/", args, tmp_path / "h") == 0
+                expected = str(web_launcher.worded("host.idle")).format(seconds=900)
+                assert expected in data.getvalue().decode("utf-8")
+        finally:
+            web_launcher.ANSWER_LANGUAGE.reset(token)
+        return
     import fnmatch
 
     import psutil
 
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
     from alphalattice.control.product_host.composition.entry import main
     from alphalattice.interface.local_application import client
 
@@ -426,6 +444,8 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
         assert not connection.exists() and not list(temp.iterdir())
         return
     assert "Portfolio Research workspace:" in out and "outlives it" in out
+    words = runtime_json("config/registries/messages.json")["entries"]["host.idle"]["words"]
+    assert words["zh-CN" if lang == "zh" else "en"].format(seconds=900) in out
     started = out.splitlines()[0]  # plainly STARTED, with the workspace and the address
     assert started.startswith("STARTED") and str(workspace.resolve()) in started
     assert out.rstrip().endswith(OPEN_THE_WORKBENCH)  # the step right after the launch

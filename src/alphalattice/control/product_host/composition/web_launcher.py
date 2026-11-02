@@ -422,6 +422,10 @@ def _served(
     it lives, and name the next step."""
     address = re.search(r"http://[^/\s?#]+/", launch)
     workspace = arguments.workspace.resolve()
+    stream = sys.stdout  # noqa: TID251  # bootstrap/lifecycle stream ownership
+    if hasattr(stream, "reconfigure"):
+        # Lifecycle text is UTF-8 even when Python chose a locale encoding for the pipe.
+        stream.reconfigure(encoding="utf-8")
     print(f"STARTED: a Host now serves {workspace} at {address[0] if address else 'its link'}.")  # noqa: T201  # bootstrap/lifecycle
     print(launch)  # noqa: T201  # bootstrap/lifecycle
     print(  # noqa: T201  # bootstrap/lifecycle
