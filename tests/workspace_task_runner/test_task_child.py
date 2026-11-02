@@ -331,6 +331,9 @@ def test_a_later_start_refusal_cancels_an_already_running_child(monkeypatch, tmp
     stopped = tmp_path / "stopped"
     with monkeypatch.context() as patch:
         patch.setattr(multiprocessing.get_context("spawn").Process, "start", fail_second)
+        with child_calls(f"{HERE}:thread_variables", workers=2) as preparation:
+            preparation.make({})
+            preparation.answer()
         with (
             pytest.raises(ChildStartFailed, match=r"^task_control\.child_start_failed$"),
             child_calls(f"{HERE}:observe_cancellation", workers=2) as calls,
