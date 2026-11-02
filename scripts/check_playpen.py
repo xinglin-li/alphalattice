@@ -363,11 +363,17 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
     try:
         from devtools.architecture.git_inputs import carried, staged_moves
         from devtools.architecture.moved_names import problems as moved_names
-        from devtools.architecture.registries import census_check, private_test_growth, problems
+        from devtools.architecture.registries import (
+            census_check,
+            census_inputs,
+            private_test_growth,
+            problems,
+        )
         from devtools.testing.sizes import validate_policy
     finally:
         sys.path.pop(0)
-    moves = staged_moves(ROOT) if staged else {}  # a byte-identical move carries its rows
+    inputs = census_inputs(ROOT, baseline) if staged else None
+    moves = staged_moves(ROOT, pairs=inputs.changes) if inputs is not None else {}
 
     def carry(value: Any) -> Any:
         return next(iter(carried([value], moves)), value) if isinstance(value, str) else value
@@ -375,7 +381,9 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
     # A reference left at a moved name's old place, found before the rename lands.
     found = problems(ROOT, changed) + moved_names(ROOT, staged=staged)
     if staged:
-        found += census_check(ROOT, baseline=baseline, moves=moves)  # one pairing read
+        found += census_check(
+            ROOT, baseline=baseline, moves=moves, inputs=inputs
+        )  # one pairing read
     # The tests' ratchet against the registry this change started from: registering a new
     # private import by hand passes the scan above, never this (LAWS.md TE5, V16).
     ratchet = "config/registries/test-private.json"

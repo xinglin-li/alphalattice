@@ -6,7 +6,9 @@ import ast
 import json
 import re
 import shutil
+import subprocess
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -155,14 +157,16 @@ def test_each_kind_of_new_entry_is_refused_by_its_registry(tmp_path: Path) -> No
     }
 
 
+@pytest.mark.parametrize(
+    "scenario", ["bootstrap", "growth", "shrink", "move", "unicode", "merge", "import-debt"]
+)
 def test_staged_registry_census_refuses_new_unregistered_items(
-    tmp_path, synthetic_history, capsys, monkeypatch
+    tmp_path, synthetic_history, capsys, monkeypatch, scenario
 ):
-    """Real staged history refuses malformed, newly invented or restored import debt.
-    Staged facts need registration and a purpose sentence; selectors never become reasons.
-    """
-    monkeypatch.delenv("ALPHALATTICE_REGISTRY_BASELINE", raising=False)
-    assert registry_main(["--staged"]) == 0 and "not configured" in capsys.readouterr().out
+    """Independent staged histories retain every admission and read-once control."""
+    if scenario == "bootstrap":
+        monkeypatch.delenv("ALPHALATTICE_REGISTRY_BASELINE", raising=False)
+        assert registry_main(["--staged"]) == 0 and "not configured" in capsys.readouterr().out
     git, commit = synthetic_history
     git("config", "core.quotePath", "true")
 
@@ -191,11 +195,33 @@ def test_staged_registry_census_refuses_new_unregistered_items(
             write(relative, value)
         git("-c", "core.longpaths=true", "add", "--all")
 
-    def check(expected, *extra):
-        try:
-            code = registry_main(["--root", str(tmp_path), "--staged", *extra])
-        except SystemExit as error:
-            code = error.code
+    reads = []
+
+    def check(expected, *extra, covered=False):
+        with monkeypatch.context() as scope:
+            run = Mock(wraps=subprocess.run)
+            scope.setattr(subprocess, "run", run)
+            try:
+                code = registry_main(["--root", str(tmp_path), "--staged", *extra])
+            except SystemExit as error:
+                code = error.code
+        queries = [(tuple(map(str, c.args[0])), c.kwargs.get("input")) for c in run.call_args_list]
+        reads.append(len(queries))
+        assert len(queries) == len(set(queries))  # one read of each Git fact per census
+        assert sum("ls-tree" in command for command, _ in queries) <= 1
+        assert all(
+            c.kwargs.get("creationflags", 0) == getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            for c in run.call_args_list
+        )
+        if covered:
+            assert not any(
+                "rev-list" in command for command, _ in queries
+            )  # existing debt needs no parent graph
+            assert not any(
+                ("HEAD:" + existing).encode() in value
+                for _, value in queries
+                if isinstance(value, bytes)
+            )
         captured = capsys.readouterr()
         assert code == expected, captured.out + captured.err
         return captured.out
@@ -224,234 +250,289 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     import_key = existing + "::existing::import json"
     hygiene = {"schema": "alphalattice.import-hygiene", "legacy_lazy_imports": {import_key: 1}}
 
-    def retained(counts, expected=0, *extra):
+    def retained(counts, expected=0, *extra, covered=False):
         stage(hygiene_path, {**hygiene, "legacy_lazy_imports": counts})
-        return check(expected, "--baseline", baseline, *extra)
+        return check(expected, "--baseline", baseline, *extra, covered=covered)
 
-    monkeypatch.setenv("ALPHALATTICE_REGISTRY_BASELINE", str(tmp_path / baseline))
-    write("config/package-architecture.json", architecture)
-    write("config/registries/owners-map.json", owners)
-    write(refusals, {"entries": {}})
-    write(operations, {"fields": {}, "purposes": {}, "commands": {}})
-    caches = "config/registries/cache_π.json"
-    debt = caches + "::entries:legacy"
-    cache_rows = {"entries": {"legacy": {}}}
-    write(caches, cache_rows)
-    write(legacy, "raise ValueError('census.legacy')\n")
-    write(existing, "def existing():\n    import json\n")
-    facts = {legacy: {"message-kinds|census.legacy": 1}, existing: {}}
-    allowed = {"message-kinds|census.legacy": legacy + ":1"}
-    declared = sorted(owners["nouns"])
-    initial = dict(
-        by_file=facts,
-        automatic_gaps=allowed,
-        registered_nouns=declared,
-        undescribed_registry_entries=[debt],
-        legacy_lazy_imports={import_key: 1},
-    )
-    write(baseline, initial)
-    commit("Registered fixture baseline with one declared gap")
-    retained({import_key: 1})
-    for invalid in (True, 0, -1, "1", None):
-        assert "import-hygiene" in retained({import_key: invalid}, 1, "--update")
-    invented = client + "/invented.py::invented::import json"
-    assert "stale-legacy-import" in retained({invented: 1}, 1, "--update")
-    retained({import_key: 1})
-    commit("Freeze the reviewed pre-existing lazy site")
-    assert "allowance grew" in retained({import_key: 2}, 1, "--update")
-    write(existing, "def existing():\n    import json  # lazy: optional fixture\n")
-    retained({}, 0, "--update")
-    commit("Retire the allowance after its reason is written")
-    assert "allowance grew" in retained({import_key: 1}, 1, "--update")
-    retained({})
-    check(0, "--baseline", baseline)
-    cache_rows["entries"]["new"] = {}
-    stage(caches, cache_rows)
-    assert "description" in check(1)
-    current = json.loads((tmp_path / baseline).read_text("utf-8"))
-    current["undescribed_registry_entries"].append(caches + "::entries:new")
-    stage(baseline, current)
-    assert "description" in check(1, "--update")
-    for invalid in (None, "", "   ", "Two sentences. More text.", "Two\nlines."):
-        cache_rows["entries"]["new"]["description"] = invalid
-        stage(caches, cache_rows)
-        assert "description" in check(1)
-    cache_rows["entries"]["new"]["description"] = "Cache fixture values until the input changes."
-    cache_rows["entries"]["legacy"]["description"] = "Retain the fixture lookup for its caller."
-    stage(caches, cache_rows)
-    check(0, "--update")
-    commit("Explain registry entries and retire description debt")
-    git("branch", "card")
-    git("checkout", "-qb", "develop")
-    cache_rows["entries"]["inherited"] = {}
-    write(caches, cache_rows)
-    commit("Develop owns rows missing from its recorded description debt")
-    git("checkout", "card")
-    write("README.md", "Independent card change\n")
-    commit("Card advances independently")
-    git("merge", "--no-ff", "--no-commit", "develop")
-    git("checkout", "HEAD", "--", baseline)
-    check(0, "--update")
-    git("checkout", "HEAD", "--", baseline)
-    commit("Merge develop keeping the card baseline for regeneration")
-    check(0, "--update")
-    cache_rows["entries"].pop("inherited")
-    cache_rows["entries"]["legacy"] = {}
-    stage(caches, cache_rows)
-    assert "description" in check(1)
-    cache_rows["entries"]["legacy"]["description"] = "Retain the fixture lookup for its caller."
-    stage(caches, cache_rows)
-    deferred = client + "/deferred.py"
-    stage(deferred, f"def load():\n    from {namespace} import legacy\n")
-    write(deferred, "pass\n")
-    assert "unlisted-function-import" in check(1, "--baseline", baseline)
-    stage()
-    check(0, "--baseline", baseline, "--update")
-    from devtools.architecture import registries as owner  # one pairing read per check
-
-    with monkeypatch.context() as scoped:
-        scoped.setattr(owner, "staged_moves", lambda root: pytest.fail("pairing read twice"))
-        owner.census_check(tmp_path, baseline=str(tmp_path / baseline), moves={})
     fresh = "alphalattice.investment.census_noun"
-    architecture["packages"].append(
-        {"package_id": "census_noun", "physical_namespace_target": fresh}
-    )
-    write("config/package-architecture.json", architecture)
     module = "src/alphalattice/investment/census_noun/branch_π.py"
     request = client + "/portfolio_research.py"
     sources = {
         module: "class CensusNoun: pass\ndef refuse(): raise ValueError('census.unregistered')\n",
         request: "type PortfolioResearchOperation = Literal['CENSUS_OPERATION']\n",
     }
-    for path, text in sources.items():
-        write(path, text)
-    stage()
-    for path in sources:
-        write(path, "")
-    owners["nouns"][fresh] = {
+    fresh_owner = {
         "owner": fresh,
         "defined_by": [],
         "folds_in": [],
         "description": "Own the fixture's newly registered contracts.",
     }
+    if scenario in {"move", "shrink"}:
+        architecture["packages"].append(
+            {"package_id": "census_noun", "physical_namespace_target": fresh}
+        )
+        owners["nouns"][fresh] = fresh_owner
     registrations = {
         "config/registries/owners-map.json": owners,
         refusals: refusal_registry("census.unregistered", fresh),
         operations: {"fields": {"CENSUS_OPERATION": {}}, "purposes": {}, "commands": {}},
     }
-    for path, value in registrations.items():
-        write(path, value)
-    output = check(1)
-    for dimension, name, target, form in (
-        ("nouns", "census_noun", "config/registries/owners-map.json", "nouns"),
-        ("operations", "CENSUS_OPERATION", "operations.json", "fields"),
-        ("message-kinds", "census.unregistered", refusals, "entries"),
-    ):
-        assert any(
-            all(part in line for part in (dimension, name, target, form))
-            and re.search(r"(?:src|config)/[^:\s]+\.(?:py|json):\d+", line)
-            for line in output.splitlines()
-        ), (dimension, name, output)
-    for path, text in sources.items():
-        write(path, text)
-    stage()
-    check(0, "--update")
-    stage()
-    write(refusals, {"entries": {}})
-    write(module, "raise ValueError('census.physical')\n")
-    check(0)
-    for path, text in sources.items():
-        write(path, text)
-    stage(refusals, registrations[refusals])
-    git("-c", "core.longpaths=true", "commit", "-qm", "Registered source facts")
-    # The identical staged tree must project alike at the branch and its base.
-    projected = (tmp_path / baseline).read_bytes()
-    staged_tree = git("write-tree")
-    stale = json.loads(projected)
-    stale["by_file"].pop(module)
-    write(baseline, stale)
-    commit("Older context omits a registered module's cached facts")
-    context_base = git("rev-parse", "HEAD")
-    (tmp_path / baseline).write_bytes(projected)
-    commit("Branch carries the registered module's cached facts")
-    check(0, "--update")
-    assert (tmp_path / baseline).read_bytes() == projected
-    git("config", "core.quotePath", "false")
-    git("checkout", "--detach", context_base)
-    git("read-tree", "-m", "-u", staged_tree)
-    assert git("write-tree") == staged_tree
-    check(0, "--update")
-    assert (tmp_path / baseline).read_bytes() == projected
-    git("checkout", "-")
-    words = "src/alphalattice/interface/local_application/refusal_words.json"
-    declared_refusals = registrations[refusals]
-    declared_refusals["legacy_unregistered_words"] = ["census.legacy_word"]
-    selectors = {
-        key: {"owner": fresh, "reason": "Word lookup only"}
-        for key in (
-            "census.selector",
-            "local_client.problem_report_ready",
-            "alternative_evidence.unit_failed",
+    monkeypatch.setenv("ALPHALATTICE_REGISTRY_BASELINE", str(tmp_path / baseline))
+    write("config/package-architecture.json", architecture)
+    write("config/registries/owners-map.json", owners)
+    write(refusals, registrations[refusals] if scenario in {"move", "shrink"} else {"entries": {}})
+    write(
+        operations,
+        registrations[operations]
+        if scenario in {"move", "shrink"}
+        else {"fields": {}, "purposes": {}, "commands": {}},
+    )
+    caches = "config/registries/cache_π.json"
+    debt = caches + "::entries:legacy"
+    cache_rows = {"entries": {"legacy": {}}}
+    if scenario not in {"growth", "import-debt"}:
+        cache_rows["entries"] = {
+            "legacy": {"description": "Retain the fixture lookup for its caller."},
+            "new": {"description": "Cache fixture values until the input changes."},
+        }
+    write(caches, cache_rows)
+    write(legacy, "raise ValueError('census.legacy')\n")
+    write(
+        existing,
+        "def existing():\n    import json\n"
+        if scenario == "import-debt"
+        else "def existing():\n    import json  # lazy: optional fixture\n",
+    )
+    if scenario != "import-debt":
+        write(hygiene_path, {**hygiene, "legacy_lazy_imports": {}})
+    facts = {legacy: {"message-kinds|census.legacy": 1}, existing: {}}
+    if scenario in {"unicode", "move", "shrink"}:
+        write(client + "/deferred.py", "pass\n")
+        facts[client + "/deferred.py"] = {}
+    if scenario in {"move", "shrink"}:
+        for path, source in sources.items():
+            write(path, source)
+        facts.update(
+            {
+                module: {"message-kinds|census.unregistered": 2},
+                request: {"operations|CENSUS_OPERATION": 1},
+            }
         )
-    }
-    declared_refusals["classification"]["word_selectors"] = selectors
+    allowed = {"message-kinds|census.legacy": legacy + ":1"}
+    declared = sorted(owners["nouns"])
+    initial = dict(
+        by_file=facts,
+        automatic_gaps=allowed,
+        registered_nouns=declared,
+        undescribed_registry_entries=[debt] if scenario in {"growth", "import-debt"} else [],
+        legacy_lazy_imports={import_key: 1} if scenario == "import-debt" else {},
+    )
+    write(baseline, initial)
+    commit("Seed independently reviewed " + scenario + " history")
+    from devtools.architecture import registries as owner  # one pairing read per check
 
-    def word_check(expected, document=declared_refusals, keys=()):
-        write(refusals, document)
-        stage(words, {key: {} for key in ["census.legacy_word", *keys]})
-        return check(expected)
+    if scenario == "import-debt":
+        retained({import_key: 1}, covered=True)
+        for invalid in (True, 0, -1, "1", None):
+            assert "import-hygiene" in retained({import_key: invalid}, 1, "--update")
+        invented = client + "/invented.py::invented::import json"
+        assert "stale-legacy-import" in retained({invented: 1}, 1, "--update")
+        retained({import_key: 1})
+        commit("Freeze the reviewed pre-existing lazy site")
+        assert "allowance grew" in retained({import_key: 2}, 1, "--update")
+        write(existing, "def existing():\n    import json  # lazy: optional fixture\n")
+        retained({}, 0, "--update")
+        commit("Retire the allowance after its reason is written")
+        assert "allowance grew" in retained({import_key: 1}, 1, "--update")
+        retained({})
+        check(0, "--baseline", baseline)
+    elif scenario == "growth":
+        cache_rows["entries"]["new"] = {}
+        stage(caches, cache_rows)
+        assert "description" in check(1)
+        current = json.loads((tmp_path / baseline).read_text("utf-8"))
+        current["undescribed_registry_entries"].append(caches + "::entries:new")
+        stage(baseline, current)
+        assert "description" in check(1, "--update")
+        for invalid in (None, "", "   ", "Two sentences. More text.", "Two\nlines."):
+            cache_rows["entries"]["new"]["description"] = invalid
+            stage(caches, cache_rows)
+            assert "description" in check(1)
+        cache_rows["entries"]["new"]["description"] = (
+            "Cache fixture values until the input changes."
+        )
+        cache_rows["entries"]["legacy"]["description"] = "Retain the fixture lookup for its caller."
+        stage(caches, cache_rows)
+        check(0, "--update")
+        commit("Explain registry entries and retire description debt")
+    elif scenario == "merge":
+        git("branch", "card")
+        git("checkout", "-qb", "develop")
+        cache_rows["entries"]["inherited"] = {}
+        write(caches, cache_rows)
+        commit("Develop owns rows missing from its recorded description debt")
+        git("checkout", "card")
+        write("README.md", "Independent card change\n")
+        commit("Card advances independently")
+        git("merge", "--no-ff", "--no-commit", "develop")
+        git("checkout", "HEAD", "--", baseline)
+        check(0, "--update")
+        git("checkout", "HEAD", "--", baseline)
+        commit("Merge develop keeping the card baseline for regeneration")
+        check(0, "--update")
+        cache_rows["entries"].pop("inherited")
+        cache_rows["entries"]["legacy"] = {}
+        stage(caches, cache_rows)
+        assert "description" in check(1)
+        cache_rows["entries"]["legacy"]["description"] = "Retain the fixture lookup for its caller."
+        stage(caches, cache_rows)
+    elif scenario == "bootstrap":
+        deferred = client + "/deferred.py"
+        stage(deferred, f"def load():\n    from {namespace} import legacy\n")
+        write(deferred, "pass\n")
+        assert "unlisted-function-import" in check(1, "--baseline", baseline)
+        stage()
+        check(0, "--baseline", baseline, "--update")
+        saved = (tmp_path / baseline).read_bytes()
+        with monkeypatch.context() as scoped:
+            scoped.setattr(
+                subprocess, "run", Mock(side_effect=subprocess.CalledProcessError(128, "git"))
+            )
+            with pytest.raises(subprocess.CalledProcessError):
+                owner.census_check(tmp_path, baseline=str(tmp_path / baseline), update=True)
+        assert (tmp_path / baseline).read_bytes() == saved  # failed reads never publish a baseline
+    elif scenario == "unicode":
+        architecture["packages"].append(
+            {"package_id": "census_noun", "physical_namespace_target": fresh}
+        )
+        write("config/package-architecture.json", architecture)
+        for path, text in sources.items():
+            write(path, text)
+        stage()
+        for path in sources:
+            write(path, "")
+        owners["nouns"][fresh] = fresh_owner
+        for path, value in registrations.items():
+            write(path, value)
+        output = check(1)
+        for dimension, name, target, form in (
+            ("nouns", "census_noun", "config/registries/owners-map.json", "nouns"),
+            ("operations", "CENSUS_OPERATION", "operations.json", "fields"),
+            ("message-kinds", "census.unregistered", refusals, "entries"),
+        ):
+            assert any(
+                all(part in line for part in (dimension, name, target, form))
+                and re.search(r"(?:src|config)/[^:\s]+\.(?:py|json):\d+", line)
+                for line in output.splitlines()
+            ), (dimension, name, output)
+        for path, text in sources.items():
+            write(path, text)
+        stage()
+        check(0, "--update")
+        stage()
+        write(refusals, {"entries": {}})
+        write(module, "raise ValueError('census.physical')\n")
+        check(0)
+        for path, text in sources.items():
+            write(path, text)
+        stage(refusals, registrations[refusals])
+        git("-c", "core.longpaths=true", "commit", "-qm", "Registered source facts")
+    elif scenario == "move":
+        with monkeypatch.context() as scoped:
+            scoped.setattr(owner, "staged_moves", lambda root: pytest.fail("pairing read twice"))
+            owner.census_check(tmp_path, baseline=str(tmp_path / baseline), moves={})
+        # The identical staged tree must project alike at the branch and its base.
+        projected = (tmp_path / baseline).read_bytes()
+        staged_tree = git("write-tree")
+        stale = json.loads(projected)
+        stale["by_file"].pop(module)
+        write(baseline, stale)
+        commit("Older context omits a registered module's cached facts")
+        context_base = git("rev-parse", "HEAD")
+        (tmp_path / baseline).write_bytes(projected)
+        commit("Branch carries the registered module's cached facts")
+        check(0, "--update")
+        assert (tmp_path / baseline).read_bytes() == projected
+        git("config", "core.quotePath", "false")
+        git("checkout", "--detach", context_base)
+        git("read-tree", "-m", "-u", staged_tree)
+        assert git("write-tree") == staged_tree
+        check(0, "--update")
+        assert (tmp_path / baseline).read_bytes() == projected
+        git("checkout", "-")
+        git("mv", module, module.replace("branch_", "moved_"))
+        check(0, "--update")
+    elif scenario == "shrink":
+        words = "src/alphalattice/interface/local_application/refusal_words.json"
+        declared_refusals = registrations[refusals]
+        declared_refusals["legacy_unregistered_words"] = ["census.legacy_word"]
+        selectors = {
+            key: {"owner": fresh, "reason": "Word lookup only"}
+            for key in (
+                "census.selector",
+                "local_client.problem_report_ready",
+                "alternative_evidence.unit_failed",
+            )
+        }
+        declared_refusals["classification"]["word_selectors"] = selectors
 
-    word_check(0, keys=selectors)
-    git("-c", "core.longpaths=true", "commit", "-qm", "Reviewed word declarations")
-    for key in ("local_client.problem_report_ready", "alternative_evidence.unit_failed"):
-        promoted = json.loads(json.dumps(declared_refusals))
-        promoted["classification"]["word_selectors"].pop(key)
-        promoted["entries"][key] = {"owner": fresh, "category": "INVALID_ARGUMENT"}
-        assert key in word_check(1, promoted, selectors)
-    assert "census.new_word" in word_check(1, keys=["census.new_word"])
-    for target, key in (
-        (declared_refusals, "legacy_unregistered_words"),
-        (declared_refusals["classification"], "word_selectors"),
-    ):
-        before = target[key]
-        if isinstance(before, list):
-            target[key] = [*before, "census.new_word"]
-        else:
-            target[key] = {**before, "census.new_word": selectors["census.selector"]}
+        def word_check(expected, document=declared_refusals, keys=()):
+            write(refusals, document)
+            stage(words, {key: {} for key in ["census.legacy_word", *keys]})
+            return check(expected)
+
+        word_check(0, keys=selectors)
+        git("-c", "core.longpaths=true", "commit", "-qm", "Reviewed word declarations")
+        for key in ("local_client.problem_report_ready", "alternative_evidence.unit_failed"):
+            promoted = json.loads(json.dumps(declared_refusals))
+            promoted["classification"]["word_selectors"].pop(key)
+            promoted["entries"][key] = {"owner": fresh, "category": "INVALID_ARGUMENT"}
+            assert key in word_check(1, promoted, selectors)
         assert "census.new_word" in word_check(1, keys=["census.new_word"])
-        target.pop(key)
-        assert "declaration" in word_check(1)
-        target[key] = before
-    registered = json.loads(json.dumps(declared_refusals))
-    registered["entries"]["census.new_word"] = {"owner": fresh, "category": "INVALID_ARGUMENT"}
-    word_check(0, registered, ["census.new_word"])
-    registered["entries"]["census.legacy_word"] = registered["entries"]["census.new_word"]
-    registered["legacy_unregistered_words"] = []
-    registered["classification"]["word_selectors"] = {}
-    word_check(0, registered)
-    word_check(0)
-    for value in ({}, {"category": "UNDECLARED_CATEGORY"}):
-        invalid = json.loads(json.dumps(registrations[refusals]))
-        invalid["entries"]["census.unregistered"] = {"owner": fresh, **value}
-        stage(refusals, invalid)
-        assert "refusals:" in check(1)
-    stage(refusals, registrations[refusals])
-    owners["nouns"].pop("census_registered_alias")
-    stage("config/registries/owners-map.json", owners)
-    assert "census_registered_alias" in check(1)
-    stage(refusals, {"entries": {}})
-    assert "census.unregistered" in check(1)
-    write(refusals, registrations[refusals])
-    stage(legacy, "raise ValueError('census.swap')\n")
-    assert "census.swap" in check(1)
-    stage(legacy, "")
-    assert baseline in check(1)
-    check(0, "--update")
-    stage()
-    check(0)
-    architecture["packages"].pop()
-    stage("config/package-architecture.json", architecture)
-    assert "packages[] with package_id and physical_namespace_target=" in check(1)
+        for target, key in (
+            (declared_refusals, "legacy_unregistered_words"),
+            (declared_refusals["classification"], "word_selectors"),
+        ):
+            before = target[key]
+            if isinstance(before, list):
+                target[key] = [*before, "census.new_word"]
+            else:
+                target[key] = {**before, "census.new_word": selectors["census.selector"]}
+            assert "census.new_word" in word_check(1, keys=["census.new_word"])
+            target.pop(key)
+            assert "declaration" in word_check(1)
+            target[key] = before
+        registered = json.loads(json.dumps(declared_refusals))
+        registered["entries"]["census.new_word"] = {"owner": fresh, "category": "INVALID_ARGUMENT"}
+        word_check(0, registered, ["census.new_word"])
+        registered["entries"]["census.legacy_word"] = registered["entries"]["census.new_word"]
+        registered["legacy_unregistered_words"] = []
+        registered["classification"]["word_selectors"] = {}
+        word_check(0, registered)
+        word_check(0)
+        for value in ({}, {"category": "UNDECLARED_CATEGORY"}):
+            invalid = json.loads(json.dumps(registrations[refusals]))
+            invalid["entries"]["census.unregistered"] = {"owner": fresh, **value}
+            stage(refusals, invalid)
+            assert "refusals:" in check(1)
+        stage(refusals, registrations[refusals])
+        owners["nouns"].pop("census_registered_alias")
+        stage("config/registries/owners-map.json", owners)
+        assert "census_registered_alias" in check(1)
+        stage(refusals, {"entries": {}})
+        assert "census.unregistered" in check(1)
+        write(refusals, registrations[refusals])
+        stage(legacy, "raise ValueError('census.swap')\n")
+        assert "census.swap" in check(1)
+        stage(legacy, "")
+        assert baseline in check(1)
+        check(0, "--update")
+        stage()
+        check(0)
+        architecture["packages"].pop()
+        stage("config/package-architecture.json", architecture)
+        assert "packages[] with package_id and physical_namespace_target=" in check(1)
+    print(json.dumps({"git_reads": reads}))
 
 
 def test_the_tests_ratchet_refuses_an_entry_its_base_did_not_hold() -> None:

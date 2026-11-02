@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from alphalattice.interface.local_application.message_catalog import english_message_ids
-from devtools.architecture.git_inputs import Moves, carried, read_blobs, staged_moves
+from devtools.architecture.git_inputs import CensusInputs, Moves, carried, staged_moves
 from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
     ImportHygiene,
@@ -1022,14 +1022,24 @@ def _catalog_read_contract(
     return names
 
 
-def _catalog_census(root: Path) -> tuple[list[str], dict[str, Any]]:
+_CENSUS_INPUT_PATHS = {
+    "config/registries/messages.json",
+    TARGETS["nouns"][0],
+    TARGETS["message-kinds"][0],
+    "src/alphalattice/interface/local_application/assets/workbench-source/js/data/zh.js",
+    "src/alphalattice/interface/local_application/refusal_words.json",
+}
+
+
+def _catalog_census(inputs: CensusInputs) -> tuple[list[str], dict[str, Any]]:
     catalog, owners = "config/registries/messages.json", "config/registries/owners-map.json"
     legacy = "src/alphalattice/interface/local_application/assets/workbench-source/js/data/zh.js"
-    blobs = read_blobs([":" + catalog, "HEAD:" + catalog, ":" + owners, "HEAD:" + owners], root)
-    out = message_problems(blobs[":" + catalog]) if ":" + catalog in blobs else []
-    if "HEAD:" + catalog in blobs and ":" + catalog not in blobs:
+    stage, blobs = inputs.stage, inputs.blobs
+    seed = [stage + catalog, "HEAD:" + catalog, stage + owners, "HEAD:" + owners]
+    out = message_problems(blobs[stage + catalog]) if stage + catalog in blobs else []
+    if "HEAD:" + catalog in blobs and stage + catalog not in blobs:
         out.append("messages: missing catalog; restore config/registries/messages.json")
-    row = json.loads(blobs.get(":" + owners, "{}")).get("nouns", {}).get("message catalog", {})
+    row = json.loads(blobs.get(stage + owners, "{}")).get("nouns", {}).get("message catalog", {})
     paths = dict.fromkeys([legacy, *row.get("gate_inputs", row.get("pending_consumers", []))])
     prior = (
         json.loads(blobs.get("HEAD:" + owners, "{}")).get("nouns", {}).get("message catalog", {})
@@ -1037,19 +1047,17 @@ def _catalog_census(root: Path) -> tuple[list[str], dict[str, Any]]:
     if not set(prior.get("gate_inputs", prior.get("pending_consumers", []))) <= paths.keys():
         out.append("messages: restore the registered catalog gate inputs")
     basis = "HEAD:"
-    pending = subprocess.run(
-        ["git", "rev-parse", "--verify", "MERGE_HEAD"], cwd=root, capture_output=True, text=True
-    )
-    if pending.returncode == 0 and pending.stdout.strip() == row.get("integration_base"):
-        basis = pending.stdout.strip() + ":"
-    blobs.update(read_blobs([prefix + p for p in paths for prefix in (":", basis)], root))
-    if (":" + legacy in blobs or "HEAD:" + legacy in blobs) and not row:
+    if inputs.pending and inputs.pending == row.get("integration_base"):
+        basis = inputs.pending + ":"
+    requested = [prefix + p for p in paths for prefix in (stage, basis)]
+    blobs = inputs.view([*seed, *requested])
+    if (stage + legacy in blobs or "HEAD:" + legacy in blobs) and not row:
         out.append("messages: missing message catalog owner; restore the owner registry")
     census, consumers = {}, {}
     for path in paths:
-        if ":" + path not in blobs and "HEAD:" + path not in blobs:
+        if stage + path not in blobs and "HEAD:" + path not in blobs:
             continue
-        before, after = blobs.get(basis + path, ""), blobs.get(":" + path, "")
+        before, after = blobs.get(basis + path, ""), blobs.get(stage + path, "")
         try:
             shape = row.get("gate_inputs", {}).get(path, {})
             previous = prior.get("gate_inputs", {}).get(path, {})
@@ -1086,11 +1094,12 @@ def _catalog_census(root: Path) -> tuple[list[str], dict[str, Any]]:
     return out, census | ({"legacy_catalog_consumers": consumers} if consumers else {})
 
 
-def _refusal_word_problems(root: Path, stage: str, document: Mapping[str, Any]) -> list[str]:
+def _refusal_word_problems(
+    stage: str, document: Mapping[str, Any], blobs: dict[str, str]
+) -> list[str]:
     """New refusal words require an entry; reviewed non-refusal allowances only shrink."""
     path = TARGETS["message-kinds"][0]
     words = "src/alphalattice/interface/local_application/refusal_words.json"
-    blobs = read_blobs(["HEAD:" + path, stage + words], root)
     previous = json.loads(blobs.get("HEAD:" + path, "{}"))
     legacy = set(document.get("legacy_unregistered_words", []))
     selectors = document.get("classification", {}).get("word_selectors", {})
@@ -1153,45 +1162,14 @@ def _has_description(row: Any) -> bool:
 
 
 def _description_census(
-    root: Path,
-    stage: str,
-    blobs: dict[str, str],
+    inputs: CensusInputs,
     data: dict[str, Any],
     base: dict[str, Any],
     moves: Moves | None,
 ) -> tuple[list[str], list[str]]:
     """Read staged declarations once and ratchet their remaining explanation debt."""
-    listing = subprocess.check_output(
-        ["git", "ls-tree", "-r", "-z", "--name-only", stage[:-1], "--", "config/registries"],
-        cwd=root,
-    ).decode()
-    excluded = {"refusals.json", "messages.json", "agent-surface.json", "identity-reach.json"}
-    paths = [p for p in listing.split("\0") if p.endswith(".json") and Path(p).name not in excluded]
-    dimension = "undescribed_registry_entries"
-    bootstrap = dimension not in base
-    basis = "HEAD:"
-    pending = subprocess.run(
-        ["git", "rev-parse", "--verify", "MERGE_HEAD"], cwd=root, capture_output=True, text=True
-    )
-    parents = subprocess.check_output(
-        ["git", "rev-list", "--parents", "-n", "1", "HEAD"], cwd=root, text=True
-    ).split()
-    if pending.returncode == 0 or len(parents) > 2:
-        ancestor = subprocess.run(
-            ["git", "merge-base", "develop", "HEAD", *pending.stdout.split()],
-            cwd=root,
-            capture_output=True,
-            text=True,
-        )
-        if ancestor.returncode == 0:
-            # Develop owns its existing rows, even if its recorded census is stale.
-            basis, bootstrap = ancestor.stdout.strip() + ":", True
-    inputs = [
-        prefix + path for path in paths for prefix in ([stage, basis] if bootstrap else [stage])
-    ]
-    blobs.update(read_blobs([key for key in inputs if key not in blobs], root))
+    root, stage, blobs, paths = inputs.root, inputs.stage, inputs.blobs, inputs.registries
     missing: set[str] = set()
-    previous: set[str] = set()
     for path in paths:
         if path not in data:
             data[path] = json.loads(blobs[stage + path])
@@ -1200,6 +1178,28 @@ def _description_census(
             for key, row in _description_rows(data[path]).items()
             if not _has_description(row)
         )
+    if missing <= set(base.get("undescribed_registry_entries", [])):
+        return [], sorted(missing)
+    dimension = "undescribed_registry_entries"
+    bootstrap = dimension not in base
+    basis = "HEAD:"
+    if inputs.pending or len(inputs.parents) > 2:
+        ancestor = subprocess.run(
+            ["git", "merge-base", "develop", "HEAD", *([inputs.pending] if inputs.pending else [])],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if ancestor.returncode == 0:
+            # Develop owns its existing rows, even if its recorded census is stale.
+            basis, bootstrap = ancestor.stdout.strip() + ":", True
+    requested = [
+        prefix + path for path in paths for prefix in ([stage, basis] if bootstrap else [stage])
+    ]
+    blobs = inputs.view(requested)
+    previous: set[str] = set()
+    for path in paths:
         if bootstrap:
             previous.update(
                 path + "::" + key
@@ -1215,43 +1215,52 @@ def _description_census(
     ], sorted(missing)
 
 
+def census_inputs(root: Path, baseline: str | None) -> CensusInputs:
+    """Acquire the one input snapshot shared by the gate and census readers."""
+    if baseline is not None:
+        anchor = Path(baseline)
+        baseline = (
+            anchor.relative_to(root.resolve()) if anchor.is_absolute() else anchor
+        ).as_posix()
+    legacy_path = "config/import-hygiene.json"
+    fixed = (
+        {
+            baseline,
+            legacy_path,
+            "config/package-architecture.json",
+            *(p for p, _ in TARGETS.values()),
+        }
+        if baseline
+        else set()
+    )
+    return CensusInputs(root, baseline, fixed, _CENSUS_INPUT_PATHS)
+
+
 def census_check(
-    root: Path, *, baseline: str | None = None, update: bool = False, moves: Moves | None = None
+    root: Path,
+    *,
+    baseline: str | None = None,
+    update: bool = False,
+    moves: Moves | None = None,
+    inputs: CensusInputs | None = None,
 ) -> list[str]:
     """Project staged source facts; committed baselines only cap admission."""
-    out, catalog = _catalog_census(root)
-    stage = subprocess.check_output(["git", "write-tree"], cwd=root, text=True).strip() + ":"
+    legacy_path = "config/import-hygiene.json"
+    inputs = inputs or census_inputs(root, baseline)
+    baseline, fixed = inputs.baseline, inputs.fixed
+    stage, paths, sources, blobs = inputs.stage, inputs.paths, inputs.sources, inputs.blobs
+    out, catalog = _catalog_census(inputs)
     refusal_key = stage + TARGETS["message-kinds"][0]
-    refusal_blob = read_blobs([refusal_key], root).get(refusal_key, '{"entries":{}}')
+    refusal_blob = blobs.get(refusal_key, '{"entries":{}}')
     try:
         refusal_document = json.loads(refusal_blob)
         refusal_entries(refusal_document)
-        out.extend(_refusal_word_problems(root, stage, refusal_document))
+        out.extend(_refusal_word_problems(stage, refusal_document, blobs))
     except ValueError as error:
         return [*out, str(error)]
     if baseline is None:
         print("registry ratchet not configured: set ALPHALATTICE_REGISTRY_BASELINE")
         return out
-    anchor = Path(baseline)
-    baseline = (anchor.relative_to(root.resolve()) if anchor.is_absolute() else anchor).as_posix()
-    command = ["git", "diff", "HEAD", stage[:-1], "--name-only", "--no-renames", "-z"]
-    paths = set(subprocess.check_output(command, cwd=root).decode().split("\0")) - {""}
-    source_listing = subprocess.check_output(
-        ["git", "ls-tree", "-r", "-z", "--name-only", stage[:-1], "--", "src"], cwd=root
-    ).decode()
-    sources = {path for path in source_listing.split("\0") if path.endswith(".py")}
-    legacy_path = "config/import-hygiene.json"
-    fixed = {baseline, legacy_path, "config/package-architecture.json"}
-    fixed.update(p for p, _ in TARGETS.values())
-    blobs = read_blobs(
-        [
-            "HEAD:" + baseline,
-            "HEAD:" + legacy_path,
-            *(stage + p for p in (paths | fixed | sources) - {TARGETS["message-kinds"][0]}),
-        ],
-        root,
-    )
-    blobs[refusal_key] = refusal_blob
     data = {p: json.loads(blobs[stage + p]) for p in fixed}
     base = json.loads(blobs.get("HEAD:" + baseline, blobs[stage + baseline]))
     try:
@@ -1264,14 +1273,12 @@ def census_check(
         for key, count in legacy.items()
         if count > prior.get(key, 0)
     )
-    if (
-        "HEAD:" + baseline not in blobs
-        and base["source_sha"]
-        != subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
-    ):
+    if "HEAD:" + baseline not in blobs and base["source_sha"] != inputs.objects["HEAD"]:
         return [f"registry-census: {baseline} must name the reviewed bootstrap source SHA."]
     facts: dict[str, Any] = {}
-    description_errors, undescribed = _description_census(root, stage, blobs, data, base, moves)
+    description_errors, undescribed = _description_census(
+        inputs, data, base, staged_moves(root, pairs=inputs.changes) if moves is None else moves
+    )
     out.extend(description_errors)
     for path in sorted(sources):
         facts[path] = _census_file_facts(path, blobs[stage + path])
@@ -1283,7 +1290,7 @@ def census_check(
             checked = {k.split("::", 1)[0] for k in legacy}
         elif not paths & {"config/package-architecture.json", legacy_path}:
             checked.intersection_update(paths)
-        blobs.update(read_blobs([prefix + p for p in checked if prefix + p not in blobs], root))
+        blobs = inputs.view(prefix + p for p in checked)
         sources = {
             p[4:-3].replace("/", "."): blobs[prefix + p] for p in checked if prefix + p in blobs
         }

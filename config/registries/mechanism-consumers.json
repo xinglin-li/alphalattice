@@ -4,6 +4,7 @@
     "legacy message key ratchet": {
       "owner": "alphalattice.interface.local_application",
       "mechanism": "src/devtools/architecture/registries.py::census_check",
+      "input_snapshot_owner": "src/devtools/architecture/registries.py::census_inputs",
       "consumers": [
         "scripts/check_playpen.py",
         "tests/structural/test_registries.py"

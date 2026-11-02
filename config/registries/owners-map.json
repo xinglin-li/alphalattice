@@ -553,7 +553,7 @@
       "folds_in": []
     },
     "architecture governance": {
-      "covers": "build-time architecture, package, source identity, operation, registry, evidence-binding and test-shape governance; checked census admission and its baseline; the four empty registration leaves are data, while runtime contracts stay canonical",
+      "covers": "build-time architecture, package, source identity, operation, registry, evidence-binding and test-shape governance; checked census admission and its baseline; the four empty registration leaves are data, while runtime contracts stay canonical; census Git inputs are shared once per invocation and revision",
       "owner": "devtools.architecture",
       "defined_by": [
         "devtools.architecture.registries",
