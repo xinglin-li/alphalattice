@@ -31,9 +31,11 @@ SKIPPED = "skipped"
 
 @dataclass(frozen=True)
 class Context:
-    """What an adapter may use: the checkout, the run's folder, its workers and its deadline."""
+    """What an adapter may use: the checkout and its merge base, the run's folder, its workers and
+    its deadline."""
 
     root: Path
+    base: str
     out: Path
     host: str
     workers: int
@@ -140,7 +142,8 @@ def run(
     configuration: dict[str, Any] = {"definition": PATH, "definition_sha256": definition.sha256}
     configuration |= {"rows": list(stage.rows), "providers": providers, "workers": workers}
     writer.write({"configuration": {}}, configuration | {"bound_seconds": stage.bound_minutes * 60})
-    context = Context(root, out, host, workers, started + stage.bound_minutes * 60, definition)
+    deadline = started + stage.bound_minutes * 60
+    context = Context(root, workspace["base"], out, host, workers, deadline, definition)
     try:  # an interrupted run leaves its receipt without finished, which counts as none
         statuses, red = _rows(writer, stage, providers, provides, context)
         writer.write({"metrics": {}}, {"wall_seconds": round(time.monotonic() - started, 3)})

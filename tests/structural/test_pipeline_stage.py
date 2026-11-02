@@ -18,7 +18,10 @@ rows = ["ok", "red", "local", "job"]
 [rows.local]\n{ROW}["workshop"]\nkind = "workshop"
 [rows.job]\n{ROW}["public"]\nkind = "ci-job"\njob = "w"
 """
-SHOP = 'PROVIDES = {"local": lambda row, at: ({"status": "PASS", "exit": 0, "seconds": 0}, None)}'
+SHOP = (  # the adapter records the merge base its context carries
+    'PROVIDES = {"local": lambda row, at: (at.out / "base").write_text(at.base)'
+    ' and ({"status": "PASS", "exit": 0, "seconds": 0}, None)}'
+)
 CASES = {  # host, plugin bodies, the providers or the refusal's code
     "public": ("public", [], {"ok": "product", "local": "skipped", "job": "ci.yml:w"}),
     "a workshop row with no plugin": ("workshop", [], "row_unprovided"),
@@ -54,6 +57,7 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         lines = (out / "receipt.jsonl").read_text("utf-8")
         assert all(f'"{row}": "{provider}"' in lines for row, provider in expected.items())
         assert receipt.verify(out / "receipt.jsonl", host=host)["sha256"] == summary["sha256"]
+        assert not bodies or (out / "base").read_text("utf-8") == summary["base"]  # the merge base
         stage.run(tmp_path, "commit", out=out, **asked)
     code = expected if isinstance(expected, str) else "out_used"
     assert refused.value.code == "pipeline." + code
