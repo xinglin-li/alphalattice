@@ -1,5 +1,11 @@
 {
 "entries": {
+"result_cache.request_invalid": {
+"owner": "devtools.pipeline",
+"category": "INVALID_ARGUMENT",
+"message_id": "result_cache.request_invalid",
+"classification_note": "The runner supplied malformed recording fields or a context that violates the declared fresh-temporary-directory and recording-options contract."
+},
 "test_layout.path_collision": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION"},
 "test_layout.path_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "test_layout.fixture_scope": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION"},

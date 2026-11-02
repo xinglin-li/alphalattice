@@ -88,7 +88,7 @@
       "seconds": 10
     },
     "pipeline.result_cache_refuses_undeclared_inputs": {
-      "description": "A recorder keeps only declared file, directory, probe and environment inputs, declining unobserved operations and direct native metadata reads without changing their outcomes.",
+      "description": "A recorder observes collection and execution inputs, storing only complete first-attempt passing results and declining opaque readers or bound native predicates without changing test outcomes.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5

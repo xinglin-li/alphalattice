@@ -4884,13 +4884,13 @@
     "result cache": {
       "description": "A result cache entry is a test group's passing result, reused only while every input its group was seen to read is unchanged.",
       "owner": "devtools.pipeline",
-      "covers": "the action key, the strict entry and its digest, the tree a lookup checks entries against, the verified read, the atomic write, the breaker, and eviction by idle time and byte cap; process-scoped observation of files, directory names, existence probes and environment values, declining opaque native metadata and undeclared inputs",
+      "covers": "the action key, the strict entry and its digest, the tree a lookup checks entries against, the verified read, the atomic write, the breaker, and eviction by idle time and byte cap; process-scoped observation of files, directory names, existence probes and environment values, declining opaque native metadata and undeclared inputs; opt-in pytest recording before conftests, strict run requests, first-attempt results and one finish-time module inventory; finish-time refusal of bound native path predicates and the pytest runner current-test environment lifecycle; exact-code pytest framework metadata probes confined to declared roots and their entailed directory ancestors",
       "defined_by": [
         "devtools.pipeline.cache",
         "devtools.pipeline.observe"
       ],
       "folds_in": [],
-      "note": "The recorder core exposes observed inputs to the pytest integration; stage wiring, lookup and recall remain separate consumers. No stage uses result reuse yet."
+      "note": "Consumers: the pytest plugin accepts --result-cache-record and writes its verdict through cache.Store; the recorder core supplies observed inputs. Runner wiring, lookup and recall remain separate consumers. No stage uses result reuse yet."
     },
     "test layout move": {
       "description": "A test layout move preserves whole-file bodies while reviewed placement decisions relocate tests and their inherited fixture bindings.",

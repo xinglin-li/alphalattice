@@ -410,6 +410,33 @@
         "en": "This group read native file metadata that the result cache does not track. Run it without reuse.",
         "zh-CN": "此测试组读取了结果缓存未跟踪的原生文件元数据。请直接运行，不复用结果。"
       }
+    },
+    "result_cache.native_reader": {
+      "owner": "devtools.pipeline",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This group loaded a native reader the result cache cannot observe. Run it without reuse.",
+        "zh-CN": "此测试组加载了结果缓存无法观察的原生读取器。请直接运行，不复用结果。"
+      }
+    },
+    "result_cache.not_passing": {
+      "owner": "devtools.pipeline",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This group is not a wholly passing first attempt. Run it without reuse.",
+        "zh-CN": "此测试组并非首次运行且全部通过。请直接运行，不复用结果。"
+      }
+    },
+    "result_cache.request_invalid": {
+      "owner": "devtools.pipeline",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The result recording request is invalid. Supply a valid request and a fresh base temporary directory.",
+        "zh-CN": "结果记录请求无效。请提供有效请求和全新的临时根目录。"
+      }
     }
   }
 }
