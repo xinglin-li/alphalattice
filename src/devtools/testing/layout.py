@@ -19,6 +19,7 @@ REGISTRIES = (
     "config/registries/test-sizes.json",
     "config/registries/test-private.json",
     "config/registries/tests-unregistered.json",
+    "config/agent-eval/host-facts.json",
 )
 DISCOVERY = "from tests._support.project_discovery import project_discovery as project_discovery\n"
 
@@ -63,7 +64,37 @@ def _rules(
     return sorted(mapped.values(), key=lambda row: positions[row[key]])
 
 
-def _registry_images(files: dict[str, str], moves: dict[str, str]) -> dict[str, list[str | None]]:
+def _host_fact_image(document: Any, modules: dict[str, str]) -> dict[str, Any]:
+    """Move declaration identities; observations, payloads and ordering stay intact."""
+    path = REGISTRIES[3]
+    if not isinstance(document, dict) or not isinstance(document.get("fakes"), list):
+        raise ValueError("test_layout.registry_invalid:" + path + "; restore fake declarations")
+    renamed = {a.removesuffix(".__init__"): b.removesuffix(".__init__") for a, b in modules.items()}
+    mapped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in document["fakes"]:
+        key = row.get("fake") if isinstance(row, dict) else None
+        if (
+            not isinstance(key, str)
+            or key.count(":") != 1
+            or not key.startswith("tests.")
+            or not all(key.partition(":")[::2])
+        ):
+            raise ValueError(
+                "test_layout.registry_invalid:" + path + "; use tests.module:symbol keys"
+            )
+        module, _, symbol = key.partition(":")
+        target = renamed.get(module, module) + ":" + symbol
+        if target in seen:
+            raise ValueError("test_layout.registry_collision:" + target)
+        seen.add(target)
+        mapped.append(row | {"fake": target})
+    return document | {"fakes": mapped}
+
+
+def _registry_images(
+    files: dict[str, str], moves: dict[str, str], modules: dict[str, str]
+) -> dict[str, list[str | None]]:
     """Carry size rules, private-use counts and legacy ownership in the same footprint."""
     images: dict[str, list[str | None]] = {}
     tests = [
@@ -75,8 +106,10 @@ def _registry_images(files: dict[str, str], moves: dict[str, str]) -> dict[str, 
         if path not in files:
             continue
         document = json.loads(files[path])
-        original = document.copy()
-        if path != REGISTRIES[0]:
+        original = document.copy() if isinstance(document, dict) else document
+        if path == REGISTRIES[3]:
+            document = _host_fact_image(document, modules)
+        elif path != REGISTRIES[0]:
             field = "entries" if path == REGISTRIES[1] else "files"
             mapped = {}
             for key, value in document[field].items():
@@ -130,7 +163,23 @@ def snapshot(root: Path, revision: str) -> tuple[str, dict[str, str]]:
         ["git", "rev-parse", "--verify", revision + "^{commit}"], cwd=root, text=True
     ).strip()
     raw = subprocess.check_output(
-        ["git", "archive", source, "src", "scripts", "tests", "config/registries"], cwd=root
+        [
+            "git",
+            "archive",
+            source,
+            "src",
+            "scripts",
+            "tests",
+            "config/registries",
+            *(
+                [REGISTRIES[3]]
+                if subprocess.check_output(
+                    ["git", "ls-tree", "--name-only", source, "--", REGISTRIES[3]], cwd=root
+                ).strip()
+                else []
+            ),
+        ],
+        cwd=root,
     )
     with tarfile.open(fileobj=io.BytesIO(raw)) as tree:
         files = {
@@ -343,7 +392,7 @@ def plan(
             if str(parent) not in {".", "tests"} and init not in files and init not in images:
                 put(init, "")
     _retire_bindings(files, moves, images, inherited)
-    images.update(_registry_images(files, moves))
+    images.update(_registry_images(files, moves, modules))
     return {
         "schema": "alphalattice.test-layout.v1",
         "source": source,

@@ -11,7 +11,7 @@ import pytest
 
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from devtools.architecture.moved_names import moved_name_problems, problems
-from devtools.testing.layout import apply, inverse, plan
+from devtools.testing.layout import apply, inverse, plan, snapshot
 
 LOCAL = "alphalattice.interface.local_application"
 HOST = "alphalattice.control.product_host.composition"
@@ -112,10 +112,20 @@ def test_a_staged_check_reads_the_index_not_an_unstaged_repair(synthetic_history
     for path, text in {
         "src/where.py": "def old(): ...\n",
         "tests/use.py": "from where import old\n",
+        "scripts/marker.py": "",
+        "config/registries/test-sizes.json": "{}",
+        ".gitattributes": "* text eol=lf\n",
     }.items():
-        (tmp_path / path).parent.mkdir(exist_ok=True)
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / path).write_text(text, encoding="utf-8", newline="\n")
     commit("Consumer")
+    fact_path = "config/agent-eval/host-facts.json"
+    assert fact_path not in snapshot(tmp_path, "HEAD")[1]
+    (tmp_path / fact_path).parent.mkdir(parents=True)
+    (tmp_path / fact_path).write_text('{"fakes": []}\n', encoding="utf-8", newline="\n")
+    commit("Optional facts")
+    captured = snapshot(tmp_path, "HEAD")[1]
+    assert fact_path in captured and captured[fact_path] == '{"fakes": []}\n'
     (tmp_path / "src/where.py").write_text("def new(): ...\n", encoding="utf-8", newline="\n")
     git("add", "src/where.py")
     (tmp_path / "tests/use.py").write_text(
@@ -186,6 +196,15 @@ def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
             {key: "tests/a/test_t.py::case*", "inputs": ["tests/a/test_t.py"]}
         ]
     files |= {f"config/registries/{n}": json.dumps(v) for n, v in catalogs.items()}
+    fact_path = "config/agent-eval/host-facts.json"
+    facts = {
+        "observations": [{"value": True}],
+        "fakes": [
+            {"fake": "tests.a.test_t:FakeRunner", "assumes": {"x": {"value": 1}}},
+            {"fake": "tests.b.test_t:FakeOwner", "assumes": {}},
+        ],
+    }
+    files[fact_path] = json.dumps(facts)
     for path, text in files.items():
         (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / path).write_bytes(text.encode("utf-8"))
@@ -193,6 +212,13 @@ def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
     move = plan("r", files, {"tests/a/test_t.py": choice})
     assert "project_discovery" not in move["files"]["tests/a/conftest.py"][1]
     apply(tmp_path, move)
+    assert json.loads((tmp_path / fact_path).read_text()) == {
+        **facts,
+        "fakes": [
+            {**facts["fakes"][0], "fake": "tests.unit.a.test_t:FakeRunner"},
+            facts["fakes"][1],
+        ],
+    }
     assert (tmp_path / "tests/unit/a/test_t.py").read_text() == body
     for name, values in catalogs.items():
         wanted = json.dumps(values).replace("tests/a/test_t.py", "tests/unit/a/test_t.py")
@@ -201,6 +227,20 @@ def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
         assert json.loads((tmp_path / f"config/registries/{name}").read_text()) == wanted
     apply(tmp_path, inverse(move))
     assert {p: (tmp_path / p).read_text() for p in files} == files
+    for bad, code in (
+        ({"fakes": [{"fake": "bad"}]}, "registry_invalid"),
+        (
+            {
+                "fakes": [
+                    {"fake": "tests.a.test_t:FakeRunner"},
+                    {"fake": "tests.unit.a.test_t:FakeRunner"},
+                ]
+            },
+            "registry_collision",
+        ),
+    ):
+        with pytest.raises(ValueError, match=code):
+            plan("r", files | {fact_path: json.dumps(bad)}, {"tests/a/test_t.py": choice})
     for stem in ("t", "other", "../escape"):
         with pytest.raises(ValueError, match=r"collision|fixture|path"):
             plan(

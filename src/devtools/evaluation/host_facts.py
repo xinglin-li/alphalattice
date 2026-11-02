@@ -8,11 +8,46 @@ source and host version; the newest observation of a fact confirms or contradict
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import ast
+import re
+from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
 _OBSERVATION = ("capability", "key", "value", "host_version", "observed_at", "source")
+_SEAMS = re.compile(
+    r'IsProcessInJob|PermissionError\("local_web\.detached_breakaway_denied"\)|claude\.cmd'
+    r'|setattr\([^,]+, *"(OwnedRunner|person_terminal|fresh_host|fresh_terminal_offer'
+    r'|NamedProcessOwner)"'
+)
+
+
+def discover_fakes(
+    sources: Mapping[str, str], trees: Mapping[str, ast.Module], declared: Collection[str] = ()
+) -> set[str]:
+    """Discover from every defining source; declarations only check for missing symbols."""
+    found: set[str] = set()
+    for path, text in sources.items():
+        hits = {text.count("\n", 0, hit.start()) + 1 for hit in _SEAMS.finditer(text)}
+        hits.update(
+            n.lineno
+            for n in ast.walk(trees[path])
+            if isinstance(n, ast.ClassDef) and re.fullmatch(r"Fake\w*(Runner|Owner)", n.name)
+        )
+        module = path.removesuffix(".py").removesuffix("/__init__").replace("/", ".")
+        found.update(
+            f"{module}:{node.name}"
+            for node in trees[path].body
+            if isinstance(node, ast.FunctionDef | ast.ClassDef)
+            and any(node.lineno <= line <= (node.end_lineno or node.lineno) for line in hits)
+        )
+    if missing := set(declared) - found:
+        raise ValueError(
+            "host_facts.fake_source_missing: "
+            + ", ".join(sorted(missing))
+            + "; restore defining tests or carry their declaration images"
+        )
+    return found
 
 
 def _when(row: Mapping[str, Any]) -> datetime:
