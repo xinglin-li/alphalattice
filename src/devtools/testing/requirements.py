@@ -106,29 +106,6 @@ def _proved(nodes: Iterable[ast.expr]) -> tuple[str, ...]:
     return tuple(found)
 
 
-def selection(value: object) -> tuple[str, ...]:
-    """Required cost checks name complete, relative test nodes, never options or outside paths."""
-    if not isinstance(value, (list, tuple)) or any(
-        not isinstance(n, str)
-        or "::" not in n
-        or not n.partition("::")[2]
-        or not n.partition("::")[0].startswith("tests/")
-        or not n.partition("::")[0].endswith(".py")
-        or ".." in Path(n.partition("::")[0]).parts
-        or any(c in n for c in "\n\r\x00\\")
-        for n in value
-    ):
-        raise ValueError("test_size.required_selection_invalid")
-    return tuple(dict.fromkeys(value))
-
-
-def node_matches(node: str, selector: str) -> bool:
-    """A full node or its parameter family; a selected parameter never admits siblings."""
-    return node == selector or (
-        "[" not in selector.split("::", 1)[-1] and node.startswith(selector + "[")
-    )
-
-
 def file_holders(relative: str, text: str) -> list[Holder]:
     """Each test function in one file, with the ids its function, class and module prove."""
     tree, found = ast.parse(text), []

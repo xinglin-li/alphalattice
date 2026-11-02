@@ -92,12 +92,6 @@
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5
-    },
-    "pipeline.cost_receipt_contains_required_nodes": {
-      "description": "A cost commit stage runs required named test families, including Large, and records their bounded outcomes without changing ordinary selection.",
-      "owner": "devtools.pipeline",
-      "layer": "integration",
-      "seconds": 15
     }
   }
 }

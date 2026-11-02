@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import contextlib
 import importlib.util
-import json
 import os
 import subprocess
 import sys
@@ -25,7 +24,6 @@ import psutil  # type: ignore[import-untyped]
 
 from devtools.pipeline.definition import PATH, Definition, DefinitionError, Row, Stage, load
 from devtools.pipeline.receipt import Writer, verify
-from devtools.testing.requirements import selection
 
 SKIPPED = "skipped"
 """The provider of a row this host does not run: registered for another host."""
@@ -44,7 +42,6 @@ class Context:
     deadline: float
     definition: Definition
     stage: str = ""
-    required_tests: tuple[str, ...] = ()
 
 
 Outcome = tuple[dict[str, Any], Path | None]
@@ -121,7 +118,6 @@ def run(
     workers: int,
     command: Sequence[str],
     paths: Sequence[Path] = (),
-    required_tests: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Run one stage into ``out`` and return its receipt's summary; ``out`` holds one run."""
     started, definition = time.monotonic(), load(root)
@@ -131,13 +127,7 @@ def run(
         raise DefinitionError(
             "pipeline.out_used", f"{out} already holds a run; give each stage run its own --out"
         )
-    try:
-        required = selection(required_tests)
-    except ValueError as error:
-        raise DefinitionError("pipeline.stage_invalid", str(error)) from None
-    workspace = _workspace(root, base, required)
-    if required and name != "commit":
-        raise DefinitionError("pipeline.stage_invalid", "required cost checks belong to commit")
+    workspace = _workspace(root, base)
     (out / "logs").mkdir(parents=True, exist_ok=True)
     steps = [{"step": {"row": row}} for row in stage.rows]
     children: list[dict[str, Any]] = [
@@ -155,9 +145,7 @@ def run(
     stop = stage.bound_minutes * 60
     writer.write({"configuration": {}}, configuration | {"bound_seconds": stop})
     deadline = started + stop
-    context = Context(
-        root, workspace["base"], out, host, workers, deadline, definition, name, required
-    )
+    context = Context(root, workspace["base"], out, host, workers, deadline, definition, name)
     try:  # an interrupted run leaves its receipt without finished, which counts as none
         statuses, red = _rows(writer, stage, providers, provides, context)
         elapsed = time.monotonic() - started
@@ -171,7 +159,7 @@ def run(
         )
     finally:
         writer.stream.close()
-    return verify(out / "receipt.jsonl", required_tests=required, within_limits=bool(required))
+    return verify(out / "receipt.jsonl")
 
 
 def _rows(
@@ -212,14 +200,6 @@ def _product(row: Row, context: Context) -> Outcome:
     events = context.out / f"{row.id}-events.jsonl"
     events.touch()
     argv = [sys.executable, "-m", "pytest", *row.public, "-n", str(context.workers)]
-    required = context.required_tests if row.id == "tests" else ()
-    argv += [
-        n
-        for n in required
-        if not any(
-            "::" not in p and Path(n.split("::", 1)[0]).is_relative_to(p) for p in row.public
-        )
-    ]
     argv += ["-m", "not real_evidence", "--basetemp", str(context.out / "basetemp")]
     for plugin in row.plugins:
         argv += ["-p", context.definition.rows[plugin].module]
@@ -227,7 +207,6 @@ def _product(row: Row, context: Context) -> Outcome:
     env = {
         "ALPHALATTICE_PIPELINE_EVENTS": str(events),
         "PYTHONPATH": source,
-        "ALPHALATTICE_PIPELINE_REQUIRED_TESTS": json.dumps(required),
     }
     return _call(argv, log, context, env), events
 
@@ -270,7 +249,7 @@ def _kill(pid: int) -> None:
                 process.kill()
 
 
-def _workspace(root: Path, base: str, required_tests: Sequence[str] = ()) -> dict[str, Any]:
+def _workspace(root: Path, base: str) -> dict[str, Any]:
     """The checkout's head, the merge base with ``base``, and whether its tree is clean."""
 
     def git(*words: str) -> str:
@@ -288,12 +267,6 @@ def _workspace(root: Path, base: str, required_tests: Sequence[str] = ()) -> dic
         return done.stdout.strip()
 
     head = git("rev-parse", "HEAD")
-    if required_tests and git(
-        "log", "-1", "--format=%(trailers:key=Change-Kind,valueonly)", head
-    ).split() != ["cost"]:
-        raise DefinitionError(
-            "pipeline.stage_invalid", "required named tests need Change-Kind: cost"
-        )
     merged = git("merge-base", git("rev-parse", "--verify", f"{base}^{{commit}}"), head)
     return {
         "repo": "product",

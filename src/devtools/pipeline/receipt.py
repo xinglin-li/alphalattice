@@ -35,7 +35,6 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 
 from devtools.pipeline.definition import DefinitionError
-from devtools.testing.requirements import node_matches
 
 if TYPE_CHECKING:
     import pytest
@@ -350,7 +349,11 @@ def _verify_tests(
     latest = {r.node: r for r in sorted(results, key=lambda r: r.attempt)}
     missing = set(required_tests)
     for node, result in latest.items():
-        matched = {n for n in required_tests if node_matches(node, n)}
+        matched = {
+            n
+            for n in required_tests
+            if node == n or ("[" not in n.split("::", 1)[-1] and node.startswith(n + "["))
+        }
         if required_tests and not matched:
             continue
         missing -= matched

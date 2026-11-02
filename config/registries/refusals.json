@@ -1,6 +1,5 @@
 {
 "entries": {
-"test_size.required_selection_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "message_id": "test_size.required_selection_invalid"},
 "result_cache.request_invalid": {
 "owner": "devtools.pipeline",
 "category": "INVALID_ARGUMENT",

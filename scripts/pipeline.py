@@ -54,9 +54,6 @@ def main(argv: list[str] | None = None) -> int:
     running.add_argument("--base", default="develop", help="the branch or commit it is based on")
     running.add_argument("--workers", type=int, default=max(1, min(4, (os.cpu_count() or 2) // 2)))
     running.add_argument("--plugin", type=Path, action="append", default=[], help="a host's rows")
-    running.add_argument(
-        "--required-tests", nargs="+", default=[], help="required cost-card nodes, Large included"
-    )
     checking = commands.add_parser("verify", help="a receipt's summary, refused unless complete")
     checking.add_argument("receipt", type=Path)
     for name in ("stage", "host", "head"):
@@ -82,7 +79,6 @@ def main(argv: list[str] | None = None) -> int:
                 workers=args.workers,
                 paths=args.plugin,
                 command=["scripts/pipeline.py", *(sys.argv[1:] if argv is None else argv)],
-                required_tests=args.required_tests,
             )
             print(json.dumps(summary, indent=2))
             return 0 if summary["result"] == "PASS" else 1

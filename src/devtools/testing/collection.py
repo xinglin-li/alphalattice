@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from collections import Counter
 from pathlib import Path
@@ -20,7 +19,6 @@ from devtools.testing.sizes import (
     stage_files,
 )
 
-REQUIRED = pytest.StashKey[tuple[tuple[str, ...], tuple[str, ...]]]()
 CHANGED = pytest.StashKey[frozenset[str] | None]()  # a scoped run's changed paths, read once
 FIND = 'register its requirement first (python scripts/tests_registry.py find "<words>")'
 
@@ -57,58 +55,6 @@ def gate(
         raise ValueError(f"requirements.unregistered:{', '.join(over)}: a new test; {FIND}")
 
 
-def _properties(
-    item: Any,
-    ids: list[str],
-    row: dict[str, Any],
-    declared: list[str],
-    classified: tuple[str, str, str, float],
-) -> None:
-    """Attach each owner's existing size, real bound and requirement metadata once."""
-    size, owner, declaration, seconds = classified
-    if not declared:
-        item.add_marker(size)
-    previous = item.get_closest_marker("timeout")
-    if previous:
-        limit = previous.args[0] if previous.args else previous.kwargs.get("timeout")
-        if isinstance(limit, (int, float)) and limit > 0:
-            seconds = min(seconds, limit)
-    item.add_marker(pytest.mark.timeout(seconds, func_only=False), append=False)
-    item.user_properties.extend(
-        [
-            ("test_size", size),
-            ("test_size_owner", owner),
-            ("test_size_declaration", declaration),
-            ("test_timeout_seconds", seconds),
-            ("requirements", ids),
-            ("requirement_layer", row.get("layer")),
-            ("requirement_owner", row.get("owner")),
-        ]
-    )
-
-
-def pytest_configure(config: Any) -> None:
-    """The producer's optional required nodes override only their own ordinary deselection."""
-    try:
-        required = requirements.selection(
-            json.loads(os.environ.get("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", "[]"))
-        )
-    except (ValueError, TypeError):
-        raise pytest.UsageError("test_size.required_selection_invalid") from None
-    deselect = tuple(config.option.deselect or ()) if required else ()
-    if required:
-        config.option.deselect = []
-    config.stash[REQUIRED] = required, deselect
-
-
-def _required_selection(config: Any, items: list[Any]) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Refuse missing required families; a skipped or absent family is never passing evidence."""
-    required, deselect = config.stash.get(REQUIRED, ((), ()))
-    if any(not any(requirements.node_matches(i.nodeid, n) for i in items) for n in required):
-        raise ValueError("test_size.required_selection_invalid")
-    return required, deselect
-
-
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
 
@@ -123,7 +69,6 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     marks: list[tuple[str, list[str], Path]] = []
     root = Path(__file__).resolve().parents[3]
     try:
-        required, deselect = _required_selection(config, items)
         policy, rows, counted = (
             load_policy(root),
             requirements.load(root),
@@ -135,31 +80,44 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
         files = {item.nodeid.split("::", 1)[0].replace("\\", "/") for item in items}
         permitted = set(stage_files(policy, stage, files, lane=lane))
         for item in items:
-            if (lane or required) and item.nodeid in seen:
+            if lane and item.nodeid in seen:
                 omitted.append(item)
                 continue
             seen.add(item.nodeid)
             ids, row, declared, (size, owner, declaration, seconds) = _proven(item, rows, policy)
             marks.append((item.nodeid, ids, Path(item.path)))
-            _properties(item, ids, row, declared, (size, owner, declaration, seconds))
+            if not declared:
+                item.add_marker(size)
+            previous = item.get_closest_marker("timeout")
+            if previous:
+                limit = previous.args[0] if previous.args else previous.kwargs.get("timeout")
+                if isinstance(limit, (int, float)) and limit > 0:
+                    seconds = min(seconds, limit)
+            item.add_marker(pytest.mark.timeout(seconds, func_only=False), append=False)
+            item.user_properties.extend(
+                [
+                    ("test_size", size),
+                    ("test_size_owner", owner),
+                    ("test_size_declaration", declaration),
+                    ("test_timeout_seconds", seconds),
+                    ("requirements", ids),
+                    ("requirement_layer", row.get("layer")),
+                    ("requirement_owner", row.get("owner")),
+                ]
+            )
             if scoped(item.nodeid, policy, changed):
                 item.add_marker("per_file")  # it reads only the changed files, through scanned()
                 if not python:
                     item.add_marker(empty)
-            forced = any(requirements.node_matches(item.nodeid, n) for n in required)
             (
                 kept
-                if forced
-                or (
-                    item.nodeid.split("::", 1)[0].replace("\\", "/") in permitted
-                    and included(item.nodeid, size, lane, policy, changed)
-                    and not item.nodeid.startswith(deselect)
-                )
+                if item.nodeid.split("::", 1)[0].replace("\\", "/") in permitted
+                and included(item.nodeid, size, lane, policy, changed)
                 else omitted
             ).append(item)
         gate(lane, marks, counted, root / "tests")
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error
-    if lane or required:
+    if lane:
         config.hook.pytest_deselected(items=omitted)
         items[:] = kept
