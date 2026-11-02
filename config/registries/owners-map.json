@@ -4884,7 +4884,7 @@
     "test layout move": {
       "description": "A test layout move preserves whole-file bodies while reviewed placement decisions relocate tests and their inherited fixture bindings.",
       "owner": "devtools.testing",
-      "covers": "revision-bound plans, checked file images, explicit pytest fixture providers, import wiring, inverse and collision refusals; coupled size, private-use and legacy registry images; universal root isolation and explicit layer cache bindings",
+      "covers": "revision-bound plans, checked file images, explicit pytest fixture providers, import wiring, inverse and collision refusals; coupled size, private-use and legacy registry images; universal root isolation and explicit layer cache bindings; collected per-file fixture closures distinguish unused session exports from consumed provider splits",
       "defined_by": [
         "devtools.testing.layout"
       ],

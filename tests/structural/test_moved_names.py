@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from inspect import signature
 from pathlib import Path
 
 import pytest
@@ -165,6 +166,25 @@ def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
             plan(
                 "r", files, {"tests/a/test_t.py": choice, "tests/b/test_t.py": [*choice[:2], stem]}
             )
+    paired = {"tests/a/test_t.py": choice, "tests/a/test_other.py": ["unit", "b", "other"]}
+    divided = files | {
+        "tests/a/test_other.py": body,
+        "tests/a/conftest.py": fixture.replace(
+            "@pytest.fixture", "@pytest.fixture(scope='session', name='zone_alias')"
+        ),
+    }
+    observed = "fixture_closures" in signature(plan).parameters
+    for used in (True, False):
+        closures = {path: ["zone_alias"] if used else [] for path in paired}
+        supplied = {"fixture_closures": closures} if observed else {}
+        try:
+            moved = plan("r", divided, paired, **supplied)
+        except ValueError as error:
+            assert used and "fixture_scope" in str(error)
+        else:
+            assert not used and moved["fixture_closures"] == closures
+    with pytest.raises(ValueError, match="fixture_scope"):
+        plan("r", divided, paired)
     collision = dict.fromkeys(("tests/a/test_t.py", "tests/unit/a/test_t.py"), 1)
     files["config/registries/test-private.json"] = json.dumps({"entries": collision})
     with pytest.raises(ValueError, match="registry_collision"):

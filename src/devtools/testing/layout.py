@@ -141,14 +141,10 @@ def snapshot(root: Path, revision: str) -> tuple[str, dict[str, str]]:
     return source, files
 
 
-def _fixtures(text: str) -> tuple[list[str], bool, bool]:
-    tree = ast.parse(text)
-    functions = [
-        n
-        for n in tree.body
-        if isinstance(n, ast.FunctionDef)
-        and any(ast.unparse(d).startswith("pytest.fixture") for d in n.decorator_list)
-    ]
+def _fixture_exports(
+    tree: ast.Module, functions: list[ast.FunctionDef | ast.AsyncFunctionDef]
+) -> list[str]:
+    """Keep Python export names distinct from pytest's optional fixture aliases."""
     exported = [n.name for n in functions]
     exported += [
         name
@@ -157,11 +153,65 @@ def _fixtures(text: str) -> tuple[list[str], bool, bool]:
         and any(isinstance(t, ast.Name) and t.id == "__all__" for t in n.targets)
         for name in ast.literal_eval(n.value)
     ]
+    return sorted(set(exported))
+
+
+def _fixtures(text: str, consumed: set[str] | None = None) -> tuple[list[str], bool, bool]:
+    tree = ast.parse(text)
+    functions = [
+        n
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+        and any(ast.unparse(d).startswith("pytest.fixture") for d in n.decorator_list)
+    ]
+    session: set[str] = set()
+    for n in functions:
+        for d in n.decorator_list:
+            if not (isinstance(d, ast.Call) and ast.unparse(d.func) == "pytest.fixture"):
+                continue
+            if any(k.arg is None for k in d.keywords):
+                raise ValueError("test_layout.fixture_scope:declaration")
+            keywords = {k.arg: k.value for k in d.keywords}
+            try:
+                scope = ast.literal_eval(keywords.get("scope", ast.Constant("function")))
+                name = ast.literal_eval(keywords.get("name", ast.Constant(n.name)))
+            except (ValueError, TypeError):
+                raise ValueError("test_layout.fixture_scope:declaration") from None
+            if (scope is not None and not isinstance(scope, str)) or (
+                name is not None and not isinstance(name, str)
+            ):
+                raise ValueError("test_layout.fixture_scope:declaration")
+            if scope == "session":
+                session.add(name or n.name)
     return (
-        sorted(set(exported)),
+        _fixture_exports(tree, functions),
         "autouse=True" in text,
-        bool(re.search(r"scope=[\"']session[\"']", text)),
+        bool(session if consumed is None else session.intersection(consumed)),
     )
+
+
+def _fixture_consumers(
+    closures: dict[str, list[str]] | None, contexts: dict[str, list[str]]
+) -> tuple[dict[str, list[str]] | None, dict[str, set[str]]]:
+    """Validate complete collected evidence and project it once to each inherited provider."""
+    if closures is None:
+        return None, {}
+    if (
+        not isinstance(closures, dict)
+        or set(closures) != set(contexts)
+        or any(
+            not isinstance(names, list)
+            or any(not isinstance(name, str) or not name for name in names)
+            for names in closures.values()
+        )
+    ):
+        raise ValueError("test_layout.fixture_scope:collected_closures")
+    observed = {p: sorted(set(names)) for p, names in closures.items()}
+    consumers: dict[str, set[str]] = {}
+    for path, names in observed.items():
+        for context in contexts[path]:
+            consumers.setdefault(context, set()).update(names)
+    return observed, consumers
 
 
 def _wire(text: str, package: str, modules: dict[str, str]) -> str:
@@ -182,7 +232,13 @@ def _wire(text: str, package: str, modules: dict[str, str]) -> str:
     return text
 
 
-def plan(source: str, files: dict[str, str], placements: dict[str, list[str]]) -> dict[str, Any]:
+def plan(
+    source: str,
+    files: dict[str, str],
+    placements: dict[str, list[str]],
+    *,
+    fixture_closures: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
     """Render whole-file images; collisions and incompatible fixture visibility refuse."""
     images: dict[str, list[str | None]] = {}
     moves: dict[str, str] = {}
@@ -219,6 +275,7 @@ def plan(source: str, files: dict[str, str], placements: dict[str, list[str]]) -
 
     for old, choice in placements.items():
         add_move(old, choice)
+    observed, consumers = _fixture_consumers(fixture_closures, contexts)
     modules = {p[:-3].replace("/", "."): q[:-3].replace("/", ".") for p, q in moves.items()}
     inherited = {
         c: {str(PurePosixPath(moves[p]).parent) for p in moves if c in contexts[p]}
@@ -230,7 +287,7 @@ def plan(source: str, files: dict[str, str], placements: dict[str, list[str]]) -
             return
         provider = "tests/_support/" + PurePosixPath(context).parent.name + "_fixtures.py"
         raw = files.get(provider, files[context])
-        names, autouse, session = _fixtures(raw)
+        names, autouse, session = _fixtures(raw, consumers.get(context))
         export = "".join(
             "from " + provider[:-3].replace("/", ".") + " import " + n + " as " + n + "\n"
             for n in names
@@ -290,6 +347,7 @@ def plan(source: str, files: dict[str, str], placements: dict[str, list[str]]) -
     return {
         "schema": "alphalattice.test-layout.v1",
         "source": source,
+        "fixture_closures": observed,
         "moves": moves,
         "modules": modules,
         "files": images,

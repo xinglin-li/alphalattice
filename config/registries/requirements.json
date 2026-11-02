@@ -64,7 +64,7 @@
       "seconds": 5
     },
     "testing.whole_file_relocation_restores_bytes": {
-      "description": "Whole-file test relocation restores bytes and registry ownership while refusing path, export, and fixture-name clashes.",
+      "description": "Whole-file test relocation restores bytes and registry ownership, preserves consumed fixture scope and refuses path, export and fixture-name clashes.",
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 6.248
