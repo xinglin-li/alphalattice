@@ -756,5 +756,8 @@
   "shrink_only_set": [
     "pattern"
   ],
-  "shrink_only_list": "large"
+  "shrink_only_list": "large",
+  "post_merge_only": [
+    "tests/portfolio_strategy_lab/test_cli_contract.py"
+  ]
 }

@@ -4823,7 +4823,7 @@
     "test execution size": {
       "description": "Test execution size assigns each test a registered size and declaring owner so collection can reject conflicts and select the requested test lane.",
       "owner": "devtools.testing",
-      "covers": "registered test size, declaring owner and collection-time conflicts",
+      "covers": "registered test size, declaring owner and collection-time conflicts; typed commit-only file deferral and per-stage file selection",
       "defined_by": [
         "devtools.testing.sizes"
       ],

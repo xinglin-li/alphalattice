@@ -22,6 +22,7 @@ rows = ["ok", "red", "local", "job"]
 """
 SHOP = (  # the adapter records the merge base its context carries
     'PROVIDES = {"local": lambda row, at: (at.out / "base").write_text(at.base)'
+    ' and ((at.out / "stage").write_text(getattr(at, "stage", "")) >= 0)'
     ' and ({"status": "PASS", "exit": 0, "seconds": 0}, None)}'
 )
 CASES = {  # host, plugin bodies, the providers or the refusal's code
@@ -62,6 +63,7 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         assert all(f'"{row}": "{provider}"' in lines for row, provider in wanted.items())
         assert receipt.verify(out / "receipt.jsonl", host=host)["sha256"] == summary["sha256"]
         assert not bodies or (out / "base").read_text("utf-8") == summary["base"]  # the merge base
+        assert not bodies or (out / "stage").read_text("utf-8") == "commit"
         stage.run(tmp_path, "commit", out=out, **asked)
     assert refused.value.code == "pipeline." + (wanted if isinstance(wanted, str) else "out_used")
     if case == "public":

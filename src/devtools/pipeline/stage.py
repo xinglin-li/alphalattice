@@ -41,6 +41,7 @@ class Context:
     workers: int
     deadline: float
     definition: Definition
+    stage: str = ""
 
 
 Outcome = tuple[dict[str, Any], Path | None]
@@ -144,7 +145,7 @@ def run(
     stop = stage.bound_minutes * 60
     writer.write({"configuration": {}}, configuration | {"bound_seconds": stop})
     deadline = started + stop
-    context = Context(root, workspace["base"], out, host, workers, deadline, definition)
+    context = Context(root, workspace["base"], out, host, workers, deadline, definition, name)
     try:  # an interrupted run leaves its receipt without finished, which counts as none
         statuses, red = _rows(writer, stage, providers, provides, context)
         elapsed = time.monotonic() - started
@@ -203,7 +204,10 @@ def _product(row: Row, context: Context) -> Outcome:
     for plugin in row.plugins:
         argv += ["-p", context.definition.rows[plugin].module]
     source = os.pathsep.join([str(context.root / "src"), os.environ.get("PYTHONPATH", "")])
-    env = {"ALPHALATTICE_PIPELINE_EVENTS": str(events), "PYTHONPATH": source}
+    env = {
+        "ALPHALATTICE_PIPELINE_EVENTS": str(events),
+        "PYTHONPATH": source,
+    }
     return _call(argv, log, context, env), events
 
 
@@ -215,7 +219,7 @@ def _call(argv: list[str], log: Path, context: Context, env: dict[str, str]) -> 
             process = subprocess.Popen(
                 argv,
                 cwd=context.root,
-                env={**os.environ, **env},
+                env={**os.environ, **env, "ALPHALATTICE_PIPELINE_STAGE": context.stage},
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT,

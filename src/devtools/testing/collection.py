@@ -10,7 +10,14 @@ from typing import Any
 import pytest
 
 from devtools.testing import requirements
-from devtools.testing.sizes import changed_paths, classify, included, load_policy, scoped
+from devtools.testing.sizes import (
+    changed_paths,
+    classify,
+    included,
+    load_policy,
+    scoped,
+    stage_files,
+)
 
 CHANGED = pytest.StashKey[frozenset[str] | None]()  # a scoped run's changed paths, read once
 FIND = 'register its requirement first (python scripts/tests_registry.py find "<words>")'
@@ -69,6 +76,9 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
         )
         if lane and lane not in policy["lanes"]:
             raise ValueError("test_size.lane_unknown")
+        stage = os.environ.get("ALPHALATTICE_PIPELINE_STAGE", "")
+        files = {item.nodeid.split("::", 1)[0].replace("\\", "/") for item in items}
+        permitted = set(stage_files(policy, stage, files, lane=lane))
         for item in items:
             if lane and item.nodeid in seen:
                 omitted.append(item)
@@ -99,7 +109,12 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
                 item.add_marker("per_file")  # it reads only the changed files, through scanned()
                 if not python:
                     item.add_marker(empty)
-            (kept if included(item.nodeid, size, lane, policy, changed) else omitted).append(item)
+            (
+                kept
+                if item.nodeid.split("::", 1)[0].replace("\\", "/") in permitted
+                and included(item.nodeid, size, lane, policy, changed)
+                else omitted
+            ).append(item)
         gate(lane, marks, counted, root / "tests")
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error

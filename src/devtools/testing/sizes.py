@@ -42,10 +42,31 @@ def validate_policy(value: Any) -> dict[str, Any]:
         not isinstance(value["mandatory"], list) or "tests/structural/*" not in value["mandatory"]
     ):
         raise ValueError("test_size.mandatory_missing")
+    _post_merge_only(value)
     _reach(value)
     _limits(value)
     _quarantine(value)
     return value
+
+
+def _post_merge_only(value: dict[str, Any]) -> None:
+    """Keep structural obligations mandatory and reject malformed stage deferrals."""
+    post = value.get("post_merge_only", [])
+    if (
+        not isinstance(post, list)
+        or any(
+            not isinstance(p, str)
+            or not p.startswith("tests/")
+            or p.startswith("tests/structural/")
+            or not p.endswith(".py")
+            or ".." in Path(p).parts
+            or "\\" in p
+            or any(c in p for c in "*?[")
+            for p in post
+        )
+        or len(set(post)) != len(post)
+    ):
+        raise ValueError("test_size.rule: post_merge_only needs distinct non-structural test files")
 
 
 def _reach(policy: dict[str, Any]) -> None:
@@ -197,3 +218,15 @@ def budget_problems(rows: list[tuple[str, int]], added: list[str], exception: st
     found = found if total > limit else []
     found += [f"{len(added)} new test functions exceed 3: {', '.join(added)}"] * (len(added) > 3)
     return [] if exception else found
+
+
+def stage_files(
+    policy: dict[str, Any], stage: str, paths: Iterable[str], *, lane: str = ""
+) -> list[str]:
+    """Defer these files only in commit; every other stage keeps them."""
+    post = (
+        frozenset(policy.get("post_merge_only", []))
+        if stage == "commit" and lane not in {"candidate", "nightly"}
+        else frozenset()
+    )
+    return [path for path in paths if path.replace("\\", "/").split("::", 1)[0] not in post]

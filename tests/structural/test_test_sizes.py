@@ -14,6 +14,8 @@ import pytest
     [(), ("small",), ("large",), ("medium", "medium"), ("small", "large"), ("registered",)]
     + [(name,) for name in ("timeout", "bad-reason", "bad-limit", "duplicate", "owner-large")]
     + [("strict",)]
+    + [("post_" + stage,) for stage in ("commit", "post-merge", "candidate", "nightly")]
+    + [("post-kind",), ("post-structural",), ("post-repeat",)]
     + [("lane_" + lane,) for lane in ("merge", "candidate", "nightly")],
 )
 def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared):
@@ -32,7 +34,18 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
         "duplicate": (policy, "large", large + large[:1], "large_duplicate"),
         "owner-large": (policy["defaults"][-1], "size", "large", "default_size"),
     }
+    faults |= {
+        "post-kind": (policy, "post_merge_only", "tests/x.py", "rule"),
+        "post-structural": (policy, "post_merge_only", ["tests/structural/test_x.py"], "rule"),
+        "post-repeat": (policy, "post_merge_only", ["tests/a.py", "tests/a.py"], "rule"),
+    }
     case = declared[0] if declared else ""
+    post_stage = case[5:] if case.startswith("post_") else ""
+    if post_stage:
+        lane = post_stage if post_stage in {"candidate", "nightly"} else "merge"
+        contract = "tests/portfolio_strategy_lab/test_cli_contract.py"
+        policy["mandatory"] = list(dict.fromkeys([*policy["mandatory"], contract + "*"]))
+        policy["post_merge_only"] = [contract]
     if case in faults:
         record, key, value, refusal = faults[case]
         record[key] = value
@@ -53,6 +66,9 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
         encoding="utf-8",
     )
     registered = declared == ("registered",)
+    if post_stage:
+        target = tmp_path / contract
+        target.parent.mkdir(parents=True, exist_ok=True)
     if lane:
         header = "import pytest\n"
         target.write_text(
@@ -97,6 +113,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
             ALPHALATTICE_NETWORK_DISABLED="1",
             PYTHONPATH=str(root / "src"),
             ALPHALATTICE_TEST_LANE=lane,
+            ALPHALATTICE_PIPELINE_STAGE=post_stage,
         ),
         capture_output=True,
         text=True,
@@ -123,6 +140,12 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
         assert rows
         if case == "strict":
             assert rows[0]["timeout_marker"] == 0.05
+            return
+        if post_stage:
+            expected = (
+                ["large"] if post_stage == "commit" else ["large", "large", "medium", "small"]
+            )
+            assert sorted(r["test_size"] for r in rows) == expected
             return
         if lane:
             expected = ["large", "medium", "small"] if lane == "merge" else ["large", "large"]

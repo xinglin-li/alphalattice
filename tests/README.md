@@ -253,3 +253,7 @@ audit shows its one-process result equals its per-file result and it imports no
 such framework; the allow-list is `_BATCH_SAFE_TEST_DIRS` in
 `scripts/check_alpha_verification_impact.py`, and the runner revokes an entry
 by itself the moment a process-global import appears in the package.
+
+Files declared in `post_merge_only` are deferred from the commit stage, while their
+mandatory standing keeps them whole post-merge, in candidates and nightly. Structural
+holders cannot be deferred by this field.
