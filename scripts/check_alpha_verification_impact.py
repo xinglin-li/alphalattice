@@ -552,6 +552,66 @@ def _subtree_tests(directory: str, root: Path | None = None) -> frozenset[str]:
     )
 
 
+def _depends(imports: frozenset[str], quoted: frozenset[str], directory: str, target: str) -> bool:
+    """A parsable case file depends on `target`: it imports it by dotted package name (or a
+    name below it), by bare stem from the same directory, or quotes its file name."""
+    dotted = _dotted_module(target)
+    local = {name.split(".")[0] for name in imports} | {name.rsplit(".", 1)[-1] for name in imports}
+    return (
+        any(name == dotted or name.startswith(f"{dotted}.") for name in imports)
+        or (target.rsplit("/", 1)[0] == directory and Path(target).stem in local)
+        or Path(target).name in quoted
+    )
+
+
+def _scan_dependents(
+    facts: dict[str, tuple[frozenset[str] | None, frozenset[str]]], target: str
+) -> set[str]:
+    """The case files that depend on `target`, by one pass of `_depends` (a target outside
+    the facts)."""
+    return {
+        key
+        for key, (imports, quoted) in facts.items()
+        if imports is not None and _depends(imports, quoted, key.rsplit("/", 1)[0], target)
+    }
+
+
+def _case_dependents(
+    facts: dict[str, tuple[frozenset[str] | None, frozenset[str]]],
+) -> dict[str, set[str]]:
+    """Per case file, the case files that depend on it by `_depends`'s three rules, built in one
+    pass: each import name's dotted prefixes, its same-directory stems and its quoted file names
+    are looked up rather than every file being tested against every impacted file per round
+    (COMMIT-STAGE-SLOW-NEXT: that rescan was about 3 s of every product selection)."""
+    by_dotted: dict[str, set[str]] = {}
+    by_stem: dict[tuple[str, str], set[str]] = {}
+    by_name: dict[str, set[str]] = {}
+    for target in facts:
+        by_dotted.setdefault(_dotted_module(target), set()).add(target)
+        by_stem.setdefault((target.rsplit("/", 1)[0], Path(target).stem), set()).add(target)
+        by_name.setdefault(Path(target).name, set()).add(target)
+    dependents: dict[str, set[str]] = {target: set() for target in facts}
+    for key, (imports, quoted) in facts.items():
+        if imports is None:
+            continue
+        directory = key.rsplit("/", 1)[0]
+        local = {name.split(".")[0] for name in imports} | {
+            name.rsplit(".", 1)[-1] for name in imports
+        }
+        targets: set[str] = set()
+        for name in imports:
+            parts = name.split(".")
+            for end in range(1, len(parts) + 1):
+                targets |= by_dotted.get(".".join(parts[:end]), set())
+        for stem in local:
+            targets |= by_stem.get((directory, stem), set())
+        for value in quoted:
+            targets |= by_name.get(value, set())
+        for target in targets:
+            dependents[target].add(key)
+    return dependents
+
+
 def _tests_depending_on(seeds: frozenset[str], root: Path | None = None) -> tuple[str, ...]:
     """Every test that reaches a seed file, transitively through case files.
 
@@ -567,41 +627,26 @@ def _tests_depending_on(seeds: frozenset[str], root: Path | None = None) -> tupl
     unparsable_directories = {
         key.rsplit("/", 1)[0] for key, (imports, _quoted) in facts.items() if imports is None
     }
-    impacted = set(seeds)
+    dependents = _case_dependents(facts)
+    impacted, frontier = set(seeds), set(seeds)
+    while frontier:  # the closure of `dependents`, from one index, not a rescan per round
+        frontier = {
+            key
+            for target in frontier
+            for key in (dependents[target] if target in facts else _scan_dependents(facts, target))
+            if key not in impacted
+        }
+        impacted |= frontier
     selected: set[str] = set()
-    while True:
-        grown = set(impacted)
-        for key in impacted:
-            directory = key.rsplit("/", 1)[0]
-            if Path(key).name in {"conftest.py", "__init__.py"}:
-                selected |= _subtree_tests(directory, root)
-            imports, _quoted = facts.get(key, (frozenset(), frozenset()))
-            if imports is None or directory in unparsable_directories:
-                # An unreadable file beside an impacted one is an unknown
-                # dependency set; no test in that directory can be shown safe.
-                selected |= _subtree_tests(directory, root)
-        for key, (imports, quoted) in facts.items():
-            if key in grown:
-                continue
-            if imports is None:
-                continue
-            directory = key.rsplit("/", 1)[0]
-            local = {name.split(".")[0] for name in imports} | {
-                name.rsplit(".", 1)[-1] for name in imports
-            }
-            for target in impacted:
-                dotted = _dotted_module(target)
-                same_directory = target.rsplit("/", 1)[0] == directory
-                if (
-                    any(name == dotted or name.startswith(f"{dotted}.") for name in imports)
-                    or (same_directory and Path(target).stem in local)
-                    or Path(target).name in quoted
-                ):
-                    grown.add(key)
-                    break
-        if grown == impacted:
-            break
-        impacted = grown
+    for key in impacted:
+        directory = key.rsplit("/", 1)[0]
+        if Path(key).name in {"conftest.py", "__init__.py"}:
+            selected |= _subtree_tests(directory, root)
+        imports, _quoted = facts.get(key, (frozenset(), frozenset()))
+        if imports is None or directory in unparsable_directories:
+            # An unreadable file beside an impacted one is an unknown
+            # dependency set; no test in that directory can be shown safe.
+            selected |= _subtree_tests(directory, root)
     selected |= {
         key for key in impacted if key.startswith("tests/") and Path(key).name.startswith("test_")
     }
