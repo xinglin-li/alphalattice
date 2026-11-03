@@ -42,8 +42,8 @@ FIND = 'register its requirement first (python scripts/tests_registry.py find "<
 def _proven(
     item: Any, rows: dict[str, dict[str, Any]], policy: dict[str, Any]
 ) -> tuple[list[str], dict[str, Any], list[str], tuple[str, str, str, float]]:
-    """The ids a test proves, its first requirement, its size markers and its classification, the
-    requirement's layer giving its size; an unknown or retired id refuses."""
+    """The ids a test proves, its first requirement, its size markers and its classification.
+    A node-specific size wins over the layer default; an unknown or retired id refuses."""
     ids = [str(arg) for mark in item.iter_markers("proves") for arg in mark.args]
     known = [rows[key] for key in ids if key in rows and not rows[key].get("retired")]
     if len(known) != len(ids):
@@ -55,9 +55,10 @@ def _proven(
     if primary:
         row = row | {"layer": primary}
     declared = [m.name for m in item.iter_markers() if m.name in policy["sizes"]]
+    explicit = _rule(item.nodeid, policy["defaults"])
     layer = (
         []
-        if row.get("layer") == "integration" and _rule(item.nodeid, policy["large"])
+        if _rule(item.nodeid, policy["large"]) or (explicit and "::" in explicit["pattern"])
         else [requirements.SIZES[row["layer"]]]
         if row
         else []

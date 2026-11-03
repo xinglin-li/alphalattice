@@ -645,7 +645,11 @@ def _memory_checks_read_no_host():
     + [("lane_" + lane,) for lane in ("merge", "candidate", "nightly")]
     + [("framework-" + case,) for case in ("entry", "reason", "pattern", "module")]
     + [("backend-" + case,) for case in ("empty", "kind", "type", "reason", "duplicate")]
-    + [pytest.param(("sibling-race",), id="sibling-race")],
+    + [pytest.param(("sibling-race",), id="sibling-race")]
+    + [
+        pytest.param(("axis-" + case,), id="axis-" + case)
+        for case in ("measured", "fallback", "large")
+    ],
 )
 @pytest.mark.proves("testing.layer_contract")
 def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypatch, declared):
@@ -655,6 +659,43 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             "ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(["tests/outer.py::test_outer"])
         )
     root = Path(__file__).resolve().parents[2]
+    if declared and declared[0].startswith("axis-"):
+        from types import SimpleNamespace
+
+        from devtools.testing import collection
+        from devtools.testing.sizes import load_policy
+
+        node = "tests/workspace_readiness/test_workspace_preparation.py::test_measured"
+        policy = load_policy(root)
+        case = declared[0][5:]
+        if case == "measured":
+            policy["defaults"].append(
+                {"pattern": node, "owner": "tests.workspace_readiness", "size": "small"}
+            )
+        if case == "large":
+            policy["large"].append(
+                {
+                    "pattern": node,
+                    "owner": "tests.workspace_readiness",
+                    "reason": "Exercises a prepared workspace.",
+                }
+            )
+
+        class Item:
+            nodeid = node
+
+            def iter_markers(self, name=None):
+                marks = [SimpleNamespace(name="proves", args=("example.integration",))]
+                return iter(m for m in marks if name is None or m.name == name)
+
+        rows = {"example.integration": {"layer": "integration"}}
+        ids, row, _, (size, owner, _, _) = collection._proven(Item(), rows, policy)
+        assert ids == ["example.integration"] and row["layer"] == "integration"
+        assert (size, owner) == (
+            {"measured": "small", "fallback": "medium", "large": "large"}[case],
+            "tests.workspace_readiness",
+        )
+        return
     if declared and declared[0].startswith("cost-"):
         from devtools.testing import sizes
 
