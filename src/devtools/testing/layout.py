@@ -1,10 +1,11 @@
-"""One-time mover: retire with old selectors unless a current caller remains; saved maps stay."""
+"""Test placement map and whole-file mover; added files use the same path owner."""
 
 from __future__ import annotations
 
 import ast
 import io
 import json
+import keyword
 import ntpath
 import re
 import subprocess
@@ -18,7 +19,7 @@ from .layout_references import declarations as reference_declarations
 from .layout_references import images as reference_images
 from .layout_references import provenance as reference_provenance
 from .layout_references import source_paths as reference_source_paths
-from .requirements import FACTS_SCHEMA, LAYERS, LEGACY_SCHEMA, schema_file
+from .requirements import FACTS_SCHEMA, LAYERS, LEGACY_SCHEMA, file_holders, schema_file
 
 REGISTRIES = ("config/registries/test-sizes.json", "config/registries/test-private.json")  # public
 
@@ -34,6 +35,128 @@ def registries(files: Mapping[str, str]) -> dict[str, str]:
 
 
 DISCOVERY = "from tests._support.project_discovery import project_discovery as project_discovery\n"
+
+
+def _target(layer: str, domain: str, stem: str, scope: Sequence[str]) -> str:
+    """The shared layout map for both existing moves and newly added tests."""
+    return "/".join(["tests", layer, domain, *scope, "test_" + stem + ".py"])
+
+
+def _declarations(tree: ast.Module, name: str) -> list[Any]:
+    direct = [
+        node.value
+        for node in tree.body
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        and any(
+            isinstance(target, ast.Name) and target.id == name
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        )
+    ]
+    writes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name)
+        and node.id == name
+        and isinstance(node.ctx, (ast.Store, ast.Del))
+    ]
+    return direct if len(writes) == len(direct) else [*direct, None]
+
+
+def _source_module(source: str, sources: Iterable[str]) -> None:
+    parts = PurePosixPath(source).parts
+    module = [*parts[1:-1], PurePosixPath(source).stem]
+    if (
+        not source.startswith(("src/", "scripts/"))
+        or "\\" in source
+        or PurePosixPath(source).as_posix() != source
+        or any(not part.isidentifier() or keyword.iskeyword(part) for part in module)
+        or not source.endswith(".py")
+        or source not in sources
+    ):
+        raise ValueError(
+            f"source {source!r} is not a staged source module; "
+            "declare one existing src/*.py or scripts/*.py module"
+        )
+
+
+def _placement_owner(
+    path: str, text: str, rows: Mapping[str, Mapping[str, Any]]
+) -> tuple[str, str]:
+    holders = file_holders(path, text)
+    ids = {key for holder in holders for key in holder.ids}
+    if (
+        not holders
+        or not ids
+        or any(not holder.ids for holder in holders)
+        or any(key not in rows or rows[key].get("retired") for key in ids)
+    ):
+        raise ValueError(
+            "register the tests' requirement owner and layer and mark each test with proves"
+        )
+    choices = {(rows[key].get("owner"), rows[key].get("layer")) for key in ids}
+    if len(choices) != 1:
+        raise ValueError(
+            "tests have mixed owners or layers; split the file by registered owner and layer"
+        )
+    owner, layer = next(iter(choices))
+    if (
+        not isinstance(owner, str)
+        or not isinstance(layer, str)
+        or layer not in LAYERS
+        or not all(part.isidentifier() and not keyword.iskeyword(part) for part in owner.split("."))
+    ):
+        raise ValueError("invalid registered owner or layer; repair the requirement row")
+    return owner, layer
+
+
+def new_test_file_problems(
+    path: str, text: str, rows: Mapping[str, Mapping[str, Any]], sources: Iterable[str]
+) -> list[str]:
+    """Apply the layout map to a newly added file using its single declared source."""
+    try:
+        tree = ast.parse(text)
+        if path.startswith("tests/structural/"):
+            declared_scope = _declarations(tree, "TEST_SCOPE")
+            if (
+                len(declared_scope) != 1
+                or not isinstance(declared_scope[0], ast.Constant)
+                or declared_scope[0].value != "whole-tree"
+            ):
+                raise ValueError("declare TEST_SCOPE = 'whole-tree' for this structural file")
+            return []
+        stated = _declarations(tree, "TEST_SOURCE")
+        if (
+            len(stated) != 1
+            or not isinstance(stated[0], ast.Constant)
+            or not isinstance(stated[0].value, str)
+        ):
+            raise ValueError(
+                "declare exactly one literal TEST_SOURCE as a src/ or scripts/ Python path"
+            )
+        source = stated[0].value
+        _source_module(source, sources)
+        owner, layer = _placement_owner(path, text, rows)
+        prefix = "src/" + owner.replace(".", "/")
+        if source.startswith("scripts/"):
+            relative = PurePosixPath(source.removeprefix("scripts/"))
+        else:
+            if not source.startswith(prefix + "/"):
+                raise ValueError(
+                    f"source {source} is outside owner {owner}; "
+                    "declare its owned source or correct the requirement owner"
+                )
+            relative = PurePosixPath(source[len(prefix) + 1 :])
+        if relative.name == "__init__.py":
+            stem = relative.parts[-2] if len(relative.parts) > 1 else owner.rsplit(".", 1)[-1]
+            scope = relative.parts[:-2]
+        else:
+            stem, scope = relative.stem, relative.parts[:-1]
+        target = _target(layer, owner.rsplit(".", 1)[-1], stem, scope)
+        if path != target:
+            raise ValueError(f"new test file is outside its source owner; move it to {target}")
+    except (SyntaxError, UnicodeError, ValueError) as error:
+        return [f"TEST-LAYOUT {path}: {error}; repair the declaration or move the file"]
+    return []
 
 
 def rule_patterns(pattern: str, files: Iterable[str], moves: dict[str, str]) -> list[str]:

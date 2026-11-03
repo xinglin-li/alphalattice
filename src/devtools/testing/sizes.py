@@ -327,6 +327,27 @@ def tmp_footprint(root: Path) -> int:
         ) from error
 
 
+def tmp_entry_footprint(path: Path) -> int:
+    """Measure one new base entry without following a link into shared data."""
+    try:
+        info = path.lstat()
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(
+            stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0
+        ):
+            return 0
+        if stat.S_ISREG(info.st_mode):
+            return info.st_size
+        if stat.S_ISDIR(info.st_mode):
+            return tmp_footprint(path)
+        raise ValueError("unsupported temporary entry")
+    except FileNotFoundError:
+        return 0
+    except (OSError, ValueError) as error:
+        raise ValueError(
+            f"test_size.footprint_unmeasured: {path}: {error}; restore the temporary tree"
+        ) from error
+
+
 def admission_limit(
     node: str, size: str, seconds: float, footprint: int, policy: dict[str, Any]
 ) -> None:

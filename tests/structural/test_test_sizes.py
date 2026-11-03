@@ -55,6 +55,53 @@ import pytest
             id="size-live-over",
         ),
         pytest.param(
+            "size-live-factory",
+            "unit",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "(tmp_path_factory.mktemp('large') / 'payload').write_bytes(b'x' * 10_000_001)",
+            True,
+            id="size-live-factory",
+        ),
+        pytest.param(
+            "size-live-factory-base",
+            "unit",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "(tmp_path_factory.getbasetemp() / 'payload').write_bytes(b'x' * 10_000_001)",
+            True,
+            id="size-live-factory-base",
+        ),
+        pytest.param(
+            "size-live-factory-mixed",
+            "unit",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "(tmp_path / 'first').write_bytes(b'x' * 5_000_000); "
+            "(tmp_path_factory.mktemp('more') / 'second').write_bytes(b'x' * 5_000_001)",
+            True,
+            id="size-live-factory-mixed",
+        ),
+        pytest.param(
+            "size-live-factory-under",
+            "unit",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "(tmp_path / 'first').write_bytes(b'x' * 6_000_000); "
+            "(tmp_path_factory.mktemp('more') / 'second').write_bytes(b'x' * 2_000_000)",
+            False,
+            id="size-live-factory-under",
+        ),
+        pytest.param(
+            "size-live-factory-teardown",
+            "unit",
+            """import pytest
+pytestmark = pytest.mark.small
+@pytest.fixture
+"""
+            "def tail(tmp_path_factory):\n    yield\n"
+            "    (tmp_path_factory.mktemp('tail') / 'data').write_bytes(b'x' * 10_000_001)\n",
+            "assert True",
+            True,
+            id="size-live-factory-teardown",
+        ),
+        pytest.param(
             "size-live-xdist",
             "unit",
             "import pytest\npytestmark = pytest.mark.small\n",
@@ -383,6 +430,11 @@ assert calls == ['test.contract.failure']
         "process",
         "network",
         "size-live-over",
+        "size-live-factory",
+        "size-live-factory-base",
+        "size-live-factory-mixed",
+        "size-live-factory-under",
+        "size-live-factory-teardown",
         "size-live-xdist",
         "size-live-under",
         "size-live-time-under",
@@ -560,6 +612,12 @@ def _memory_checks_read_no_host():
         + (
             "def test_sample(tmp_path, subtests):\n"
             if case == "own-subtests"
+            else "def test_sample(tmp_path_factory):\n"
+            if case in {"size-live-factory", "size-live-factory-base"}
+            else "def test_sample(tmp_path, tmp_path_factory):\n"
+            if case in {"size-live-factory-mixed", "size-live-factory-under"}
+            else "def test_sample(tail):\n"
+            if case == "size-live-factory-teardown"
             else "def test_sample(tmp_path):\n"
         )
         + textwrap.indent(textwrap.dedent(body).strip(), "    ")
@@ -804,7 +862,16 @@ def _memory_checks_read_no_host():
     if refused:
         expected = (
             "test_size.admission_limit"
-            if case in {"size-live-over", "size-live-xdist", "size-live-time-over"}
+            if case
+            in {
+                "size-live-over",
+                "size-live-factory",
+                "size-live-factory-base",
+                "size-live-factory-mixed",
+                "size-live-factory-teardown",
+                "size-live-xdist",
+                "size-live-time-over",
+            }
             else "test_size.admission_unmeasured"
             if case == "size-live-skip"
             else "Timeout"
@@ -812,12 +879,20 @@ def _memory_checks_read_no_host():
             else "testing.layer_contract"
         )
         assert result.returncode == 1 and expected in output, output
-        if case in {"size-live-over", "size-live-xdist"}:
+        if case in {
+            "size-live-over",
+            "size-live-factory",
+            "size-live-factory-base",
+            "size-live-factory-mixed",
+            "size-live-factory-teardown",
+            "size-live-xdist",
+        }:
             assert "10000001" in output and "medium" in output
     else:
         assert result.returncode == 0, output
     if case in {
         "size-live-over",
+        "size-live-factory",
         "size-live-under",
         "size-live-legacy",
         "size-live-xdist",

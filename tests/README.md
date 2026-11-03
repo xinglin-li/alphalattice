@@ -5,6 +5,26 @@ Use it over a skill's generic test-writing advice.
 Keep maintainer delivery mechanics in the resolved core and its triggered modules.
 Use the existing policy and generators; this document grants no guard waiver.
 
+## Rules for new tests
+
+| Rule | Check |
+| --- | --- |
+| Declare Small, Medium, or Large with a size marker or registered requirement layer. | `devtools.testing.collection` resolves the declaration and `config/registries/test-sizes.json` owns the bounds. |
+| Small: at most 1 s and 10 MB of temporary data; no subprocess or network. | `test_size.admission_limit` checks phases and `tmp_path` and new worker temporary-root entries; `testing.layer_contract` checks process and network use. Growth inside a pre-existing shared directory is not attributed; use a registered dataset. |
+| Medium: at most 30 s and 500 MB of temporary data. | `test_size.admission_limit` checks phases and `tmp_path` and new worker temporary-root entries; growth inside a pre-existing shared directory is not attributed. |
+| Large runs only in the nightly. | `test_size.large_contract` requires a `nightly_only` size rule for a new or changed Large test. |
+| Use registered test datasets in place; do not copy read-only data. | Dataset registry check (in development); request a private writable copy only when the test must write. |
+| A new test file names its one source module and goes at its mapped owner path. | `TEST-LAYOUT` in `scripts/check_test_shape.py` checks added files against `devtools.testing.layout`. |
+| Keep the median to one new test function per card. | `TEST-GROWTH` reports the count in the fast guard; review judges the median, not a per-card refusal. |
+| Whole-tree structural checks run post-merge by default. | `devtools.testing.sizes.moved` defers them; a changed holder or registered fence may still run in the commit stage. |
+
+For a new non-structural file, put `TEST_SOURCE = "src/<owner package>/<module>.py"` or its
+`scripts/<subpath>/<module>.py` path at module level and mark each test with its registered requirement. The target is
+`tests/<layer>/<owner leaf>/<source subpackages>/test_<module>.py`.
+For scripts, the source subpath starts after `scripts/`.
+A whole-tree file under `tests/structural/` declares `TEST_SCOPE = "whole-tree"` instead.
+Existing files and byte-identical moves keep their standing.
+
 ## The test protocol
 
 1. Register each requirement in `config/registries/requirements.json` before its test.
@@ -34,7 +54,7 @@ Use the existing policy and generators; this document grants no guard waiver.
    - Inspect uncovered source as a possible dead-code candidate before adding a test.
    - Keep snapshots and frozen transcripts as provenance.
 7. Class each red through the execution and receipt owners.
-   - Generate test data through support factories.
+   - Use registered test data in place, with a private writable copy only for a test that must write.
    - Confirm it alone before attribution: passing within its bound is a flake; passing over it is a slow-test defect.
    - Give an admitted quarantine an owner and expiry; use the existing post-merge and recovery route.
    - Keep product defects, test defects, infrastructure and environment failures distinct.
@@ -110,13 +130,12 @@ Require an agent route or an existing named UI-only exception for UI writes; ref
 - Build an expensive environment, export, history, workspace, Host or model once in a shared module/session fixture.
 - Share setup read-only; isolate each case's mutations.
 - Give each function one behavior; split chained checks so workers can run them in parallel.
-- Set size by time: Small under 1 s, Medium under 10 s, and Large at 10 s or more with a specific registered reason and shrink-only declaration.
+- Follow the Small, Medium and Large bounds and declarations in [Rules for new tests](#rules-for-new-tests).
 - Measure own setup, enclosing call and teardown through the receipt producer; never use double-counted subtest time.
 - Include cold first-use fixture setup when a node may run first; a later warm-only JUnit time does not establish its size.
 - Confirm an overage through the clean-solo/load route; keep missing, malformed or aborted proof unmeasured.
-- Refuse a new or grown test over 60 s from that evidence.
-- Run Large work after merge unless a mandatory or explicit required selection calls for it.
-- Read watchdog settings from `config/registries/test-sizes.json`; a larger mechanical bound does not change the 1 s/10 s rule.
+- Run new or changed Large tests only in the nightly.
+- Read watchdog settings from `config/registries/test-sizes.json`; the admission bounds are separate from the watchdog.
 - Report touched-node durations before and after; explain slowdown without weakening its check.
 
 ## Running tests

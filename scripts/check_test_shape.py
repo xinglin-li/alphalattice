@@ -22,7 +22,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
 from devtools.architecture.git_inputs import staged_moves
 from devtools.testing.contracts import import_violations
+from devtools.testing.layout import new_test_file_problems
 from devtools.testing.requirements import file_holders
+from devtools.testing.requirements import parse as parse_requirements
 
 ROOT = Path(__file__).resolve().parents[1]
 CAP_BYTES = 100 * 1024
@@ -520,7 +522,13 @@ def main(argv: list[str] | None = None) -> int:
     if parser.parse_args(argv).weekly:
         print(json.dumps(weekly_report(), ensure_ascii=False))
         return 0
-    staged = _git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR").stdout.split("\0")
+    listing = _git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR")
+    if listing.returncode:
+        print(
+            "TEST-LAYOUT staged files unreadable; restore the Git index and retry", file=sys.stderr
+        )
+        return 1
+    staged = listing.stdout.split("\0")
     # A merge adds only what neither parent holds: what the merged branch brings was checked there.
     merging = _git("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0
     parents = ("HEAD", "MERGE_HEAD") if merging else ("HEAD",)
@@ -529,13 +537,52 @@ def main(argv: list[str] | None = None) -> int:
         for path in staged
         if path.startswith("src/") or (path.startswith("tests/") and path.endswith((".py", ".cjs")))
     ]
-    moved = staged_moves(ROOT)  # a byte-identical move keeps its old path's grandfathered findings
-    origin = {path: moved.get(path, path) for path in selected}
-    texts = _blobs(
-        [":" + path for path in selected]
-        + [parent + ":" + origin[path] for parent in parents for path in selected]
-    )
+    try:
+        moved = staged_moves(
+            ROOT
+        )  # a byte-identical move keeps its old path's grandfathered findings
+        origin = {path: moved.get(path, path) for path in selected}
+        candidates = [
+            p
+            for p in selected
+            if p.startswith("tests/")
+            and p.endswith(".py")
+            and (Path(p).name.startswith("test_") or Path(p).name.endswith("_test.py"))
+            and p not in moved
+        ]
+        texts = _blobs(
+            [":" + path for path in selected]
+            + [parent + ":" + origin[path] for parent in parents for path in selected]
+            + [parent + ":" + path for parent in parents for path in candidates]
+            + ([":config/registries/requirements.json"] if candidates else [])
+        )
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError) as error:
+        print(
+            f"TEST-LAYOUT staged snapshot unreadable: {error}; restore the Git index and retry",
+            file=sys.stderr,
+        )
+        return 1
     found, corpus = [], None
+    added = [p for p in candidates if all(parent + ":" + p not in texts for parent in parents)]
+    if added:
+        try:
+            registry = texts.get(":config/registries/requirements.json")
+            if registry is None:
+                raise ValueError("the staged requirements registry is missing")
+            rows = parse_requirements(registry)
+            sources = _git("ls-files", "-z", "--", "src", "scripts")
+            if sources.returncode:
+                raise ValueError("staged source listing is unreadable")
+            source_paths = set(sources.stdout.split("\0"))
+            for path in added:
+                if ":" + path not in texts:
+                    raise ValueError(f"staged test {path} is unreadable")
+                found += new_test_file_problems(path, texts[":" + path], rows, source_paths)
+        except (ValueError, TypeError, OSError) as error:
+            found.append(
+                f"TEST-LAYOUT placement unmeasured: {error}; "
+                "restore the staged registry and source index"
+            )
     for path in selected:
         if ":" + path in texts:
             new = texts[":" + path]
@@ -545,7 +592,7 @@ def main(argv: list[str] | None = None) -> int:
                 current = problems(path, old, new)
                 if path.startswith("src/") and _added_windows(path, old, new)[1]:
                     if corpus is None:
-                        paths = _git("ls-files", "-z", "--", "src").stdout.split("\0")
+                        paths = _git("ls-files", "-z", "--", "src", "scripts").stdout.split("\0")
                         corpus = {
                             spec[1:]: text
                             for spec, text in _blobs([":" + item for item in paths if item]).items()

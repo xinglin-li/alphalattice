@@ -1,5 +1,7 @@
 """The fast guard holds tests/README.md's writing rules on what a change adds."""
 
+import json
+
 import check_test_shape as shape
 from check_playpen import shrink_only_growth
 from check_test_shape import problems
@@ -212,6 +214,61 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
         state = {"raw": raw.replace(f"{'a' * 40} A", f"{blob * 40} A")}
         monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [new], state))
         assert shape.main([]) == code
+
+    source = "src/devtools/testing/layout.py"
+    wrong, right = "tests/unit/testing/test_wrong.py", "tests/unit/testing/test_layout.py"
+    test = (
+        f"TEST_SOURCE = {source!r}\nimport pytest\n"
+        "@pytest.mark.proves('testing.example')\ndef test_one(): pass\n"
+    )
+    registry = json.dumps(
+        {
+            "schema": "alphalattice.requirements.v1",
+            "entries": {
+                "testing.example": {
+                    "description": "One test checks the assigned source.",
+                    "owner": "devtools.testing",
+                    "layer": "unit",
+                    "seconds": 1,
+                }
+            },
+        }
+    )
+    texts = {":" + wrong: test, ":config/registries/requirements.json": registry}
+    paths = [wrong]
+    placement_state = {"merge": False}
+
+    def staged(command, **kwargs):
+        if command[1] == "ls-files" and "src" in command:
+            return shape.subprocess.CompletedProcess(command, 0, source + "\0")
+        return _git_backend(texts, paths, placement_state)(command, **kwargs)
+
+    monkeypatch.setattr(shape.subprocess, "run", staged)
+    assert shape.main([]) == 1  # the added file must use the declared source's mapped path
+    suffix = "tests/unit/testing/layout_test.py"
+    paths[:] = [suffix]
+    texts[":" + suffix] = test
+    assert shape.main([]) == 1  # pytest also collects *_test.py
+    paths[:] = [right]
+    texts[":" + right] = test
+    assert shape.main([]) == 0
+    old_source = source
+    source = "scripts/release/check_example.py"
+    script_test = "tests/unit/testing/release/test_check_example.py"
+    paths[:] = [script_test]
+    texts[":" + script_test] = test.replace(old_source, source)
+    assert shape.main([]) == 0  # the staged source listing includes scripts
+    source = old_source
+    paths[:] = [wrong]
+    texts["HEAD:" + wrong] = test
+    assert shape.main([]) == 0  # existing files are not moved by this rule
+    del texts["HEAD:" + wrong]
+    texts["MERGE_HEAD:" + wrong] = test
+    placement_state["merge"] = True
+    assert shape.main([]) == 0  # a merge does not classify a parent-owned file as new
+    del texts["MERGE_HEAD:" + wrong]
+    del texts[":config/registries/requirements.json"]
+    assert shape.main([]) == 1  # missing staged ownership must not be treated as empty
 
 
 def test_weekly_report_lists_static_candidates_and_respects_config_string_readers(

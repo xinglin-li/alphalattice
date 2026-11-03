@@ -27,6 +27,7 @@ from devtools.testing.sizes import (
     moved,
     scoped,
     stage_files,
+    tmp_entry_footprint,
     tmp_footprint,
 )
 
@@ -43,6 +44,8 @@ BACKENDS = pytest.StashKey[Backends]()
 SIZE_FAMILIES = pytest.StashKey[tuple[str, ...]]()
 SIZE_SELECTED = pytest.StashKey[bool]()
 SIZE_FOOTPRINT = pytest.StashKey[tuple[int | None, float, str]]()
+SIZE_TMP_PATH = pytest.StashKey[Path]()
+SIZE_CREATED = pytest.StashKey[tuple[Path, frozenset[Path]] | str]()
 SIZE_RECORDED = pytest.StashKey[bool]()
 SIZE_FAILED = pytest.StashKey[bool]()
 SIZE_POLICY = pytest.StashKey[dict[str, Any]]()
@@ -118,6 +121,7 @@ def pytest_fixture_setup(fixturedef: Any, request: Any) -> Any:
                 size, error = None, str(failure)
             elapsed = time.perf_counter() - started
             item.stash[SIZE_FOOTPRINT] = (size, elapsed, error)
+            item.stash[SIZE_TMP_PATH] = value
             if clock is not None:
                 clock["footprint_seconds"] += elapsed
 
@@ -159,6 +163,12 @@ def pytest_runtest_protocol(item: Any, nextitem: Any) -> Any:
     """Observe only managed pipeline tests; telemetry failure never changes their outcome."""
     scope = None
     entered = False
+    if item.stash.get(SIZE_SELECTED, False):
+        try:
+            root = item.config._tmp_path_factory.getbasetemp()
+            item.stash[SIZE_CREATED] = (root, frozenset(root.iterdir()))
+        except (OSError, ValueError) as failure:
+            item.stash[SIZE_CREATED] = str(failure)
     if os.environ.get("ALPHALATTICE_PIPELINE_EVENTS"):
         try:
             observation = audit.ResourceObservation()
@@ -178,6 +188,31 @@ def pytest_runtest_protocol(item: Any, nextitem: Any) -> Any:
         if entered and scope is not None:
             with suppress(Exception):
                 scope.__exit__(None, None, None)
+
+
+def _measure_factory(item: Any) -> None:
+    """Count new worker-base entries; existing shared directories are not attributed."""
+    started = time.perf_counter()
+    prior = item.stash.get(SIZE_FOOTPRINT, None)
+    measured = item.stash.get(SIZE_TMP_PATH, None)
+    try:
+        if prior is not None and (prior[0] is None or prior[2]):
+            raise ValueError(prior[2] or "temporary footprint observation missing")
+        snapshot = item.stash[SIZE_CREATED]
+        if isinstance(snapshot, str):
+            raise ValueError(snapshot)
+        root, before = snapshot
+        size = (prior[0] if prior else 0) + sum(
+            tmp_entry_footprint(path) for path in set(root.iterdir()) - before if path != measured
+        )
+        error = ""
+    except (OSError, ValueError, KeyError) as failure:
+        size, error = None, str(failure)
+    elapsed = time.perf_counter() - started
+    item.stash[SIZE_FOOTPRINT] = (size, elapsed + (prior[1] if prior else 0), error)
+    clock = item.config.stash.get(SIZE_CLOCK, None)
+    if clock is not None:
+        clock["footprint_seconds"] += elapsed
 
 
 @pytest.hookimpl(wrapper=True, trylast=True)  # type: ignore[untyped-decorator]
@@ -229,10 +264,14 @@ def pytest_runtest_teardown(item: Any) -> Any:
     if OBSERVATION in item.stash:
         with suppress(Exception):
             item.stash[OBSERVATION].phase = "teardown"
-    if CONTRACT not in item.stash:
-        return (yield)
-    with item.stash[CONTRACT].active():
-        return (yield)
+    try:
+        if CONTRACT not in item.stash:
+            return (yield)
+        with item.stash[CONTRACT].active():
+            return (yield)
+    finally:
+        if item.stash.get(SIZE_SELECTED, False):
+            _measure_factory(item)
 
 
 def _observe_report(item: Any, report: Any) -> None:
@@ -261,12 +300,12 @@ def _observe_report(item: Any, report: Any) -> None:
         )
         if item.stash.get(SIZE_SELECTED, False):
             footprint = item.stash.get(SIZE_FOOTPRINT, None)
-            if footprint is None and "tmp_path" not in item.fixturenames:
-                footprint = (0, 0.0, "")
             value.update(
                 tmp_footprint_bytes=footprint[0] if footprint else None,
                 tmp_footprint_seconds=footprint[1] if footprint else None,
-                tmp_footprint_error=footprint[2] if footprint else "tmp_path observation missing",
+                tmp_footprint_error=footprint[2]
+                if footprint
+                else "temporary footprint observation missing",
             )
         stream.write(json.dumps(value, allow_nan=False) + "\n")
         stream.flush()
@@ -293,8 +332,6 @@ def _size_report(item: Any, report: Any) -> None:
         return
     phases = item.stash.get(OBSERVATION_PHASES, {})
     footprint = item.stash.get(SIZE_FOOTPRINT, None)
-    if footprint is None and "tmp_path" not in item.fixturenames:
-        footprint = (0, 0.0, "")
     try:
         if (
             set(phases) != {"setup", "call", "teardown"}

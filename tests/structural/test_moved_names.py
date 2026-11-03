@@ -171,6 +171,71 @@ def _model_sources(
 @pytest.mark.proves("testing.whole_file_relocation_restores_bytes")
 def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
     """Whole-file layout restores bytes and refuses path, export and fixture-name clashes."""
+    from devtools.testing import layout
+
+    placement = getattr(layout, "new_test_file_problems", None)
+    assert callable(placement), "new test-file placement owner is missing"
+    rows = {"testing.example": {"owner": "devtools.testing", "layer": "unit"}}
+    source = "src/devtools/testing/layout.py"
+    body = """import pytest
+@pytest.mark.proves('testing.example')
+def test_one(): pass
+"""
+    declared = f"TEST_SOURCE = {source!r}\n" + body
+    expected = "tests/unit/testing/test_layout.py"
+    assert not placement(expected, declared, rows, {source})
+    for path, text, reason in (
+        ("tests/unit/testing/test_other.py", declared, expected),
+        ("tests/integration/testing/test_layout.py", declared, expected),
+        ("tests/unit/testing/test_layout.py", body, "TEST_SOURCE"),
+        ("tests/unit/testing/test_layout.py", declared + f"TEST_SOURCE = {source!r}\n", "one"),
+        (
+            "tests/unit/testing/test_layout.py",
+            declared + f"if True:\n    TEST_SOURCE = {source!r}\n",
+            "one",
+        ),
+        ("tests/unit/testing/test_layout.py", declared.replace(source, "src/other.py"), "source"),
+        ("tests/structural/test_tree.py", body, "TEST_SCOPE"),
+    ):
+        assert reason in " ".join(placement(path, text, rows, {source})), path
+    assert not placement(
+        "tests/structural/test_tree.py", "TEST_SCOPE = 'whole-tree'\n" + body, rows, {source}
+    )
+    nested = "src/alphalattice/capabilities/portfolio_inputs/tradability/surface.py"
+    portfolio = {
+        "testing.example": {
+            "owner": "alphalattice.capabilities.portfolio_inputs",
+            "layer": "integration",
+        }
+    }
+    target = "tests/integration/portfolio_inputs/tradability/test_surface.py"
+    assert not placement(target, declared.replace(source, nested), portfolio, {nested})
+    script = "scripts/release/check_example.py"
+    script_target = "tests/unit/testing/release/test_check_example.py"
+    assert not placement(script_target, declared.replace(source, script), rows, {script})
+    assert script_target in " ".join(
+        placement(
+            "tests/unit/testing/test_check_example.py",
+            declared.replace(source, script),
+            rows,
+            {script},
+        )
+    )
+    assert "source" in " ".join(
+        placement(script_target, declared.replace(source, script), rows, set())
+    )
+    package = "src/devtools/testing/__init__.py"
+    assert not placement(
+        "tests/unit/testing/test_testing.py", declared.replace(source, package), rows, {package}
+    )
+    assert "mixed owners" in " ".join(
+        placement(
+            expected,
+            declared.replace("testing.example", "testing.example', 'testing.other"),
+            rows | {"testing.other": {"owner": "devtools.architecture", "layer": "unit"}},
+            {source},
+        )
+    )
     (tmp_path / "pyproject.toml").touch()
     (tmp_path / "config").mkdir()
     (tmp_path / "config/package-architecture.json").touch()
