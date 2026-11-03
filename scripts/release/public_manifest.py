@@ -425,6 +425,7 @@ RULES = [
             ".pre-commit-config.yaml",
             ".githooks/**",
             ".github/workflows/ci.yml",
+            ".test_durations",
             "pyproject.toml",
             "uv.lock",
             "LAWS.md",

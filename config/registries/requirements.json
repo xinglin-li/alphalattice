@@ -163,6 +163,12 @@
       "owner": "devtools.architecture",
       "layer": "integration",
       "seconds": 5
+    },
+    "pipeline.public_durations_come_from_junit": {
+      "description": "The public tests' durations file comes from JUnit records: the latest run of each node wins, skipped and out-of-tree nodes are left out, and an unreadable record refuses by name.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
     }
   }
 }

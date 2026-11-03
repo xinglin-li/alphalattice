@@ -58,7 +58,7 @@ range = "tree"
 lane = "nightly"
 sizes = ["small", "medium", "large"]
 bound_minutes = 120
-rows = ["environment", "nightly-tests", "load-timeouts", "public-scan"]
+rows = ["environment", "nightly-tests", "load-timeouts", "public-scan", "public-tests"]
 
 [stages.release]
 order = 6
@@ -68,7 +68,7 @@ range = "tree"
 lane = "candidate"
 sizes = ["small", "medium", "large"]
 bound_minutes = 240
-rows = ["environment", "candidate-tests", "load-timeouts", "public-scan", "native-confirmation"]
+rows = ["environment", "candidate-tests", "load-timeouts", "public-scan", "public-tests", "native-confirmation"]
 
 [rows.staged-guard]
 kind = "command"
@@ -152,6 +152,13 @@ owner = "devtools.pipeline"
 reason = "The offline first use runs on Windows, macOS and Linux."
 hosts = ["public"]
 job = "platforms"
+
+[rows.public-tests]
+kind = "ci-job"
+owner = "devtools.pipeline"
+reason = "Every public test, split over GitHub's free runners: nightly on next's tip once per SHA, and on a promotion candidate."
+hosts = ["public"]
+job = "public-tests"
 
 [rows.affected-tests]
 kind = "workshop"
