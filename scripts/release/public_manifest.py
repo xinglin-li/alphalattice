@@ -75,8 +75,6 @@ RULES = [
             "implemented-plans/**",
             "experience/**",
             "census/**",
-            "config/release/public-manifest.json",
-            "config/registries/tests-unregistered.json",
         ],
         "reason": (
             "Internal design, development records and release provenance "
@@ -143,7 +141,6 @@ RULES = [
             "tests/alternative_evidence_desk/test_retrieval_product_acceptance.py",
             "tests/feature_engine/test_feature_closure_genesis.py",
             "tests/feature_engine/test_panel_runtime_authority.py",
-            "tests/structural/test_verified_fake_census.py",
             "tests/feature_engine/test_panel_upgrade.py",
             "tests/feature_engine/panel_upgrade.py",
             "tests/portfolio_strategy_lab/test_frozen_strategy_packages.py",
@@ -1132,15 +1129,63 @@ def import_closure(blobs: dict[str, bytes], roots: set[str]) -> set[str]:
     return reached
 
 
+PRIVATE_SCHEMAS = frozenset(
+    {
+        "alphalattice.release.public-manifest",
+        "alphalattice.tests-unregistered.v1",
+        "alphalattice.agent-eval.host-facts",
+    }
+)
+"""Private data by what it is: a tracked JSON document carrying one of these schemas is PRIVATE
+wherever it lives, so no public rule names its path (CHECK-PLAYPEN-PUBLIC-SAFE)."""
+
+
+def declared_private(blobs: dict[str, bytes]) -> frozenset[str]:
+    """The files private by their own content: a JSON document carrying a private schema, or a test
+    module whose docstring declares `PRIVATE_TEST:`, each read as parsed, so an escaped spelling is
+    the same declaration. A JSON document or test module that cannot be parsed cannot show it is
+    not private, so it is private too: content only ever makes a file private."""
+    found = set()
+    for path, raw in blobs.items():
+        if path.endswith(".json"):
+            try:
+                document = json.loads(raw.decode("utf-8-sig"))
+            except (UnicodeError, ValueError, RecursionError):
+                found.add(path)
+                continue
+            if isinstance(document, dict) and document.get("schema") in PRIVATE_SCHEMAS:
+                found.add(path)
+        elif path.startswith("tests/") and path.endswith(".py"):
+            try:
+                docstring = ast.get_docstring(ast.parse(raw.decode("utf-8-sig"))) or ""
+            except (UnicodeError, SyntaxError, ValueError, RecursionError):
+                found.add(path)
+                continue
+            if "PRIVATE_TEST:" in docstring:
+                found.add(path)
+    return frozenset(found)
+
+
 def classify(
     path: str,
     runtime: set[str],
     test_dependencies: set[str],
     config_dependencies: set[str],
     strict_scripts: set[str] | None = None,
+    declared: frozenset[str] = frozenset(),
 ) -> tuple[str, str | None, str]:
-    """The first applicable named rule wins; absence of evidence stays unsettled."""
+    """The first applicable named rule wins; absence of evidence stays unsettled. A file private by
+    its own content (`declared_private`) is PRIVATE before any rule."""
     validate_path(path)
+    if path in declared:
+        return (
+            "PRIVATE",
+            "PRIVATE_BY_CONTENT",
+            (
+                "Its own content declares it private (a private data schema or a PRIVATE_TEST:"
+                " test), or cannot be parsed to show it is not."
+            ),
+        )
     for rule in RULES:
         name = rule["rule"]
         if not any(fnmatch.fnmatchcase(path, p) for p in rule["patterns"]):
@@ -1392,6 +1437,7 @@ def names_script(reader: str, raw: bytes, script: str) -> bool:
 
 def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[dict, dict]:
     """Produce the builder contract and complete private audit deterministically."""
+    declared = declared_private(blobs)  # private by content, whatever the path
     census_raw = blobs.get("census/entry_reach.json")
     if census_raw is None:
         raise ValueError("the source commit must contain the entry reachability census")
@@ -1406,10 +1452,13 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
             for p in blobs
             if p.startswith("tests/")
             and p.endswith(".py")
-            and classify(p, set(), set(), set())[0] == "PUBLIC"
+            and classify(p, set(), set(), set(), declared=declared)[0] == "PUBLIC"
         },
     )
-    initial = [dict(path=p, kind=classify(p, runtime, tests, set())[0]) for p in sorted(blobs)]
+    initial = [
+        dict(path=p, kind=classify(p, runtime, tests, set(), declared=declared)[0])
+        for p in sorted(blobs)
+    ]
     config_dependencies = set()
     for row in initial:
         if row["kind"] != "PUBLIC":
@@ -1425,7 +1474,7 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
         if p.startswith("config/requirements-") or p.startswith("config/registries/")
     )
     initial = [
-        dict(path=p, kind=classify(p, runtime, tests, config_dependencies)[0])
+        dict(path=p, kind=classify(p, runtime, tests, config_dependencies, declared=declared)[0])
         for p in sorted(blobs)
     ]
     strict_scripts = set()
@@ -1468,7 +1517,9 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
                 "A symlink or gitlink needs an explicit redistribution/safety decision.",
             )
         else:
-            kind, rule, reason = classify(path, runtime, tests, config_dependencies, strict_scripts)
+            kind, rule, reason = classify(
+                path, runtime, tests, config_dependencies, strict_scripts, declared
+            )
             if path in private_script_reasons:
                 kind, rule, reason = (
                     "PRIVATE",

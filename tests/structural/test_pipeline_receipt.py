@@ -926,7 +926,6 @@ def test_flake_candidates_use_distinct_verified_heads_and_registered_owners(
 
     from devtools.pipeline import health
     from devtools.pipeline.definition import DefinitionError
-    from devtools.testing.requirements import LEGACY
 
     select = getattr(health, "flake_candidates", None)
     assert callable(select), "test health must derive automatic quarantine candidates"
@@ -992,7 +991,7 @@ def test_flake_candidates_use_distinct_verified_heads_and_registered_owners(
         "import pytest\n" + mark + "def test_c(): pass\n", encoding="utf-8"
     )
     if case.startswith("legacy-"):
-        ledger = tmp_path / LEGACY
+        ledger = tmp_path / "config/registries/ledger.json"  # found by its schema
         document = {
             "schema": "alphalattice.tests-unregistered.v1",
             "owner": "" if case == "legacy-bad-owner" else "devtools.testing",

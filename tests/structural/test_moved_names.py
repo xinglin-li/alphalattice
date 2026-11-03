@@ -119,13 +119,23 @@ def test_a_staged_check_reads_the_index_not_an_unstaged_repair(synthetic_history
         (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / path).write_text(text, encoding="utf-8", newline="\n")
     commit("Consumer")
-    fact_path = "config/agent-eval/host-facts.json"
+    fact_path = "config/eval/observed.json"  # private facts are found by schema, not by path
+    facts = '{"schema": "alphalattice.agent-eval.host-facts", "fakes": []}\n'
     assert fact_path not in snapshot(tmp_path, "HEAD")[1]
     (tmp_path / fact_path).parent.mkdir(parents=True)
-    (tmp_path / fact_path).write_text('{"fakes": []}\n', encoding="utf-8", newline="\n")
+    (tmp_path / fact_path).write_text(facts, encoding="utf-8", newline="\n")
     commit("Optional facts")
     captured = snapshot(tmp_path, "HEAD")[1]
-    assert fact_path in captured and captured[fact_path] == '{"fakes": []}\n'
+    assert fact_path in captured and captured[fact_path] == facts
+    (tmp_path / "config/icon.bin").write_bytes(b"\xff\x00")  # a binary asset is never decoded
+    commit("A binary config asset")
+    assert "config/icon.bin" not in snapshot(tmp_path, "HEAD")[1]
+    (tmp_path / "config/eval/torn.json").write_bytes(b"\xff")  # a JSON candidate is named
+    commit("An undecodable config JSON")
+    with pytest.raises(ValueError, match=r"input_unreadable:config/eval/torn.json"):
+        snapshot(tmp_path, "HEAD")
+    (tmp_path / "config/eval/torn.json").unlink()
+    commit("Repaired")
     assert (
         snapshot(tmp_path, "HEAD", reference_paths=["README.md"])[1]["README.md"]
         == "Source locators\n"
@@ -215,7 +225,10 @@ def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
             "mandatory": ["tests/a/test_t.py*"],
         },
         "test-private.json": {"entries": {"tests/a/test_t.py::patch rule": 1}},
-        "tests-unregistered.json": {"files": {"tests/a/test_t.py": 1}},
+        "ledger.json": {
+            "schema": "alphalattice.tests-unregistered.v1",
+            "files": {"tests/a/test_t.py": 1},
+        },
     }
     catalogs["test-sizes.json"]["defaults"] += [{"pattern": "tests/*", "owner": "fallback"}]
     for kind, key in (("large", "pattern"), ("reach", "pattern"), ("quarantine", "node")):
@@ -223,8 +236,9 @@ def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
             {key: "tests/a/test_t.py::case*", "inputs": ["tests/a/test_t.py"]}
         ]
     files |= {f"config/registries/{n}": json.dumps(v) for n, v in catalogs.items()}
-    fact_path = "config/agent-eval/host-facts.json"
+    fact_path = "config/eval/observed.json"
     facts = {
+        "schema": "alphalattice.agent-eval.host-facts",
         "observations": [{"value": True}],
         "fakes": [
             {"fake": "tests.a.test_t:FakeRunner", "assumes": {"x": {"value": 1}}},
@@ -267,7 +281,11 @@ def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
         ),
     ):
         with pytest.raises(ValueError, match=code):
-            plan("r", files | {fact_path: json.dumps(bad)}, {"tests/a/test_t.py": choice})
+            plan(
+                "r",
+                files | {fact_path: json.dumps({"schema": facts["schema"], **bad})},
+                {"tests/a/test_t.py": choice},
+            )
     for stem in ("t", "other", "../escape"):
         with pytest.raises(ValueError, match=r"collision|fixture|path"):
             plan(

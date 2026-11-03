@@ -18,7 +18,6 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"
-PUBLIC_MANIFEST = "config/release/public-manifest.json"
 STRUCTURAL_TESTS = (
     ROOT / "tests" / "structural" / "test_structural_guards.py",
     ROOT / "tests" / "structural" / "test_playpen_gate_routing.py",
@@ -423,19 +422,28 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
 def boundary_problems(blobs: dict[str, bytes], changed: set[str]) -> list[str]:
     """The merge gate's public-closure and evaluation-layer checks, on the changed readers."""
     from devtools.architecture.structural import evaluation_imports
+    from devtools.testing.requirements import MANIFEST_SCHEMA, schema_file
     from release.public_closure import violations  # type: ignore[import-not-found]
     from release.public_manifest import (  # type: ignore[import-not-found]
         INTERNAL_ID_BASELINE,
         RULES,
         classify,
+        declared_private,
         internal_id_ratchet,
     )
 
+    declared = declared_private(blobs)
+
     def public(given: set[str]) -> set[str]:  # by the release rules, given these dependencies
-        return {p for p in blobs if classify(p, given, given, given, given)[0] == "PUBLIC"}
+        return {
+            p for p in blobs if classify(p, given, given, given, given, declared)[0] == "PUBLIC"
+        }
 
     # Certainly public readers, possibly public targets: a guess never refuses a correct import.
-    readers = public(set()) | {r["path"] for r in json.loads(blobs[PUBLIC_MANIFEST])["public"]}
+    # The private manifest adds its readers where this tree holds it; the public tree has none.
+    held = schema_file(blobs, blobs.__getitem__, MANIFEST_SCHEMA)
+    listed = {r["path"] for r in json.loads(blobs[held])["public"]} if held else set()
+    readers = public(set()) | listed
     manifest = {"public": [{"path": p} for p in readers | public(set(blobs))], "rules": RULES}
     refs = violations(manifest, blobs, readers & changed)
     found = [f"{r.reader}:{r.line}: reaches non-public {r.target} ({r.kind})" for r in refs]

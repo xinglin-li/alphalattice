@@ -16,6 +16,7 @@ import ast
 import hashlib
 import json
 import math
+import os
 import re
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
@@ -28,8 +29,8 @@ from typing import Any, NamedTuple
 from devtools.testing.sizes import load_policy
 
 REGISTRY = Path("config/registries/requirements.json")
-LEGACY = Path("config/registries/tests-unregistered.json")  # private: names private tests
-PRIVATE_MARKER = Path("config/release/public-manifest.json")  # tracked here, never exported
+LEGACY_SCHEMA = "alphalattice.tests-unregistered.v1"  # private: it names private tests
+MANIFEST_SCHEMA = "alphalattice.release.public-manifest"  # tracked privately, never exported
 LAYERS = ("unit", "integration", "contract", "e2e", "native")
 SIZES = dict(unit="small", integration="medium", contract="medium", e2e="large", native="large")
 REGISTER = (
@@ -209,28 +210,90 @@ def unregistered(tests: Iterable[Holder]) -> Counter[str]:
     return Counter(test.node.split("::", 1)[0] for test in tests if not test.ids)
 
 
+def schema_file(
+    names: Iterable[str], read: Callable[[str], bytes | str], schema: str
+) -> str | None:
+    """The one config JSON file carrying ``schema``, or None: private data is found by what it is,
+    never by where it is, so public code names no private path. Only config/ is searched, each
+    candidate parsed, so an escaped spelling is the same schema. A candidate that cannot be read or
+    parsed is refused by name: it could be the private file, so None (a public tree) is never
+    concluded from it. Two files carrying the schema are refused."""
+    found = []
+    for name in sorted(n for n in names if n.startswith("config/") and n.endswith(".json")):
+        try:
+            raw = read(name)
+            document = json.loads(raw.decode("utf-8-sig") if isinstance(raw, bytes) else raw)
+        except (OSError, UnicodeError, ValueError, RecursionError) as error:
+            raise ValueError(
+                f"requirements.schema_candidate_unreadable:{name}: {error}; repair or remove it"
+            ) from None
+        if isinstance(document, dict) and document.get("schema") == schema:
+            found.append(name)
+    if len(found) > 1:
+        raise ValueError(f"requirements.schema_ambiguous:{schema} is carried by {', '.join(found)}")
+    return found[0] if found else None
+
+
+# This process's answers are bound to every candidate's exact bytes and name, including absence.
+_SCHEMA_PATHS: dict[tuple[Path, str], tuple[object, Path | None]] = {}
+
+
+def schema_path(root: Path, schema: str) -> Path | None:
+    """The checkout's one config file carrying ``schema`` (`schema_file`), kept per process."""
+    config = root / "config"
+
+    try:
+        available = config.is_dir()
+        if not available and os.path.lexists(config):
+            raise OSError(f"{config} is not a readable directory")
+        names: list[str] = []
+        pending = [config] if available else []
+        while pending:
+            with os.scandir(pending.pop()) as entries:
+                for entry in entries:
+                    path = Path(entry.path)
+                    if entry.name.endswith(".json"):
+                        names.append(path.relative_to(root).as_posix())
+                    if entry.is_dir(follow_symlinks=False):
+                        pending.append(path)
+        names.sort()
+        contents = {name: (root / name).read_bytes() for name in names}
+    except OSError as error:
+        raise ValueError(f"requirements.schema_candidate_unreadable:{error}") from None
+    identity = tuple((name, hashlib.sha256(contents[name]).digest()) for name in names)
+    known = _SCHEMA_PATHS.get((root, schema))
+    if known is not None and known[0] == identity:
+        return known[1]
+    found = schema_file(names, contents.__getitem__, schema)
+    _SCHEMA_PATHS[(root, schema)] = (identity, root / found if found else None)
+    return root / found if found else None
+
+
 def legacy(root: Path) -> dict[str, int] | None:
     """Each file's count of tests older than the registry, which only shrinks. The list is private:
     the public export (which never holds the private release manifest) has none, and there the
     backstop stands aside; a private checkout without it is refused by name."""
-    if (root / LEGACY).is_file():
-        return dict(json.loads((root / LEGACY).read_text("utf-8"))["files"])
-    if not (root / PRIVATE_MARKER).is_file():
+    if (path := schema_path(root, LEGACY_SCHEMA)) is not None:
+        return dict(json.loads(path.read_text("utf-8"))["files"])
+    if schema_path(root, MANIFEST_SCHEMA) is None:
         return None
     raise ValueError(
-        f"requirements.legacy_missing:{LEGACY.as_posix()} is absent in a private checkout; restore "
-        "it from git, or count the tree once: python scripts/tests_registry.py shrink --seed"
+        f"requirements.legacy_missing: no {LEGACY_SCHEMA} registry in a private checkout; "
+        "restore it from git, or count the tree once: "
+        "python scripts/tests_registry.py shrink --seed --to PATH"
     )
 
 
 def legacy_owner(root: Path) -> tuple[str, dict[str, int]]:
     """Read the registered legacy ledger owner and its shrink-only per-file counts."""
-    path = root / LEGACY
+    path = schema_path(root, LEGACY_SCHEMA)
     try:
+        if path is None:
+            raise ValueError(f"no {LEGACY_SCHEMA} registry")
         document = json.loads(path.read_text("utf-8"))
         if (
             not isinstance(document, dict)
-            or document.get("schema") != "alphalattice.tests-unregistered.v1"
+            or document.get("schema") != LEGACY_SCHEMA
             or document.get("owner") != "devtools.testing"
             or not isinstance(document.get("files"), dict)
             or any(
@@ -241,29 +304,72 @@ def legacy_owner(root: Path) -> tuple[str, dict[str, int]]:
             raise ValueError("invalid schema, registered owner, or counts")
         return document["owner"], document["files"]
     except (OSError, UnicodeError, ValueError, TypeError) as error:
-        raise ValueError(f"requirements.legacy_unavailable:{LEGACY.as_posix()}: {error}") from None
+        where = path.relative_to(root).as_posix() if path is not None else LEGACY_SCHEMA
+        raise ValueError(f"requirements.legacy_unavailable:{where}: {error}") from None
 
 
-def shrink(root: Path, *, seed: bool = False) -> dict[str, int]:
-    """Lower each file's legacy count to what the tree holds, or with ``seed`` count it first; a
-    count never rises, so a new test registers instead; seeding is only the first count."""
-    if seed and (root / LEGACY).is_file():
+def _seed_target(root: Path, to: Path) -> Path:
+    """Where a first count may be written: a new config/*.json file of this checkout, named
+    relatively and reached through no link, so the schema lookup finds it next time and nothing
+    that exists is overwritten."""
+    parts = to.parts
+    target = root / to
+    inside = [target.parent, *target.parent.parents][: max(len(parts) - 1, 0)]
+    if (
+        to.anchor
+        or ".." in parts
+        or len(parts) < 2
+        or parts[0] != "config"
+        or to.suffix != ".json"
+        or os.path.lexists(target)
+        or any(folder.is_symlink() or folder.is_junction() for folder in inside)
+        or not (root / "config").resolve().is_relative_to(root.resolve())
+        or not target.resolve().is_relative_to((root / "config").resolve())
+    ):
         raise ValueError(
-            f"requirements.legacy_seeded:{LEGACY.as_posix()} exists and only shrinks; run "
-            "python scripts/tests_registry.py shrink without --seed"
+            f"requirements.legacy_seed_target_invalid:{to}: give a new config/*.json path "
+            "inside this checkout"
         )
+    return target
+
+
+def shrink(root: Path, *, seed: bool = False, to: Path | None = None) -> dict[str, int]:
+    """Lower each file's legacy count to what the tree holds, or with ``seed`` count it first into
+    ``to``, the place the private side gives it; a count never rises, so a new test registers
+    instead; seeding is only the first count."""
+    found = schema_path(root, LEGACY_SCHEMA)
+    if seed and found is not None:
+        raise ValueError(
+            f"requirements.legacy_seeded:{found.relative_to(root).as_posix()} exists and only "
+            "shrinks; run python scripts/tests_registry.py shrink without --seed"
+        )
+    if seed and to is None:
+        raise ValueError(
+            "requirements.legacy_seed_unplaced: seeding needs --to PATH, its private place"
+        )
+    target = _seed_target(root, to) if seed and to is not None else found
+    if not seed and found is None:
+        legacy(root)  # a private checkout without it is refused by name
+        raise ValueError(f"requirements.legacy_absent: no {LEGACY_SCHEMA} registry to shrink here")
     now = unregistered(holders(root))
     counted = {} if seed else legacy(root) or {}
     files = dict(now) if seed else {p: min(n, now[p]) for p, n in counted.items() if now[p]}
     document = {
-        "schema": "alphalattice.tests-unregistered.v1",
+        "schema": LEGACY_SCHEMA,
         "owner": "devtools.testing",
         "note": "Each file's test functions that predate the requirements registry and prove no "
         "requirement; a count only falls (python scripts/tests_registry.py shrink) and a new test "
         "registers its requirement instead.",
         "files": dict(sorted(files.items())),
     }
-    (root / LEGACY).write_bytes((json.dumps(document, indent=2) + "\n").encode("utf-8"))
+    assert target is not None  # seed has its place; a shrink has the file it found
+    data = (json.dumps(document, indent=2) + "\n").encode("utf-8")
+    if seed:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("xb") as created:  # a file that appeared meanwhile is never overwritten
+            created.write(data)
+    else:
+        target.write_bytes(data)
     return files
 
 

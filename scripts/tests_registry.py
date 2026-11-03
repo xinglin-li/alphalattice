@@ -22,10 +22,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     commands.add_parser("find", help="find before you write a test").add_argument("words")
     lower = commands.add_parser("shrink", help="lower each file's legacy count")
     lower.add_argument("--seed", action="store_true", help="count the tree once, first")
+    lower.add_argument("--to", type=Path, help="with --seed: the private place for the first count")
     args = parser.parse_args(argv)
     if args.command == "shrink":
         try:
-            print(f"{sum(shrink(args.root, seed=args.seed).values())} unregistered tests counted")
+            counted = shrink(args.root, seed=args.seed, to=args.to)
+            print(f"{sum(counted.values())} unregistered tests counted")
         except ValueError as refused:
             print(refused)
             return 1

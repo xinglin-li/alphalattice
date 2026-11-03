@@ -425,6 +425,32 @@
 "alphalattice.tests-unregistered.v1"
 ]
 },
+"schema:alphalattice.release.public-manifest": {
+"description": "The private release manifest lists each public path and its rule; readers find it by this schema, never by its path.",
+"owner": "schema:alphalattice",
+"readers": [
+"scripts/release/public_manifest.py",
+"scripts/release/public_snapshot.py",
+"scripts/check_playpen.py",
+"src/devtools/testing/requirements.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.release.public-manifest"
+]
+},
+"schema:alphalattice.agent-eval.host-facts": {
+"description": "The private host facts record what the agent hosts were observed to do, so host-seam fakes match them; readers find them by this schema.",
+"owner": "schema:alphalattice",
+"readers": [
+"scripts/release/public_manifest.py",
+"src/devtools/testing/layout.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.agent-eval.host-facts"
+]
+},
 "schema:alphalattice.test-sizes.v1": {
 "owner": "devtools.testing",
 "readers": [

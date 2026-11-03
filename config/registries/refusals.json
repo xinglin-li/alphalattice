@@ -6,6 +6,7 @@
 "pipeline.receipt_cost_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE"},
 "host_facts.fake_source_missing": {"owner": "devtools.evaluation", "category": "FAILED_PRECONDITION"},
 "test_layout.registry_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
+"test_layout.input_unreadable": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "reason": "A Python file, config JSON or named input of the snapshot that is not UTF-8 is named, never guessed."},
 "test_size.framework_fixtures_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "testing.layer_contract": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "testing.layer_contract_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE"},
@@ -18659,6 +18660,31 @@
 "owner": "devtools.testing",
 "category": "FAILED_PRECONDITION",
 "reason": "A private checkout holds the legacy count list; the public export has none."
+},
+"requirements.legacy_seed_unplaced": {
+"owner": "devtools.testing",
+"category": "INVALID_ARGUMENT",
+"reason": "The first legacy count is private, so seeding names its place; the code names no private path."
+},
+"requirements.legacy_absent": {
+"owner": "devtools.testing",
+"category": "FAILED_PRECONDITION",
+"reason": "Shrinking lowers an existing legacy count list; a tree without one has nothing to lower."
+},
+"requirements.schema_ambiguous": {
+"owner": "devtools.testing",
+"category": "FAILED_PRECONDITION",
+"reason": "A private record is found by its schema, so two files carrying one schema leave no single record to read."
+},
+"requirements.schema_candidate_unreadable": {
+"owner": "devtools.testing",
+"category": "FAILED_PRECONDITION",
+"reason": "A config JSON file that cannot be read or parsed could be the private record, so neither its presence nor its absence is concluded."
+},
+"requirements.legacy_seed_target_invalid": {
+"owner": "devtools.testing",
+"category": "INVALID_ARGUMENT",
+"reason": "The first legacy count goes to a new config JSON file inside the checkout, where the schema lookup finds it, and overwrites nothing."
 },
 "requirements.unregistered": {
 "owner": "devtools.testing",

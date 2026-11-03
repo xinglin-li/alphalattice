@@ -16,6 +16,7 @@ from release.public_manifest import (
     RULES,
     attach_reviews,
     classify,
+    declared_private,
     generate,
     internal_id_label,
     internal_id_pattern,
@@ -74,7 +75,6 @@ from release.public_manifest import (
         ("implemented-plans/round.md", "PRIVATE", "PRIVATE_RECORD"),
         ("experience/one.md", "PRIVATE", "PRIVATE_RECORD"),
         ("product-design/execution-plans/plan.md", "PRIVATE", "PRIVATE_RECORD"),
-        ("config/release/public-manifest.json", "PRIVATE", "PRIVATE_RECORD"),
         ("scripts/agent_eval/one.py", "PRIVATE", "PRIVATE_QA_TOOL"),
         ("scripts/qa_retention.py", "PRIVATE", "PRIVATE_QA_TOOL"),
         ("tests/researcher_methodology_surface/test_qa_retention.py", "PRIVATE", "PRIVATE_TEST"),
@@ -108,6 +108,31 @@ def test_the_full_release_closure_check_names_its_private_inventory_input():
         "PRIVATE_TEST",
         "needs the private release inventory",
     )
+    # Private by what it is, wherever it lives: a private data schema, or a test declaring
+    # PRIVATE_TEST:, each read as parsed; what cannot be parsed cannot show it is public, so it is
+    # private too. Content only ever makes a file private (CHECK-PLAYPEN-PUBLIC-SAFE).
+    blobs = {
+        "config/anywhere/listing.json": b'{"schema": "alphalattice.release.public-manifest"}',
+        "config/anywhere/escaped.json": b'{"schema": "alphalattice.tests\\u002dunregistered.v1"}',
+        "config/anywhere/other.json": b'{"schema": "alphalattice.public.v1"}',
+        "config/anywhere/torn.json": b'{"schema": "alphalattice.public.v1"',
+        "tests/structural/test_declared.py": b'"""Reads it.\n\nPRIVATE\\x5fTEST: needs it."""\n',
+        "tests/structural/test_said.py": b'"""Reads it."""\nNOTE = "PRIVATE_TEST: in a string"\n',
+        "tests/structural/test_torn.py": b'"""Reads it."""\ndef broken(:\n',
+    }
+    declared = declared_private(blobs)
+    assert declared == {
+        "config/anywhere/listing.json",
+        "config/anywhere/escaped.json",
+        "config/anywhere/torn.json",
+        "tests/structural/test_declared.py",
+        "tests/structural/test_torn.py",
+    }
+    for path in sorted(declared):
+        assert classify(path, {path}, {path}, {path}, declared=declared)[:2] == (
+            "PRIVATE",
+            "PRIVATE_BY_CONTENT",
+        )
 
 
 @pytest.mark.parametrize(

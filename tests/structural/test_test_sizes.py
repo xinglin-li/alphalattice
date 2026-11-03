@@ -7,6 +7,7 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -1200,6 +1201,8 @@ def test_find_returns_requirements_with_holders_then_unregistered_tests(tmp_path
     ("case", "edit", "refused"),
     [
         ("unregistered", {}, "proves nothing"),
+        ("schema-preserved-time", {}, ""),
+        ("seed-junction", {}, ""),
         ("unknown", {}, "unregistered or retired"),
         ("product_host.port_reuse", {}, ""),
         ("host.port_reuse", {}, "its id is product_host.<words>"),
@@ -1211,14 +1214,78 @@ def test_find_returns_requirements_with_holders_then_unregistered_tests(tmp_path
         ("product_host.port_reuse", {"layer": "e2e", "exception": {"decided": True}}, "decision"),
         ("product_host.port_reuse", {"layer": "e2e", "exception": {"kinds": 1}}, "decision"),
         (HELD, None, "was removed"),
+        ("schema-unreadable-directory", {}, ""),
+        ("schema-unreadable-entry", {}, ""),
     ],
 )
 def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
-    tmp_path, case, edit, refused
+    tmp_path, case, edit, refused, monkeypatch
 ):
     from devtools.testing import requirements as r
     from devtools.testing.collection import gate
 
+    if case in {"schema-unreadable-directory", "schema-unreadable-entry"}:
+        root = tmp_path / "schema-hidden"
+        hidden = root / "config" / "restricted"
+        hidden.mkdir(parents=True)
+        (hidden / "manifest.json").write_text(json.dumps({"schema": r.MANIFEST_SCHEMA}), "utf-8")
+        with pytest.raises(ValueError, match="legacy_missing"):
+            r.legacy(root)
+        scandir = os.scandir
+
+        def unreadable(path):
+            if case == "schema-unreadable-entry" and Path(path) == root / "config":
+                entry = MagicMock(name="entry")
+                entry.name, entry.path = "restricted", str(hidden)
+                entry.is_dir.side_effect = PermissionError("fixture entry unavailable")
+                scan = MagicMock(name="scandir")
+                scan.__iter__.return_value = iter([entry])
+                scan.__enter__.return_value = scan
+                return scan
+            if case == "schema-unreadable-directory" and Path(path) == hidden:
+                raise PermissionError("fixture directory unavailable")
+            return scandir(path)
+
+        with monkeypatch.context() as fault:
+            fault.setattr(os, "scandir", unreadable)
+            try:
+                r.legacy(root)
+            except ValueError as error:
+                assert "schema_candidate_unreadable" in str(error)
+            else:
+                raise AssertionError("unreadable schema population must not prove public absence")
+        not_dir = tmp_path / "schema-file"
+        not_dir.mkdir()
+        (not_dir / "config").write_text("not a directory", "utf-8")
+        with pytest.raises(ValueError, match="schema_candidate_unreadable"):
+            r.legacy(not_dir)
+        return
+
+    if case == "schema-preserved-time":
+        root = tmp_path / "schema"
+        (root / "config").mkdir(parents=True)
+        candidate = root / "config/one.json"
+        schema = r.LEGACY_SCHEMA
+        candidate.write_text(json.dumps({"schema": schema}), "utf-8")
+        assert r.schema_path(root, schema) == candidate
+        stat = candidate.stat()
+        raw = candidate.read_bytes()
+        altered = raw.replace(b"tests-unregistered", b"tests-UNregistered")
+        assert altered != raw and len(altered) == len(raw)
+        candidate.write_bytes(altered)
+        os.utime(candidate, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        assert r.schema_path(root, schema) is None
+        candidate.write_bytes(raw)
+        os.utime(candidate, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        assert r.schema_path(root, schema) == candidate
+        return
+    if case == "seed-junction":
+        (tmp_path / "config").mkdir()
+        monkeypatch.setattr(Path, "is_junction", lambda path: path == tmp_path / "config")
+        with pytest.raises(ValueError, match="legacy_seed_target_invalid"):
+            r.shrink(tmp_path, seed=True, to=Path("config/seed.json"))
+        assert not (tmp_path / "config/seed.json").exists()
+        return
     registry, node = _registry_tree(tmp_path), "tests/a/test_host.py::test_host_outlives_session"
     if case in {"unregistered", "unknown"}:
         test = r.Holder(node, ("x.y",) * (case == "unknown"), node.split("::")[1])
@@ -1236,13 +1303,35 @@ def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
         with pytest.raises(ValueError, match=r"unregistered:tests/a/test_host\.py"):
             gate("merge", [(node, [], suite / "a/test_host.py")], {}, suite)
         gate("merge", [(node, [], suite / "a/test_host.py")], r.legacy(tmp_path), suite)  # public
-        r.shrink(tmp_path, seed=True)
+        ledger = Path("config/registries/ledger.json")  # private records are found by schema
+        r.shrink(tmp_path, seed=True, to=ledger)
         with pytest.raises(ValueError, match="legacy_seeded"):  # seeded once, then only shrinks
-            r.shrink(tmp_path, seed=True)
-        (tmp_path / r.LEGACY).unlink()
-        (tmp_path / r.PRIVATE_MARKER).parent.mkdir(parents=True)
-        (tmp_path / r.PRIVATE_MARKER).write_text("{}", "utf-8")
+            r.shrink(tmp_path, seed=True, to=ledger)
+        (tmp_path / ledger).unlink()
+        listing = tmp_path / "config/release/listing.json"
+        listing.parent.mkdir(parents=True)
+        listing.write_text(json.dumps({"schema": r.MANIFEST_SCHEMA}), "utf-8")
         with pytest.raises(ValueError, match="legacy_missing"):  # a private checkout needs it
+            r.legacy(tmp_path)
+        outside = (Path("../out.json"), tmp_path / "config/x.json", Path("tests/x.json"))
+        for bad in (listing.relative_to(tmp_path), *outside):  # a new file inside config only
+            with pytest.raises(ValueError, match="legacy_seed_target_invalid"):
+                r.shrink(tmp_path, seed=True, to=bad)
+        assert not (tmp_path.parent / "out.json").exists()
+        torn = tmp_path / "config/release/torn.json"
+        torn.write_text("{", "utf-8")
+        with pytest.raises(ValueError, match="schema_candidate_unreadable:config/release/torn"):
+            r.legacy(tmp_path)  # an unreadable candidate is unknown, never a public tree
+        torn.unlink()
+        r.shrink(tmp_path, seed=True, to=ledger)
+        assert r.legacy(tmp_path) is not None
+        twin = tmp_path / "config/twin.json"
+        twin.write_bytes((tmp_path / ledger).read_bytes())
+        with pytest.raises(ValueError, match="schema_ambiguous"):  # the memo sees a new carrier
+            r.legacy(tmp_path)
+        twin.unlink()
+        (tmp_path / ledger).write_text(json.dumps({"schema": "other.v1"}), "utf-8")
+        with pytest.raises(ValueError, match="legacy_missing"):  # and never keeps a changed file
             r.legacy(tmp_path)
         return
     base, entries = json.dumps(registry), registry["entries"]

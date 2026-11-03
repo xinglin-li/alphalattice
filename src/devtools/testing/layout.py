@@ -18,14 +18,22 @@ from .layout_references import declarations as reference_declarations
 from .layout_references import images as reference_images
 from .layout_references import provenance as reference_provenance
 from .layout_references import source_paths as reference_source_paths
-from .requirements import LAYERS
+from .requirements import LAYERS, LEGACY_SCHEMA, schema_file
 
-REGISTRIES = (
-    "config/registries/test-sizes.json",
-    "config/registries/test-private.json",
-    "config/registries/tests-unregistered.json",
-    "config/agent-eval/host-facts.json",
-)
+REGISTRIES = ("config/registries/test-sizes.json", "config/registries/test-private.json")  # public
+FACTS_SCHEMA = "alphalattice.agent-eval.host-facts"
+
+
+def registries(files: Mapping[str, str]) -> dict[str, str]:
+    """Each registry a move rewrites, by role: the public ones by path, the private legacy count
+    and host facts by their schema when this tree holds them (never named by path)."""
+    found = {"sizes": REGISTRIES[0], "private": REGISTRIES[1]}
+    for role, schema in (("legacy", LEGACY_SCHEMA), ("facts", FACTS_SCHEMA)):
+        if (path := schema_file(files, files.__getitem__, schema)) is not None:
+            found[role] = path
+    return found
+
+
 DISCOVERY = "from tests._support.project_discovery import project_discovery as project_discovery\n"
 
 
@@ -69,9 +77,8 @@ def _rules(
     return sorted(mapped.values(), key=lambda row: positions[row[key]])
 
 
-def _host_fact_image(document: Any, modules: dict[str, str]) -> dict[str, Any]:
+def _host_fact_image(document: Any, modules: dict[str, str], path: str) -> dict[str, Any]:
     """Move declaration identities; observations, payloads and ordering stay intact."""
-    path = REGISTRIES[3]
     if not isinstance(document, dict) or not isinstance(document.get("fakes"), list):
         raise ValueError("test_layout.registry_invalid:" + path + "; restore fake declarations")
     renamed = {a.removesuffix(".__init__"): b.removesuffix(".__init__") for a, b in modules.items()}
@@ -107,15 +114,15 @@ def _registry_images(
         for p in files
         if p.startswith("tests/") and Path(p).name.startswith("test_") and p.endswith(".py")
     ]
-    for path in REGISTRIES:
+    for role, path in registries(files).items():
         if path not in files:
             continue
         document = json.loads(files[path])
         original = document.copy() if isinstance(document, dict) else document
-        if path == REGISTRIES[3]:
-            document = _host_fact_image(document, modules)
-        elif path != REGISTRIES[0]:
-            field = "entries" if path == REGISTRIES[1] else "files"
+        if role == "facts":
+            document = _host_fact_image(document, modules, path)
+        elif role != "sizes":
+            field = "entries" if role == "private" else "files"
             mapped = {}
             for key, value in document[field].items():
                 old, separator, suffix = key.partition("::")
@@ -172,7 +179,7 @@ def snapshot(
     paths = reference_source_paths(reference_paths)
     available = set(
         subprocess.check_output(
-            ["git", "ls-tree", "-r", "--name-only", source, "--", *sorted(paths | {REGISTRIES[3]})],
+            ["git", "ls-tree", "-r", "--name-only", source, "--", *sorted(paths)],
             cwd=root,
             text=True,
         ).splitlines()
@@ -182,12 +189,10 @@ def snapshot(
             "test_layout.registry_invalid: reference source absent: "
             + ",".join(sorted(paths - available))
         )
-    roots = ("src", "scripts", "tests", "config/registries")
+    roots = ("src", "scripts", "tests", "config")  # all of config: private data is found by schema
     extra = sorted(
         path for path in paths if not any(path == p or path.startswith(p + "/") for p in roots)
     )
-    if REGISTRIES[3] in available and REGISTRIES[3] not in extra:
-        extra.append(REGISTRIES[3])
     raw = subprocess.check_output(
         [
             "git",
@@ -198,12 +203,15 @@ def snapshot(
         ],
         cwd=root,
     )
+    files = {}
     with tarfile.open(fileobj=io.BytesIO(raw)) as tree:
-        files = {
-            p.name: cast(BinaryIO, tree.extractfile(p)).read().decode("utf-8")
-            for p in tree
-            if p.isfile() and (p.name.endswith(".py") or p.name in REGISTRIES or p.name in paths)
-        }
+        for p in tree:  # Python, the config JSON a registry may be (by schema), and named inputs
+            schema = p.name.startswith("config/") and p.name.endswith(".json")
+            if p.isfile() and (p.name.endswith(".py") or schema or p.name in paths):
+                try:
+                    files[p.name] = cast(BinaryIO, tree.extractfile(p)).read().decode("utf-8")
+                except UnicodeError as error:
+                    raise ValueError(f"test_layout.input_unreadable:{p.name}: {error}") from None
     return source, files
 
 
@@ -414,7 +422,11 @@ def plan(
     for context, destinations in inherited.items():
         inherit(context, destinations)
     coupled, source_references = reference_images(
-        files, moves, modules, reference_declarations(references), blocked=(*REGISTRIES, *images)
+        files,
+        moves,
+        modules,
+        reference_declarations(references),
+        blocked=(*registries(files).values(), *images),
     )
     images.update(coupled)
     _wire_images(files, moves, modules, images)
@@ -587,32 +599,36 @@ def _checked_reference_paths(value: dict[str, Any]) -> set[str]:
     return paths
 
 
+def _checked_image_path(root: Path, name: str, allowed: set[str]) -> Path:
+    """The file one image rewrites: under the code roots or allowed by name, never an alias."""
+    if (
+        not (name.startswith(("tests/", "src/", "scripts/")) or name in allowed)
+        or "\\" in name
+        or ":" in name
+        or ".." in PurePosixPath(name).parts
+    ):
+        raise ValueError("test_layout.path_invalid:" + name)
+    _check_windows_image_name(name)
+    path = root / name
+    resolved = path.resolve()
+    if (
+        not resolved.is_relative_to(root)
+        or resolved != path.absolute()
+        or any(p.is_symlink() for p in [path, *path.parents])
+    ):
+        raise ValueError("test_layout.path_invalid:" + name)
+    return path
+
+
 def apply(root: Path, value: dict[str, Any]) -> list[str]:
     """Preflight every image and reject aliases before any file changes."""
     root = root.resolve()
     references = _checked_reference_paths(value)
+    images = {n: b or a or "" for n, (b, a) in value["files"].items() if n.startswith("config/")}
+    allowed = set(registries(images).values()) | set(references)  # private ones by their schema
     paths = {}
     for name, (before, _after) in value["files"].items():
-        if (
-            not (
-                name.startswith(("tests/", "src/", "scripts/"))
-                or name in REGISTRIES
-                or name in references
-            )
-            or "\\" in name
-            or ":" in name
-            or ".." in PurePosixPath(name).parts
-        ):
-            raise ValueError("test_layout.path_invalid:" + name)
-        _check_windows_image_name(name)
-        path = root / name
-        resolved = path.resolve()
-        if (
-            not resolved.is_relative_to(root)
-            or resolved != path.absolute()
-            or any(p.is_symlink() for p in [path, *path.parents])
-        ):
-            raise ValueError("test_layout.path_invalid:" + name)
+        path = _checked_image_path(root, name, allowed)
         if (path.read_bytes().decode("utf-8") if path.is_file() else None) != before or (
             path.exists() and not path.is_file()
         ):
