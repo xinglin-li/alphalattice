@@ -518,6 +518,7 @@ def _check_scoped_structural(*, staged: bool) -> bool:
     with tempfile.TemporaryDirectory() as folder:
         (Path(folder) / "changed.txt").write_text(listing.stdout, encoding="utf-8")
         env = dict(os.environ, ALPHALATTICE_TEST_LANE="fast")
+        env["ALPHALATTICE_TEST_STAGED"] = "1" if staged else "0"
         env["ALPHALATTICE_CHANGED_PATHS"] = str(Path(folder) / "changed.txt")
         command = (
             sys.executable,
@@ -841,6 +842,8 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
             "pyproject.toml",
             targets=python_targets,
         )
+    if args.fast and not _check_scoped_structural(staged=args.staged):
+        return 1
     # Always the full strict set, never a subset. With follow_imports = "skip",
     # a module absent from the command line types as Any, so narrowing the list
     # both invents errors and hides real ones -- it is not the same check on
@@ -867,8 +870,6 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     if not _check_boundaries(staged=args.staged):
         return 1
     if not _check_import_contracts():
-        return 1
-    if args.fast and not _check_scoped_structural(staged=args.staged):
         return 1
     if not _check_docstrings():
         return 1

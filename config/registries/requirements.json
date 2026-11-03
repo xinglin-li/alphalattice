@@ -170,6 +170,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "testing.reuse_pin_fast_check": {
+      "description": "The fast lane runs the reviewed reuse frontier check on changed pinned source files and names how to refresh a moved pin.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
     "testing.row_admitted_or_refused_by_its_check": {
       "description": "A new or edited requirement row is admitted at once when its id, owner, sentence, layer and budget pass without a near-duplicate, and is otherwise refused by its failing check or held for the test manager's decision.",
       "owner": "devtools.testing",
