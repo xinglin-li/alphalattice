@@ -115,7 +115,11 @@ def pytest_checkout(tmp_path: Path, source: Path) -> tuple[Path, dict[str, str]]
     GoalStore(workspace / "artifacts", manifest.workspace_id).publish(goal, None)
     external = tmp_path / "system-temp"
     external.mkdir()
-    environment = {key: value for key, value in os.environ.items() if not key.startswith("PYTEST_")}
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("PYTEST_") and key != "ALPHALATTICE_PIPELINE_REQUIRED_TESTS"
+    }
     environment.update(
         PYTHONPATH=os.pathsep.join((str(source), str(source / "src"), str(source / "scripts"))),
         PYTHONDONTWRITEBYTECODE="1",

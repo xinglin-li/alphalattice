@@ -330,8 +330,12 @@ assert calls == ['test.contract.failure']
     ],
 )
 def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
-    tmp_path, case, layer, header, body, refused
+    tmp_path, monkeypatch, case, layer, header, body, refused
 ):
+    if case in {"temporary", "root-pure"}:
+        monkeypatch.setenv(
+            "ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(["tests/outer.py::test_outer"])
+        )
     root = Path(__file__).resolve().parents[2]
     if case.startswith("root-"):
         from tests.structural.pytest_support import pytest_checkout
@@ -513,7 +517,11 @@ def _memory_checks_read_no_host():
         ],
         cwd=tmp_path,
         env=dict(
-            os.environ,
+            {
+                key: value
+                for key, value in os.environ.items()
+                if key != "ALPHALATTICE_PIPELINE_REQUIRED_TESTS"
+            },
             PYTHONPATH=os.pathsep.join([str(tmp_path), str(root / "src")]),
             ALPHALATTICE_NETWORK_DISABLED="1",
             ALPHALATTICE_TEST_LANE="",
@@ -640,8 +648,12 @@ def _memory_checks_read_no_host():
     + [pytest.param(("sibling-race",), id="sibling-race")],
 )
 @pytest.mark.proves("testing.layer_contract")
-def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared):
+def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypatch, declared):
     """Owned size declarations enforce their bounds and provenance, refusing invalid catalogs."""
+    if not declared:
+        monkeypatch.setenv(
+            "ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(["tests/outer.py::test_outer"])
+        )
     root = Path(__file__).resolve().parents[2]
     if declared and declared[0].startswith("cost-"):
         from devtools.testing import sizes
@@ -1013,7 +1025,11 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
         command,
         cwd=root,
         env=dict(
-            os.environ,
+            {
+                key: value
+                for key, value in os.environ.items()
+                if key != "ALPHALATTICE_PIPELINE_REQUIRED_TESTS"
+            },
             ALPHALATTICE_NETWORK_DISABLED="1",
             PYTHONPATH=str(root / "src"),
             ALPHALATTICE_TEST_LANE=lane,
