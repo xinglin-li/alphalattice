@@ -583,6 +583,7 @@ class LocalPortfolioWebSession:
     client_connection: LocalResearchConnection | None = field(default=None, init=False, repr=False)
     review: EvidenceReviewApplication | None = field(default=None, init=False)
     resumed_task_ids: tuple[UUID, ...] = field(default=(), init=False)
+    stop_requested: Callable[[], bool] = field(default=bool, init=False)
     _workspace_review_authority: bool = field(default=False, init=False)
     _official_source: OfficialSourceAdmission | None = field(default=None, init=False)
 
@@ -798,6 +799,7 @@ class LocalPortfolioWebSession:
             only_task_id=only_task_id,
             expected_task_hash=expected_task_hash,
             refusal=self.resume_refusal,
+            stopping=self.stop_requested,
         )
 
     def resume_refusal(self, task: TaskRecord) -> str | None:

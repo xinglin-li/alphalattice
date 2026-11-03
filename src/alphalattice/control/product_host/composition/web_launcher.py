@@ -548,24 +548,32 @@ def main(
     # workspace lease and starts a worker before it binds a socket, so a failure
     # part-way through still has something to release -- and this `finally` is
     # what releases it.
+    tied = arguments.stop_on_stdin and _stdin_ties()
+    stop = threading.Event()
+
+    def stopping() -> dict[str, object]:
+        if session.dispatcher is not None:
+            session.dispatcher._begin_drain()
+        stop.set()
+        return dict(STOPPING)
+
+    def watched() -> None:
+        _wait_for_stop_on_stdin()
+        stopping()
+
+    # The stop is read from the start, so a stop during a slow start (its resume) ends it at the
+    # next step instead of after it, past a caller's wait, with its connection left behind.
+    session.stop_requested = stop.is_set
     try:
+        if tied:
+            # Either way of stopping ends the wait: the input's own, or `host stop`.
+            threading.Thread(target=watched, daemon=True).start()
         session.start()
+        if stop.is_set():  # stopped while starting: no launch line, no browser; `finally` stops it
+            return 0
         # The launch URL gives the browser that opens it the session, and only it (HB):
         # a script or the QA kit takes it from this line.
         url = session.launch_url
-        tied = arguments.stop_on_stdin and _stdin_ties()
-        stop = threading.Event()
-
-        def stopping() -> dict[str, object]:
-            if session.dispatcher is not None:
-                session.dispatcher._begin_drain()
-            stop.set()
-            return dict(STOPPING)
-
-        def watched() -> None:
-            _wait_for_stop_on_stdin()
-            stopping()
-
         if session.operations is not None:
             session.operations.stop_host = stopping
         needed: Callable[[], bool] = bool
@@ -595,9 +603,6 @@ def main(
             print(OPEN_THE_WORKBENCH, flush=True)  # noqa: T201  # bootstrap/lifecycle
         else:
             webbrowser.open(url)
-        if tied:
-            # Either way of stopping ends the wait: the input's own, or `host stop`.
-            threading.Thread(target=watched, daemon=True).start()
         while not stop.wait(1):  # a timed wait keeps Ctrl-C heard
             if session.dispatcher is not None and session.dispatcher._idle_expired(
                 session.idle_timeout_seconds, needed

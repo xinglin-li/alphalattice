@@ -999,6 +999,19 @@ def test_local_web_reopens_after_forced_process_death(tmp_path: Path, phase: str
     workspace = tmp_path / "workspace"
     with forced_process(workspace, __name__, phase) as interrupted:
         pass
+    if phase == "WORK":  # a stop during start resumes nothing, and its stop removes the connection
+        early = LocalPortfolioWebSession(
+            workspace=workspace,
+            workspace_manifest=_manifest("qa-hard-stop"),
+            resolver=_Resolver(_resolved()),
+        )
+        early.stop_requested = lambda: True
+        early.start()
+        published = early.client_connection
+        assert early.resumed_task_ids == () and published is not None
+        assert published.path(Path(published.workspace)).exists()  # published early: the fence
+        early.stop()
+        assert not published.path(Path(published.workspace)).exists()
     resolver = _Resolver(_resolved())
     service = LocalPortfolioWebSession(
         workspace=workspace, workspace_manifest=_manifest("qa-hard-stop"), resolver=resolver

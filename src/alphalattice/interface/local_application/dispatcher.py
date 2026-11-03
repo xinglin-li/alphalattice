@@ -494,6 +494,7 @@ class LocalBackgroundDispatcher:
         only_task_id: UUID | None = None,
         expected_task_hash: str | None = None,
         refusal: Callable[[TaskRecord], str | None] | None = None,
+        stopping: Callable[[], bool] | None = None,
     ) -> tuple[UUID, ...]:
         """Re-enqueue work the workspace still owes after a restart.
 
@@ -510,6 +511,9 @@ class LocalBackgroundDispatcher:
         `refusal` names a Task that cannot resume under the code installed now; it
         is not enqueued, and its code is this Task's failure, as for a kind this
         service does not run.
+
+        `stopping` is asked before each Task: once a stop has come, the rest stay as
+        they are, durable for the next service, and nothing is written for them.
         """
         resumed: list[UUID] = []
         # A Task that never started has no stored status projection. Restore
@@ -519,6 +523,8 @@ class LocalBackgroundDispatcher:
             key=lambda task: task.lifecycle is not TaskLifecycle.RECOVERY_REQUIRED,
         )
         for task in records:
+            if stopping is not None and stopping():
+                break
             if only_task_id is not None and task.task_id != only_task_id:
                 continue
             if task.task_kind in commands:

@@ -10,6 +10,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from contextlib import redirect_stdout
 from datetime import UTC, datetime, timedelta
@@ -119,21 +120,43 @@ watcher.join()
 """
 
 
+@pytest.mark.parametrize("during", [False, True])  # the stop after the start, or during it
 @pytest.mark.parametrize("lines", ["stop\n", "ignored\nstop\n", ""])
-def test_attached_launcher_stops_on_explicit_stdin_or_eof(tmp_path, monkeypatch, capsys, lines):
+def test_attached_launcher_stops_on_explicit_stdin_or_eof(
+    tmp_path, monkeypatch, capsys, lines, during
+):
 
     from scripts import run_local_portfolio_web
 
+    from alphalattice.control.product_host.composition import web_launcher
     from alphalattice.interface.local_application.cli import main
 
-    calls = []
+    calls, launched = [], threading.Event()
+
+    class Input(StringIO):  # the stop arrives once the launch lines are out, or during the start
+        def __next__(self):
+            launched.wait(0 if during else 30)
+            return super().__next__()
+
+    def shown_then_stoppable(*text, **options):
+        builtins.print(*text, **options)
+        if text == (OPEN_THE_WORKBENCH,):
+            launched.set()
+
+    monkeypatch.setattr(web_launcher, "print", shown_then_stoppable, raising=False)
 
     class Session:
         launch_url = "http://127.0.0.1:12345/launch?key=k"  # printed and opened (HB)
         operations = None
         dispatcher = None
+        stop_requested = staticmethod(bool)
 
         def start(self):
+            if during:  # a slow start: the stop, read from the start, is seen inside it
+                deadline = time.monotonic() + 30
+                while not self.stop_requested() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                calls.append("stopped" if self.stop_requested() else "missed")
             root = resolve_playpen_root(Path(__file__))
             host = subprocess.Popen(
                 [sys.executable, "-c", _WATCHED_STDIN, str(root)],
@@ -154,12 +177,15 @@ def test_attached_launcher_stops_on_explicit_stdin_or_eof(tmp_path, monkeypatch,
 
     launcher = run_local_portfolio_web.LocalPortfolioWebSession
     monkeypatch.setattr(launcher, "from_workspace", lambda *a, **k: Session())
-    monkeypatch.setattr(sys, "stdin", StringIO(lines))
+    monkeypatch.setattr(sys, "stdin", Input(lines))
     args = ["--workspace", str(tmp_path), "serve", "--no-browser", "--stop-on-stdin"]
     assert main(args, serve=run_local_portfolio_web.main) == 0
-    assert calls == ["start", "stop"]
+    assert calls == (["stopped", "start", "stop"] if during else ["start", "stop"])
     shown = capsys.readouterr().out.splitlines()
-    assert shown[0].endswith(Session.launch_url) and shown[2] == OPEN_THE_WORKBENCH
+    if during:  # stopped while starting: no launch line, no browser, and still stopped
+        assert shown == []
+    else:
+        assert shown[0].endswith(Session.launch_url) and shown[2] == OPEN_THE_WORKBENCH
 
 
 @WINDOWS
@@ -313,6 +339,9 @@ def test_a_served_detached_host_expires_only_after_its_held_work_finishes(
 
         def set(self):
             self.stopped = True
+
+        def is_set(self):
+            return self.stopped
 
         def wait(self, seconds):
             assert seconds == 1
