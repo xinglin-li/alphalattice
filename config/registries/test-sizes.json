@@ -504,6 +504,7 @@
       "pattern": "tests/workspace_maintenance/test_local_data_update.py::test_an_excluded_new_candidate_keeps_every_current_member_and_its_audit*",
       "owner": "tests.workspace_maintenance",
       "reason": "Runs the complete daily Data and Feature update with candidate exclusion and persisted membership and audit readback.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900
     },
     {
@@ -706,6 +707,7 @@
       "pattern": "tests/workspace_maintenance/test_local_data_update.py::test_a_removed_historical_member_still_receives_its_owed_pre_exit_tail*",
       "owner": "tests.workspace_maintenance",
       "reason": "historical maximum 95.902 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900,
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
     },
@@ -1348,6 +1350,10 @@
     {
       "node": "tests/conftest.py::_answers_hold_their_models",
       "reason": "Inspects loaded module metadata to validate Host answer schemas and is inactive for units."
+    },
+    {
+      "node": "tests/conftest.py::_seeds_read_in_place_stay_unchanged",
+      "reason": "Finds the session-seed module among loaded modules, only to hash seeds a test read in place; a unit copies none."
     }
   ]
 }

@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import tempfile
 import time
 import uuid
@@ -20,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from tests.pytest_environment import golden_runtime
+from tests.pytest_environment import RUNNING_TEST, golden_runtime
 
 
 def _files(root: Path) -> dict[str, str]:
@@ -106,7 +107,12 @@ def session_workspace(
         if built:
             target = cache / f"g-{uuid.uuid4().hex}"
             target.mkdir()
-            metadata = build(target / "workspace")
+            running = dict(RUNNING_TEST)
+            RUNNING_TEST.update(id=None, private=False)  # a builder writes what it copies
+            try:
+                metadata = build(target / "workspace")
+            finally:
+                RUNNING_TEST.update(running)
             if not isinstance(metadata, dict) or not (target / "workspace").is_dir():
                 raise RuntimeError(
                     f"session workspace builder produced no workspace or metadata: {name}"
@@ -153,7 +159,64 @@ def session_workspace(
     return target / "workspace", result["metadata"]
 
 
-def copy_workspace(source: Path, target: Path, *, link_parquet: bool = False) -> Path:
+# Each session seed a test read in place, checked against its build record at session end.
+LINKED_SEEDS: set[Path] = set()
+# Windows: each seed file read in place, held open for the session so that no writer can open it.
+_HELD: dict[str, int] = {}
+
+
+def refuse_writers(path: str) -> None:
+    """A seed file read in place refuses every writer, through any of its links, and each link
+    still goes with its test's directory.
+
+    POSIX: its write bits go off; unlinking a name needs only its directory. Windows keeps
+    one read-only attribute per file, shared by every link, so a link could not be deleted
+    without making the seed writable: one handle that shares reading and deletion, never
+    writing, is held instead, and a writer's open fails with a sharing violation.
+    """
+    if os.name != "nt":
+        os.chmod(path, stat.S_IMODE(os.stat(path).st_mode) & ~0o222)
+        return
+    if path in _HELD:
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    # GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING
+    handle = kernel.CreateFileW(str(Path(path).absolute()), 0x80000000, 0x1 | 0x4, None, 3, 0, None)
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error(), f"test_datasets.hold_refused: {path}")
+    _HELD[path] = handle  # closed with the process; the seed outlives every test of the session
+
+
+def seeds_changed() -> list[str]:
+    """Each file of a seed read in place that no longer matches the hash its build recorded."""
+    changed = []
+    for seed in sorted(LINKED_SEEDS):
+        record = json.loads((seed.parent / "complete.json").read_text(encoding="utf-8"))["files"]
+        now = _files(seed)
+        changed += [
+            f"{seed}: {name}"
+            for name in sorted(set(record) | set(now))
+            if record.get(name) != now.get(name)
+        ]
+    return changed
+
+
+def copy_workspace(
+    source: Path, target: Path, *, link_parquet: bool = False, link_data: bool | None = None
+) -> Path:
     """Private writable files; only callers that never edit Parquet opt into links.
 
     The session seed remains alive for the entire run, including every linked
@@ -161,10 +224,35 @@ def copy_workspace(source: Path, target: Path, *, link_parquet: bool = False) ->
     the seed. Paths the product linked to one file inside the seed (a research
     input's pooled database and its source) stay one file inside the copy, as the
     product wrote them, so a copy never holds the same database twice.
+
+    A running test reads a session seed's market data and Parquet objects in place:
+    linked, never copied, the seed's file refusing writers first (refuse_writers) so a test
+    that writes one fails loudly, and seeds_changed() names any change at session end. Only a
+    test marked private_data, which writes them, gets them copied; any other test
+    asking for a copy is refused by name. A seed builder copies (RUNNING_TEST is clear).
     """
     copied: dict[tuple[int, int], str] = {}  # a seed file the product linked -> its copy here
+    test = RUNNING_TEST["id"] if (Path(source).parent / "complete.json").is_file() else None
+    if test is not None and not RUNNING_TEST["private"]:
+        if link_data is False:
+            raise RuntimeError(
+                f"test_datasets.private_copy_unmarked: {test} copies the seed {source}; mark "
+                "it private_data if it writes the seed's market data or Parquet, else read in place"
+            )
+        link_data = True
 
     def copy_file(src: str, dst: str) -> str:
+        data = Path(src).name == "market-data.duckdb" or Path(src).suffix == ".parquet"
+        if link_data and data:
+            refuse_writers(src)
+            try:
+                os.link(src, dst)
+            except OSError as error:
+                raise RuntimeError(
+                    f"test_datasets.link_refused: {test} cannot read {src} in place: {error}"
+                ) from error
+            LINKED_SEEDS.add(Path(source))
+            return dst
         if link_parquet and Path(src).suffix == ".parquet":
             os.link(src, dst)
             return dst
@@ -173,6 +261,8 @@ def copy_workspace(source: Path, target: Path, *, link_parquet: bool = False) ->
             os.link(copied[key], dst)
             return dst
         shutil.copy2(src, dst)
+        if data:  # a private copy stays writable after its seed's file refused writers
+            os.chmod(dst, os.stat(dst).st_mode | stat.S_IWRITE)
         if seen.st_nlink > 1:
             copied[(seen.st_dev, seen.st_ino)] = dst
         return dst

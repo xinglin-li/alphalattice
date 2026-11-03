@@ -391,12 +391,14 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
     monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
     factory, attempts, value = SimpleNamespace(getbasetemp=lambda: tmp_path), [], ["original"]
     make, copy = session.session_workspace, session.copy_workspace
+    monkeypatch.setattr(session, "LINKED_SEEDS", set())  # this holder's seeds, not the session's
 
     def build(root):
         root.mkdir()
         (root / "seed.txt").write_text(value[0], encoding="utf-8")
         (root / "pool.duckdb").write_bytes(b"db")  # a linked input, as the product binds one
         (root / "source.duckdb").hardlink_to(root / "pool.duckdb")
+        (root / "market-data.duckdb").write_bytes(b"market data")
         attempts.append(value[0])
         if len(attempts) == 1:
             raise InterruptedError("worker stopped mid-build")
@@ -422,6 +424,22 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
     pool = copied / "pool.duckdb"
     assert pool.samefile(copied / "source.duckdb") and not pool.samefile(first / "pool.duckdb")
     assert (second / "seed.txt").read_text() == "second"
+    # Read in place: the seed's own file, refusing a writer through any link; the copy still
+    # goes whole (on Windows too), the seed still refusing writers, and a change is named.
+    in_place = copy(second, tmp_path / "in-place", link_data=True)
+    linked = in_place / "market-data.duckdb"
+    assert linked.samefile(second / "market-data.duckdb") and session.seeds_changed() == []
+    with pytest.raises(PermissionError):
+        linked.open("r+b")
+    shutil.rmtree(in_place)
+    with pytest.raises(PermissionError):
+        (second / "market-data.duckdb").open("r+b")
+    (second / "seed.txt").write_text("changed", encoding="utf-8")
+    assert session.seeds_changed() == [f"{second}: seed.txt"]
+    (second / "seed.txt").write_text("second", encoding="utf-8")  # the seed is reused below
+    session.LINKED_SEEDS.clear()
+    with pytest.raises(RuntimeError, match="private_copy_unmarked"):  # unmarked: no private copy
+        copy(second, tmp_path / "private", link_data=False)
 
     value[0] = "original"
     for field in ("name", "builder", "inputs", "", "missing"):

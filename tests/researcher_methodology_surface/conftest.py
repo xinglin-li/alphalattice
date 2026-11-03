@@ -49,7 +49,10 @@ from tests.researcher_methodology_surface.session_fixtures import (
     offline_execution_environment,
     real_risk_workspace,
 )
-from tests.researcher_methodology_surface.session_workspace import copy_workspace, session_workspace
+from tests.researcher_methodology_surface.session_workspace import (
+    copy_workspace,
+    session_workspace,
+)
 
 __all__ = ["offline_execution_environment", "real_risk_workspace"]
 
@@ -347,3 +350,16 @@ def sampled_alpha_case(sampled_alpha_seed, tmp_path_factory):
     seed, metadata = sampled_alpha_seed
     root = copy_workspace(seed[0], tmp_path_factory.mktemp("sampled-alpha") / "workspace")
     return (root, *seed[1:4], deepcopy(seed[4])), deepcopy(metadata)
+
+
+# They tamper with their seed's market data on purpose, so each gets a private copy.
+PRIVATE_DATA = {
+    "test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool",
+    "test_input_and_result_tamper_refuse_without_losing_historical_readback",
+}
+
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        if getattr(item, "originalname", item.name) in PRIVATE_DATA:
+            item.add_marker(pytest.mark.private_data)

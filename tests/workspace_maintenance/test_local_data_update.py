@@ -401,6 +401,7 @@ def test_a_partial_membership_update_reopens_its_exact_approved_task(
             assert live.operations.data_update.readback(task_id)["receipt"] is None
 
 
+@pytest.mark.private_data  # it updates its copy's market data
 @pytest.mark.parametrize(
     "candidate_features_available",
     ["recoverable_range", "recoverable_sector", "recoverable_history"],
@@ -1127,6 +1128,7 @@ def test_a_sectorless_candidates_recheck_fetches_it_alone_and_builds_once(
         assert again["candidate_recheck"]["listing_ids"] == [sectorless.listing_id]
 
 
+@pytest.mark.private_data  # it updates its copy's market data
 @pytest.mark.parametrize("exclusion", ["volume", "range", "sector"])
 def test_an_excluded_new_candidate_keeps_every_current_member_and_its_audit(
     current_member_seed, tmp_path, exclusion
@@ -1233,6 +1235,7 @@ def test_an_excluded_new_candidate_keeps_every_current_member_and_its_audit(
             )
 
 
+@pytest.mark.private_data  # it updates its copy's market data
 def test_a_removed_historical_member_still_receives_its_owed_pre_exit_tail(
     qualified_seed, tmp_path
 ):
@@ -1346,6 +1349,7 @@ def test_a_removed_historical_member_still_receives_its_owed_pre_exit_tail(
     )
 
 
+@pytest.mark.private_data  # its readiness gate opens the copy's market data for writing
 def test_an_unknown_accumulated_listing_is_still_refused(current_member_seed, tmp_path):
     """behaviour: a saved request proves no authority for an unknown source name."""
     from alphalattice.control.data_platform.maintenance.contracts import (

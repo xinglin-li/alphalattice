@@ -48,6 +48,25 @@ def _unit_contract(request: pytest.FixtureRequest) -> bool:
 
 
 @pytest.fixture(autouse=True)
+def _seeds_read_in_place(request: pytest.FixtureRequest) -> Iterator[None]:
+    """A test's copies of a session seed read its market data and Parquet in place, linked and
+    read-only; one marked private_data writes them, so it gets a private copy."""
+    private = request.node.get_closest_marker("private_data") is not None
+    environment.RUNNING_TEST.update(id=request.node.nodeid, private=private)
+    yield
+    environment.RUNNING_TEST.update(id=None, private=False)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _seeds_read_in_place_stay_unchanged() -> Iterator[None]:
+    """A write through a seed file read in place is named by seed and file at session end."""
+    yield
+    # Found among the loaded modules, never imported here: only a run that copied a seed pays.
+    if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
+        assert seeds.seeds_changed() == []
+
+
+@pytest.fixture(autouse=True)
 def project_isolation(tmp_path, tmp_path_factory, request):
     """Every test confines discovery and reads to its invocation's temporary roots."""
     base = tmp_path_factory.getbasetemp()

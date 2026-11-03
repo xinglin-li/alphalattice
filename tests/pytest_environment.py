@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     )
 
 PROJECT_ROOT: ContextVar[Path | None] = ContextVar("pytest_project_root", default=None)
+# The running test, set by the root conftest: the session seeds it copies read their market data
+# and Parquet in place unless it is marked private_data (it writes them, so it gets a copy).
+RUNNING_TEST: dict[str, str | bool | None] = {"id": None, "private": False}
 
 
 def golden_runtime():

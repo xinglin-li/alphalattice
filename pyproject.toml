@@ -192,6 +192,7 @@ addopts = "--strict-config --strict-markers -p no:cacheprovider"
 pythonpath = ["src", "scripts"]
 testpaths = ["tests"]
 markers = [
+    "private_data: the test writes its seed's market data or Parquet, so it gets a private copy",
     "small: registered in-memory test size; resource enforcement follows",
     "medium: registered local integration test size",
     "large: registered workflow or expensive test size; candidate and nightly obligation",
