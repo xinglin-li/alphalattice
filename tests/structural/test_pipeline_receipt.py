@@ -156,6 +156,22 @@ for _case in (
 
 
 for _case in (
+    "legacy target valid",
+    "legacy target unknown",
+    "legacy target type",
+    "legacy target late",
+    "legacy target expired",
+    "legacy target current",
+    "legacy target one-field",
+    "legacy target overflow",
+    "legacy target bool",
+    "legacy target future",
+    "legacy target cutoff",
+):
+    CASES[_case] = ({}, {}, None)
+
+
+for _case in (
     "cache hit",
     "cache orphan",
     "cache shadow",
@@ -176,6 +192,76 @@ for _case in (
 @pytest.mark.parametrize("case", CASES)
 def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeypatch, case):
     """A receipt counts only whole, with its claim standing over its events, and as asked."""
+    if case.startswith("legacy target "):
+        from datetime import datetime
+
+        path = tmp_path / "legacy.jsonl"
+        writer = receipt.Writer(
+            path,
+            {"stage": "commit", "host": "workshop", "command": ["x"]},
+            [{"workspace": {}}, {"configuration": {}}, {"metrics": {}}],
+        )
+        writer.write(
+            {"workspace": {}}, {"repo": "product", "base": "b" * 40, "head": HEAD, "clean": True}
+        )
+        writer.write({"configuration": {}}, CONFIGURATION)
+        metrics = {"wall_seconds": 1.0}
+        if case != "legacy target current":
+            metrics.update(target_seconds=600, target_breached=True)
+        if case == "legacy target one-field":
+            metrics.pop("target_breached")
+        if case == "legacy target overflow":
+            metrics["target_seconds"] = 10**400
+        if case == "legacy target bool":
+            metrics["target_breached"] = "true"
+        if case == "legacy target unknown":
+            metrics["unknown"] = 1
+        if case == "legacy target type":
+            metrics["target_seconds"] = "600"
+        writer.write({"metrics": {}}, metrics)
+        writer.finish({"result": "PASS", "exit": 0, "red_nodes": []})
+        lines = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+        lines[0]["started"]["started_at"] = "2026-10-25T04:25:00-04:00"
+        lines[-1]["finished"]["finished_at"] = (
+            "2026-10-25T04:44:42-04:00"
+            if case == "legacy target cutoff"
+            else "2026-10-25T04:45:00-04:00"
+            if case == "legacy target late"
+            else "2026-10-25T04:39:41-04:00"
+        )
+        path.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
+        before = path.read_bytes()
+        now = datetime.fromisoformat(
+            "2026-11-01T07:21:14-05:00"
+            if case == "legacy target expired"
+            else "2026-10-25T04:30:00-04:00"
+            if case == "legacy target future"
+            else "2026-10-31T12:00:00-04:00"
+        )
+        with monkeypatch.context() as scoped:
+
+            class FrozenDatetime(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return now
+
+            scoped.setattr(receipt, "datetime", FrozenDatetime)
+            try:
+                data, events = receipt.read(path)
+            except receipt.ReceiptError as error:
+                assert error.code == "pipeline.receipt_malformed"
+                accepted = False
+            else:
+                assert data == before and path.read_bytes() == before
+                metrics_event = next(event.metrics for event in events if "metrics" in event.id)
+                assert not hasattr(metrics_event, "target_seconds") and not hasattr(
+                    metrics_event, "target_breached"
+                )
+                accepted = True
+        assert accepted is (
+            case in {"legacy target valid", "legacy target current", "legacy target one-field"}
+        )
+        return
     if case.startswith("binding "):
         import hashlib
         import inspect
@@ -699,3 +785,566 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
             and caught.value.code == "pipeline.workspace_unreadable"
             and str(bad) in str(caught.value)
         )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "two-stage",
+        "digest-unchanged",
+        "digest-edited",
+        "digest-move",
+        "digest-unknown-move",
+        "digest-expired-unknown",
+        "digest-future-unknown",
+        "mixed-unknown",
+        "incomplete-mixed",
+        "malformed-mixed",
+        "unreadable-window",
+        "mixed-owner-unknown",
+        "post-unknown",
+        "blocked-same",
+        "own-setup",
+        "worker-crash",
+        "workspace-cascade",
+        "two-mixed",
+        "same-head",
+        "duplicate",
+        "outside",
+        "no-owner",
+        "unreadable",
+        "missing-failure",
+        "post-invalid",
+        "different-failure",
+        "already-held",
+        "held-repeat",
+        "held-invalid",
+        "held-family",
+        "held-sibling",
+        "held-pattern",
+        "skipped-solo",
+        "unbounded-solo",
+        "future-post",
+        "stage-fail-other",
+        "stage-error",
+        "stage-error-per-node",
+        "noncommit-stage",
+        "foreign-repo",
+        "nonassert",
+        "post-nonassert",
+        "policy-missing",
+        "policy-malformed",
+        "no-owner-policy",
+        "today-invalid",
+        "old-second",
+        "post-proof-missing",
+        "post-proof-present",
+        "missing-requirement",
+        "unknown-requirement",
+        "ambiguous-owner",
+        "same-owner-multiple",
+        "requirements-missing",
+        "requirements-malformed",
+        "legacy-owned",
+        "legacy-parameter",
+        "legacy-over-count",
+        "legacy-missing-file",
+        "legacy-bad-owner",
+        "legacy-malformed",
+        "legacy-requirement-first",
+    ],
+)
+@pytest.mark.proves("pipeline.flake_quarantine_candidates")
+def test_flake_candidates_use_distinct_verified_heads_and_registered_owners(
+    tmp_path, monkeypatch, case
+):
+    """Two distinct recent flake observations identify one owned quarantine candidate."""
+    from datetime import date
+    from pathlib import Path
+
+    from devtools.pipeline import health
+    from devtools.pipeline.definition import DefinitionError
+    from devtools.testing.requirements import LEGACY
+
+    select = getattr(health, "flake_candidates", None)
+    assert callable(select), "test health must derive automatic quarantine candidates"
+    root = Path(__file__).resolve().parents[2]
+    policy = json.loads((root / "config/registries/test-sizes.json").read_text("utf-8"))
+    policy["defaults"].append({"pattern": "tests/a/*", "owner": "tests.a", "size": "medium"})
+    if case == "no-owner-policy":
+        policy["defaults"] = [{"pattern": "tests/b/*", "owner": "tests.b", "size": "medium"}]
+    if case in {"already-held", "held-repeat", "held-family", "held-sibling", "held-pattern"}:
+        selector = "tests/a/test_x.py::test_c" + (
+            "[0]" if case == "held-sibling" else "*" if case == "held-pattern" else ""
+        )
+        policy["quarantine"].append(
+            {
+                "node": selector,
+                "owner": "tests.a",
+                "until": "2026-10-30",
+                "reason": "owned review",
+            }
+        )
+    owner_path = tmp_path / "config/registries/test-sizes.json"
+    owner_path.parent.mkdir(parents=True)
+    owner_path.write_text(json.dumps(policy), encoding="utf-8")
+    if case == "policy-missing":
+        owner_path.unlink()
+    if case == "policy-malformed":
+        owner_path.write_text("{", encoding="utf-8")
+    requirements = tmp_path / "config/registries/requirements.json"
+    rows = {
+        "example.flake": {
+            "description": "A flake is owned.",
+            "owner": "devtools.example",
+            "layer": "integration",
+            "seconds": 5,
+        },
+        "example.other": {
+            "description": "A second behavior is owned.",
+            "owner": "devtools.other" if case == "ambiguous-owner" else "devtools.example",
+            "layer": "integration",
+            "seconds": 5,
+        },
+    }
+    requirements.write_text(
+        json.dumps({"schema": "alphalattice.requirements.v1", "entries": rows}), encoding="utf-8"
+    )
+    if case == "requirements-missing":
+        requirements.unlink()
+    if case == "requirements-malformed":
+        requirements.write_text("{", encoding="utf-8")
+    (tmp_path / "tests/a").mkdir(parents=True)
+    ids = (
+        []
+        if case == "missing-requirement"
+        or (case.startswith("legacy-") and case != "legacy-requirement-first")
+        else ["example.unknown"]
+        if case == "unknown-requirement"
+        else ["example.flake", "example.other"]
+        if case in {"ambiguous-owner", "same-owner-multiple"}
+        else ["example.flake"]
+    )
+    mark = "" if not ids else "@pytest.mark.proves(" + ", ".join(map(repr, ids)) + ")\n"
+    (tmp_path / "tests/a/test_x.py").write_text(
+        "import pytest\n" + mark + "def test_c(): pass\n", encoding="utf-8"
+    )
+    if case.startswith("legacy-"):
+        ledger = tmp_path / LEGACY
+        document = {
+            "schema": "alphalattice.tests-unregistered.v1",
+            "owner": "" if case == "legacy-bad-owner" else "devtools.testing",
+            "files": {} if case == "legacy-missing-file" else {"tests/a/test_x.py": 1},
+        }
+        ledger.write_text(
+            "{" if case == "legacy-malformed" else json.dumps(document), encoding="utf-8"
+        )
+        if case == "legacy-over-count":
+            with (tmp_path / "tests/a/test_x.py").open("a", encoding="utf-8") as source:
+                source.write("def test_extra(): pass\n")
+    node = "tests/a/test_x.py::test_c" if case != "no-owner" else "foreign/test_x.py::test_c"
+    if case == "legacy-parameter":
+        node += "[one]"
+    if case in {"held-family", "held-sibling", "held-pattern"}:
+        node += "[1]"
+    heads = ("a" * 40, "b" * 40)
+    observed_nodes = (node, node)
+    import subprocess
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-C", str(tmp_path), *args], check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    (
+        git("init", "-q", "-b", "develop"),
+        git("config", "user.name", "Fixture"),
+        git("config", "user.email", "fixture@example.invalid"),
+    )
+    git("add", "."), git("commit", "-qm", "first holder")
+    source_head = git("rev-parse", "HEAD")
+    if case in {"digest-move", "digest-unknown-move"}:
+        git("mv", "tests/a/test_x.py", "tests/a/test_moved.py")
+        observed_nodes = (node, node.replace("test_x.py", "test_moved.py"))
+    else:
+        (tmp_path / "unrelated.txt").write_text("other change", encoding="utf-8")
+    git("add", "."), git("commit", "-qm", "second observation")
+    heads = (source_head, git("rev-parse", "HEAD"))
+    if case == "digest-edited":
+        path = tmp_path / "tests/a/test_x.py"
+        path.write_text(
+            path.read_text("utf-8").replace("def test_c(): pass", "def test_c(): assert True"),
+            encoding="utf-8",
+        )
+        git("add", "."), git("commit", "-qm", "holder fix")
+    if case in {"digest-move", "digest-unknown-move"}:
+        node = observed_nodes[1]
+
+    def stage(name, head, day, failure):
+        stage_node = observed_nodes[0] if name == "first" else observed_nodes[1]
+        events, path = tmp_path / (name + "-events.jsonl"), tmp_path / (name + ".jsonl")
+        first = {
+            "node": stage_node,
+            "attempt": 1,
+            "solo": False,
+            "status": "FAILED",
+            "seconds": 1,
+            "timeout_seconds": 10,
+            "failure": {"type": "AssertionError", "message": failure, "signature": "f" * 64},
+        }
+        if case == "own-setup":
+            first.update(
+                status="ERROR",
+                phase="setup",
+                failure={
+                    "type": "AssertionError",
+                    "message": "AssertionError: setup guard",
+                    "signature": "f" * 64,
+                },
+            )
+        if case == "worker-crash":
+            first.update(
+                status="ERROR",
+                phase="???",
+                failure={
+                    "type": "Failure",
+                    "message": f"worker 'gw8' crashed while running '{stage_node}'",
+                    "signature": "f" * 64,
+                },
+            )
+        if case == "workspace-cascade":
+            first.update(
+                status="ERROR",
+                phase="setup",
+                failure={
+                    "type": "RuntimeError",
+                    "message": "incomplete session workspace: fixture",
+                    "signature": "f" * 64,
+                },
+            )
+        second = {
+            "node": stage_node,
+            "attempt": 2,
+            "solo": True,
+            "status": "PASSED",
+            "seconds": 1,
+            "timeout_seconds": 10,
+        }
+        results = [first, second]
+        if (case == "mixed-unknown" and name == "second") or case == "mixed-owner-unknown":
+            unknown = "tests/a/test_x.py::test_unknown"
+            results += [
+                {
+                    **first,
+                    "node": unknown,
+                    "failure": {
+                        "type": "AssertionError" if case == "mixed-owner-unknown" else "ValueError",
+                        "message": "assert 1 == 2"
+                        if case == "mixed-owner-unknown"
+                        else "ValueError: unavailable",
+                        "signature": "e" * 64,
+                    },
+                },
+                {**second, "node": unknown},
+            ]
+        if case == "workspace-cascade":
+            crashed = "tests/a/test_x.py::test_crashed"
+            results += [
+                {
+                    **first,
+                    "node": crashed,
+                    "phase": "???",
+                    "failure": {
+                        "type": "Failure",
+                        "message": f"worker 'gw1' crashed while running '{crashed}'",
+                        "signature": "e" * 64,
+                    },
+                },
+                {**second, "node": crashed},
+            ]
+        events.write_text("\n".join(map(json.dumps, results)), encoding="utf-8")
+        writer = receipt.Writer(
+            path,
+            {"stage": "commit", "host": "workshop", "command": ["x"]},
+            [{"workspace": {}}, {"configuration": {}}],
+        )
+        writer.write(
+            {"workspace": {}}, {"repo": "product", "base": "b" * 40, "head": head, "clean": True}
+        )
+        writer.write({"configuration": {}}, CONFIGURATION)
+        assert not writer.tests(
+            "tests", {"status": "PASS", "exit": 0, "seconds": 1, "provider": "p"}, events
+        )
+        writer.finish({"result": "PASS", "exit": 0, "red_nodes": []})
+        lines = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+        lines[-1]["finished"]["finished_at"] = day + "T12:00:00-04:00"
+        path.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
+        return path
+
+    first = stage(
+        "first",
+        heads[0],
+        "2026-10-20" if case == "outside" else "2026-10-22",
+        ""
+        if case == "missing-failure"
+        else "ValueError: bad"
+        if case == "nonassert"
+        else "assert 4 == 16",
+    )
+    second = stage(
+        "second",
+        heads[1],
+        "2026-10-26" if case == "old-second" else "2026-10-27",
+        "assert 1 == 2" if case == "different-failure" else "assert 4 == 16",
+    )
+    post = {
+        "source": "post-merge",
+        "head": heads[0] if case == "same-head" else heads[1],
+        "node": node,
+        "at": "2026-10-27T13:00:00-04:00",
+        "run": "post-run",
+        "first_failure": "assert 4 == 16",
+    }
+    if case == "post-invalid":
+        post["head"] = "invalid"
+    if case == "post-nonassert":
+        post["first_failure"] = "ValueError: bad"
+    if case in {"post-proof-missing", "post-proof-present"}:
+        post["failure_evidence"] = "failure.xml"
+        if case == "post-proof-present":
+            post["solo_evidence"] = "solo.xml"
+    if case == "future-post":
+        post["at"] = "2026-10-28T13:00:00-04:00"
+    if case in {"stage-fail-other", "stage-error", "stage-error-per-node"}:
+        lines = [json.loads(line) for line in second.read_text("utf-8").splitlines()]
+        lines[-1]["finished"]["result"] = "FAIL" if case == "stage-fail-other" else "ERROR"
+        lines[-1]["finished"]["exit"] = 1 if case == "stage-fail-other" else 2
+        second.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
+    if case in {"noncommit-stage", "foreign-repo"}:
+        lines = [json.loads(line) for line in second.read_text("utf-8").splitlines()]
+        if case == "noncommit-stage":
+            lines[0]["started"]["stage"] = "nightly"
+        else:
+            next(line["workspace"] for line in lines if "workspace" in line)["repo"] = "harness"
+        second.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
+    if case in {"skipped-solo", "unbounded-solo"}:
+        lines = [json.loads(line) for line in second.read_text("utf-8").splitlines()]
+        latest = next(
+            line["test_result"] for line in lines if line.get("test_result", {}).get("attempt") == 2
+        )
+        latest["status" if case == "skipped-solo" else "timeout_seconds"] = (
+            "SKIPPED" if case == "skipped-solo" else None
+        )
+        second.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
+    receipts = [first, second]
+    posts = []
+    if case in {
+        "two-mixed",
+        "same-head",
+        "post-invalid",
+        "future-post",
+        "post-nonassert",
+        "post-proof-missing",
+        "post-proof-present",
+    }:
+        receipts, posts = [first], [post]
+    if case == "duplicate":
+        copy = tmp_path / "copy.jsonl"
+        copy.write_bytes(first.read_bytes())
+        receipts = [first, copy]
+    if case == "unreadable":
+        receipts = [first, tmp_path / "missing.jsonl"]
+    if case == "incomplete-mixed":
+        incomplete = tmp_path / "interrupted.jsonl"
+        incomplete.write_text(
+            "\n".join(first.read_text("utf-8").splitlines()[:-1]) + "\n", encoding="utf-8"
+        )
+        receipts = [first, second, incomplete]
+    if case == "malformed-mixed":
+        incomplete = tmp_path / "malformed.jsonl"
+        lines = [json.loads(line) for line in first.read_text("utf-8").splitlines()]
+        lines[0]["started"]["unknown_field"] = True
+        incomplete.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
+        receipts = [first, second, incomplete]
+    if case == "unreadable-window":
+        receipts = [first, second, tmp_path / "missing.jsonl"]
+    if case in {
+        "unreadable",
+        "no-owner",
+        "missing-failure",
+        "post-invalid",
+        "unbounded-solo",
+        "future-post",
+        "stage-error",
+        "nonassert",
+        "post-nonassert",
+        "policy-missing",
+        "policy-malformed",
+        "today-invalid",
+        "post-proof-missing",
+        "missing-requirement",
+        "unknown-requirement",
+        "ambiguous-owner",
+        "requirements-missing",
+        "requirements-malformed",
+        "legacy-over-count",
+        "legacy-missing-file",
+        "legacy-bad-owner",
+        "legacy-malformed",
+    }:
+        with pytest.raises(DefinitionError, match="flake"):
+            select(
+                tmp_path,
+                receipts,
+                posts,
+                "bad date" if case == "today-invalid" else date(2026, 10, 27),
+            )
+        return
+    if case.startswith("digest-"):
+        assess = getattr(health, "flake_assessment", None)
+        assert callable(assess), "holder identity needs the product assessment"
+        prior_unknown = (
+            [
+                dict(
+                    source="post-merge",
+                    run="post-run",
+                    node=observed_nodes[0],
+                    head=heads[0],
+                    kind="unknown",
+                    detail="assertion unavailable",
+                )
+            ]
+            if case in {"digest-unknown-move", "digest-expired-unknown", "digest-future-unknown"}
+            else []
+        )
+        if case in {"digest-expired-unknown", "digest-future-unknown"}:
+            prior_unknown[0]["at"] = (
+                "2026-10-19T12:00:00+00:00"
+                if case == "digest-expired-unknown"
+                else "2026-10-28T12:00:00+00:00"
+            )
+        if case == "digest-future-unknown":
+            with pytest.raises(DefinitionError, match="issue date"):
+                assess(tmp_path, receipts, posts, date(2026, 10, 27), post_issues=prior_unknown)
+            return
+        result = assess(tmp_path, receipts, posts, date(2026, 10, 27), post_issues=prior_unknown)
+        if case == "digest-unknown-move":
+            assert not result["candidates"] and any(
+                issue["kind"] == "unknown" and issue["node"] == node for issue in result["issues"]
+            )
+        elif case == "digest-edited":
+            assert not result["candidates"] and any(
+                issue["kind"] == "superseded" for issue in result["issues"]
+            )
+        else:
+            assert [row["node"] for row in result["candidates"]] == [node]
+            observations = result["candidates"][0]["observations"]
+            assert len({row["holder_digest"] for row in observations}) == 1
+            assert [row["source_node"] for row in observations] == list(observed_nodes)
+        return
+    if case in {
+        "mixed-unknown",
+        "incomplete-mixed",
+        "malformed-mixed",
+        "unreadable-window",
+        "mixed-owner-unknown",
+        "post-unknown",
+        "blocked-same",
+        "own-setup",
+        "worker-crash",
+        "workspace-cascade",
+        "stage-error-per-node",
+    }:
+        assess = getattr(health, "flake_assessment", None)
+        assert callable(assess), "independent node outcomes need a measured flake assessment"
+        reported = []
+        if case in {"post-unknown", "blocked-same"}:
+            reported = [
+                dict(
+                    source="post-merge",
+                    run="post-run",
+                    node=node if case == "blocked-same" else "tests/a/test_x.py::test_unknown",
+                    kind="unknown",
+                    detail="assertion unavailable",
+                )
+            ]
+        if case == "unreadable-window":
+            with pytest.raises(DefinitionError, match="receipt_missing"):
+                assess(tmp_path, receipts, posts, date(2026, 10, 27), post_issues=reported)
+            return
+        result = assess(tmp_path, receipts, posts, date(2026, 10, 27), post_issues=reported)
+        kinds = {item["kind"] for item in result["issues"]}
+        if case == "malformed-mixed":
+            assert [row["node"] for row in result["candidates"]] == [node]
+            assert any(
+                item["kind"] == "unusable-stage" and item["run"] == str(incomplete)
+                for item in result["issues"]
+            )
+        elif case == "incomplete-mixed":
+            assert [row["node"] for row in result["candidates"]] == [node]
+            assert any(
+                item["kind"] == "incomplete-stage" and item["run"] == str(incomplete)
+                for item in result["issues"]
+            )
+        elif case in {"mixed-unknown", "mixed-owner-unknown", "post-unknown"}:
+            assert [row["node"] for row in result["candidates"]] == [node]
+            assert any(
+                item["node"].endswith("::test_unknown") and item["kind"] == "unknown"
+                for item in result["issues"]
+            )
+        elif case == "stage-error-per-node":
+            assert [row["node"] for row in result["candidates"]] == [node]
+            assert kinds == {"stage-unmeasured"}
+        elif case == "blocked-same":
+            assert not result["candidates"] and kinds == {"unknown"}
+        elif case == "own-setup":
+            assert [row["node"] for row in result["candidates"]] == [node] and not result["issues"]
+        else:
+            assert not result["candidates"]
+            assert "worker-crash" in kinds
+            if case == "workspace-cascade":
+                assert "workspace-cascade" in kinds
+        return
+    if case == "held-invalid":
+        with pytest.raises(DefinitionError, match="flake"):
+            select(tmp_path, receipts, posts, date(2026, 10, 27), include_held="yes")
+        return
+    options = {"include_held": True} if case == "held-repeat" else {}
+    if options:
+        import inspect
+
+        assert "include_held" in inspect.signature(select).parameters, (
+            "repeat assessment needs held-source visibility"
+        )
+    candidates = select(tmp_path, receipts, posts, date(2026, 10, 27), **options)
+    if case in {
+        "same-head",
+        "duplicate",
+        "outside",
+        "already-held",
+        "held-family",
+        "held-pattern",
+        "skipped-solo",
+        "noncommit-stage",
+        "foreign-repo",
+    }:
+        assert candidates == []
+    else:
+        assert len(candidates) == 1
+        row = candidates[0]
+        expected_owner = (
+            "devtools.testing"
+            if case in {"legacy-owned", "legacy-parameter"}
+            else "devtools.example"
+        )
+        assert (row["node"], row["owner"], row["until"]) == (node, expected_owner, "2026-11-03")
+        assert row["owner_kind"] == (
+            "unregistered legacy" if case in {"legacy-owned", "legacy-parameter"} else "requirement"
+        )
+        if case == "held-repeat":
+            assert row["held"] is True
+        assert row["reason"].startswith("Automatic: flake twice in 7 days")
+        assert str(tmp_path) not in row["reason"]
+        assert all(observation["head"] in row["reason"] for observation in row["observations"])
+        assert len(row["observations"]) == 2
+        assert row["same_failure"] is (case != "different-failure")

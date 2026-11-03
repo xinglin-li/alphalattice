@@ -223,6 +223,27 @@ def legacy(root: Path) -> dict[str, int] | None:
     )
 
 
+def legacy_owner(root: Path) -> tuple[str, dict[str, int]]:
+    """Read the registered legacy ledger owner and its shrink-only per-file counts."""
+    path = root / LEGACY
+    try:
+        document = json.loads(path.read_text("utf-8"))
+        if (
+            not isinstance(document, dict)
+            or document.get("schema") != "alphalattice.tests-unregistered.v1"
+            or document.get("owner") != "devtools.testing"
+            or not isinstance(document.get("files"), dict)
+            or any(
+                not isinstance(name, str) or type(count) is not int or count < 1
+                for name, count in document["files"].items()
+            )
+        ):
+            raise ValueError("invalid schema, registered owner, or counts")
+        return document["owner"], document["files"]
+    except (OSError, UnicodeError, ValueError, TypeError) as error:
+        raise ValueError(f"requirements.legacy_unavailable:{LEGACY.as_posix()}: {error}") from None
+
+
 def shrink(root: Path, *, seed: bool = False) -> dict[str, int]:
     """Lower each file's legacy count to what the tree holds, or with ``seed`` count it first; a
     count never rises, so a new test registers instead; seeding is only the first count."""

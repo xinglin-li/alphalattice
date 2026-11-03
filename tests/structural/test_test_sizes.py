@@ -959,13 +959,37 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
         _proven(item, {}, carried)
 
 
-def test_a_quarantined_node_needs_its_owner_reason_and_date():
+@pytest.mark.parametrize(
+    "case",
+    ["date", "legacy", "first", "renewed", "twice", "bool", "string", "no-reason", "multiline"],
+)
+def test_a_quarantined_node_needs_its_owner_reason_and_date(case):
     """A flaky node leaves the blocking tier only with an owner, a reason and an until date."""
     from devtools.testing.sizes import load_policy, validate_policy
 
-    row = {"node": "tests/a.py::t", "owner": "tests.a", "reason": "flaky", "until": "2026-99-99"}
-    with pytest.raises(ValueError, match="quarantine_invalid"):
-        validate_policy(load_policy(Path(__file__).resolve().parents[2]) | {"quarantine": [row]})
+    row = {"node": "tests/a.py::t", "owner": "tests.a", "reason": "flaky", "until": "2026-11-03"}
+    if case == "date":
+        row["until"] = "2026-99-99"
+    if case not in {"date", "legacy"}:
+        row["renewals"] = {
+            "first": 0,
+            "renewed": 1,
+            "twice": 2,
+            "bool": True,
+            "string": "1",
+            "no-reason": 1,
+            "multiline": 1,
+        }[case]
+    if case == "no-reason":
+        row["reason"] = ""
+    if case == "multiline":
+        row["reason"] = "fix in flight\nmore"
+    policy = load_policy(Path(__file__).resolve().parents[2]) | {"quarantine": [row]}
+    if case in {"date", "twice", "bool", "string", "no-reason", "multiline"}:
+        with pytest.raises(ValueError, match="quarantine_invalid"):
+            validate_policy(policy)
+    else:
+        assert validate_policy(policy)["quarantine"] == [row]
 
 
 HELD = "product_host.detached_start_outlives_the_session"

@@ -141,6 +141,17 @@ def _quarantine(policy: dict[str, Any]) -> None:
             and row.get("owner")
             and row.get("reason")
             and dated
+            and (
+                "renewals" not in row
+                or (
+                    type(row["renewals"]) is int
+                    and row["renewals"] in (0, 1)
+                    and isinstance(row["reason"], str)
+                    and row["reason"].strip()
+                    and "\n" not in row["reason"]
+                    and "\r" not in row["reason"]
+                )
+            )
         ):
             raise ValueError("test_size.quarantine_invalid:" + str(row.get("node")))
 

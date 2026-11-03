@@ -3,6 +3,12 @@
   "owner": "devtools.testing",
   "note": "Each requirement a test proves, registered before its test exists. A row holds its id (<owner's last segment>.<words>), one description sentence, the owner package, its layer (unit, integration, contract, e2e or native; a layer's limit is test-sizes.json's for its size) and its seconds budget; a test names the ids it proves with @pytest.mark.proves. Holders, lifecycle (proposed, active, quarantined, retired) and the commit that added a row are derived, never stored. An id is never reused: a retired row stays. Find before writing one: python scripts/tests_registry.py find \"<words>\".",
   "entries": {
+    "pipeline.flake_quarantine_candidates": {
+      "description": "The test-health owner derives quarantine candidates from distinct verified flake observations, registered owners and review dates.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
     "testing.find_matches_requirements_and_unregistered_tests": {
       "description": "One search returns the registered requirements and the unregistered tests whose words match, best first, with each requirement's lifecycle and holders.",
       "owner": "devtools.testing",

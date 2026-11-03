@@ -18,8 +18,8 @@ import re
 import subprocess
 import uuid
 from collections.abc import Mapping, Sequence
-from datetime import datetime
-from math import inf
+from datetime import UTC, datetime
+from math import inf, isfinite
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, TextIO
 
@@ -413,11 +413,66 @@ def _cache_consistent(caches: Sequence[CacheDecision], results: Sequence[TestRes
             raise PydanticCustomError("receipt_inconsistent", "a cached result has no matching hit")
 
 
+# 4478e213 was authored 2026-10-25 04:44:42 -04 and merged at 07:21:13 -04.
+# Retire this compatibility after 2026-11-01 07:21:13 America/New_York (seven local days).
+_LEGACY_TARGET_WRITTEN_BEFORE = datetime.fromisoformat("2026-10-25T04:44:42-04:00")
+_LEGACY_TARGET_RETIRES = datetime.fromisoformat("2026-11-01T07:21:13-05:00")
+
+
+def _legacy_target_allowed(lines: list[Any], now: datetime) -> bool:
+    try:
+        start = datetime.fromisoformat(lines[0]["started"]["started_at"])
+        finish = datetime.fromisoformat(lines[-1]["finished"]["finished_at"])
+        return bool(
+            now.utcoffset() is not None
+            and start.utcoffset() is not None
+            and finish.utcoffset() is not None
+            and now < _LEGACY_TARGET_RETIRES
+            and start <= finish < _LEGACY_TARGET_WRITTEN_BEFORE
+            and finish <= now
+        )
+    except (IndexError, KeyError, TypeError, ValueError, AttributeError):
+        return False
+
+
+def _legacy_target_metrics(lines: list[Any], now: datetime) -> None:
+    """Discard only the two correctly typed, time-bounded historical metric fields."""
+    if not _legacy_target_allowed(lines, now):
+        return
+    for event in lines:
+        payload = event.get("metrics") if isinstance(event, dict) else None
+        if not isinstance(payload, dict):
+            continue
+        value = payload.get("target_seconds")
+        flag = payload.get("target_breached")
+        try:
+            if (
+                "target_seconds" in payload
+                and value is not None
+                and (type(value) not in (int, float) or not isfinite(value) or value < 0)
+            ):
+                continue
+        except OverflowError:
+            continue
+        if "target_breached" in payload and type(flag) is not bool:
+            continue
+        event["metrics"] = {
+            key: val
+            for key, val in payload.items()
+            if key not in {"target_seconds", "target_breached"}
+        }
+
+
+def _legacy_now() -> datetime:
+    return datetime.now(UTC)
+
+
 def read(path: Path) -> tuple[bytes, list[Any]]:
     """The receipt's bytes and its validated events, read once, refused unless whole."""
     try:
         data = path.read_bytes()
         lines = [json.loads(line) for line in data.decode("utf-8").splitlines()]
+        _legacy_target_metrics(lines, _legacy_now())
         return data, Receipt.model_validate({"events": lines}).events
     except OSError as error:
         raise ReceiptError("pipeline.receipt_missing", f"{path}: {error.strerror}") from None

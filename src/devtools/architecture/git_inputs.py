@@ -11,7 +11,11 @@ from devtools.testing.layout import rule_patterns  # the mover's own rule projec
 
 
 def read_blobs(
-    specs: list[str], root: Path | None = None, *, object_ids: dict[str, str] | None = None
+    specs: list[str],
+    root: Path | None = None,
+    *,
+    object_ids: dict[str, str] | None = None,
+    timeout: float | None = None,
 ) -> dict[str, str]:
     """Read distinct Git specifications in one batch, omitting missing blobs."""
     specs = list(dict.fromkeys(specs))
@@ -23,6 +27,7 @@ def read_blobs(
         cwd=root or Path(__file__).resolve().parents[3],
         capture_output=True,
         check=True,
+        timeout=timeout,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     stream, found = io.BytesIO(result.stdout), {}
@@ -79,6 +84,24 @@ def staged_moves(
     pairs = staged_changes(root) if pairs is None else pairs
     gone = {meta[2]: path for meta, path in pairs if meta[4] == "D"}
     return {path: gone[meta[3]] for meta, path in pairs if meta[4] == "A" and meta[3] in gone}
+
+
+def unique_moves(pairs: list[tuple[list[str], str]]) -> Moves:
+    """Pair only unique deleted/added regular-file blobs with identical modes."""
+    removed: dict[tuple[str, str], list[str]] = {}
+    added: dict[tuple[str, str], list[str]] = {}
+    for meta, path in pairs:
+        if len(meta) != 5:
+            raise ValueError("Git move metadata is malformed")
+        if meta[4] == "D" and meta[0][1:] in {"100644", "100755"}:
+            removed.setdefault((meta[0][1:], meta[2]), []).append(path)
+        elif meta[4] == "A" and meta[1] in {"100644", "100755"}:
+            added.setdefault((meta[1], meta[3]), []).append(path)
+    return {
+        paths[0]: removed[key][0]
+        for key, paths in added.items()
+        if len(paths) == 1 and len(removed.get(key, [])) == 1
+    }
 
 
 class CostIdentity:
