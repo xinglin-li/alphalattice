@@ -7,15 +7,74 @@ $packagePath = Join-Path $toolRoot 'node_modules\@playwright\cli\package.json'
 $cliPath = Join-Path $toolRoot 'node_modules\@playwright\cli\playwright-cli.js'
 $playwrightPath = Join-Path $toolRoot 'node_modules\playwright\cli.js'
 $browserManifest = Join-Path $toolRoot 'node_modules\playwright-core\browsers.json'
-$dependencyManifest = Get-Content -Raw -LiteralPath (Join-Path $toolRoot 'package.json') | ConvertFrom-Json
-$expectedCliVersion = $dependencyManifest.dependencies.'@playwright/cli'
-$expectedPlaywrightVersion = $dependencyManifest.dependencies.playwright
 $action = if ($args.Count -gt 0) { [string]$args[0] } else { 'check' }
 $forward = [string[]]@($args | Select-Object -Skip 1)
 
 function Fail([string]$message) {
     [Console]::Error.WriteLine("playwright-tool: $message")
     exit 2
+}
+
+function Assert-SetupPaths([switch]$AncestorsOnly) {
+    # Setup owns only physical paths. Check again after npm, but this cannot
+    # prevent an external process from swapping a path after either check.
+    function Refuse-Path([string]$path) {
+        Fail "Installation path '$path' is linked or cannot be verified. Use an independent physical checkout or ask its owner to restore the installation."
+    }
+    function Attributes-Of([string]$path, [bool]$allowMissing) {
+        try { return [System.IO.File]::GetAttributes($path) }
+        catch {
+            if ($allowMissing -and $_.Exception.InnerException -is [System.IO.FileNotFoundException]) {
+                return $null
+            }
+            Refuse-Path $path
+        }
+    }
+    foreach ($start in @($PSScriptRoot, $toolRoot)) {
+        $path = $start
+        $ancestors = [System.Collections.Generic.List[string]]::new()
+        while ($null -ne $path) {
+            $ancestors.Insert(0, $path)
+            try {
+                $parent = [System.IO.Directory]::GetParent($path)
+                $path = if ($null -eq $parent) { $null } else { $parent.FullName }
+            } catch { Refuse-Path $path }
+        }
+        foreach ($path in $ancestors) {
+            $attributes = Attributes-Of $path $false
+            if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
+                -not ($attributes -band [System.IO.FileAttributes]::Directory)) { Refuse-Path $path }
+            try {
+                # Enumeration proves that the physical directory is readable.
+                $null = @([System.IO.Directory]::EnumerateFileSystemEntries($path))
+            } catch { Refuse-Path $path }
+        }
+    }
+    if ($AncestorsOnly) { return }
+    foreach ($root in @((Join-Path $toolRoot 'node_modules'), $browserRoot)) {
+        $attributes = Attributes-Of $root $true
+        if ($null -eq $attributes) { continue }
+        if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
+            -not ($attributes -band [System.IO.FileAttributes]::Directory)) { Refuse-Path $root }
+        $pending = [System.Collections.Generic.Stack[string]]::new()
+        $pending.Push($root)
+        while ($pending.Count -gt 0) {
+            $path = $pending.Pop()
+            $attributes = Attributes-Of $path $false
+            if ($attributes -band [System.IO.FileAttributes]::ReparsePoint) { Refuse-Path $path }
+            if ($attributes -band [System.IO.FileAttributes]::Directory) {
+                try { $children = @([System.IO.Directory]::EnumerateFileSystemEntries($path)) }
+                catch { Refuse-Path $path }
+                foreach ($child in $children) { $pending.Push($child) }
+            } else {
+                try {
+                    $stream = [System.IO.File]::Open($path, [System.IO.FileMode]::Open,
+                        [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+                    $stream.Dispose()
+                } catch { Refuse-Path $path }
+            }
+        }
+    }
 }
 
 function Read-Installation {
@@ -41,6 +100,11 @@ function Read-Installation {
     return [pscustomobject]@{ Browser = $browser[0]; Executable = $executable }
 }
 
+if ($action -eq 'setup') { Assert-SetupPaths -AncestorsOnly }
+$dependencyManifest = Get-Content -Raw -LiteralPath (Join-Path $toolRoot 'package.json') | ConvertFrom-Json
+$expectedCliVersion = $dependencyManifest.dependencies.'@playwright/cli'
+$expectedPlaywrightVersion = $dependencyManifest.dependencies.playwright
+
 try {
     $node = Get-Command node.exe -ErrorAction Stop
     $npm = Get-Command npm.cmd -ErrorAction Stop
@@ -64,8 +128,10 @@ switch ($action) {
         if (-not (Test-Path -LiteralPath (Join-Path $toolRoot 'package-lock.json') -PathType Leaf)) {
             Fail "Lockfile is missing from $toolRoot."
         }
+        Assert-SetupPaths
         & $npm.Source ci --prefix $toolRoot --omit=dev --ignore-scripts --no-audit --no-fund
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        Assert-SetupPaths
         $installed = Read-Installation
         if (-not (Test-Path -LiteralPath $installed.Executable -PathType Leaf)) {
             & $node.Source $playwrightPath install chromium --only-shell

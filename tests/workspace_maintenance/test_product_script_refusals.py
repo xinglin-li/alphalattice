@@ -700,3 +700,270 @@ def test_setup_validation_and_asset_check_failures_have_words(monkeypatch, capsy
     assert payload["causes"][0]["exit_code"] == 1
     assert payload["detail"] and payload["next_action"]
     assert "NEVER-PRINT-ME" not in json.dumps(payload)
+
+
+# The setup entry is exercised only against synthetic offline installations.
+_PW_VERSIONS = {
+    "@playwright/cli": "0.1.19",
+    "playwright": "1.63.0-alpha-2026-08-31",
+    "playwright-core": "1.63.0-alpha-2026-08-31",
+}
+
+
+def _pw_project(
+    tmp_path: Path, *, ancestor: bool = False
+) -> tuple[Path, Path, Path, dict[str, str]]:
+    project, target = tmp_path / "project", tmp_path / "protected"
+    scripts = project / "scripts"
+    scripts.mkdir(parents=True)
+    target.mkdir()
+    (target / "marker").write_text("untouched", encoding="utf-8")
+    if ancestor:
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(project / "third_party"))
+    tool = project / "third_party" / "playwright"
+    tool.mkdir(parents=True)
+    shutil.copyfile(
+        Path(__file__).resolve().parents[2] / "scripts/playwright.ps1", scripts / "playwright.ps1"
+    )
+    package = {"name": "offline-fixture", "version": "1.0.0", "dependencies": _PW_VERSIONS}
+    (tool / "package.json").write_text(json.dumps(package), encoding="utf-8")
+    (tool / "package-lock.json").write_text("{}", encoding="utf-8")
+    env = dict(
+        os.environ,
+        npm_config_offline="true",
+        npm_config_cache=str(tmp_path / "npm-cache"),
+        NO_UPDATE_NOTIFIER="1",
+    )
+    return project, tool, target, env
+
+
+def _pw_stub_npm(tmp_path: Path, env: dict[str, str], operation: str = "") -> Path:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    marker = tmp_path / "npm-invoked"
+    env.update(PATH=str(bin_dir) + os.pathsep + env["PATH"], PW_TEST_NPM_MARKER=str(marker))
+    (bin_dir / "npm.cmd").write_text(
+        '@echo off\nif "%1"=="--version" (echo 10.0.0& exit /b 0)\n'
+        'echo invoked>>"%PW_TEST_NPM_MARKER%"\n' + operation + "\nexit /b 0\n",
+        encoding="utf-8",
+    )
+    return marker
+
+
+def _pw_call(project: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(project / "scripts/playwright.ps1"),
+            *args,
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+
+
+def _pw_installed(tool: Path, *, installer: str = "throw Error('unexpected installer')") -> None:
+    modules = tool / "node_modules"
+    for name, version in _PW_VERSIONS.items():
+        folder = modules / name
+        folder.mkdir(parents=True)
+        (folder / "package.json").write_text(json.dumps({"version": version}), encoding="utf-8")
+    (modules / "@playwright/cli/playwright-cli.js").write_text(
+        "console.log('synthetic cli ' + process.argv.slice(2).join(' '))", encoding="utf-8"
+    )
+    (modules / "playwright/cli.js").write_text(installer, encoding="utf-8")
+    (modules / "playwright-core/browsers.json").write_text(
+        json.dumps(
+            {
+                "browsers": [
+                    {"name": "chromium-headless-shell", "revision": "123", "browserVersion": "123"}
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _pw_browser(tool: Path) -> None:
+    executable = (
+        tool
+        / ".browsers/chromium_headless_shell-123"
+        / "chrome-headless-shell-win64/chrome-headless-shell.exe"
+    )
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"synthetic browser, never executed")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell and junction boundary")
+@pytest.mark.proves("local_application.playwright_setup_refuses_unowned_installation_aliases")
+@pytest.mark.parametrize(
+    "case",
+    [
+        "node",
+        "browser",
+        "nested",
+        "ancestor",
+        "dangling",
+        "unreadable",
+        "node-file",
+        "browser-file",
+    ],
+)
+def test_playwright_setup_refuses_unsafe_installation_paths(tmp_path: Path, case: str) -> None:
+    import _winapi
+
+    project, tool, target, env = _pw_project(tmp_path, ancestor=case in {"ancestor", "dangling"})
+    npm_marker = _pw_stub_npm(tmp_path, env)
+    exclusive: int | None = None
+    if case in {"node", "browser", "nested"}:
+        link = tool / (".browsers" if case == "browser" else "node_modules")
+        if case == "nested":
+            link.mkdir()
+            link = link / "foreign"
+        _winapi.CreateJunction(str(target), str(link))
+    elif case in {"node-file", "browser-file"}:
+        (tool / ("node_modules" if case == "node-file" else ".browsers")).write_text(
+            "not a directory", encoding="utf-8"
+        )
+    elif case == "dangling":
+        moved = tmp_path / "protected-moved"
+        target.rename(moved)
+        target = moved
+    elif case == "unreadable":
+        blocked = tool / "node_modules/unreadable"
+        blocked.parent.mkdir()
+        blocked.write_text("synthetic", encoding="utf-8")
+        exclusive = _winapi.CreateFile(str(blocked), 0x80000000, 0, 0, 3, 0x80, 0)
+    try:
+        result = _pw_call(project, env, "setup")
+    finally:
+        if exclusive is not None:
+            _winapi.CloseHandle(exclusive)
+    assert not npm_marker.exists()
+    assert result.returncode == 2, result.stderr
+    assert "cannot be verified" in result.stderr
+    assert (target / "marker").read_text(encoding="utf-8") == "untouched"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell and junction boundary")
+@pytest.mark.proves("local_application.playwright_setup_refuses_unowned_installation_aliases")
+def test_playwright_setup_rechecks_after_npm_before_browser_install(tmp_path: Path) -> None:
+    project, tool, target, env = _pw_project(tmp_path)
+    marker = tmp_path / "browser-installer"
+    env.update(PW_TEST_TARGET=str(target), PW_TEST_TOOL=str(tool), PW_TEST_INSTALLER=str(marker))
+    _pw_installed(
+        tool, installer="require('fs').writeFileSync(process.env.PW_TEST_INSTALLER, 'invoked')"
+    )
+    npm = _pw_stub_npm(
+        tmp_path, env, 'mklink /J "%PW_TEST_TOOL%\\.browsers" "%PW_TEST_TARGET%" >nul'
+    )
+    result = _pw_call(project, env, "setup")
+    assert npm.exists() and not marker.exists()
+    assert result.returncode == 2, result.stderr
+    assert "cannot be verified" in result.stderr
+    assert (target / "marker").read_text(encoding="utf-8") == "untouched"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell and junction boundary")
+@pytest.mark.proves("local_application.playwright_setup_refuses_unowned_installation_aliases")
+def test_playwright_setup_installs_offline_into_a_physical_directory(tmp_path: Path) -> None:
+    import base64
+    import hashlib
+    import io
+    import tarfile
+
+    project, tool, target, env = _pw_project(tmp_path)
+    _pw_browser(tool)
+    package = json.loads((tool / "package.json").read_text(encoding="utf-8"))
+    entries: dict[str, object] = {"": package}
+    for name, version in _PW_VERSIONS.items():
+        archive = tmp_path / (name.replace("/", "-").replace("@", "") + ".tgz")
+        files = {"package.json": json.dumps({"name": name, "version": version}).encode()}
+        if name == "@playwright/cli":
+            files["playwright-cli.js"] = b"console.log('synthetic cli')"
+        elif name == "playwright":
+            files["cli.js"] = b"throw Error('unexpected download')"
+        else:
+            files["browsers.json"] = json.dumps(
+                {
+                    "browsers": [
+                        {
+                            "name": "chromium-headless-shell",
+                            "revision": "123",
+                            "browserVersion": "123",
+                        }
+                    ]
+                }
+            ).encode()
+        with tarfile.open(archive, "w:gz") as tar:
+            for name_in_archive, data in files.items():
+                info = tarfile.TarInfo("package/" + name_in_archive)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        integrity = (
+            "sha512-" + base64.b64encode(hashlib.sha512(archive.read_bytes()).digest()).decode()
+        )
+        entries["node_modules/" + name] = {
+            "version": version,
+            "resolved": "file:" + os.path.relpath(archive, tool).replace("\\", "/"),
+            "integrity": integrity,
+        }
+    lock = {
+        "name": package["name"],
+        "version": package["version"],
+        "lockfileVersion": 3,
+        "requires": True,
+        "packages": entries,
+    }
+    (tool / "package-lock.json").write_text(json.dumps(lock), encoding="utf-8")
+    for _ in range(2):
+        result = _pw_call(project, env, "setup")
+        assert result.returncode == 0, result.stderr
+        assert "synthetic cli" in result.stdout
+    assert (tool / "node_modules/playwright-core/browsers.json").is_file()
+    assert (target / "marker").read_text(encoding="utf-8") == "untouched"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell and junction boundary")
+@pytest.mark.proves("local_application.playwright_setup_refuses_unowned_installation_aliases")
+@pytest.mark.parametrize("action", ["check", "run"])
+def test_playwright_check_and_run_keep_their_physical_installation_behavior(
+    tmp_path: Path, action: str
+) -> None:
+    project, tool, _, env = _pw_project(tmp_path)
+    _pw_installed(tool)
+    _pw_browser(tool)
+    npm = _pw_stub_npm(tmp_path, env)
+    result = _pw_call(project, env, action, *(["snapshot"] if action == "run" else []))
+    assert result.returncode == 0, result.stderr
+    assert "synthetic cli" in result.stdout
+    assert not npm.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell and junction boundary")
+@pytest.mark.proves("local_application.playwright_setup_refuses_unowned_installation_aliases")
+def test_playwright_setup_accepts_an_absent_browser_directory(tmp_path: Path) -> None:
+    project, tool, target, env = _pw_project(tmp_path)
+    installer = (
+        "const fs = require('fs'), path = require('path'); "
+        "const dir = path.join(process.env.PLAYWRIGHT_BROWSERS_PATH, "
+        "'chromium_headless_shell-123', 'chrome-headless-shell-win64'); "
+        "fs.mkdirSync(dir, {recursive: true}); "
+        "fs.writeFileSync(path.join(dir, 'chrome-headless-shell.exe'), 'synthetic');"
+    )
+    _pw_installed(tool, installer=installer)
+    npm = _pw_stub_npm(tmp_path, env)
+    result = _pw_call(project, env, "setup")
+    assert result.returncode == 0, result.stderr
+    assert npm.exists() and "synthetic cli" in result.stdout
+    assert (target / "marker").read_text(encoding="utf-8") == "untouched"
