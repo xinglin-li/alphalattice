@@ -20,10 +20,7 @@ import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Thread
 from typing import Any
 from zipfile import ZipFile
 
@@ -125,29 +122,19 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
             "click-8.5.0.dist-info/RECORD": "",
         }.items():
             wheel.writestr(name, content)
-    server = ThreadingHTTPServer(
-        ("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(tmp_path))
-    )
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        with monkeypatch.context() as local:
-            subprocess.run(["uv", "venv", "--python", sys.executable, str(venv)], check=True)
-            python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-            pins = tmp_path / "requirements-retrieval.lock"
-            pins.write_text("click==8.5.0\n", encoding="utf-8")
-            local.setattr(setup, "PLAYPEN", tmp_path)
-            local.setattr(setup, "ADDITIONS", pins)
-            local.setattr(sys, "executable", str(python))
-            local.setenv("UV_NO_INDEX", "1")
-            local.setenv("UV_FIND_LINKS", f"http://127.0.0.1:{server.server_port}/")
-            local.setattr(sys, "argv", setup.fill_command()[2:])
-            assert setup.main() == 0
-            subprocess.run([str(python), "-c", "import click"], check=True)
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
+    with monkeypatch.context() as local:
+        subprocess.run(["uv", "venv", "--python", sys.executable, str(venv)], check=True)
+        python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        pins = tmp_path / "requirements-retrieval.lock"
+        pins.write_text("click==8.5.0\n", encoding="utf-8")
+        local.setattr(setup, "PLAYPEN", tmp_path)
+        local.setattr(setup, "ADDITIONS", pins)
+        local.setattr(sys, "executable", str(python))
+        local.setenv("UV_NO_INDEX", "1")
+        local.setenv("UV_FIND_LINKS", str(tmp_path))
+        local.setattr(sys, "argv", setup.fill_command()[2:])
+        assert setup.main() == 0
+        subprocess.run([str(python), "-c", "import click"], check=True)
     capsys.readouterr()
 
     def exits(command: tuple[str, ...], **_options: object) -> None:

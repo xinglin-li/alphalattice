@@ -507,7 +507,12 @@ def pytest_collection_finish(session: pytest.Session) -> None:
         (root := builder._golden_root()).mkdir(parents=True, exist_ok=True)
         with environment.project_scope(root, root):  # confined like any test's build
             external = any("external_factor_workspace" in i.fixturenames for i in session.items)
-            builder.warm_real_risk_golden(external=external)
+            # This fixture builds a different, smaller universe than the default Risk workspace.
+            membership = [i for i in session.items if "stopped_change" in i.fixturenames]
+            if not membership or len(membership) != len(session.items) or external:
+                builder.warm_real_risk_golden(external=external)
+            for symbols in dict.fromkeys(tuple(i.module.MEMBERS) for i in membership):
+                builder.warm_real_risk_golden(symbols=symbols, sector_size=len(symbols))
         if any("fresh_workspace" in item.fixturenames for item in session.items):
             factory = session.config._tmp_path_factory
             base = factory.getbasetemp()

@@ -394,10 +394,41 @@ def test_the_golden_key_binds_the_interpreter_and_the_installed_distributions(
 def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
     tmp_path, monkeypatch
 ):
+    import sys
     from concurrent.futures import ThreadPoolExecutor
+    from contextlib import nullcontext
     from types import SimpleNamespace
 
+    from tests import conftest as hooks
     from tests.researcher_methodology_surface import session_workspace as session
+
+    # Collection warms the selected seven-listing variant, and preserves the default in mixed runs.
+    members = SYMBOLS[:7]
+    member = SimpleNamespace(
+        fixturenames=["stopped_change"], module=SimpleNamespace(MEMBERS=members)
+    )
+    ordinary = SimpleNamespace(fixturenames=[], module=SimpleNamespace())
+    external = SimpleNamespace(fixturenames=["external_factor_workspace"], module=SimpleNamespace())
+    with monkeypatch.context() as patch:
+        calls = []
+        fake = SimpleNamespace(
+            _golden_root=lambda: tmp_path / "warmup",
+            warm_real_risk_golden=lambda **kw: calls.append(kw),
+        )
+        patch.setitem(sys.modules, "tests.researcher_methodology_surface.real_workspace", fake)
+        patch.setattr(hooks.environment, "project_scope", lambda *_: nullcontext())
+        config = SimpleNamespace(option=SimpleNamespace(collectonly=False))
+        for items, expected in (
+            ([member], [{"symbols": members, "sector_size": 7}]),
+            ([member, member], [{"symbols": members, "sector_size": 7}]),
+            ([member, ordinary], [{"external": False}, {"symbols": members, "sector_size": 7}]),
+            ([member, external], [{"external": True}, {"symbols": members, "sector_size": 7}]),
+            ([ordinary], [{"external": False}]),
+            ([external], [{"external": True}]),
+        ):
+            calls.clear()
+            hooks.pytest_collection_finish(SimpleNamespace(config=config, items=items))
+            assert calls == expected
 
     monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
     factory, attempts, value = SimpleNamespace(getbasetemp=lambda: tmp_path), [], ["original"]

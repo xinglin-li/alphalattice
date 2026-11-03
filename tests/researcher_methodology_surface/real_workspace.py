@@ -530,18 +530,21 @@ def copy_fresh_workspace(factory, target: Path) -> RealRiskWorkspace:
     )
 
 
-def warm_real_risk_golden(*, external: bool = False) -> None:
+def warm_real_risk_golden(
+    *, external: bool = False, symbols: Sequence[str] | None = None, sector_size: int = 5
+) -> None:
     """Publish each golden the session uses before any test's timer: a timer cut a build short."""
+    symbols = SYMBOLS if symbols is None else symbols
     variants = [(FeatureCatalog.load(), default_extension_kernel_registry())]
     if external:  # the outside method's variant, when a collected test asks for its workspace
         from tests.researcher_methodology_surface import external_factor_method as method
 
         variants.append((method.external_feature_catalog(), method.external_kernel_registry()))
     for catalog, kernels in variants:
-        key = _golden_key(catalog, kernels, SYMBOLS)
+        key = _golden_key(catalog, kernels, symbols, sector_size)
         with _golden_lease(golden := _golden_root() / key):
             if not golden.exists():
-                _materialize_golden(golden, key, catalog, kernels, SYMBOLS, 5)
+                _materialize_golden(golden, key, catalog, kernels, symbols, sector_size)
 
 
 def _golden_root() -> Path:
