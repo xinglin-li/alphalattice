@@ -808,6 +808,7 @@ def _check_operation_registry() -> bool:
     started = perf_counter()
     sys.path.insert(0, str(ROOT / "src"))
     try:
+        from devtools.architecture import operation_registry
         from devtools.architecture.operation_registry import problems, walk
 
         found = problems(ROOT) + walk(ROOT)
@@ -815,6 +816,7 @@ def _check_operation_registry() -> bool:
         sys.path.pop(0)
     for line in found:
         print(f"OPERATION_REGISTRY {line}", flush=True)
+    print(f"PLAYPEN_GATE_SCAN_CACHE {operation_registry.LAST_SCAN_CACHE}", flush=True)
     print(f"PLAYPEN_GATE_TIMING operation-registry {perf_counter() - started:.3f}s", flush=True)
     return not found
 

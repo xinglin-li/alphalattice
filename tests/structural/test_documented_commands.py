@@ -308,3 +308,78 @@ def test_goal_record_operations_are_validated_without_request_selectors(tmp_path
         owner.read_text(encoding="utf-8").replace("GoalStore", "OtherStore"), encoding="utf-8"
     )
     assert len(incomplete_offers(tmp_path)) == 5
+
+
+@pytest.mark.proves("architecture.scan_facts_kept_by_bytes_under_seal_and_byte_cap")
+def test_kept_facts_follow_the_bytes_read_and_serve_only_sealed_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A kept fact answers only for the bytes it came from, its seal and shape detecting a
+    damaged row; a raised scan keeps nothing, a damaged store is rebuilt, and the store is one
+    file that a write never takes past its byte cap."""
+    import hashlib
+    import sqlite3
+
+    from devtools.architecture import operation_registry as registry
+    from devtools.architecture import structural
+
+    store = tmp_path / "store"
+    monkeypatch.setenv(structural.SCAN_CACHE_ENV, str(store))
+    owner = tmp_path / "src/alphalattice/offer.py"
+    owner.parent.mkdir(parents=True)
+    offer = 'def offer():\n    return {"operation": "EXPERIMENT_PORTFOLIO_DRAFT", "task_id": "t"}\n'
+    owner.write_text(offer, encoding="utf-8")
+    scan = registry._keeps_facts(incomplete_offers)
+    found = scan(tmp_path)
+    assert found and "hits 0 misses 1 persistent" in registry.LAST_SCAN_CACHE
+    assert scan(tmp_path) == found and "hits 1 misses 0" in registry.LAST_SCAN_CACHE
+    owner.write_text(offer.replace('"t"}', '"t", "candidate_id": None}'), encoding="utf-8")
+    assert scan(tmp_path) == [] and "hits 0 misses 1" in registry.LAST_SCAN_CACHE
+    owner.write_text(offer, encoding="utf-8")
+    kept = store / "operation-registry.sqlite"
+    version = hashlib.sha256(  # the decorator's own version of the checker
+        Path(registry.__file__).read_bytes() + Path(structural.__file__).read_bytes()
+    ).hexdigest()[:16]
+    facts = structural.FileFacts(tmp_path, "operation-registry", version)
+    db = sqlite3.connect(kept)
+    for value, seal in (("[]", "old"), (None, "old"), ('"x"', "new")):
+        with db:
+            key = hashlib.sha256(owner.read_bytes()).hexdigest()
+            (old,) = db.execute("SELECT seal FROM facts WHERE key = ?", (key,)).fetchone()
+            new = facts._seal("offers", key, str(value))
+            db.execute(
+                "UPDATE facts SET value = ?, seal = ? WHERE key = ?",
+                (value, new if seal == "new" else old, key),
+            )
+        assert scan(tmp_path) == found and "hits 0 misses 1" in registry.LAST_SCAN_CACHE
+    db.close()
+    facts.close(returned=False)
+
+    def raises(root: Path) -> list[str]:
+        incomplete_offers(root)
+        raise RuntimeError("a scan that stops")
+
+    owner.write_text(offer + "# edited\n", encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        registry._keeps_facts(raises)(tmp_path)
+    scan(tmp_path)
+    assert "hits 0 misses 1" in registry.LAST_SCAN_CACHE
+    kept.write_bytes(b"not a database")
+    assert scan(tmp_path) == found and "rebuilt" in registry.LAST_SCAN_CACHE
+    assert [entry.name for entry in store.iterdir()] == [kept.name]  # no journal or temp beside it
+    cap = kept.stat().st_size + 100  # under one more row: the write rewrites, never grows past it
+    monkeypatch.setattr(structural, "SCAN_CACHE_BYTES", cap)
+    owner.write_text(offer + "# edited again\n", encoding="utf-8")
+    assert scan(tmp_path) == found and "rewritten (bounded)" in registry.LAST_SCAN_CACHE
+    assert kept.stat().st_size <= cap
+    monkeypatch.setattr(structural, "SCAN_CACHE_BYTES", 0)
+    owner.write_text(offer, encoding="utf-8")
+    assert scan(tmp_path) == found and "dropped" in registry.LAST_SCAN_CACHE and not kept.exists()
+    monkeypatch.setattr(structural, "SCAN_CACHE_BYTES", 1 << 20)
+    older = structural.FileFacts(tmp_path, "operation-registry", "0" * 16)  # another code version
+    older.get("offers", owner, lambda data: [], registry._SHAPES["offers"])  # its own answer
+    held = sqlite3.connect(kept)  # a process holding the one file open
+    assert "persistent" in older.close(returned=True)
+    assert scan(tmp_path) == found and "misses 1" in registry.LAST_SCAN_CACHE  # fails this seal
+    assert [entry.name for entry in store.iterdir()] == [kept.name]  # one file for every version
+    held.close()

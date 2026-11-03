@@ -5,14 +5,16 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import os
 import re
+import sqlite3
 import sys
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from enum import StrEnum
 from importlib.util import resolve_name
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -725,6 +727,175 @@ _DISCOVERED_IMPORTS: dict[tuple[tuple[str, ...], bytes], tuple[str, ...]] = {}
 """This process's answers by module place and content digest: the structural tests ask for the
 same unchanged tree in test after test (STRUCTURAL-SCAN-CACHE, 10-29: about 185 s a stage).
 Never shared across processes or written to disk."""
+
+
+SCAN_CACHE_ENV = "ALPHALATTICE_SCAN_CACHE_DIR"
+"""The directory a gate names for scans' per-file facts; absent, every fact is computed."""
+SCAN_CACHE_BYTES = 64 * 1024 * 1024
+"""The most one scan's store may hold on disk, its only file: a write that would pass it
+rewrites the store from the run's own facts, or drops it when even those would not fit."""
+
+
+def file_text(data: bytes, errors: str = "strict") -> str:
+    """``data`` as ``Path.read_text(encoding="utf-8", errors=errors)`` would read it."""
+    return data.decode("utf-8", errors).replace("\r\n", "\n").replace("\r", "\n")
+
+
+class FileFacts:
+    """Facts a whole-tree scan derives from one file's bytes alone, kept across processes.
+
+    A fact is computed from the bytes this lookup reads and kept under their SHA-256, with a
+    seal over the scan's code version, the fact's part, that key and the value; a row whose
+    seal, JSON or shape (``valid``) does not hold is a miss and is recomputed, never served.
+    The seal detects torn, stale, foreign or damaged rows; like the gate's mypy cache, the store
+    trusts its writer, the line that owns the directory, and authenticates no other.
+    The store is one SQLite file per scan, whatever its code version, in the directory the gate
+    names (``SCAN_CACHE_ENV``), with no journal and no temporary file, so that one file is all it
+    holds on disk and SQLite's own lock orders every writer, of any version. Another version's
+    rows fail their seal and are misses, which this run's rows replace in place. Opening it
+    drops a file past the cap, and keeps the store off when another process holds that file.
+    Closing it writes the run's new facts only when the scan returned and the file stays within
+    ``SCAN_CACHE_BYTES`` and four times the keys this run read; otherwise it rewrites the store
+    in place from the facts this run used, or empties it when they alone would not fit. An
+    unreadable store is rebuilt; with no directory named, nothing is kept and every fact is
+    computed.
+    """
+
+    def __init__(self, root: Path, scan: str, version: str) -> None:
+        self.root, self.scan, self.version, self.hits, self.misses = root, scan, version, 0, 0
+        self.state = "off"
+        self._pending: dict[tuple[str, str], str] = {}
+        self._used: dict[tuple[str, str], str] = {}
+        self._read: set[str] = set()
+        self._db: sqlite3.Connection | None = None
+        self._store: Path | None = None
+        directory = os.environ.get(SCAN_CACHE_ENV)
+        if not directory:
+            return
+        self._store = store = Path(directory) / f"{scan}.sqlite"  # one name: no second file
+        try:
+            store.parent.mkdir(parents=True, exist_ok=True)
+            if store.exists() and store.stat().st_size > SCAN_CACHE_BYTES:
+                store.unlink()
+        except OSError as error:  # past the cap and held by another process: never read or grown
+            self.state = f"off (an oversized store is held: {type(error).__name__})"
+            return
+        try:
+            self._db = self._open(store)
+            self.state = "persistent"
+        except (OSError, sqlite3.DatabaseError):
+            try:  # unreadable or damaged: a rebuilt store, never a read of the old one
+                store.unlink(missing_ok=True)
+                self._db, self.state = self._open(store), "rebuilt"
+            except (OSError, sqlite3.DatabaseError) as error:
+                self._db, self.state = None, f"off ({type(error).__name__})"
+
+    @staticmethod
+    def _open(store: Path) -> sqlite3.Connection:
+        db = sqlite3.connect(store, isolation_level=None)  # transactions are close's, explicit
+        try:
+            # one file and nothing beside it: a torn write is a damaged or unsealed row, rebuilt
+            db.execute("PRAGMA journal_mode=OFF")
+            db.execute("PRAGMA synchronous=OFF")
+            db.execute("PRAGMA temp_store=MEMORY")
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS facts "
+                "(part TEXT, key TEXT, value TEXT, seal TEXT, PRIMARY KEY (part, key))"
+            )
+            db.execute("SELECT count(*) FROM facts").fetchone()  # a damaged file refuses here
+        except sqlite3.DatabaseError:
+            db.close()  # Windows cannot remove a file this process still holds open
+            raise
+        return db
+
+    def _seal(self, part: str, key: str, value: str) -> str:
+        return hashlib.sha256(f"{self.version}\0{part}\0{key}\0{value}".encode()).hexdigest()
+
+    def get(
+        self,
+        part: str,
+        path: Path,
+        compute: Callable[[bytes], Any],
+        valid: Callable[[Any], bool],
+    ) -> Any:
+        """``compute`` of the bytes read now at ``path``, as JSON gives it back; from the store
+        when a sealed row of the right shape holds it for exactly those bytes."""
+        data = path.read_bytes()
+        if self._db is None:
+            self.misses += 1
+            return json.loads(json.dumps(compute(data)))
+        key = hashlib.sha256(data).hexdigest()
+        self._read.add(key)
+        try:
+            row = self._db.execute(
+                "SELECT value, seal FROM facts WHERE part = ? AND key = ?", (part, key)
+            ).fetchone()
+            if row is not None and row[1] == self._seal(part, key, row[0]):
+                fact = json.loads(row[0])
+                if valid(fact):
+                    self.hits += 1
+                    self._used[(part, key)] = row[0]
+                    return fact
+        except (sqlite3.DatabaseError, TypeError, ValueError):
+            pass  # an unreadable entry is a miss, recomputed below
+        value = json.dumps(compute(data))
+        self.misses += 1
+        self._pending[(part, key)] = self._used[(part, key)] = value
+        return json.loads(value)
+
+    def _bytes(self, rows: dict[tuple[str, str], str]) -> int:
+        """Twice the rows' text, a bound on the pages SQLite gives them."""
+        return 2 * sum(
+            len(part) + len(key) + len(value) + 96 for (part, key), value in rows.items()
+        )
+
+    def _write(self, rows: dict[tuple[str, str], str]) -> None:
+        assert self._db is not None
+        self._db.executemany(
+            "INSERT OR REPLACE INTO facts VALUES (?, ?, ?, ?)",
+            [
+                (part, key, value, self._seal(part, key, value))
+                for (part, key), value in rows.items()
+            ],
+        )
+
+    def close(self, *, returned: bool) -> str:
+        """Write this run's facts if the scan ``returned``, within the store's byte cap and key
+        bound, and say how it went. The measure and the write are one immediate transaction,
+        SQLite's own write lock, so a concurrent writer of the same store waits for it rather
+        than adding to a size it did not see; making room deletes rows inside the file, whose
+        freed pages the next rows reuse, so the file never grows past what the cap admitted."""
+        if self._db is None or self._store is None:
+            return f"{self.scan} hits {self.hits} misses {self.misses} {self.state}"
+        store = self._store
+        try:
+            if returned and self._pending:
+                self._db.execute("BEGIN IMMEDIATE")
+                held = self._db.execute("SELECT count(DISTINCT key) FROM facts").fetchone()[0]
+                grown = store.stat().st_size + self._bytes(self._pending)
+                if grown <= SCAN_CACHE_BYTES and held + len(self._pending) <= 4 * len(self._read):
+                    self._write(self._pending)
+                elif self._bytes(self._used) <= SCAN_CACHE_BYTES:
+                    self._db.execute("DELETE FROM facts")
+                    self._write(self._used)
+                    self.state = "rewritten (bounded)"
+                else:
+                    self._db.execute("DELETE FROM facts")
+                    self.state = "emptied (its facts pass the byte cap)"
+                self._db.execute("COMMIT")
+        except (OSError, sqlite3.DatabaseError) as error:
+            self.state = f"unwritten ({type(error).__name__})"
+        finally:
+            if self._db is not None:
+                self._db.close()
+                self._db = None
+        try:  # the estimate's backstop: a file past the cap is never kept
+            if store.exists() and store.stat().st_size > SCAN_CACHE_BYTES:
+                store.unlink()
+                self.state = "dropped (over its byte cap)"
+        except OSError as error:
+            self.state = f"over its byte cap ({type(error).__name__})"
+        return f"{self.scan} hits {self.hits} misses {self.misses} {self.state}"
 
 
 def discover_python_imports(path: Path, *, source_root: Path) -> tuple[str, ...]:
