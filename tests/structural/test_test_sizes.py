@@ -702,6 +702,37 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     assert included("tests/structural/test_other.py::t", "medium", "merge", policy, changed)
     assert included(closure, "large", "nightly", policy, None) and not scoped(scan, policy, None)
 
+    # Registered Large standing survives only the layer's inferred Medium.
+    from types import SimpleNamespace
+
+    from devtools.testing.collection import _proven
+    from devtools.testing.sizes import load_policy
+
+    node = "tests/integration/example/test_carried.py::test_case"
+    carried = load_policy(Path(__file__).resolve().parents[2])
+    carried["defaults"].append({"pattern": node, "owner": "tests", "size": "medium"})
+    large = {
+        "pattern": node,
+        "owner": "tests",
+        "reason": "carried long integration",
+        "timeout_seconds": 5400,
+    }
+    carried["large"].append(large)
+    item = SimpleNamespace(nodeid=node, iter_markers=lambda name=None: ())
+    error = None
+    try:
+        classified = _proven(item, {}, carried)[3]
+    except ValueError as caught:
+        error = str(caught)
+    assert error is None, error
+    assert classified[:2] == ("large", "tests") and classified[3] == 5400
+    carried["large"].remove(large)
+    assert _proven(item, {}, carried)[3][0] == "medium"
+    carried["large"].append(large)
+    item.iter_markers = lambda name=None: (pytest.mark.medium.mark,) if name is None else ()
+    with pytest.raises(ValueError, match=r"test_size\.conflicting"):
+        _proven(item, {}, carried)
+
 
 def test_a_quarantined_node_needs_its_owner_reason_and_date():
     """A flaky node leaves the blocking tier only with an owner, a reason and an until date."""

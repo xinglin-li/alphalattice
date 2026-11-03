@@ -15,6 +15,7 @@ import pytest
 from devtools.testing import requirements
 from devtools.testing.contracts import Backends, LayerContract
 from devtools.testing.sizes import (
+    _rule,
     changed_paths,
     classify,
     included,
@@ -49,7 +50,13 @@ def _proven(
     if primary:
         row = row | {"layer": primary}
     declared = [m.name for m in item.iter_markers() if m.name in policy["sizes"]]
-    layer = [requirements.SIZES[row["layer"]]] if row else []
+    layer = (
+        []
+        if row.get("layer") == "integration" and _rule(item.nodeid, policy["large"])
+        else [requirements.SIZES[row["layer"]]]
+        if row
+        else []
+    )
     return ids, row, declared, classify(item.nodeid, declared + layer, policy)
 
 
