@@ -580,8 +580,8 @@ def _size_attributes(
         clock["collection_seconds"] += time.perf_counter() - began
     if selected and size == "large" and not nightly_only:
         raise ValueError(
-            f"test_size.large_contract: {item.nodeid}: register a Large rule "
-            "with size_contract=nightly_only"
+            "test_size.large_contract: register a Large rule with "
+            f"size_contract=nightly_only: {item.nodeid}"
         )
     _properties(
         item,
@@ -737,6 +737,14 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             target.append(item)
         gate(lane, marks, counted, root / "tests")
     except ValueError as error:
+        if str(error).startswith("test_size.large_contract:"):
+            config.hook.pytest_collectreport(
+                report=pytest.CollectReport(
+                    nodeid=item.nodeid, outcome="failed", longrepr=str(error), result=[]
+                )
+            )
+            items.clear()
+            return
         raise pytest.UsageError(str(error)) from error
     _record_moved(config, lane, items, policy, changed, floor=floor, omitted=tuple(omitted))
     if lane or required or omitted:

@@ -263,7 +263,9 @@ TOOLING_EXITS = {2: "interrupted", 3: "internal error", 4: "usage error", 5: "no
 """pytest's exits that are its runner's, never a test's verdict."""
 
 
-def red_classes(results: Sequence[dict[str, Any]]) -> dict[str, str]:
+def red_classes(
+    results: Sequence[dict[str, Any]], *, admission_defect: bool = False
+) -> dict[str, str]:
     """Each red node's class from its own attempts, never a guess (the protocol's rule 7).
 
     A shared setup ERROR is tooling only with a known infrastructure signature. Only a solo PASS
@@ -277,7 +279,10 @@ def red_classes(results: Sequence[dict[str, Any]]) -> dict[str, str]:
     red = {node: tries for node, tries in runs.items() if any(r["status"] in RED for r in tries)}
     shared = Counter(_signature(t[0]) for t in red.values() if _setup_error(t[0]))
     crashed = any(_killed(r) for tries in red.values() for r in tries)
-    return {node: _node_class(tries, shared, crashed) for node, tries in red.items()}
+    return {
+        node: _node_class(tries, shared, crashed, admission_defect=admission_defect)
+        for node, tries in red.items()
+    }
 
 
 def _signature(result: dict[str, Any]) -> str:
@@ -300,9 +305,18 @@ def _valid_bound(value: Any) -> bool:
     return type(value) in (int, float) and isfinite(value) and value > 0
 
 
-def _node_class(tries: list[dict[str, Any]], shared: Counter[str], crashed: bool) -> str:
+def _node_class(
+    tries: list[dict[str, Any]], shared: Counter[str], crashed: bool, *, admission_defect: bool
+) -> str:
     """One red node's class from its first and last attempts (see ``red_classes``)."""
     first, last = tries[0], tries[-1]
+    if (
+        admission_defect
+        and first["status"] == "ERROR"
+        and first.get("phase") == "collection"
+        and (first.get("failure") or {}).get("type") == "test_size.large_contract"
+    ):
+        return "defect"
     solo = len(tries) > 1 and last.get("solo")
     if solo and last["status"] == "FAILED":
         return "defect"
@@ -559,8 +573,18 @@ def _red_consistent(
     steps = [(e.id["step"]["row"], e.step.model_dump()) for e in events if "step" in e.id]
     dumped = [r.model_dump() for r in results]
     over = wall is not None and wall > config.bound_seconds
-    found = red_class(steps, red_classes(dumped), over_bound=over, tested=bool(dumped))
-    if finished.result == "PASS" or (dict(finished.red_classes), finished.red_class) != found:
+    # Writers keep the old class until this reader is deployed on develop. Accept both
+    # independently recomputed versions, so already-sealed unclassified receipts remain valid.
+    found = [
+        red_class(
+            steps,
+            red_classes(dumped, admission_defect=version),
+            over_bound=over,
+            tested=bool(dumped),
+        )
+        for version in (False, True)
+    ]
+    if finished.result == "PASS" or (dict(finished.red_classes), finished.red_class) not in found:
         raise PydanticCustomError(
             "receipt_inconsistent", "its red classes deny its own steps and nodes"
         )
@@ -916,6 +940,29 @@ class _Events:
     def __init__(self, stream: TextIO) -> None:
         self.stream, self.open = stream, dict[str, dict[str, Any]]()
         self.phases: dict[str, dict[str, float]] = {}
+        self.collection_errors: set[str] = set()
+
+    def pytest_collectreport(self, report: pytest.CollectReport) -> None:
+        if not report.failed or not str(report.longrepr).startswith("test_size.large_contract:"):
+            return
+        if report.nodeid in self.collection_errors:
+            return  # xdist reports the same collection error from each worker
+        self.collection_errors.add(report.nodeid)
+        self.stream.write(
+            json.dumps(
+                {
+                    "node": report.nodeid,
+                    "attempt": 1,
+                    "solo": False,
+                    "status": "ERROR",
+                    "seconds": 0.0,
+                    "phase": "collection",
+                    "failure": _failure(report),
+                    "class": None,
+                }
+            )
+            + "\n"
+        )
 
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
         empty = {
@@ -1003,7 +1050,7 @@ def pytest_unconfigure(config: pytest.Config) -> None:
         plugin.close()
 
 
-def _failure(report: pytest.TestReport) -> dict[str, str]:
+def _failure(report: pytest.TestReport | pytest.CollectReport) -> dict[str, str]:
     crash = getattr(report.longrepr, "reprcrash", None)
     message = ((crash.message if crash else str(report.longrepr)).strip().splitlines() or [""])[0][
         :300

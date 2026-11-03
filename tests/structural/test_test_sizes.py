@@ -127,6 +127,14 @@ import pytest
             id="size-live-large-merge",
         ),
         pytest.param(
+            "size-live-large-missing",
+            "old_area",
+            "import pytest\npytestmark = pytest.mark.large\n",
+            "open('unexpected-test-run', 'w').write('ran')",
+            True,
+            id="size-live-large-missing",
+        ),
+        pytest.param(
             "size-live-large-nightly",
             "old_area",
             "import pytest\npytestmark = pytest.mark.large\n",
@@ -385,6 +393,7 @@ assert calls == ['test.contract.failure']
         "size-live-skip",
         "size-live-large-merge",
         "size-live-large-nightly",
+        "size-live-large-missing",
         "integration-network",
         "numerical-import",
         "integration-hostname",
@@ -587,9 +596,13 @@ def _memory_checks_read_no_host():
                 "def sized(root):\n"
                 " p = original(root)\n"
                 f" p['large'].append({{'pattern': {node!r}, 'owner': 'tests', "
-                "'reason': 'A synthetic journey.', 'size_contract': 'nightly_only'})\n"
-                f" p['mandatory'].append({node!r})\n"
-                " return p\ncollection.load_policy = sized\n"
+                + (
+                    "'reason': 'A synthetic journey.'})\n"
+                    if case == "size-live-large-missing"
+                    else "'reason': 'A synthetic journey.', 'size_contract': 'nightly_only'})\n"
+                )
+                + f" p['mandatory'].append({node!r})\n"
+                + " return p\ncollection.load_policy = sized\n"
             )
         (tmp_path / "size-stage-selection.json").write_text(
             json.dumps({"base": "a" * 40, "head": "b" * 40, "families": families}),
@@ -599,7 +612,11 @@ def _memory_checks_read_no_host():
         phase_args = (
             ["-p", "size_fixture", "-p", "devtools.pipeline.receipt"]
             + (["-s"] if case.startswith("size-live-large-") else [])
-            + (["-p", "xdist.plugin", "-n", "2"] if case == "size-live-xdist" else [])
+            + (
+                ["-p", "xdist.plugin", "-n", "2", "--max-worker-restart=0"]
+                if case in {"size-live-xdist", "size-live-large-missing"}
+                else []
+            )
         )
         if case.startswith("size-live-time-"):
             call_seconds = 0.4 if case.endswith("under") else 0.5
@@ -681,7 +698,7 @@ def _memory_checks_read_no_host():
             PYTHONPATH=os.pathsep.join([str(tmp_path), str(root / "src")]),
             ALPHALATTICE_NETWORK_DISABLED="1",
             ALPHALATTICE_TEST_LANE="merge"
-            if case == "size-live-large-merge"
+            if case in {"size-live-large-merge", "size-live-large-missing"}
             else "nightly"
             if case == "size-live-large-nightly"
             else "",
@@ -711,6 +728,72 @@ def _memory_checks_read_no_host():
         | getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     output = result.stdout + result.stderr
+    if case == "size-live-large-missing":
+        assert (
+            result.returncode != 0
+            and "test_size.large_contract" in output
+            and "size_contract=nightly_only" in output
+        ), output
+        assert "INTERNALERROR" not in output and "WorkerController" not in output, output
+        events = receipt.read_test_events(tmp_path / "test-events.jsonl")
+        assert len(events) == 1
+        event = events[0]
+        assert event["phase"] == "collection"
+        assert event["failure"]["type"] == "test_size.large_contract"
+        assert "size_contract=nightly_only" in event["failure"]["message"]
+        classes = receipt.red_classes(events)
+        assert classes == {event["node"]: "unclassified"}
+        other = event | {"failure": event["failure"] | {"type": "other"}}
+        assert receipt.red_classes([other]) == {event["node"]: "unclassified"}
+        path = tmp_path / "sealed.jsonl"
+        sealed = receipt.Writer(
+            path,
+            {"stage": "commit", "host": "workshop", "command": ["fixture"]},
+            [{"workspace": {}}, {"configuration": {}}],
+        )
+        sealed.write(
+            {"workspace": {}},
+            {"repo": "product", "base": "a" * 40, "head": "b" * 40, "clean": True},
+        )
+        sealed.write(
+            {"configuration": {}},
+            {
+                "definition": "d",
+                "definition_sha256": "d" * 64,
+                "rows": ["tests"],
+                "providers": {"tests": "product"},
+                "workers": 2,
+                "bound_seconds": 900,
+            },
+        )
+        red = sealed.tests(
+            "tests",
+            {"status": "FAIL", "exit": result.returncode, "seconds": 1, "provider": "product"},
+            tmp_path / "test-events.jsonl",
+        )
+        sealed.write({"metrics": {}}, {"wall_seconds": 1})
+        sealed.finish(
+            {"result": "FAIL", "exit": 1, "red_nodes": red} | sealed.red_summary(over_bound=False)
+        )
+        assert receipt.verify(path)["result"] == "FAIL"
+        lines = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+        assert lines[-1]["finished"]["red_class"] == "unclassified"
+        future = tmp_path / "future.jsonl"
+        for line in lines:
+            if "test_result" in line:
+                line["test_result"]["class"] = "defect"
+        lines[-1]["finished"].update(red_class="defect", red_classes={"defect": 1})
+        future.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
+        assert receipt.verify(future)["result"] == "FAIL"
+        for line in lines:
+            if "test_result" in line:
+                line["test_result"]["failure"]["type"] = "other"
+        future.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
+        with pytest.raises(receipt.ReceiptError, match="receipt_inconsistent"):
+            receipt.verify(future)
+        assert event["failure"]["message"] in path.read_text("utf-8")
+        assert not (tmp_path / "unexpected-test-run").exists()
+        return
     if case == "size-live-large-merge":
         assert result.returncode == 5 and "test_size.nightly_only" in output, output
         assert "NIGHTLY_EXECUTED" not in output
