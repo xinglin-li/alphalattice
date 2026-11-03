@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
 import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import types
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import cache
 from pathlib import Path
@@ -51,6 +53,8 @@ from devtools.architecture.structural import (  # noqa: E402
     discover_module_dependencies,
     discover_python_imports,
     discover_python_modules,
+    kept_fact,
+    kept_facts,
 )
 
 _PARENT_REVISION = "HEAD"
@@ -522,7 +526,8 @@ def _case_file_facts_for(root: Path) -> dict[str, tuple[frozenset[str] | None, f
     return facts
 
 
-_QUOTED: dict[bytes, frozenset[str]] = {}  # this process's, by content digest; errors never kept
+_QUOTED: dict[bytes, frozenset[str]] = {}  # this process's, by content digest; errors never kept;
+# it answers ahead of kept_fact's version, for a process whose loaded code a run never replaces
 
 
 def _quoted_names(path: Path) -> frozenset[str]:
@@ -531,13 +536,27 @@ def _quoted_names(path: Path) -> frozenset[str]:
     data = path.read_bytes()
     digest = hashlib.sha256(data).digest()
     if (known := _QUOTED.get(digest)) is None:
-        text = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")  # as read_text does
         known = _QUOTED[digest] = frozenset(
-            node.value
-            for node in ast.walk(ast.parse(text, filename=str(path)))
-            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            kept_fact(
+                _this(),
+                "quoted",
+                data,
+                lambda bytes_: sorted(_quoted_of(bytes_, path)),
+                lambda value: (
+                    isinstance(value, list) and all(isinstance(item, str) for item in value)
+                ),
+            )
         )
     return known
+
+
+def _quoted_of(data: bytes, path: Path) -> set[str]:
+    text = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")  # as read_text does
+    return {
+        node.value
+        for node in ast.walk(ast.parse(text, filename=str(path)))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
 
 
 def _subtree_tests(directory: str, root: Path | None = None) -> frozenset[str]:
@@ -958,6 +977,21 @@ def _changed_paths(*, base: str | None, staged: bool) -> tuple[str, ...]:
 
 
 def main() -> int:
+    """Select, with every per-file fact this run derives kept in the line's scan store, versioned
+    by this runner and the structural owner as loaded (structural.kept_facts)."""
+    this = _this()
+    with kept_facts("impact-selection", this) if this is not None else contextlib.nullcontext():
+        return _select()
+
+
+def _this() -> types.ModuleType | None:
+    """This runner as loaded, or None when it was loaded under a name it is not registered by
+    (a test's own copy), which then keeps no fact."""
+    module = sys.modules.get(__name__)
+    return module if module is not None and vars(module) is globals() else None
+
+
+def _select() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base")
     parser.add_argument("--staged", action="store_true")

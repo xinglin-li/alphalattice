@@ -921,36 +921,6 @@
       "owner": "tests.structural",
       "reason": "A flake under parallel load in the per-file result recorder: it returns an undeclared-input verdict only in a parallel stage and passes alone on base and head alike (all 91 cases, 2026-10-28). It runs post-merge only until that recorder is deleted; no assertion or limit changes.",
       "until": "2026-10-31"
-    },
-    {
-      "node": "tests/workspace_readiness/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged",
-      "owner": "tests.workspace_readiness",
-      "until": "2026-11-03",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
-    },
-    {
-      "node": "tests/workspace_readiness/test_workspace_preparation.py::test_a_preparation_with_pending_truth_decisions_offers_issues_before_confirmation[data.truth_review_required-True]",
-      "owner": "tests.workspace_readiness",
-      "until": "2026-11-03",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
-    },
-    {
-      "node": "tests/workspace_readiness/test_workspace_preparation.py::test_admitted_recorded_sources_offer_only_the_confirm_under_the_offline_switch",
-      "owner": "tests.workspace_readiness",
-      "until": "2026-11-03",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
-    },
-    {
-      "node": "tests/workspace_readiness/test_workspace_preparation.py::test_listing_counts_follow_each_listings_own_transition",
-      "owner": "tests.workspace_readiness",
-      "until": "2026-11-03",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
-    },
-    {
-      "node": "tests/workspace_readiness/test_workspace_preparation.py::test_stage_file_replace_outlives_a_momentary_sharing_violation",
-      "owner": "tests.workspace_readiness",
-      "until": "2026-11-03",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
     }
   ],
   "mandatory": [
