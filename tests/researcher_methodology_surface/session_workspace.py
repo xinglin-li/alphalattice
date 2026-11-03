@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 
+from devtools.evaluation.golden_workspaces import refuse_writers
 from tests.pytest_environment import RUNNING_TEST, golden_runtime
 
 
@@ -161,43 +162,6 @@ def session_workspace(
 
 # Each session seed a test read in place, checked against its build record at session end.
 LINKED_SEEDS: set[Path] = set()
-# Windows: each seed file read in place, held open for the session so that no writer can open it.
-_HELD: dict[str, int] = {}
-
-
-def refuse_writers(path: str) -> None:
-    """A seed file read in place refuses every writer, through any of its links, and each link
-    still goes with its test's directory.
-
-    POSIX: its write bits go off; unlinking a name needs only its directory. Windows keeps
-    one read-only attribute per file, shared by every link, so a link could not be deleted
-    without making the seed writable: one handle that shares reading and deletion, never
-    writing, is held instead, and a writer's open fails with a sharing violation.
-    """
-    if os.name != "nt":
-        os.chmod(path, stat.S_IMODE(os.stat(path).st_mode) & ~0o222)
-        return
-    if path in _HELD:
-        return
-    import ctypes
-    from ctypes import wintypes
-
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel.CreateFileW.argtypes = [
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.LPVOID,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.HANDLE,
-    ]
-    kernel.CreateFileW.restype = wintypes.HANDLE
-    # GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING
-    handle = kernel.CreateFileW(str(Path(path).absolute()), 0x80000000, 0x1 | 0x4, None, 3, 0, None)
-    if handle == ctypes.c_void_p(-1).value:
-        raise ctypes.WinError(ctypes.get_last_error(), f"test_datasets.hold_refused: {path}")
-    _HELD[path] = handle  # closed with the process; the seed outlives every test of the session
 
 
 def seeds_changed() -> list[str]:

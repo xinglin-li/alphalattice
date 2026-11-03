@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import stat
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -280,10 +281,80 @@ def seal_payload(
         ) from error
 
 
+# Windows: each session seed file read in place, held open so that no writer can open it.
+_HELD: dict[str, int] = {}
+
+
+def refuse_writers(path: str) -> None:
+    """A file read in place refuses every writer, through any of its links, and each link
+    still goes with its test's directory.
+
+    POSIX: its write bits go off; unlinking a name needs only its directory. Windows keeps
+    one read-only attribute per file, shared by every link, so a link could not be deleted
+    without making the source writable: one handle that shares reading and deletion, never
+    writing, is held instead, and a writer's open fails with a sharing violation.
+    """
+    if os.name != "nt":
+        os.chmod(path, stat.S_IMODE(os.stat(path).st_mode) & ~0o222)
+        return
+    if path in _HELD:
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    # GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING
+    handle = kernel.CreateFileW(str(Path(path).absolute()), 0x80000000, 0x1 | 0x4, None, 3, 0, None)
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error(), f"test_datasets.hold_refused: {path}")
+    _HELD[path] = handle  # closed with the process; the source outlives every reader of it
+
+
+def in_invocation(path: Path) -> bool:
+    """Whether a golden lies inside this process's own bound invocation (golden_run): only then may
+    a test's acquisition link it, so every reader of a linked golden is that invocation's, and
+    every cleanup that can clear its seal runs after the invocation ends. A subprocess binds no
+    run, and a fallback or shared root lies outside one: both acquire independent copies."""
+    run = _RUN.get()
+    return run is not None and payload_path(path).is_relative_to(payload_path(run.root))
+
+
+def read_in_place(relative: str, size: int) -> bool:
+    """The payload classes no test writes (measured on the explorer goldens, 11-03): research
+    inputs, and content-addressed files of 1 MB or more; everything else stays a private copy."""
+    stem = relative.rsplit("/", 1)[-1].split(".", 1)[0]
+    return relative.startswith("research-inputs/") or (
+        size >= 1 << 20 and re.fullmatch(r"[0-9a-f]{64}", stem) is not None
+    )
+
+
 def copy_payload(
-    workspace: Path, target: Path, *, closed: Callable[[Path], AbstractContextManager[None]]
+    workspace: Path,
+    target: Path,
+    *,
+    closed: Callable[[Path], AbstractContextManager[None]],
+    link: bool = False,
 ) -> None:
-    """Validate and copy each immutable source byte once into a private writable destination."""
+    """Validate and copy each immutable source byte once into a private writable destination.
+
+    With `link` (a test's acquisition), the classes no test writes (read_in_place) are
+    linked instead, each hashed against the manifest all the same. A link is the sealed file
+    itself, so the seal's protection holds whatever process lives: POSIX write bits off, and on
+    Windows the read-only attribute, shared by every link, refusing every writer even after
+    the acquiring process exits. The cost, on Windows only: a plain unlink cannot remove the
+    link, so pytest's tmp cleanup leaves it (it ignores errors) and the run's remover, which
+    removes read-only names, takes it with the run. Without `link`, nothing is linked.
+    """
     workspace, target = payload_path(workspace), payload_path(target)
     staged = target.with_name(target.name + ".copying")
     try:
@@ -297,11 +368,19 @@ def copy_payload(
         staged.mkdir()
 
         def copy_one(path: Path) -> str:
-            if path.stat().st_mode & stat.S_IWRITE:
+            info = path.stat()
+            if info.st_mode & stat.S_IWRITE:
                 raise RuntimeError("payload is not read-only")
-            destination = staged / path.relative_to(workspace)
+            relative = path.relative_to(workspace).as_posix()
+            destination = staged / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             digest = hashlib.sha256()
+            if link and read_in_place(relative, info.st_size):
+                with path.open("rb") as source:
+                    while chunk := source.read(io.DEFAULT_BUFFER_SIZE):
+                        digest.update(chunk)
+                os.link(path, destination)  # the seal refuses its writers
+                return digest.hexdigest()
             with path.open("rb") as source, destination.open("xb") as output:
                 while chunk := source.read(io.DEFAULT_BUFFER_SIZE):
                     digest.update(chunk)
