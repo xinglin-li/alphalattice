@@ -31,6 +31,7 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
     bind_factor_inputs,
     read_factor_bundle,
 )
+from alphalattice.interface.local_application.cli_contract import error_projection
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
@@ -819,10 +820,12 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
         # HISTORICAL by name, offering only its export, and a plan on it is refused.
         from alphalattice.foundation.factor_research.research_loop import decisions
 
+        list_url = "/api/experiments/foundations"
+
         def listed() -> dict:
             return next(
                 v
-                for v in _json(live, "/api/experiments/foundations")["foundations"]
+                for v in _json(live, list_url)["foundations"]
                 if v["admission"]["admission_hash"] == identity
             )
 
@@ -834,14 +837,10 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
         from alphalattice.control.task_control.registry import TaskNotFoundError
 
         bad_id = "f" * 64
-        bad_path = (
-            root
-            / "artifacts/factor-research/research-desk/foundation-admissions"
-            / (bad_id + ".json")
-        )
+        bad_path = path.with_stem(bad_id)
         bad_path.write_text("{", encoding="utf-8")
         try:
-            collection = _json(live, "/api/experiments/foundations")
+            collection = _json(live, list_url)
             assert collection["status"] == "AVAILABLE"
             assert len(collection["foundations"]) == 2
             assert listed() == current
@@ -862,7 +861,7 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
 
             with monkeypatch.context() as m:
                 m.setattr(Path, "read_text", read_with_gap)
-                unavailable = _json(live, "/api/experiments/foundations")
+                unavailable = _json(live, list_url)
                 assert unavailable["status"] == "AVAILABLE" and listed() == current
                 stopped = next(
                     row
@@ -884,7 +883,7 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
 
             with monkeypatch.context() as m:
                 m.setattr(registry, "task", task_with_gap)
-                collection = _json(live, "/api/experiments/foundations")
+                collection = _json(live, list_url)
                 assert collection["status"] == "AVAILABLE"
                 missing = next(
                     item
@@ -902,6 +901,7 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
                     "research_input_id": admission["input_id"],
                     "input_binding_hash": admission["input_binding_hash"],
                 }
+                missing |= error_projection(missing)
                 for door in ("readback", "export"):
                     assert (
                         _json(
