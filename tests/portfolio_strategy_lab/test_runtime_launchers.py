@@ -33,6 +33,16 @@ _FLAGS = 0x08004000 if sys.platform == "win32" else 0  # no window, below normal
 _PYTHON = str(Path(sys.base_prefix) / "python.exe") if sys.platform == "win32" else sys.executable
 
 
+def _private_bytes(process):
+    """The process's private commit on Windows, else its resident set size.
+
+    psutil gives private commit only on Windows. Resident set size is a different measure (it
+    counts shared pages and leaves out paged-out ones), so off Windows the bound is a proxy.
+    """
+    info = process.memory_info()
+    return info.private if hasattr(info, "private") else info.rss
+
+
 def _job(flags):
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.CreateJobObjectW.restype = ctypes.c_void_p
@@ -469,7 +479,7 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
     for process in tree:
         process.cpu_percent(None)
     time.sleep(0.9)  # an idle sample
-    commit = sum(process.memory_info().private for process in tree) / 2**30
+    commit = sum(_private_bytes(process) for process in tree) / 2**30
     cpu = sum(process.cpu_percent(None) for process in tree)
     assert len(tree) <= host_budget["idle_processes"], [p.name() for p in tree]
     assert commit <= host_budget["idle_commit_gib"] and cpu <= host_budget["idle_cpu_percent"]
