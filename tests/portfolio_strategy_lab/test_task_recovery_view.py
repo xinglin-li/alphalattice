@@ -1103,6 +1103,10 @@ def test_the_view_refuses_an_unknown_task_and_a_missing_query_typed(
         assert status == 404
         assert answer["failure_code"] == "task_control.task_not_found"
         assert answer["next_action"] == "DISCOVER_TASK_IN_CURRENT_WORKSPACE"
+        assert answer["next_requests"] == {
+            "tasks": {"operation": "TASKS"},
+            "history": {"operation": "RESEARCH_HISTORY"},
+        }
         assert "KeyError" not in body.decode()
 
     for noun in ("task", "recovery"):

@@ -1230,7 +1230,6 @@ class PortfolioResearchOperations:
                     "task_id": str(error.task_id),
                     "next_action": "DISCOVER_TASK_IN_CURRENT_WORKSPACE",
                     **explain("task_control.task_not_found"),
-                    "next_requests": {"tasks": {"operation": "TASKS"}},
                 }
             else:
                 code = owner_failure_code(error)

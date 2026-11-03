@@ -1833,6 +1833,9 @@ def client_failure(
     return refusal, known
 
 
+_NO_HOST_ENVELOPE = (None, "NO_HOST", "local_client.service_not_running")
+
+
 def envelope(
     *,
     operation: str | None,
@@ -1880,7 +1883,9 @@ def envelope(
         "next_action": owner.get("next_action"),
         "task_id": owner.get("task_id") or owner.get("publication_task_id"),
         "schema_version": SCHEMA_VERSION,
-        "operation": operation,
+        "operation": (
+            "request" if (body, outcome, failure_code) == _NO_HOST_ENVELOPE else operation
+        ),
         "outcome": outcome,
         "data": body if display is None else display,
         **({"titles": titles} if titles else {}),

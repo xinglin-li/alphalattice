@@ -432,6 +432,22 @@ def test_no_host_is_exit_four_in_its_own_words(
         "NO_HOST",
         "local_client.service_not_running",
     )
+    assert body["operation"] == "request"
+    for outcome, failure, owner_body in (
+        ("REFUSED", "local_client.service_not_running", None),
+        ("NO_HOST", "local_client.connection_unreadable", None),
+        ("NO_HOST", "local_client.service_not_running", {"status": "REFUSED"}),
+    ):
+        assert (
+            envelope(
+                operation="TASKS",
+                outcome=outcome,
+                body=owner_body,
+                failure_code=failure,
+                elapsed_seconds=0,
+            )["operation"]
+            == "TASKS"
+        )
     # It names the workspace it checked and how to serve it; and a Session bound to another
     # workspace, that one too.
     assert (
