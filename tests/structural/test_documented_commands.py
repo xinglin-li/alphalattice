@@ -401,3 +401,62 @@ def test_kept_facts_follow_the_bytes_read_and_serve_only_sealed_rows(
     assert structural.loaded_identity(module) == before
     patterned.write_text(patterned.read_text("utf-8").replace('"a"', '"b"'), encoding="utf-8")
     assert structural.loaded_identity(importlib.reload(module)) != before
+    # a running scan's store serves a per-file fact only when its version covers the code that
+    # computes it: that code changed misses, and an uncovered module always computes.
+    import types
+
+    owner, other = types.ModuleType("owner_facts"), types.ModuleType("other_facts")
+    exec("def fact(data):\n    return [data.decode()]\n", owner.__dict__)
+    calls: list[bytes] = []
+
+    def kept(module: types.ModuleType) -> list[str]:
+        with structural.kept_facts("covered", owner):
+            compute = lambda data: calls.append(data) or owner.fact(data)  # noqa: E731
+            return structural.kept_fact(
+                module, "p", b"x", compute, lambda value: isinstance(value, list)
+            )
+
+    assert kept(owner) == kept(owner) == ["x"] and len(calls) == 1  # computed, then served
+    assert kept(other) == kept(other) == ["x"] and len(calls) == 3  # not covered: never kept
+    exec("def fact(data):\n    return [data.decode().upper()]\n", owner.__dict__)
+    assert (
+        kept(owner) == ["X"] and len(calls) == 4
+    )  # the code changed: a miss, never the old answer
+    # a whole-tree answer is kept only as derived from the very bytes its key hashed: an entry
+    # changed and restored while its rule closure runs leaves the kept answer the tree's own.
+    import json
+
+    from devtools.architecture import identity_closures
+
+    tree = tmp_path / "closures"
+    entry = tree / "src/alphalattice/foundation/feature_engine/entry.py"
+    entry.parent.mkdir(parents=True)
+    (entry.parent / "extra.py").write_text("X = 1\n", encoding="utf-8")
+    entry.write_text("import alphalattice.foundation.feature_engine.extra\n", encoding="utf-8")
+    (tree / "config").mkdir()
+    (tree / "config/identity-roles.json").write_text(
+        json.dumps({"number_deciding_packages": ["feature_engine"], "platform_segments": []}),
+        encoding="utf-8",
+    )
+    (tree / "scripts").mkdir()
+    (tree / "scripts/owner.py").write_text(
+        'x = source_rule_closure_hash(tracked_paths=("src/alphalattice/foundation/feature_engine/'
+        'entry.py",), semantic_owner="x", numerical_role="x")\n',
+        encoding="utf-8",
+    )
+    closure, original = identity_closures.number_deciding_closure, entry.read_text("utf-8")
+
+    def concurrent(*args: object, **kwargs: object) -> object:
+        entry.write_text("X = 0\n", encoding="utf-8")  # a concurrent edit while the rule reads
+        try:
+            return closure(*args, **kwargs)
+        finally:
+            entry.write_text(original, encoding="utf-8")  # and its revert, before any second look
+
+    monkeypatch.setattr(identity_closures, "number_deciding_closure", concurrent)
+    kept = identity_closures.closure_sites(tree)
+    monkeypatch.setattr(identity_closures, "number_deciding_closure", closure)
+    assert kept == identity_closures.closure_sites(tree)  # served
+    monkeypatch.delenv(structural.SCAN_CACHE_ENV)
+    assert kept == identity_closures.closure_sites(tree)  # the tree's own answer, with extra.py
+    assert "src/alphalattice/foundation/feature_engine/extra.py" in kept[0].tracked_paths

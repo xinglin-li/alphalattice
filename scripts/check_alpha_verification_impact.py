@@ -601,7 +601,7 @@ def _case_dependents(
     """Per case file, the case files that depend on it by `_depends`'s three rules, built in one
     pass: each import name's dotted prefixes, its same-directory stems and its quoted file names
     are looked up rather than every file being tested against every impacted file per round
-    (COMMIT-STAGE-SLOW-NEXT: that rescan was about 3 s of every product selection)."""
+    (the rescan took about 3 s of every product selection)."""
     by_dotted: dict[str, set[str]] = {}
     by_stem: dict[tuple[str, str], set[str]] = {}
     by_name: dict[str, set[str]] = {}

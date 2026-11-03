@@ -728,7 +728,9 @@ def assess_performance_measurement(
 _DISCOVERED_IMPORTS: dict[tuple[tuple[str, ...], bytes], tuple[str, ...]] = {}
 """This process's answers by module place and content digest: the structural tests ask for the
 same unchanged tree in test after test (STRUCTURAL-SCAN-CACHE, 10-29: about 185 s a stage).
-Never shared across processes or written to disk."""
+Never shared across processes or written to disk. It answers ahead of ``kept_fact``'s version
+check, for this process's lifetime, whose loaded code a run never replaces; a test that swaps
+``_imports_of`` in place clears it first."""
 
 
 SCAN_CACHE_ENV = "ALPHALATTICE_SCAN_CACHE_DIR"
@@ -997,12 +999,36 @@ def kept_facts(scan: str, *derive: ModuleType) -> Iterator[FileFacts]:
     a miss even when a file changes under a running scan; written only when the body returns."""
     version = loaded_identity(*derive, sys.modules[__name__])
     facts = FileFacts(Path.cwd(), scan, version)
+    _RUNNING.append((facts, {*derive, sys.modules[__name__]}))
     returned = False
     try:
         yield facts
         returned = True
     finally:
+        _RUNNING.pop()
         facts.close(returned=returned)
+
+
+_RUNNING: list[tuple[FileFacts, set[ModuleType]]] = []
+"""The stores of the scans running in this process, innermost last, each with the modules whose
+loaded code versions it."""
+
+
+def kept_fact(
+    module: ModuleType | None,
+    part: str,
+    data: bytes,
+    compute: Callable[[bytes], Any],
+    valid: Callable[[Any], bool],
+) -> Any:
+    """``compute(data)`` as JSON gives it back, from the innermost running scan's store when that
+    store is versioned by ``module``, the code that computes it; computed now otherwise, so a
+    fact is never kept under a version that does not cover its own code (``module`` None: a
+    module loaded under a name it is not registered by, which keeps nothing)."""
+    for facts, versioned in reversed(_RUNNING):
+        if module is not None and module in versioned:
+            return facts.of(part, data, compute, valid)
+    return json.loads(json.dumps(compute(data)))
 
 
 def discover_python_imports(path: Path, *, source_root: Path) -> tuple[str, ...]:
@@ -1021,6 +1047,21 @@ def discover_python_imports(path: Path, *, source_root: Path) -> tuple[str, ...]
     key = (tuple(module_parts), hashlib.sha256(data).digest())
     if (known := _DISCOVERED_IMPORTS.get(key)) is not None:
         return known
+    found = tuple(
+        kept_fact(
+            sys.modules[__name__],
+            "imports " + "/".join(module_parts),
+            data,
+            lambda bytes_: _imports_of(bytes_, path, package_parts),
+            lambda value: isinstance(value, list) and all(isinstance(item, str) for item in value),
+        )
+    )
+    _DISCOVERED_IMPORTS[key] = found
+    return found
+
+
+def _imports_of(data: bytes, path: Path, package_parts: list[str]) -> list[str]:
+    """One module's normalized absolute imports from its bytes and its package's place."""
     imports: set[str] = set()
     text = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")  # as read_text decodes
     tree = ast.parse(text, filename=str(path))
@@ -1047,8 +1088,7 @@ def discover_python_imports(path: Path, *, source_root: Path) -> tuple[str, ...]
             for alias in node.names
             if alias.name != "*"
         )
-    _DISCOVERED_IMPORTS[key] = found = tuple(sorted(imports))
-    return found
+    return sorted(imports)
 
 
 def package_root_file_violations(
