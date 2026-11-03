@@ -437,6 +437,8 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
     def build(root):
         root.mkdir()
         (root / "seed.txt").write_text(value[0], encoding="utf-8")
+        (root / "pool.duckdb").write_bytes(b"db")  # a linked input, as the product binds one
+        (root / "source.duckdb").hardlink_to(root / "pool.duckdb")
         attempts.append(value[0])
         if len(attempts) == 1:
             raise InterruptedError("worker stopped mid-build")
@@ -456,7 +458,11 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
         second, observed = future.result(timeout=10)
     assert (first / "seed.txt").read_text() == "original"
     assert first != second and observed == {"value": "second"}
-    assert (copy(first, tmp_path / "first-copy") / "seed.txt").read_text() == "original"
+    copied = copy(first, tmp_path / "first-copy")
+    assert (copied / "seed.txt").read_text() == "original"
+    # The product's link is kept inside the copy, and never reaches back to the seed.
+    pool = copied / "pool.duckdb"
+    assert pool.samefile(copied / "source.duckdb") and not pool.samefile(first / "pool.duckdb")
     assert (second / "seed.txt").read_text() == "second"
 
     value[0] = "original"

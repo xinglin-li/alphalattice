@@ -157,14 +157,25 @@ def copy_workspace(source: Path, target: Path, *, link_parquet: bool = False) ->
     """Private writable files; only callers that never edit Parquet opt into links.
 
     The session seed remains alive for the entire run, including every linked
-    consumer. Databases, records and model files always get independent copies.
+    consumer. Databases, records and model files always get independent copies of
+    the seed. Paths the product linked to one file inside the seed (a research
+    input's pooled database and its source) stay one file inside the copy, as the
+    product wrote them, so a copy never holds the same database twice.
     """
+    copied: dict[tuple[int, int], str] = {}  # a seed file the product linked -> its copy here
 
     def copy_file(src: str, dst: str) -> str:
         if link_parquet and Path(src).suffix == ".parquet":
             os.link(src, dst)
             return dst
-        return shutil.copy2(src, dst)
+        seen = os.stat(src)
+        if seen.st_nlink > 1 and (key := (seen.st_dev, seen.st_ino)) in copied:
+            os.link(copied[key], dst)
+            return dst
+        shutil.copy2(src, dst)
+        if seen.st_nlink > 1:
+            copied[(seen.st_dev, seen.st_ino)] = dst
+        return dst
 
     shutil.copytree(source, target, copy_function=copy_file)
     return target
