@@ -716,26 +716,44 @@
     {
       "node": "tests/portfolio_strategy_lab/test_cli_contract.py::test_an_operation_only_a_person_completes_is_marked_so",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "About 25 separate CLI process starts, one per checked operation, each importing the product: 50 s alone against its 60 s limit, over it under any gate load, and it is selected in every pre tier. It runs post-merge only until its owner drives the person-only checks through one process; no assertion or limit changes.",
-      "until": "2026-10-28"
+      "reason": "About 25 separate CLI process starts, one per checked operation, each importing the product: 50 s alone against its 60 s limit, over it under any gate load, and it is selected in every pre tier. It runs post-merge only until its owner drives the person-only checks through one process; no assertion or limit changes. Renewed 10-28: owners retired; cut by 10-31.",
+      "until": "2026-10-31"
     },
     {
       "node": "tests/researcher_methodology_surface/test_real_workspace.py::test_the_host_admits_a_successor_panel_only_after_its_observation_close",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds its own workspace and times out at its 60 s limit alone on develop 15941a858 (59.4 s, failed). It runs post-merge only until its owner cuts the build out of its body; no assertion or limit changes.",
-      "until": "2026-10-28"
+      "reason": "Builds its own workspace and times out at its 60 s limit alone on develop 15941a858 (59.4 s, failed). It runs post-merge only until its owner cuts the build out of its body; no assertion or limit changes. Renewed 10-28: owners retired; cut by 10-31.",
+      "until": "2026-10-31"
     },
     {
       "node": "tests/workspace_maintenance/test_membership_change_recovery.py::test_a_cancelled_tasks_orphaned_candidate_list_returns_to_its_panels_own[DEFERRED]",
       "owner": "tests.workspace_maintenance",
-      "reason": "Times out at its 60 s limit alone on develop 15941a858 and on the near-limit head alike. It runs post-merge only until its owner cuts its setup; no assertion or limit changes.",
-      "until": "2026-10-28"
+      "reason": "Times out at its 60 s limit alone on develop 15941a858 and on the near-limit head alike. It runs post-merge only until its owner cuts its setup; no assertion or limit changes. Renewed 10-28: owners retired; cut by 10-31.",
+      "until": "2026-10-31"
     },
     {
       "node": "tests/workspace_maintenance/test_membership_change_recovery.py::test_a_working_membership_names_the_task_whose_cycle_bound_it",
       "owner": "tests.workspace_maintenance",
-      "reason": "Times out at its 60 s limit alone on develop and on a later head alike (2026-10-25), the same file and setup cost as the quarantined DEFERRED case. It runs post-merge only until its owner cuts its setup; no assertion or limit changes.",
-      "until": "2026-10-28"
+      "reason": "Times out at its 60 s limit alone on develop and on a later head alike (2026-10-25), the same file and setup cost as the quarantined DEFERRED case. It runs post-merge only until its owner cuts its setup; no assertion or limit changes. Renewed 10-28: owners retired; cut by 10-31.",
+      "until": "2026-10-31"
+    },
+    {
+      "node": "tests/structural/test_pipeline_cache.py::test_a_recorder_keeps_only_inputs_the_shared_cache_can_verify[pytest-bound-exists]",
+      "owner": "tests.structural",
+      "reason": "A flake under parallel load in the per-file result recorder: it returns an undeclared-input verdict only in a parallel stage and passes alone on base and head alike (all 91 cases, 2026-10-28). It runs post-merge only until that recorder is deleted; no assertion or limit changes.",
+      "until": "2026-10-31"
+    },
+    {
+      "node": "tests/structural/test_pipeline_cache.py::test_a_recorder_keeps_only_inputs_the_shared_cache_can_verify[pytest-bound-isfile]",
+      "owner": "tests.structural",
+      "reason": "A flake under parallel load in the per-file result recorder: it returns an undeclared-input verdict only in a parallel stage and passes alone on base and head alike (all 91 cases, 2026-10-28). It runs post-merge only until that recorder is deleted; no assertion or limit changes.",
+      "until": "2026-10-31"
+    },
+    {
+      "node": "tests/structural/test_pipeline_cache.py::test_a_recorder_keeps_only_inputs_the_shared_cache_can_verify[pytest-bound-isdir]",
+      "owner": "tests.structural",
+      "reason": "A flake under parallel load in the per-file result recorder: it returns an undeclared-input verdict only in a parallel stage and passes alone on base and head alike (all 91 cases, 2026-10-28). It runs post-merge only until that recorder is deleted; no assertion or limit changes.",
+      "until": "2026-10-31"
     }
   ],
   "mandatory": [
