@@ -10,7 +10,7 @@ Use the existing policy and generators; this document grants no guard waiver.
 1. Register each requirement in `config/registries/requirements.json` before its test.
    - Give it an id, a plain description, one package owner, a layer and seconds.
    - Follow the registered schema; record an exception's kinds, reason and decision date.
-   - Ask the test manager once for a new native/e2e journey, a test over 60 s or a near-duplicate.
+   - Ask the maintainer once for a new native/e2e journey, a test over 60 s or a near-duplicate. See [contributing](../CONTRIBUTING.md) and [governance](../GOVERNANCE.md).
    - Mark its function, class or module with `pytest.mark.proves("<id>")`; a journey may name several ids.
    - Keep retired rows with their reason; lower legacy counts with `python scripts/tests_registry.py shrink`.
    - Insert rows in id order; run `python scripts/tests_registry.py sort` to order the registry.
@@ -20,7 +20,7 @@ Use the existing policy and generators; this document grants no guard waiver.
    - Extend the named holder; register a missing requirement before adding its holder.
    - Carry a byte-identical move's standing; judge an edited copy as new.
    - Move all remaining holders together when a partial move would create a second file.
-3. Choose the lowest layer that proves the requirement.
+3. Choose the lowest layer that proves the requirement. Size is time; layer is what a test touches.
    - Keep the registered primary layer authoritative during migration.
    - Reject a conflicting explicit layer folder or mixed registered layers; separate focused tests.
 4. Make the smallest regression change to the existing holder and prove it red on the base.
@@ -40,7 +40,7 @@ Use the existing policy and generators; this document grants no guard waiver.
    - Keep product defects, test defects, infrastructure and environment failures distinct.
    - Obtain valid evidence after a tool/environment failure; unknown is not a passing result.
 8. Keep folder, domain and registered owner consistent.
-   - Ask the test manager about requirement admission, placement, Large tests and test health.
+   - Ask the maintainer about requirement admission, placement, Large tests and test health.
 
 | Layer | Contract |
 | --- | --- |
@@ -110,14 +110,13 @@ Require an agent route or an existing named UI-only exception for UI writes; ref
 - Build an expensive environment, export, history, workspace, Host or model once in a shared module/session fixture.
 - Share setup read-only; isolate each case's mutations.
 - Give each function one behavior; split chained checks so workers can run them in parallel.
-- Keep Small under 1 s and Medium under 10 s; classify slower work as Large.
+- Set size by time: Small under 1 s, Medium under 10 s, and Large at 10 s or more with a specific registered reason and shrink-only declaration.
 - Measure own setup, enclosing call and teardown through the receipt producer; never use double-counted subtest time.
 - Include cold first-use fixture setup when a node may run first; a later warm-only JUnit time does not establish its size.
 - Confirm an overage through the clean-solo/load route; keep missing, malformed or aborted proof unmeasured.
 - Refuse a new or grown test over 60 s from that evidence.
-- Run Large work after merge unless mandatory or explicit admission selection requires it.
+- Run Large work after merge unless a mandatory or explicit required selection calls for it.
 - Read watchdog settings from `config/registries/test-sizes.json`; a larger mechanical bound does not change the 1 s/10 s rule.
-- Give Large work a specific registered reason and keep its declaration shrink-only.
 - Report touched-node durations before and after; explain slowdown without weakening its check.
 
 ## Running tests
@@ -148,23 +147,4 @@ Require an agent route or an existing named UI-only exception for UI writes; ref
 - Keep `researcher_methodology_extension` external-catalog cases isolated from shipped-catalog cases.
 - Leave historical paths in historical records.
 
-## Process policy
-
-- Keep the impact runner's file-per-process default.
-- Batch only through its audited safe list; revoke batching on a process-global framework import.
-- Defer `post_merge_only` files from commit while retaining whole post-merge, candidate and nightly standing.
-- Do not defer structural holders through that field.
-- Admit explicit required cost nodes only for a head declaring `Change-Kind: cost`.
-- Run those nodes at declared limits, including Large and quarantined nodes; record them in the same receipt.
-- Leave ordinary commit selection unchanged.
-
-### Verified result reuse
-
-- Use `--result-cache <directory>`, `--result-cache-bytes <positive bytes>` and `--cache off|record|shadow|on`.
-- Keep the default off; record and shadow execute every selected group.
-- Reuse only a verified passing first attempt in explicit on mode.
-- Keep cache decisions, original bounded metadata and provenance in the receipt.
-- Never publish a dirty stage.
-- Disable the shared store on a shadow mismatch; repair it before reenabling reuse.
-- Require reviewed shadow and recall evidence before promotion.
-- Never store Large, quarantined, end-to-end or native results.
+For process policy and verified result reuse, see the [pipeline policy](../src/devtools/pipeline/README.md).
