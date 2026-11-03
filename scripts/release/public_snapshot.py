@@ -31,9 +31,9 @@ class SnapshotRefused(ValueError):
     """A snapshot the builder will not make, named by its reason."""
 
 
-def _git(repository: Path, *arguments: str) -> bytes:
+def _git(repository: Path, *arguments: str, stdin: bytes | None = None) -> bytes:
     completed = subprocess.run(
-        ["git", "-C", str(repository), *arguments], capture_output=True, check=False
+        ["git", "-C", str(repository), *arguments], input=stdin, capture_output=True, check=False
     )
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", "replace").strip().splitlines()
@@ -41,6 +41,35 @@ def _git(repository: Path, *arguments: str) -> bytes:
             f"release.git_failed:{arguments[0]}:{detail[-1] if detail else completed.returncode}"
         )
     return completed.stdout
+
+
+def _tree(repository: Path, revision: str) -> dict[str, tuple[str, str]]:
+    """Each tracked path's mode and object id at `revision`."""
+    tree = {}
+    for line in _git(repository, "ls-tree", "-r", "-z", revision).split(b"\0"):
+        if line:
+            info, name = line.split(b"\t", 1)
+            mode, _kind, oid = info.decode().split()
+            tree[name.decode("utf-8")] = (mode, oid)
+    return tree
+
+
+def _blobs(repository: Path, oids: list[str]) -> dict[str, bytes]:
+    """The blobs' bytes by one `git cat-file --batch`: one process for the whole snapshot, never
+    one per file (a release has thousands)."""
+    wanted = sorted(set(oids))
+    names = "".join(oid + "\n" for oid in wanted).encode()
+    raw = _git(repository, "cat-file", "--batch", stdin=names)
+    blobs, cursor = {}, 0
+    for oid in wanted:
+        end = raw.find(b"\n", cursor)
+        header = raw[cursor:end].decode("utf-8", "replace").split() if end >= 0 else []
+        if len(header) != 3 or header[:2] != [oid, "blob"] or not header[2].isdigit():
+            raise SnapshotRefused(f"release.git_failed:cat-file:{oid}")
+        size = int(header[2])
+        blobs[oid] = raw[end + 1 : end + 1 + size]
+        cursor = end + 2 + size
+    return blobs
 
 
 SCANNER = "scripts/release/public_manifest.py"
@@ -141,12 +170,11 @@ def build(
         raise SnapshotRefused("release.source_sha_not_a_full_commit_id")
     if out.exists() and any(out.iterdir()):
         raise SnapshotRefused("release.output_not_empty")
-    listed = _git(repository, "ls-tree", "-r", "-z", source).split(b"\0")
-    modes = {
-        line.split(b"\t", 1)[1].decode("utf-8"): line.split(b" ", 1)[0].decode()
-        for line in listed
-        if line
-    }
+    tree = _tree(repository, source)
+    modes = {path: mode for path, (mode, _oid) in tree.items()}
+    public = [str(entry["path"]) for entry in manifest["public"]]
+    # read once up front; the loop below still refuses an absent path or a link in manifest order
+    blobs = _blobs(repository, [tree[p][1] for p in public if p in tree and tree[p][0] != "120000"])
     files: list[dict[str, Any]] = []
     projections: list[dict[str, Any]] = []
     private = set(modes) - {str(entry["path"]) for entry in manifest["public"]}
@@ -158,7 +186,7 @@ def build(
             raise SnapshotRefused(f"release.file_absent_at_source:{path}")
         if mode == "120000":
             raise SnapshotRefused(f"release.link_not_published:{path}")
-        source_blob = _git(repository, "cat-file", "blob", f"{source}:{path}")
+        source_blob = blobs[tree[path][1]]
         blob, dropped = (
             project(path, source_blob, private, modes.keys())
             if project
@@ -199,11 +227,10 @@ def build(
     published = sorted(_git(out, "ls-files", "-z").decode("utf-8").split("\0")[:-1])
     if published != [row["path"] for row in files]:
         raise SnapshotRefused("release.snapshot_files_not_the_manifest")
+    written = _tree(out, "HEAD")
+    kept = _blobs(out, [written[row["path"]][1] for row in files])
     for row in files:
-        if (
-            hashlib.sha256(_git(out, "cat-file", "blob", f"HEAD:{row['path']}")).hexdigest()
-            != (row["sha256"])
-        ):
+        if hashlib.sha256(kept[written[row["path"]][1]]).hexdigest() != row["sha256"]:
             raise SnapshotRefused(f"release.snapshot_changed_bytes:{row['path']}")
     return {
         "schema": PROVENANCE_SCHEMA,

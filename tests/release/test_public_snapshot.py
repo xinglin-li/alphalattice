@@ -86,13 +86,21 @@ def _manifest(repository: Path, path: Path, files: list[str]) -> str:
 
 
 def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
-    private: Path, tmp_path: Path
+    private: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Control: Public snapshots contain exact manifest bytes and one commit by the user."""
+    """Control: Public snapshots contain exact manifest bytes and one commit by the user, read
+    and read back by one Git batch each, never a process per file (a release has thousands)."""
 
     manifest = tmp_path / "manifest.json"
     source = _manifest(private, manifest, ["LICENSE", "src/tool.py"])
     out = tmp_path / "public"
+    reads, run = [], subprocess.run
+
+    def counted(argv: list[str], **options: object) -> subprocess.CompletedProcess:
+        reads.extend([argv[3:5]] if "cat-file" in argv else [])
+        return run(argv, **options)
+
+    monkeypatch.setattr(subprocess, "run", counted)
     provenance = build(
         private,
         manifest,
@@ -100,6 +108,8 @@ def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
         author="Xinglin Li <xinglin@example.com>",
         message="AlphaLattice: first public release",
     )
+    monkeypatch.setattr(subprocess, "run", run)
+    assert reads.count(["cat-file", "--batch"]) == 2 and len(reads) == 3  # 3: the scanner's own
     assert (provenance["source_sha"], provenance["file_count"]) == (source, 2)
     assert [row["path"] for row in provenance["files"]] == ["LICENSE", "src/tool.py"]
     assert provenance["manifest_sha256"] == hashlib.sha256(manifest.read_bytes()).hexdigest()
