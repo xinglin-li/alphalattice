@@ -17,6 +17,8 @@ import json
 import re
 import subprocess
 import sys
+import types
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +41,32 @@ def _git(repository: Path, *arguments: str) -> bytes:
             f"release.git_failed:{arguments[0]}:{detail[-1] if detail else completed.returncode}"
         )
     return completed.stdout
+
+
+SCANNER = "scripts/release/public_manifest.py"
+Projection = Callable[[str, bytes, set[str], Any], tuple[bytes, list[str]]]
+
+
+def source_projection(repository: Path, source: str) -> Projection | None:
+    """The source's own registry projection, read from its scanner at that commit, as the export
+    runs that scanner to hash the manifest: what is published is what was hashed, whichever of
+    the source and this builder is newer. A source older than the projection has none, and its
+    files publish as they are."""
+    listed = _git(repository, "ls-tree", source, "--", SCANNER)
+    if not listed:
+        return None
+    code = _git(repository, "cat-file", "blob", f"{source}:{SCANNER}")
+    module = types.ModuleType("source_public_manifest")
+    module.__file__ = str(repository / SCANNER)  # its ROOT is the source repository
+    sys.modules[module.__name__] = module  # dataclasses and annotations resolve their module
+    try:
+        exec(compile(code, f"{source}:{SCANNER}", "exec"), module.__dict__)
+    except Exception as error:  # the source's own code; refuse by name, never publish unprojected
+        raise SnapshotRefused(f"release.source_scanner_unloadable:{type(error).__name__}") from None
+    finally:
+        sys.modules.pop(module.__name__, None)
+    found = getattr(module, "project_public", None)
+    return found if callable(found) else None
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
@@ -120,6 +148,9 @@ def build(
         if line
     }
     files: list[dict[str, Any]] = []
+    projections: list[dict[str, Any]] = []
+    private = set(modes) - {str(entry["path"]) for entry in manifest["public"]}
+    project = source_projection(repository, source)
     for entry in manifest["public"]:
         path = str(entry["path"])
         mode = modes.get(path)
@@ -127,7 +158,23 @@ def build(
             raise SnapshotRefused(f"release.file_absent_at_source:{path}")
         if mode == "120000":
             raise SnapshotRefused(f"release.link_not_published:{path}")
-        blob = _git(repository, "cat-file", "blob", f"{source}:{path}")
+        source_blob = _git(repository, "cat-file", "blob", f"{source}:{path}")
+        blob, dropped = (
+            project(path, source_blob, private, modes.keys())
+            if project
+            else (
+                source_blob,
+                [],
+            )
+        )
+        if dropped:  # the manifest hashed the same projection; the check below proves both agree
+            projections.append(
+                {
+                    "path": path,
+                    "source_sha256": hashlib.sha256(source_blob).hexdigest(),
+                    "dropped": dropped,
+                }
+            )
         digest = hashlib.sha256(blob).hexdigest()
         if digest != entry["sha256"]:
             raise SnapshotRefused(f"release.hash_mismatch:{path}")
@@ -169,6 +216,7 @@ def build(
         "file_count": len(files),
         "total_bytes": sum(row["bytes"] for row in files),
         "files": files,
+        "registry_projections": projections,
     }
 
 

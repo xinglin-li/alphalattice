@@ -1254,16 +1254,7 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
                             "assessment": assessment,
                         }
                     )
-            normalized = line.replace("\\\\", "/").replace("\\", "/")
-            refs = set()
-            for token in re.findall(r"[A-Za-z0-9_./-]+\.[A-Za-z0-9_-]+", normalized):
-                direct = token[2:] if token.startswith("./") else token
-                relative = posixpath.normpath(posixpath.join(posixpath.dirname(row["path"]), token))
-                if relative in private or (relative not in blobs and direct in private):
-                    refs.add("TRACKED_PRIVATE_FILE")
-            if any(prefix in normalized for prefix in PRIVATE_PREFIXES):
-                refs.add("INTERNAL_TREE_REFERENCE")
-            for ref in sorted(refs):
+            for ref in sorted(private_references(row["path"], line, private, blobs.keys())):
                 findings.append(
                     {
                         "kind": "FINDING",
@@ -1276,6 +1267,105 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
     return sorted(
         findings, key=lambda r: (r["path"], r["line"], r["rule"], r.get("column", 0))
     ), binary
+
+
+def private_references(reader: str, text: str, private: set[str], tracked) -> set[str]:
+    """The NO_PRIVATE_REFERENCE assessments one line of a PUBLIC file earns: a token naming a
+    tracked private file, or a reference into an internal tree. The scan and the registry
+    projection ask this one rule, so "private" means one thing."""
+    normalized = text.replace("\\\\", "/").replace("\\", "/")
+    refs = set()
+    for token in re.findall(r"[A-Za-z0-9_./-]+\.[A-Za-z0-9_-]+", normalized):
+        direct = token[2:] if token.startswith("./") else token
+        relative = posixpath.normpath(posixpath.join(posixpath.dirname(reader), token))
+        if relative in private or (relative not in tracked and direct in private):
+            refs.add("TRACKED_PRIVATE_FILE")
+    if any(prefix in normalized for prefix in PRIVATE_PREFIXES):
+        refs.add("INTERNAL_TREE_REFERENCE")
+    return refs
+
+
+NOT_PROJECTED = {
+    "config/registries/owners-map.json": (
+        "Its rows are nouns, and a noun whose consumer list names a private tool is still a public"
+        " owner: the public tree's message catalog and requirement checks need every noun. Its"
+        " private consumer paths stay scan findings for review (10-29, public build at head)."
+    ),
+}
+"""Public registries the projection leaves whole, each with the reason a public test needs it."""
+
+
+def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[bytes, list[str]]:
+    """A PUBLIC registry as it is published: each row holding a private reference dropped.
+
+    A row is an element of a top-level list or an entry of a top-level object; it is dropped when
+    any string in it, key or value, earns a private reference by the scan's own rule. Any other
+    file, an unreadable registry, or one with nothing to drop keeps its exact bytes; the private
+    registry is never changed. Returns the bytes and each dropped row's place, such as
+    `reach[3]` or `entries/<key>` (REGISTRY-PUBLIC-PROJECTION)."""
+    if not (path.startswith("config/registries/") and path.endswith(".json")):
+        return raw, []
+    if path in NOT_PROJECTED:
+        return raw, []
+    try:
+        text = raw.decode("utf-8-sig")
+        data = json.loads(text)
+    except (UnicodeError, ValueError):
+        return raw, []  # scanned as it is; the scan names what it finds
+
+    def strings(node: object):
+        if isinstance(node, str):
+            yield node
+        elif isinstance(node, dict):
+            for key, value in node.items():
+                yield key
+                yield from strings(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from strings(value)
+
+    def flagged(*nodes: object) -> bool:
+        return any(private_references(path, s, private, tracked) for n in nodes for s in strings(n))
+
+    projected: object
+    dropped: list[str] = []
+    if isinstance(data, list):
+        dropped = [f"[{i}]" for i, row in enumerate(data) if flagged(row)]
+        projected = [row for row in data if not flagged(row)]
+    elif isinstance(data, dict):
+        kept: dict[str, object] = {}
+        for key, value in data.items():
+            if isinstance(value, list):
+                dropped += [f"{key}[{i}]" for i, row in enumerate(value) if flagged(row)]
+                kept[key] = [row for row in value if not flagged(row)]
+            elif isinstance(value, dict):
+                dropped += [f"{key}/{name}" for name, row in value.items() if flagged(name, row)]
+                kept[key] = {n: row for n, row in value.items() if not flagged(n, row)}
+            else:
+                kept[key] = value
+        projected = kept
+    if not dropped:
+        return raw, []
+    return _like(projected, raw, text), dropped
+
+
+def _like(value: object, raw: bytes, text: str) -> bytes:
+    """``value`` as JSON in the form ``text`` was written in: the indent of its first indented
+    line, or one line with its own separators when it has none; its line ending, final newline,
+    byte-order mark and escaping of non-ASCII text."""
+    newline = "\r\n" if "\r\n" in text else "\n"
+    later = [line for line in text.splitlines()[1:] if line.strip()]
+    if later:
+        indent = later[0][: len(later[0]) - len(later[0].lstrip())]
+        body = json.dumps(value, indent=indent, ensure_ascii=text.isascii())
+    else:
+        separators = (
+            "," + (" " if re.search(r",\s", text) else ""),
+            ":" + (" " if re.search(r":\s", text) else ""),
+        )
+        body = json.dumps(value, separators=separators, ensure_ascii=text.isascii())
+    body = body.replace("\n", newline) + (newline if text.endswith("\n") else "")
+    return (b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b"") + body.encode("utf-8")
 
 
 def names_script(reader: str, raw: bytes, script: str) -> bool:
@@ -1417,6 +1507,23 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
         )
         row["evidence"] = " ".join(facts) + " " + row["reason"]
         row["public_reference_sites"] = refs
+    private = {r["path"] for r in decisions if r["kind"] == "PRIVATE"}
+    blobs, projections = dict(blobs), []  # the bytes as published; the caller's private blobs stay
+    for row in decisions:
+        if row["kind"] == "PUBLIC":
+            published, dropped = project_public(
+                row["path"], blobs[row["path"]], private, blobs.keys()
+            )
+            if dropped:
+                projections.append(
+                    {
+                        "path": row["path"],
+                        "source_sha256": hashlib.sha256(blobs[row["path"]]).hexdigest(),
+                        "public_sha256": hashlib.sha256(published).hexdigest(),
+                        "dropped": dropped,
+                    }
+                )
+                blobs[row["path"]] = published
     public = [
         {
             "path": r["path"],
@@ -1461,6 +1568,7 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
         "findings": findings,
         "finding_counts": dict(sorted(Counter(r["rule"] for r in findings).items())),
         "internal_id_ratchet": ratchet,
+        "registry_projections": projections,
         "binary_public_files": binary,
         "limits": [
             (
