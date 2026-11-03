@@ -176,6 +176,24 @@ for _case in (
     CASES[_case] = ({}, {}, None)
 
 
+RED_CLASS_ROWS = {  # the classed writer's fields, read before it ships: (finished, step, admitted)
+    "red classes on a pass": ({"red_classes": {}, "red_class": None}, {}, True),
+    "red classes counted": (
+        {"red_classes": {"tooling": 1, "load": 2}, "red_class": "load+tooling"},
+        {},
+        True,
+    ),
+    "red classes stopped at the bound": ({}, {"stopped": "bound"}, True),
+    "red classes negative count": ({"red_classes": {"tooling": -1}}, {}, False),
+    "red classes unknown class": ({"red_classes": {"cosmic": 1}}, {}, False),
+    "red classes text count": ({"red_classes": {"tooling": "1"}}, {}, False),
+    "red classes unknown stop": ({}, {"stopped": "later"}, False),
+    "red classes other field": ({"red_classification": "tooling"}, {}, False),
+}
+for _case in RED_CLASS_ROWS:
+    CASES[_case] = ({}, {}, None)
+
+
 for _case in (
     "cache hit",
     "cache orphan",
@@ -266,6 +284,41 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeyp
         assert accepted is (
             case in {"legacy target valid", "legacy target current", "legacy target one-field"}
         )
+        return
+    if (
+        case in RED_CLASS_ROWS
+    ):  # a reader that knows the classed fields, strictly, before any writer
+        finished, step, admitted = RED_CLASS_ROWS[case]
+        result = "PASS" if case == "red classes on a pass" else "FAIL"
+        path = tmp_path / "classed.jsonl"
+        writer = receipt.Writer(
+            path,
+            {"stage": "commit", "host": "workshop", "command": ["x"]},
+            [{"workspace": {}}, {"configuration": {}}, {"step": {"row": "tests"}}, {"metrics": {}}],
+        )
+        writer.write(
+            {"workspace": {}}, {"repo": "product", "base": "b" * 40, "head": HEAD, "clean": True}
+        )
+        writer.write({"configuration": {}}, CONFIGURATION)
+        ran = (
+            {"status": "PASS", "exit": 0} if result == "PASS" else {"status": "ERROR", "exit": None}
+        )
+        writer.write(
+            {"step": {"row": "tests"}}, ran | {"seconds": 1.0, "provider": "workshop"} | step
+        )
+        writer.write({"metrics": {}}, {"wall_seconds": 1.0})
+        writer.finish({"result": result, "exit": 0 if result == "PASS" else 1, "red_nodes": []})
+        lines = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+        lines[-1]["finished"] |= finished
+        path.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
+        try:
+            receipt.read(path)
+        except receipt.ReceiptError as error:
+            assert error.code == "pipeline.receipt_malformed", error.code
+            accepted = False
+        else:
+            accepted = True
+        assert accepted is admitted, case
         return
     if case.startswith("binding "):
         import hashlib

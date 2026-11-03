@@ -174,6 +174,9 @@ class Step(_Strict):
     exit: int | None
     seconds: Seconds
     provider: Text
+    stopped: Literal["bound", "launch"] | None = (
+        None  # why an exit-less row ended: its runner knows
+    )
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def _exit_agrees(self) -> Step:
@@ -273,6 +276,12 @@ class Finished(_Strict):
     exit: int
     finished_at: Text
     red_nodes: list[str] = []
+    # a non-passing stage's causes by class and its one class (RED-CLASS-RECEIPT); absent before it
+    red_classes: dict[
+        Literal["defect", "flake", "slow", "load", "tooling", "unclassified"],
+        Annotated[int, Field(ge=1)],
+    ] = {}
+    red_class: str | None = None
 
 
 class Metrics(_Strict):
