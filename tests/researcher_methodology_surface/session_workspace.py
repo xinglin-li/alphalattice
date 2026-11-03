@@ -9,8 +9,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
+import tempfile
 import time
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -34,32 +37,113 @@ def session_workspace(
     factory: pytest.TempPathFactory,
     name: str,
     build: Callable[[Path], dict[str, Any]],
+    *,
+    inputs: Any = None,
 ) -> tuple[Path, dict[str, Any]]:
-    """Publish one complete seed; a failed or changed seed is refused, never repaired."""
+    """Publish immutable session generations; rebuild incomplete seeds and refuse corruption.
+
+    Callers must declare varying builder inputs as JSON values in ``inputs``.
+    The session-local name and builder identify the fixed part of the build.
+    """
     if not name.isidentifier():
         raise ValueError("session workspace name must be an identifier")
+    input_hash = hashlib.sha256(
+        json.dumps(inputs, sort_keys=True, allow_nan=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    builder = f"{build.__module__}:{build.__qualname__}"
+    key = hashlib.sha256(f"{builder}\0{input_hash}".encode()).hexdigest()
     base = factory.getbasetemp()
     if os.environ.get("PYTEST_XDIST_WORKER"):
         base = base.parent
     cache = base / "research-prerequisites"
+    if cache.is_symlink() or cache.is_junction():
+        raise RuntimeError("session workspace cache is a link")
     cache.mkdir(exist_ok=True)
-    target = cache / name
-    record = target / "complete.json"
+    index_path = cache / f"{name}.json"
     started = time.perf_counter()
     with golden_runtime().lock(cache / f"{name}.lock"):
-        built = not target.exists()
+        if index_path.is_symlink() or index_path.is_junction():
+            raise RuntimeError(f"session workspace index is a link: {name}")
+        try:
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            index = {}
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"session workspace index unreadable: {name}") from error
+        if not isinstance(index, dict) or any(
+            not isinstance(k, str)
+            or re.fullmatch(r"[0-9a-f]{64}", k) is None
+            or not isinstance(v, str)
+            or re.fullmatch(r"g-[0-9a-f]{32}", v) is None
+            for k, v in index.items()
+        ):
+            raise RuntimeError(f"session workspace index malformed: {name}")
+        target = cache / index[key] if key in index else None
+        result = None
+        if target is not None:
+            record = target / "complete.json"
+            if (
+                target.is_symlink()
+                or target.is_junction()
+                or record.is_symlink()
+                or record.is_junction()
+            ):
+                raise RuntimeError(f"session workspace is a link: {name}")
+            try:
+                result = json.loads(record.read_text(encoding="utf-8"))
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
+            except (OSError, UnicodeError) as error:
+                raise RuntimeError(f"session workspace marker unreadable: {name}") from error
+        built = (
+            not isinstance(result, dict)
+            or result.get("name") != name
+            or result.get("builder") != builder
+            or result.get("inputs") != input_hash
+            or not isinstance(result.get("metadata"), dict)
+            or not isinstance(result.get("files"), dict)
+        )
         if built:
+            target = cache / f"g-{uuid.uuid4().hex}"
             target.mkdir()
             metadata = build(target / "workspace")
-            record.write_text(
-                json.dumps({"metadata": metadata, "files": _files(target / "workspace")}) + "\n",
+            if not isinstance(metadata, dict) or not (target / "workspace").is_dir():
+                raise RuntimeError(
+                    f"session workspace builder produced no workspace or metadata: {name}"
+                )
+            result = {
+                "name": name,
+                "builder": builder,
+                "inputs": input_hash,
+                "metadata": metadata,
+                "files": _files(target / "workspace"),
+            }
+            pending = target / "complete.pending"
+            pending.write_text(
+                json.dumps(result) + "\n",
                 encoding="utf-8",
                 newline="\n",
             )
-        if not record.is_file():
-            raise RuntimeError(f"incomplete session workspace: {name}")
-        result = json.loads(record.read_text(encoding="utf-8"))
-        if _files(target / "workspace") != result["files"]:
+            pending.replace(target / "complete.json")
+            index[key] = target.name
+            pending_index = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    newline="\n",
+                    dir=cache,
+                    prefix="index-",
+                    delete=False,
+                ) as file:
+                    pending_index = Path(file.name)
+                    json.dump(index, file, sort_keys=True)
+                pending_index.replace(index_path)
+            finally:
+                if pending_index is not None:
+                    pending_index.unlink(missing_ok=True)
+        assert target is not None
+        if not (target / "workspace").is_dir() or _files(target / "workspace") != result["files"]:
             raise RuntimeError(f"session workspace was changed: {name}")
     print(
         f"PLAYPEN_SESSION_WORKSPACE {'BUILD' if built else 'REUSE'} {name} "

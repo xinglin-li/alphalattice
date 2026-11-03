@@ -47,14 +47,16 @@ from tests.researcher_methodology_surface.real_workspace import (
     _golden_key,
     _golden_root,
     build_real_risk_workspace,
+    copy_fresh_workspace,
+    session_fresh_seed,
 )
 
 
-@pytest.fixture(scope="module")
-def fresh_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
-    """The build itself, driven in this process; the golden cache is bypassed."""
+@pytest.fixture
+def fresh_workspace(tmp_path_factory: pytest.TempPathFactory, tmp_path: Path) -> RealRiskWorkspace:
+    """A private copy of the product-written, session-fresh build."""
 
-    return build_real_risk_workspace(tmp_path_factory.mktemp("fresh-real-workspace"), fresh=True)
+    return copy_fresh_workspace(tmp_path_factory, tmp_path / "fresh-real-workspace")
 
 
 def test_panel_is_admitted_through_the_feature_input_gateway(
@@ -263,7 +265,7 @@ def test_the_host_refuses_a_panel_without_feature_clock_authority(
 
 
 def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities(
-    fresh_workspace: RealRiskWorkspace, tmp_path: Path
+    fresh_workspace: RealRiskWorkspace, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
     """A second consumer restores the golden workspace with the same identities."""
 
@@ -293,6 +295,16 @@ def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identitie
     original = digest(seed)
     with (again.workspace / "market-data.duckdb").open("ab") as stream:
         stream.write(b"private consumer mutation")
+    assert digest(seed) == original
+    assert digest(sibling.workspace / "market-data.duckdb") == original
+    session_seed, _ = session_fresh_seed(tmp_path_factory)
+    session_db = session_seed / "workspace/market-data.duckdb"
+    session_original = digest(session_db)
+    fresh_sibling = copy_fresh_workspace(tmp_path_factory, tmp_path / "fresh-sibling")
+    with (fresh_workspace.workspace / "market-data.duckdb").open("ab") as stream:
+        stream.write(b"fresh consumer mutation")
+    assert digest(session_db) == session_original
+    assert digest(fresh_sibling.workspace / "market-data.duckdb") == session_original
     assert digest(seed) == original
     assert digest(sibling.workspace / "market-data.duckdb") == original
 
@@ -382,6 +394,66 @@ def test_the_golden_key_binds_the_interpreter_and_the_installed_distributions(
 def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
     tmp_path, monkeypatch
 ):
+    from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
+
+    from tests.researcher_methodology_surface import session_workspace as session
+
+    monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
+    factory, attempts, value = SimpleNamespace(getbasetemp=lambda: tmp_path), [], ["original"]
+    make, copy = session.session_workspace, session.copy_workspace
+
+    def build(root):
+        root.mkdir()
+        (root / "seed.txt").write_text(value[0], encoding="utf-8")
+        attempts.append(value[0])
+        if len(attempts) == 1:
+            raise InterruptedError("worker stopped mid-build")
+        return {"value": value[0]}
+
+    with pytest.raises(InterruptedError, match="mid-build"):
+        make(factory, "seed", build)
+    try:
+        first, original = make(factory, "seed", build)
+    except RuntimeError as error:
+        pytest.fail(f"the next worker could not rebuild an incomplete seed: {error}")
+    assert original == {"value": "original"} and len(attempts) == 2
+    assert make(factory, "seed", build) == (first, original) and len(attempts) == 2
+    value[0] = "second"
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(make, factory, "seed", build, inputs="second")
+        second, observed = future.result(timeout=10)
+    assert (first / "seed.txt").read_text() == "original"
+    assert first != second and observed == {"value": "second"}
+    assert (copy(first, tmp_path / "first-copy") / "seed.txt").read_text() == "original"
+    assert (second / "seed.txt").read_text() == "second"
+
+    value[0] = "original"
+    for field in ("name", "builder", "inputs", "", "missing"):
+        marker, prior = first.parent / "complete.json", first
+        record = json.loads(marker.read_text(encoding="utf-8"))
+        if field == "missing":
+            marker.unlink()
+        else:
+            marker.write_text(json.dumps(record | {field: "other"}) if field else "{")
+        first, _ = make(factory, "seed", build)
+        assert first != prior and (prior / "seed.txt").read_text() == "original"
+    assert len(attempts) == 8 and make(factory, "seed", build, inputs="second") == (
+        second,
+        observed,
+    )
+    (first / "seed.txt").write_text("corrupted", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="session workspace was changed"):
+        make(factory, "seed", build)
+    index = tmp_path / "research-prerequisites" / "seed.json"
+    index.write_text("{", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="session workspace index unreadable"):
+        make(factory, "seed", build)
+    assert index.read_text(encoding="utf-8") == "{"
+    with pytest.raises(ValueError):
+        make(factory, "invalid", build, inputs=float("nan"))
+    assert not (tmp_path / "research-prerequisites" / "invalid").exists()
+
     from tests.researcher_methodology_surface import real_workspace as cache
 
     def write(relative, value):

@@ -502,6 +502,34 @@ def build_real_risk_workspace(
     return _restore(workspace, installed_catalog, installed_kernels, symbols, key, sidecar)
 
 
+def session_fresh_seed(factory):
+    """Build the real fresh workspace once per session, before a test's timer."""
+    from tests.researcher_methodology_surface.session_workspace import session_workspace
+
+    def build(root: Path) -> dict:
+        record = build_real_risk_workspace(root, fresh=True)
+        key = _golden_key(record.feature_catalog, record.feature_kernels, SYMBOLS)
+        return _sidecar(record, SYMBOLS, key)
+
+    return session_workspace(factory, "fresh_real_risk", build)
+
+
+def copy_fresh_workspace(factory, target: Path) -> RealRiskWorkspace:
+    """Give one test a private writable copy, restored through product readers."""
+    from tests.researcher_methodology_surface.session_workspace import copy_workspace
+
+    source, metadata = session_fresh_seed(factory)
+    workspace = copy_workspace(source / "workspace", target)
+    return _restore(
+        workspace,
+        FeatureCatalog.load(),
+        default_extension_kernel_registry(),
+        SYMBOLS,
+        str(metadata["key"]),
+        metadata,
+    )
+
+
 def warm_real_risk_golden(*, external: bool = False) -> None:
     """Publish each golden the session uses before any test's timer: a timer cut a build short."""
     variants = [(FeatureCatalog.load(), default_extension_kernel_registry())]

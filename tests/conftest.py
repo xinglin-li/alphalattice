@@ -508,6 +508,13 @@ def pytest_collection_finish(session: pytest.Session) -> None:
         with environment.project_scope(root, root):  # confined like any test's build
             external = any("external_factor_workspace" in i.fixturenames for i in session.items)
             builder.warm_real_risk_golden(external=external)
+        if any("fresh_workspace" in item.fixturenames for item in session.items):
+            factory = session.config._tmp_path_factory
+            base = factory.getbasetemp()
+            if os.environ.get("PYTEST_XDIST_WORKER"):
+                base = base.parent
+            with environment.project_scope(base, base):
+                builder.session_fresh_seed(factory)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
