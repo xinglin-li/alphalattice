@@ -18641,6 +18641,16 @@
 "category": "INVALID_ARGUMENT",
 "reason": "The requirements registry names its schema."
 },
+"requirements.entries_out_of_order": {
+"owner": "devtools.testing",
+"category": "INVALID_ARGUMENT",
+"reason": "Requirement ids are ordered so independent additions avoid a shared tail."
+},
+"requirements.duplicate_key": {
+"owner": "devtools.testing",
+"category": "INVALID_ARGUMENT",
+"reason": "Duplicate JSON keys cannot be sorted without discarding an entry."
+},
 "requirements.row_invalid": {
 "owner": "devtools.testing",
 "category": "INVALID_ARGUMENT",

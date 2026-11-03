@@ -1288,6 +1288,7 @@ def test_find_returns_requirements_with_holders_then_unregistered_tests(tmp_path
         (HELD, None, "was removed"),
         ("schema-unreadable-directory", {}, ""),
         ("schema-unreadable-entry", {}, ""),
+        ("entry-order", {}, ""),
     ],
 )
 def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
@@ -1295,6 +1296,58 @@ def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
 ):
     from devtools.testing import requirements as r
     from devtools.testing.collection import gate
+
+    if case == "entry-order":
+        from scripts.tests_registry import main
+
+        registry = _registry_tree(tmp_path)
+        row = registry["entries"][HELD]
+        registry["entries"] = {"testing.z": row, "testing.a": row}
+        before = json.dumps(registry)
+        path = tmp_path / r.REGISTRY
+        path.write_text(before, "utf-8")
+        try:
+            r.load(tmp_path)
+        except ValueError as error:
+            assert "requirements.entries_out_of_order" in str(error)
+            assert "python scripts/tests_registry.py sort" in str(error)
+        else:
+            raise AssertionError("an unsorted requirements registry must be refused")
+        assert main(["--root", str(tmp_path), "sort"]) == 0
+        ordered = path.read_text("utf-8")
+        assert list(r.load(tmp_path)) == ["testing.a", "testing.z"]
+        assert json.loads(ordered)["entries"] == json.loads(before)["entries"]
+        # The historical base may be unsorted.
+        assert r.guard(tmp_path, [], ordered, before, tests=[]) == []
+        assert main(["--root", str(tmp_path), "sort"]) == 0 and path.read_text("utf-8") == ordered
+        path.write_text(before, "utf-8")
+        before_bytes = path.read_bytes()
+        write = Path.write_text
+
+        def full_disk(target, text, *args, **kwargs):
+            if target == path or target.name.startswith(".requirements.json."):
+                with target.open("w", encoding="utf-8") as stream:
+                    stream.write(text[:16])
+                raise OSError("fixture disk full")
+            return write(target, text, *args, **kwargs)
+
+        with monkeypatch.context() as fault:
+            fault.setattr(Path, "write_text", full_disk)
+            assert main(["--root", str(tmp_path), "sort"]) == 1
+        assert path.read_bytes() == before_bytes
+        assert not list(path.parent.glob(".requirements.json.*"))
+        with monkeypatch.context() as fault:
+            fault.setattr(
+                os, "replace", lambda *a: (_ for _ in ()).throw(OSError("fixture replace denied"))
+            )
+            assert main(["--root", str(tmp_path), "sort"]) == 1
+        assert path.read_bytes() == before_bytes and not list(
+            path.parent.glob(".requirements.json.*")
+        )
+        path.write_text('{"entries": {"x": 1, "x": 2}}', "utf-8")
+        broken = path.read_bytes()
+        assert main(["--root", str(tmp_path), "sort"]) == 1 and path.read_bytes() == broken
+        return
 
     if case in {"schema-unreadable-directory", "schema-unreadable-entry"}:
         root = tmp_path / "schema-hidden"

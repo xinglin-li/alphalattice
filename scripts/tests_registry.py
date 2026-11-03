@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))  # devtools is checkout tooling, not an installed package
 
-from devtools.testing.requirements import find, shrink  # noqa: E402
+from devtools.testing.requirements import find, shrink, sort  # noqa: E402
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -20,10 +20,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=ROOT)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("find", help="find before you write a test").add_argument("words")
+    commands.add_parser("sort", help="sort requirement ids after adding a row")
     lower = commands.add_parser("shrink", help="lower each file's legacy count")
     lower.add_argument("--seed", action="store_true", help="count the tree once, first")
     lower.add_argument("--to", type=Path, help="with --seed: the private place for the first count")
     args = parser.parse_args(argv)
+    if args.command == "sort":
+        try:
+            sort(args.root)
+        except (OSError, UnicodeError, ValueError) as refused:
+            print(refused)
+            return 1
+        return 0
     if args.command == "shrink":
         try:
             counted = shrink(args.root, seed=args.seed, to=args.to)

@@ -13,6 +13,7 @@ Use the existing policy and generators; this document grants no guard waiver.
    - Ask the test manager once for a new native/e2e journey, a test over 60 s or a near-duplicate.
    - Mark its function, class or module with `pytest.mark.proves("<id>")`; a journey may name several ids.
    - Keep retired rows with their reason; lower legacy counts with `python scripts/tests_registry.py shrink`.
+   - Insert rows in id order; run `python scripts/tests_registry.py sort` to order the registry.
    - Refuse unknown/retired ids and excess legacy counts through the registry owner.
 2. Run `python scripts/tests_registry.py find "<words>"` before adding a test.
    - Keep one holder file per requirement and layer; focused functions and parameter cases may share it.

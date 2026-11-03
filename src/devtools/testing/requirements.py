@@ -18,6 +18,7 @@ import json
 import math
 import os
 import re
+import tempfile
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date
@@ -81,15 +82,28 @@ class Index(NamedTuple):
         }
 
 
-def parse(text: str) -> dict[str, dict[str, Any]]:
+def _unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("requirements.duplicate_key:" + key)
+        result[key] = value
+    return result
+
+
+def parse(text: str, *, ordered: bool = True) -> dict[str, dict[str, Any]]:
     """The requirements by id; a malformed document or row refuses the registry, by name."""
-    document = json.loads(text)
+    document = json.loads(text, object_pairs_hook=_unique)
     if (
         not isinstance(document, dict)
         or not isinstance(document.get("entries"), dict)
         or (document.get("schema") != "alphalattice.requirements.v1")
     ):
         raise ValueError("requirements.schema")
+    if ordered and list(document["entries"]) != sorted(document["entries"]):
+        raise ValueError(
+            "requirements.entries_out_of_order: run python scripts/tests_registry.py sort"
+        )
     for key, row in document["entries"].items():
         seconds = row.get("seconds") if isinstance(row, dict) else None
         if not (
@@ -108,6 +122,27 @@ def parse(text: str) -> dict[str, dict[str, Any]]:
 def load(root: Path) -> dict[str, dict[str, Any]]:
     """The registered requirements by id."""
     return parse((root / REGISTRY).read_text("utf-8"))
+
+
+def sort(root: Path) -> None:
+    """Sort registered ids without changing rows or accepting malformed input."""
+    path = root / REGISTRY
+    text = path.read_text("utf-8")
+    parse(text, ordered=False)
+    document = json.loads(text, object_pairs_hook=_unique)
+    document["entries"] = dict(sorted(document["entries"].items()))
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary = Path(name)
+    try:
+        os.close(descriptor)
+        temporary.write_text(
+            json.dumps(document, indent=2, ensure_ascii=False) + "\n", "utf-8", newline="\n"
+        )
+        if os.name != "nt":
+            os.chmod(temporary, path.stat().st_mode)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _proved(nodes: Iterable[ast.expr]) -> tuple[str, ...]:
@@ -653,7 +688,7 @@ def guard(
     if text is None and base is None:
         return []
     try:
-        rows, before = parse(text) if text else {}, parse(base) if base else {}
+        rows, before = parse(text) if text else {}, parse(base, ordered=False) if base else {}
         new = list(new)
         if not new and rows == before and before_tests is None:
             return []

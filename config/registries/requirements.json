@@ -3,29 +3,47 @@
   "owner": "devtools.testing",
   "note": "Each requirement a test proves, registered before its test exists. A row holds its id (<owner's last segment>.<words>), one description sentence, the owner package, its layer (unit, integration, contract, e2e or native; a layer's limit is test-sizes.json's for its size) and its seconds budget; a test names the ids it proves with @pytest.mark.proves. Holders, lifecycle (proposed, active, quarantined, retired) and the commit that added a row are derived, never stored. An id is never reused: a retired row stays. Find before writing one: python scripts/tests_registry.py find \"<words>\".",
   "entries": {
-    "pipeline.flake_quarantine_candidates": {
-      "description": "The test-health owner derives quarantine candidates from distinct verified flake observations, registered owners and review dates.",
+    "architecture.discovered_imports_kept_by_place_and_bytes": {
+      "description": "A module's discovered imports are kept in the process by its place under the source root and its bytes, so changed bytes or another place miss and a read or parse error is raised every time.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "architecture.import_law_refuses_higher_levels_and_retired_names": {
+      "description": "The import law built from the package registry refuses a package importing a higher level or an undeclared peer, and any file importing a retired owner, direct or relative; an import downward or of a lookalike name passes.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "evaluation.persistent_golden_root_follows_its_setting": {
+      "description": "The persistent golden cache root is the operator's shared setting when present and the checkout's own folder when absent.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "local_application.node_invocation_preserves_runtime_environment": {
+      "description": "Node test invocation preserves availability and caller environment while resolving absolute browser directory aliases to their physical targets.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 1.313
+    },
+    "observation_runtime.process_is_held_to_half_the_machine_or_its_narrower_allowance": {
+      "description": "A runner binds its process to at most half the machine's logical processors, or to the narrower allowance it already inherited, and reads the bound back from the operating system.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "integration",
+      "seconds": 4.0
+    },
+    "pipeline.code_health_reports_every_row": {
+      "description": "The daily code-health report reads sizes, boundaries, growers, dead code, dependencies and complexity from the tree, reuses an unchanged tree's rows, and reads a failed row as unmeasured, never zero.",
       "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 10
     },
-    "testing.find_matches_requirements_and_unregistered_tests": {
-      "description": "One search returns the registered requirements and the unregistered tests whose words match, best first, with each requirement's lifecycle and holders.",
-      "owner": "devtools.testing",
+    "pipeline.cost_receipt_contains_required_nodes": {
+      "description": "A cost commit stage runs required named test families, including Large, and records their bounded outcomes without changing ordinary selection.",
+      "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 5
-    },
-    "testing.unregistered_test_refused_with_its_find": {
-      "description": "A new test that proves no registered requirement is refused by the fast guard with what tests find returns for its words and the next lawful step, and in a gate lane beyond its file's legacy count.",
-      "owner": "devtools.testing",
-      "layer": "integration",
-      "seconds": 5
-    },
-    "testing.row_admitted_or_refused_by_its_check": {
-      "description": "A new or edited requirement row is admitted at once when its id, owner, sentence, layer and budget pass without a near-duplicate, and is otherwise refused by its failing check or held for the test manager's decision.",
-      "owner": "devtools.testing",
-      "layer": "integration",
-      "seconds": 5
+      "seconds": 15
     },
     "pipeline.definition_refuses_malformed_rows": {
       "description": "A malformed pipeline definition is refused on load by code, naming its stage or row, and the shipped definition loads.",
@@ -33,14 +51,32 @@
       "layer": "integration",
       "seconds": 5
     },
-    "pipeline.receipt_verifies_only_complete_and_as_asked": {
-      "description": "A stage receipt verifies only when every announced event arrived and it meets the requested stage, host, head, result and optional passing test and time-limit checks.",
+    "pipeline.flake_quarantine_candidates": {
+      "description": "The test-health owner derives quarantine candidates from distinct verified flake observations, registered owners and review dates.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5
     },
-    "pipeline.stage_runs_each_row_by_one_provider": {
-      "description": "A stage run resolves each row on its host to exactly one provider, refusing a row with none or two, and writes a receipt that verifies.",
+    "pipeline.health_report_counts_the_test_metrics": {
+      "description": "The daily test-health report counts test and source lines, registered and multiply held requirements, large files, quarantines, stage verdicts, flakes and slow tests, ranks each test's seconds from healthy runs only, and leaves a rate unknown without receipts.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "pipeline.public_durations_come_from_junit": {
+      "description": "The public tests' durations file comes from JUnit records: the latest run of each node wins, skipped and out-of-tree nodes are left out, and an unreadable record refuses by name.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.receipt_plugin_writes_each_node_once": {
+      "description": "The receipt plugin writes each test node once, after its last phase or a crash, with its failure's masked signature, and then disposes of itself.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.receipt_verifies_only_complete_and_as_asked": {
+      "description": "A stage receipt verifies only when every announced event arrived and it meets the requested stage, host, head, result and optional passing test and time-limit checks.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5
@@ -59,6 +95,20 @@
       "seconds": 5,
       "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
     },
+    "pipeline.result_cache_refuses_undeclared_inputs": {
+      "description": "A recorder observes collection and execution inputs, storing only complete first-attempt passing results and declining opaque readers or bound native predicates without changing test outcomes.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+    },
+    "pipeline.result_cache_runner_serves_verified_groups": {
+      "description": "The runner reuses only verified passing groups, records cache provenance, and runs misses or shadow comparisons without hiding changed or opaque inputs.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 30,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+    },
     "pipeline.result_cache_store_stays_within_its_bounds": {
       "description": "The result-cache store drops entries idle past 14 days and then the oldest while it holds more bytes than its cap.",
       "owner": "devtools.pipeline",
@@ -66,27 +116,9 @@
       "seconds": 5,
       "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
     },
-    "pipeline.code_health_reports_every_row": {
-      "description": "The daily code-health report reads sizes, boundaries, growers, dead code, dependencies and complexity from the tree, reuses an unchanged tree's rows, and reads a failed row as unmeasured, never zero.",
+    "pipeline.stage_runs_each_row_by_one_provider": {
+      "description": "A stage run resolves each row on its host to exactly one provider, refusing a row with none or two, and writes a receipt that verifies.",
       "owner": "devtools.pipeline",
-      "layer": "integration",
-      "seconds": 10
-    },
-    "pipeline.receipt_plugin_writes_each_node_once": {
-      "description": "The receipt plugin writes each test node once, after its last phase or a crash, with its failure's masked signature, and then disposes of itself.",
-      "owner": "devtools.pipeline",
-      "layer": "integration",
-      "seconds": 5
-    },
-    "testing.whole_file_relocation_restores_bytes": {
-      "description": "Whole-file test relocation restores bytes and registered references, preserves consumed fixture scope and refuses path, export and fixture-name clashes.",
-      "owner": "devtools.testing",
-      "layer": "integration",
-      "seconds": 6.248
-    },
-    "evaluation.persistent_golden_root_follows_its_setting": {
-      "description": "The persistent golden cache root is the operator's shared setting when present and the checkout's own folder when absent.",
-      "owner": "devtools.evaluation",
       "layer": "integration",
       "seconds": 5
     },
@@ -96,43 +128,11 @@
       "layer": "integration",
       "seconds": 5
     },
-    "pipeline.health_report_counts_the_test_metrics": {
-      "description": "The daily test-health report counts test and source lines, registered and multiply held requirements, large files, quarantines, stage verdicts, flakes and slow tests, ranks each test's seconds from healthy runs only, and leaves a rate unknown without receipts.",
-      "owner": "devtools.pipeline",
-      "layer": "integration",
-      "seconds": 10
-    },
-    "pipeline.result_cache_refuses_undeclared_inputs": {
-      "description": "A recorder observes collection and execution inputs, storing only complete first-attempt passing results and declining opaque readers or bound native predicates without changing test outcomes.",
-      "owner": "devtools.pipeline",
-      "layer": "integration",
-      "seconds": 5,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
-    },
-    "pipeline.cost_receipt_contains_required_nodes": {
-      "description": "A cost commit stage runs required named test families, including Large, and records their bounded outcomes without changing ordinary selection.",
-      "owner": "devtools.pipeline",
-      "layer": "integration",
-      "seconds": 15
-    },
-    "pipeline.result_cache_runner_serves_verified_groups": {
-      "description": "The runner reuses only verified passing groups, records cache provenance, and runs misses or shadow comparisons without hiding changed or opaque inputs.",
-      "owner": "devtools.pipeline",
-      "layer": "integration",
-      "seconds": 30,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
-    },
-    "testing.one_holder_per_layer": {
-      "description": "A requirement has one holder file in each layer, while focused functions and parameter cases in that file preserve its place.",
+    "testing.find_matches_requirements_and_unregistered_tests": {
+      "description": "One search returns the registered requirements and the unregistered tests whose words match, best first, with each requirement's lifecycle and holders.",
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 5
-    },
-    "testing.observed_test_resources": {
-      "description": "Each completed test records its own phase durations and observed resources, including subprocess counts and explicit unknowns, without changing its result.",
-      "owner": "devtools.testing",
-      "layer": "integration",
-      "seconds": 10
     },
     "testing.layer_contract": {
       "description": "Registered unit layers obey resource and own-phase time boundaries, while integration layers retain their declared database and file access.",
@@ -140,21 +140,21 @@
       "layer": "integration",
       "seconds": 10
     },
-    "local_application.node_invocation_preserves_runtime_environment": {
-      "description": "Node test invocation preserves availability and caller environment while resolving absolute browser directory aliases to their physical targets.",
-      "owner": "alphalattice.interface.local_application",
+    "testing.observed_test_resources": {
+      "description": "Each completed test records its own phase durations and observed resources, including subprocess counts and explicit unknowns, without changing its result.",
+      "owner": "devtools.testing",
       "layer": "integration",
-      "seconds": 1.313
+      "seconds": 10
     },
-    "observation_runtime.process_is_held_to_half_the_machine_or_its_narrower_allowance": {
-      "description": "A runner binds its process to at most half the machine's logical processors, or to the narrower allowance it already inherited, and reads the bound back from the operating system.",
-      "owner": "alphalattice.control.observation_runtime",
+    "testing.one_holder_per_layer": {
+      "description": "A requirement has one holder file in each layer, while focused functions and parameter cases in that file preserve its place.",
+      "owner": "devtools.testing",
       "layer": "integration",
-      "seconds": 4.0
+      "seconds": 5
     },
-    "architecture.import_law_refuses_higher_levels_and_retired_names": {
-      "description": "The import law built from the package registry refuses a package importing a higher level or an undeclared peer, and any file importing a retired owner, direct or relative; an import downward or of a lookalike name passes.",
-      "owner": "devtools.architecture",
+    "testing.row_admitted_or_refused_by_its_check": {
+      "description": "A new or edited requirement row is admitted at once when its id, owner, sentence, layer and budget pass without a near-duplicate, and is otherwise refused by its failing check or held for the test manager's decision.",
+      "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 5
     },
@@ -164,17 +164,17 @@
       "layer": "integration",
       "seconds": 1
     },
-    "architecture.discovered_imports_kept_by_place_and_bytes": {
-      "description": "A module's discovered imports are kept in the process by its place under the source root and its bytes, so changed bytes or another place miss and a read or parse error is raised every time.",
-      "owner": "devtools.architecture",
+    "testing.unregistered_test_refused_with_its_find": {
+      "description": "A new test that proves no registered requirement is refused by the fast guard with what tests find returns for its words and the next lawful step, and in a gate lane beyond its file's legacy count.",
+      "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 5
     },
-    "pipeline.public_durations_come_from_junit": {
-      "description": "The public tests' durations file comes from JUnit records: the latest run of each node wins, skipped and out-of-tree nodes are left out, and an unreadable record refuses by name.",
-      "owner": "devtools.pipeline",
+    "testing.whole_file_relocation_restores_bytes": {
+      "description": "Whole-file test relocation restores bytes and registered references, preserves consumed fixture scope and refuses path, export and fixture-name clashes.",
+      "owner": "devtools.testing",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 6.248
     }
   }
 }
