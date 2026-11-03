@@ -1089,6 +1089,35 @@ def read_tree(repo: Path, revision: str) -> tuple[str, dict[str, bytes], dict[st
     return sha, blobs, modes
 
 
+_IMPORT_NAMES: dict[tuple[str, bytes], frozenset[str]] = {}
+"""Each Python file's imported names by its place and content digest, parsed once a process: both
+closures of a `generate`, and every later one, read the same answer. A
+parse error is raised every time, never kept."""
+
+
+def _import_names(path: str, raw: bytes) -> frozenset[str]:
+    """The absolute names one file imports, relative imports resolved against its package."""
+    key = (path, hashlib.sha256(raw).digest())
+    if (known := _IMPORT_NAMES.get(key)) is not None:
+        return known
+    tree = ast.parse(raw.decode("utf-8-sig"), filename=path)
+    own = path[4:-3].replace("/", ".").removesuffix(".__init__") if path.startswith("src/") else ""
+    package = own if path.endswith("/__init__.py") else own.rpartition(".")[0]
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                parts = package.split(".")
+                base = ".".join(parts[: len(parts) - node.level + 1] + ([base] if base else []))
+            names.add(base)
+            names.update(base + "." + alias.name for alias in node.names)
+    known = _IMPORT_NAMES[key] = frozenset(names)
+    return known
+
+
 def import_closure(blobs: dict[str, bytes], roots: set[str]) -> set[str]:
     """Follow absolute and relative Python imports by parsing, never importing product code."""
     modules = {
@@ -1100,26 +1129,13 @@ def import_closure(blobs: dict[str, bytes], roots: set[str]) -> set[str]:
     for path, raw in blobs.items():
         if not path.endswith(".py"):
             continue
-        tree = ast.parse(raw.decode("utf-8-sig"), filename=path)
-        own = (
-            path[4:-3].replace("/", ".").removesuffix(".__init__")
-            if path.startswith("src/")
-            else ""
-        )
-        package = own if path.endswith("/__init__.py") else own.rpartition(".")[0]
-        names = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                names.update(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                base = node.module or ""
-                if node.level:
-                    parts = package.split(".")
-                    base = ".".join(parts[: len(parts) - node.level + 1] + ([base] if base else []))
-                names.add(base)
-                names.update(base + "." + alias.name for alias in node.names)
+        # A module is reached when it is a dotted prefix of an imported name (or the name itself):
+        # each prefix is looked up, not every module tested against every name.
         edges[path] = {
-            modules[n] for name in names for n in modules if n == name or name.startswith(n + ".")
+            modules[prefix]
+            for name in _import_names(path, raw)
+            for prefix in (".".join(name.split(".")[:end]) for end in range(1, name.count(".") + 2))
+            if prefix in modules
         }
     reached = set(roots)
     todo = list(roots)
