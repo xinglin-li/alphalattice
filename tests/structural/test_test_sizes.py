@@ -1144,7 +1144,7 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     when its inputs change; an undeclared one leaves the commit stage unless a fence law keeps it
     or its own file changed, and post-merge and nightly run every one whole."""
     from devtools.testing.collection import CHANGED
-    from devtools.testing.sizes import changed_paths, included, scoped
+    from devtools.testing.sizes import changed_paths, included, load_policy, scoped, validate_policy
 
     scoped_run = os.environ.get("ALPHALATTICE_TEST_LANE") in {"merge", "fast"}  # read once
     assert request.config.stash.get(CHANGED, None) == (changed_paths() if scoped_run else None)
@@ -1193,12 +1193,11 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
 
     from copy import deepcopy
 
-    from devtools.testing.sizes import load_policy, validate_policy
-
     registered = load_policy(Path(__file__).resolve().parents[2])
     for stem, changed in (
         ("test_entry_point_startup", "src/alphalattice/control/product_host/composition/entry.py"),
         ("test_local_web_build", "tests/pytest_environment.py"),
+        ("test_pipeline_receipt", "src/devtools/pipeline/receipt.py"),
     ):
         assert included(
             f"tests/structural/{stem}.py::test_guard",
@@ -1207,6 +1206,16 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
             registered,
             frozenset({changed}),
         ), changed
+    node = "tests/structural/test_pipeline_receipt.py::test_guard"
+    outside = "src/alphalattice/investment/risk_research/contracts.py"
+    assert not included(node, "medium", "merge", registered, frozenset({outside})), outside
+    web = (
+        "tests/structural/test_local_web_build.py::test_check_reads_every_output_without_rebuilding"
+    )
+    assert included(
+        web, "medium", "merge", registered, frozenset({"scripts/build_local_web_ui.py"})
+    )
+    assert not included(web, "medium", "merge", registered, frozenset({outside})), outside
     # These source and ledger identity/authority checks are fences even without declared reach.
     for node in (
         "tests/structural/test_task_record_collections.py::test_canonical_task_parsers_cannot_bypass_stored_identity_validation",
@@ -1300,10 +1309,7 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
         validate_policy(mapped | {"post_merge_only": [path]})
 
     # Registered Large standing survives only the layer's inferred Medium.
-    from types import SimpleNamespace
-
     from devtools.testing.collection import _proven
-    from devtools.testing.sizes import load_policy
 
     node = "tests/integration/example/test_carried.py::test_case"
     carried = load_policy(Path(__file__).resolve().parents[2])
