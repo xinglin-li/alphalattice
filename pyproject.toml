@@ -98,7 +98,9 @@ semantic = [
 
 [dependency-groups]
 dev = [
+    "deptry>=0.25,<1",
     "hypothesis>=6.140,<7",
+    "import-linter>=2.15,<3",
     # Preserve the product environment while the docs tools use mdformat's <4 range.
     "markdown-it-py==4.2.0",
     "mypy>=1.18,<2",
@@ -106,11 +108,28 @@ dev = [
     "portalocker>=3.2,<4",
     "pre-commit>=4.3,<5",
     "py-spy>=0.4,<1",
+    "pyinstrument>=5.1,<6",
     "pytest>=8.4,<10",
     "pytest-cov>=6,<8",
     "pytest-timeout>=2.4,<3",
     "pytest-xdist==3.8.0",
     "ruff>=0.14,<1",
+    "vulture>=2.16,<3",
+]
+# Each package below registers a pytest plugin that loads itself into every pytest run in an
+# environment it is installed in, so each stays out of the default dev group and in a group of
+# its own; a run that uses one asks for it with --group.
+# Seeded random test order, for the nightly walk.
+order = [
+    "pytest-randomly>=5,<6",
+]
+# Coverage-based test selection.
+testmon = [
+    "pytest-testmon>=2.2,<3",
+]
+# Module boundary checks; its CLI works without the plugin.
+tach = [
+    "tach>=0.35,<1",
 ]
 docs = [
     "mkdocs-llmstxt>=0.5.0",
