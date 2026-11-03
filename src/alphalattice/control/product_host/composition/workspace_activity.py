@@ -973,7 +973,10 @@ class WorkspaceActivity:
                 at
                 for at, row in zip(times, rows, strict=True)
                 if row.get("phase") == "RETURNED"
-                and row.get("status") == "GOAL_SAVED"
+                and (
+                    row.get("status") == "GOAL_SAVED"
+                    or (row.get("operation"), row.get("status")) == ("GOAL_SUBMIT", "COMPLETE")
+                )
                 and row.get("operation") in {"GOAL_SUBMIT", "GOAL_ABANDON"}
                 and row.get("subject", {}).get("goal_hash") == goal.goal_hash
             ]

@@ -107,9 +107,12 @@ def _correlated_clock(anchor, system, quantized=False):
 
 
 @pytest.mark.parametrize("fault", [None, "missing", "drift", "quantized", "physical_drift"])
+@pytest.mark.parametrize("terminal", ["GOAL_ABANDON", "GOAL_SUBMIT"])
 @pytest.mark.parametrize("live", [_correlated_clock(NOW, NOW + timedelta(days=30))], indirect=True)
-def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(live, monkeypatch, fault):
-    """Real served reads align active and closed windows; missing or drifting origins stay gaps."""
+def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(
+    live, monkeypatch, fault, terminal
+):
+    """Served terminal returns bound both closures despite later refused traffic or clock faults."""
     system = NOW + timedelta(days=30)
     client, goal, _, _ = _profile_scene(live, monkeypatch, "OPERATIONS", "portfolio", close=False)
     active = client.request({"operation": "GOAL_PROFILE", "goal_id": goal})
@@ -138,8 +141,19 @@ def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(live, 
     second.start()
     try:
         client, _, _, _ = _profile_scene(
-            second, monkeypatch, "OPERATIONS", "portfolio", existing_goal=goal
+            second, monkeypatch, "OPERATIONS", "portfolio", close=False, existing_goal=goal
         )
+        closing = {"operation": terminal, "goal_id": goal}
+        if terminal == "GOAL_ABANDON":
+            closing["change_reason"] = "End fixture"
+        else:
+            closing["goal_submission"] = {
+                "outcome": "NOT_ACHIEVED",
+                "summary": "Clock fixture kept no scientific publication",
+                "criteria": [dict(criterion_id="recorded", answer="NOT_ASSESSED", note="Fixture")],
+            }
+        closed = client.request(closing)
+        assert closed["status"] == ("COMPLETE" if terminal == "GOAL_SUBMIT" else "GOAL_SAVED")
         result = client.request({"operation": "GOAL_PROFILE", "goal_id": goal})
         assert result == client.request({"operation": "GOAL_PROFILE", "goal_id": goal})
         (live.workspace.parent / "clock-profile.json").write_text(
@@ -153,6 +167,8 @@ def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(live, 
             assert "CLOCK_MAPPING_DRIFT" not in {g["code"] for g in result["gaps"]}
             assert result["window"]["start"] == system.isoformat()
             assert result["window"]["end"] == (system + timedelta(seconds=72)).isoformat()
+            assert result["window"]["source"] == "GOAL_TERMINAL_RETURN"
+            assert "CLOCK_WINDOW_UNOBSERVED" not in {g["code"] for g in result["gaps"]}
             assert result["coverage"]["host_seconds"] == 18
             assert result["coverage"]["phase_seconds"] == 14
             assert result["clock_domains"] == ["UTC"]
@@ -160,6 +176,11 @@ def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(live, 
                 assert clock.correlation.get("resolution_seconds") == dict(
                     time=1 / 64, monotonic=1 / 64
                 )
+            clock.return_value += timedelta(seconds=20)
+            assert client.request(closing)["status"] == "REFUSED"
+            assert second.operations.goals.store.head(UUID(goal)).goal_hash == closed["goal_hash"]
+            later = client.request({"operation": "GOAL_PROFILE", "goal_id": goal})
+            assert later["window"] == result["window"]
     finally:
         second.stop()
 

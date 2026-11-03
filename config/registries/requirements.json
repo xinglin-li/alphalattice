@@ -33,6 +33,17 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.listener_boundary_samples_survive_fast_host_exit": {
+      "description": "A replay monitor samples the local Host at both declared ACK markers before acknowledging them, including when work ends before the next periodic sample.",
+      "owner": "devtools.evaluation",
+      "layer": "e2e",
+      "seconds": 45,
+      "exception": {
+        "kinds": ["journey"],
+        "why": "A real Host exercises the sampled ACK markers",
+        "decided": "2026-10-29: approved; real Host sampling exercises the ACK markers"
+      }
+    },
     "evaluation.persistent_golden_root_follows_its_setting": {
       "description": "The persistent golden cache root is the operator's shared setting when present and the checkout's own folder when absent.",
       "owner": "devtools.evaluation",
