@@ -139,118 +139,16 @@
       "size": "medium"
     },
     {
-      "pattern": "tests/workspace_readiness/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged",
-      "owner": "tests.workspace_readiness",
-      "size": "medium",
-      "reason": "Records 5.654 seconds in Windows JUnit for the medium-sized 'update capture copy and recovery leave defaults and reports unchanged' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_manifest_writes.py::test_a_declared_data_rule_changes_identity_and_survives_other_manifest_writes",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.016 seconds in Windows JUnit for the small-sized 'a declared data rule changes identity and survives other manifest writes' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_manifest_writes.py::test_a_manifest_holding_a_spelling_the_renames_retired_is_refused_by_name[[]*",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.009-0.013 seconds in Windows JUnit for the small-sized 'a manifest holding a spelling the renames retired is refused by name' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_manifest_writes.py::test_a_new_workspace_is_created_once",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.006 seconds in Windows JUnit for the small-sized 'a new workspace is created once' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_manifest_writes.py::test_a_plan_binds_only_the_fields_it_reads",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.005 seconds in Windows JUnit for the small-sized 'a plan binds only the fields it reads' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_manifest_writes.py::test_a_portfolio_research_plan_binds_the_strategy_it_serves",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.004 seconds in Windows JUnit for the small-sized 'a portfolio research plan binds the strategy it serves' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_manifest_writes.py::test_a_research_installation_holds_a_persons_activation",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.004 seconds in Windows JUnit for the small-sized 'a research installation holds a persons activation' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_manifest_writes.py::test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding[[]*",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.246-0.347 seconds in Windows JUnit for the small-sized 'evidence setup waits for the manifest owner and keeps another binding' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_manifest_writes.py::test_two_writers_through_the_one_write_keep_both_changes",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.339 seconds in Windows JUnit for the small-sized 'two writers through the one write keep both changes' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_a_cancelled_successor_without_a_verified_stage_gives_its_source_back",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.004 seconds in Windows JUnit for the small-sized 'a cancelled successor without a verified stage gives its source back' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_a_deferred_preparation_confirmed_again_goes_to_its_owner",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.694 seconds in Windows JUnit for the small-sized 'a deferred preparation confirmed again goes to its owner' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_a_plan_confirmed_while_its_task_runs_answers_that_task[[]*",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.654-0.666 seconds in Windows JUnit for the small-sized 'a plan confirmed while its task runs answers that task' case."
-    },
-    {
       "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_short",
       "owner": "tests.workspace_readiness",
       "size": "medium",
       "reason": "Records 3.746 seconds in Windows JUnit for the medium-sized 'a plan estimate refuses its confirm before admission when memory is short' case."
     },
     {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_a_preparation_answer_names_its_own_plan_whatever_its_owner_holds_last",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.152 seconds in Windows JUnit for the small-sized 'a preparation answer names its own plan whatever its owner holds last' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_a_preparation_with_pending_truth_decisions_offers_issues_before_confirmation[[]*",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.882-0.992 seconds in Windows JUnit for the small-sized 'a preparation with pending truth decisions offers issues before confirmation' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_a_preview_past_its_hour_is_refused_by_the_host_that_planned_it",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.155 seconds in Windows JUnit for the small-sized 'a preview past its hour is refused by the host that planned it' case."
-    },
-    {
       "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_a_preview_past_its_hour_offers_the_preparation_again",
       "owner": "tests.workspace_readiness",
       "size": "medium",
       "reason": "Records 1.049 seconds in Windows JUnit for the medium-sized 'a preview past its hour offers the preparation again' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_admitted_recorded_sources_offer_only_the_confirm_under_the_offline_switch",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.766 seconds in Windows JUnit for the small-sized 'admitted recorded sources offer only the confirm under the offline switch' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_an_agent_resumes_a_granted_preparation_from_its_own_answer",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.654 seconds in Windows JUnit for the small-sized 'an agent resumes a granted preparation from its own answer' case."
     },
     {
       "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_cancelled_preparation_reuses_captured_scope_without_new_discovery[[]*",
@@ -277,52 +175,10 @@
       "reason": "Records 8.156 seconds in Windows JUnit for the medium-sized 'listing activity is bound bounded and optional' case."
     },
     {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_listing_counts_follow_each_listings_own_transition",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.457 seconds in Windows JUnit for the small-sized 'listing counts follow each listings own transition' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_listing_delivery_stays_cheap_under_persistent_refusal",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.407 seconds in Windows JUnit for the small-sized 'listing delivery stays cheap under persistent refusal' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_missing_source_authority_refuses_before_task_or_market_database",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.14 seconds in Windows JUnit for the small-sized 'missing source authority refuses before task or market database' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap[[]False]",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.578 seconds in Windows JUnit for the small-sized 'new preparation plan and exact task reuse ignore the operator cap' case."
-    },
-    {
       "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap[[]True]",
       "owner": "tests.workspace_readiness",
       "size": "medium",
       "reason": "Records 1.239 seconds in Windows JUnit for the medium-sized 'new preparation plan and exact task reuse ignore the operator cap' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_optional_progress_delivery_never_governs_the_stage",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.572 seconds in Windows JUnit for the small-sized 'optional progress delivery never governs the stage' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_source_inspection_is_read_only_and_explains_missing_qualification[[]*",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.01-0.067 seconds in Windows JUnit for the small-sized 'source inspection is read only and explains missing qualification' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_stage_file_replace_outlives_a_momentary_sharing_violation",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.678 seconds in Windows JUnit for the small-sized 'stage file replace outlives a momentary sharing violation' case."
     },
     {
       "pattern": "tests/workspace_readiness/test_workspace_readiness.py::test_activated_source_preserves_existing_unusable_members_but_not_index_leavers",
@@ -331,34 +187,10 @@
       "reason": "Records 1.404 seconds in Windows JUnit for the medium-sized 'activated source preserves existing unusable members but not index leavers' case."
     },
     {
-      "pattern": "tests/workspace_readiness/test_workspace_readiness.py::test_daily_source_finality_keeps_an_aware_close[[]*",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.004-0.005 seconds in Windows JUnit for the small-sized 'daily source finality keeps an aware close' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_readiness.py::test_daily_source_finality_refuses_an_unaware_close_by_name[[]*",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.004 seconds in Windows JUnit for the small-sized 'daily source finality refuses an unaware close by name' case."
-    },
-    {
       "pattern": "tests/workspace_readiness/test_workspace_readiness.py::test_feature_recheck_scope_resolves_only_across_the_request_own_raw_transition",
       "owner": "tests.workspace_readiness",
       "size": "medium",
       "reason": "Records 6.674 seconds in Windows JUnit for the medium-sized 'feature recheck scope resolves only across the request own raw transition' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_readiness.py::test_preflight_authority_failure_blocks_instead_of_reporting_no_verdict",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.004 seconds in Windows JUnit for the small-sized 'preflight authority failure blocks instead of reporting no verdict' case."
-    },
-    {
-      "pattern": "tests/workspace_readiness/test_workspace_readiness.py::test_readiness_failure_clock_reads_legacy_schema_and_survives_other_updates",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.205 seconds in Windows JUnit for the small-sized 'readiness failure clock reads legacy schema and survives other updates' case."
     },
     {
       "pattern": "tests/workspace_readiness/test_workspace_readiness.py::test_readiness_gates_initialization_and_activates_only_completed_transitions",
@@ -373,12 +205,6 @@
       "reason": "Records 7.603 seconds in Windows JUnit for the medium-sized 'source change with short history addition keeps active set and avoids rebuild' case."
     },
     {
-      "pattern": "tests/workspace_readiness/test_workspace_readiness.py::test_universe_spy_divergence_preflight_composes_qualified_inputs",
-      "owner": "tests.workspace_readiness",
-      "size": "small",
-      "reason": "Records 0.018 seconds in Windows JUnit for the small-sized 'universe spy divergence preflight composes qualified inputs' case."
-    },
-    {
       "pattern": "tests/workspace_task_runner/*",
       "owner": "tests.workspace_task_runner",
       "size": "medium"
@@ -390,6 +216,12 @@
     }
   ],
   "large": [
+    {
+      "pattern": "tests/workspace_readiness/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged",
+      "owner": "tests.workspace_readiness",
+      "reason": "Cold setup builds the prepared workspace and input revision journey before checking recovery.",
+      "admitted": "2026-11-02: the cold setup exceeded the 60-second Medium bound; retain this classification until the shared seed is measured within it."
+    },
     {
       "pattern": "tests/researcher_methodology_surface/test_local_web_factor_experiments.py::*",
       "owner": "tests.researcher_methodology_surface",

@@ -112,6 +112,7 @@ Require an agent route or an existing named UI-only exception for UI writes; ref
 - Give each function one behavior; split chained checks so workers can run them in parallel.
 - Keep Small under 1 s and Medium under 10 s; classify slower work as Large.
 - Measure own setup, enclosing call and teardown through the receipt producer; never use double-counted subtest time.
+- Include cold first-use fixture setup when a node may run first; a later warm-only JUnit time does not establish its size.
 - Confirm an overage through the clean-solo/load route; keep missing, malformed or aborted proof unmeasured.
 - Refuse a new or grown test over 60 s from that evidence.
 - Run Large work after merge unless mandatory or explicit admission selection requires it.
