@@ -36,12 +36,16 @@ import argparse
 import ast
 import hashlib
 import subprocess
+import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatch
+from functools import partial
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from alphalattice.kernel.shared_kernel.source_identity import source_bytes_syntax_sha256
+from devtools.architecture import structural
 from devtools.architecture.identity_closures import closure_sites
 
 _BYTE_PRIMITIVES = frozenset(
@@ -143,21 +147,42 @@ def text_sensitive_files(root: Path) -> dict[str, str]:
             named = {candidate for candidate in sources if candidate.startswith(package)}
         for candidate in sorted(named):
             found.setdefault(candidate, f"a byte closure chooses it at runtime: {name}")
-    for relative, source in sources.items():
-        text = source.read_text(encoding="utf-8")
-        if relative == _PRIMITIVES_MODULE or not any(token in text for token in _PREFILTER):
-            continue
-        for target, reason in _text_readers(ast.parse(text), relative, sources):
-            found.setdefault(target, f"{reason} in {relative}")
+    # One module's reads come from its own bytes alone, kept per file across the stage's workers
+    # and its runs by content and this code as loaded (structural.FileFacts); only resolving
+    # them against this tree's files is redone each time.
+    with structural.kept_facts("neutral-text-reads", sys.modules[__name__]) as facts:
+        for relative, source in sources.items():
+            data = source.read_bytes()
+            text = structural.file_text(data)
+            if relative == _PRIMITIVES_MODULE or not any(token in text for token in _PREFILTER):
+                continue
+            reads = facts.of(
+                f"text-reads {relative}",
+                data,
+                partial(_text_reads, relative=relative),
+                _reads_shape,
+            )
+            for target, reason in _resolved(reads, relative, sources):
+                found.setdefault(target, f"{reason} in {relative}")
     return found
 
 
-def _text_readers(
-    tree: ast.Module, relative: str, sources: Mapping[str, Path]
-) -> Iterable[tuple[str, str]]:
-    """The files one module reads the text of, with how."""
+def _reads_shape(value: object) -> bool:
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("imports"), list)
+        and isinstance(value.get("reads"), list)
+        and all(isinstance(row, list) and row for row in value["reads"])
+    )
 
-    imported = _imported_modules(tree, relative, sources)
+
+def _text_reads(data: bytes, relative: str) -> dict[str, list[Any]]:
+    """What one module reads the text of, in walk order, from its bytes and place alone: the
+    imports that bind a name to a module (each with the dotted names to try), and each read
+    as ``["self", reason]``, ``["name", local, reason]``, ``["attr", local, attribute]`` or
+    ``["path", exact, suffix]``, which ``_resolved`` turns into files of the tree."""
+
+    tree = ast.parse(structural.file_text(data))
     bindings = _path_bindings(tree)
     rule_entries = _rule_entry_nodes(tree)
     call_names = {_name_of(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
@@ -165,49 +190,78 @@ def _text_readers(
     rule_module = bool(call_names & _RULE_PRIMITIVES) and not (
         call_names & (_BYTE_PRIMITIVES | _BYTE_READERS | {"open"})
     )
+    reads: list[list[Any]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
-            called = _name_of(node.func)
-            if called in _SOURCE_READERS:
-                yield relative, "inspect.getsource reads it"
-                for argument in node.args:
-                    root_name = _root_name(argument)
-                    if root_name in imported:
-                        yield imported[root_name], "inspect.getsource reads it"
-            elif called == "from_function":
-                yield relative, "a tool takes its description from a docstring"
-            elif called in _BYTE_READERS and isinstance(node.func, ast.Attribute):
-                if any(
-                    isinstance(inner, ast.Name) and inner.id == "__file__"
-                    for inner in ast.walk(node.func.value)
-                ):
-                    yield relative, "it reads its own bytes"
-            elif (
-                _hands_its_own_path(node)
-                and not _locates_the_root(called)
-                and called not in _RULE_PRIMITIVES
-            ):
-                yield relative, f"its path is handed to {called}"
+            reads.extend(_call_reads(node))
         elif isinstance(node, ast.Attribute) and node.attr in {"__file__", "__doc__"}:
-            if node.attr == "__file__" and (rule_module or id(node) in rule_entries):
-                continue
-            root_name = _root_name(node.value)
-            if root_name in imported:
-                yield imported[root_name], f"its {node.attr} is read"
-            elif node.attr == "__doc__":
-                yield relative, "its __doc__ is read"
+            if not (node.attr == "__file__" and (rule_module or id(node) in rule_entries)):
+                reads.append(["attr", _root_name(node.value), node.attr])
         elif isinstance(node, ast.Name) and node.id == "__doc__":
-            yield relative, "its __doc__ is read"
+            reads.append(["self", "its __doc__ is read"])
         elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             if any(_name_of(_called_or_self(value)) == "tool" for value in node.decorator_list):
-                yield relative, "a tool's description is its docstring"
+                reads.append(["self", "a tool's description is its docstring"])
         elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
-            suffix = _joined_suffix(node)
-            if suffix is None or (
-                (rule_module or id(node) in rule_entries) and suffix.endswith(".py")
-            ):
-                continue
-            exact = _checkout_path(_path_parts(node, bindings, relative))
+            for_rule = rule_module or id(node) in rule_entries
+            reads.extend(_path_reads(node, bindings, relative, for_rule))
+    return {"imports": _import_candidates(tree, relative), "reads": reads}
+
+
+def _call_reads(node: ast.Call) -> list[list[Any]]:
+    """What one call reads the text of, as ``_text_reads`` records it."""
+
+    called = _name_of(node.func)
+    if called in _SOURCE_READERS:
+        reason = "inspect.getsource reads it"
+        return [["self", reason], *(["name", _root_name(a), reason] for a in node.args)]
+    if called == "from_function":
+        return [["self", "a tool takes its description from a docstring"]]
+    if called in _BYTE_READERS and isinstance(node.func, ast.Attribute):
+        own = any(isinstance(i, ast.Name) and i.id == "__file__" for i in ast.walk(node.func.value))
+        return [["self", "it reads its own bytes"]] if own else []
+    if (
+        _hands_its_own_path(node)
+        and not _locates_the_root(called)
+        and called not in _RULE_PRIMITIVES
+    ):
+        return [["self", f"its path is handed to {called}"]]
+    return []
+
+
+def _path_reads(
+    node: ast.BinOp, bindings: Mapping[str, list[ast.expr]], relative: str, for_rule: bool
+) -> list[list[Any]]:
+    """The read a `/`-joined path records, unless it is no path or a rule's Python entry."""
+
+    suffix = _joined_suffix(node)
+    if suffix is None or (for_rule and suffix.endswith(".py")):
+        return []
+    return [["path", _checkout_path(_path_parts(node, bindings, relative)), suffix]]
+
+
+def _resolved(
+    reads: Mapping[str, list[Any]], relative: str, sources: Mapping[str, Path]
+) -> Iterable[tuple[str, str]]:
+    """The files of this tree one module's reads (``_text_reads``) name, with how, in order."""
+
+    imported: dict[str, str] = {}
+    for local, dotted in reads["imports"]:
+        file = next(filter(None, (_module_file(name, sources) for name in dotted)), None)
+        if file is not None:
+            imported[local] = file
+    for kind, *rest in reads["reads"]:
+        if kind == "self":
+            yield relative, rest[0]
+        elif kind == "name" and rest[0] in imported:
+            yield imported[rest[0]], rest[1]
+        elif kind == "attr":
+            if rest[0] in imported:
+                yield imported[rest[0]], f"its {rest[1]} is read"
+            elif rest[1] == "__doc__":
+                yield relative, "its __doc__ is read"
+        elif kind == "path":
+            exact, suffix = rest
             if exact is not None and exact in sources:
                 yield exact, "a path to it is read"
                 continue
@@ -277,28 +331,22 @@ def _locates_the_root(called: str | None) -> bool:
     return called is None or called == "Path" or called.endswith("root")
 
 
-def _imported_modules(
-    tree: ast.Module, relative: str, sources: Mapping[str, Path]
-) -> dict[str, str]:
-    """Local names bound to a module, or to an object of one, mapped to that module's file."""
+def _import_candidates(tree: ast.Module, relative: str) -> list[list[Any]]:
+    """Local names bound to a module, or to an object of one, each with the dotted names whose
+    file it is, the first that exists: ``[local, [dotted, ...]]`` in walk order, a later binding
+    of the same name winning."""
 
     package = PurePosixPath(relative).with_suffix("").parts[1:-1]
-    bound: dict[str, str] = {}
+    bound: list[list[Any]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            for alias in node.names:
-                file = _module_file(alias.name, sources)
-                if file is not None and alias.asname is not None:
-                    bound[alias.asname] = file
+            bound.extend([a.asname, [a.name]] for a in node.names if a.asname is not None)
         elif isinstance(node, ast.ImportFrom):
             base = node.module or ""
             if node.level:
                 parent = package[: len(package) - node.level + 1]
                 base = ".".join((*parent, *filter(None, base.split("."))))
-            for alias in node.names:
-                file = _module_file(f"{base}.{alias.name}", sources) or _module_file(base, sources)
-                if file is not None:
-                    bound[alias.asname or alias.name] = file
+            bound.extend([a.asname or a.name, [f"{base}.{a.name}", base]] for a in node.names)
     return bound
 
 
