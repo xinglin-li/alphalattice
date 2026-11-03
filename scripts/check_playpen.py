@@ -480,6 +480,28 @@ def _check_boundaries(*, staged: bool) -> bool:
     return not found
 
 
+def _check_import_contracts() -> bool:
+    """The package import law (levels, peers and retired owners) by import-linter and Ruff, built
+    from config/package-architecture.json; the built configs and logs stay in the temp folder,
+    which a stage points into its run."""
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from devtools.architecture import import_contracts
+        from devtools.architecture.structural import load_package_architecture_registry
+
+        started = perf_counter()
+        registry = load_package_architecture_registry(ROOT / "config/package-architecture.json")
+        out = Path(tempfile.mkdtemp(prefix="import-contracts-"))
+        found = import_contracts.check(ROOT, out, registry)
+    finally:
+        sys.path.pop(0)
+    print("".join(f"IMPORT-LAW {line}\n" for line in found), end="", flush=True)
+    if found:
+        print(f"IMPORT-LAW evidence: {out}", flush=True)
+    print(f"PLAYPEN_GATE_TIMING import-contracts {perf_counter() - started:.3f}s", flush=True)
+    return not found
+
+
 def _check_scoped_structural(*, staged: bool) -> bool:
     """Run the per_file structural scans over this change's Python files only (the fast lane)."""
     diff = ("diff", "--cached" if staged else "HEAD", "--name-status", "--no-renames")
@@ -843,6 +865,8 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     if not _check_registries(staged=args.staged, baseline=args.registry_baseline):
         return 1
     if not _check_boundaries(staged=args.staged):
+        return 1
+    if not _check_import_contracts():
         return 1
     if args.fast and not _check_scoped_structural(staged=args.staged):
         return 1

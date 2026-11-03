@@ -238,10 +238,13 @@ class ImportHygiene(_Contract):
 
 class PackageArchitectureRegistry(_Contract):
     schema_id: Literal["alphalattice.playpen.package-architecture"] = Field(alias="schema")
+    note: str = ""
     packages: tuple[PackageArchitecture, ...] = Field(min_length=1)
     deferred_imports: dict[str, str] = Field(default_factory=dict)
     legacy_lazy_imports: dict[str, int] = Field(default_factory=dict)
     private_import_fences: dict[str, dict[str, str]] = Field(default_factory=dict)
+    retired_imports: dict[str, str] = Field(default_factory=dict)
+    """Each logical owner a cutover retired, with its reason; import_contracts.build bans it."""
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_inventory(self) -> PackageArchitectureRegistry:
@@ -265,7 +268,13 @@ class PackageArchitectureRegistry(_Contract):
         reasons = [
             *self.deferred_imports.values(),
             *(r for f in self.private_import_fences.values() for r in f.values()),
+            *self.retired_imports.values(),
         ]
+        if any(
+            not re.fullmatch(r"[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*", name)
+            for name in self.retired_imports
+        ):
+            raise ValueError("a retired import is a dotted logical module name")
         if any(not reason.strip() for reason in reasons):
             raise ValueError("package import declarations require their reason")
         return self
@@ -764,27 +773,6 @@ def discover_python_imports(path: Path, *, source_root: Path) -> tuple[str, ...]
     return found
 
 
-def retired_import_violations(
-    paths: tuple[Path, ...],
-    *,
-    source_root: Path,
-    retired_prefixes: tuple[str, ...],
-) -> tuple[str, ...]:
-    """Find imports of owners that were retired by an atomic package cutover."""
-
-    violations: list[str] = []
-    for path in paths:
-        for imported in discover_python_imports(path, source_root=source_root):
-            if any(
-                imported == prefix or imported.startswith(f"{prefix}.")
-                for prefix in retired_prefixes
-            ):
-                violations.append(
-                    f"{path.relative_to(source_root).as_posix()}: retired import {imported}"
-                )
-    return tuple(sorted(violations))
-
-
 def package_root_file_violations(
     package_roots: Mapping[Path, tuple[str, ...]],
 ) -> tuple[str, ...]:
@@ -810,28 +798,6 @@ def empty_python_package_directories(root: Path) -> tuple[str, ...]:
         ):
             empty.append(package.relative_to(root).as_posix())
     return tuple(sorted(empty))
-
-
-def package_dependency_violations(
-    paths: tuple[Path, ...],
-    *,
-    source_root: Path,
-    forbidden_dependencies: Mapping[str, tuple[str, ...]],
-) -> tuple[str, ...]:
-    """Enforce named low-level-to-high-level dependency prohibitions."""
-
-    violations: list[str] = []
-    for path in paths:
-        owner = _logical_module_for_path(path, source_root=source_root).split(".", maxsplit=1)[0]
-        forbidden = forbidden_dependencies.get(owner, ())
-        if not forbidden:
-            continue
-        for imported in discover_python_imports(path, source_root=source_root):
-            if any(imported == prefix or imported.startswith(f"{prefix}.") for prefix in forbidden):
-                violations.append(
-                    f"{path.relative_to(source_root).as_posix()}: forbidden dependency {imported}"
-                )
-    return tuple(sorted(violations))
 
 
 def discover_package_dependencies(
@@ -1377,10 +1343,8 @@ __all__ = [
     "mutual_package_dependencies",
     "package_architecture_violations",
     "package_dependency_components",
-    "package_dependency_violations",
     "package_root_file_violations",
     "physical_namespace_violations",
-    "retired_import_violations",
     "storage_registry_violations",
     "store_surface_violations",
 ]
