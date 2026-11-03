@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections import Counter
+from contextlib import suppress
 from math import isfinite
 from pathlib import Path
 from types import CodeType
-from typing import Any
+from typing import Any, TextIO
 
 import pytest
 
-from devtools.testing import requirements
+from devtools.testing import audit, requirements
 from devtools.testing.contracts import Backends, LayerContract
 from devtools.testing.sizes import (
     _rule,
@@ -27,6 +29,9 @@ from devtools.testing.sizes import (
 REQUIRED = pytest.StashKey[tuple[tuple[str, ...], tuple[str, ...]]]()
 CHANGED = pytest.StashKey[frozenset[str] | None]()  # a scoped run's changed paths, read once
 CONTRACT = pytest.StashKey[LayerContract]()
+OBSERVATION = pytest.StashKey[audit.ResourceObservation | None]()
+OBSERVATION_PHASES = pytest.StashKey[dict[str, float]]()
+OBSERVATION_STREAM = pytest.StashKey[TextIO | None]()
 PHASES = pytest.StashKey[dict[str, float]]()
 FAILED = pytest.StashKey[bool]()
 FRAMEWORK = pytest.StashKey[frozenset[CodeType]]()
@@ -60,8 +65,37 @@ def _proven(
     return ids, row, declared, classify(item.nodeid, declared + layer, policy)
 
 
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)  # type: ignore[untyped-decorator]
+def pytest_runtest_protocol(item: Any, nextitem: Any) -> Any:
+    """Observe only managed pipeline tests; telemetry failure never changes their outcome."""
+    scope = None
+    entered = False
+    if os.environ.get("ALPHALATTICE_PIPELINE_EVENTS"):
+        try:
+            observation = audit.ResourceObservation()
+            item.stash[OBSERVATION] = observation
+            try:
+                scope = audit.subscribe(observation.note)
+                scope.__enter__()
+                entered = True
+            except Exception:
+                observation.available = False
+        except Exception:
+            with suppress(Exception):
+                item.stash[OBSERVATION] = None
+    try:
+        yield
+    finally:
+        if entered and scope is not None:
+            with suppress(Exception):
+                scope.__exit__(None, None, None)
+
+
 @pytest.hookimpl(wrapper=True, trylast=True)  # type: ignore[untyped-decorator]
 def pytest_runtest_setup(item: Any) -> Any:
+    if OBSERVATION in item.stash:
+        with suppress(Exception):
+            item.stash[OBSERVATION].phase = "setup"
     level = dict(item.user_properties).get("requirement_layer") or requirements.layer(item.nodeid)
     if level not in {"unit", "integration"}:
         return (yield)
@@ -85,6 +119,9 @@ def pytest_runtest_setup(item: Any) -> Any:
 
 @pytest.hookimpl(wrapper=True, trylast=True)  # type: ignore[untyped-decorator]
 def pytest_runtest_call(item: Any) -> Any:
+    if OBSERVATION in item.stash:
+        with suppress(Exception):
+            item.stash[OBSERVATION].phase = "call"
     if CONTRACT not in item.stash:
         return (yield)
     contract = item.stash[CONTRACT]
@@ -95,10 +132,44 @@ def pytest_runtest_call(item: Any) -> Any:
 
 @pytest.hookimpl(wrapper=True, trylast=True)  # type: ignore[untyped-decorator]
 def pytest_runtest_teardown(item: Any) -> Any:
+    if OBSERVATION in item.stash:
+        with suppress(Exception):
+            item.stash[OBSERVATION].phase = "teardown"
     if CONTRACT not in item.stash:
         return (yield)
     with item.stash[CONTRACT].active():
         return (yield)
+
+
+def _observe_report(item: Any, report: Any) -> None:
+    """Write one worker's node observations beside its JUnit, or leave an explicit gap."""
+    if OBSERVATION not in item.stash:
+        return
+    phases = item.stash.setdefault(OBSERVATION_PHASES, {})
+    if report.when in {"setup", "call", "teardown"}:
+        phases[report.when] = report.duration
+    if report.when != "teardown":
+        return
+    stream = item.config.stash.get(OBSERVATION_STREAM, None)
+    if stream is None:
+        return
+    try:
+        observation = item.stash[OBSERVATION]
+        declared = item.stash[CONTRACT].layer if CONTRACT in item.stash else None
+        value = (
+            observation.snapshot(declared)
+            if observation is not None
+            else {"observed_layer": "unknown", "subprocesses": {}, "unknown": ["audit unavailable"]}
+        )
+        value.update(
+            node=item.nodeid,
+            phases={name: phases.get(name) for name in ("setup", "call", "teardown")},
+        )
+        stream.write(json.dumps(value, allow_nan=False) + "\n")
+        stream.flush()
+    except Exception as error:
+        with suppress(Exception):
+            print(f"test observation unavailable: {error}", file=sys.stderr)
 
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)  # type: ignore[untyped-decorator]
@@ -106,6 +177,7 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
     """Judge unit cost from its enclosing phases, using the existing solo-timeout route."""
     result = yield
     report = result.get_result()
+    _observe_report(item, report)
     if CONTRACT not in item.stash or item.stash[CONTRACT].layer != "unit":
         return
     if report.failed:
@@ -217,6 +289,27 @@ def pytest_configure(config: Any) -> None:
     if required:
         config.option.deselect = []
     config.stash[REQUIRED] = required, deselect
+    if os.environ.get("ALPHALATTICE_PIPELINE_EVENTS"):
+        try:
+            xml = getattr(config.option, "xmlpath", None)
+            directory = (
+                Path(xml).parent if xml else Path(os.environ["ALPHALATTICE_PIPELINE_EVENTS"]).parent
+            )
+            worker = getattr(config, "workerinput", {}).get("workerid", "main")
+            worker = worker if isinstance(worker, str) and worker.isalnum() else str(os.getpid())
+            config.stash[OBSERVATION_STREAM] = (
+                directory / f"node-observations-{worker}.jsonl"
+            ).open("a", encoding="utf-8")
+        except Exception as error:
+            with suppress(Exception):
+                print(f"test observation unavailable: {error}", file=sys.stderr)
+
+
+def pytest_unconfigure(config: Any) -> None:
+    stream = config.stash.get(OBSERVATION_STREAM, None)
+    if stream is not None:
+        with suppress(Exception):
+            stream.close()
 
 
 def _required_selection(config: Any, items: list[Any]) -> tuple[tuple[str, ...], tuple[str, ...]]:

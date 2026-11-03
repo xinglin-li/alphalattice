@@ -85,7 +85,7 @@
       "seconds": 5
     },
     "pipeline.stage_target_is_separate_from_stop": {
-      "description": "A stage enforces its declared stop while recording wall time from which its target breach can be derived.",
+      "description": "A stage enforces its declared stop while recording wall time, the reported rows and any unexplained time from which its target breach and timing gap can be derived.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5
@@ -121,6 +121,12 @@
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 5
+    },
+    "testing.observed_test_resources": {
+      "description": "Each completed test records its own phase durations and observed resources, including subprocess counts and explicit unknowns, without changing its result.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10
     },
     "testing.layer_contract": {
       "description": "Registered unit layers obey resource and own-phase time boundaries, while integration layers retain their declared database and file access.",

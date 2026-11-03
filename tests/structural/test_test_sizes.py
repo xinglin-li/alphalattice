@@ -190,6 +190,56 @@ def held():
             "pass",
             True,
         ),
+        pytest.param(
+            "observe",
+            "old_area",
+            "import subprocess,sys,threading\n"
+            "def child(): subprocess.run([sys.executable,'-c','pass'],check=True)\n",
+            "(tmp_path/'written').write_text('x'); "
+            "t=threading.Thread(target=child); t.start(); t.join(); child()",
+            False,
+            marks=pytest.mark.proves("testing.observed_test_resources"),
+        ),
+        pytest.param(
+            "observe-unavailable",
+            "old_area",
+            "",
+            "assert True",
+            False,
+            marks=pytest.mark.proves("testing.observed_test_resources"),
+        ),
+        pytest.param(
+            "observe-sidecar-unavailable",
+            "old_area",
+            "",
+            "assert True",
+            False,
+            marks=pytest.mark.proves("testing.observed_test_resources"),
+        ),
+        pytest.param(
+            "observe-unit",
+            "unit",
+            "",
+            "assert 2+2 == 4",
+            False,
+            marks=pytest.mark.proves("testing.observed_test_resources"),
+        ),
+        pytest.param(
+            "observe-db",
+            "old_area",
+            "",
+            "import sqlite3; sqlite3.connect(':memory:').close()",
+            False,
+            marks=pytest.mark.proves("testing.observed_test_resources"),
+        ),
+        pytest.param(
+            "observe-network",
+            "old_area",
+            "",
+            "import socket; socket.socket().close()",
+            False,
+            marks=pytest.mark.proves("testing.observed_test_resources"),
+        ),
         ("shape", "old_area", "", "", False),
         (
             "hook",
@@ -268,6 +318,12 @@ assert calls == ['test.contract.failure']
         "outside-read",
         "fixture-setup",
         "fixture-teardown",
+        "observe",
+        "observe-unavailable",
+        "observe-sidecar-unavailable",
+        "observe-unit",
+        "observe-db",
+        "observe-network",
         "shape",
         "hook",
     ],
@@ -397,7 +453,22 @@ def _memory_checks_read_no_host():
         + "\n",
         encoding="utf-8",
     )
-    phase_args = []
+    phase_args = (
+        ["-p", "devtools.pipeline.receipt", "-p", "xdist.plugin", "-n", "2"]
+        if case.startswith("observe")
+        else []
+    )
+    if case == "observe-sidecar-unavailable":
+        for worker in ("main", "gw0", "gw1"):
+            (tmp_path / f"node-observations-{worker}.jsonl").mkdir()
+    if case == "observe-unavailable":
+        (tmp_path / "disabled_audit.py").write_text(
+            "from devtools.testing import audit\n"
+            "def unavailable(callback): raise OSError('audit unavailable')\n"
+            "audit.subscribe = unavailable\n",
+            encoding="utf-8",
+        )
+        phase_args[:0] = ["-p", "disabled_audit"]
     if case.startswith("own-"):
         call_seconds = {"own-bad": "float('nan')", "own-over": "0.7", "own-boundary": "0.6"}.get(
             case, "0.4"
@@ -444,6 +515,9 @@ def _memory_checks_read_no_host():
             ALPHALATTICE_NETWORK_DISABLED="1",
             ALPHALATTICE_TEST_LANE="",
             ALPHALATTICE_PIPELINE_STAGE="",
+            ALPHALATTICE_PIPELINE_EVENTS=(
+                str(tmp_path / "test-events.jsonl") if case.startswith("observe") else ""
+            ),
             PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
             PYTEST_PLUGINS="",
         ),
@@ -462,6 +536,45 @@ def _memory_checks_read_no_host():
         ), output
     else:
         assert result.returncode == 0, output
+    if case == "observe":
+        observed = list(tmp_path.glob("node-observations-*.jsonl"))
+        assert observed, "the test run must retain its observed resources beside JUnit"
+        rows = [
+            json.loads(line) for path in observed for line in path.read_text("utf-8").splitlines()
+        ]
+        assert len(rows) == 1 and rows[0]["node"].endswith("::test_sample")
+        assert set(rows[0]["phases"]) == {"setup", "call", "teardown"}
+        assert all(value >= 0 for value in rows[0]["phases"].values())
+        python = Path(sys.executable).name.lower()
+        assert rows[0]["subprocesses"][python]["count"] == 2
+        assert rows[0]["subprocesses"][python]["background_count"] == 1
+        sites = rows[0]["subprocesses"][python]["callsites"]
+        assert len(sites) == 1 and sites[0]["function"] == "child" and sites[0]["count"] == 2
+        assert sites[0]["file"] == "test_sample.py" and sites[0]["line"] > 0
+        assert rows[0]["subprocesses"][python]["sampled_seconds"] is None
+        assert "background-thread attribution" in rows[0]["unknown"]
+        assert "descendant subprocesses" in rows[0]["unknown"]
+        assert rows[0]["observed_layer"] == "integration"
+        assert "duckdb" in rows[0]["unknown"]
+    if case == "observe-unavailable":
+        paths = list(tmp_path.glob("node-observations-*.jsonl"))
+        rows = [json.loads(line) for path in paths for line in path.read_text("utf-8").splitlines()]
+        assert len(rows) == 1 and rows[0]["observed_layer"] == "unknown"
+        assert "audit unavailable" in rows[0]["unknown"]
+    if case == "observe-sidecar-unavailable":
+        assert all(
+            (tmp_path / f"node-observations-{worker}.jsonl").is_dir()
+            for worker in ("main", "gw0", "gw1")
+        )
+    if case in {"observe-unit", "observe-db", "observe-network"}:
+        paths = list(tmp_path.glob("node-observations-*.jsonl"))
+        rows = [json.loads(line) for path in paths for line in path.read_text("utf-8").splitlines()]
+        expected = {"observe-unit": "unit", "observe-db": "integration", "observe-network": "e2e"}
+        assert len(rows) == 1 and rows[0]["observed_layer"] == expected[case]
+        if case == "observe-db":
+            assert rows[0]["database"] is True
+        if case == "observe-network":
+            assert rows[0]["network"] is True
     if case in {"database", "fixture-setup", "fixture-teardown", "numpy-save"}:
         from xml.etree import ElementTree as ET
 

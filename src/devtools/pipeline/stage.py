@@ -20,6 +20,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import psutil  # type: ignore[import-untyped]
@@ -170,6 +171,7 @@ def run(
     line: str = "pipeline",
 ) -> dict[str, Any]:
     """Run one stage into ``out`` and return its receipt's summary; ``out`` holds one run."""
+    observed_start = perf_counter()
     started, definition = time.monotonic(), load(root)
     stage, provides = definition.stage(name), plugins(paths)
     providers = resolve(definition, stage, host, provides)
@@ -230,20 +232,43 @@ def run(
         cache_options or Options(),
         {"line": line, "head": workspace["head"], "invocation": writer.invocation, "at": _now()},
     )
-    try:  # an interrupted run leaves its receipt without finished, which counts as none
-        statuses, red = _rows(writer, stage, providers, provides, context)
-        elapsed = time.monotonic() - started
-        writer.write({"metrics": {}}, {"wall_seconds": round(elapsed, 3)})
-        if elapsed > stop:
-            statuses.append("ERROR")
-        failed = "FAIL" in statuses or red
-        result = "ERROR" if "ERROR" in statuses else "FAIL" if failed else "PASS"
-        writer.finish(
-            {"result": result, "exit": {"PASS": 0, "FAIL": 1}.get(result, 2), "red_nodes": red}
+    row_seconds: dict[str, float] = {}
+    complete = False
+    try:
+        try:  # an interrupted run leaves its receipt without finished, which counts as none
+            statuses, red = _rows(writer, stage, providers, provides, context, row_seconds)
+            elapsed = time.monotonic() - started
+            writer.write({"metrics": {}}, {"wall_seconds": round(elapsed, 3)})
+            if elapsed > stop:
+                statuses.append("ERROR")
+            failed = "FAIL" in statuses or red
+            result = "ERROR" if "ERROR" in statuses else "FAIL" if failed else "PASS"
+            writer.finish(
+                {"result": result, "exit": {"PASS": 0, "FAIL": 1}.get(result, 2), "red_nodes": red}
+            )
+        finally:
+            writer.stream.close()
+        summary = verify(
+            out / "receipt.jsonl", required_tests=required, within_limits=bool(required)
         )
+        complete = True
+        return summary
     finally:
-        writer.stream.close()
-    return verify(out / "receipt.jsonl", required_tests=required, within_limits=bool(required))
+        try:
+            wall = round(perf_counter() - observed_start, 3)
+            reported = sum(row_seconds.values())
+            timing = {
+                "scope": "stage invocation through receipt verification; sidecar write excluded",
+                "complete": complete,
+                "wall_seconds": wall,
+                "rows": row_seconds,
+                "unattributed_seconds": round(max(0.0, wall - reported), 3),
+                "overlap_seconds": round(max(0.0, reported - wall), 3),
+            }
+            (out / "wall-timing.json").write_text(json.dumps(timing) + "\n", encoding="utf-8")
+        except Exception as error:
+            with contextlib.suppress(Exception):
+                print(f"stage timing unavailable: {error}", file=sys.stderr)
 
 
 def _rows(
@@ -252,8 +277,9 @@ def _rows(
     providers: dict[str, str],
     provides: Mapping[str, Mapping[str, Adapter]],
     context: Context,
+    row_seconds: dict[str, float],
 ) -> tuple[list[str], list[str]]:
-    """Run every row by its provider and write its step; the statuses and the red nodes."""
+    """Run every row by its provider and write its step; the statuses and red nodes."""
     statuses: list[str] = []
     red: list[str] = []
     for row in (context.definition.rows[r] for r in stage.rows):
@@ -265,6 +291,7 @@ def _rows(
             adapter = _product if provider == "product" else provides[provider][row.id]
             step, events = adapter(row, context)
         step |= {"provider": provider}
+        row_seconds[row.id] = step["seconds"]
         statuses.append(step["status"])
         line = f"{row.id:<16} {step['status']:<16} {step['seconds']:>7.1f} s  {provider}"
         print(line, file=sys.stderr, flush=True)

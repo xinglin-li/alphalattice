@@ -1,4 +1,6 @@
+import contextlib
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -72,6 +74,18 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         lines = (out / "receipt.jsonl").read_text("utf-8")
         assert all(f'"{row}": "{provider}"' in lines for row, provider in wanted.items())
         assert receipt.verify(out / "receipt.jsonl", host=host)["sha256"] == summary["sha256"]
+        if case == "public":
+            timing = out / "wall-timing.json"
+            assert timing.is_file(), "the stage must name time not attributed to receipt rows"
+            observed = json.loads(timing.read_text("utf-8"))
+            assert set(observed["rows"]) == {"ok", "red", "local", "job"}
+            assert observed["unattributed_seconds"] >= 0
+            assert observed["wall_seconds"] == pytest.approx(
+                sum(observed["rows"].values())
+                + observed["unattributed_seconds"]
+                - observed["overlap_seconds"],
+                abs=0.004,
+            )
         if case == "cost identity":
             _, events = receipt.read(out / "receipt.jsonl")
             identity = next(event.configuration for event in events if "configuration" in event.id)
@@ -89,10 +103,14 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         source = tmp_path / relative
         source.parent.mkdir(parents=True)
         source.write_text(
-            "import pytest\n@pytest.mark.large\n"
-            "@pytest.mark.parametrize('value',[1,2],ids=['one','two'])\n"
-            "def test_cost_family(value):\n    assert value > 0\n"
-            "def test_control():\n    assert True\n",
+            """import pytest
+@pytest.mark.large
+@pytest.mark.parametrize('value',[1,2],ids=['one','two'])
+def test_cost_family(value):
+    assert value > 0
+def test_control():
+    assert True
+""",
             "utf-8",
         )
         script = tmp_path / "scripts/pipeline.py"
@@ -194,6 +212,36 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         )
         assert refused.returncode == 2 and b"pipeline.stage_invalid" in refused.stderr
     if case == "public":
+        config.write_text(DEFINITION.replace("raise SystemExit(3)", "pass"), "utf-8")
+        original_write, words = Path.write_text, io.StringIO()
+
+        def fail_timing(path, *args, **kwargs):
+            if path.name == "wall-timing.json":
+                raise OSError("fixture timing unavailable")
+            return original_write(path, *args, **kwargs)
+
+        with monkeypatch.context() as broken, contextlib.redirect_stderr(words):
+            broken.setattr(Path, "write_text", fail_timing)
+            unchanged = stage.run(tmp_path, "commit", out=tmp_path / "timing-unavailable", **asked)
+        assert unchanged["result"] == "PASS" and "fixture timing unavailable" in words.getvalue()
+        verified = receipt.verify(tmp_path / "timing-unavailable/receipt.jsonl", passing=True)
+        assert verified["result"] == "PASS"
+        config.write_text(DEFINITION, "utf-8")
+        interrupted = tmp_path / "interrupt.py"
+        interrupted.write_text(
+            'def run(row, at):\n    raise RuntimeError("interrupted fixture")\n'
+            'PROVIDES = {"local": run}\n',
+            encoding="utf-8",
+        )
+        with pytest.raises(RuntimeError, match="interrupted fixture"):
+            stage.run(
+                tmp_path,
+                "commit",
+                out=tmp_path / "interrupted",
+                **(asked | {"host": "workshop", "paths": [interrupted]}),
+            )
+        partial = json.loads((tmp_path / "interrupted/wall-timing.json").read_text("utf-8"))
+        assert not partial["complete"] and set(partial["rows"]) == {"ok", "red"}
         paths.append(tmp_path / "budget.py")
         paths[0].write_text(SHOP.replace('"local"', '"red"'), "utf-8")
         for stop, wall in ((2, 59), (2, 61), (2, 121), (3, 121)):
