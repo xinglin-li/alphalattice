@@ -1075,6 +1075,78 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     assert included("tests/structural/test_other.py::t", "medium", "merge", policy, changed)
     assert included(closure, "large", "nightly", policy, None) and not scoped(scan, policy, None)
 
+    from copy import deepcopy
+
+    from devtools.testing.sizes import load_policy, validate_policy
+
+    registered = load_policy(Path(__file__).resolve().parents[2])
+    legacy = deepcopy(registered) | {"reach": [policy["reach"][0]]}
+    assert validate_policy(legacy) is legacy
+    path = "tests/integration/architecture/test_scan.py"
+    moved = path + "::test_a"
+    default = {"pattern": path + "*", "owner": "tests.structural", "size": "medium"}
+    mapped = deepcopy(registered) | {
+        "defaults": [*registered["defaults"], default],
+        "reach": [policy["reach"][0] | {"pattern": moved}],
+    }
+    refused = None
+    try:
+        validate_policy(mapped)
+    except ValueError as error:
+        refused = str(error)
+    assert refused is None, refused
+    assert scoped(moved, mapped, changed) == scoped(scan, legacy, changed)
+    disjoint = {
+        "pattern": "tests/integration/architecture/*test_different_function.py::*",
+        "owner": "tests.other",
+        "size": "medium",
+    }
+    refused = None
+    try:
+        validate_policy(mapped | {"defaults": [*mapped["defaults"], disjoint]})
+    except ValueError as error:
+        refused = str(error)
+    assert refused is None, refused
+    unmapped = "tests/integration/architecture/test_unmapped.py::test_a"
+    for altered in (
+        mapped | {"defaults": registered["defaults"]},
+        mapped | {"defaults": [*registered["defaults"], default | {"owner": "tests.other"}]},
+        mapped
+        | {
+            "defaults": [
+                *registered["defaults"],
+                default,
+                {"pattern": moved, "owner": "tests.other", "size": "medium"},
+            ]
+        },
+        mapped
+        | {
+            "defaults": [
+                *registered["defaults"],
+                default,
+                {"pattern": path + "::test_*", "owner": "tests.other", "size": "medium"},
+            ]
+        },
+        mapped
+        | {
+            "defaults": [
+                *registered["defaults"],
+                default | {"pattern": "tests/integration/architecture/*"},
+            ]
+        },
+        mapped
+        | {"defaults": [*registered["defaults"], default, default | {"owner": "tests.other"}]},
+        mapped | {"reach": [mapped["reach"][0] | {"pattern": unmapped}]},
+        mapped | {"reach": [mapped["reach"][0] | {"owner": "tests.other"}]},
+        mapped | {"reach": [mapped["reach"][0] | {"reason": ""}]},
+        mapped | {"reach": [{"pattern": moved, "reason": "declared"}]},
+    ):
+        with pytest.raises(ValueError, match=r"test_size\.reach_invalid") as caught:
+            validate_policy(altered)
+        assert str(caught.value) == "test_size.reach_invalid:" + altered["reach"][0]["pattern"]
+    with pytest.raises(ValueError, match=r"test_size\.rule"):
+        validate_policy(mapped | {"post_merge_only": [path]})
+
     # Registered Large standing survives only the layer's inferred Medium.
     from types import SimpleNamespace
 

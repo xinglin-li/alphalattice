@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable
 from datetime import date
 from fnmatch import fnmatchcase
 from math import isfinite
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -100,6 +100,48 @@ def _framework_fixtures(policy: dict[str, Any]) -> None:
         seen.add(node)
 
 
+def _structural_file(pattern: str, policy: dict[str, Any]) -> bool:
+    """Carry structural standing only through an exact registered file declaration."""
+    if pattern.startswith("tests/structural/"):
+        return True
+    path = pattern.partition("::")[0].removesuffix("*")
+    parsed = PurePosixPath(path)
+    if (
+        not path.startswith("tests/")
+        or not path.endswith(".py")
+        or str(parsed) != path
+        or ".." in parsed.parts
+        or any(char in path for char in "*?[\\:\0\r\n")
+        or not all(part.isidentifier() for part in parsed.with_suffix("").parts)
+    ):
+        return False
+    try:
+        row = _rule(path, policy["defaults"])
+    except ValueError:
+        return False
+    return bool(row and row["pattern"] == path + "*" and row["owner"] == "tests.structural")
+
+
+def _foreign_structural_override(pattern: str, policy: dict[str, Any]) -> bool:
+    """A more specific foreign rule may not take ownership inside a mapped reach."""
+    path = pattern.partition("::")[0].removesuffix("*")
+    reach_prefix = re.split(r"[*?\[]", pattern, maxsplit=1)[0]
+    for row in policy["defaults"]:
+        candidate = row["pattern"]
+        prefix = re.split(r"[*?\[]", candidate, maxsplit=1)[0]
+        if (
+            row["owner"] != "tests.structural"
+            and len(candidate) >= len(path + "*")
+            and (
+                fnmatchcase(pattern, candidate)
+                if not any(char in pattern for char in "*?[")
+                else reach_prefix.startswith(prefix) or prefix.startswith(reach_prefix)
+            )
+        ):
+            return True
+    return False
+
+
 def _post_merge_only(value: dict[str, Any]) -> None:
     """Keep structural obligations mandatory and reject malformed stage deferrals."""
     post = value.get("post_merge_only", [])
@@ -108,7 +150,7 @@ def _post_merge_only(value: dict[str, Any]) -> None:
         or any(
             not isinstance(p, str)
             or not p.startswith("tests/")
-            or p.startswith("tests/structural/")
+            or _structural_file(p, value)
             or not p.endswith(".py")
             or ".." in Path(p).parts
             or "\\" in p
@@ -121,9 +163,18 @@ def _post_merge_only(value: dict[str, Any]) -> None:
 
 
 def _reach(policy: dict[str, Any]) -> None:
-    """Refuse a reach row outside tests/structural, without a reason, or declaring nothing."""
+    """Require structural standing, a reason and a declared source-reading scope."""
     for row in policy.get("reach", []):  # a structural node's reach: per_file or declared inputs
-        if not (row.get("pattern", "").startswith("tests/structural/") and row.get("reason")) or (
+        pattern = row.get("pattern", "")
+        structural = isinstance(pattern, str) and (
+            pattern.startswith("tests/structural/")
+            or (
+                row.get("owner") == "tests.structural"
+                and _structural_file(pattern, policy)
+                and not _foreign_structural_override(pattern, policy)
+            )
+        )
+        if not (structural and row.get("reason")) or (
             row.get("per_file") is not True and not row.get("inputs")
         ):
             raise ValueError("test_size.reach_invalid:" + str(row.get("pattern")))
