@@ -605,13 +605,41 @@ def test_initial_universe_requires_computable_base_features_without_extra_confir
     )
 
 
-def test_cache_environment_tracks_thread_settings_in_the_current_process(monkeypatch):
+@pytest.mark.parametrize("case", ["digest", "session-seed"])
+def test_cache_environment_tracks_thread_settings_in_the_current_process(
+    monkeypatch, tmp_path, case
+):
+    from types import SimpleNamespace
+
     from tests.researcher_methodology_surface import real_workspace as cache
 
     monkeypatch.setenv("OMP_NUM_THREADS", "1")
     first = cache._environment_digest()
+    if case == "session-seed":
+
+        def build(root, *, fresh):
+            assert fresh
+            root.mkdir()
+            return SimpleNamespace(
+                workspace=root,
+                feature_catalog=cache.FeatureCatalog.load(),
+                feature_kernels=cache.default_extension_kernel_registry(),
+                manifest=SimpleNamespace(revision_sha256="fixture"),
+                panel_manifest_ref="fixture",
+                panel_snapshot_hash="fixture",
+                return_surface=SimpleNamespace(surface_hash="fixture"),
+                sector_by_listing_id={},
+            )
+
+        monkeypatch.setattr(cache, "build_real_risk_workspace", build)
+        factory = SimpleNamespace(getbasetemp=lambda: tmp_path)
+        seed, metadata = cache.session_fresh_seed(factory)
+        assert metadata["environment"] == first
     monkeypatch.setenv("OMP_NUM_THREADS", "2")
     assert cache._environment_digest() != first
+    if case == "session-seed":
+        changed_seed, changed = cache.session_fresh_seed(factory)
+        assert changed_seed != seed and changed["environment"] == cache._environment_digest()
 
 
 @pytest.mark.proves("evaluation.persistent_golden_root_follows_its_setting")

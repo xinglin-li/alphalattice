@@ -511,7 +511,7 @@ def session_fresh_seed(factory):
         key = _golden_key(record.feature_catalog, record.feature_kernels, SYMBOLS)
         return _sidecar(record, SYMBOLS, key)
 
-    return session_workspace(factory, "fresh_real_risk", build)
+    return session_workspace(factory, "fresh_real_risk", build, inputs=_environment_digest())
 
 
 def copy_fresh_workspace(factory, target: Path) -> RealRiskWorkspace:
