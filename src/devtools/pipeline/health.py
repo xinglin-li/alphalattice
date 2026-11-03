@@ -4,10 +4,15 @@ once through the receipt's own reader, and the rolling per-test seconds those re
 
 from __future__ import annotations
 
+import json
 import math
+import os
 import re
 import statistics
 import subprocess
+import sys
+import tempfile
+import time
 from bisect import insort
 from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
@@ -15,7 +20,9 @@ from datetime import date, datetime, timedelta
 from fnmatch import fnmatchcase
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
+
+from pydantic import TypeAdapter, ValidationError
 
 from devtools.pipeline.definition import DefinitionError
 from devtools.pipeline.receipt import ReceiptError, classed, read
@@ -856,13 +863,21 @@ def _merged(root: Path, head: str) -> bool | None:
     return {0: True, 1: False}.get(found.returncode)
 
 
-def report(root: Path, receipts: Sequence[Path], today: date) -> dict[str, Any]:
-    """The day's report: the tree's rows, then the stages'."""
+def report(
+    root: Path,
+    receipts: Sequence[Path],
+    today: date,
+    *,
+    store: Path | None = None,
+    release_base: str | None = None,
+) -> dict[str, Any]:
+    """The day's report: the tree's rows, the stages', then the code's."""
     try:
         return {
             "date": today.isoformat(),
             "tree": tree(root, today),
             "stages": stages(receipts, today, lambda head: _merged(root, head)),
+            "code": code(root, store, release_base=release_base),
         }
     except DefinitionError:
         raise
@@ -871,3 +886,410 @@ def report(root: Path, receipts: Sequence[Path], today: date) -> dict[str, Any]:
             "pipeline.workspace_unreadable",
             f"{root}: {error}; repair the checkout inputs and retry health",
         ) from None
+
+
+GROWTH_BUDGET = 3_000
+"""Net source lines a patch may add over the last release (0.2 plan, growth budget)."""
+CODE_SECONDS = 300
+"""One code-health tool's bound; one that overruns reads unmeasured."""
+READ = ("config/package-architecture.json", "pyproject.toml", ".gitignore")
+"""What the rows read beside src's modules: the registry, the project metadata, the ignore rules."""
+ROWS = ("sizes", "boundaries", "growers", "dead_code", "dependencies", "complexity")
+GRAPH = """import json, sys
+import grimp
+graph = grimp.build_graph(*sys.argv[1:], cache_dir=None)
+print(json.dumps([[a, b, len(graph.get_import_details(importer=a, imported=b)) or 1]
+                  for a in graph.modules for b in graph.find_modules_directly_imported_by(a)]))
+"""
+"""import-linter's graph (grimp), run on the tree's own src in its own interpreter."""
+VULTURE = ("-m", "vulture", "src", "--min-confidence", "100")
+FIRST = ("alphalattice", "devtools", "scripts", "tests")
+DEPTRY = ("-m", "deptry", "src", *(f"--known-first-party={name}" for name in FIRST))
+RUFF = (
+    *("-m", "ruff", "check", "--isolated", "--select", "C901,PLR0912,PLR0915"),
+    *("--output-format", "json", "--no-cache", "src"),
+)
+
+
+def code(
+    root: Path,
+    store: Path | None = None,
+    *,
+    day_start: str | None = None,
+    release_base: str | None = None,
+    now: float | None = None,
+) -> dict[str, Any]:
+    """The tree's code health beside its test health: sizes by package and area against the growth
+    budget, module boundaries, the day's growers, dead code, dependencies and complexity.
+
+    Information only: it refuses nothing, and only the whole tree is weighed against the budget. A
+    row whose tool or input fails reads unmeasured, never zero, and is measured again next time. The
+    day is the 24 hours before the report runs. Measured rows are kept in ``store`` by the tree, the
+    bases and the bytes they read, and reused only whole and complete; a store or input that cannot
+    be read or written is named, never raised."""
+    try:
+        tree = _run(root, "git", "rev-parse", "HEAD^{tree}")
+        # the day starts at the first-parent commit 24 hours before now: HEAD itself on a quiet day
+        if day_start is None:
+            when = f"--before={int(time.time() if now is None else now) - 86_400} +0000"
+            day_start = _run(root, "git", "rev-list", "-1", "--first-parent", when, "HEAD")
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        return {"unmeasured": f"the checkout's Git tree cannot be read: {error}"}
+    inputs: dict[str, Any] = {
+        "tree": tree,
+        "day_start": day_start or None,
+        "release_base": release_base,
+    }
+    try:  # the bytes the rows read, committed or not, ignored or not, and the registry they cover
+        inputs["read"], registered = _read_digest(root), _owner(root)[1]
+        key = sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+        kept = store / f"{key}.json" if store is not None else None
+        note = "" if kept is not None else "not kept: no store"
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        kept, registered, note = None, {}, f"not kept: its inputs cannot be read: {error}"
+    prior = _kept_rows(kept, inputs, registered)
+    measures = {
+        "sizes": lambda: _sizes(root, inputs["day_start"], release_base),
+        "boundaries": lambda: _boundaries(root),
+        "growers": lambda: _growers(root, inputs["day_start"]),
+        "dead_code": lambda: _dead_code(root),
+        "dependencies": lambda: _dependencies(root),
+        "complexity": lambda: _complexity(root),
+    }
+    seconds: dict[str, float] = {}
+    rows = {
+        name: prior[name] if name in prior else _measured(seconds, name, measures[name])
+        for name in ROWS
+    }
+    found = {"inputs": inputs, **rows, "seconds": seconds}
+    if kept is not None and seconds:
+        try:
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            kept.write_text(json.dumps(found, indent=1) + "\n", encoding="utf-8", newline="\n")
+            note = "kept"
+        except OSError as error:
+            note = f"not kept: {error}"
+    return {**found, "reused": sorted(prior), "store": note or "kept"}
+
+
+def _read_digest(root: Path) -> str:
+    """One digest of what the rows read: Git's index membership under src (sizes counts by it), and
+    every file they read from disk: each module under src, tracked, untracked or ignored (the tools
+    walk them all), the ignore rules they honour, registry and project. Each part is length-framed
+    and an absent file is its own mark, so no content can stand for another state."""
+    sources = [
+        p
+        for p in (root / "src").rglob("*")
+        if p.suffix in {".py", ".pyi"} or p.name == ".gitignore"
+    ]
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--", "src"], capture_output=True, check=True
+    ).stdout
+    digest = sha256(b"%d\0" % len(listed) + listed)
+    for path in sorted(sources) + [root / name for name in READ]:
+        name = path.relative_to(root).as_posix().encode()
+        data = path.read_bytes() if path.is_file() else None
+        digest.update(b"%d\0" % len(name) + name)
+        digest.update(b"-" if data is None else b"%d\0" % len(data) + data)
+    return digest.hexdigest()
+
+
+def _kept_rows(
+    kept: Path | None, inputs: dict[str, Any], registered: dict[str, str]
+) -> dict[str, Any]:
+    """The rows a store holds for exactly these inputs, each whole to its own shape and covering
+    every registered package and area; an unmeasured, partial or incomplete row is measured anew."""
+    if kept is None:
+        return {}
+    try:
+        row = json.loads(kept.read_text("utf-8"))
+        if not isinstance(row, dict) or row.get("inputs") != inputs:
+            return {}
+    except (OSError, ValueError):
+        return {}
+    kept_rows = {}
+    for name in ROWS:
+        try:
+            value = SHAPES[name].validate_python(row.get(name), strict=True)
+        except ValidationError:
+            continue
+        if _covers(name, value, registered):
+            kept_rows[name] = value
+    return kept_rows
+
+
+def _covers(name: str, row: Any, registered: dict[str, str]) -> bool:
+    """A sizes or boundaries row names every registered package (and sizes every area): an empty map
+    is complete only for an empty registry."""
+    if name == "sizes":
+        return set(registered) <= set(row["packages"]) and set(registered.values()) <= set(
+            row["areas"]
+        )
+    if name == "boundaries":
+        return set(row["packages"]) == set(registered)
+    return True
+
+
+class _Lines(TypedDict):
+    lines: int
+    day: int | None
+
+
+class _Budget(TypedDict):
+    net_since_release: int
+    limit: int
+    over: bool
+
+
+class _Unmeasured(TypedDict):
+    unmeasured: str
+
+
+class _Sizes(TypedDict):
+    source_lines: int
+    day_net: int | None
+    packages: dict[str, _Lines]
+    areas: dict[str, _Lines]
+    budget: _Budget | _Unmeasured
+
+
+class _Edges(TypedDict):
+    statements: int
+    share: float
+    fan_out: int
+    fan_in: int
+
+
+class _Boundaries(TypedDict):
+    cross_package_statements: int
+    package_edges: int
+    packages: dict[str, _Edges]
+    cycles: list[list[str]]
+
+
+class _Grower(TypedDict):
+    path: str
+    net: int
+    merges: list[str]
+
+
+class _Named(TypedDict):
+    certain: int
+    named: list[str]
+
+
+class _Dependencies(TypedDict):
+    findings: int
+    by_code: dict[str, int]
+    named: list[str]
+
+
+class _Complexity(TypedDict):
+    findings: int
+    by_rule: dict[str, int]
+    packages: dict[str, int]
+
+
+SHAPES: dict[str, TypeAdapter[Any]] = {
+    "sizes": TypeAdapter(_Sizes),
+    "boundaries": TypeAdapter(_Boundaries),
+    "growers": TypeAdapter(list[_Grower]),
+    "dead_code": TypeAdapter(_Named),
+    "dependencies": TypeAdapter(_Dependencies),
+    "complexity": TypeAdapter(_Complexity),
+}
+"""Each measured row's whole shape, the one a kept row must have to be reused."""
+
+
+def _measured(seconds: dict[str, float], name: str, measure: Callable[[], Any]) -> Any:
+    started = time.perf_counter()
+    try:
+        return measure()
+    except Exception as error:  # a row that cannot be read is unmeasured, never zero
+        return {"unmeasured": f"{type(error).__name__}: {str(error)[:300]}"}
+    finally:
+        seconds[name] = round(time.perf_counter() - started, 1)
+
+
+def _run(
+    root: Path, *argv: str, ok: tuple[int, ...] = (0,), env: dict[str, str] | None = None
+) -> str:
+    """One git or tool process over the checkout; an exit outside ``ok`` is named, never read."""
+    if argv[0] != "git":
+        argv = (sys.executable, *argv)
+    else:
+        argv = ("git", "-c", "core.quotepath=off", *argv[1:])
+    done = subprocess.run(
+        argv,
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=CODE_SECONDS,
+        env={**os.environ, **(env or {})},
+    )
+    if done.returncode not in ok:
+        raise ValueError(f"{argv[0:3]} exited {done.returncode}: {done.stderr.strip()[-300:]}")
+    return done.stdout.strip("\n")
+
+
+def _owner(root: Path) -> tuple[Callable[[str], str | None], dict[str, str]]:
+    """A path's or module's registered package (the longest physical target it falls under), and
+    every registered package's product area."""
+    packages = json.loads((root / "config/package-architecture.json").read_text("utf-8"))[
+        "packages"
+    ]
+    targets = sorted(
+        ((p["physical_namespace_target"], p["package_id"]) for p in packages),
+        key=lambda t: -len(t[0]),
+    )
+
+    def owner(name: str) -> str | None:
+        module = name.removeprefix("src/").removesuffix(".py").replace("/", ".")
+        module = module.removesuffix(".__init__")
+        return next((pid for t, pid in targets if module == t or module.startswith(t + ".")), None)
+
+    return owner, {p["package_id"]: p.get("product_area") or "unassigned" for p in packages}
+
+
+def _numstat(root: Path, old: str, new: str, *paths: str) -> Iterator[tuple[str, int]]:
+    """Each changed file's net lines, its path read exactly through Git's NUL-delimited form."""
+    listed = _run(root, "git", "diff", "--numstat", "-z", "--no-renames", old, new, "--", *paths)
+    for record in listed.split("\0"):
+        if record.strip():
+            added, removed, path = record.split("\t", 2)
+            if added.isdigit() and removed.isdigit():  # a binary file's '-' counts no lines
+                yield path, int(added) - int(removed)
+
+
+def _sizes(root: Path, day_start: str | None, base: str | None) -> dict[str, Any]:
+    (owner, areas), lines, day = _owner(root), Counter[str](), Counter[str]()
+    for file in _tracked(root, "src"):
+        if file.suffix == ".py":
+            package = owner(file.relative_to(root).as_posix()) or "unowned"
+            lines[package] += file.read_bytes().count(b"\n")
+    for path, net in _numstat(root, day_start, "HEAD", "src") if day_start else ():
+        if path.endswith(".py"):
+            day[owner(path) or "unowned"] += net
+    since = (
+        sum(net for path, net in _numstat(root, base, "HEAD", "src") if path.endswith(".py"))
+        if base
+        else None
+    )
+    known = day_start is not None
+    names = sorted(
+        set(areas) | set(lines) | set(day), key=lambda pid: -lines[pid]
+    )  # a removed package too
+    by_area: dict[str, dict[str, int | None]] = {}
+    for pid in names:
+        row = by_area.setdefault(
+            areas.get(pid, "unowned"), {"lines": 0, "day": 0 if known else None}
+        )
+        row["lines"] = (row["lines"] or 0) + lines[pid]
+        row["day"] = (row["day"] or 0) + day[pid] if known else None
+    return {
+        "source_lines": sum(lines.values()),
+        "day_net": sum(day.values()) if known else None,
+        "packages": {
+            pid: {"lines": lines[pid], "day": day[pid] if known else None} for pid in names
+        },
+        "areas": by_area,
+        "budget": {
+            "net_since_release": since,
+            "limit": GROWTH_BUDGET,
+            "over": since > GROWTH_BUDGET,
+        }
+        if since is not None
+        else {"unmeasured": "no last release named (--release-base)"},
+    }
+
+
+def _boundaries(root: Path) -> dict[str, Any]:
+    (owner, areas), statements, edges = _owner(root), Counter[str](), dict[str, set[str]]()
+    graph = _run(root, "-c", GRAPH, *FIRST[:2], env={"PYTHONPATH": str(root / "src")})
+    for importer, imported, count in json.loads(graph):
+        if (a := owner(importer)) and (b := owner(imported)) and a != b:
+            statements[a] += count
+            edges.setdefault(a, set()).add(b)
+    total, fan_in = sum(statements.values()), Counter(b for out in edges.values() for b in out)
+    return {
+        "cross_package_statements": total,
+        "package_edges": sum(len(out) for out in edges.values()),
+        "packages": {  # every registered package, a sink or an empty one too
+            pid: {
+                "statements": statements[pid],
+                "share": round(statements[pid] / total, 3) if total else 0.0,
+                "fan_out": len(edges.get(pid, ())),
+                "fan_in": fan_in[pid],
+            }
+            for pid in sorted(areas, key=lambda pid: -statements[pid])
+        },
+        "cycles": _cycles(edges),
+    }
+
+
+def _cycles(edges: dict[str, set[str]]) -> list[list[str]]:
+    """The package groups that import each other round: strongly connected, more than one."""
+
+    def reach(start: str) -> set[str]:
+        seen: set[str] = set()
+        todo = [start]
+        while todo:
+            fresh = edges.get(todo.pop(), set()) - seen
+            seen |= fresh
+            todo += fresh
+        return seen
+
+    reached = {a: reach(a) for a in edges}
+    groups = {frozenset(b for b in reached[a] if a in reached.get(b, ())) | {a} for a in edges}
+    return sorted(sorted(group) for group in groups if len(group) > 1)
+
+
+def _growers(root: Path, day_start: str | None) -> list[dict[str, Any]] | dict[str, str]:
+    """The day's ten largest growers over every first-parent commit, each with what brought it: a
+    card's merge by its name, or a direct commit by its subject."""
+    if not day_start:
+        return {"unmeasured": "no first-parent commit 24 hours before now"}
+    net, behind = Counter[str](), dict[str, set[str]]()
+    log = _run(root, "git", "log", "--first-parent", "--format=%H %P%x09%s", f"{day_start}..HEAD")
+    for line in log.splitlines():
+        shas, subject = line.split("\t", 1)
+        sha, *parents = shas.split()
+        by = (
+            subject.removeprefix("Merge ").split(":")[0]
+            if len(parents) > 1
+            else f"direct: {subject[:60]}"
+        )
+        for path, lines in _numstat(root, f"{sha}^1", sha, "src", "tests", "scripts"):
+            net[path] += lines
+            behind.setdefault(path, set()).add(by)
+    return [{"path": p, "net": n, "merges": sorted(behind[p])} for p, n in net.most_common(10)]
+
+
+def _dead_code(root: Path) -> dict[str, Any]:
+    output = _run(root, *VULTURE, ok=(0, 3)).splitlines()
+    named = [line.replace("\\", "/") for line in output if line.strip()]
+    return {"certain": len(named), "named": named}  # each a candidate for the weekly deletion card
+
+
+def _dependencies(root: Path) -> dict[str, Any]:
+    with tempfile.TemporaryDirectory() as scratch:
+        out = Path(scratch) / "deptry.json"
+        _run(root, *DEPTRY, "--json-output", str(out), ok=(0, 1))
+        rows = json.loads(out.read_text("utf-8"))
+    return {
+        "findings": len(rows),
+        "by_code": dict(sorted(Counter(row["error"]["code"] for row in rows).items())),
+        "named": sorted({f"{row['error']['code']} {row['module']}" for row in rows}),
+    }
+
+
+def _complexity(root: Path) -> dict[str, Any]:
+    (owner, _), rows = _owner(root), json.loads(_run(root, *RUFF, ok=(0, 1)) or "[]")
+    where = [Path(r["filename"]).resolve().relative_to(root.resolve()).as_posix() for r in rows]
+    return {
+        "findings": len(rows),
+        "by_rule": dict(sorted(Counter(r["code"] for r in rows).items())),
+        "packages": dict(Counter(owner(path) or "unowned" for path in where).most_common()),
+    }

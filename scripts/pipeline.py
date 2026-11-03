@@ -99,6 +99,13 @@ def main(argv: list[str] | None = None) -> int:
     health = commands.add_parser("health", help="the day's test-health report as JSON")
     health.add_argument("receipts", type=Path, nargs="*", help="commit-stage receipts")
     health.add_argument(
+        "--store",
+        type=Path,
+        default=ROOT / ".code-health",
+        help="where clean trees' code rows are kept",
+    )
+    health.add_argument("--release-base", help="the last release's commit, for the growth budget")
+    health.add_argument(
         "--durations", type=Path, help="write each test's p50 here (pytest-split's .test_durations)"
     )
     args = parser.parse_args(argv)
@@ -138,7 +145,9 @@ def main(argv: list[str] | None = None) -> int:
             asked["cost_sources"] = sources or None
             print(json.dumps(verify(path, **asked), indent=2))
         elif args.command == "health":
-            found = report(ROOT, args.receipts, date.today())
+            found = report(
+                ROOT, args.receipts, date.today(), store=args.store, release_base=args.release_base
+            )
             durations = found["stages"]["tests"].pop("durations")
             if args.durations:
                 args.durations.write_text(

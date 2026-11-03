@@ -1,6 +1,8 @@
 import contextlib
 import json
+import subprocess
 import sys
+import time
 from datetime import UTC
 from pathlib import Path
 from types import SimpleNamespace
@@ -1582,3 +1584,262 @@ def test_flake_candidates_use_distinct_verified_heads_and_registered_owners(
         assert all(observation["head"] in row["reason"] for observation in row["observations"])
         assert len(row["observations"]) == 2
         assert row["same_failure"] is (case != "different-failure")
+
+
+def _git(root: Path, *args: str) -> str:
+    done = subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@localhost", *args],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return done.stdout.strip()
+
+
+def _code_tree(root: Path) -> str:
+    """Three registered packages in two areas, high importing low and gone holding no source,
+    committed; returns the day's start."""
+    packages = [
+        {
+            "package_id": name,
+            "physical_namespace_target": f"alphalattice.{group}.{name}",
+            "product_area": group,
+        }
+        for name, group in (("low", "kernel"), ("high", "control"), ("gone", "control"))
+    ]
+    (root / "config").mkdir(parents=True)
+    (root / "config/package-architecture.json").write_text(json.dumps({"packages": packages}))
+    for package in (
+        "alphalattice",
+        "alphalattice/kernel",
+        "alphalattice/kernel/low",
+        "alphalattice/control",
+        "alphalattice/control/high",
+        "devtools",
+    ):
+        (root / "src" / package).mkdir(parents=True, exist_ok=True)
+        (root / "src" / package / "__init__.py").write_text("")
+    (root / "src/alphalattice/kernel/low/core.py").write_text("value = 1\n")
+    (root / "src/alphalattice/control/high/view.py").write_text(
+        "from alphalattice.kernel.low import core\n"
+    )
+    _git(root, "init", "-q", "-b", "develop")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "start")
+    return _git(root, "rev-parse", "HEAD")
+
+
+CODE_CASES = {  # case -> (file under low, its text, landed by a card's merge or directly)
+    "growing": ("core.py", "value = 1\nvalue = 2\nvalue = 3\nvalue = 4\n", "merge"),
+    "cycle": ("core.py", "from alphalattice.control.high import view\nvalue = 1\n", "merge"),
+    "unreadable graph": ("broken.py", "def (:\n", "merge"),
+    "unicode path": ("测 试.py", "a = 1\nb = 2\n", "merge"),
+    "direct commit": ("core.py", "value = 1\nvalue = 2\nvalue = 3\n", "direct"),
+}
+
+
+@pytest.mark.proves("pipeline.code_health_reports_every_row")
+@pytest.mark.parametrize(
+    "case",
+    [
+        *CODE_CASES,
+        "reused",
+        "dirty",
+        "unmeasured measured again",
+        "malformed store",
+        "unwritable store",
+        "quiet day",
+        "removed source",
+        "ignored source",
+        "ignored registry",
+        "empty registry",
+        "staged source",
+        "absent ignore rules",
+    ],
+)
+def test_the_code_report_reads_the_tree_by_its_tools_and_a_failed_row_as_unmeasured(
+    tmp_path, monkeypatch, case
+):
+    """The code rows are the tree's own, for every registered package, path and day, kept by the
+    bytes they read; a row, input or store that cannot be trusted is measured anew or named."""
+    from devtools.pipeline import health
+
+    root, store = tmp_path / "repo", tmp_path / "store"
+    root.mkdir()
+    start = _code_tree(root)
+    registry = root / "config/package-architecture.json"
+    if case in CODE_CASES:
+        name, text, how = CODE_CASES[case]
+        if how == "merge":
+            _git(root, "checkout", "-q", "-b", "card")
+        (root / "src/alphalattice/kernel/low" / name).write_text(text, encoding="utf-8")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "grow directly" if how == "direct" else "card")
+        if how == "merge":
+            _git(root, "checkout", "-q", "develop")
+            _git(root, "merge", "-q", "--no-ff", "card", "-m", "Merge GROW-CARD (c2): the change")
+    if case == "unmeasured measured again":  # the graph's tool is down for the first report only
+        monkeypatch.setattr(health, "GRAPH", "raise SystemExit(3)")
+    if case == "unwritable store":
+        store.write_text("a file, not a folder")
+    if case == "removed source":  # the day removes the last unowned sources, two lines of them
+        (root / "src/loose.py").write_text("a = 1\nb = 2\n")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "a loose module")
+        start = _git(root, "rev-parse", "HEAD")
+        for unowned in (
+            "loose.py",
+            "alphalattice/__init__.py",
+            "alphalattice/kernel/__init__.py",
+            "alphalattice/control/__init__.py",
+            "devtools/__init__.py",
+        ):
+            (root / "src" / unowned).unlink()
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "remove them")
+    if case == "ignored source":
+        (root / ".gitignore").write_text("src/alphalattice/secret.py\n")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "ignore one module")
+    if case == "ignored registry":  # the registry the rows read is ignored and untracked
+        (root / ".gitignore").write_text("config/package-architecture.json\n")
+        _git(root, "rm", "-q", "--cached", "config/package-architecture.json")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "keep the registry local")
+    if case == "staged source":  # untracked at the first report; staged later, its bytes unchanged
+        (root / "src/alphalattice/kernel/low/extra.py").write_text("a = 1\nb = 2\n")
+    if case == "empty registry":
+        registry.write_text(json.dumps({"packages": []}))
+        _git(root, "commit", "-q", "-am", "no packages")
+    found = health.code(root, store, day_start=start)
+    rows = {"sizes", "boundaries", "growers", "dead_code", "dependencies", "complexity"}
+    assert set(found["seconds"]) == rows  # every row measured on a first report
+    kept = next(iter(sorted(store.glob("*.json"))), None) if store.is_dir() else None
+    measured = sorted(name for name in rows if "unmeasured" not in found[name])
+    if case == "growing":
+        assert found["sizes"]["packages"]["low"]["day"] == 3 and found["sizes"]["day_net"] == 3
+        assert found["sizes"]["packages"]["gone"] == {"lines": 0, "day": 0}  # registered, empty
+        assert found["sizes"]["areas"] == {
+            "kernel": {"lines": 4, "day": 3},
+            "control": {"lines": 1, "day": 0},
+            "unowned": {"lines": 0, "day": 0},
+        }
+        assert found["growers"][0] == {
+            "path": "src/alphalattice/kernel/low/core.py",
+            "net": 3,
+            "merges": ["GROW-CARD (c2)"],
+        }
+        assert found["boundaries"]["cycles"] == []
+        assert found["boundaries"]["packages"] == {
+            "high": {"statements": 1, "share": 1.0, "fan_out": 1, "fan_in": 0},
+            "low": {"statements": 0, "share": 0.0, "fan_out": 0, "fan_in": 1},  # a sink
+            "gone": {"statements": 0, "share": 0.0, "fan_out": 0, "fan_in": 0},
+        }
+        assert found["store"] == "kept" and kept is not None
+    elif case == "cycle":
+        assert found["boundaries"]["cycles"] == [["high", "low"]]
+    elif case == "unicode path":  # Git's exact path, not its quoted escape
+        assert found["sizes"]["packages"]["low"]["day"] == 2
+        assert found["growers"][0]["path"] == "src/alphalattice/kernel/low/测 试.py"
+    elif case == "direct commit":  # growth no merge brought is still named, by its commit
+        assert found["growers"][0]["merges"] == ["direct: grow directly"]
+        assert found["sizes"]["day_net"] == 2
+    elif case in {"reused", "empty registry"}:  # unchanged inputs are read from the store
+        row = json.loads(kept.read_text("utf-8"))
+        kept.write_text(json.dumps(row | {"sizes": row["sizes"] | {"source_lines": 999}}))
+        again = health.code(root, store, day_start=start)
+        assert again["reused"] == measured and set(again["seconds"]) == rows - {*measured}
+        assert again["sizes"]["source_lines"] == 999  # read from the store, not measured
+        assert case != "empty registry" or again["boundaries"]["packages"] == {}  # complete: none
+        assert health.code(root, store, day_start="")["reused"] == []  # other bases: measured anew
+    elif case == "dirty":  # what the rows read is not the commit: its own inputs, measured anew
+        before = kept.read_text("utf-8")
+        core = root / "src/alphalattice/kernel/low/core.py"
+        core.write_text("value = 1\nvalue = 2\n")
+        (root / "src/alphalattice/kernel/low/new.py").write_text("fresh = 1\n")  # untracked too
+        again = health.code(root, store, day_start=start)
+        assert again["reused"] == [] and again["sizes"]["packages"]["low"]["lines"] == 2
+        assert kept.read_text("utf-8") == before  # the committed tree's entry untouched
+        core.write_text("value = 1\n")
+        (root / "src/alphalattice/kernel/low/new.py").unlink()  # back to the commit: its rows again
+        assert health.code(root, store, day_start=start)["reused"] == measured
+    elif case == "unmeasured measured again":  # a tool's outage is never kept as the tree's answer
+        assert "unmeasured" in found["boundaries"]
+        monkeypatch.undo()
+        again = health.code(root, store, day_start=start)
+        assert again["reused"] == measured and "boundaries" not in measured
+        assert again["boundaries"]["cycles"] == [] and "boundaries" in again["seconds"]
+    elif (
+        case == "malformed store"
+    ):  # malformed, wrong-shaped, truncated or incomplete: measured anew
+        for body in (
+            "{}",
+            "[1]",
+            '{"inputs": ',
+            json.dumps({"inputs": found["inputs"], "sizes": 3}),
+        ):
+            kept.write_text(body)
+            again = health.code(root, store, day_start=start)
+            assert again["sizes"] == found["sizes"] and again["reused"] == []
+        row = json.loads(kept.read_text("utf-8"))
+        for broken in (  # the right inputs and keys, the wrong or incomplete rows inside
+            {
+                "sizes": {},
+                "boundaries": [],
+                "growers": [{"path": 1}],
+                "complexity": {**row["complexity"], "packages": {"x": "y"}},
+            },
+            {
+                "sizes": {**row["sizes"], "packages": {}, "areas": {}},
+                "boundaries": {**row["boundaries"], "packages": {}},
+            },
+            {"sizes": {**row["sizes"], "budget": {}}},
+            {"sizes": {**row["sizes"], "areas": {"unowned": {"lines": 0, "day": 0}}}},
+        ):
+            kept.write_text(json.dumps(row | broken))
+            again = health.code(root, store, day_start=start)
+            assert again["reused"] == sorted(set(measured) - set(broken))  # valid rows kept
+            assert again["sizes"] == found["sizes"] and again["boundaries"] == found["boundaries"]
+    elif case == "unwritable store":
+        assert found["store"].startswith("not kept: ") and found["sizes"]["source_lines"] > 0
+    elif case == "removed source":  # a package whose last source went today still reports its day
+        assert found["sizes"]["day_net"] == -2 and "unowned" in found["sizes"]["packages"]
+        assert found["sizes"]["packages"]["unowned"] == {"lines": 0, "day": -2}
+        assert found["sizes"]["areas"]["unowned"] == {"lines": 0, "day": -2}
+    elif case == "ignored source":  # an ignored module the tools still walk is an input too
+        secret = root / "src/alphalattice/secret.py"
+        secret.write_text("hidden = 1\n")
+        assert health.code(root, store, day_start=start)["reused"] == []
+        secret.unlink()  # gone again: the tree's own rows are reused
+        assert health.code(root, store, day_start=start)["reused"] == measured
+    elif case == "ignored registry":  # an ignored, untracked registry edit is a new input
+        assert set(found["sizes"]["areas"]) == {"kernel", "control", "unowned"}
+        packages = json.loads(registry.read_text())["packages"]
+        registry.write_text(
+            json.dumps({"packages": [{**p, "product_area": "moved"} for p in packages]})
+        )
+        again = health.code(root, store, day_start=start)
+        assert again["reused"] == [] and set(again["sizes"]["areas"]) == {"moved", "unowned"}
+    elif case == "staged source":  # sizes counts Git's index: staging or unstaging is a new input
+        _git(root, "add", "src/alphalattice/kernel/low/extra.py")
+        again = health.code(root, store, day_start=start)
+        assert "sizes" not in again["reused"]
+        assert again["sizes"]["source_lines"] == found["sizes"]["source_lines"] + 2
+        _git(root, "rm", "-q", "--cached", "src/alphalattice/kernel/low/extra.py")
+        assert health.code(root, store, day_start=start)["reused"] == measured  # the first index
+    elif case == "absent ignore rules":  # absence is its own mark, never the bytes b"absent"
+        assert not (root / ".gitignore").exists()
+        (root / ".gitignore").write_bytes(b"absent")
+        assert health.code(root, store, day_start=start)["reused"] == []
+        (root / ".gitignore").unlink()
+        assert health.code(root, store, day_start=start)["reused"] == measured
+    elif case == "quiet day":  # the day is the 24 hours before the report, not before HEAD
+        later = health.code(root, store, now=time.time() + 3 * 86_400)
+        assert later["inputs"]["day_start"] == _git(root, "rev-parse", "HEAD")
+        assert later["sizes"]["day_net"] == 0 and later["growers"] == []
+        assert "unmeasured" in health.code(root, None)["growers"]  # no commit before the day
+    else:
+        assert "unmeasured" in found["boundaries"] and "cycles" not in found["boundaries"]
+        assert found["sizes"]["source_lines"] > 0  # the other rows still report

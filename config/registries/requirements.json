@@ -66,6 +66,12 @@
       "seconds": 5,
       "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
     },
+    "pipeline.code_health_reports_every_row": {
+      "description": "The daily code-health report reads sizes, boundaries, growers, dead code, dependencies and complexity from the tree, reuses an unchanged tree's rows, and reads a failed row as unmeasured, never zero.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 10
+    },
     "pipeline.receipt_plugin_writes_each_node_once": {
       "description": "The receipt plugin writes each test node once, after its last phase or a crash, with its failure's masked signature, and then disposes of itself.",
       "owner": "devtools.pipeline",
