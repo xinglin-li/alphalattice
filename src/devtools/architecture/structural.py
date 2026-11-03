@@ -929,17 +929,17 @@ def import_contract_violations(
         module = qualified.removesuffix(".__init__")
         tree = ast.parse(source)
         lines = source.splitlines()
-        parents = {
-            child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)
-        }
+        nodes = list(ast.walk(tree))  # walked once, read three times
+        parents = {child: parent for parent in nodes for child in ast.iter_child_nodes(parent)}
+        top = {id(statement) for statement in tree.body}
         constants: dict[str, object] = {}
         loaders = {"__import__", "importlib.import_module"}
-        for item in ast.walk(tree):
+        for item in nodes:
             match item:
                 case (
                     ast.Assign(targets=[ast.Name(id=name)], value=ast.Constant(value=value))
                     | ast.AnnAssign(target=ast.Name(id=name), value=ast.Constant(value=value))
-                ) if item in tree.body:
+                ) if id(item) in top:
                     constants[name] = value
                 case ast.Import(names=names):
                     loaders.update(
@@ -1012,7 +1012,7 @@ def import_contract_violations(
                     seen.add(key)
 
         eager = {_imported_module(n, t, modules) for n in tree.body for t in targets_of(n)}
-        for node in ast.walk(tree):
+        for node in nodes:
             check(node)
 
     for qualified, source in sources.items():
@@ -1234,6 +1234,12 @@ def content_store_absence_violations(sources: Mapping[str, str]) -> tuple[str, .
         functions: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
         for function in function_nodes:
             functions.setdefault(function.name, []).append(function)
+        store_module = any(  # once per file: it was walked again for every try block
+            isinstance(n, ast.ImportFrom)
+            and n.module is not None
+            and n.module.endswith("workspace_runtime.content_store")
+            for n in ast.walk(tree)
+        )
 
         def reached(
             nodes: list[ast.AST],
@@ -1282,6 +1288,8 @@ def content_store_absence_violations(sources: Mapping[str, str]) -> tuple[str, .
             ) and (missing not in strings([node])):
                 failures.add(located + ": corruption classification has no missing branch")
             for block in (n for n in ast.walk(node) if isinstance(n, ast.Try)):
+                if not store_module:
+                    continue
                 loads = any(
                     isinstance(call, ast.Call)
                     and isinstance(call.func, ast.Attribute)
@@ -1289,13 +1297,7 @@ def content_store_absence_violations(sources: Mapping[str, str]) -> tuple[str, .
                     for part in reached(list(block.body))
                     for call in ast.walk(part)
                 )
-                store_module = any(
-                    isinstance(n, ast.ImportFrom)
-                    and n.module is not None
-                    and n.module.endswith("workspace_runtime.content_store")
-                    for n in ast.walk(tree)
-                )
-                if not loads or not store_module:
+                if not loads:
                     continue
                 for handler in block.handlers:
                     # A preceding typed propagation protects a later generic index handler.

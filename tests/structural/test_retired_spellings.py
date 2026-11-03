@@ -46,6 +46,12 @@ def _pattern(spelling: str) -> re.Pattern[str]:
     return re.compile(r"(?<![A-Za-z0-9_])" + re.escape(spelling) + r"(?![A-Za-z0-9_])")
 
 
+def _uses(spelling: str, text: str) -> bool:
+    """Every pattern needs the spelling itself in the text, so a plain search rules out the most
+    files before the regular expression runs (PRODUCT-SLOW-CUT); the verdict is the pattern's."""
+    return spelling in text and _pattern(spelling).search(text) is not None
+
+
 def test_no_tracked_source_uses_a_retired_spelling_and_each_successor_is_used() -> None:
     """Requirement: the class the reader refuses by is exact: every spelling it names is
     gone from the source, tests, scripts and the shipped registries, and its successor is the
@@ -53,7 +59,7 @@ def test_no_tracked_source_uses_a_retired_spelling_and_each_successor_is_used() 
 
     used = _tracked("src", "tests", "scripts")
     still = {
-        spelling: sorted(path for path, text in used.items() if _pattern(spelling).search(text))
+        spelling: sorted(path for path, text in used.items() if _uses(spelling, text))
         for spelling in RETIRED_SPELLINGS
     }
     assert {spelling: paths for spelling, paths in still.items() if paths} == {}
@@ -61,6 +67,6 @@ def test_no_tracked_source_uses_a_retired_spelling_and_each_successor_is_used() 
     unused = [
         successor
         for successor in RETIRED_SPELLINGS.values()
-        if not any(_pattern(successor).search(text) for text in source.values())
+        if not any(_uses(successor, text) for text in source.values())
     ]
     assert unused == []
