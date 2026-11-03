@@ -18579,6 +18579,10 @@
 "owner": "devtools.evaluation",
 "category": "INVALID_ARGUMENT"
 },
+"replay.receipt_interval": {
+"owner": "devtools.evaluation",
+"category": "INVALID_ARGUMENT"
+},
 "replay.receipt_legs": {
 "owner": "devtools.evaluation",
 "category": "INVALID_ARGUMENT"
