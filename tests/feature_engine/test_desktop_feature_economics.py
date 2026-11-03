@@ -111,7 +111,7 @@ def test_missing_interior_session_keeps_calendar_windows_and_preceding_values(
 
     owner = object.__new__(FeatureFoundationService)
     owner.panel = SimpleNamespace(policy_hash=SOURCE_ELIGIBILITY_POLICY_HASH)
-    owner.catalog = FeatureCatalog.load()  # reads no as-traded field, so asks for none (V395)
+    owner.catalog = FeatureCatalog.load()  # reads no as-traded field, so asks for none
     owner.session_authority_resolver = calendar
     request = SimpleNamespace(history_start=sessions[0], as_of_session=sessions[-1])
     held = {}
@@ -130,8 +130,8 @@ def test_missing_interior_session_keeps_calendar_windows_and_preceding_values(
     assert len(calls) == 1
     assert align_feature_source_sessions(asset, sessions) is asset
     aligned = align_feature_source_sessions(sparse, actual_axis)
-    # The writer reads the listing's stored inputs, asking for no as-traded field (V395),
-    # and the frame is projected from them and aligned to the calendar (V92).
+    # The writer reads the listing's stored inputs, asking for no as-traded field,
+    # and the frame is projected from them and aligned to the calendar.
     source = SimpleNamespace(raw_hash="a" * 64, action_hash="b" * 64)
     owner.feature_state = SimpleNamespace(
         feature_source_inputs=lambda *args, **kwargs: None if kwargs["as_traded"] else source

@@ -1687,7 +1687,7 @@ def test_every_bound_a_specialist_answer_sets_is_screened_and_stated() -> None:
 
 
 def test_published_issuer_summary_separates_generated_words_from_authored_text() -> None:
-    """V671: punctuation in a carried CRO reason is never a translation boundary."""
+    """Punctuation in a carried CRO reason is never a translation boundary."""
     from alphalattice.interface.local_application.evidence_cro import (
         EvidenceCroBook,
         evidence_cro_body,
