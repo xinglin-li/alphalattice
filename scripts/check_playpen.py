@@ -497,7 +497,18 @@ def _check_scoped_structural(*, staged: bool) -> bool:
         (Path(folder) / "changed.txt").write_text(listing.stdout, encoding="utf-8")
         env = dict(os.environ, ALPHALATTICE_TEST_LANE="fast")
         env["ALPHALATTICE_CHANGED_PATHS"] = str(Path(folder) / "changed.txt")
-        command = (sys.executable, "-m", "pytest", "-q", "--no-cov", "-n", "0", *tests)
+        command = (
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "--no-cov",
+            "-n",
+            "0",
+            "--basetemp",
+            str(Path(folder) / "pytest"),
+            *tests,
+        )
         done = subprocess.run(command, cwd=ROOT, env=env, check=False)
     print(f"PLAYPEN_GATE_TIMING scoped-structural {perf_counter() - started:.3f}s", flush=True)
     return done.returncode in (0, 5)  # 5: no per_file node selected
