@@ -183,6 +183,8 @@ module = [
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
+tmp_path_retention_policy = "failed"
+tmp_path_retention_count = "1"
 # `-p no:cacheprovider`: the gate never uses `--lf`/`--ff`, and a `.pytest_cache`
 # written under another security context made every run print a read-only
 # cache warning that had to be read past to find the real output.
