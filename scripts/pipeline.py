@@ -61,7 +61,6 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="nodes a cost check requires, Large included",
     )
-    running.add_argument("--line", default="pipeline", help="who runs the stage; read by nothing")
     running.add_argument("--result-cache", help="verified result store; absent disables it")
     running.add_argument("--cache", choices=("off", "record", "shadow", "on"))
     running.add_argument("--result-cache-bytes", help="positive derived-store byte cap")
@@ -124,7 +123,6 @@ def main(argv: list[str] | None = None) -> int:
                 command=["scripts/pipeline.py", *(sys.argv[1:] if argv is None else argv)],
                 required_tests=args.required_tests,
                 cache_options=Options.read(args.result_cache, args.cache, args.result_cache_bytes),
-                line=args.line,
             )
             print(json.dumps(summary, indent=2))
             return 0 if summary["result"] == "PASS" else 1
