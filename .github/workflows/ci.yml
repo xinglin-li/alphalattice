@@ -173,8 +173,10 @@ jobs:
       sha: ${{ steps.plan.outputs.sha }}
       run: ${{ steps.plan.outputs.run }}
       shards: ${{ steps.plan.outputs.shards }}
+      oses: ${{ steps.plan.outputs.oses }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
-      - name: Pick the commit; a nightly skips one that already has a full run
+      - name: Pick each operating system that needs a run
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -183,25 +185,38 @@ jobs:
           REF: ${{ github.event_name == 'schedule' && 'next' || github.sha }}
         run: |
           sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" --jq .sha)
-          done=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-$sha" --jq '[.artifacts[] | select(.expired | not)] | length')
-          run=true
-          if { [ "$EVENT" = schedule ] || [ "$NIGHTLY" = true ]; } && [ "$done" != 0 ]; then run=false; fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'unreadable commit SHA' >&2; exit 1; }
+          count_windows=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-windows-$sha&per_page=100" --jq "[.[] | .artifacts[] | select(.name == \"public-tests-windows-$sha\" and .expired == false)] | length")
+          count_legacy=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-$sha&per_page=100" --jq "[.[] | .artifacts[] | select(.name == \"public-tests-$sha\" and .expired == false)] | length")
+          count_linux=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-linux-$sha&per_page=100" --jq "[.[] | .artifacts[] | select(.name == \"public-tests-linux-$sha\" and .expired == false)] | length")
+          windows_run=true
+          linux_run=true
+          if { [ "$EVENT" = schedule ] || [ "$NIGHTLY" = true ]; }; then
+            if [ "$count_windows" != 0 ] || [ "$count_legacy" != 0 ]; then windows_run=false; fi
+            if [ "$count_linux" != 0 ]; then linux_run=false; fi
+          fi
+          oses='[]'
+          if [ "$windows_run" = true ]; then oses=$(jq -cn --argjson a "$oses" '$a + ["windows"]'); fi
+          if [ "$linux_run" = true ]; then oses=$(jq -cn --argjson a "$oses" '$a + ["linux"]'); fi
+          matrix=$(jq -cn --argjson oses "$oses" '{include: [$oses[] as $os | [1,2,3,4][] | {os:$os,runner:(if $os == "windows" then "windows-latest" else "ubuntu-latest" end),group:.}]}')
+          run=false
+          if [ "$windows_run" = true ] || [ "$linux_run" = true ]; then run=true; fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "run=$run" >> "$GITHUB_OUTPUT"
-          # The shard list, once: the fewest shards that keep the wall under 30 min, from measured runs.
-          echo 'shards=[1, 2, 3, 4]' >> "$GITHUB_OUTPUT"
-          echo "public tests at $sha: run=$run; earlier full runs of it: $done"
+          echo 'shards=[1,2,3,4]' >> "$GITHUB_OUTPUT"
+          echo "oses=$oses" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   public-tests-shard:
-    name: Public tests (shard ${{ matrix.group }})
+    name: Public tests (${{ matrix.os }}, shard ${{ matrix.group }})
     needs: public-tests-plan
     if: ${{ needs.public-tests-plan.outputs.run == 'true' }}
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.os == 'linux' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      matrix:
-        group: ${{ fromJSON(needs.public-tests-plan.outputs.shards) }}
+      matrix: ${{ fromJSON(needs.public-tests-plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -217,61 +232,110 @@ jobs:
         run: uv sync --locked --all-extras
       - name: Build Local Web
         run: uv run python scripts/build_local_web_ui.py --product
-      - name: Install the locked Workbench browser tooling
+      - name: Install the locked browser tooling on Windows
+        if: ${{ matrix.os == 'windows' }}
         shell: bash
         working-directory: third_party/playwright
         env:
           PLAYWRIGHT_BROWSERS_PATH: .browsers
-        run: |
+        run: |-
           npm ci --omit=dev --ignore-scripts --no-audit --no-fund
           npx --no-install playwright install chromium
+      - name: Install the locked browser tooling on Linux
+        if: ${{ matrix.os == 'linux' }}
+        shell: bash
+        working-directory: third_party/playwright
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .browsers
+        run: |-
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+          npx --no-install playwright install --with-deps chromium
       - name: Run this shard of every public test
-        # Collected at run time, never a file list: pytest-split gives a test missing from .test_durations the average.
         run: >-
           uv run python -m pytest tests -m "not real_evidence" -n 4
-          --splits ${{ strategy.job-total }} --group ${{ matrix.group }} --durations-path .test_durations
+          --splits 4 --group ${{ matrix.group }} --durations-path .test_durations
           --junitxml "${{ runner.temp }}/junit.xml" --basetemp "${{ runner.temp }}/alphalattice-public-tests"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: public-tests-junit-${{ matrix.group }}
+          name: public-tests-junit-${{ matrix.os }}-${{ matrix.group }}
           path: ${{ runner.temp }}/junit.xml
-          if-no-files-found: error  # a shard without its JUnit has not proved it ran
+          if-no-files-found: error
+          retention-days: 14
+      - name: Record this passing shard
+        if: success()
+        shell: bash
+        env:
+          OS: ${{ matrix.os }}
+          SHA: ${{ needs.public-tests-plan.outputs.sha }}
+          GROUP: ${{ matrix.group }}
+        run: >-
+          uv run python -c 'import json,os,pathlib; pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("passed.json").write_text(json.dumps({"os":os.environ["OS"],"sha":os.environ["SHA"],"group":int(os.environ["GROUP"])}),encoding="utf-8")'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: success()
+        with:
+          name: public-tests-pass-${{ matrix.os }}-${{ matrix.group }}
+          path: ${{ runner.temp }}/passed.json
+          if-no-files-found: error
           retention-days: 14
 
   public-tests:
-    name: Public tests
+    name: Public tests (${{ matrix.os }})
     needs: [public-tests-plan, public-tests-shard]
     if: ${{ always() && needs.public-tests-plan.outputs.run == 'true' }}
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.os == 'linux' }}
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.public-tests-plan.outputs.oses) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.public-tests-plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: always()
         with:
-          pattern: public-tests-junit-*
+          pattern: public-tests-junit-${{ matrix.os }}-*
           path: ${{ runner.temp }}/junit
-      - name: Total the shards and refresh the durations from their JUnit
-        run: >-
-          python3 scripts/release/test_durations.py "$RUNNER_TEMP/.test_durations" "$RUNNER_TEMP"/junit/*/junit.xml
-          --summary "$RUNNER_TEMP/public-tests.json"
-          --expect ${{ join(fromJSON(needs.public-tests-plan.outputs.shards), ' ') }}
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()  # this run's totals, whatever the shards did
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: always()
         with:
-          name: public-tests-summary-${{ github.run_id }}
+          pattern: public-tests-pass-${{ matrix.os }}-*
+          path: ${{ runner.temp }}/passes
+      - name: Total and verify this operating system's shards
+        if: always()
+        shell: bash
+        env:
+          OS: ${{ matrix.os }}
+          SHA: ${{ needs.public-tests-plan.outputs.sha }}
+        run: >-
+          python3 scripts/release/test_durations.py "$RUNNER_TEMP/.test_durations"
+          "$RUNNER_TEMP"/junit/public-tests-junit-"$OS"-*/junit.xml --expect 1 2 3 4
+          --os "$OS" --sha "$SHA" --pass-dir "$RUNNER_TEMP/passes"
+          --summary "$RUNNER_TEMP/public-tests.json" --result "$RUNNER_TEMP/result.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: public-tests-result-${{ matrix.os }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/result.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: public-tests-summary-${{ matrix.os }}-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/public-tests.json
             ${{ runner.temp }}/.test_durations
           include-hidden-files: true
-      - name: Every shard passed
-        run: test "${{ needs.public-tests-shard.result }}" = success
+          retention-days: 14
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        # The next nightly skips on this marker only after every shard passes; the release record reads this job.
-        if: success() && needs.public-tests-shard.result == 'success'
+        if: success()
         with:
-          name: public-tests-${{ needs.public-tests-plan.outputs.sha }}
-          path: ${{ runner.temp }}/public-tests.json
+          name: public-tests-${{ matrix.os }}-${{ needs.public-tests-plan.outputs.sha }}
+          path: ${{ runner.temp }}/result.json
+          if-no-files-found: error
+          retention-days: 14

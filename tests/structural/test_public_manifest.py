@@ -43,6 +43,7 @@ from release.public_manifest import (
         (".github/ISSUE_TEMPLATE/feature_request.yml", "PUBLIC", "PUBLIC_DOC"),
         (".github/PULL_REQUEST_TEMPLATE.md", "PUBLIC", "PUBLIC_DOC"),
         (".github/workflows/ci.yml", "PUBLIC", "PUBLIC_BUILD"),
+        (".test_durations", "PUBLIC", "PUBLIC_BUILD"),
         (".github/workflows/internal.yml", "UNSETTLED", None),
         ("benchmark/measure.py", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("case-study/readme.md", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
@@ -665,7 +666,8 @@ def test_private_browser_dependencies_keep_their_callers_private(path, reason):
 
 
 def test_every_test_path_the_public_ci_runs_exists_and_is_public():
-    """A renamed or split test file cannot leave the public CI running a path that is gone."""
+    """A renamed or split test file cannot leave the public CI running a path that is gone, and
+    the nightly full run is split by durations that name no private test."""
     root = Path(__file__).resolve().parents[2]
     workflow = (root / ".github/workflows/ci.yml").read_text("utf-8")
     triggers = workflow.split("permissions:", 1)[0]
@@ -673,14 +675,278 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public():
         declared = re.search(rf"  {event}:\s+branches: \[([^]]+)\]", triggers)
         assert declared and {value.strip() for value in declared[1].split(",")} == {"main", "next"}
     pipeline = definition.load(root)
-    jobs = {"checkout", *(row.job for row in pipeline.rows.values() if row.kind == "ci-job")}
-    assert set(re.findall(r"^  ([\w-]+):$", workflow.split("\njobs:", 1)[1], re.M)) == jobs
+    body = workflow.split("\njobs:", 1)[1]
+    jobs = re.findall(r"^  ([\w-]+):$", body, re.M)
+    blocks = dict(zip(jobs, re.split(r"^  [\w-]+:$", body, flags=re.M)[1:], strict=True))
+    rows = {row.job for row in pipeline.rows.values() if row.kind == "ci-job"}
+    # a row's job may need parts of its own (the public tests' plan and shards); no other job runs
+    needs = [re.search(r"^    needs: \[?([^\]\n]+)", blocks.get(job, ""), re.M) for job in rows]
+    parts = {part.strip() for found in needs if found for part in found[1].split(",")}
+    assert set(jobs) == {"checkout", *rows, *parts}
     assert "scripts/pipeline.py run commit --host public" in workflow
     named = set(re.findall(r"tests/[\w/]+\.py", workflow)) | {*pipeline.rows["tests"].public}
     assert named
     assert sorted(path for path in named if not (root / path).is_file()) == []
     kinds = {path: classify(path, set(), set(), set())[0] for path in named}
     assert {path: kind for path, kind in kinds.items() if kind != "PUBLIC"} == {}
+    # every public test runs nightly and on dispatch, collected at run time, never a file list
+    assert re.search(r"^  schedule:\n    - cron: ", workflow, re.M)
+    assert "\n  workflow_dispatch:\n" in workflow
+    assert 'python -m pytest tests -m "not real_evidence"' in workflow
+    assert "--splits 4 --group ${{ matrix.group }}" in " ".join(workflow.split())
+    assert "public-tests-junit-${{ matrix.os }}-${{ matrix.group }}" in workflow
+    assert "public-tests-result-${{ matrix.os }}-${{ github.run_id }}" in workflow
+    assert "--durations-path .test_durations" in workflow
+    # Each OS marker follows the matching shard-evidence verifier and is never emitted on failure.
+    checked = workflow.index("      - name: Total and verify this operating system's shards\n")
+    marker = workflow.index(
+        "          name: public-tests-${{ matrix.os }}-${{ needs.public-tests-plan.outputs.sha }}\n"
+    )
+    assert checked < marker and "--pass-dir" in workflow[checked:marker]
+    assert "        if: success()\n" in workflow[checked:marker]
+    # every shard proves it ran: a missing JUnit fails it, and the totals refuse a missing record
+    assert "          if-no-files-found: error" in workflow and "--expect 1 2 3 4" in workflow
+    durations = json.loads((root / ".test_durations").read_text("utf-8"))
+    files = {node.split("::", 1)[0] for node in durations}
+    assert files and all(type(seconds) is float and seconds >= 0 for seconds in durations.values())
+    split = {path: classify(path, set(), set(), set())[0] for path in files}
+    assert {path: kind for path, kind in split.items() if kind != "PUBLIC"} == {}
+
+
+@pytest.mark.proves("pipeline.public_durations_come_from_junit")
+def test_the_durations_come_from_junit_keep_the_latest_run_and_leave_out_private_and_skipped(
+    tmp_path, capsys
+):
+    """The nightly refreshes .test_durations from its shards' JUnit; bad records refuse by name."""
+    from release.test_durations import main
+
+    (tmp_path / "tree/tests/a").mkdir(parents=True)
+    (tmp_path / "tree/tests/a/test_one.py").touch()
+    case = (
+        '<testcase classname="tests.a.test_one{cls}" name="{name}" time="{time}">{body}</testcase>'
+    )
+    records = []
+    for index, cases in enumerate(
+        (
+            [("", "test_kept", "9.5", ""), ("", "test_skipped", "1", "<skipped/>")],
+            [
+                ("", "test_kept", "2.25", ""),
+                (".TestGroup", "test_in_class", "0.5", ""),
+                ("", "test_torn", "1", ""),
+                ("", "test_torn", "0", "<error/>"),
+                # ids the export's scan would flag: a contact, and a path outside the tree
+                ("", "test_named[x" + chr(64) + "private.company]", "4", ""),
+                ("", "test_named[tests/p/test_gone.py]", "4", ""),
+            ],
+        )
+    ):
+        rows = "".join(case.format(cls=c, name=n, time=t, body=b) for c, n, t, b in cases)
+        rows += case.format(cls="", name="test_private", time="3", body="").replace(
+            "tests.a.test_one", "tests.p.test_gone"
+        )
+        records.append(tmp_path / f"junit-{index}.xml")
+        records[-1].write_text(
+            f"<testsuites><testsuite>{rows}</testsuite></testsuites>", encoding="utf-8"
+        )
+    out, summary = tmp_path / ".test_durations", tmp_path / "summary.json"
+    assert (
+        main(
+            [
+                str(out),
+                *map(str, records),
+                "--tree",
+                str(tmp_path / "tree"),
+                "--summary",
+                str(summary),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(out.read_text("utf-8")) == {
+        "tests/a/test_one.py::TestGroup::test_in_class": 0.5,
+        "tests/a/test_one.py::test_kept": 2.25,  # the later run wins
+        "tests/a/test_one.py::test_torn": 0.0,
+    }  # skipped and outside the tree are left out
+    assert json.loads(summary.read_text("utf-8")) == dict(
+        passed=4,
+        failed=0,
+        errors=1,
+        skipped=1,
+        nodes=3,
+        test_seconds=2.8,  # both still ran
+    )
+    capsys.readouterr()
+    (broken := tmp_path / "broken.xml").write_text("<testsuite>", encoding="utf-8")
+    shard = {}  # each shard's record in its artifact's folder, as CI downloads them
+    for name in ("1", "2", "3", "4", "9", "extra-4", "other"):
+        folder = "other-junit-4" if name == "other" else f"public-tests-junit-{name}"
+        shard[name] = tmp_path / folder / "junit.xml"
+        shard[name].parent.mkdir()
+        shard[name].write_text(records[0].read_text("utf-8"), encoding="utf-8")
+    for given, expected in (
+        ("1 2 3", "1 2 3 4"),  # one shard left no JUnit
+        ("1 2 3 9", "1 2 3 4"),  # as many records, but one is another shard's
+        ("1 2 3 extra-4", "1 2 3 4"),  # a name that only ends in the shard
+        ("1 2 3 other", "1 2 3 4"),  # another artifact's prefix
+        ("1 1 2 3", "1 2 3 4"),  # one shard's record twice
+        ("1 2 3 4", "1 1 2 3 4"),  # a shard declared twice
+    ):
+        with pytest.raises(SystemExit, match=r"test_durations.records_mismatch: "):
+            main([str(out), *(str(shard[n]) for n in given.split()), "--expect", *expected.split()])
+    every = [str(shard[n]) for n in ("4", "2", "3", "1")]  # each shard once, in any order
+    assert main([str(out), *every, "--expect", "1", "2", "3", "4"]) == 0
+    capsys.readouterr()
+    with pytest.raises(SystemExit, match=r"test_durations.record_unreadable: .*broken.xml"):
+        main([str(out), str(broken)])
+    # Per-OS totals keep the Windows and Linux evidence independent and bind each passing shard.
+    sha = "a" * 40
+    for os_name in ("windows", "linux"):
+        os_records, pass_root = [], tmp_path / f"passes-{os_name}"
+        pass_root.mkdir()
+        for group in range(1, 5):
+            folder = tmp_path / f"public-tests-junit-{os_name}-{group}"
+            folder.mkdir()
+            xml = folder / "junit.xml"
+            xml.write_text(
+                f'<testsuite><testcase classname="tests.a.test_one" name="test_{group}" '
+                'time="1"/></testsuite>',
+                encoding="utf-8",
+            )
+            os_records.append(xml)
+            marker = pass_root / f"public-tests-pass-{os_name}-{group}"
+            marker.mkdir()
+            (marker / "passed.json").write_text(
+                json.dumps({"os": os_name, "sha": sha, "group": group}), encoding="utf-8"
+            )
+        result, os_summary = (
+            tmp_path / f"result-{os_name}.json",
+            tmp_path / f"summary-{os_name}.json",
+        )
+
+        def run_os(
+            records,
+            os_name=os_name,
+            pass_root=pass_root,
+            os_summary=os_summary,
+            result=result,
+            tree=None,
+        ):
+            args = [
+                str(out),
+                *map(str, records),
+                "--expect",
+                "1",
+                "2",
+                "3",
+                "4",
+                "--os",
+                os_name,
+                "--sha",
+                sha,
+                "--pass-dir",
+                str(pass_root),
+                "--summary",
+                str(os_summary),
+                "--result",
+                str(result),
+            ]
+            if tree is not None:
+                args += ["--tree", str(tree)]
+            try:
+                return main(args)
+            except SystemExit as error:
+                pytest.fail(f"per-OS result producer refused: {error}")
+
+        assert run_os(os_records) == 0
+        assert json.loads(result.read_text(encoding="utf-8")) == {
+            "os": os_name,
+            "sha": sha,
+            "status": "success",
+        }
+        assert json.loads(os_summary.read_text(encoding="utf-8"))["passed"] == 4
+        marker = pass_root / f"public-tests-pass-{os_name}-2" / "passed.json"
+        marker_bytes, original = marker.read_bytes(), os_records[1].read_bytes()
+        os_records[1].write_text(
+            '<testsuite><testcase classname="tests.a.test_one" name="test_2" time="1">'
+            '<skipped/></testcase><testcase classname="tests.a.test_one" name="test_2" '
+            'time="1"/></testsuite>',
+            encoding="utf-8",
+        )
+        assert run_os(os_records) == 0
+        assert json.loads(os_summary.read_text(encoding="utf-8"))["skipped"] == 0
+        os_records[1].write_bytes(original)
+        marker.unlink()
+        marker.parent.rmdir()
+        for bad in ("failure", "error"):
+            for cases in (
+                f'<testcase classname="tests.a.test_one" name="test_2" time="1">'
+                f"<{bad}/><skipped/></testcase>",
+                f'<testcase classname="tests.a.test_one" name="test_2" time="1"><{bad}/></testcase>'
+                '<testcase classname="tests.a.test_one" name="test_2" time="1">'
+                "<skipped/></testcase>",
+            ):
+                os_records[1].write_text(
+                    f'<testsuite>{cases}<testcase classname="tests.a.test_one" '
+                    'name="sibling" time="1"/></testsuite>',
+                    encoding="utf-8",
+                )
+                assert run_os(os_records) == 1
+                assert json.loads(result.read_text(encoding="utf-8"))["status"] == "failed"
+                assert (
+                    run_os(os_records, tree=tmp_path) == 1
+                )  # filtering durations cannot clear a shard failure
+                assert json.loads(result.read_text(encoding="utf-8"))["status"] == "failed"
+                assert (
+                    json.loads(out.read_text(encoding="utf-8")) == {}
+                )  # filtered names stay private
+        marker.parent.mkdir()
+        marker.write_bytes(marker_bytes)
+        os_records[1].write_bytes(original)
+        assert (
+            run_os(os_records) == 0
+        )  # restore this OS's passing result for the isolation control below
+        if os_name == "windows":
+            assert main([str(out), *map(str, os_records), "--expect", "1", "2", "3", "4"]) == 0
+        if os_name == "linux":
+            with pytest.raises(SystemExit, match=r"test_durations\.records_mismatch"):
+                main([str(out), *map(str, os_records), "--expect", "1", "2", "3", "4"])
+            marker = pass_root / "public-tests-pass-linux-2" / "passed.json"
+            marker.unlink()
+            marker.parent.rmdir()  # a failed shard emits no pass artifact
+            os_records[1].write_text(
+                '<testsuite><testcase classname="tests.a.test_one" name="test_2" time="1">'
+                "<failure/></testcase></testsuite>",
+                encoding="utf-8",
+            )
+            assert run_os(os_records) == 1
+            assert json.loads(result.read_text(encoding="utf-8"))["status"] == "failed"
+            assert (
+                json.loads((tmp_path / "result-windows.json").read_text(encoding="utf-8"))["status"]
+                == "success"
+            )
+            assert run_os(os_records[:-1]) == 2
+            assert json.loads(result.read_text(encoding="utf-8"))["status"] == "unknown"
+            os_records[1].write_text(
+                '<testsuite><testcase classname="tests.a.test_one" name="test_2" '
+                'time="1"/></testsuite>',
+                encoding="utf-8",
+            )
+            assert (
+                run_os(os_records) == 2
+            )  # a passing shard without its success artifact is unknown
+            marker.parent.mkdir()
+            marker.write_text(
+                json.dumps({"os": "windows", "sha": sha, "group": 2}), encoding="utf-8"
+            )
+            assert run_os(os_records) == 2  # an artifact from another OS cannot prove this shard
+            marker.write_text(json.dumps({"os": "linux", "sha": sha, "group": 2}), encoding="utf-8")
+            os_records[1].write_text(
+                '<testsuite><testcase classname="tests.a.test_one" name="test_2" time="1">'
+                "<failure/></testcase></testsuite>",
+                encoding="utf-8",
+            )
+            assert run_os(os_records) == 2  # a failure and a pass marker conflict
+            assert json.loads(result.read_text(encoding="utf-8"))["status"] == "unknown"
 
 
 @pytest.mark.parametrize(
