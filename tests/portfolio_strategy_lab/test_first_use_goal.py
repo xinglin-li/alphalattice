@@ -818,6 +818,7 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
 ) -> None:
     """Past the Host rule's cap the first use's agent decides each case, recorded and shown; its
     last decision resumes the same stopped Task in place (OP4, OP19)."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")  # its offline switch, not its runner's
     from alphalattice.control.data_platform import remediation_case
     from alphalattice.control.data_platform.contracts import (
         DataRemediationExecutionReceipt,
