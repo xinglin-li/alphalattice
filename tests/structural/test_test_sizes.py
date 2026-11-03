@@ -47,6 +47,15 @@ import pytest
         ("network", "unit", "", "import socket; socket.socket().close()", True),
         ("integration-network", "integration", "", "import socket; socket.socket().close()", True),
         (
+            "numerical-import",
+            "integration",
+            "",
+            "from scipy.special import ndtri; assert ndtri(0.5) == 0",
+            False,
+        ),
+        ("integration-hostname", "integration", "", "import socket; socket.gethostname()", True),
+        ("integration-import-hostname", "integration", "", "import hostname_import", True),
+        (
             "outside-write",
             "unit",
             "from pathlib import Path\n",
@@ -227,6 +236,9 @@ assert calls == ['test.contract.failure']
         "process",
         "network",
         "integration-network",
+        "numerical-import",
+        "integration-hostname",
+        "integration-import-hostname",
         "outside-write",
         "outside-report-root",
         "temporary",
@@ -370,6 +382,10 @@ def _memory_checks_read_no_host():
         return
     target = tmp_path / "tests" / layer / "test_sample.py"
     target.parent.mkdir(parents=True)
+    if case == "integration-import-hostname":
+        (tmp_path / "hostname_import.py").write_text(
+            "import socket\nsocket.gethostname()\n", "utf-8"
+        )
     target.write_text(
         header
         + (

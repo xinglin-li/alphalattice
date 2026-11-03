@@ -62,11 +62,11 @@ def pytest_checkout(tmp_path: Path, source: Path) -> tuple[Path, dict[str, str]]
     (tests / "integration").mkdir()
     (tests / "integration" / "test_discovery_probe.py").write_text(
         "from pathlib import Path\nimport pytest\n"
-        "from alphalattice.control.product_host.composition.first_use_road "
-        "import completed_first_use\n"
         "CHECKOUT = Path(__file__).resolve().parents[2]\n"
         "(CHECKOUT / 'collected').write_text('collected', encoding='utf-8')\n"
         "def test_discovery(tmp_path):\n"
+        "    from alphalattice.control.product_host.composition.first_use_road "
+        "import completed_first_use\n"
         "    assert completed_first_use(tmp_path / 'empty') is None\n"
         "    with pytest.raises(AssertionError, match='project_outside_test_root'):\n"
         "        completed_first_use(CHECKOUT / 'workspaces' / 'completed')\n",

@@ -8,6 +8,10 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
+# NumPy's locked import initializes platform metadata. Complete it before either
+# a layer contract or a result recorder subscribes to this process's audit hook.
+import numpy.testing  # noqa: F401
+
 _INSTALLED: bool = globals().get("_INSTALLED", False)
 _LOCK = globals().get("_LOCK") or threading.RLock()
 _SUBSCRIBERS: list[tuple[object, Callable[[str, tuple[Any, ...]], None]]] = globals().get(
