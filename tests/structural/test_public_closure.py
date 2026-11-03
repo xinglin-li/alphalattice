@@ -1,9 +1,13 @@
 """A public snapshot's source dependencies close over its supplied manifest."""
 
+import importlib.util
 import json
+import sys
+from pathlib import Path
 
 import pytest
 
+import release.public_closure as public_closure
 from release.public_closure import references, violations
 
 
@@ -12,8 +16,11 @@ def _failures(blobs, public):
     return {reference.target for reference in violations(manifest, blobs)}
 
 
+@pytest.mark.parametrize("kept", [False, True])  # True: through the gate's scan store
 @pytest.mark.parametrize("imported", ["hidden", "missing"])
-def test_python_import_requires_a_public_local_module(imported):
+def test_python_import_requires_a_public_local_module(imported, kept, tmp_path, monkeypatch):
+    if kept:
+        monkeypatch.setenv("ALPHALATTICE_SCAN_CACHE_DIR", str(tmp_path))
     reader = "src/demo/consumer.py"
     target = f"src/demo/{imported}.py"
     blobs = {
@@ -25,6 +32,33 @@ def test_python_import_requires_a_public_local_module(imported):
     assert _failures(blobs, public) == {target}
     if imported == "hidden":
         assert _failures(blobs, public | {target}) == set()
+    if kept:  # the kept facts answer alike, and a reader's new bytes are read afresh
+        assert (tmp_path / "public-closure.sqlite").is_file()
+        assert _failures(blobs, public) == {target}
+        blobs[reader] = b"import demo.other\n"
+        assert _failures(blobs, public) == {"src/demo/other.py"}
+        # code loaded, then its file replaced: the old code's facts never serve the new code,
+        # loaded anew or reloaded in place (importlib.reload keeps the module object)
+        source = Path(public_closure.__file__).read_text("utf-8")
+        manifest = {"public": [{"path": path} for path in sorted(public)]}
+        monkeypatch.syspath_prepend(tmp_path)  # where a reload finds its copy again
+        for name, read in (("closure_anew", "third"), ("closure_again", "fourth")):
+            copy = tmp_path / f"{name}.py"
+            copy.write_text(source, "utf-8")
+            old = _loaded(copy, name, monkeypatch)
+            copy.write_text(source.replace('found["imports"].append([', "([", 1), "utf-8")
+            blobs[reader] = f"import demo.{read}\n".encode()
+            assert [r.target for r in old.violations(manifest, blobs)] == [f"src/demo/{read}.py"]
+            new = importlib.reload(old) if read == "fourth" else _loaded(copy, "new", monkeypatch)
+            assert new.violations(manifest, blobs) == []
+
+
+def _loaded(path, name, monkeypatch):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, module)
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.mark.parametrize(

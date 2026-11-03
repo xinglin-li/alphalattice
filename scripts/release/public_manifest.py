@@ -12,11 +12,17 @@ import ast
 import fnmatch
 import hashlib
 import json
+import os
 import posixpath
 import re
 import subprocess
+import sys
 from collections import Counter
 from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from devtools.architecture.structural import FileFacts
 
 ROOT = Path(__file__).resolve().parents[2]
 INTERNAL_ID_BASELINE = "census/public-internal-id-baseline.json"
@@ -1095,25 +1101,59 @@ closures of a `generate`, and every later one, read the same answer. A
 parse error is raised every time, never kept."""
 
 
+_FACTS: FileFacts | None = None
+"""The store a `generate` holds for its files' import statements, kept by their bytes when the
+gate names one; None outside a `generate`."""
+
+
+def _statements(path: str, raw: bytes) -> list[list]:
+    """Each import statement of one file as its line, module, level, names and whether it is a
+    `from` import, read from the bytes alone; each reader resolves relative ones itself."""
+
+    def parsed(data: bytes) -> list[list]:
+        return [
+            [
+                n.lineno,
+                getattr(n, "module", None) or "",
+                getattr(n, "level", 0),
+                [a.name for a in n.names],
+                isinstance(n, ast.ImportFrom),
+            ]
+            for n in ast.walk(ast.parse(data.decode("utf-8-sig"), filename=path))
+            if isinstance(n, ast.Import | ast.ImportFrom)
+        ]
+
+    def shaped(rows: Any) -> bool:
+        return all(
+            type(line) is int
+            and type(module) is str
+            and type(level) is int
+            and all(type(a) is str for a in names)
+            and type(frm) is bool
+            for line, module, level, names, frm in rows
+        )
+
+    return parsed(raw) if _FACTS is None else _FACTS.of("imports", raw, parsed, shaped)
+
+
+def _absolute(package: str, module: str, level: int, names: list[str], frm: bool) -> list[str]:
+    """The absolute names one import statement imports, a relative one against ``package``."""
+    if not frm:
+        return names
+    if level:
+        parts = package.split(".")
+        module = ".".join(parts[: len(parts) - level + 1] + ([module] if module else []))
+    return [module, *(module + "." + name for name in names)]
+
+
 def _import_names(path: str, raw: bytes) -> frozenset[str]:
     """The absolute names one file imports, relative imports resolved against its package."""
     key = (path, hashlib.sha256(raw).digest())
     if (known := _IMPORT_NAMES.get(key)) is not None:
         return known
-    tree = ast.parse(raw.decode("utf-8-sig"), filename=path)
     own = path[4:-3].replace("/", ".").removesuffix(".__init__") if path.startswith("src/") else ""
     package = own if path.endswith("/__init__.py") else own.rpartition(".")[0]
-    names = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            base = node.module or ""
-            if node.level:
-                parts = package.split(".")
-                base = ".".join(parts[: len(parts) - node.level + 1] + ([base] if base else []))
-            names.add(base)
-            names.update(base + "." + alias.name for alias in node.names)
+    names = {n for row in _statements(path, raw) for n in _absolute(package, *row[1:])}
     known = _IMPORT_NAMES[key] = frozenset(names)
     return known
 
@@ -1259,9 +1299,9 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
             continue
         if row["path"].endswith(".py"):
             try:
-                tree = ast.parse(text, filename=row["path"])
+                statements = _statements(row["path"], raw)
             except SyntaxError:
-                tree = None  # Text-pattern scans still apply to an invalid/synthetic source.
+                statements = []  # Text-pattern scans still apply to an invalid/synthetic source.
             own = row["path"].removeprefix("src/")[:-3].replace("/", ".")
             package = (
                 own.removesuffix(".__init__")
@@ -1269,22 +1309,11 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
                 else own.rpartition(".")[0]
             )
             imports = {}
-            for node in ast.walk(tree) if tree is not None else ():
-                if isinstance(node, ast.Import):
-                    names = [alias.name for alias in node.names]
-                elif isinstance(node, ast.ImportFrom):
-                    base = node.module or ""
-                    if node.level:
-                        parts = package.split(".")
-                        base = ".".join(
-                            parts[: len(parts) - node.level + 1] + ([base] if base else [])
-                        )
-                    names = [base, *(base + "." + alias.name for alias in node.names)]
-                else:
-                    continue
+            for line, *statement in statements:
+                names = _absolute(package, *statement)
                 targets = {p for name in names for p in private_modules.get(name, ())}
                 if targets:
-                    imports.setdefault(node.lineno, set()).update(targets)
+                    imports.setdefault(line, set()).update(targets)
             findings.extend(
                 {
                     "kind": "FINDING",
@@ -1503,7 +1532,21 @@ def names_script(reader: str, raw: bytes, script: str) -> bool:
 
 
 def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[dict, dict]:
-    """Produce the builder contract and complete private audit deterministically."""
+    """Produce the builder contract and complete private audit deterministically; each file's
+    import statements are kept by its bytes when the gate names a store."""
+    global _FACTS
+    if not os.environ.get("ALPHALATTICE_SCAN_CACHE_DIR"):  # structural.SCAN_CACHE_ENV
+        return _generate(sha, blobs, modes)  # the export runs this scanner alone, without it
+    from devtools.architecture.structural import kept_facts  # named only where it is importable
+
+    with kept_facts("public-manifest", sys.modules[__name__]) as _FACTS:
+        try:
+            return _generate(sha, blobs, modes)
+        finally:
+            _FACTS = None
+
+
+def _generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[dict, dict]:
     declared = declared_private(blobs)  # private by content, whatever the path
     census_raw = blobs.get("census/entry_reach.json")
     if census_raw is None:

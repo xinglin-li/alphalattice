@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import hashlib
 import json
 import os
@@ -10,10 +11,11 @@ import re
 import sqlite3
 import sys
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from enum import StrEnum
 from importlib.util import resolve_name
 from pathlib import Path
+from types import CodeType, FunctionType, ModuleType
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -820,7 +822,16 @@ class FileFacts:
     ) -> Any:
         """``compute`` of the bytes read now at ``path``, as JSON gives it back; from the store
         when a sealed row of the right shape holds it for exactly those bytes."""
-        data = path.read_bytes()
+        return self.of(part, path.read_bytes(), compute, valid)
+
+    def of(
+        self,
+        part: str,
+        data: bytes,
+        compute: Callable[[bytes], Any],
+        valid: Callable[[Any], bool],
+    ) -> Any:
+        """``get`` for bytes already in hand, such as a Git blob a scan read from a tree."""
         if self._db is None:
             self.misses += 1
             return json.loads(json.dumps(compute(data)))
@@ -896,6 +907,102 @@ class FileFacts:
         except OSError as error:
             self.state = f"over its byte cap ({type(error).__name__})"
         return f"{self.scan} hits {self.hits} misses {self.misses} {self.state}"
+
+
+def _plain(value: Any) -> str:
+    """A constant as the same text in every process (sets sorted, patterns by their source);
+    any other object by its type alone."""
+    if value is None or isinstance(value, bool | int | float | str | bytes):
+        return repr(value)
+    if isinstance(value, re.Pattern):
+        return repr((value.pattern, value.flags))
+    if isinstance(value, tuple | list):
+        return f"({','.join(map(_plain, value))})"
+    if isinstance(value, set | frozenset):
+        return f"{{{','.join(sorted(map(_plain, value)))}}}"
+    if isinstance(value, dict):
+        return f"{{{','.join(sorted(_plain(k) + ':' + _plain(v) for k, v in value.items()))}}}"
+    return type(value).__qualname__
+
+
+_IDENTITIES: dict[int, tuple[ModuleType, tuple[CodeType, ...], str]] = {}
+"""Each module object's identity with the code it was taken from, held so no id is reused: kept
+while those same code objects are its functions, so a rebound value is state, and taken anew
+when they change, as ``importlib.reload`` re-executes every definition in the same object."""
+
+
+def loaded_identity(*modules: ModuleType) -> str:
+    """A digest of these modules as loaded in this process, never of their files on disk: each
+    function's code (its bytecode, names, constants and nested code, through decorators and
+    class members) and each immutable constant, taken anew whenever its functions' code
+    changes (a new load or an in-place reload), so a file replaced after import cannot lend its
+    version to facts the code already loaded derives, and a module's mutable state (a memo, a
+    last result) is not its identity."""
+    return hashlib.sha256("".join(map(_module_identity, modules)).encode()).hexdigest()[:16]
+
+
+def _module_identity(module: ModuleType) -> str:
+    codes = tuple(
+        item.__code__
+        for item in vars(module).values()
+        if isinstance(item, FunctionType) and item.__module__ == module.__name__
+    )
+    known = _IDENTITIES.get(id(module))
+    if (
+        known is not None
+        and codes
+        and known[0] is module
+        and len(known[1]) == len(codes)
+        and all(old is new for old, new in zip(known[1], codes, strict=True))
+    ):
+        return known[2]
+    digest = hashlib.sha256()
+
+    def code(value: CodeType) -> None:
+        digest.update(value.co_code + repr((value.co_names, value.co_varnames)).encode())
+        for constant in value.co_consts:
+            code(constant) if isinstance(constant, CodeType) else digest.update(
+                _plain(constant).encode()
+            )
+
+    def add(item: Any, member: bool) -> None:
+        item = getattr(item, "__func__", None) or getattr(item, "fget", None) or item
+        while item is not None and (isinstance(item, FunctionType) or hasattr(item, "__wrapped__")):
+            if isinstance(item, FunctionType):
+                code(item.__code__)
+                digest.update(_plain(item.__defaults__).encode())
+            item = getattr(item, "__wrapped__", None)
+        if isinstance(item, type) and not member:  # a dunder member only as code or fields: a
+            for name, value in sorted(vars(item).items()):  # model's generated schema holds ids
+                if not name.startswith("__") or name == "__annotations__" or callable(value):
+                    digest.update(name.encode())
+                    add(value, True)
+        elif isinstance(item, str | bytes | int | float | tuple | frozenset | re.Pattern):
+            digest.update(_plain(item).encode())
+
+    for name, item in sorted(vars(module).items()):  # a definition is this module's only where
+        defined = isinstance(item, FunctionType | type)  # written; a value counts by itself, so a
+        own = not defined or item.__module__ == module.__name__  # pattern's "re" is not foreign
+        if own and not name.startswith("__") and not isinstance(item, ModuleType):
+            digest.update(name.encode())
+            add(item, False)
+    _IDENTITIES[id(module)] = module, codes, digest.hexdigest()
+    return digest.hexdigest()
+
+
+@contextlib.contextmanager
+def kept_facts(scan: str, *derive: ModuleType) -> Iterator[FileFacts]:
+    """``FileFacts`` for one run of ``scan``, versioned by the loaded code that derives its facts
+    (these modules and this one, ``loaded_identity``), so a change to how a fact is derived is
+    a miss even when a file changes under a running scan; written only when the body returns."""
+    version = loaded_identity(*derive, sys.modules[__name__])
+    facts = FileFacts(Path.cwd(), scan, version)
+    returned = False
+    try:
+        yield facts
+        returned = True
+    finally:
+        facts.close(returned=returned)
 
 
 def discover_python_imports(path: Path, *, source_root: Path) -> tuple[str, ...]:

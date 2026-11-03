@@ -6,14 +6,20 @@ import ast
 import bisect
 import fnmatch
 import json
+import os
 import posixpath
 import re
+import sys
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote, urlsplit
 
 from release.public_outputs import generated_outputs
+
+if TYPE_CHECKING:
+    from devtools.architecture.structural import FileFacts
 
 
 @dataclass(frozen=True, order=True)
@@ -46,12 +52,10 @@ class _Paths:
         self,
         path: str,
         tree: ast.AST,
-        files: set[str],
         inherited: Mapping[str, set[str]] | None = None,
         arguments: Mapping[str, set[str]] | None = None,
     ) -> None:
         self.file = "/__checkout__/" + path
-        self.files = files
         self.names: dict[str, set[str]] = {
             key: set(values) for key, values in (inherited or {}).items()
         }
@@ -134,17 +138,6 @@ class _Paths:
                     return result
         return set()
 
-    def repository(self, node: ast.AST | None) -> set[str]:
-        result = set()
-        roots = {p.split("/", 1)[0] for p in self.files}
-        for value in self.values(node):
-            value = _path(value)
-            if value.startswith("/__checkout__/"):
-                result.add(value.removeprefix("/__checkout__/"))
-            elif value in self.files or value.split("/", 1)[0] in roots:
-                result.add(value)
-        return result
-
 
 FileIndex = tuple[dict[str, set[str]], set[str], set[str]]
 
@@ -163,36 +156,14 @@ def _file_index(files: set[str]) -> FileIndex:
     return module_paths, directories, {name.split(".", 1)[0] for name in module_paths}
 
 
-def _python(
-    path: str, text: str, files: set[str], index: FileIndex | None = None
+def _resolved(
+    path: str, facts: dict[str, list], files: set[str], index: FileIndex | None = None
 ) -> set[Reference]:
-    tree = ast.parse(text, filename=path)
-    global_paths = _Paths(path, tree, files)
-    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
-    scopes = {tree: global_paths}
-
-    def context(node: ast.AST) -> _Paths:
-        scope = node
-        while scope in parents and not isinstance(
-            scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
-        ):
-            scope = parents[scope]
-        if scope not in scopes:
-            scopes[scope] = _Paths(path, scope, files, global_paths.names)
-        return scopes[scope]
-
-    result = set()
+    """One file's extracted imports and reads, resolved against this file set."""
     module_paths, directories, roots = index or _file_index(files)
-    own = path.removeprefix("src/")[:-3].replace("/", ".").removesuffix(".__init__")
-    package = own if path.endswith("/__init__.py") else own.rpartition(".")[0]
-    aliases = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            aliases.update({a.asname: a.name for a in node.names if a.asname})
-        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
-            aliases.update({a.asname or a.name: node.module + "." + a.name for a in node.names})
-
-    def imports(name: str, line: int, *, required: bool = True) -> None:
+    tops = {p.split("/", 1)[0] for p in files}
+    result = set()
+    for name, line, required in facts["imports"]:
         candidates = set(module_paths.get(name, ()))
         stem = posixpath.dirname(path) + "/" + name.replace(".", "/")
         candidates.update(p for p in (stem + ".py", stem + "/__init__.py") if p in files)
@@ -218,6 +189,50 @@ def _python(
             candidates.update(module_paths.get(".".join(name.split(".")[:part]), ()))
         for target in candidates:
             result.add(Reference(path, line, target, "PYTHON_IMPORT"))
+    for line, kind, values in facts["reads"]:
+        for value in map(_path, values):
+            if value.startswith("/__checkout__/"):
+                target = value.removeprefix("/__checkout__/")
+            elif value in files or value.split("/", 1)[0] in tops:
+                target = value
+            else:
+                continue
+            if kind != "PYTHON_EXEC" or PurePosixPath(target).suffix:  # cwd is not executable
+                result.add(Reference(path, line, target, kind))
+    return result
+
+
+def python_facts(path: str, text: str) -> dict[str, list]:
+    """What one Python file imports and reads, from its path and text alone: each import's
+    name, line and whether it must resolve, and each read's line, kind and candidate values,
+    before a file set resolves them (``_resolved``), so they can be kept by the file's bytes."""
+    tree = ast.parse(text, filename=path)
+    global_paths = _Paths(path, tree)
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    scopes = {tree: global_paths}
+
+    def context(node: ast.AST) -> _Paths:
+        scope = node
+        while scope in parents and not isinstance(
+            scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
+        ):
+            scope = parents[scope]
+        if scope not in scopes:
+            scopes[scope] = _Paths(path, scope, global_paths.names)
+        return scopes[scope]
+
+    found: dict[str, list] = {"imports": [], "reads": []}
+    own = path.removeprefix("src/")[:-3].replace("/", ".").removesuffix(".__init__")
+    package = own if path.endswith("/__init__.py") else own.rpartition(".")[0]
+    aliases = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            aliases.update({a.asname: a.name for a in node.names if a.asname})
+        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+            aliases.update({a.asname or a.name: node.module + "." + a.name for a in node.names})
+
+    def imports(name: str, line: int, *, required: bool = True) -> None:
+        found["imports"].append([name, line, required])
 
     functions = {
         n.name: n for n in tree.body if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
@@ -339,10 +354,8 @@ def _python(
             for value in paths.values(node.args[0]):
                 imports(value, node.lineno)
         for arg in args:
-            for target in paths.repository(arg):
-                if kind == "PYTHON_EXEC" and not PurePosixPath(target).suffix:
-                    continue  # cwd and workspace arguments are not executable files.
-                result.add(Reference(path, node.lineno, target, kind))
+            if values := sorted(paths.values(arg)):
+                found["reads"].append([node.lineno, kind, values])
         if name in functions and depth < 4:
             function = functions[name]
             parameters = [*function.args.posonlyargs, *function.args.args]
@@ -358,7 +371,7 @@ def _python(
             if not any(bound.values()) or key in visited:
                 return
             visited.add(key)
-            local = _Paths(path, function, files, global_paths.names, bound)
+            local = _Paths(path, function, global_paths.names, bound)
             for child in _scope_nodes(function):
                 if isinstance(child, ast.Call):
                     calls(child, local, depth + 1)
@@ -377,7 +390,7 @@ def _python(
                 imports(base + "." + alias.name, node.lineno, required=False)
         elif isinstance(node, ast.Call):
             calls(node, context(node))
-    return result
+    return found
 
 
 _JS_TOKEN = re.compile(
@@ -390,13 +403,37 @@ _FENCE = re.compile(r"(?m)^\s*(```|~~~)[^\n]*\n(.*?)^\s*\1\s*$", re.DOTALL)
 _CODE_PATH = re.compile(r"(?<![\w/])(?:[\w.-]+/)+[\w.*-]+(?:\.[\w.-]+)?")
 
 
+def _shaped(found: Any) -> bool:
+    """Exactly ``python_facts``' shape; a kept row of any other shape is a miss, recomputed."""
+    return (
+        set(found) == {"imports", "reads"}
+        and all(
+            type(name) is str and type(line) is int and type(required) is bool
+            for name, line, required in found["imports"]
+        )
+        and all(
+            type(line) is int and type(kind) is str and all(type(v) is str for v in values)
+            for line, kind, values in found["reads"]
+        )
+    )
+
+
 def references(
-    path: str, raw: bytes, files: set[str], index: FileIndex | None = None
+    path: str,
+    raw: bytes,
+    files: set[str],
+    index: FileIndex | None = None,
+    facts: FileFacts | None = None,
 ) -> set[Reference]:
     """Source reads only: policy/synthetic string literals are not file dependencies."""
     text = raw.decode("utf-8-sig")
     if path.endswith(".py"):
-        return _python(path, text, files, index)
+        found = (
+            python_facts(path, text)
+            if facts is None
+            else facts.of("python:" + path, raw, lambda _: python_facts(path, text), _shaped)
+        )
+        return _resolved(path, found, files, index)
     result = set()
     if path.endswith((".js", ".cjs", ".mjs")):
         tokens = [m for m in _JS_TOKEN.finditer(text) if not m.group().startswith(("//", "/*"))]
@@ -472,7 +509,19 @@ def violations(manifest: dict, blobs: dict[str, bytes], readers=None) -> list[Re
     The caller supplies its manifest. No default private inventory or workspace is read.
     Directory links require a public directory; recursive copies require every file.
     Node modules require the specifically published, exact declaration and lock.
+    Each Python file's own facts are kept by its bytes when the gate names a store.
     """
+    if not os.environ.get("ALPHALATTICE_SCAN_CACHE_DIR"):  # structural.SCAN_CACHE_ENV
+        return _violations(manifest, blobs, readers, None)
+    from devtools.architecture.structural import kept_facts  # named only where it is importable
+
+    with kept_facts("public-closure", sys.modules[__name__]) as facts:
+        return _violations(manifest, blobs, readers, facts)
+
+
+def _violations(
+    manifest: dict, blobs: dict[str, bytes], readers, facts: FileFacts | None
+) -> list[Reference]:
     public = {row["path"] for row in manifest["public"]}
     files = set(blobs)
     ordered, index = sorted(files), _file_index(files)
@@ -495,7 +544,7 @@ def violations(manifest: dict, blobs: dict[str, bytes], readers=None) -> list[Re
             continue
         if not path.endswith((".py", ".cjs", ".mjs", ".js", ".md")):
             continue
-        for ref in references(path, blobs[path], files, index):
+        for ref in references(path, blobs[path], files, index, facts):
             target = ref.target
             if target in public or _installed_node(target, blobs, public):
                 continue

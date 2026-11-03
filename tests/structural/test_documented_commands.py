@@ -337,9 +337,7 @@ def test_kept_facts_follow_the_bytes_read_and_serve_only_sealed_rows(
     assert scan(tmp_path) == [] and "hits 0 misses 1" in registry.LAST_SCAN_CACHE
     owner.write_text(offer, encoding="utf-8")
     kept = store / "operation-registry.sqlite"
-    version = hashlib.sha256(  # the decorator's own version of the checker
-        Path(registry.__file__).read_bytes() + Path(structural.__file__).read_bytes()
-    ).hexdigest()[:16]
+    version = structural.loaded_identity(registry, structural)  # the checker as loaded
     facts = structural.FileFacts(tmp_path, "operation-registry", version)
     db = sqlite3.connect(kept)
     for value, seal in (("[]", "old"), (None, "old"), ('"x"', "new")):
@@ -383,3 +381,23 @@ def test_kept_facts_follow_the_bytes_read_and_serve_only_sealed_rows(
     assert scan(tmp_path) == found and "misses 1" in registry.LAST_SCAN_CACHE  # fails this seal
     assert [entry.name for entry in store.iterdir()] == [kept.name]  # one file for every version
     held.close()
+    # a source-defined pattern is identity, though its class says "re": a pattern-only change,
+    # reloaded in place, is a new version, while a value the module rebinds at run time is state
+    import importlib
+    import sys
+
+    monkeypatch.setattr(sys, "dont_write_bytecode", True)  # a same-size rewrite must recompile
+    monkeypatch.syspath_prepend(tmp_path)
+    patterned = tmp_path / "patterned_offers.py"
+    patterned.write_text(
+        'import re\nNAMED = re.compile("a")\nLAST = ""\n\n\n'
+        "def named(text):\n    return NAMED.findall(text)\n",
+        encoding="utf-8",
+    )
+    module = importlib.import_module("patterned_offers")
+    monkeypatch.setitem(sys.modules, "patterned_offers", module)
+    before = structural.loaded_identity(module)
+    module.LAST = "a last result"
+    assert structural.loaded_identity(module) == before
+    patterned.write_text(patterned.read_text("utf-8").replace('"a"', '"b"'), encoding="utf-8")
+    assert structural.loaded_identity(importlib.reload(module)) != before

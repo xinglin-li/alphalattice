@@ -1040,9 +1040,7 @@ def _keeps_facts(scan: Any) -> Any:
     @functools.wraps(scan)
     def kept(root: Path) -> list[str]:
         global _FACTS, LAST_SCAN_CACHE
-        version = hashlib.sha256(
-            Path(__file__).read_bytes() + Path(structural.__file__).read_bytes()
-        ).hexdigest()[:16]
+        version = structural.loaded_identity(sys.modules[__name__], structural)
         _FACTS = facts = structural.FileFacts(root, "operation-registry", version)
         result: list[str] | None = None
         try:
