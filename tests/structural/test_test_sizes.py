@@ -1133,6 +1133,28 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     from devtools.testing.sizes import load_policy, validate_policy
 
     registered = load_policy(Path(__file__).resolve().parents[2])
+    for stem, changed in (
+        ("test_entry_point_startup", "src/alphalattice/control/product_host/composition/entry.py"),
+        (
+            "test_playpen_gate_routing",
+            "src/alphalattice/investment/portfolio_strategy_lab/campaign/legacy_readback.py",
+        ),
+        ("test_local_web_build", "tests/pytest_environment.py"),
+    ):
+        assert included(
+            f"tests/structural/{stem}.py::test_guard",
+            "medium",
+            "merge",
+            registered,
+            frozenset({changed}),
+        ), changed
+    # every registered reach: any one declared input still selects its guard, an unrelated change
+    # leaves it to the post-merge tier, which runs it whole ("+x": an added path)
+    for row in (r for r in registered["reach"] if r.get("inputs") and not r.get("per_file")):
+        node = row["pattern"].replace("*", "x")
+        for seeded in (p.replace("*", "x") for p in row["inputs"]):
+            assert included(node, "medium", "merge", registered, frozenset({seeded})), seeded
+        assert not included(node, "medium", "merge", registered, frozenset({"docs/x.md"})), node
     legacy = deepcopy(registered) | {"reach": [policy["reach"][0]]}
     assert validate_policy(legacy) is legacy
     path = "tests/integration/architecture/test_scan.py"

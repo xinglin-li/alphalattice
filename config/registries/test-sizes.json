@@ -710,6 +710,96 @@
         "tests/structural/conftest.py"
       ],
       "reason": "It drives the registry check over a synthetic history in tmp_path, so only the registry code or its data can change it; nightly runs it whole."
+    },
+    {
+      "pattern": "tests/structural/test_pipeline_receipt.py::*",
+      "owner": "tests.structural",
+      "inputs": [
+        "scripts/pipeline.py",
+        "src/*",
+        "config/pipeline.toml",
+        "config/registries/*",
+        "config/import-hygiene.json",
+        "config/package-architecture.json",
+        "pyproject.toml",
+        "uv.lock",
+        "tests/structural/conftest.py",
+        "tests/structural/pytest_support.py",
+        "tests/structural/source_shape_samples.py",
+        "tests/_support/project_discovery.py",
+        "tests/__init__.py",
+        "tests/pytest_environment.py",
+        "tests/setup_support.py",
+        "tests/conftest.py"
+      ],
+      "reason": "It drives the pipeline stage and its receipt over synthetic repositories in tmp_path, so only the pipeline's code, definition or registries can change it; the post-merge tier runs it whole."
+    },
+    {
+      "pattern": "tests/structural/test_test_sizes.py::*",
+      "owner": "tests.structural",
+      "inputs": [
+        "src/*",
+        "scripts/tests_registry.py",
+        "scripts/check_test_shape.py",
+        "config/registries/*",
+        "config/import-hygiene.json",
+        "config/release/*",
+        "pyproject.toml",
+        "uv.lock",
+        "tests/integration/architecture/*",
+        "tests/portfolio_strategy_lab/test_strategy_activation.py",
+        "tests/structural/conftest.py",
+        "tests/structural/pytest_support.py",
+        "tests/structural/source_shape_samples.py",
+        "tests/_support/project_discovery.py",
+        "tests/__init__.py",
+        "tests/pytest_environment.py",
+        "tests/setup_support.py",
+        "tests/conftest.py"
+      ],
+      "reason": "It drives size collection and the registry tools over synthetic suites in tmp_path, so only the testing code or its registries can change it; the post-merge tier runs it whole."
+    },
+    {
+      "pattern": "tests/structural/test_entry_point_startup.py::*",
+      "owner": "tests.structural",
+      "inputs": [
+        "scripts/*.py",
+        "src/*",
+        "pyproject.toml",
+        "uv.lock",
+        "tests/structural/conftest.py",
+        "tests/structural/source_shape_samples.py",
+        "tests/_support/project_discovery.py",
+        "tests/__init__.py",
+        "tests/pytest_environment.py",
+        "tests/setup_support.py",
+        "tests/conftest.py",
+        "config/registries/test-sizes.json"
+      ],
+      "reason": "It starts every top-level script, including its product imports; the post-merge tier runs it whole."
+    },
+    {
+      "pattern": "tests/structural/test_local_web_build.py::*",
+      "owner": "tests.structural",
+      "inputs": [
+        "scripts/build_local_web_ui.py",
+        "scripts/check_ui_parameters.py",
+        "src/*",
+        "config/registries/agent-surface.json",
+        "config/registries/messages.json",
+        "config/registries/refusals.json",
+        "pyproject.toml",
+        "uv.lock",
+        "tests/structural/conftest.py",
+        "tests/structural/source_shape_samples.py",
+        "tests/_support/project_discovery.py",
+        "tests/__init__.py",
+        "tests/pytest_environment.py",
+        "tests/setup_support.py",
+        "tests/conftest.py",
+        "config/registries/test-sizes.json"
+      ],
+      "reason": "It builds and checks the Local Web assets from copies in tmp_path, so only the builder, its assets, labels or registries can change it; the post-merge tier runs it whole."
     }
   ],
   "quarantine": [
