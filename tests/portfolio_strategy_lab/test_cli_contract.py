@@ -266,9 +266,17 @@ def test_the_tasks_that_run_at_once_are_set_beside_the_waiting_places(live) -> N
 
 
 def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
-    read_only_live: LocalPortfolioWebSession, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    read_only_live: LocalPortfolioWebSession,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """CLI and Host metadata preserve legacy envelopes, fields and exit codes."""
+    from alphalattice.interface.local_application.cli_contract import join, shell
+
+    monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")  # shlex replays POSIX commands.
+    path = r"project\workspace"
+    assert shlex.split(join(["tool", path], shell())) == ["tool", path]
     live = read_only_live
     code, body, _ = _inprocess_cli(live.workspace, "task", "list", capsys=capsys)
     assert (code, body["outcome"]) == (0, "OK")
