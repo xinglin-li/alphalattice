@@ -501,6 +501,8 @@ def _memory_checks_read_no_host():
             str(root / "pyproject.toml"),
             "--rootdir",
             str(tmp_path),
+            "--confcutdir",
+            str(tmp_path),
             "--noconftest",
             "--basetemp",
             str(tmp_path / "child-temp"),
@@ -634,7 +636,8 @@ def _memory_checks_read_no_host():
     + [("post-kind",), ("post-structural",), ("post-repeat",)]
     + [("lane_" + lane,) for lane in ("merge", "candidate", "nightly")]
     + [("framework-" + case,) for case in ("entry", "reason", "pattern", "module")]
-    + [("backend-" + case,) for case in ("empty", "kind", "type", "reason", "duplicate")],
+    + [("backend-" + case,) for case in ("empty", "kind", "type", "reason", "duplicate")]
+    + [pytest.param(("sibling-race",), id="sibling-race")],
 )
 @pytest.mark.proves("testing.layer_contract")
 def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared):
@@ -967,15 +970,45 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
         "  print('SIZE_ITEMS='+json.dumps(rows))\n"
         "raise SystemExit(pytest.main(sys.argv[1:],plugins=[Reader()]))\n"
     )
+    if case == "sibling-race":
+        sibling = tmp_path.parent / (tmp_path.name + "-sibling")
+        sibling.mkdir()
+        script = (
+            "import os,threading\nfrom pathlib import Path\nimport _pytest.main\n"
+            f"sibling=Path({str(sibling)!r})\n"
+            f"owned=Path({str(tmp_path)!r})\n"
+            "def move(): os.replace(sibling,sibling.with_name(sibling.name+'-moved'))\n"
+            "samefile=_pytest.main.samefile_nofollow\n"
+            "def move_then_stat(a,b):\n"
+            " if a==sibling and sibling.exists():\n"
+            "  move()\n"
+            " return samefile(a,b)\n"
+            "_pytest.main.samefile_nofollow=move_then_stat\n"
+            "collect=_pytest.main.Session._collect_path\n"
+            "def collect_owned(self,path,cache):\n"
+            " if path==owned and sibling.exists():\n"
+            "  other=threading.Thread(target=move); other.start(); other.join()\n"
+            " return collect(self,path,cache)\n"
+            "_pytest.main.Session._collect_path=collect_owned\n"
+        ) + script
     command = [sys.executable, "-c", script]
     if not registered:
-        command += ["-p", "tests.conftest", "-o", "markers=small\nmedium\nlarge"]
+        command += [
+            "-p",
+            "tests.conftest",
+            "-o",
+            "markers=small\nmedium\nlarge",
+            "--rootdir",
+            str(tmp_path),
+            "--confcutdir",
+            str(tmp_path),
+        ]
     command += ["-c", str(root / "pyproject.toml")]
     command += ["--basetemp", str(tmp_path / "child-temp")]
     command += ["-vv"] if case == "timeout" else ["--collect-only", "-q"]
     command += ["--no-cov", str(target)]
     if lane:
-        command += ["--rootdir", str(tmp_path), "--keep-duplicates", str(target), str(mandatory)]
+        command += ["--keep-duplicates", str(target), str(mandatory)]
     result = subprocess.run(
         command,
         cwd=root,
@@ -992,6 +1025,8 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
         timeout=45,
         creationflags=getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0),
     )
+    if case == "sibling-race":
+        assert not sibling.exists() and sibling.with_name(sibling.name + "-moved").is_dir()
     if case in faults:
         assert result.returncode != 0 and "test_size." + refusal in result.stderr
     elif case == "timeout":
@@ -1024,6 +1059,8 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
             assert sum("tests/structural/" in r["test_size_declaration"] for r in rows) == 1
             return
         expected_size = "large" if registered else declared[0] if declared else "medium"
+        if case == "sibling-race":
+            expected_size = "medium"
         expected_owner = "tests.portfolio_strategy_lab" if registered else "tests"
         for row in rows:
             assert row["markers"] == [row.get("test_size")]
