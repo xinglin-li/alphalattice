@@ -2,19 +2,23 @@ name: Verify
 
 # Both legs a person can install: the source checkout and the built wheel. Runs only in a public
 # repository, for main and next and pull requests against either; actions are pinned to the commit
-# of the named release.
+# of the named release. Every public test runs split over free runners once a night on next's tip
+# (skipped when that commit already has a full run) and on workflow_dispatch for a promotion candidate;
+# a push keeps the fast legs only.
 on:
   push:
     branches: [main, next]
   pull_request:
     branches: [main, next]
   workflow_dispatch:
+  schedule:
+    - cron: "17 7 * * *"  # 07:17 UTC: 03:17 New York in summer, 02:17 in winter; after the next export
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}  # a push never cancels a full run
   cancel-in-progress: true
 
 env:
@@ -23,7 +27,7 @@ env:
 jobs:
   checkout:
     name: Source checkout
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && github.event_name != 'schedule' }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -49,7 +53,7 @@ jobs:
 
   wheel:
     name: Installed wheel
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && github.event_name != 'schedule' }}
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -92,7 +96,7 @@ jobs:
 
   platforms:
     name: Offline first use (${{ matrix.os }})
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && github.event_name != 'schedule' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -151,3 +155,117 @@ jobs:
           uv run python -c "import sys, zipfile, pathlib; pathlib.Path(sys.argv[2]).write_bytes(zipfile.ZipFile(sys.argv[1]).read('alphalattice/_runtime/config/release/runtime-requirements.txt'))" "$wheel" "$requirements"
           uv tool install --python 3.12 "$wheel" --with-requirements "$requirements" --constraints "$requirements"
           uv run python scripts/release/wheel_smoke.py --command "$UV_TOOL_BIN_DIR/alphalattice" --output "$RUNNER_TEMP/smoke-bash.json" --fresh-shell bash
+
+  public-tests-plan:
+    name: Plan the public tests
+    if: ${{ !github.event.repository.private && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+      run: ${{ steps.plan.outputs.run }}
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - name: Pick the commit; a nightly skips one that already has a full run
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.event_name == 'schedule' && 'next' || github.sha }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" --jq .sha)
+          done=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-$sha" --jq '[.artifacts[] | select(.expired | not)] | length')
+          run=true
+          if [ "$EVENT" = schedule ] && [ "$done" != 0 ]; then run=false; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          # The shard list, once: the fewest shards that keep the wall under 30 min, from measured runs.
+          echo 'shards=[1, 2, 3, 4]' >> "$GITHUB_OUTPUT"
+          echo "public tests at $sha: run=$run; earlier full runs of it: $done"
+
+  public-tests-shard:
+    name: Public tests (shard ${{ matrix.group }})
+    needs: public-tests-plan
+    if: ${{ needs.public-tests-plan.outputs.run == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJSON(needs.public-tests-plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.public-tests-plan.outputs.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.11.28"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Install the locked environment
+        run: uv sync --locked --all-extras
+      - name: Build Local Web
+        run: uv run python scripts/build_local_web_ui.py --product
+      - name: Install the locked Workbench browser tooling
+        shell: bash
+        working-directory: third_party/playwright
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .browsers
+        run: |
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+          npx --no-install playwright install chromium
+      - name: Run this shard of every public test
+        # Collected at run time, never a file list: pytest-split gives a test missing from .test_durations the average.
+        run: >-
+          uv run python -m pytest tests -m "not real_evidence" -n 4
+          --splits ${{ strategy.job-total }} --group ${{ matrix.group }} --durations-path .test_durations
+          --junitxml "${{ runner.temp }}/junit.xml" --basetemp "${{ runner.temp }}/alphalattice-public-tests"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: public-tests-junit-${{ matrix.group }}
+          path: ${{ runner.temp }}/junit.xml
+          if-no-files-found: error  # a shard without its JUnit has not proved it ran
+          retention-days: 14
+
+  public-tests:
+    name: Public tests
+    needs: [public-tests-plan, public-tests-shard]
+    if: ${{ always() && needs.public-tests-plan.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.public-tests-plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: public-tests-junit-*
+          path: ${{ runner.temp }}/junit
+      - name: Total the shards and refresh the durations from their JUnit
+        run: >-
+          python3 scripts/release/test_durations.py "$RUNNER_TEMP/.test_durations" "$RUNNER_TEMP"/junit/*/junit.xml
+          --summary "$RUNNER_TEMP/public-tests.json"
+          --expect ${{ join(fromJSON(needs.public-tests-plan.outputs.shards), ' ') }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()  # this run's totals, whatever the shards did
+        with:
+          name: public-tests-summary-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/public-tests.json
+            ${{ runner.temp }}/.test_durations
+          include-hidden-files: true
+      - name: Every shard passed
+        run: test "${{ needs.public-tests-shard.result }}" = success
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        # The next nightly skips on this marker only after every shard passes; the release record reads this job.
+        if: success() && needs.public-tests-shard.result == 'success'
+        with:
+          name: public-tests-${{ needs.public-tests-plan.outputs.sha }}
+          path: ${{ runner.temp }}/public-tests.json

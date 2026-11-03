@@ -10,7 +10,7 @@
       "seconds": 5
     },
     "architecture.every_src_module_imports_offline_and_its_contracts_read_from_source": {
-      "description": "Every src module imports with the network disabled, and each pydantic contract's frozen and extra settings at runtime are the ones SC2's static holder reads from source.",
+      "description": "Every src module imports with the network disabled, and each pydantic contract's frozen and extra settings at runtime match those read from source by the static contract test.",
       "owner": "devtools.architecture",
       "layer": "integration",
       "seconds": 15
