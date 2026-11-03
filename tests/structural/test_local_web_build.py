@@ -151,6 +151,8 @@ def _test_checkout(
         key: value
         for key, value in os.environ.items()
         if not key.startswith("PYTEST_") and key != "ALPHALATTICE_PIPELINE_REQUIRED_TESTS"
+        if key != "ALPHALATTICE_REACH_FLOOR"
+        if key != "ALPHALATTICE_CHANGED_PATHS" or not os.environ.get("ALPHALATTICE_REACH_FLOOR")
     }
     env.update(
         PYTHONPATH=os.pathsep.join((str(checkout), str(ROOT / "src"))),

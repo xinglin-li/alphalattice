@@ -14,7 +14,7 @@ from typing import Any, TextIO
 
 import pytest
 
-from devtools.testing import audit, requirements
+from devtools.testing import audit, requirements, sizes
 from devtools.testing.contracts import Backends, LayerContract
 from devtools.testing.sizes import (
     _rule,
@@ -347,12 +347,17 @@ def framework_fixtures(
     return frozenset(codes)
 
 
+FLOOR_MOVED = pytest.StashKey[dict[str, Any]]()
+
+
 def _record_moved(
     config: Any,
     lane: str,
     items: list[Any],
     policy: dict[str, Any],
     changed: frozenset[str] | None,
+    *,
+    floor: bool = False,
 ) -> None:
     """Beside the run's JUnit, ``structural-moved.json``: the structural guards a commit stage
     leaves to post-merge, and whether this run ran them (a post-merge run, unscoped, always does),
@@ -362,26 +367,44 @@ def _record_moved(
     if lane != "merge" or not xml or not found:
         return
     record = {
-        "tier": "post-merge" if changed is None else "commit stage",
+        "tier": "commit stage" if floor or changed is not None else "post-merge",
         "moved": found,
         "ran": [n for n in found if changed is None or n.split("::")[0] in changed],
     }
+    if floor:
+        config.stash[FLOOR_MOVED] = record
+    else:
+        _write_moved(config, record)
+
+
+def _write_moved(config: Any, record: dict[str, Any]) -> None:
+    xml = config.option.xmlpath
     Path(xml).parent.joinpath("structural-moved.json").write_text(
         json.dumps(record, indent=1) + "\n", encoding="utf-8"
     )
     reporter = config.pluginmanager.get_plugin("terminalreporter")
     if reporter is not None:
         reporter.write_line(
-            f"STRUCTURAL-MOVED {len(found)} guards leave the commit stage for post-merge; "
-            f"this {record['tier']} run ran {len(record['ran'])} of them"
+            f"STRUCTURAL-MOVED {len(record['moved'])} guards leave the commit stage "
+            f"for post-merge; this {record['tier']} run ran {len(record['ran'])} of them"
         )
+
+
+def pytest_collection_finish(session: Any) -> None:
+    """A floor receipt names the moved guards actually kept after all collection hooks."""
+    record = session.config.stash.get(FLOOR_MOVED, None)
+    if record is not None:
+        kept = {item.nodeid.replace("\\", "/") for item in session.items}
+        record["ran"] = [node for node in record["moved"] if node in kept]
+        _write_moved(session.config, record)
 
 
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
 
     lane = os.environ.get("ALPHALATTICE_TEST_LANE", "")
-    changed = changed_paths() if lane in {"merge", "fast"} else None
+    floor = sizes.floor_mode(lane)
+    changed = changed_paths(floor=floor) if lane in {"merge", "fast"} else None
     empty = pytest.mark.skip(reason="the change holds no Python file for this per_file scan")
     python = any(path.endswith(".py") for path in changed or ())
     config.stash[CHANGED] = changed
@@ -412,7 +435,7 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             ids, row, declared, (size, owner, declaration, seconds) = _proven(item, rows, policy)
             marks.append((item.nodeid, ids, Path(item.path)))
             _properties(item, ids, row, declared, (size, owner, declaration, seconds))
-            if scoped(item.nodeid, policy, changed):
+            if scoped(item.nodeid, policy, changed, floor=floor):
                 item.add_marker("per_file")  # it reads only the changed files, through scanned()
                 if not python:
                     item.add_marker(empty)
@@ -422,7 +445,7 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
                 if forced
                 or (
                     item.nodeid.split("::", 1)[0].replace("\\", "/") in permitted
-                    and included(item.nodeid, size, lane, policy, changed)
+                    and included(item.nodeid, size, lane, policy, changed, floor=floor)
                     and not item.nodeid.startswith(deselect)
                 )
                 else omitted
@@ -430,7 +453,7 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
         gate(lane, marks, counted, root / "tests")
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error
-    _record_moved(config, lane, items, policy, changed)
+    _record_moved(config, lane, items, policy, changed, floor=floor)
     if lane or required:
         config.hook.pytest_deselected(items=omitted)
         items[:] = kept

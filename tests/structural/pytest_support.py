@@ -119,6 +119,8 @@ def pytest_checkout(tmp_path: Path, source: Path) -> tuple[Path, dict[str, str]]
         key: value
         for key, value in os.environ.items()
         if not key.startswith("PYTEST_") and key != "ALPHALATTICE_PIPELINE_REQUIRED_TESTS"
+        if key != "ALPHALATTICE_REACH_FLOOR"
+        if key != "ALPHALATTICE_CHANGED_PATHS" or not os.environ.get("ALPHALATTICE_REACH_FLOOR")
     }
     environment.update(
         PYTHONPATH=os.pathsep.join((str(source), str(source / "src"), str(source / "scripts"))),

@@ -149,6 +149,8 @@ def test_control():
             PYTEST_ADDOPTS="",
             PYTHONPATH=str(ROOT / "src"),
         )
+        if env.pop("ALPHALATTICE_REACH_FLOOR", None):
+            env.pop("ALPHALATTICE_CHANGED_PATHS", None)
         env.pop("PYTEST_DISABLE_PLUGIN_AUTOLOAD", None)
         family = source.relative_to(tmp_path).as_posix() + "::test_cost_family"
         ordinary = tmp_path / "ordinary"

@@ -521,6 +521,9 @@ def _memory_checks_read_no_host():
                 key: value
                 for key, value in os.environ.items()
                 if key != "ALPHALATTICE_PIPELINE_REQUIRED_TESTS"
+                if key != "ALPHALATTICE_REACH_FLOOR"
+                if key != "ALPHALATTICE_CHANGED_PATHS"
+                or not os.environ.get("ALPHALATTICE_REACH_FLOOR")
             },
             PYTHONPATH=os.pathsep.join([str(tmp_path), str(root / "src")]),
             ALPHALATTICE_NETWORK_DISABLED="1",
@@ -1070,6 +1073,9 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
                 key: value
                 for key, value in os.environ.items()
                 if key != "ALPHALATTICE_PIPELINE_REQUIRED_TESTS"
+                if key != "ALPHALATTICE_REACH_FLOOR"
+                if key != "ALPHALATTICE_CHANGED_PATHS"
+                or not os.environ.get("ALPHALATTICE_REACH_FLOOR")
             },
             ALPHALATTICE_NETWORK_DISABLED="1",
             PYTHONPATH=str(root / "src"),
@@ -1144,10 +1150,20 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     when its inputs change; an undeclared one leaves the commit stage unless a fence law keeps it
     or its own file changed, and post-merge and nightly run every one whole."""
     from devtools.testing.collection import CHANGED
-    from devtools.testing.sizes import changed_paths, included, load_policy, scoped, validate_policy
+    from devtools.testing.sizes import (
+        changed_paths,
+        floor_mode,
+        included,
+        load_policy,
+        scoped,
+        validate_policy,
+    )
 
-    scoped_run = os.environ.get("ALPHALATTICE_TEST_LANE") in {"merge", "fast"}  # read once
-    assert request.config.stash.get(CHANGED, None) == (changed_paths() if scoped_run else None)
+    lane = os.environ.get("ALPHALATTICE_TEST_LANE", "")
+    scoped_run = lane in {"merge", "fast"}  # read once
+    assert request.config.stash.get(CHANGED, None) == (
+        changed_paths(floor=floor_mode(lane)) if scoped_run else None
+    )
     scan, closure = "tests/structural/test_scan.py::test_a", "tests/structural/test_closure.py::t"
     reason = {"owner": "tests.structural", "reason": "declared"}
     policy = {
@@ -1171,6 +1187,30 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     assert not included(closure, "large", "merge", policy, {"src/a.py"})
     assert not included(closure, "medium", "fast", policy, changed)
     other = "tests/structural/test_other.py::t"
+    floor_change = frozenset({"src/session.py"})
+    fenced = "tests/structural/test_fenced.py::t"
+    policy["structural_fence"].append(dict(pattern=scan, law="identity", reason="kept"))
+    assert scoped(scan, policy, floor_change)
+    assert not included(closure, "medium", "merge", policy, floor_change)
+    try:
+
+        def choose(node, size="medium", changed=floor_change, rules=policy):
+            return included(node, size, "merge", rules, changed, floor=True)
+
+        floor_view = (
+            *(choose(n) for n in (scan, closure, other, fenced)),
+            choose(other, changed=floor_change | {other.split("::")[0]}),
+            choose(closure, "large", rules=policy | {"mandatory": []}),
+            choose(closure, "large"),
+            scoped(scan, policy, floor_change, floor=True),
+        )
+    except TypeError:
+        floor_view = None  # an older reader cannot honor the floor
+    assert floor_view == (True, True, False, True, True, False, True, False)
+    for damaged in ("", "M", "M\t", "R100\told\tnew", 'M\t"quoted"', "M\tbad\ufffd"):
+        listing.write_text(damaged, encoding="utf-8")
+        assert changed_paths(floor=True) is None
+    listing.write_text("M\tsrc/a.py\nA\tsrc/new.py\n", encoding="utf-8")
     assert not included(other, "medium", "merge", policy, changed)  # moved: post-merge runs it
     assert included(other, "medium", "merge", policy, changed | {"tests/structural/test_other.py"})
     assert included("tests/structural/test_fenced.py::t", "medium", "merge", policy, changed)
@@ -1179,9 +1219,10 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     )  # post-merge, unscoped: whole, catching it
     from types import SimpleNamespace
 
-    from devtools.testing.collection import _record_moved
+    from devtools.testing.collection import _record_moved, pytest_collection_finish
 
     config = SimpleNamespace(
+        stash={},
         option=SimpleNamespace(xmlpath=str(tmp_path / "junit.xml")),
         pluginmanager=SimpleNamespace(get_plugin=lambda name: None),
     )
@@ -1189,6 +1230,10 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     _record_moved(config, "merge", nodes, policy, changed)
     recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
     assert recorded == {"tier": "commit stage", "moved": [other], "ran": []}
+    _record_moved(config, "merge", nodes, policy, changed, floor=True)
+    pytest_collection_finish(SimpleNamespace(config=config, items=[nodes[0]]))
+    recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
+    assert recorded == {"tier": "commit stage", "moved": [other], "ran": [other]}
     assert included(closure, "large", "nightly", policy, None) and not scoped(scan, policy, None)
 
     from copy import deepcopy

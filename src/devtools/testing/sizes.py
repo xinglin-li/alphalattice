@@ -305,11 +305,22 @@ def classify(
     return str(size), str(rule["owner"]), str(origin), float(seconds)
 
 
-def changed_paths() -> frozenset[str] | None:
+def changed_paths(*, floor: bool = False) -> frozenset[str] | None:
     """A scoped run's changed paths from its `git diff --name-status --no-renames` listing,
     an added or deleted one also as `+path`; None outside a scoped run."""
     named = os.environ.get("ALPHALATTICE_CHANGED_PATHS")
     rows = [r.split("\t") for r in Path(named).read_text("utf-8").splitlines()] if named else []
+    if floor and (
+        not rows
+        or any(
+            len(row) != 2
+            or row[0] not in {"A", "D", "M", "T"}
+            or not row[1]
+            or any(c in '"\\\ufffd' or ord(c) < 32 for c in row[1])
+            for row in rows
+        )
+    ):
+        return None  # unmeasured floor: keep the whole run
     found = {f"+{r[-1]}" for r in rows if r[0] in {"A", "D"}} | {r[-1] for r in rows if r[0]}
     return frozenset(found) if named else None
 
@@ -324,9 +335,11 @@ def _triggered(nodeid: str, row: dict[str, Any], changed: frozenset[str]) -> boo
     return own in changed or any(fnmatchcase(p, g) for p in changed for g in row.get("inputs", ()))
 
 
-def scoped(nodeid: str, policy: dict[str, Any], changed: frozenset[str] | None) -> bool:
-    """A per_file node scans only the changed files, unless its own file or an input changed."""
-    row = reach(nodeid, policy) if changed is not None else None
+def scoped(
+    nodeid: str, policy: dict[str, Any], changed: frozenset[str] | None, *, floor: bool = False
+) -> bool:
+    """A per_file node scans changed files unless an input or the session floor changed."""
+    row = reach(nodeid, policy) if changed is not None and not floor else None
     return bool(
         row and row.get("per_file") is True and not _triggered(nodeid, row, changed or frozenset())
     )
@@ -338,6 +351,8 @@ def included(
     lane: str,
     policy: dict[str, Any],
     changed: frozenset[str] | None = None,
+    *,
+    floor: bool = False,
 ) -> bool:
     """Mandatory holders always run, except that a scoped merge run keeps a reach-declared node
     only when it is per_file or triggered, and a moved structural guard (``moved``) only when its
@@ -347,6 +362,8 @@ def included(
     if lane == "fast":
         return scoped(nodeid, policy, changed)
     if lane == "merge" and row:
+        if floor:
+            return any(fnmatchcase(nodeid, p) for p in policy["mandatory"]) or size != "large"
         return row.get("per_file") is True or _triggered(nodeid, row, changed or frozenset())
     if lane == "merge" and changed is not None and moved(nodeid, policy):
         return nodeid.replace("\\", "/").split("::")[0] in changed  # else post-merge runs it whole
@@ -665,3 +682,8 @@ def measured_costs(
     if not rows:
         raise ValueError(f"{code}: no executed timings; restore complete JUnit")
     return rows, lowered
+
+
+def floor_mode(lane: str) -> bool:
+    """The session floor affects only the merge lane; any nonempty flag keeps reach whole."""
+    return lane == "merge" and bool(os.environ.get("ALPHALATTICE_REACH_FLOOR"))
