@@ -219,7 +219,7 @@ def test_the_host_admits_a_successor_panel_only_after_its_observation_close(
 
 
 def test_the_host_refuses_a_panel_without_feature_clock_authority(
-    fresh_workspace: RealRiskWorkspace, tmp_path
+    real_risk_workspace: RealRiskWorkspace, tmp_path
 ) -> None:
     """The host refuses a panel without feature clock authority."""
 
@@ -230,10 +230,10 @@ def test_the_host_refuses_a_panel_without_feature_clock_authority(
     from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
     private = tmp_path / "legacy-shaped"
-    shutil.copytree(fresh_workspace.artifact_root, private / "artifacts")
+    shutil.copytree(real_risk_workspace.artifact_root, private / "artifacts")
     manifests = private / "artifacts" / "feature-panel" / "manifests"
     payload = json.loads(
-        (manifests / f"{fresh_workspace.panel_snapshot_hash}.json").read_text(encoding="utf-8")
+        (manifests / f"{real_risk_workspace.panel_snapshot_hash}.json").read_text(encoding="utf-8")
     )
     payload.pop("snapshot_hash")
     for entry in payload["safe_summary"]["factor_catalog_summary"].values():
@@ -250,15 +250,15 @@ def test_the_host_refuses_a_panel_without_feature_clock_authority(
         encoding="utf-8",
     )
     resolver = WorkspaceResearchAuthorityResolver(
-        workspace=fresh_workspace.workspace, artifact_root=private / "artifacts"
+        workspace=real_risk_workspace.workspace, artifact_root=private / "artifacts"
     )
     with pytest.raises(AuthoringError, match="panel_observation_clock_absent"):
-        resolver.resolve(_envelope(fresh_workspace, snapshot_handle=forged))
+        resolver.resolve(_envelope(real_risk_workspace, snapshot_handle=forged))
 
     # The same resolver admits the untouched Panel from the same private root,
     # so the refusal is about the missing clock authority and not about the copy.
-    assert resolver.resolve(_envelope(fresh_workspace)).panel_snapshot_hash == (
-        fresh_workspace.panel_snapshot_hash
+    assert resolver.resolve(_envelope(real_risk_workspace)).panel_snapshot_hash == (
+        real_risk_workspace.panel_snapshot_hash
     )
 
 
