@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import fnmatch
 import json
 import os
@@ -419,10 +420,97 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
     return not found
 
 
-def boundary_problems(blobs: dict[str, bytes], changed: set[str]) -> list[str]:
-    """The merge gate's public-closure and evaluation-layer checks, on the changed readers."""
+LEDGER = "refs/heads/public-export"
+"""The export's ledger branch: the private manifest is recorded there since it left develop
+(EXPORT-RECORDS-MIGRATE)."""
+MANIFEST_SCHEMA = "alphalattice.release.public-manifest"
+
+
+def ledger_records(root: Path) -> tuple[str, str, dict[str, bytes]] | None:
+    """The ledger's tip, its commit time and its config JSON records, or None where no ledger ref
+    exists (a public checkout). A ref that exists but cannot be read is refused by name: it could
+    hold the manifest. Read only."""
+
+    def run(*args: str) -> subprocess.CompletedProcess[bytes]:
+        try:
+            return subprocess.run(("git", *args), cwd=root, capture_output=True)
+        except OSError as error:
+            raise ValueError(
+                f"check_playpen.ledger_unreadable:{LEDGER}; restore Git before committing: {error}"
+            ) from error
+
+    exists = run("show-ref", "--exists", LEDGER)
+    if exists.returncode == 2:
+        return None
+    if exists.returncode:
+        raise ValueError(
+            f"check_playpen.ledger_unreadable:{LEDGER}; repair it (git fsck) before committing"
+        )
+    tip = run("rev-parse", "--verify", "--quiet", LEDGER + "^{commit}")
+    sha = tip.stdout.decode().strip()
+    when = run("log", "-1", "--format=%cI", sha) if sha else tip
+    names = run("ls-tree", "-r", "--name-only", sha) if sha else tip
+    if tip.returncode or not sha or when.returncode or names.returncode:
+        raise ValueError(
+            f"check_playpen.ledger_unreadable:{LEDGER}; repair it (git fsck) before committing"
+        )
+    files = {}
+    for name in names.stdout.decode().splitlines():
+        if name.startswith("config/") and name.endswith(".json"):
+            shown = run("cat-file", "blob", f"{sha}:{name}")
+            if shown.returncode:
+                raise ValueError(
+                    f"check_playpen.ledger_unreadable:{LEDGER}:{name}; repair it before committing"
+                )
+            files[name] = shown.stdout
+    return sha, when.stdout.decode().strip(), files
+
+
+def manifest_readers(
+    blobs: dict[str, bytes], ledger: tuple[str, str, dict[str, bytes]] | None = None
+) -> tuple[set[str], str]:
+    """The private manifest's public paths and where they were read, in this order: the tree's own,
+    found by its schema; else the ledger's at its tip, read as it is however old; else none, as in
+    the public tree. A manifest found but malformed, in either place, is refused by name, never
+    passed over for the next."""
+    from devtools.testing.requirements import schema_file
+
+    if held := schema_file(blobs, blobs.__getitem__, MANIFEST_SCHEMA):
+        where, document = f"the tree's {held}", json.loads(blobs[held])
+    elif ledger:
+        sha, when, files = ledger
+        held = schema_file(files, files.__getitem__, MANIFEST_SCHEMA)
+        if held is None:
+            raise ValueError(
+                f"check_playpen.ledger_manifest_missing:{LEDGER}@{sha[:9]}; "
+                "restore the ledger manifest before committing"
+            )
+        hours = (dt.datetime.now(dt.UTC) - dt.datetime.fromisoformat(when)).total_seconds()
+        where, document = f"ledger@{sha[:9]} ({hours / 3600:.1f} h old)", json.loads(files[held])
+    else:
+        return (
+            set(),
+            "none: no manifest in the tree and no ledger; readers come from the rules alone, "
+            "as in the public tree",
+        )
+    rows = document.get("public")
+    if not isinstance(rows, list) or not all(
+        isinstance(r, dict) and isinstance(r.get("path"), str) for r in rows
+    ):
+        raise ValueError(
+            f"check_playpen.manifest_malformed:{where}: its public rows need paths; "
+            "repair it before committing"
+        )
+    return {r["path"] for r in rows}, where
+
+
+def boundary_problems(
+    blobs: dict[str, bytes], changed: set[str], listed: set[str] | None = None
+) -> list[str]:
+    """The merge gate's public-closure and evaluation-layer checks, on the changed readers;
+    ``listed`` is the private manifest's public paths (`manifest_readers`), from the tree alone
+    when not given."""
     from devtools.architecture.structural import evaluation_imports
-    from devtools.testing.requirements import MANIFEST_SCHEMA, schema_file
     from release.public_closure import violations  # type: ignore[import-not-found]
     from release.public_manifest import (  # type: ignore[import-not-found]
         INTERNAL_ID_BASELINE,
@@ -440,9 +528,9 @@ def boundary_problems(blobs: dict[str, bytes], changed: set[str]) -> list[str]:
         }
 
     # Certainly public readers, possibly public targets: a guess never refuses a correct import.
-    # The private manifest adds its readers where this tree holds it; the public tree has none.
-    held = schema_file(blobs, blobs.__getitem__, MANIFEST_SCHEMA)
-    listed = {r["path"] for r in json.loads(blobs[held])["public"]} if held else set()
+    # The private manifest adds its readers where this checkout records it; a public tree has none.
+    if listed is None:
+        listed = manifest_readers(blobs)[0]
     readers = public(set()) | listed
     manifest = {"public": [{"path": p} for p in readers | public(set(blobs))], "rules": RULES}
     refs = violations(manifest, blobs, readers & changed)
@@ -472,9 +560,11 @@ def _check_boundaries(*, staged: bool) -> bool:
     blobs = {p: b for p, b in (read_tree(ROOT, "HEAD")[1] | texts).items() if b is not None}
     sys.path.insert(0, str(ROOT / "src"))
     try:
-        found = boundary_problems(blobs, {p for p, b in texts.items() if b is not None})
+        listed, read = manifest_readers(blobs, ledger_records(ROOT))
+        found = boundary_problems(blobs, {p for p, b in texts.items() if b is not None}, listed)
     finally:
         sys.path.pop(0)
+    print(f"PLAYPEN_GATE_MANIFEST {read}", flush=True)
     print("".join(f"BOUNDARY {line}\n" for line in found), end="", flush=True)
     print(f"PLAYPEN_GATE_TIMING boundaries {perf_counter() - started:.3f}s", flush=True)
     return not found

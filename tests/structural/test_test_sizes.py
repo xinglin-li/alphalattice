@@ -1390,7 +1390,7 @@ def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
         root = tmp_path / "schema-hidden"
         hidden = root / "config" / "restricted"
         hidden.mkdir(parents=True)
-        (hidden / "manifest.json").write_text(json.dumps({"schema": r.MANIFEST_SCHEMA}), "utf-8")
+        (hidden / "manifest.json").write_text(json.dumps({"schema": r.FACTS_SCHEMA}), "utf-8")
         with pytest.raises(ValueError, match="legacy_missing"):
             r.legacy(root)
         scandir = os.scandir
@@ -1472,7 +1472,7 @@ def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
         (tmp_path / ledger).unlink()
         listing = tmp_path / "config/release/listing.json"
         listing.parent.mkdir(parents=True)
-        listing.write_text(json.dumps({"schema": r.MANIFEST_SCHEMA}), "utf-8")
+        listing.write_text(json.dumps({"schema": r.FACTS_SCHEMA}), "utf-8")
         with pytest.raises(ValueError, match="legacy_missing"):  # a private checkout needs it
             r.legacy(tmp_path)
         outside = (Path("../out.json"), tmp_path / "config/x.json", Path("tests/x.json"))

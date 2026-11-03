@@ -31,7 +31,7 @@ from devtools.testing.sizes import load_policy
 
 REGISTRY = Path("config/registries/requirements.json")
 LEGACY_SCHEMA = "alphalattice.tests-unregistered.v1"  # private: it names private tests
-MANIFEST_SCHEMA = "alphalattice.release.public-manifest"  # tracked privately, never exported
+FACTS_SCHEMA = "alphalattice.agent-eval.host-facts"  # private, never exported: marks a private tree
 LAYERS = ("unit", "integration", "contract", "e2e", "native")
 SIZES = dict(unit="small", integration="medium", contract="medium", e2e="large", native="large")
 REGISTER = (
@@ -306,11 +306,11 @@ def schema_path(root: Path, schema: str) -> Path | None:
 
 def legacy(root: Path) -> dict[str, int] | None:
     """Each file's count of tests older than the registry, which only shrinks. The list is private:
-    the public export (which never holds the private release manifest) has none, and there the
-    backstop stands aside; a private checkout without it is refused by name."""
+    the public export (which never holds the private host facts) has none, and there the backstop
+    stands aside; a private checkout without it is refused by name."""
     if (path := schema_path(root, LEGACY_SCHEMA)) is not None:
         return dict(json.loads(path.read_text("utf-8"))["files"])
-    if schema_path(root, MANIFEST_SCHEMA) is None:
+    if schema_path(root, FACTS_SCHEMA) is None:
         return None
     raise ValueError(
         f"requirements.legacy_missing: no {LEGACY_SCHEMA} registry in a private checkout; "

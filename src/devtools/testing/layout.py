@@ -18,10 +18,9 @@ from .layout_references import declarations as reference_declarations
 from .layout_references import images as reference_images
 from .layout_references import provenance as reference_provenance
 from .layout_references import source_paths as reference_source_paths
-from .requirements import LAYERS, LEGACY_SCHEMA, schema_file
+from .requirements import FACTS_SCHEMA, LAYERS, LEGACY_SCHEMA, schema_file
 
 REGISTRIES = ("config/registries/test-sizes.json", "config/registries/test-private.json")  # public
-FACTS_SCHEMA = "alphalattice.agent-eval.host-facts"
 
 
 def registries(files: Mapping[str, str]) -> dict[str, str]:
