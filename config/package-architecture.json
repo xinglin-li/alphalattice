@@ -523,6 +523,7 @@
       "dependency_level": 5,
       "authority_kind": "BUILD_TIME_GUARD",
       "allowed_peer_dependencies": [
+        "playpen_governance",
         "testing"
       ],
       "artifact_writer": false,
@@ -571,8 +572,10 @@
     "alphalattice.foundation.feature_engine.panels.development_overlay": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.foundation.feature_engine.runtime.closure_genesis": "Defer this numerical or optional implementation until its owner requests it; dependencies: duckdb.",
     "alphalattice.foundation.market_data_ops.publication.session_marks": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.foundation.market_data_ops.runtime.universe_onboarding": "Load the market-data runtime only for the dated first-use calendar boundary; making this import eager added320ms in the CLI startup profile.",
     "alphalattice.foundation.research_foundation.publication.sponsorship": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
     "alphalattice.interface.local_application": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.interface.local_application.activity": "Load the activity contract only while its build-time operation checks are requested.",
     "alphalattice.interface.local_application.cli": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.interface.local_application.client": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.interface.local_application.experiment_report": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
@@ -619,11 +622,10 @@
     "alphalattice.kernel.knowledge._reranking": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
     "alphalattice.kernel.knowledge._torch": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
     "alphalattice.kernel.knowledge.model_store": "Defer this numerical or optional implementation until its owner requests it; dependencies: torch.",
+    "alphalattice.kernel.knowledge.runtime": "Shared verified-pack and numerical work handles are loaded only when the inference/retrieval owner needs them.",
     "alphalattice.kernel.live_evidence.online_sources": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
     "alphalattice.oversight.chief_risk_officer.decision.book_evidence": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
-    "alphalattice.kernel.knowledge.runtime": "Shared verified-pack and numerical work handles are loaded only when the inference/retrieval owner needs them.",
-    "alphalattice.interface.local_application.activity": "Load the activity contract only while its build-time operation checks are requested.",
-    "alphalattice.foundation.market_data_ops.runtime.universe_onboarding": "Load the market-data runtime only for the dated first-use calendar boundary; making this import eager added320ms in the CLI startup profile."
+    "devtools.architecture.git_inputs": "Read exact Git identity only when historical test evidence is requested."
   },
   "private_import_fences": {
     "alphalattice.capabilities.portfolio_inputs.tradability.surface::<module>": {

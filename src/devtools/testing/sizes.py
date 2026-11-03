@@ -3,7 +3,7 @@
 import json
 import os
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import date
 from fnmatch import fnmatchcase
 from math import isfinite
@@ -267,3 +267,296 @@ def stage_files(
         else frozenset()
     )
     return [path for path in paths if path.replace("\\", "/").split("::", 1)[0] not in post]
+
+
+def carry_cost(rows: dict[str, Any], moves: dict[str, str]) -> dict[str, Any]:
+    """Byte-identical path moves carry their measured standing through the same pairing."""
+    inverse = {old: new for new, old in moves.items()}
+    return {
+        inverse.get(n.partition("::")[0], n.partition("::")[0])
+        + n.partition("::")[1]
+        + n.partition("::")[2]: v
+        for n, v in rows.items()
+    }
+
+
+def cost_policy(
+    policy: Any, *, code: str = "test_size.cost"
+) -> tuple[float, dict[str, dict[str, float]]]:
+    """Read scalar debt without headroom, or explicit measured/cap records until contraction."""
+    if not isinstance(policy, dict):
+        raise ValueError(f"{code}: restore the configured cost policy object")
+    for option in ("record_untouched", "require_clean"):
+        if option in policy and type(policy[option]) is not bool:
+            raise ValueError(f"{code}: {option} must be a boolean; restore the cost policy")
+    rows = policy.get("slow_baseline")
+    # Old receipts have no margin; one preserves their exact scalar bound.
+    margin: Any = policy.get(
+        "cost_margin",
+        1
+        if isinstance(rows, dict) and all(type(v) in (int, float) for v in rows.values())
+        else None,
+    )
+    if (
+        type(margin) not in (int, float)
+        or not isfinite(margin)
+        or margin < 1
+        or not isinstance(rows, dict)
+    ):
+        raise ValueError(
+            f"{code}: invalid cost_margin or slow_baseline; "
+            "restore a finite margin at least 1 and measured/cap rows"
+        )
+    return float(margin), {node: _cost_row(node, row, code) for node, row in rows.items()}
+
+
+def _cost_row(node: Any, row: Any, code: str) -> dict[str, float]:
+    if type(row) in (int, float):
+        if not isfinite(row) or row <= 10:
+            raise ValueError(
+                f"{code}: invalid legacy timing {node}; "
+                "restore its measured scalar above the absolute bound"
+            )
+        row = {"measured": row, "cap": row}
+    if (
+        not isinstance(node, str)
+        or not node
+        or not isinstance(row, dict)
+        or set(row) != {"measured", "cap"}
+        or any(type(v) not in (int, float) or not isfinite(v) for v in row.values())
+        or not 0 <= row["measured"] <= row["cap"]
+    ):
+        raise ValueError(
+            f"{code}: invalid measured/cap row {node}; restore both finite measured and cap values"
+        )
+    return row
+
+
+def _solo_cost(measurement: Any, node: str, code: str) -> tuple[dict[str, Any], float, bool]:
+    if (
+        not isinstance(measurement, dict)
+        or measurement.get("node") != node
+        or type(measurement.get("solo_seconds")) not in (int, float)
+        or not isfinite(measurement["solo_seconds"])
+        or measurement["solo_seconds"] < 0
+        or type(measurement.get("clean")) is not bool
+        or (measurement.get("clean") is True and measurement.get("state") != "MEASURED")
+        or any(
+            not isinstance(measurement.get(edge), list)
+            for edge in ("other_holders_before", "other_holders_after")
+        )
+        or (
+            measurement["clean"]
+            and (
+                measurement["other_holders_before"]
+                or measurement["other_holders_after"]
+                or measurement.get("holder_errors")
+            )
+        )
+    ):
+        raise RuntimeError(f"{code}_unmeasured: {node}: restore its clean solo receipt")
+    return measurement, float(measurement["solo_seconds"]), bool(measurement["clean"])
+
+
+def _unchanged_cost(
+    node: str,
+    seconds: float,
+    bound: float,
+    original: Any,
+    policy: dict[str, Any],
+    margin: float,
+    confirm: Callable[..., Any] | None,
+    code: str,
+) -> tuple[dict[str, Any], Any]:
+    """Keep existing debt; record untouched overages only from clean solo evidence."""
+    row: dict[str, Any] = {}
+    if seconds > bound:
+        row.update(untouched_over_bound=True, bound_seconds=bound)
+    if original is not None or seconds <= bound or not policy.get("record_untouched"):
+        return row, original
+    measurement = confirm(node, bound, seconds) if confirm is not None else None
+    measurement, cost, clean = _solo_cost(measurement, node, code)
+    row.update(solo_seconds=cost, bound_seconds=bound)
+    if not clean:
+        row["unconfirmed_load"] = True
+        return row, None
+    return row, {"measured": cost, "cap": margin * cost} if cost > bound else None
+
+
+def _base_cost(
+    node: str,
+    bound: float,
+    cost: float,
+    margin: float,
+    baseline: Callable[..., Any] | None,
+    code: str,
+) -> dict[str, float]:
+    first, base_cost, clean = _solo_cost(
+        baseline(node, bound, cost) if baseline is not None else None, node, code
+    )
+    if not clean or first.get("state") != "MEASURED" or first.get("node") != node:
+        raise RuntimeError(
+            f"{code}_unmeasured: {node}: restore its matching passing base solo receipt"
+        )
+    return {"measured": base_cost, "cap": max(bound, margin * base_cost)}
+
+
+def _changed_cost(
+    measured: dict[str, Any],
+    bound: float,
+    cap: dict[str, Any] | None,
+    original: Any,
+    policy: dict[str, Any],
+    margin: float,
+    confirm: Callable[..., Any] | None,
+    baseline: Callable[..., Any] | None,
+    code: str,
+) -> tuple[dict[str, Any], Any]:
+    """Use the clean result to decide whether an existing node needs a base measurement."""
+    node, seconds = measured["node"], measured["seconds"]
+    row: dict[str, Any] = {}
+    if seconds <= bound and policy.get("require_clean") is not True:
+        return row, original if cap is not None else None
+    measurement = confirm(node, bound, seconds) if confirm is not None else None
+    measurement, cost, clean = _solo_cost(measurement, node, code)
+    row.update(solo_seconds=cost, bound_seconds=bound)
+    if not clean:
+        if policy.get("require_clean") is True:
+            raise RuntimeError(
+                f"{code}_unmeasured: {node}: repeat the solo check without competing holders"
+            )
+        row.update(
+            unconfirmed_load=True,
+            other_holders_before=measurement.get("other_holders_before"),
+            other_holders_after=measurement.get("other_holders_after"),
+        )
+        return row, original if cap is not None else None
+    seeded = cap is None and measured.get("existing") is True and cost > bound
+    if seeded:
+        original = _base_cost(node, bound, cost, margin, baseline, code)
+        cap, bound = original, original["cap"]
+        row["bound_seconds"] = bound
+    if seconds > bound:
+        row["load_observation"] = cost <= bound
+    if cost > bound:
+        raise ValueError(
+            f"{code}: {node}: {cost}s alone, bound {bound}; "
+            "share setup, split the behaviour or declare Large for post-merge"
+        )
+    if cap is None:
+        return row, None
+    if isinstance(original, dict):
+        narrowed = min(cap["cap"], margin * cost)
+        return row, original if seeded and narrowed == cap["cap"] else {
+            "measured": cost,
+            "cap": narrowed,
+        }
+    return row, cost if cost > 10 else None  # scalar writer retires with migration
+
+
+def _cost_observation(measured: Any, code: str) -> None:
+    if (
+        not isinstance(measured, dict)
+        or not isinstance(measured.get("node"), str)
+        or not measured["node"]
+        or type(measured.get("seconds")) not in (int, float)
+        or type(measured.get("large")) is not bool
+        or type(measured.get("cached", False)) is not bool
+        or measured.get("outcome") not in {"passed", "failure", "error", "skipped"}
+    ):
+        raise ValueError(f"{code}: malformed node observation; restore complete JUnit")
+    if measured["outcome"] == "skipped":
+        return
+    if measured["outcome"] != "passed":
+        raise RuntimeError(
+            f"{code}_unmeasured: {measured['node']}: failed outcomes cannot establish cost standing"
+        )
+    if not isfinite(measured["seconds"]) or measured["seconds"] < 0:
+        raise ValueError(f"{code}: {measured['node']}: invalid duration; restore complete JUnit")
+
+
+def _cost_bound(measured: dict[str, Any], cap: dict[str, Any] | None, code: str) -> float:
+    bound = (
+        cap["cap"]
+        if cap is not None
+        else measured.get("limit_seconds", 60 if measured["large"] else 10)
+    )
+    if (
+        type(bound) not in (int, float)
+        or not isfinite(bound)
+        or bound < 0
+        or (cap is None and bound == 0)
+    ):
+        raise ValueError(f"{code}: {measured['node']}: restore its declared positive size bound")
+    return float(bound)
+
+
+def _cost_selected(node: str, judged: tuple[str, ...] | None) -> bool:
+    return judged is None or any(
+        node == name
+        or node.startswith((name + "::", name + "["))
+        or (
+            not name.rpartition("/")[2].startswith("test_")
+            and node.startswith(name.rpartition("/")[0] + "/")
+        )
+        for name in judged
+    )
+
+
+def measured_costs(
+    observations: Iterable[dict[str, Any]],
+    policy: dict[str, Any],
+    *,
+    confirm: Callable[[str, float, float], dict[str, Any]] | None = None,
+    baseline: Callable[[str, float, float], dict[str, Any]] | None = None,
+    judged: Iterable[str] | None = None,
+    code: str = "test_size.cost",
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Refuse only clean solo costs; preserve caps for loaded observations in every lane."""
+    margin, caps = cost_policy(policy, code=code)
+    if judged is not None:
+        if isinstance(judged, str):
+            raise ValueError(
+                f"{code}: selected nodes must be a collection; restore the declared test selection"
+            )
+        judged = tuple(judged)
+        if not all(isinstance(node, str) and node for node in judged):
+            raise ValueError(
+                f"{code}: selected nodes must be nonempty strings; "
+                "restore the declared test selection"
+            )
+    rows: list[dict[str, Any]] = []
+    lowered: dict[str, Any] = {}
+    for measured in observations:
+        _cost_observation(measured, code)
+        if measured["outcome"] == "skipped":
+            continue
+        node, seconds, large = measured["node"], measured["seconds"], measured["large"]
+        cap, original = caps.get(node), policy["slow_baseline"].get(node)
+        bound = _cost_bound(measured, cap, code)
+        row = dict(
+            node=node,
+            seconds=seconds,
+            size=measured.get("size", "large" if large else "small" if seconds < 1 else "medium"),
+        )
+        selected = _cost_selected(node, judged)
+        if measured.get("cached", False):
+            if selected:
+                raise RuntimeError(
+                    f"{code}_unmeasured: {node}: rerun the selected node without cached timing"
+                )
+            changes, kept = {"cached": True}, original
+        elif selected:
+            changes, kept = _changed_cost(
+                measured, bound, cap, original, policy, margin, confirm, baseline, code
+            )
+        else:
+            changes, kept = _unchanged_cost(
+                node, seconds, bound, original, policy, margin, confirm, code
+            )
+        if kept is not None:
+            lowered[node] = kept
+        rows.append({**row, **changes})
+    if not rows:
+        raise ValueError(f"{code}: no executed timings; restore complete JUnit")
+    return rows, lowered

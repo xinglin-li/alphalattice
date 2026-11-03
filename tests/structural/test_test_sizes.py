@@ -465,6 +465,39 @@ def _memory_checks_read_no_host():
     [(), ("small",), ("large",), ("medium", "medium"), ("small", "large"), ("registered",)]
     + [(name,) for name in ("timeout", "bad-reason", "bad-limit", "duplicate", "owner-large")]
     + [("strict",)]
+    + [
+        pytest.param(("cost-" + case,), id="cost-" + case)
+        for case in (
+            "medium-new",
+            "medium-pass",
+            "small-new",
+            "small-pass",
+            "grown",
+            "within",
+            "untouched",
+            "loaded",
+            "bad-measurement",
+            "wrong-confirm-node",
+            "missing-confirm-node",
+            "generator",
+            "zero-debt",
+            "base-grown",
+            "base-within",
+            "missing-base",
+            "loaded-base",
+            "wrong-base",
+            "failed-confirm",
+            "failed-row",
+            "cached-row",
+            "cached-untouched",
+            "loaded-required",
+            "clean-required-under",
+            "loaded-required-under",
+            "base-clean-within",
+            "base-clean-grown",
+            "base-clean-fast",
+        )
+    ]
     + [("post_" + stage,) for stage in ("commit", "post-merge", "candidate", "nightly")]
     + [("post-kind",), ("post-structural",), ("post-repeat",)]
     + [("lane_" + lane,) for lane in ("merge", "candidate", "nightly")]
@@ -475,6 +508,198 @@ def _memory_checks_read_no_host():
 def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared):
     """Owned size declarations enforce their bounds and provenance, refusing invalid catalogs."""
     root = Path(__file__).resolve().parents[2]
+    if declared and declared[0].startswith("cost-"):
+        from devtools.testing import sizes
+
+        decide = getattr(sizes, "measured_costs", None)
+        assert callable(decide), "test_size.cost requires one shared measured decision"
+        mode = declared[0][5:]
+        if mode in {
+            "base-grown",
+            "base-within",
+            "missing-base",
+            "loaded-base",
+            "wrong-base",
+            "base-clean-within",
+            "base-clean-grown",
+            "base-clean-fast",
+        }:
+            import inspect
+
+            assert "baseline" in inspect.signature(decide).parameters
+            node = "tests/example/test_sample.py::test_one"
+            row = {
+                "node": node,
+                "seconds": 9
+                if mode in {"base-clean-within", "base-clean-grown"}
+                else 36
+                if mode == "base-within"
+                else 38,
+                "large": False,
+                "outcome": "passed",
+                "existing": True,
+                "limit_seconds": 10,
+            }
+            original = {
+                "node": "wrong" if mode == "wrong-base" else node,
+                "solo_seconds": 30,
+                "clean": mode != "loaded-base",
+                "other_holders_before": [] if mode != "loaded-base" else [{"line": "busy"}],
+                "other_holders_after": [],
+                "state": "MEASURED",
+            }
+
+            def confirm(*args):
+                return {
+                    **original,
+                    "node": node,
+                    "solo_seconds": 36
+                    if mode == "base-clean-within"
+                    else 38
+                    if mode == "base-clean-grown"
+                    else 9
+                    if mode == "base-clean-fast"
+                    else row["seconds"],
+                    "clean": True,
+                    "other_holders_before": [],
+                }
+
+            def baseline(*args):
+                assert mode != "base-clean-fast", "fast clean result needs no baseline"
+                return original
+
+            kwargs = {"confirm": confirm, "baseline": None if mode == "missing-base" else baseline}
+            policy = {
+                "cost_margin": 1.25,
+                "slow_baseline": {},
+                "require_clean": mode.startswith("base-clean-"),
+            }
+            if mode in {"base-within", "base-clean-within"}:
+                _, debt = decide([row], policy, **kwargs)
+                assert debt == {node: {"measured": 30, "cap": 37.5}}
+            elif mode == "base-clean-fast":
+                _, debt = decide([row], policy, **kwargs)
+                assert not debt
+            else:
+                with pytest.raises((ValueError, RuntimeError), match=r"test_size.cost"):
+                    decide([row], policy, **kwargs)
+            return
+        node = "tests/example/test_sample.py::test_one"
+        existing = mode in {"grown", "within", "cached-untouched"}
+        bound = 1 if mode.startswith("small-") else 10
+        seconds = {
+            "grown": 38,
+            "within": 36,
+            "untouched": 30,
+            "cached-untouched": 30,
+            "clean-required-under": 9,
+            "loaded-required-under": 9,
+            "medium-pass": 9,
+            "small-new": 1.2,
+            "small-pass": 0.9,
+        }.get(mode, 12)
+        policy = {
+            "cost_margin": 1.25,
+            "slow_baseline": {node: {"measured": 30, "cap": 37.5}} if existing else {},
+            "record_untouched": mode == "untouched",
+            "require_clean": mode
+            in {"loaded-required", "clean-required-under", "loaded-required-under"},
+        }
+        row = {
+            "node": node,
+            "seconds": seconds,
+            "large": False,
+            "size": "small" if bound == 1 else "medium",
+            "outcome": "passed",
+            "limit_seconds": bound,
+        }
+        measurement = {
+            "node": node,
+            "solo_seconds": seconds,
+            "clean": mode not in {"loaded", "loaded-required", "loaded-required-under"},
+            "other_holders_before": []
+            if mode not in {"loaded", "loaded-required", "loaded-required-under"}
+            else [{"line": "busy"}],
+            "other_holders_after": [],
+            "state": "MEASURED",
+        }
+        if mode == "bad-measurement":
+            measurement["solo_seconds"] = float("nan")
+        if mode in {"wrong-confirm-node", "missing-confirm-node"}:
+            measurement["solo_seconds"] = 0.5
+            if mode == "wrong-confirm-node":
+                measurement["node"] = node + "_other"
+            else:
+                measurement.pop("node")
+        if mode == "failed-confirm":
+            measurement.update(solo_seconds=9, state="FAIL")
+        if mode == "failed-row":
+            row.update(seconds=9, outcome="failure")
+        if mode == "cached-row":
+            row.update(seconds=9, cached=True)
+        if mode == "cached-untouched":
+            row["cached"] = True
+
+        def confirm(*args):
+            return {**measurement, "node": args[0]} if mode == "generator" else measurement
+
+        if mode == "generator":
+            other = node.replace("test_one", "test_two")
+            with pytest.raises(ValueError, match=r"test_size.cost"):
+                decide(
+                    [{**row, "seconds": 9}, {**row, "node": other}],
+                    policy,
+                    confirm=confirm,
+                    judged=(n for n in (other, node)),
+                )
+            return
+        if mode == "zero-debt":
+            policy["slow_baseline"] = {node: {"measured": 0, "cap": 0}}
+            try:
+                result, debt = decide([{**row, "seconds": 0}], policy)
+            except ValueError:
+                result, debt = None, {}
+            assert result is not None and debt == policy["slow_baseline"]
+            return
+        if mode in {"wrong-confirm-node", "missing-confirm-node"}:
+            refused = False
+            try:
+                decide([row], policy, confirm=confirm)
+            except (ValueError, RuntimeError) as error:
+                assert "test_size.cost" in str(error)
+                refused = True
+            assert refused, "a different or missing solo node cannot establish cost standing"
+            return
+        if mode in {
+            "medium-new",
+            "small-new",
+            "grown",
+            "bad-measurement",
+            "failed-confirm",
+            "failed-row",
+            "cached-row",
+            "loaded-required",
+            "loaded-required-under",
+        }:
+            with pytest.raises((ValueError, RuntimeError), match=r"test_size.cost"):
+                decide([row], policy, confirm=confirm)
+        else:
+            result, debt = decide(
+                [row],
+                policy,
+                confirm=confirm,
+                judged=set() if mode in {"untouched", "cached-untouched"} else None,
+            )
+            assert result[0]["size"] == row["size"]
+            if mode == "untouched":
+                assert debt == {node: {"measured": 30, "cap": 37.5}}
+            if mode == "loaded":
+                assert result[0]["unconfirmed_load"] and not debt
+            if mode == "cached-untouched":
+                assert result[0]["cached"] and debt == policy["slow_baseline"]
+            if mode == "clean-required-under":
+                assert result[0].get("solo_seconds") == 9
+        return
     if declared and declared[0].startswith("backend-"):
         from devtools.testing.sizes import validate_policy
 

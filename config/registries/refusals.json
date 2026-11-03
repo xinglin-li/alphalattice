@@ -1,5 +1,8 @@
 {
 "entries": {
+"test_size.cost": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION"},
+"test_size.cost_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE"},
+"pipeline.receipt_cost_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE"},
 "host_facts.fake_source_missing": {"owner": "devtools.evaluation", "category": "FAILED_PRECONDITION"},
 "test_layout.registry_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "test_size.framework_fixtures_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},

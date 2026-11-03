@@ -15,8 +15,9 @@ import json
 import operator
 import os
 import re
+import subprocess
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from math import inf
 from pathlib import Path
@@ -151,6 +152,8 @@ class Configuration(_Strict):
     providers: dict[str, Text]
     workers: Annotated[int, Field(ge=1)]
     bound_seconds: Annotated[float, Field(gt=0)]
+    lock_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    lane: Literal["merge", "candidate", "nightly"] | None = None
 
 
 class Step(_Strict):
@@ -203,6 +206,35 @@ class CacheDecision(_Strict):
     expected: dict[str, Literal["PASSED", "SKIPPED"]]
 
 
+class CostEvidence(_Strict):
+    """A cost observation and its original identity; inherited is never a fresh measurement."""
+
+    measured: Seconds
+    cap: Seconds
+    source_head: Sha
+    source_node: Text
+    lane: Text
+    lock_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    provenance: Literal["fresh", "inherited"]
+    source_receipt_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    clean: Literal[True]
+    other_holders_before: list[Any]
+    other_holders_after: list[Any]
+
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    def _cost_shape(self) -> CostEvidence:
+        if (
+            self.measured > self.cap
+            or self.other_holders_before
+            or self.other_holders_after
+            or (self.provenance == "inherited") != bool(self.source_receipt_sha256)
+        ):
+            raise PydanticCustomError(
+                "receipt_malformed", "cost needs a finite cap and an uncontended observation"
+            )
+        return self
+
+
 class TestResult(_Strict):
     node: Text
     attempt: Annotated[int, Field(ge=1)]
@@ -218,6 +250,7 @@ class TestResult(_Strict):
     requirement_owner: str | None = None
     class_: str | None = Field(None, alias="class")
     cached_from: CacheOrigin | None = None
+    cost_evidence: CostEvidence | None = Field(default=None, exclude_if=lambda value: value is None)
     phase: str | None = None
     failure: dict[str, str] | None = None
 
@@ -306,6 +339,7 @@ class Receipt(_Strict):
             ):
                 raise PydanticCustomError("receipt_malformed", "a result's id and attempt disagree")
         results = [e.test_result for e in events if "test_result" in e.id]
+        _cost_consistent(events, results)
         caches = [e.cache for e in events if "cache" in e.id]
         _cache_consistent(caches, results)
         red = classed([e.test_result.model_dump() for e in events if "test_result" in e.id])[0]
@@ -318,6 +352,38 @@ class Receipt(_Strict):
         ):
             raise PydanticCustomError("receipt_inconsistent", "its result denies its parts")
         return self
+
+
+def _fresh_cost_matches(
+    result: TestResult, workspace: Workspace, configuration: Configuration
+) -> bool:
+    cost = result.cost_evidence
+    assert cost is not None
+    return bool(
+        (result.solo or configuration.workers == 1)
+        and result.cached_from is None
+        and workspace.clean
+        and cost.source_head == workspace.head
+        and cost.source_node == result.node
+        and cost.measured == result.seconds
+        and cost.lock_sha256 == configuration.lock_sha256
+        and cost.lane == configuration.lane
+    )
+
+
+def _cost_consistent(events: Sequence[Any], results: Sequence[TestResult]) -> None:
+    workspace = next(e.workspace for e in events if "workspace" in e.id)
+    configuration = next(e.configuration for e in events if "configuration" in e.id)
+    for result in results:
+        cost = result.cost_evidence
+        if cost is None:
+            continue
+        if result.status != "PASSED" or (
+            cost.provenance == "fresh" and not _fresh_cost_matches(result, workspace, configuration)
+        ):
+            raise PydanticCustomError(
+                "receipt_malformed", "cost source does not match a passing clean solo result"
+            )
 
 
 def _cache_consistent(caches: Sequence[CacheDecision], results: Sequence[TestResult]) -> None:
@@ -373,6 +439,10 @@ def verify(
     passing: bool = False,
     required_tests: Sequence[str] = (),
     within_limits: bool = False,
+    cost_standing: bool = False,
+    cost_nodes: Sequence[str] = (),
+    cost_sources: Mapping[str, Path] | None = None,
+    cost_root: Path | None = None,
 ) -> dict[str, Any]:
     """The receipt's summary, refused unless it is whole, consistent and what the reader asks."""
     data, events = read(path)
@@ -391,7 +461,152 @@ def verify(
             f"{path}: its {wrong[0]} is {summary[wrong[0]]!r}, not {asked[wrong[0]]!r}",
         )
     _verify_tests(events, required_tests, within_limits)
+    if _cost_requested(cost_standing, cost_nodes):
+        summary["cost_standing"] = _cost_standing(events, cost_nodes, cost_sources, cost_root)
     return summary
+
+
+def _cost_requested(flag: bool, nodes: Sequence[str]) -> bool:
+    if (
+        type(flag) is not bool
+        or not isinstance(nodes, (tuple, list))
+        or any(not isinstance(n, str) or "::" not in n for n in nodes)
+        or len(set(nodes)) != len(nodes)
+    ):
+        raise ReceiptError("pipeline.receipt_cost_unmeasured", "name distinct exact cost nodes")
+    return bool(flag or nodes)
+
+
+def _read_cost_source(
+    node: str, digest: str, supplied: Mapping[str, Path] | None
+) -> tuple[str, str, dict[str, Any]]:
+    if not isinstance(supplied, Mapping) or digest not in supplied:
+        raise ReceiptError(
+            "pipeline.receipt_cost_unmeasured", f"{node}: restore the source receipt {digest}"
+        )
+    try:
+        data, events = read(Path(supplied[digest]))
+    except (ReceiptError, TypeError, ValueError) as error:
+        raise ReceiptError(
+            "pipeline.receipt_cost_unmeasured", f"{node}: restore its source receipt: {error}"
+        ) from None
+    if hashlib.sha256(data).hexdigest() != digest:
+        raise ReceiptError(
+            "pipeline.receipt_cost_unmeasured", f"{node}: source receipt digest differs"
+        )
+    workspace = next(e.workspace for e in events if "workspace" in e.id)
+    if events[-1].finished.result != "PASS":
+        raise ReceiptError(
+            "pipeline.receipt_cost_unmeasured", f"{node}: source receipt did not pass"
+        )
+    rows = [e.test_result for e in events if "test_result" in e.id]
+    return (
+        workspace.head,
+        workspace.repo,
+        {r.node: r for r in sorted(rows, key=lambda r: r.attempt)},
+    )
+
+
+def _cost_source_matches(
+    cost: dict[str, Any], head: str, repo: str, results: dict[str, Any]
+) -> bool:
+    original = results.get(cost["source_node"])
+    evidence = original.cost_evidence if original else None
+    return bool(
+        repo == "product"
+        and head == cost["source_head"]
+        and evidence is not None
+        and evidence.provenance == "fresh"
+        and evidence.source_head == cost["source_head"]
+        and evidence.source_node == cost["source_node"]
+        and evidence.lane == cost["lane"]
+        and evidence.lock_sha256 == cost["lock_sha256"]
+        and evidence.measured == cost["measured"]
+        and cost["cap"] <= evidence.cap
+    )
+
+
+def _cost_standing(
+    events: Sequence[Any],
+    nodes: Sequence[str],
+    supplied: Mapping[str, Path] | None,
+    root: Path | None,
+) -> dict[str, Any]:
+    if events[-1].finished.result != "PASS":
+        raise ReceiptError(
+            "pipeline.receipt_cost_unmeasured", "cost standing needs a passing receipt"
+        )
+    results = [e.test_result for e in events if "test_result" in e.id]
+    latest = {r.node: r for r in sorted(results, key=lambda r: r.attempt)}
+    standing = {
+        node: result.cost_evidence.model_dump(mode="json")
+        for node, result in latest.items()
+        if result.cost_evidence is not None and (not nodes or node in nodes)
+    }
+    if not standing:
+        raise ReceiptError(
+            "pipeline.receipt_cost_unmeasured", "receipt has no measured cost standing"
+        )
+    if missing := set(nodes) - standing.keys():
+        raise ReceiptError(
+            "pipeline.receipt_cost_unmeasured",
+            f"missing cost evidence for {sorted(missing)!r}; restore its clean source",
+        )
+    sources: dict[str, tuple[str, str, dict[str, Any]]] = {}
+    identities: dict[tuple[str, str], Any] = {}
+    workspace = next(e.workspace for e in events if "workspace" in e.id)
+    configuration = next(e.configuration for e in events if "configuration" in e.id)
+    for node, cost in standing.items():
+        if cost["provenance"] == "inherited":
+            _verify_inherited_cost(
+                node, cost, workspace, configuration, root, supplied, sources, identities
+            )
+    return standing
+
+
+def _verify_inherited_cost(
+    node: str,
+    cost: dict[str, Any],
+    workspace: Workspace,
+    configuration: Configuration,
+    root: Path | None,
+    supplied: Mapping[str, Path] | None,
+    sources: dict[str, tuple[str, str, dict[str, Any]]],
+    identities: dict[tuple[str, str], Any],
+) -> None:
+    """Bind a source receipt to this target's exact node, Git history, lane and lock."""
+    digest = cost["source_receipt_sha256"]
+    if digest not in sources:
+        sources[digest] = _read_cost_source(node, digest, supplied)
+    if (
+        not _cost_source_matches(cost, *sources[digest])
+        or not workspace.clean
+        or workspace.repo != "product"
+        or configuration.lane != cost["lane"]
+        or configuration.lock_sha256 != cost["lock_sha256"]
+    ):
+        raise ReceiptError(
+            "pipeline.receipt_cost_unmeasured",
+            f"{node}: source, target lane, lock or workspace does not match",
+        )
+    if not isinstance(root, Path):
+        raise ReceiptError(
+            "pipeline.receipt_cost_unmeasured",
+            f"{node}: provide the Git checkout holding the source and target commits",
+        )
+    try:
+        from devtools.architecture.git_inputs import CostIdentity  # lazy: cost-only Git proof
+
+        key = (cost["source_head"], workspace.head)
+        if key not in identities:
+            identities[key] = CostIdentity(root, *key)
+        if not identities[key].matches(cost["source_node"], node):
+            raise ValueError("target node is not the same node or a unique identical move")
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        raise ReceiptError(
+            "pipeline.receipt_cost_unmeasured",
+            f"{node}: restore matching source and target Git identity: {error}",
+        ) from None
 
 
 def _verify_tests(

@@ -702,6 +702,8 @@ def test_the_runner_records_checks_and_reuses_one_verified_group(tmp_path, monke
             ("tests/test_sample.py",), "-m", "not real_evidence", capture=True, reuse=owner
         )
         assert result.code == 0, result.stdout + result.stderr
+        if mode == "on" and number == 2:
+            assert owner.results and all("cost_evidence" not in row for row in owner.results)
         return owner.decisions
 
     first, second = run(1), run(2)

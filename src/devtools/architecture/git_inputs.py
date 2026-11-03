@@ -42,14 +42,20 @@ Moves = dict[str, str]  # a staged new path to the deleted path it moved from
 
 
 def staged_changes(
-    root: Path | None = None, *, tree: str | None = None
+    root: Path | None = None,
+    *,
+    tree: str | None = None,
+    base: str | None = None,
+    timeout: float | None = None,
 ) -> list[tuple[list[str], str]]:
     """One raw diff supplies both changed paths and exact move blobs."""
+    if base is not None and tree is None:
+        raise ValueError("a base revision needs a target tree")
     rows = subprocess.run(
         [
             "git",
             "diff",
-            *(["HEAD", tree] if tree else ["--cached"]),
+            *([base or "HEAD", tree] if tree else ["--cached"]),
             "--raw",
             "-z",
             "--no-renames",
@@ -60,6 +66,7 @@ def staged_changes(
         text=True,
         encoding="utf-8",
         check=True,
+        timeout=timeout,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     ).stdout.split("\0")
     return [(meta.split(), path) for meta, path in zip(rows[::2], rows[1::2], strict=False)]
@@ -72,6 +79,78 @@ def staged_moves(
     pairs = staged_changes(root) if pairs is None else pairs
     gone = {meta[2]: path for meta, path in pairs if meta[4] == "D"}
     return {path: gone[meta[3]] for meta, path in pairs if meta[4] == "A" and meta[3] in gone}
+
+
+class CostIdentity:
+    """Immutable test-file identity and unique exact moves between two ancestor revisions."""
+
+    def __init__(self, root: Path, source: str, target: str) -> None:
+        if not isinstance(root, Path) or any(
+            not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha)
+            for sha in (source, target)
+        ):
+            raise ValueError("cost identity needs a Git root and two exact commit SHAs")
+        ancestry = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", source, target],
+            cwd=root,
+            capture_output=True,
+            timeout=60,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if ancestry.returncode == 1:
+            raise ValueError("cost source head is not an ancestor of the target")
+        if ancestry.returncode:
+            raise ValueError("cost ancestry is unavailable; restore the source and target commits")
+        self.source = self._files(root, source)
+        self.target = self._files(root, target)
+        pairs = staged_changes(root, tree=target, base=source, timeout=60)
+        removed: dict[tuple[str, str], list[str]] = {}
+        added: dict[tuple[str, str], list[str]] = {}
+        for meta, path in pairs:
+            if len(meta) != 5:
+                raise ValueError("cost move diff is malformed")
+            if meta[4] == "D" and path in self.source:
+                removed.setdefault(self.source[path], []).append(path)
+            elif meta[4] == "A" and path in self.target:
+                added.setdefault(self.target[path], []).append(path)
+        self.moves = {
+            old[0]: added[key][0]
+            for key, old in removed.items()
+            if len(old) == 1 and len(added.get(key, [])) == 1
+        }
+
+    @staticmethod
+    def _files(root: Path, revision: str) -> dict[str, tuple[str, str]]:
+        raw = subprocess.run(
+            ["git", "ls-tree", "-r", "-z", "--full-tree", revision, "--", "tests/"],
+            cwd=root,
+            capture_output=True,
+            check=True,
+            timeout=60,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout
+        found: dict[str, tuple[str, str]] = {}
+        for entry in raw.split(b"\0"):
+            if not entry:
+                continue
+            meta, path = entry.split(b"\t", 1)
+            mode, kind, blob = meta.decode("ascii").split()
+            name = path.decode("utf-8", errors="surrogateescape")
+            if kind == "blob" and mode in {"100644", "100755"}:
+                found[name] = (mode, blob)
+        return found
+
+    def matches(self, source_node: str, target_node: str) -> bool:
+        """Match literal node suffixes and real regular files; moves must be one-to-one."""
+        if not isinstance(source_node, str) or not isinstance(target_node, str):
+            return False
+        old, sep, suffix = source_node.partition("::")
+        new, target_sep, target_suffix = target_node.partition("::")
+        if not sep or not target_sep or not suffix or suffix != target_suffix:
+            return False
+        if old not in self.source or new not in self.target:
+            return False
+        return old == new or self.moves.get(old) == new
 
 
 def carried(keys: Iterable[str], moves: Moves) -> set[str]:
