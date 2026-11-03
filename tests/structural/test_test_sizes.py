@@ -470,6 +470,8 @@ def _memory_checks_read_no_host():
         for case in (
             "medium-new",
             "medium-pass",
+            "skipped-selected",
+            "skipped-untouched",
             "small-new",
             "small-pass",
             "grown",
@@ -643,6 +645,22 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, declared
         def confirm(*args):
             return {**measurement, "node": args[0]} if mode == "generator" else measurement
 
+        if mode in {"skipped-selected", "skipped-untouched"}:
+            policy["require_clean"] = True
+            other = node.replace("test_one", "test_two")
+            rows = [{**row, "outcome": "skipped"}, {**row, "node": other, "seconds": 9}]
+            if mode == "skipped-selected":
+                with pytest.raises(RuntimeError, match="cost_unmeasured"):
+                    decide(rows, policy, confirm=confirm, judged={node})
+            else:
+                accepted, debt = decide(
+                    rows,
+                    policy,
+                    confirm=lambda *args: {**measurement, "node": args[0], "solo_seconds": 9},
+                    judged={other},
+                )
+                assert [item["node"] for item in accepted] == [other] and not debt
+            return
         if mode == "generator":
             other = node.replace("test_one", "test_two")
             with pytest.raises(ValueError, match=r"test_size.cost"):

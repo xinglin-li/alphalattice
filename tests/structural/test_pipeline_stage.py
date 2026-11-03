@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -32,6 +33,8 @@ CASES = {  # host, plugin bodies, the providers or the refusal's code
     "cost receipt": ("public", [], {"ok": "product", "local": "skipped", "job": "ci.yml:w"}),
     "a workshop row with no plugin": ("workshop", [], "row_unprovided"),
     "a plugin's row": ("workshop", [SHOP], {"local": "shop0", "job": "skipped"}),
+    "cost identity": ("workshop", [SHOP], {"local": "shop0", "job": "skipped"}),
+    "cost lock missing": ("workshop", [SHOP], "receipt_cost_unmeasured"),
     "two plugins for a row": ("workshop", [SHOP, SHOP], "row_provided_twice"),
     "a plugin for no row": ("workshop", [SHOP.replace('"local"', '"spare"')], "row_unregistered"),
     "a plugin with no PROVIDES": ("workshop", ["X = 1"], "plugin_unloadable"),
@@ -52,9 +55,12 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         shutil.copy(ROOT / "config/registries" / name, tmp_path / "config/registries" / name)
     config = tmp_path / "config/pipeline.toml"
     config.write_text(DEFINITION, "utf-8")
+    (tmp_path / "uv.lock").write_text("locked-test-environment\n", encoding="utf-8")
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(tmp_path)]
     for words in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "c"]):
         subprocess.run([*git, *words], check=True)
+    if case == "cost lock missing":
+        (tmp_path / "uv.lock").unlink()
     paths = [tmp_path / f"shop{i}.py" for i in range(len(bodies))]
     for path, body in zip(paths, bodies, strict=True):
         path.write_text(body, "utf-8")
@@ -66,6 +72,14 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         lines = (out / "receipt.jsonl").read_text("utf-8")
         assert all(f'"{row}": "{provider}"' in lines for row, provider in wanted.items())
         assert receipt.verify(out / "receipt.jsonl", host=host)["sha256"] == summary["sha256"]
+        if case == "cost identity":
+            _, events = receipt.read(out / "receipt.jsonl")
+            identity = next(event.configuration for event in events if "configuration" in event.id)
+            assert identity.lane == "merge"
+            assert (
+                identity.lock_sha256
+                == hashlib.sha256((tmp_path / "uv.lock").read_bytes()).hexdigest()
+            )
         assert not bodies or (out / "base").read_text("utf-8") == summary["base"]  # the merge base
         assert not bodies or (out / "stage").read_text("utf-8") == "commit"
         stage.run(tmp_path, "commit", out=out, **asked)

@@ -10,6 +10,7 @@ refused before anything runs. Every row runs, so a receipt names every red at on
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import json
 import os
@@ -141,6 +142,21 @@ def run(
     except ValueError as error:
         raise DefinitionError("pipeline.stage_invalid", str(error)) from None
     workspace = _workspace(root, base, required)
+    cost_configuration: dict[str, str] = {}
+    if name == "commit" and host == "workshop":
+        lock = root / "uv.lock"
+        try:
+            if lock.is_symlink() or not lock.is_file():
+                raise OSError("the lock is missing or not a regular file")
+            cost_configuration = {
+                "lane": "merge",
+                "lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
+            }
+        except OSError as error:
+            raise DefinitionError(
+                "pipeline.receipt_cost_unmeasured",
+                f"{lock}: restore the readable locked environment: {error}",
+            ) from None
     if required and name != "commit":
         raise DefinitionError("pipeline.stage_invalid", "required cost checks belong to commit")
     (out / "logs").mkdir(parents=True, exist_ok=True)
@@ -157,6 +173,7 @@ def run(
     writer.write({"workspace": {}}, workspace)
     configuration: dict[str, Any] = {"definition": PATH, "definition_sha256": definition.sha256}
     configuration |= {"rows": list(stage.rows), "providers": providers, "workers": workers}
+    configuration |= cost_configuration
     stop = stage.bound_minutes * 60
     writer.write({"configuration": {}}, configuration | {"bound_seconds": stop})
     deadline = started + stop

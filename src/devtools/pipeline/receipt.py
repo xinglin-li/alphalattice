@@ -53,6 +53,19 @@ class ReceiptError(DefinitionError):
     """A receipt that does not verify: its code, then what is missing or different."""
 
 
+def read_test_events(path: Path) -> list[dict[str, Any]]:
+    """Read the event stream once through the receipt owner, refusing unreadable rows by name."""
+    try:
+        rows = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+        if any(not isinstance(row, dict) for row in rows):
+            raise ValueError("an event is not an object")
+    except (OSError, UnicodeError, ValueError) as error:
+        raise ReceiptError(
+            "pipeline.receipt_unreadable", f"{path}: restore the test event stream: {error}"
+        ) from None
+    return rows
+
+
 class Writer:
     """One stage run's receipt, written event by event; a stage run never overwrites one."""
 
@@ -82,7 +95,7 @@ class Writer:
     def tests(self, row: str, step: dict[str, Any], events: Path) -> list[str]:
         """The tests step, which announces each node's result and size summary, then writes them;
         a red that passed alone carries its class; it returns the nodes ``classed`` holds red."""
-        raw = [json.loads(line) for line in events.read_text("utf-8").splitlines()]
+        raw = read_test_events(events)
         decisions = [r["cache"] for r in raw if "cache" in r]
         results = [r for r in raw if "cache" not in r]
         red, classes = classed(results)
@@ -495,6 +508,7 @@ def verify(
     required_tests: Sequence[str] = (),
     within_limits: bool = False,
     cost_standing: bool = False,
+    cost_if_present: bool = False,
     cost_nodes: Sequence[str] = (),
     cost_sources: Mapping[str, Path] | None = None,
     cost_root: Path | None = None,
@@ -516,7 +530,10 @@ def verify(
             f"{path}: its {wrong[0]} is {summary[wrong[0]]!r}, not {asked[wrong[0]]!r}",
         )
     _verify_tests(events, required_tests, within_limits)
-    if _cost_requested(cost_standing, cost_nodes):
+    if type(cost_if_present) is not bool:
+        raise ReceiptError("pipeline.receipt_cost_unmeasured", "cost-if-present must be a boolean")
+    present = any(e.test_result.cost_evidence is not None for e in events if "test_result" in e.id)
+    if _cost_requested(cost_standing, cost_nodes) or (cost_if_present and present):
         summary["cost_standing"] = _cost_standing(events, cost_nodes, cost_sources, cost_root)
     return summary
 
@@ -699,6 +716,7 @@ class _Events:
 
     def __init__(self, stream: TextIO) -> None:
         self.stream, self.open = stream, dict[str, dict[str, Any]]()
+        self.phases: dict[str, dict[str, float]] = {}
 
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
         empty = {
@@ -710,6 +728,8 @@ class _Events:
         }
         node = self.open.setdefault(report.nodeid, empty)
         node["seconds"] += report.duration
+        if report.when in {"setup", "call", "teardown"}:
+            self.phases.setdefault(report.nodeid, {})[report.when] = report.duration
         if report.failed and node["status"] == "PASSED":
             status = "FAILED" if report.when == "call" else "ERROR"
             node.update(status=status, phase=report.when, failure=_failure(report))
@@ -717,7 +737,23 @@ class _Events:
             node["status"] = "SKIPPED"
         if report.when not in ("setup", "call"):  # its teardown, or a crashed worker's "???"
             found = dict(report.user_properties)
-            node["seconds"] = found.get("unit_own_seconds", node["seconds"])
+            phases = self.phases.pop(report.nodeid, {})
+            complete = set(phases) == {"setup", "call", "teardown"} and all(
+                type(value) in (int, float) and isfinite(value) and value >= 0
+                for value in phases.values()
+            )
+            if complete:
+                node["seconds"] = found.get("unit_own_seconds", sum(phases.values()))
+            elif node["status"] == "PASSED":
+                node.update(
+                    status="ERROR",
+                    phase="incomplete",
+                    failure={
+                        "type": "Incomplete",
+                        "message": "own test phases are incomplete or invalid",
+                        "signature": "",
+                    },
+                )
             node.update(size=found.get("test_size"), owner=found.get("test_size_owner"))
             node.update({key: found.get(key) for key in ("requirement_layer", "requirement_owner")})
             node.update(requirements=found.get("requirements", []), **{"class": None})

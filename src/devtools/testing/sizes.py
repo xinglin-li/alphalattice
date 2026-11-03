@@ -541,6 +541,11 @@ def measured_costs(
     for measured in observations:
         _cost_observation(measured, code)
         if measured["outcome"] == "skipped":
+            if policy.get("require_clean") is True and _cost_selected(measured["node"], judged):
+                raise RuntimeError(
+                    f"{code}_unmeasured: {measured['node']}: "
+                    "run the selected test before deciding its cost"
+                )
             continue
         node, seconds, large = measured["node"], measured["seconds"], measured["large"]
         cap, original = caps.get(node), policy["slow_baseline"].get(node)

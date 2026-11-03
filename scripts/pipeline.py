@@ -10,6 +10,7 @@ receipts it is given.
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -71,6 +72,28 @@ def main(argv: list[str] | None = None) -> int:
         "--required-tests", nargs="+", default=[], help="passing nodes or families"
     )
     checking.add_argument("--within-limits", action="store_true", help="require bounded test times")
+    checking.add_argument(
+        "--cost-standing", action="store_true", help="require verified measured cost standing"
+    )
+    checking.add_argument(
+        "--cost-if-present",
+        action="store_true",
+        help="verify cost standing when the receipt carries it",
+    )
+    checking.add_argument(
+        "--cost-nodes", nargs="+", default=[], help="require standing for these exact nodes"
+    )
+    checking.add_argument(
+        "--cost-root", type=Path, help="Git checkout holding source and target commits"
+    )
+    checking.add_argument(
+        "--cost-source",
+        nargs=2,
+        action="append",
+        default=[],
+        metavar=("SHA256", "PATH"),
+        help="digest and retained source receipt, repeat for distinct sources",
+    )
     health = commands.add_parser("health", help="the day's test-health report as JSON")
     health.add_argument("receipts", type=Path, nargs="*", help="commit-stage receipts")
     args = parser.parse_args(argv)
@@ -97,6 +120,17 @@ def main(argv: list[str] | None = None) -> int:
             asked = vars(args).copy()
             path = asked.pop("receipt")
             asked.pop("command")
+            pairs = asked.pop("cost_source")
+            if pairs and not (
+                asked["cost_standing"] or asked["cost_if_present"] or asked["cost_nodes"]
+            ):
+                raise ValueError("cost sources require a cost standing request")
+            sources = {}
+            for digest, source in pairs:
+                if not re.fullmatch(r"[0-9a-f]{64}", digest) or digest in sources:
+                    raise ValueError("cost source digest is malformed or duplicate")
+                sources[digest] = Path(source)
+            asked["cost_sources"] = sources or None
             print(json.dumps(verify(path, **asked), indent=2))
         elif args.command == "health":
             print(json.dumps(report(ROOT, args.receipts, date.today()), indent=2))

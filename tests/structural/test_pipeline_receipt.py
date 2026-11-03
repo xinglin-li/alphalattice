@@ -1,11 +1,15 @@
 import contextlib
 import json
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from scripts import pipeline as cli
 
 from devtools.pipeline import receipt
+
+ROOT = Path(__file__).resolve().parents[2]
 
 HEAD = "a" * 40
 RESULT = {"node": "t::alpha[x::y]", "attempt": 1, "solo": False, "status": "PASSED", "seconds": 1}
@@ -134,6 +138,7 @@ for _cost_case in (
 
 for _case in (
     "binding same",
+    "binding cli",
     "binding move",
     "binding wrong-node",
     "binding wrong-lane",
@@ -420,11 +425,37 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeyp
                 source_receipt.read_bytes() == original_source
                 and target_receipt.read_bytes() == original_target
             )
-        elif case in {"binding same", "binding move"}:
+        elif case in {"binding same", "binding move", "binding cli"}:
             assert (
                 receipt.verify(target_receipt, **args)["cost_standing"][target_node]["source_node"]
                 == old_node
             )
+            if case == "binding cli":
+                command = [
+                    sys.executable,
+                    str(ROOT / "scripts/pipeline.py"),
+                    "verify",
+                    str(target_receipt),
+                    "--cost-standing",
+                    "--cost-root",
+                    str(repo),
+                    "--cost-source",
+                    digest,
+                    str(source_receipt),
+                ]
+                completed = subprocess.run(command, capture_output=True, text=True, timeout=30)
+                assert completed.returncode == 0, completed.stderr
+                assert (
+                    json.loads(completed.stdout)["cost_standing"][target_node]["source_node"]
+                    == old_node
+                )
+                duplicate = subprocess.run(
+                    [*command, "--cost-source", digest, str(source_receipt)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                assert duplicate.returncode != 0 and "duplicate" in duplicate.stderr.lower()
         elif case == "binding source-mutations":
             original = target_receipt.read_text("utf-8")
             for field, value in (
@@ -580,6 +611,9 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeyp
             raise
         assert found["head"] == HEAD
         if case == "complete":
+            assert receipt.verify(path, cost_if_present=True) == found
+            assert cli.main(["verify", str(path), "--cost-if-present"]) == 0
+            assert json.loads(capsys.readouterr().out) == found
             with pytest.raises(receipt.ReceiptError, match="receipt_cost_unmeasured"):
                 receipt.verify(path, cost_standing=True)
             try:
@@ -599,6 +633,13 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeyp
                 pytest.fail("a failed receipt cannot seed cost standing")
         if case in {"cost fresh", "cost inherited", "cost first-clean"}:
             assert "cost_standing" not in found
+            if case != "cost inherited":
+                assert (
+                    receipt.verify(path, cost_if_present=True)["cost_standing"][RESULT["node"]][
+                        "cap"
+                    ]
+                    == 1.25
+                )
             if case == "cost inherited":
                 with pytest.raises(receipt.ReceiptError, match="receipt_cost_unmeasured"):
                     receipt.verify(path, cost_standing=True)
@@ -641,16 +682,37 @@ def test_the_plugin_writes_each_node_once_with_its_failure_and_disposes_of_itsel
         report = pytest.TestReport("t::u", ("t", 1, "u"), {}, "passed", "", when, duration=0.4)
         report.user_properties = [("unit_own_seconds", 0.8)] if when == "teardown" else []
         plugin.pytest_runtest_logreport(report)
+    for when, seconds in (
+        ("setup", 0.2),
+        ("call", 0.1),
+        ("call", 0.2),
+        ("call", 0.6),
+        ("teardown", 0.1),
+    ):
+        report = pytest.TestReport("t::m", ("t", 1, "m"), {}, "passed", "", when, duration=seconds)
+        report.user_properties = [("test_size", "medium")]
+        plugin.pytest_runtest_logreport(report)
+    for when in ("setup", "teardown"):
+        report = pytest.TestReport(
+            "t::missing", ("t", 1, "missing"), {}, "passed", "", when, duration=0.1
+        )
+        plugin.pytest_runtest_logreport(report)
     for node, when in (("t::c", "setup"), ("t::c", "???"), ("t::d", "setup")):  # crash; open
         report = pytest.TestReport(node, ("t", 1, node), {}, "passed", "gw1 crashed", when)
         report.outcome = "failed" if when == "???" else "passed"
         plugin.pytest_runtest_logreport(report)
     receipt.pytest_unconfigure(config)
     assert config.pluginmanager.get_plugin("pipeline-events") is None and plugin.stream.closed
-    a, b, unit, c, d = map(json.loads, (tmp_path / "events.jsonl").read_text("utf-8").splitlines())
+    a, b, unit, medium, missing, c, d = receipt.read_test_events(tmp_path / "events.jsonl")
+    bad_events = tmp_path / "broken-events.jsonl"
+    bad_events.write_text("[]\n", encoding="utf-8")
+    with pytest.raises(receipt.ReceiptError, match="receipt_unreadable"):
+        receipt.read_test_events(bad_events)
     assert (a["status"], a["phase"], a["seconds"], a["size"]) == ("FAILED", "call", 1.5, "small")
     assert a["failure"]["signature"] == b["failure"]["signature"] != ""
     assert unit["seconds"] == 0.8 and unit["status"] == "PASSED"
+    assert medium["seconds"] == pytest.approx(0.9) and medium["status"] == "PASSED"
+    assert missing["status"] == "ERROR" and missing["phase"] == "incomplete"
     assert c["status"] == d["status"] == "ERROR"
     assert (c["phase"], d["phase"]) == ("???", "incomplete")
 
