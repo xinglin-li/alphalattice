@@ -1141,7 +1141,8 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
 
 def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch, request):
     """A per_file scan runs scoped unless its own file or input changed; a cross-file check runs
-    when its inputs change; an undeclared structural test and nightly stay whole."""
+    when its inputs change; an undeclared one leaves the commit stage unless a fence law keeps it
+    or its own file changed, and post-merge and nightly run every one whole."""
     from devtools.testing.collection import CHANGED
     from devtools.testing.sizes import changed_paths, included, scoped
 
@@ -1155,6 +1156,9 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
             {"pattern": scan, "per_file": True, "inputs": ["src/rules.py"], **reason},
             {"pattern": closure, "inputs": ["config/release/*", "+*"], **reason},
         ],
+        "structural_fence": [
+            {"pattern": "tests/structural/test_fenced.py*", "law": "identity", "reason": "kept"}
+        ],
     }
     listing = tmp_path / "changed.log"
     listing.write_text("M\tsrc/a.py\nA\tsrc/new.py\n", encoding="utf-8")
@@ -1166,7 +1170,25 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     assert included(closure, "large", "merge", policy, changed)
     assert not included(closure, "large", "merge", policy, {"src/a.py"})
     assert not included(closure, "medium", "fast", policy, changed)
-    assert included("tests/structural/test_other.py::t", "medium", "merge", policy, changed)
+    other = "tests/structural/test_other.py::t"
+    assert not included(other, "medium", "merge", policy, changed)  # moved: post-merge runs it
+    assert included(other, "medium", "merge", policy, changed | {"tests/structural/test_other.py"})
+    assert included("tests/structural/test_fenced.py::t", "medium", "merge", policy, changed)
+    assert included(
+        other, "medium", "merge", policy, None
+    )  # post-merge, unscoped: whole, catching it
+    from types import SimpleNamespace
+
+    from devtools.testing.collection import _record_moved
+
+    config = SimpleNamespace(
+        option=SimpleNamespace(xmlpath=str(tmp_path / "junit.xml")),
+        pluginmanager=SimpleNamespace(get_plugin=lambda name: None),
+    )
+    nodes = [SimpleNamespace(nodeid=n) for n in (other, "tests/structural/test_fenced.py::t")]
+    _record_moved(config, "merge", nodes, policy, changed)
+    recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
+    assert recorded == {"tier": "commit stage", "moved": [other], "ran": []}
     assert included(closure, "large", "nightly", policy, None) and not scoped(scan, policy, None)
 
     from copy import deepcopy
@@ -1176,10 +1198,6 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     registered = load_policy(Path(__file__).resolve().parents[2])
     for stem, changed in (
         ("test_entry_point_startup", "src/alphalattice/control/product_host/composition/entry.py"),
-        (
-            "test_playpen_gate_routing",
-            "src/alphalattice/investment/portfolio_strategy_lab/campaign/legacy_readback.py",
-        ),
         ("test_local_web_build", "tests/pytest_environment.py"),
     ):
         assert included(
@@ -1189,6 +1207,17 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
             registered,
             frozenset({changed}),
         ), changed
+    # These source and ledger identity/authority checks are fences even without declared reach.
+    for node in (
+        "tests/structural/test_task_record_collections.py::test_canonical_task_parsers_cannot_bypass_stored_identity_validation",
+        "tests/structural/test_task_record_collections.py::test_every_whole_task_reader_keeps_its_reviewed_authority_requirement",
+        "tests/structural/test_plan_retention.py::test_every_plan_is_sealed_on_disk_until_it_expires",
+        "tests/structural/test_answer_continuations.py::test_every_compact_locator_restores_by_the_same_rule",
+        "tests/structural/test_owner_source_shape.py::test_publication_refuses_rows_from_another_catalog_before_composing",
+        "tests/structural/test_documented_commands.py::test_kept_facts_follow_the_bytes_read_and_serve_only_sealed_rows",
+        "tests/structural/test_owner_source_shape.py::test_publication_refuses_to_return_before_the_index_resolves",
+    ):
+        assert included(node, "medium", "merge", registered, frozenset({"docs/x.md"})), node
     # every registered reach: any one declared input still selects its guard, an unrelated change
     # leaves it to the post-merge tier, which runs it whole ("+x": an added path)
     for row in (r for r in registered["reach"] if r.get("inputs") and not r.get("per_file")):
@@ -1196,6 +1225,13 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
         for seeded in (p.replace("*", "x") for p in row["inputs"]):
             assert included(node, "medium", "merge", registered, frozenset({seeded})), seeded
         assert not included(node, "medium", "merge", registered, frozenset({"docs/x.md"})), node
+    for row in registered["structural_fence"]:  # a fence law keeps its guard in every stage
+        node = row["pattern"].replace("*", "x")
+        assert included(node, "medium", "merge", registered, frozenset({"docs/x.md"})), node
+    unlawful = deepcopy(registered)
+    unlawful["structural_fence"][0]["law"] = "convenience"
+    with pytest.raises(ValueError, match=r"test_size.fence_invalid"):
+        validate_policy(unlawful)
     legacy = deepcopy(registered) | {"reach": [policy["reach"][0]]}
     assert validate_policy(legacy) is legacy
     path = "tests/integration/architecture/test_scan.py"

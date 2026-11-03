@@ -45,6 +45,7 @@ def validate_policy(value: Any) -> dict[str, Any]:
         raise ValueError("test_size.mandatory_missing")
     _post_merge_only(value)
     _reach(value)
+    _structural_fence(value)
     _limits(value)
     _quarantine(value)
     _framework_fixtures(value)
@@ -180,6 +181,40 @@ def _reach(policy: dict[str, Any]) -> None:
             raise ValueError("test_size.reach_invalid:" + str(row.get("pattern")))
 
 
+FENCE_LAWS = frozenset({"public-private", "identity", "evidence", "secrets"})
+"""The laws whose structural guards stay in the commit stage whole until they declare a reach."""
+
+
+def _structural_fence(policy: dict[str, Any]) -> None:
+    """A fenced structural guard names its law and why, once."""
+    rows, seen = policy.get("structural_fence", []), set()
+    if not isinstance(rows, list):
+        raise ValueError("test_size.fence_invalid")
+    for row in rows:
+        pattern = row.get("pattern") if isinstance(row, dict) else None
+        if not (
+            isinstance(pattern, str)
+            and pattern.startswith("tests/structural/")
+            and row.get("law") in FENCE_LAWS
+            and isinstance(row.get("reason"), str)
+            and row["reason"]
+            and pattern not in seen
+        ):
+            raise ValueError("test_size.fence_invalid:" + str(pattern))
+        seen.add(pattern)
+
+
+def moved(nodeid: str, policy: dict[str, Any]) -> bool:
+    """A whole-tree structural guard with no declared reach and no fence law: the commit stage
+    leaves it to post-merge, which runs every structural node whole (the reform's rule, 0.2.md)."""
+    nodeid = nodeid.replace("\\", "/")
+    return (
+        nodeid.startswith("tests/structural/")
+        and reach(nodeid, policy) is None
+        and not any(fnmatchcase(nodeid, r["pattern"]) for r in policy.get("structural_fence", []))
+    )
+
+
 def _quarantine(policy: dict[str, Any]) -> None:
     """Refuse a quarantined node without an owner, a reason or an until date."""
     for row in policy.get("quarantine", []):  # a flaky node runs post-merge only, until its date
@@ -305,13 +340,16 @@ def included(
     changed: frozenset[str] | None = None,
 ) -> bool:
     """Mandatory holders always run, except that a scoped merge run keeps a reach-declared node
-    only when it is per_file or triggered, and the fast lane keeps only scoped per_file nodes;
-    each lane otherwise admits its declared sizes."""
+    only when it is per_file or triggered, and a moved structural guard (``moved``) only when its
+    own file changed; the fast lane keeps only scoped per_file nodes; each lane otherwise admits
+    its declared sizes."""
     row = reach(nodeid, policy) if changed is not None else None
     if lane == "fast":
         return scoped(nodeid, policy, changed)
     if lane == "merge" and row:
         return row.get("per_file") is True or _triggered(nodeid, row, changed or frozenset())
+    if lane == "merge" and changed is not None and moved(nodeid, policy):
+        return nodeid.replace("\\", "/").split("::")[0] in changed  # else post-merge runs it whole
     return (
         not lane
         or any(fnmatchcase(nodeid, p) for p in policy["mandatory"])

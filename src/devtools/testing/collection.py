@@ -22,6 +22,7 @@ from devtools.testing.sizes import (
     classify,
     included,
     load_policy,
+    moved,
     scoped,
     stage_files,
 )
@@ -346,6 +347,36 @@ def framework_fixtures(
     return frozenset(codes)
 
 
+def _record_moved(
+    config: Any,
+    lane: str,
+    items: list[Any],
+    policy: dict[str, Any],
+    changed: frozenset[str] | None,
+) -> None:
+    """Beside the run's JUnit, ``structural-moved.json``: the structural guards a commit stage
+    leaves to post-merge, and whether this run ran them (a post-merge run, unscoped, always does),
+    so a post-merge red among them is a red the stage no longer catches (the week's signal)."""
+    xml = getattr(config.option, "xmlpath", None)
+    found = sorted({n.replace("\\", "/") for n in (i.nodeid for i in items) if moved(n, policy)})
+    if lane != "merge" or not xml or not found:
+        return
+    record = {
+        "tier": "post-merge" if changed is None else "commit stage",
+        "moved": found,
+        "ran": [n for n in found if changed is None or n.split("::")[0] in changed],
+    }
+    Path(xml).parent.joinpath("structural-moved.json").write_text(
+        json.dumps(record, indent=1) + "\n", encoding="utf-8"
+    )
+    reporter = config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is not None:
+        reporter.write_line(
+            f"STRUCTURAL-MOVED {len(found)} guards leave the commit stage for post-merge; "
+            f"this {record['tier']} run ran {len(record['ran'])} of them"
+        )
+
+
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
 
@@ -399,6 +430,7 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
         gate(lane, marks, counted, root / "tests")
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error
+    _record_moved(config, lane, items, policy, changed)
     if lane or required:
         config.hook.pytest_deselected(items=omitted)
         items[:] = kept

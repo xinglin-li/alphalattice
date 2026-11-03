@@ -879,6 +879,108 @@
       "reason": "It builds and checks the Local Web assets from copies in tmp_path, so only the builder, its assets, labels or registries can change it; the post-merge tier runs it whole."
     }
   ],
+  "structural_fence": [
+    {
+      "pattern": "tests/structural/test_owner_source_shape.py::test_publication_refuses_to_return_before_the_index_resolves*",
+      "law": "evidence",
+      "reason": "Publication completes its semantic index handoff."
+    },
+    {
+      "pattern": "tests/structural/test_task_record_collections.py::test_canonical_task_parsers_cannot_bypass_stored_identity_validation*",
+      "law": "identity",
+      "reason": "Canonical Task parsing verifies stored identity."
+    },
+    {
+      "pattern": "tests/structural/test_task_record_collections.py::test_every_whole_task_reader_keeps_its_reviewed_authority_requirement*",
+      "law": "evidence",
+      "reason": "Canonical Task readers preserve complete authority for control and retention."
+    },
+    {
+      "pattern": "tests/structural/test_plan_retention.py::test_every_plan_is_sealed_on_disk_until_it_expires*",
+      "law": "identity",
+      "reason": "A plan remains sealed under its hash until expiry."
+    },
+    {
+      "pattern": "tests/structural/test_answer_continuations.py::test_every_compact_locator_restores_by_the_same_rule*",
+      "law": "identity",
+      "reason": "Compact locators restore their bound identity consistently."
+    },
+    {
+      "pattern": "tests/structural/test_owner_source_shape.py::test_publication_refuses_rows_from_another_catalog_before_composing*",
+      "law": "identity",
+      "reason": "Publication refuses records belonging to another catalog."
+    },
+    {
+      "pattern": "tests/structural/test_documented_commands.py::test_kept_facts_follow_the_bytes_read_and_serve_only_sealed_rows*",
+      "law": "identity",
+      "reason": "Kept facts follow the source bytes and sealed rows."
+    },
+    {
+      "pattern": "tests/structural/test_public_manifest.py*",
+      "law": "public-private",
+      "reason": "The public manifest decides what may leave the private tree."
+    },
+    {
+      "pattern": "tests/structural/test_public_closure.py*",
+      "law": "public-private",
+      "reason": "Every public file closes over the public manifest."
+    },
+    {
+      "pattern": "tests/structural/test_public_release_lanes.py*",
+      "law": "public-private",
+      "reason": "The release lanes keep public and private outputs apart."
+    },
+    {
+      "pattern": "tests/structural/test_retired_spellings.py*",
+      "law": "public-private",
+      "reason": "Retired spellings stay out of published text."
+    },
+    {
+      "pattern": "tests/structural/test_owner_source_shape.py::test_scripts_and_tests_have_no_machine_absolute_paths_outside_literal_fixtures*",
+      "law": "public-private",
+      "reason": "A machine's absolute path in a script or test leaks private layout."
+    },
+    {
+      "pattern": "tests/structural/test_source_identity.py*",
+      "law": "identity",
+      "reason": "Source identity is what every result hash binds."
+    },
+    {
+      "pattern": "tests/structural/test_sealed_hash_admissions.py*",
+      "law": "identity",
+      "reason": "A sealed hash is admitted only by its rule."
+    },
+    {
+      "pattern": "tests/structural/test_arrow_identity.py*",
+      "law": "identity",
+      "reason": "Arrow data identity binds results."
+    },
+    {
+      "pattern": "tests/structural/test_recipe_identity.py*",
+      "law": "identity",
+      "reason": "A recipe's identity binds what it produces."
+    },
+    {
+      "pattern": "tests/structural/test_feature_year_seals.py*",
+      "law": "identity",
+      "reason": "A feature year's seal binds its data."
+    },
+    {
+      "pattern": "tests/structural/test_content_store_absence.py*",
+      "law": "evidence",
+      "reason": "Evidence readers account for a missing or tampered artifact."
+    },
+    {
+      "pattern": "tests/structural/test_evaluation_boundary.py*",
+      "law": "evidence",
+      "reason": "Evaluation imports stay inside their boundary."
+    },
+    {
+      "pattern": "tests/structural/test_data_update_coverage.py*",
+      "law": "secrets",
+      "reason": "Provider network gates read one owner of provider work and its credentials."
+    }
+  ],
   "quarantine": [
     {
       "node": "tests/portfolio_strategy_lab/test_cli_contract.py::test_an_operation_only_a_person_completes_is_marked_so",
