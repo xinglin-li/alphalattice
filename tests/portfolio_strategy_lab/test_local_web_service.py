@@ -450,24 +450,24 @@ def test_run_admission_returns_before_the_work_and_the_task_progresses(
     live: LocalPortfolioWebSession, monkeypatch
 ) -> None:
     "The whole point of the dispatcher: an answer now, a task that moves after."
-    published, release = (threading.Event(), threading.Event())
+    published, allow_work, release = (threading.Event(), threading.Event(), threading.Event())
     execute = PortfolioRunCommand.execute
 
     def hold_after_publication(command, task_id):
+        assert allow_work.wait(30), "test did not release the command to run"
         execute(command, task_id)
         published.set()
-        assert release.wait(10), "test did not release the completed command"
+        assert release.wait(30), "test did not release the completed command"
 
     monkeypatch.setattr(PortfolioRunCommand, "execute", hold_after_publication)
-    started = time.perf_counter()
-    admitted = _json(live, "/api/run", method="POST", payload={})
-    elapsed_ms = (time.perf_counter() - started) * 1000.0
-    assert admitted["disposition"] == "ADMITTED"
-    assert admitted["task_id"]
-    assert admitted["lifecycle"] in {"QUEUED", "RUNNING"}
-    assert elapsed_ms < 2000.0, elapsed_ms
     try:
-        assert published.wait(10)
+        admitted = _json(live, "/api/run", method="POST", payload={})
+        assert admitted["disposition"] == "ADMITTED"
+        assert admitted["task_id"]
+        assert admitted["lifecycle"] in {"QUEUED", "RUNNING"}
+        assert not published.is_set(), "admission returned after the work completed"
+        allow_work.set()
+        assert published.wait(30)
         assert _json(live, "/api/results")["results"]
         held = _json(live, f"/api/status?task_id={admitted['task_id']}")
         assert held["lifecycle"] == "RUNNING"
@@ -478,6 +478,7 @@ def test_run_admission_returns_before_the_work_and_the_task_progresses(
         )
         assert not live.dispatcher._idle_expired(900, lambda: False)
     finally:
+        allow_work.set()
         release.set()
     live.dispatcher.drain_for_tests()
     final = _json(live, f"/api/status?task_id={admitted['task_id']}")
