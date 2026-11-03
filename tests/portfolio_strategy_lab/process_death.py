@@ -180,8 +180,8 @@ def forced_process(
     The child prints one ``CRASH_BOUNDARY:<json>`` line when it reaches the phase
     under test; the parent verifies the reporting PID is a descendant of the
     process it started, yields that message, and afterwards terminates only that
-    descendant tree. Only descendants of a process this test started are ever
-    signalled, and only after the handshake.
+    owned process tree. POSIX children start in their own session so teardown can
+    stop their process group even when tree enumeration is unavailable.
 
     ``boundary_timeout_seconds`` is a hang budget, not a performance bound: the
     wait returns the moment the boundary line arrives, and a child that exits
@@ -206,6 +206,7 @@ def forced_process(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        start_new_session=os.name != "nt",
     )
     messages = queue.Queue()
     child_output = []
@@ -225,6 +226,11 @@ def forced_process(
     try:
         observed = messages.get(timeout=boundary_timeout_seconds)
         if observed is None:
+            # Keep the POSIX leader unreaped until its group has been stopped:
+            # its reserved PID prevents an unrelated group reusing that identity.
+            if os.name != "nt":
+                with suppress(ProcessLookupError):
+                    os.killpg(child.pid, signal.SIGKILL)
             # stdout EOF can precede the Windows venv launcher's exit by a few
             # milliseconds. Reap the owned handle before trying to kill its PID.
             with suppress(subprocess.TimeoutExpired):
@@ -233,18 +239,17 @@ def forced_process(
             f"child exited before boundary: {child.poll()} {''.join(child_output)}"
         )
         descendants, limitation = _process_tree_ids(child.pid)
-        assert limitation is None and observed["pid"] in descendants
+        assert observed["pid"] in descendants and (
+            limitation is None or (os.name != "nt" and observed["pid"] == child.pid)
+        )
         yield observed
     finally:
-        if child.poll() is None:
-            if os.name == "nt":
+        if os.name == "nt":
+            if child.poll() is None:
                 _terminate_windows_owned_tree(child)
-            else:
-                descendants, limitation = _process_tree_ids(child.pid)
-                assert limitation is None
-                for pid in reversed(descendants):
-                    with suppress(ProcessLookupError):
-                        os.kill(pid, signal.SIGTERM)
+        elif child.returncode is None:  # the unreaped leader still reserves its group ID
+            with suppress(ProcessLookupError):
+                os.killpg(child.pid, signal.SIGKILL)
         child.wait(timeout=30)
         reader.join(timeout=5)
         assert not reader.is_alive()
