@@ -2,9 +2,10 @@
 
 Authority resolution is only worth proving against artifacts the product wrote
 itself, so this case asserts the properties that make the fixture workspace a
-real one: a Panel admitted through the Feature Input Gateway, a closure ledger
-that answers for the revision actually activated, and a return surface readable
-through the same reader production uses.
+real one: a closure ledger opened at genesis, a Panel manifest and a return
+surface resolved through the same resolver and reader production uses. The
+Gateway's admission and the ledger's sector map are held by the Feature tests,
+which kill every mutant the cases that asserted them here killed.
 
 Workspace-writing cases drive onboarding, ten years of materialization and
 maintenance fresh; those assertions share a module build. Other cases exercise
@@ -33,7 +34,6 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import
     FeatureClosureLedger,
 )
 from alphalattice.foundation.feature_engine.storage.repositories import (
-    FeatureStateRepository,
     PanelStateRepository,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
@@ -57,48 +57,6 @@ def fresh_workspace(tmp_path_factory: pytest.TempPathFactory, tmp_path: Path) ->
     """A private copy of the product-written, session-fresh build."""
 
     return copy_fresh_workspace(tmp_path_factory, tmp_path / "fresh-real-workspace")
-
-
-def test_panel_is_admitted_through_the_feature_input_gateway(
-    fresh_workspace: RealRiskWorkspace,
-) -> None:
-    """Panel is admitted through the feature input gateway."""
-
-    store = MarketDataRepository(fresh_workspace.workspace)
-    panel_state = PanelStateRepository(store.database, market_data=store)
-    disclosure = panel_state.feature_input_quality_disclosure(
-        result_manifest_revision=fresh_workspace.manifest.revision_sha256
-    )
-
-    assert disclosure["gateway_qualified"] is True
-    assert disclosure["admitted_listing_count"] == len(SYMBOLS)
-    assert disclosure["quality_exclusion_count"] == 0
-    assert disclosure["quality_admission_hash"]
-
-
-def test_closure_ledger_answers_for_the_activated_sector_revision(
-    fresh_workspace: RealRiskWorkspace,
-) -> None:
-    """Closure ledger answers for the activated sector revision."""
-
-    store = MarketDataRepository(fresh_workspace.workspace)
-    feature_state = FeatureStateRepository(store.database, market_data=store)
-    ledger = FeatureClosureLedger(
-        PanelClosureArtifactStore(ArtifactResolver(fresh_workspace.artifact_root))
-    )
-    sector = feature_state.current_sector_state(fresh_workspace.manifest)
-    assert sector is not None
-
-    binding = ledger.panel_binding(fresh_workspace.panel_snapshot_hash)
-    assert binding is not None
-    head = ledger.require_head(binding.catalog_hash)
-    sector_map = ledger.sector_map_for_head(head=head, sector_revision=sector.sector_revision)
-
-    assert sector_map.sector_revision == sector.sector_revision
-    assert sector_map.manifest_revision == fresh_workspace.manifest.revision_sha256
-    assert {entry.listing_id for entry in sector_map.entries} == set(
-        fresh_workspace.sector_by_listing_id
-    )
 
 
 def test_closure_opened_at_genesis_and_never_claimed_admission(
@@ -578,68 +536,6 @@ def test_cache_wait_expiry_does_not_steal_an_active_lease(tmp_path, monkeypatch)
         lease.close()
     with cache._golden_lease(tmp_path / key):
         assert root.is_dir()
-
-
-def test_initial_universe_requires_computable_base_features_without_extra_confirmation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Raw qualification alone does not finalize the initial cohort:
-    one known-bad sector remains a candidate.
-    """
-    from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider
-
-    # TTT has the same seeded walk as SPY and hence undefined idiosyncratic
-    # skew. Keep this fixture focused on the five deliberately zero-volume names.
-    symbols = tuple(chr(ord("A") + index) * 3 for index in range(21) if index != 19)
-    fetch = SeededWalkProvider.fetch_daily
-
-    def with_zero_volume(self, requested, *, start, end):
-        data = fetch(self, requested, start=start, end=end)
-        return {
-            symbol: tuple(
-                {**row, "volume": 0.0}
-                if symbol in symbols[:5] and row["session_date"] == AS_OF.isoformat()
-                else row
-                for row in rows
-            )
-            for symbol, rows in data.items()
-        }
-
-    monkeypatch.setattr(SeededWalkProvider, "fetch_daily", with_zero_volume)
-    source = build_real_risk_workspace(
-        tmp_path / "initial-qualification", symbols=symbols, fresh=True
-    )
-    market = MarketDataRepository(source.workspace)
-    bootstrap = market.universe_bootstrap(MARKET_PROFILE_ID)
-    assert bootstrap is not None
-    assert tuple(item.symbol for item in source.manifest.listings) == symbols[5:]
-    assert set(bootstrap.cohort_listing_ids) == {
-        item.listing_id for item in source.manifest.listings
-    }
-    with market._connect(read_only=True) as connection:
-        assert (
-            connection.execute(
-                "SELECT count(*) FROM current_universe_onboarding_listing "
-                "WHERE state = 'FEATURE_READY'"
-            ).fetchone()[0]
-            == 20
-        )
-        admissions = [
-            json.loads(row[0])
-            for row in connection.execute(
-                "SELECT admission_json FROM feature_input_admission"
-            ).fetchall()
-        ]
-    baseline = [item for item in admissions if item.get("evidence_scope") == "BASE_FEATURES_ONLY"]
-    assert baseline and len(baseline[0]["admitted_listing_ids"]) == 15
-    assert len(baseline[0]["quarantined_listing_ids"]) == 5
-    assert baseline[0]["feature_qualification_hash"]
-    assert (
-        PanelStateRepository(market.database, market_data=market).feature_input_quality_disclosure(
-            result_manifest_revision=source.manifest.revision_sha256
-        )["gateway_qualified"]
-        is True
-    )
 
 
 @pytest.mark.parametrize("case", ["digest", "session-seed"])

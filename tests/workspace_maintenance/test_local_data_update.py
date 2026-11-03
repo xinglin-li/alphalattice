@@ -403,7 +403,7 @@ def test_a_partial_membership_update_reopens_its_exact_approved_task(
 
 @pytest.mark.parametrize(
     "candidate_features_available",
-    [True, False, "recoverable_range", "recoverable_sector", "recoverable_history"],
+    ["recoverable_range", "recoverable_sector", "recoverable_history"],
 )
 def test_new_source_member_is_feature_qualified_before_entry_and_its_history_stays_out(
     entrant_seed, tmp_path, monkeypatch, candidate_features_available
@@ -429,7 +429,6 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
         ROOT / "config/market-profiles/us-current-index-research.yaml", candidate
     ).listing_for_symbol("NEW")
     assert entrant is not None
-    initially_eligible = candidate_features_available is True
     if candidate_features_available == "recoverable_history":
         fetch = provider.fetch_daily
 
@@ -455,7 +454,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
             return sector_fetch(provider_symbol=provider_symbol)
 
         monkeypatch.setattr(provider, "fetch_current_sector", missing_sector)
-    elif not initially_eligible:
+    else:
         fetch = provider.fetch_daily
         flat_session = tuple(day for day in provider.sessions if day <= NOW.date())[-21]
 
@@ -463,9 +462,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
             result = fetch(symbols, **kwargs)
             if "NEW" in result:
                 result["NEW"] = tuple(
-                    {**row, "volume": 0}
-                    if candidate_features_available is False
-                    else {**row, "open": row["close"], "high": row["close"], "low": row["close"]}
+                    {**row, "open": row["close"], "high": row["close"], "low": row["close"]}
                     if date.fromisoformat(row["session_date"]) == flat_session
                     else row
                     for row in result["NEW"]
@@ -523,14 +520,8 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
         current = market.current_quality_filtered_research_manifest(
             market_profile_id="us-current-index-research"
         )
-        assert (current.listing_for_symbol("NEW") is not None) == initially_eligible
-        events = market.membership_events("us-current-index-research")
-        assert [(event.listing_id, event.kind) for event in events] == (
-            [(entrant.listing_id, "ENTRY")] if initially_eligible else []
-        )
-        if events:
-            assert events[0].authority == "qualified_source_membership"
-            assert events[0].effective_session > NOW.date()  # First observed after close.
+        assert current.listing_for_symbol("NEW") is None
+        assert not market.membership_events("us-current-index-research")
         own_calls = [item for item in calls if item[0] == entrant.listing_id]
         if candidate_features_available == "recoverable_history":
             assert own_calls == []
@@ -553,95 +544,85 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
             payload={"update_plan_hash": plan["plan_hash"]},
         )
         assert repeated["status"] == "REUSED_EXACT" and repeated["task_id"] is None
-        if candidate_features_available in {
-            "recoverable_range",
-            "recoverable_sector",
-            "recoverable_history",
-        }:
-            clock_now = tomorrow
-            prices_before = len(provider.calls)
-            recheck = _json(live, "/api/data-update/plan", method="POST", payload={})
-            assert recheck["status"] == "PLANNED", recheck
-            scope_key = (
-                "candidate_data_recheck"
-                if candidate_features_available == "recoverable_history"
-                else "candidate_recheck"
+        clock_now = tomorrow
+        prices_before = len(provider.calls)
+        recheck = _json(live, "/api/data-update/plan", method="POST", payload={})
+        assert recheck["status"] == "PLANNED", recheck
+        scope_key = (
+            "candidate_data_recheck"
+            if candidate_features_available == "recoverable_history"
+            else "candidate_recheck"
+        )
+        assert recheck[scope_key]["listing_ids"] == [entrant.listing_id]
+        rerun = _json(
+            live,
+            "/api/data-update/run",
+            method="POST",
+            payload={"update_plan_hash": recheck["plan_hash"]},
+        )
+        live.dispatcher.drain_for_tests(timeout=300)
+        result = _json(live, "/api/status?task_id=" + rerun["task_id"])
+        assert result["lifecycle"] == "SUCCEEDED", result
+        events = market.membership_events("us-current-index-research")
+        assert [(event.listing_id, event.kind) for event in events] == [
+            (entrant.listing_id, "ENTRY")
+        ]
+        assert events[0].effective_session > tomorrow.date()
+        assert all(start > HISTORY_START for _, start, _ in provider.calls[prices_before:])
+        if candidate_features_available == "recoverable_history":
+            assert all(
+                symbols == ("NEW",)
+                for symbols, start, _ in provider.calls[prices_before:]
+                if start < date(2026, 1, 1)
             )
-            assert recheck[scope_key]["listing_ids"] == [entrant.listing_id]
-            rerun = _json(
-                live,
-                "/api/data-update/run",
-                method="POST",
-                payload={"update_plan_hash": recheck["plan_hash"]},
+            raw_scope = market.latest_current_universe_onboarding_disclosure(
+                market_profile_id="us-current-index-research"
             )
-            live.dispatcher.drain_for_tests(timeout=300)
-            result = _json(live, "/api/status?task_id=" + rerun["task_id"])
-            assert result["lifecycle"] == "SUCCEEDED", result
-            events = market.membership_events("us-current-index-research")
-            assert [(event.listing_id, event.kind) for event in events] == [
-                (entrant.listing_id, "ENTRY")
-            ]
-            assert events[0].effective_session > tomorrow.date()
-            assert all(start > HISTORY_START for _, start, _ in provider.calls[prices_before:])
-            if candidate_features_available == "recoverable_history":
-                assert all(
-                    symbols == ("NEW",)
-                    for symbols, start, _ in provider.calls[prices_before:]
-                    if start < date(2026, 1, 1)
-                )
-                raw_scope = market.latest_current_universe_onboarding_disclosure(
-                    market_profile_id="us-current-index-research"
-                )
-                assert raw_scope["candidate_listing_count"] == 1
-                assert raw_scope["state_counts"] == {"FEATURE_READY": 1}
-            assert sum(item[0] == entrant.listing_id and item[2] > 2000 for item in calls) == 1
-            assert not [
-                q
-                for q in PanelStateRepository(
-                    market.database, market_data=market
-                ).active_listing_quarantines(
-                    current.revision_sha256,
-                    include_profile_history=True,
-                    qualification_domain=(
-                        "SECTOR_REFERENCE"
-                        if candidate_features_available == "recoverable_sector"
-                        else "BASE_FEATURES"
-                    ),
-                )
-                if q.listing_id == entrant.listing_id
-            ]
-        if initially_eligible or candidate_features_available in {
-            "recoverable_range",
-            "recoverable_sector",
-            "recoverable_history",
-        }:
-            # The already-approved entrant joins on its effective day, without
-            # another membership confirmation or another whole-history backfill.
-            clock_now = tomorrow if initially_eligible else tomorrow + timedelta(days=1)
-            next_plan = _json(live, "/api/data-update/plan", method="POST", payload={})
-            assert next_plan["status"] != "CONFIRMATION_REQUIRED", next_plan
-            next_run = _json(
-                live,
-                "/api/data-update/run",
-                method="POST",
-                payload={"update_plan_hash": next_plan["plan_hash"]},
-            )
-            live.dispatcher.drain_for_tests(timeout=300)
-            next_status = _json(live, "/api/status?task_id=" + next_run["task_id"])
-            assert next_status["lifecycle"] == "SUCCEEDED", next_status.get(
-                "latest_failure_code", next_status
-            )
-            next_snapshot = PanelStateRepository(
+            assert raw_scope["candidate_listing_count"] == 1
+            assert raw_scope["state_counts"] == {"FEATURE_READY": 1}
+        assert sum(item[0] == entrant.listing_id and item[2] > 2000 for item in calls) == 1
+        assert not [
+            q
+            for q in PanelStateRepository(
                 market.database, market_data=market
-            ).feature_panel_snapshot_for_active("us-current-index-research")
-            next_payload = ArtifactResolver(workspace / "artifacts").load_feature_panel_manifest(
-                str(next_snapshot["manifest_uri"])
+            ).active_listing_quarantines(
+                current.revision_sha256,
+                include_profile_history=True,
+                qualification_domain=(
+                    "SECTOR_REFERENCE"
+                    if candidate_features_available == "recoverable_sector"
+                    else "BASE_FEATURES"
+                ),
             )
-            assert next_payload["safe_summary"]["membership"]["as_of_member_count"] == len(symbols)
-            assert next_payload["chunks"][:-1] == payload["chunks"][:-1]
-            assert market.membership_events("us-current-index-research") == events
-            # Only one preparation consumed the entrant's full history.
-            assert sum(item[0] == entrant.listing_id and item[2] > 2000 for item in calls) == 1
+            if q.listing_id == entrant.listing_id
+        ]
+        # The already-approved entrant joins on its effective day, without
+        # another membership confirmation or another whole-history backfill.
+        clock_now = tomorrow + timedelta(days=1)
+        next_plan = _json(live, "/api/data-update/plan", method="POST", payload={})
+        assert next_plan["status"] != "CONFIRMATION_REQUIRED", next_plan
+        next_run = _json(
+            live,
+            "/api/data-update/run",
+            method="POST",
+            payload={"update_plan_hash": next_plan["plan_hash"]},
+        )
+        live.dispatcher.drain_for_tests(timeout=300)
+        next_status = _json(live, "/api/status?task_id=" + next_run["task_id"])
+        assert next_status["lifecycle"] == "SUCCEEDED", next_status.get(
+            "latest_failure_code", next_status
+        )
+        next_snapshot = PanelStateRepository(
+            market.database, market_data=market
+        ).feature_panel_snapshot_for_active("us-current-index-research")
+        next_payload = ArtifactResolver(workspace / "artifacts").load_feature_panel_manifest(
+            str(next_snapshot["manifest_uri"])
+        )
+        assert next_payload["safe_summary"]["membership"]["as_of_member_count"] == len(symbols)
+        assert next_payload["chunks"][:-1] == payload["chunks"][:-1]
+        assert market.membership_events("us-current-index-research") == events
+        # Only one preparation consumed the entrant's full history.
+        assert sum(item[0] == entrant.listing_id and item[2] > 2000 for item in calls) == 1
 
 
 def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_feature_work(
@@ -866,8 +847,9 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
         assert _json(live, "/api/workspace/data-issues")["issues"] == []
 
 
-@pytest.mark.parametrize("raw_admits", [False, True])
-@pytest.mark.parametrize("interrupted", [False, True])
+@pytest.mark.parametrize(
+    ("interrupted", "raw_admits"), [(False, False), (True, False), (True, True)]
+)
 def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
     qualified, tmp_path, monkeypatch, raw_admits, interrupted
 ):

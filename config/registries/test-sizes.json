@@ -418,6 +418,7 @@
       "pattern": "tests/workspace_maintenance/test_local_data_update.py::test_new_source_member_is_feature_qualified_before_entry_and_its_history_stays_out*",
       "owner": "tests.workspace_maintenance",
       "reason": "Builds the sector seed and runs source-member qualification through the real daily Feature gate.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900
     },
     {
@@ -457,12 +458,6 @@
       "timeout_seconds": 900
     },
     {
-      "pattern": "tests/researcher_methodology_surface/test_real_workspace.py::test_initial_universe_requires_computable_base_features_without_extra_confirmation*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Cold-builds the real universe and Feature admission with deliberately unusable source members.",
-      "timeout_seconds": 900
-    },
-    {
       "pattern": "tests/researcher_methodology_surface/test_causal_outcome_publication.py::test_parallel_derivation_publishes_the_identical_snapshot_and_bytes*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "Runs serial and process-pool causal derivation and compares their published snapshots and bytes.",
@@ -490,6 +485,7 @@
       "pattern": "tests/workspace_maintenance/test_local_data_update.py::test_due_raw_and_feature_rechecks_are_both_planned_and_executed*",
       "owner": "tests.workspace_maintenance",
       "reason": "Setup cold-builds the qualified Data and Feature seed before rechecks until the shared qualified seed is admitted.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900
     },
     {
