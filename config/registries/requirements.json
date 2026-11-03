@@ -9,6 +9,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "architecture.every_src_module_imports_offline_and_its_contracts_read_from_source": {
+      "description": "Every src module imports with the network disabled, and each pydantic contract's frozen and extra settings at runtime are the ones SC2's static holder reads from source.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 15
+    },
     "architecture.import_law_refuses_higher_levels_and_retired_names": {
       "description": "The import law built from the package registry refuses a package importing a higher level or an undeclared peer, and any file importing a retired owner, direct or relative; an import downward or of a lookalike name passes.",
       "owner": "devtools.architecture",
