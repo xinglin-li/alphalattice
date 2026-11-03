@@ -266,16 +266,18 @@ def test_the_tasks_that_run_at_once_are_set_beside_the_waiting_places(live) -> N
 
 
 def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
-    read_only_live: LocalPortfolioWebSession, tmp_path: Path
+    read_only_live: LocalPortfolioWebSession, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """CLI and Host metadata preserve legacy envelopes, fields and exit codes."""
     live = read_only_live
-    code, body, _ = _cli(live.workspace, "task", "list")
+    code, body, _ = _inprocess_cli(live.workspace, "task", "list", capsys=capsys)
     assert (code, body["outcome"]) == (0, "OK")
     assert body.keys() >= ENVELOPE and body["schema_version"] == 1
     assert body["operation"] == "TASKS" and isinstance(body["data"]["tasks"], list)
 
     saved = tmp_path / "refusal.json"
+    # One answer through the real script: its process exits by the outcome and its stdout keeps the
+    # workspace path private; every other answer reads the same CLI entry in process.
     code, body, stdout = _cli(live.workspace, "task", "show", str(uuid4()), "--output", str(saved))
     assert (code, body["outcome"], body["failure_code"]) == (
         2,
@@ -294,7 +296,7 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
     assert json.loads(saved.read_text("utf-8"))["failure_code"] == "task_control.task_not_found"
     assert str(live.workspace) not in stdout
 
-    code, body, _ = _cli(live.workspace, "frobnicate")
+    code, body, _ = _inprocess_cli(live.workspace, "frobnicate", capsys=capsys)
     assert (code, body["outcome"], body["failure_code"]) == (
         1,
         "INVALID_INPUT",
@@ -304,10 +306,10 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
     help_line = shlex.split(body["next_commands"]["help"])
     with pytest.raises(SystemExit, match=r"^0$"):
         main(help_line[1:], serve=lambda _: 99)
-    code, body, _ = _cli(live.workspace, "task", "list", "--hepl")
+    code, body, _ = _inprocess_cli(live.workspace, "task", "list", "--hepl", capsys=capsys)
     assert (code, body["outcome"]) == (1, "INVALID_INPUT") and not body["next_requests"]
     for value in ("-", "@-"):
-        code, body, _ = _cli(live.workspace, "request", f"--flie={value}")
+        code, body, _ = _inprocess_cli(live.workspace, "request", f"--flie={value}", capsys=capsys)
         assert (code, body["outcome"]) == (1, "INVALID_INPUT") and not body["next_requests"]
     saved = tmp_path / "tasks.json"
     saved.write_text('{"operation":"TASKS"}', encoding="utf-8")
@@ -317,22 +319,24 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
         ("tas", "list"),
         ("task", "lsit"),
     ):
-        code, refusal, _ = _cli(live.workspace, *line)
+        code, refusal, _ = _inprocess_cli(live.workspace, *line, capsys=capsys)
         assert code == 1 and refusal["usage_error"]["repair"]
-        retried, accepted, _ = _cli(
-            live.workspace, *shlex.split(refusal["next_commands"]["correct"])[1:]
+        retried, accepted, _ = _inprocess_cli(
+            live.workspace, *shlex.split(refusal["next_commands"]["correct"])[1:], capsys=capsys
         )
         assert (retried, accepted["operation"], accepted["outcome"]) == (0, "TASKS", "OK")
         correction = refusal["next_requests"]["correct"]
         assert correction == {"operation": "TASKS"}
         saved.write_text(json.dumps(correction), encoding="utf-8")
-        code, accepted, _ = _cli(live.workspace, "request", "--file", str(saved))
+        code, accepted, _ = _inprocess_cli(
+            live.workspace, "request", "--file", str(saved), capsys=capsys
+        )
         assert (code, accepted["operation"], accepted["outcome"]) == (0, "TASKS", "OK")
     saved.write_text('{"operation":"DATA_UPDATE_RUN"}', encoding="utf-8")
-    code, body, _ = _cli(live.workspace, "request", "--flie", str(saved))
+    code, body, _ = _inprocess_cli(live.workspace, "request", "--flie", str(saved), capsys=capsys)
     assert (code, body["outcome"]) == (1, "INVALID_INPUT") and not body["next_requests"]
     saved.write_text('{"update_task_id":"?"}', encoding="utf-8")
-    code, body, _ = _cli(live.workspace, "request", "--file", str(saved))
+    code, body, _ = _inprocess_cli(live.workspace, "request", "--file", str(saved), capsys=capsys)
     assert (code, body["outcome"]) == (2, "REFUSED") and ["operation"] in body["data"]["fields"]
     assert "schema_command" not in body["data"]
 
@@ -1035,6 +1039,7 @@ def test_every_field_schema_prints_is_described() -> None:
 def test_an_operation_only_a_person_completes_is_marked_so(
     read_only_live: LocalPortfolioWebSession,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """An operation only a person completes is marked so."""
     live = read_only_live
@@ -1047,7 +1052,7 @@ def test_an_operation_only_a_person_completes_is_marked_so(
         flag_name,
     )
 
-    code, body, _ = _cli(live.workspace, "operation", "list")
+    code, body, _ = _inprocess_cli(live.workspace, "operation", "list", capsys=capsys)
     contracts = body["data"]["operation_fields"]
     assert code == 0
     assert {op for op, contract in contracts.items() if contract.get("person_only")} == PERSON_ONLY
@@ -1059,7 +1064,7 @@ def test_an_operation_only_a_person_completes_is_marked_so(
     sizes = {}
     form_args = ["operation", "list", "--schema-operation"]
     for operation in ("COMMITTEE_SUBMIT", "DATA_UPDATE_RUN", "EXPERIMENT_PLAN"):
-        code, focused, _ = _cli(live.workspace, *form_args, operation)
+        code, focused, _ = _inprocess_cli(live.workspace, *form_args, operation, capsys=capsys)
         data = focused["data"]
         assert code == 0 and set(data) == {"operation_schema", "operation_fields", "read_request"}
         assert data["operation_fields"] == {operation: contracts[operation]}
@@ -1072,7 +1077,7 @@ def test_an_operation_only_a_person_completes_is_marked_so(
         assert set(refs) == set(schema["$defs"])
         sizes[operation] = len(json.dumps(focused, indent=1).encode("utf-8"))
     (tmp_path / "schema-sizes.json").write_text(json.dumps(sizes), encoding="utf-8")
-    code, unknown, _ = _cli(live.workspace, *form_args, "COMMITTEE_SUBMT")
+    code, unknown, _ = _inprocess_cli(live.workspace, *form_args, "COMMITTEE_SUBMT", capsys=capsys)
     assert code == 2 and unknown["failure_code"] == "local_client.request_invalid"
     values = {
         "network_enabled": "true",
@@ -1095,7 +1100,7 @@ def test_an_operation_only_a_person_completes_is_marked_so(
             if name != shown
             for part in (f"--{flag_name(name)}", values.get(name, "a" * 64))
         ] + ([values.get(shown, "a" * 64)] if shown in fields(operation)[0] else [])
-        code, body, _ = _cli(live.workspace, noun, verb, *arguments)
+        code, body, _ = _inprocess_cli(live.workspace, noun, verb, *arguments, capsys=capsys)
         assert body["outcome"] == "REFUSED" and "human" in body["failure_code"], (operation, body)
 
 

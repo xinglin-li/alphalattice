@@ -92,6 +92,24 @@ def _cli(live: Any, *arguments: str, session: str = SESSION) -> tuple[int, dict[
     return result.returncode, json.loads(result.stdout)["data"]
 
 
+def _session_commands(
+    live: Any, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> Any:
+    """The same CLI entry and argv as ``_cli``, answered in this process for the named session."""
+    from alphalattice.interface.local_application import cli
+
+    def run(*arguments: str, session: str = SESSION) -> tuple[int, dict[str, Any]]:
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", session)
+        argv = ["--workspace", str(live.workspace), "--view", "full", *arguments]
+        try:
+            code = cli.main(argv, serve=lambda _: 99)
+        except SystemExit as stopped:
+            code = int(stopped.code or 0)
+        return code, json.loads(capsys.readouterr().out)["data"]  # the whole stdout is one answer
+
+    return run
+
+
 def _code(answer: dict[str, Any]) -> str | None:
     """A refusal's code, returned by its owner or raised and answered by the Host."""
     return answer.get("failure_code") or answer.get("refused")
@@ -103,19 +121,22 @@ def _network(live: Any) -> bool:
 
 
 def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them(
-    live: Any, tmp_path: Path
+    live: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A first use goal lets its agent take the first steps and ends with them."""
+    command = _session_commands(live, monkeypatch, capsys)  # each agent command in process
 
     cursor = _json(live, "/api/activity")["cursor"]
     plan = "a" * 64
-    code, refused = _cli(live, "network", "set", "--enabled", "true")
+    code, refused = command("network", "set", "--enabled", "true")
     assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
     assert refused["person_questions"][0]["code"] == "network.workspace_access"
-    code, refused = _cli(live, "preparation", "confirm", "--plan", plan)
+    code, refused = command("preparation", "confirm", "--plan", plan)
     assert code == 2 and _code(refused) == "workspace_preparation.human_confirmation_required"
     declaration = tmp_path / "first-use.json"
     declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
+    # The opening and the other session's retry stay separate agent processes, each with its own
+    # session at start; the rest of the agent's commands answer in process.
     code, opened = _cli(live, "goal", "open", "--file", str(declaration))
     assert code == 0, opened
     assert opened["person_questions"][0]["code"] == "network.daily_updates"
@@ -129,23 +150,23 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
         "network.daily_updates",
         "network.workspace_access",
     }
-    code, set_ = _cli(live, "network", "set", "--enabled", "true")
+    code, set_ = command("network", "set", "--enabled", "true")
     assert code == 0 and set_["status"] == "NETWORK_ACCESS", set_
     assert _network(live)
-    code, confirmed = _cli(live, "preparation", "confirm", "--plan", plan)
+    code, confirmed = command("preparation", "confirm", "--plan", plan)
     assert _code(confirmed) != "workspace_preparation.human_confirmation_required", confirmed
     # A step the goal does not delegate stays the person's.
-    code, storage = _cli(live, "storage", "confirm", "--plan", plan)
+    code, storage = command("storage", "confirm", "--plan", plan)
     assert code == 2 and _code(storage) == "storage.human_confirmation_required"
-    code, shown = _cli(live, "goal", "show", opened["goal_id"])
+    code, shown = command("goal", "show", opened["goal_id"])
     # The goal offers no revision of the person's sentence (the review at 118f6378), and its
     # record says its delegation and its end (U70).
     assert "revise" not in shown["next_requests"]
     assert shown["record"]["delegation"]["active"] is True
     assert set(shown["record"]["delegation"]["steps"]) >= {"NETWORK_ACCESS_SET"}
-    code, network = _cli(live, "network", "show")
+    code, network = command("network", "show")
     assert network["set_by"]["delegation"] == f"first-use-goal:{opened['goal_id']}"
-    code, decisions = _cli(live, "decision", "list")
+    code, decisions = command("decision", "list")
     first = next(d for d in decisions["decisions"] if d["kind"] == "FIRST_USE")
     assert first["next_requests"]["stop"]["operation"] == "GOAL_ABANDON"
     steps = shown["record"]["delegated_steps"]
@@ -153,14 +174,14 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     assert steps[0]["network_enabled"] is True
     again = tmp_path / "again.json"
     again.write_text(json.dumps({**FIRST_USE, "objective": "Another sentence."}), encoding="utf-8")
-    code, second = _cli(live, "goal", "open", "--file", str(again))
+    code, second = command("goal", "open", "--file", str(again))
     assert code == 2 and second["failure_code"] == "goal.first_use_already_opened"
     code, reused = _cli(live, "goal", "open", "--file", str(declaration), session=OTHER_SESSION)
     assert reused["goal_id"] == opened["goal_id"], reused  # the same sentence, another session
-    code, ended = _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")
+    code, ended = command("goal", "abandon", opened["goal_id"], "--reason", "Stopped")
     assert code == 0 and ended["state"] == "ABANDONED"
     assert not _network(live)
-    code, refused = _cli(live, "network", "set", "--enabled", "true")
+    code, refused = command("network", "set", "--enabled", "true")
     assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
     assert refused["person_questions"][0]["code"] == "network.workspace_access"
 
@@ -170,8 +191,7 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
         ("true", "false", "true"),
         strict=True,
     ):
-        code, accepted = _cli(
-            live,
+        code, accepted = command(
             "network",
             "set",
             "--enabled",
