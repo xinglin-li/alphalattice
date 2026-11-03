@@ -430,6 +430,8 @@ def pytest_configure(config: pytest.Config) -> None:
         environment.configure_temporary_roots(checkout, config.getoption("basetemp"))
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error
+    if not hasattr(config, "workerinput"):  # the controller alone: one warning per run
+        environment.warn_unplaced(config, checkout.parents, sys.stderr)
     if (
         config.getoption("dist", "no") == "load"
         and config.getoption("maxschedchunk", None) is None

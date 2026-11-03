@@ -146,6 +146,12 @@
       "layer": "integration",
       "seconds": 4.0
     },
+    "testing.unplaced_workers_warn_by_name": {
+      "description": "Inside the private workshop, an unplaced pytest run asking for more than two workers is warned once with heavy_slot's command, never refused; other runs stay silent.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 1
+    },
     "architecture.discovered_imports_kept_by_place_and_bytes": {
       "description": "A module's discovered imports are kept in the process by its place under the source root and its bytes, so changed bytes or another place miss and a read or parse error is raised every time.",
       "owner": "devtools.architecture",

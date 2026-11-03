@@ -5,11 +5,11 @@ from __future__ import annotations
 import getpass
 import os
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TextIO, cast
 from unittest.mock import patch
 
 if TYPE_CHECKING:
@@ -29,6 +29,45 @@ def golden_runtime():
     from devtools.evaluation import GoldenRuntime
 
     return GoldenRuntime.from_os(psutil, portalocker, resolve_confined)
+
+
+def unplaced_workers(numprocesses: object, environ: dict[str, str], above: Iterable[Path]) -> str:
+    """The warning for a run asking more than 2 xdist workers without a heavy place, or "".
+
+    Only inside the private workshop, found by its tools/heavy_slot.py in ``above`` (the folders
+    above the checkout): the
+    public tree and CI have none, and there the place variable means nothing. It never refuses,
+    since a minute-long run of at most 2 workers needs no place."""
+    if environ.get("WK_HEAVY_PLACE") or not numprocesses:
+        return ""
+    if isinstance(numprocesses, int) and numprocesses <= 2:
+        return ""
+    try:
+        slot = next(
+            (up / "tools/heavy_slot.py" for up in above if (up / "tools/heavy_slot.py").is_file()),
+            None,
+        )
+    # an unreadable marker is unknown: neither absence nor a reason to stop
+    except OSError as error:
+        return (
+            f"pytest asks for {numprocesses} workers without a heavy place, and whether this is "
+            f"the workshop is unknown ({error}); if it is, run it through tools/heavy_slot.py run"
+            ' --line <line> --what "<what>" -- <this command>'
+        )
+    if slot is None:
+        return ""
+    return (
+        f"pytest asks for {numprocesses} workers without a heavy place; run it through one: "
+        f'python "{slot.as_posix()}" run --line <line> --what "<what>" -- <this command>'
+    )
+
+
+def warn_unplaced(config: object, above: Iterable[Path], stream: TextIO) -> None:
+    """pytest_configure's controller step: write the unplaced-workers warning, if any, to
+    ``stream``; it never stops the run."""
+    numprocesses = config.getoption("numprocesses", None)  # type: ignore[attr-defined]
+    if warning := unplaced_workers(numprocesses, dict(os.environ), above):
+        print(warning, file=stream, flush=True)
 
 
 def configure_temporary_roots(checkout: Path, basetemp: str | None) -> None:
