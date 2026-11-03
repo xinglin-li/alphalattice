@@ -168,6 +168,48 @@ def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
     for raw, published in forms.items():
         found = project_public(REGISTRY, raw, {"board.md"}, {"board.md", "src/tool.py"})
         assert found[0] == published, raw
+    # Test-size reach is still public when only one of its inputs is private.
+    sizes = "config/registries/test-sizes.json"
+    private_paths = {
+        "tests/example_private/private.py",
+        "tests/structural/private.py",
+        "example_data/hidden.json",
+    }
+    public_paths = {"tests/structural/public.py", "tests/structural/shared.py"}
+    rows = {
+        "schema": "alphalattice.test-sizes.v1",
+        "defaults": [{"pattern": "tests/example_private/*"}, {"pattern": "tests/structural/*"}],
+        "large": [
+            {"pattern": "tests/structural/private.py::*"},
+            {"pattern": "tests/structural/public.py::*", "reason": "retained"},
+        ],
+        "reach": [
+            {
+                "pattern": "tests/structural/public.py::*",
+                "inputs": ["tests/structural/shared.py", "example_data/hidden.json"],
+                "reason": "retained",
+            },
+            {"pattern": "tests/structural/private.py::*", "inputs": []},
+        ],
+    }
+    rows["reach"].append(
+        {"pattern": "tests/structural/public.py::malformed", "inputs": "example_data/hidden.json"}
+    )
+    raw = (json.dumps(rows, indent=2) + "\n").encode()
+    published, dropped = project_public(sizes, raw, private_paths, private_paths | public_paths)
+    expected = {
+        **rows,
+        "defaults": rows["defaults"][1:],
+        "large": rows["large"][1:],
+        "reach": [{**rows["reach"][0], "inputs": ["tests/structural/shared.py"]}],
+    }
+    assert json.loads(published) == expected
+    assert set(dropped) == {"defaults[0]", "large[0]", "reach[0].inputs[1]", "reach[1]", "reach[2]"}
+    clean = (
+        b'{"schema":"alphalattice.test-sizes.v1",'
+        b'"reach":[{"pattern":"tests/structural/public.py::*"}]}'
+    )
+    assert project_public(sizes, clean, private_paths, private_paths | public_paths) == (clean, [])
 
 
 def test_the_builder_refuses_what_it_cannot_prove(private: Path, tmp_path: Path) -> None:

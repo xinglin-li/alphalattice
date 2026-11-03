@@ -1373,6 +1373,26 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
     def flagged(*nodes: object) -> bool:
         return any(private_references(path, s, private, tracked) for n in nodes for s in strings(n))
 
+    # The test-size policy's inputs are dependencies, not the identity of their public row.
+    # Classify a wildcard as private only when it matches tracked paths and all are private.
+    tracked = frozenset(tracked)
+    sizes = (
+        path == "config/registries/test-sizes.json"
+        and isinstance(data, dict)
+        and data.get("schema") == "alphalattice.test-sizes.v1"
+    )
+
+    def private_selector(value: object) -> bool:
+        if not isinstance(value, str):
+            return False
+        if flagged(value):
+            return True
+        pattern = value.replace("\\", "/").removeprefix("./").split("::", 1)[0]
+        if not any(char in pattern for char in "*?["):
+            return False
+        matched = {name for name in tracked if fnmatch.fnmatchcase(name, pattern)}
+        return bool(matched) and matched <= private
+
     projected: object
     dropped: list[str] = []
     if isinstance(data, list):
@@ -1382,8 +1402,38 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
         kept: dict[str, object] = {}
         for key, value in data.items():
             if isinstance(value, list):
-                dropped += [f"{key}[{i}]" for i, row in enumerate(value) if flagged(row)]
-                kept[key] = [row for row in value if not flagged(row)]
+                rows = []
+                for i, row in enumerate(value):
+                    place = f"{key}[{i}]"
+                    if sizes and isinstance(row, dict):
+                        rest = {name: item for name, item in row.items() if name != "inputs"}
+                        if (
+                            flagged(rest)
+                            or private_selector(row.get("pattern"))
+                            or private_selector(row.get("node"))
+                        ):
+                            dropped.append(place)
+                            continue
+                        inputs = row.get("inputs")
+                        if not isinstance(inputs, list) and (
+                            flagged(inputs) or private_selector(inputs)
+                        ):
+                            dropped.append(place)
+                            continue
+                        if isinstance(inputs, list):
+                            kept_inputs = []
+                            for j, item in enumerate(inputs):
+                                if flagged(item) or private_selector(item):
+                                    dropped.append(f"{place}.inputs[{j}]")
+                                else:
+                                    kept_inputs.append(item)
+                            if len(kept_inputs) != len(inputs):
+                                row = {**row, "inputs": kept_inputs}
+                    elif flagged(row) or (sizes and private_selector(row)):
+                        dropped.append(place)
+                        continue
+                    rows.append(row)
+                kept[key] = rows
             elif isinstance(value, dict):
                 dropped += [f"{key}/{name}" for name, row in value.items() if flagged(name, row)]
                 kept[key] = {n: row for n, row in value.items() if not flagged(n, row)}
