@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
 from unittest.mock import Mock
@@ -16,6 +17,7 @@ from release.public_manifest import (
     RULES,
     attach_reviews,
     classify,
+    content_keys,
     declared_private,
     generate,
     internal_id_label,
@@ -25,6 +27,12 @@ from release.public_manifest import (
     validate_internal_id_history,
     validate_path,
 )
+from release.public_manifest import (
+    main as public_manifest_main,
+)
+
+_REVIEW_FIXTURE = "sk-" + "X" * 40 + " x@example.invalid"
+_CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
 
 
 @pytest.mark.parametrize(
@@ -137,7 +145,7 @@ def test_the_full_release_closure_check_names_its_private_inventory_input():
 
 
 @pytest.mark.parametrize(
-    "path", ["../src/one.py", "/src/one.py", "src\\one.py", "C:/one.py", "src/one\0.py"]
+    "path", ["", "../src/one.py", "/src/one.py", "src\\one.py", "C:/one.py", "src/one\0.py"]
 )
 def test_public_manifest_rejects_unsafe_paths(path):
     with pytest.raises(ValueError, match="unsafe manifest path"):
@@ -970,9 +978,32 @@ def test_the_durations_come_from_junit_keep_the_latest_run_and_leave_out_private
             "auto",
             False,
         ),
+        *(
+            pytest.param(
+                "README.md",
+                _CHANGED_REVIEW_FIXTURE if mode == "default-changed" else _REVIEW_FIXTURE,
+                "NO_SECRET",
+                mode,
+                admitted,
+                id=mode,
+            )
+            for mode, admitted in (
+                ("default-kept", True),
+                ("default-changed", False),
+                ("default-new", False),
+                ("default-missing", False),
+                ("default-fresh", False),
+                ("default-bad", False),
+                ("default-duplicate", False),
+                ("default-explicit", True),
+                ("default-collision", False),
+            )
+        ),
     ],
 )
-def test_a_disclosure_review_follows_only_its_proved_line_content(path, text, rule, mode, admitted):
+def test_a_disclosure_review_follows_only_its_proved_line_content(
+    path, text, rule, mode, admitted, tmp_path, monkeypatch
+):
     """Moves retain content reviews; edits reopen; reserved-only contacts self-review."""
     version = "alphalattice.release.review-key.v1"
     digest = hashlib.sha256("备注 x@private.company".encode()).hexdigest()
@@ -984,6 +1015,109 @@ def test_a_disclosure_review_follows_only_its_proved_line_content(path, text, ru
         disposition="KEEP_SYNTHETIC",
         evidence="fixture",
     )
+    if mode.startswith("default-"):
+        row["review_key"] = [
+            version,
+            path,
+            rule,
+            hashlib.sha256(_REVIEW_FIXTURE.encode()).hexdigest(),
+        ]
+        previous = {**row, "reopen_reason": "historical"}
+        rows = [row, {**row, "evidence": "corroborating"}]
+        standalone = {
+            "current_findings": [] if mode == "default-new" else rows,
+            "reopened_findings": [previous],
+            "original_findings": [],
+            "corrections": [],
+            "rounds": [],
+        }
+        review_path = (
+            "config/release/public-manifest.json"
+            if mode == "default-collision"
+            else "review-ledger.json"
+        )
+        blobs = {
+            path: (text + "\n").encode(),
+            review_path: json.dumps({"standalone": standalone}).encode(),
+        }
+        if mode in {"default-missing", "default-fresh"}:
+            blobs.pop(review_path)
+        elif mode in {"default-bad", "default-explicit"}:
+            blobs[review_path] = b"{"
+        elif mode == "default-duplicate":
+            blobs[review_path] = b'{"standalone":{"current_findings":[{}],"current_findings":[]}}'
+        findings, _ = scan_public(blobs, [{"path": path, "kind": "PUBLIC"}])
+        content_keys(findings, blobs)
+        monkeypatch.setattr(
+            "release.public_manifest.generate",
+            lambda *_: (
+                {},
+                {
+                    "source_sha": "a" * 40,
+                    "findings": findings,
+                    "counts": {},
+                    "finding_counts": {},
+                    "command": "fixture",
+                },
+            ),
+        )
+        monkeypatch.setattr("release.public_manifest.render", lambda _audit: "fixture")
+        monkeypatch.setattr(
+            "release.public_manifest.read_tree",
+            lambda _repo, _source: ("a" * 40, blobs, dict.fromkeys(blobs, "100644")),
+        )
+        argv = ["public_manifest.py", "--out", str(tmp_path), "--census-path", review_path]
+        if mode == "default-explicit":
+            override = tmp_path / "verified.json"
+            override.write_text(json.dumps({"standalone": standalone}), encoding="utf-8")
+            argv += ["--verification-json", str(override)]
+        monkeypatch.setattr(sys, "argv", argv)
+        if mode == "default-collision":
+            with pytest.raises(SystemExit, match=r"public_release\.output_collision"):
+                public_manifest_main()
+            assert not list(tmp_path.rglob("*.json"))
+            return
+        if mode in {"default-missing", "default-bad", "default-duplicate"}:
+            target = tmp_path / review_path
+            target.write_text("existing review", encoding="utf-8")
+            with pytest.raises(SystemExit, match=r"public_release\.verification_invalid"):
+                public_manifest_main()
+            assert target.read_text(encoding="utf-8") == "existing review"
+            return
+        try:
+            code = public_manifest_main()
+        except SystemExit as error:
+            code = error.code
+        assert code == 0
+        if mode == "default-fresh":
+            audit = json.loads((tmp_path / review_path).read_text(encoding="utf-8"))
+            assert "--census-path=" + review_path in audit["command"]
+            assert audit["findings"] and all("review" not in f for f in audit["findings"])
+            monkeypatch.setattr(sys, "argv", [*argv, "--check"])
+            assert public_manifest_main() == 0
+            blobs[review_path] = (tmp_path / review_path).read_bytes()
+            monkeypatch.setattr(sys, "argv", argv)
+            assert public_manifest_main() == 0
+            return
+        audit = json.loads((tmp_path / review_path).read_text(encoding="utf-8"))
+        assert "--census-path=" + review_path in audit["command"]
+        assert "standalone" in audit
+        assert audit["standalone"]["reopened_findings"][0] == previous
+        finding = next(f for f in audit["findings"] if f["path"] == path and f["rule"] == rule)
+        assert ("review" in finding) is admitted
+        current = [f for f in audit["standalone"]["current_findings"] if f["rule"] == rule]
+        policy = next(f for f in audit["findings"] if f["rule"] == "NO_PERSONAL_CONTACT")
+        assert policy["review"]["reviewer"] == "reserved-example-domain-policy"
+        if mode in {"default-kept", "default-explicit"}:
+            assert current == rows
+        elif mode == "default-changed":
+            assert current == []
+            assert audit["standalone"]["reopened_findings"][1:] == [
+                {**item, "reopen_reason": "content_changed"} for item in rows
+            ]
+        else:
+            assert current == []
+        return
     if mode != "legacy":
         row["review_key"] = ["unknown" if mode == "unknown" else version, "README.md", rule, digest]
     rows = [] if mode == "auto" else [row]

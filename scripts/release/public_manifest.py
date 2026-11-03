@@ -1821,7 +1821,9 @@ def render(audit: dict) -> str:
         ]
     )
     verification = audit.get("standalone")
-    if verification:
+    if verification and (
+        verification["rounds"] or verification["corrections"] or verification["original_findings"]
+    ):
         lines.extend(["", "## RR4b standalone verification", ""])
         lines.extend(
             ["| Round | Source | Public | Private | Outcome |", "| --- | --- | ---: | ---: | --- |"]
@@ -1890,7 +1892,21 @@ def content_keys(rows: list[dict], blobs: dict[str, bytes]) -> None:
         row["review_key"] = [REVIEW_KEY, path, row["rule"], hashes[path, number]]
 
 
-def attach_reviews(audit: dict, verification: dict, repo: Path, blobs: dict[str, bytes]) -> None:
+def _unique_review_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result = dict(pairs)
+    if len(result) != len(pairs):
+        raise ValueError("duplicate JSON key in review record")
+    return result
+
+
+def attach_reviews(
+    audit: dict,
+    verification: dict,
+    repo: Path,
+    blobs: dict[str, bytes],
+    *,
+    policy_reviewer: bool = False,
+) -> None:
     """Admit emitted keys only; reserved example contacts retain their declared policy."""
     held = verification["standalone"]
     accepted = held.get("current_findings", [])
@@ -1941,6 +1957,8 @@ def attach_reviews(audit: dict, verification: dict, repo: Path, blobs: dict[str,
                         "not anyone's contact."
                     ),
                 }
+                if policy_reviewer:
+                    row["review"]["reviewer"] = "reserved-example-domain-policy"
                 held["current_findings"].append({**row, **row["review"]})
     audit["standalone"] = held
 
@@ -1957,21 +1975,75 @@ def main() -> int:
         type=Path,
         help="Read the standalone evidence field from a retained private verification report.",
     )
+    parser.add_argument(
+        "--census-path", help="The source tree's review record path and output location."
+    )
     args = parser.parse_args()
     sha, blobs, modes = read_tree(args.repo, args.source)
     if INTERNAL_ID_BASELINE in blobs:
         validate_internal_id_history(args.repo, sha, admissions_from="develop")
     manifest, audit = generate(sha, blobs, modes)
-    if args.verification_json:
+    # contract: CENSUS-PATH-CALLER supplies the path before the legacy default is removed.
+    if args.census_path is not None:
+        try:
+            validate_path(args.census_path)
+            if (
+                not args.check
+                and args.census_path not in blobs
+                and (args.out / args.census_path).exists()
+            ):
+                raise ValueError("source review record is absent but output exists")
+            source = (
+                args.verification_json.read_bytes()
+                if args.verification_json
+                else blobs.get(args.census_path)
+            )
+            if source is not None:
+                verification = json.loads(source, object_pairs_hook=_unique_review_object)
+                if not isinstance(verification, dict) or not isinstance(
+                    verification.get("standalone"), dict
+                ):
+                    raise ValueError("standalone review record is missing or invalid")
+                attach_reviews(audit, verification, args.repo, blobs, policy_reviewer=True)
+            else:
+                audit["standalone"] = {
+                    key: []
+                    for key in (
+                        "rounds",
+                        "corrections",
+                        "original_findings",
+                        "current_findings",
+                        "reopened_findings",
+                    )
+                }
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError, AttributeError) as error:
+            raise SystemExit(
+                f"public_release.verification_invalid: {args.census_path}: {error}; "
+                "restore the reviewed census or supply --verification-json"
+            ) from error
+    elif args.verification_json:
         verification = json.loads(args.verification_json.read_text(encoding="utf-8"))
         attach_reviews(audit, verification, args.repo, blobs)
+    if args.verification_json:
         audit["command"] += " --verification-json census/public_release.json"
+    if args.census_path is not None:
+        audit["command"] += " --census-path=" + subprocess.list2cmdline([args.census_path])
     outputs = {
         "config/release/public-manifest.json": json.dumps(manifest, indent=2, ensure_ascii=False)
         + "\n",
         "census/public_release.json": json.dumps(audit, indent=2, ensure_ascii=False) + "\n",
         "census/public_release.md": render(audit),
     }
+    if args.census_path is not None:
+        legacy = next(name for name in outputs if name.endswith("public_release.json"))
+        target = (args.out / args.census_path).resolve()
+        if not target.is_relative_to(args.out.resolve()) or any(
+            target == (args.out / name).resolve()
+            for name in outputs
+            if name != legacy or args.census_path != legacy
+        ):
+            raise SystemExit("public_release.output_collision: choose a distinct census path")
+        outputs[args.census_path] = outputs.pop(legacy)
     for name, content in outputs.items():
         destination = args.out / name
         if args.check:
