@@ -219,10 +219,36 @@ for _case in (
     )
 
 
+CASES["reader without pytest"] = ({}, {}, None)
+
+
 @pytest.mark.proves("pipeline.receipt_verifies_only_complete_and_as_asked")
 @pytest.mark.parametrize("case", CASES)
 def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeypatch, case):
     """A receipt counts only whole, with its claim standing over its events, and as asked."""
+    if case == "reader without pytest":
+        import subprocess
+
+        code = (
+            "import importlib.abc,runpy,sys\n"
+            "class Block(importlib.abc.MetaPathFinder):\n"
+            " def find_spec(self, name, path=None, target=None):\n"
+            "  if name == 'pytest' or name.startswith('pytest.'): "
+            "raise ModuleNotFoundError(name)\n"
+            "sys.meta_path.insert(0, Block())\n"
+            "sys.argv=['scripts/pipeline.py','show']\n"
+            "runpy.run_path(sys.argv[0], run_name='__main__')\n"
+        )
+        done = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        assert done.returncode == 0 and "config/pipeline.toml" in done.stdout, done.stderr
+        return
     if case.startswith("legacy target "):
         from datetime import datetime
 

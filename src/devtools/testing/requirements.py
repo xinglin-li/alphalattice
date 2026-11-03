@@ -178,35 +178,96 @@ def node_matches(node: str, selector: str) -> bool:
     )
 
 
-def file_holders(relative: str, text: str) -> list[Holder]:
-    """Each test function in one file, with the ids its function, class and module prove."""
+def file_holders(relative: str, text: str, *, size_scope: bool = False) -> list[Holder]:
+    """Read test functions; size scope follows nested classes and inherited marks."""
     tree, found = ast.parse(text), []
     lines = text.splitlines(keepends=True)
-    module = _proved(
-        node.value
+    module_marks = [
+        node
         for node in tree.body
         if isinstance(node, ast.Assign)
         and any(getattr(target, "id", "") == "pytestmark" for target in node.targets)
-    )
-    scopes: list[tuple[str, tuple[str, ...], ast.stmt]]
-    scopes = [(f"{relative}::", (), node) for node in tree.body]
-    scopes += [
-        (f"{relative}::{c.name}::", _proved(c.decorator_list), node)
-        for c in tree.body
-        if isinstance(c, ast.ClassDef)
-        for node in c.body
     ]
-    for prefix, scope, node in scopes:
+    module = _proved(node.value for node in module_marks)
+    module_shape = (
+        ast.dump(ast.Module(body=module_marks, type_ignores=[]), include_attributes=False)  # type: ignore[arg-type]
+        if size_scope
+        else ""
+    )
+    scopes: list[tuple[str, tuple[str, ...], str, ast.stmt]] = []
+
+    def collect(
+        body: list[ast.stmt], prefix: str, inherited: tuple[str, ...], shape: str, depth: int
+    ) -> None:
+        for node in body:
+            if isinstance(node, ast.ClassDef) and (size_scope or depth == 0):
+                marks = [
+                    part
+                    for part in node.body
+                    if isinstance(part, ast.Assign)
+                    and any(getattr(target, "id", "") == "pytestmark" for target in part.targets)
+                ]
+                ids = (
+                    inherited + _proved([*node.decorator_list, *(part.value for part in marks)])
+                    if size_scope
+                    else _proved(node.decorator_list)
+                )
+                shape_part = ast.dump(
+                    ast.Module(
+                        body=[*(ast.Expr(value=d) for d in node.decorator_list), *marks],
+                        type_ignores=[],
+                    ),
+                    include_attributes=False,
+                )
+                collect(node.body, prefix + node.name + "::", ids, shape + shape_part, depth + 1)
+            else:
+                scopes.append((prefix, inherited, shape, node))
+
+    if size_scope:
+        collect(tree.body, f"{relative}::", (), "", 0)
+    else:
+        scopes = [(f"{relative}::", (), "", node) for node in tree.body]
+        scopes += [
+            (f"{relative}::{c.name}::", _proved(c.decorator_list), "", node)
+            for c in tree.body
+            if isinstance(c, ast.ClassDef)
+            for node in c.body
+        ]
+    for prefix, scope, class_shape, node in scopes:
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
-        if node.name.startswith("test_"):
-            text = " ".join((ast.get_docstring(node) or "").split("\n\n")[0].split())
+        if node.name.startswith("test" if size_scope else "test_"):
+            description = " ".join((ast.get_docstring(node) or "").split("\n\n")[0].split())
             ids = module + scope + _proved(node.decorator_list)
             start = min([node.lineno, *(d.lineno for d in node.decorator_list)]) - 1
-            image = json.dumps([ids, "".join(lines[start : node.end_lineno])], ensure_ascii=False)
+            contents = "".join(lines[start : node.end_lineno])
+            image = json.dumps(
+                [ids, module_shape, class_shape, contents] if size_scope else [ids, contents],
+                ensure_ascii=False,
+            )
             digest = hashlib.sha256(image.encode("utf-8")).hexdigest()
-            found.append(Holder(prefix + node.name, ids, f"{node.name} {text}", digest))
+            found.append(Holder(prefix + node.name, ids, f"{node.name} {description}", digest))
     return found
+
+
+def edited_families(
+    before: Iterable[Holder], after: Iterable[Holder], moves: Mapping[str, str] | None = None
+) -> list[str]:
+    """New or edited function families, carrying uniquely proven byte-identical moves."""
+    old, now = list(before), list(after)
+    source = {row.node: row.digest for row in old}
+    if len(source) != len(old) or len({row.node for row in now}) != len(now):
+        raise ValueError(
+            "test_size.changed_identity: duplicate test families; restore unique definitions"
+        )
+    moves = moves or {}
+    result = []
+    for row in now:
+        path, marker, name = row.node.partition("::")
+        prior = moves.get(path, path) + marker + name
+        if source.get(prior) != row.digest:
+            result.append(row.node)
+    return sorted(result)
 
 
 def fresh(before: Iterable[Holder], after: Iterable[Holder]) -> list[Holder]:

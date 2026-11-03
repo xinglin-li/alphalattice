@@ -46,6 +46,94 @@ import pytest
             True,
         ),
         ("network", "unit", "", "import socket; socket.socket().close()", True),
+        pytest.param(
+            "size-live-over",
+            "unit",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "(tmp_path / 'payload').write_bytes(b'x' * 10_000_001)",
+            True,
+            id="size-live-over",
+        ),
+        pytest.param(
+            "size-live-xdist",
+            "unit",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "(tmp_path / 'payload').write_bytes(b'x' * 10_000_001)",
+            True,
+            id="size-live-xdist",
+        ),
+        pytest.param(
+            "size-live-under",
+            "unit",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "(tmp_path / 'payload').write_bytes(b'x' * 8)",
+            False,
+            id="size-live-under",
+        ),
+        pytest.param(
+            "size-live-time-under",
+            "unit",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "assert True",
+            False,
+            id="size-live-time-under",
+        ),
+        pytest.param(
+            "size-live-time-over",
+            "unit",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "assert True",
+            True,
+            id="size-live-time-over",
+        ),
+        pytest.param(
+            "size-live-legacy",
+            "unit",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "(tmp_path / 'payload').write_bytes(b'x' * 10_000_001)",
+            False,
+            id="size-live-legacy",
+        ),
+        pytest.param(
+            "size-live-process",
+            "old_area",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "import subprocess,sys; subprocess.run([sys.executable,'-c','pass'],check=True)",
+            True,
+            id="size-live-process",
+        ),
+        pytest.param(
+            "size-live-network",
+            "old_area",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "import socket; socket.socket().close()",
+            True,
+            id="size-live-network",
+        ),
+        pytest.param(
+            "size-live-skip",
+            "unit",
+            "import pytest\npytestmark = pytest.mark.small\n",
+            "pytest.skip('not measured')",
+            True,
+            id="size-live-skip",
+        ),
+        pytest.param(
+            "size-live-large-merge",
+            "old_area",
+            "import pytest\npytestmark = pytest.mark.large\n",
+            "print('NIGHTLY_EXECUTED')",
+            False,
+            id="size-live-large-merge",
+        ),
+        pytest.param(
+            "size-live-large-nightly",
+            "old_area",
+            "import pytest\npytestmark = pytest.mark.large\n",
+            "print('NIGHTLY_EXECUTED')",
+            False,
+            id="size-live-large-nightly",
+        ),
         ("integration-network", "integration", "", "import socket; socket.socket().close()", True),
         (
             "numerical-import",
@@ -286,6 +374,17 @@ assert calls == ['test.contract.failure']
         "legacy",
         "process",
         "network",
+        "size-live-over",
+        "size-live-xdist",
+        "size-live-under",
+        "size-live-time-under",
+        "size-live-time-over",
+        "size-live-legacy",
+        "size-live-process",
+        "size-live-network",
+        "size-live-skip",
+        "size-live-large-merge",
+        "size-live-large-nightly",
         "integration-network",
         "numerical-import",
         "integration-hostname",
@@ -463,6 +562,56 @@ def _memory_checks_read_no_host():
         if case.startswith("observe")
         else []
     )
+    if case.startswith("size-live-"):
+        from devtools.pipeline import receipt
+
+        writer = receipt.Writer(
+            tmp_path / "receipt.jsonl",
+            {"stage": "commit", "host": "workshop", "command": ["fixture"]},
+            [{"workspace": {}}],
+        )
+        writer.write(
+            {"workspace": {}},
+            {"repo": "product", "base": "a" * 40, "head": "b" * 40, "clean": True},
+        )
+        writer.stream.close()
+        families = (
+            [] if case == "size-live-legacy" else [f"tests/{layer}/test_sample.py::test_sample"]
+        )
+        extra = ""
+        if case.startswith("size-live-large-"):
+            node = f"tests/{layer}/test_sample.py::test_sample"
+            extra = (
+                "from devtools.testing import collection\n"
+                "original = collection.load_policy\n"
+                "def sized(root):\n"
+                " p = original(root)\n"
+                f" p['large'].append({{'pattern': {node!r}, 'owner': 'tests', "
+                "'reason': 'A synthetic journey.', 'size_contract': 'nightly_only'})\n"
+                f" p['mandatory'].append({node!r})\n"
+                " return p\ncollection.load_policy = sized\n"
+            )
+        (tmp_path / "size-stage-selection.json").write_text(
+            json.dumps({"base": "a" * 40, "head": "b" * 40, "families": families}),
+            encoding="utf-8",
+        )
+        (tmp_path / "size_fixture.py").write_text(extra, encoding="utf-8")
+        phase_args = (
+            ["-p", "size_fixture", "-p", "devtools.pipeline.receipt"]
+            + (["-s"] if case.startswith("size-live-large-") else [])
+            + (["-p", "xdist.plugin", "-n", "2"] if case == "size-live-xdist" else [])
+        )
+        if case.startswith("size-live-time-"):
+            call_seconds = 0.4 if case.endswith("under") else 0.5
+            (tmp_path / "size_phase.py").write_text(
+                "import pytest\n"
+                "@pytest.hookimpl(wrapper=True, tryfirst=True)\n"
+                "def pytest_runtest_makereport(item, call):\n"
+                + f" call.duration = {{'setup': 0.4, 'call': {call_seconds}, "
+                "'teardown': 0.2}[call.when]\n return (yield)\n",
+                encoding="utf-8",
+            )
+            phase_args += ["-p", "size_phase"]
     if case == "observe-sidecar-unavailable":
         for worker in ("main", "gw0", "gw1"):
             (tmp_path / f"node-observations-{worker}.jsonl").mkdir()
@@ -520,17 +669,36 @@ def _memory_checks_read_no_host():
             {
                 key: value
                 for key, value in os.environ.items()
-                if key != "ALPHALATTICE_PIPELINE_REQUIRED_TESTS"
-                if key != "ALPHALATTICE_REACH_FLOOR"
+                if key
+                not in {
+                    "ALPHALATTICE_PIPELINE_REQUIRED_TESTS",
+                    "PYTEST_CURRENT_TEST",
+                    "ALPHALATTICE_REACH_FLOOR",
+                }
                 if key != "ALPHALATTICE_CHANGED_PATHS"
                 or not os.environ.get("ALPHALATTICE_REACH_FLOOR")
             },
             PYTHONPATH=os.pathsep.join([str(tmp_path), str(root / "src")]),
             ALPHALATTICE_NETWORK_DISABLED="1",
-            ALPHALATTICE_TEST_LANE="",
-            ALPHALATTICE_PIPELINE_STAGE="",
+            ALPHALATTICE_TEST_LANE="merge"
+            if case == "size-live-large-merge"
+            else "nightly"
+            if case == "size-live-large-nightly"
+            else "",
+            ALPHALATTICE_PIPELINE_REQUIRED_TESTS=json.dumps(
+                [f"tests/{layer}/test_sample.py::test_sample"]
+            )
+            if case == "size-live-large-merge"
+            else "[]",
+            ALPHALATTICE_PIPELINE_STAGE="nightly"
+            if case == "size-live-large-nightly"
+            else "commit"
+            if case.startswith("size-live-")
+            else "",
             ALPHALATTICE_PIPELINE_EVENTS=(
-                str(tmp_path / "test-events.jsonl") if case.startswith("observe") else ""
+                str(tmp_path / "test-events.jsonl")
+                if case.startswith("observe") or case.startswith("size-live-")
+                else ""
             ),
             PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
             PYTEST_PLUGINS="",
@@ -543,13 +711,59 @@ def _memory_checks_read_no_host():
         | getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     output = result.stdout + result.stderr
+    if case == "size-live-large-merge":
+        assert result.returncode == 5 and "test_size.nightly_only" in output, output
+        assert "NIGHTLY_EXECUTED" not in output
+        return
+    if case == "size-live-large-nightly":
+        assert result.returncode == 0 and "NIGHTLY_EXECUTED" in output, output
+        return
     if refused:
-        assert (
-            result.returncode == 1
-            and ("Timeout" if case == "slow" else "testing.layer_contract") in output
-        ), output
+        expected = (
+            "test_size.admission_limit"
+            if case in {"size-live-over", "size-live-xdist", "size-live-time-over"}
+            else "test_size.admission_unmeasured"
+            if case == "size-live-skip"
+            else "Timeout"
+            if case == "slow"
+            else "testing.layer_contract"
+        )
+        assert result.returncode == 1 and expected in output, output
+        if case in {"size-live-over", "size-live-xdist"}:
+            assert "10000001" in output and "medium" in output
     else:
         assert result.returncode == 0, output
+    if case in {
+        "size-live-over",
+        "size-live-under",
+        "size-live-legacy",
+        "size-live-xdist",
+        "size-live-time-under",
+        "size-live-time-over",
+    }:
+        paths = list(tmp_path.glob("node-observations-*.jsonl"))
+        observed = [
+            json.loads(line) for path in paths for line in path.read_text("utf-8").splitlines()
+        ]
+        assert len(observed) == 1
+        if case == "size-live-legacy":
+            assert "tmp_footprint_bytes" not in observed[0]
+        else:
+            assert observed[0]["tmp_footprint_bytes"] == (
+                8
+                if case == "size-live-under"
+                else 0
+                if case.startswith("size-live-time-")
+                else 10_000_001
+            )
+            assert observed[0]["tmp_footprint_seconds"] >= 0
+        timings = [
+            json.loads(path.read_text("utf-8")) for path in tmp_path.glob("size-overhead-*.json")
+        ]
+        if case == "size-live-legacy":
+            assert not timings
+        else:
+            assert timings and all(all(value >= 0 for value in row.values()) for row in timings)
     if case == "observe":
         observed = list(tmp_path.glob("node-observations-*.jsonl"))
         assert observed, "the test run must retain its observed resources beside JUnit"
@@ -607,6 +821,7 @@ def _memory_checks_read_no_host():
     "declared",
     [(), ("small",), ("large",), ("medium", "medium"), ("small", "large"), ("registered",)]
     + [(name,) for name in ("timeout", "bad-reason", "bad-limit", "duplicate", "owner-large")]
+    + [pytest.param(("null-size-contract",), id="null-size-contract")]
     + [("strict",)]
     + [
         pytest.param(("cost-" + case,), id="cost-" + case)
@@ -650,6 +865,21 @@ def _memory_checks_read_no_host():
     + [("backend-" + case,) for case in ("empty", "kind", "type", "reason", "duplicate")]
     + [pytest.param(("sibling-race",), id="sibling-race")]
     + [
+        pytest.param(("admission-" + case,), id="admission-" + case)
+        for case in (
+            "small-in",
+            "small-time",
+            "small-bytes",
+            "medium-in",
+            "medium-time",
+            "medium-bytes",
+            "large",
+            "identity",
+            "receipt",
+            "footprint",
+        )
+    ]
+    + [
         pytest.param(("axis-" + case,), id="axis-" + case)
         for case in ("measured", "fallback", "large")
     ],
@@ -662,6 +892,219 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             "ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(["tests/outer.py::test_outer"])
         )
     root = Path(__file__).resolve().parents[2]
+    if declared and declared[0].startswith("admission-"):
+        from devtools.testing import sizes
+
+        decide = getattr(sizes, "admission_limit", None)
+        assert callable(decide), "new and edited tests need one size-admission owner"
+        if declared[0] == "admission-footprint":
+            footprint = getattr(sizes, "tmp_footprint", None)
+            assert callable(footprint), "the size owner must measure the retained temporary tree"
+            folder = tmp_path / "footprint"
+            (folder / "nested").mkdir(parents=True)
+            (folder / "a").write_bytes(b"abc")
+            (folder / "nested/b").write_bytes(b"12345")
+            assert footprint(folder) == 8 and footprint(folder / "missing") == 0
+            (folder / "nested/b").unlink()
+            assert footprint(folder) == 3
+            with monkeypatch.context() as broken:
+                broken.setattr(
+                    sizes.os,
+                    "scandir",
+                    lambda path: (_ for _ in ()).throw(PermissionError("denied")),
+                )
+                with pytest.raises(ValueError, match="footprint_unmeasured"):
+                    footprint(folder)
+            return
+        if declared[0] == "admission-receipt":
+            from types import SimpleNamespace
+
+            from devtools.pipeline import receipt
+            from devtools.testing import collection
+
+            config = SimpleNamespace(pluginmanager=SimpleNamespace(get_plugin=lambda name: None))
+            monkeypatch.setenv("ALPHALATTICE_PIPELINE_STAGE", "commit")
+            monkeypatch.setenv("ALPHALATTICE_PIPELINE_EVENTS", str(tmp_path / "tests-events.jsonl"))
+            monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/test_outer.py::test_outer (call)")
+            assert collection._size_families(config) is None  # a nested controller
+            assert collection._size_families(SimpleNamespace(workerinput={})) is None
+            monkeypatch.delenv("PYTEST_CURRENT_TEST")
+            assert (
+                collection._size_families(
+                    SimpleNamespace(workerinput={"alphalattice_size_scope": False})
+                )
+                is None
+            )  # nested xdist workers inherit their own controller's scope
+            with pytest.raises(pytest.UsageError, match="changed_unmeasured"):
+                collection._size_families(SimpleNamespace(workerinput={}))
+            monkeypatch.delenv("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", raising=False)
+            assert collection._size_families(config) is None  # nested fast-guard pytest
+            monkeypatch.setenv("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", "[]")
+            with pytest.raises(pytest.UsageError, match="changed_unmeasured"):
+                collection._size_families(config)  # a test row must have its receipt owner
+            pending = getattr(receipt, "pending_workspace", None)
+            assert callable(pending), "commit selection needs the receipt owner's pinned workspace"
+            path = tmp_path / "receipt.jsonl"
+            writer = receipt.Writer(
+                path,
+                {"stage": "commit", "host": "workshop", "command": ["fixture"]},
+                [{"workspace": {}}],
+            )
+            writer.write(
+                {"workspace": {}},
+                {"repo": "product", "base": "a" * 40, "head": "b" * 40, "clean": True},
+            )
+            result = pending(path)
+            assert (result.base, result.head) == ("a" * 40, "b" * 40)
+            record = tmp_path / "size-stage-selection.json"
+            events = tmp_path / "tests-events.jsonl"
+            chosen = ["tests/test_a.py::test_one"]
+            record.write_text(
+                json.dumps({"base": "a" * 40, "head": "b" * 40, "families": chosen}),
+                encoding="utf-8",
+            )
+            assert receipt.size_families(events) == tuple(chosen)
+            monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/test_outer.py::test_outer (call)")
+            other = "tests/test_b.py::test_other"
+            assert collection._nested_required((*chosen, other)) == (other,)
+            monkeypatch.setenv("ALPHALATTICE_PIPELINE_STAGE", "nightly")
+            assert collection._nested_required((*chosen, other)) == (*chosen, other)
+            monkeypatch.setenv("ALPHALATTICE_PIPELINE_STAGE", "commit")
+            monkeypatch.delenv("PYTEST_CURRENT_TEST")
+            record.write_text(
+                json.dumps({"base": "a" * 40, "head": "c" * 40, "families": chosen}),
+                encoding="utf-8",
+            )
+            with pytest.raises(ValueError, match="changed_unmeasured"):
+                receipt.size_families(events)
+            writer.stream.close()
+            path.write_text("{", encoding="utf-8")
+            with pytest.raises(receipt.ReceiptError, match="size_workspace_unmeasured"):
+                pending(path)
+            return
+        if declared[0] == "admission-identity":
+            from devtools.testing import requirements
+
+            edited = getattr(requirements, "edited_families", None)
+            assert callable(edited), "edited test families need an identity owner"
+            old = (
+                "def test_same(): pass\n"
+                "@pytest.mark.parametrize('x', [1, 2])\n"
+                "def test_param(x): pass\n"
+            )
+            new = old.replace("[1, 2]", "[1, 2, 3]") + "def test_new(): pass\n"
+            before = requirements.file_holders("tests/test_a.py", old, size_scope=True)
+            after = requirements.file_holders("tests/test_a.py", new, size_scope=True)
+            assert edited(before, after) == [
+                "tests/test_a.py::test_new",
+                "tests/test_a.py::test_param",
+            ]
+            moved = requirements.file_holders("tests/test_b.py", old, size_scope=True)
+            assert edited(before, moved, {"tests/test_b.py": "tests/test_a.py"}) == []
+            marked_before = requirements.file_holders(
+                "tests/test_a.py", "pytestmark = pytest.mark.medium\n" + old, size_scope=True
+            )
+            marked_after = requirements.file_holders(
+                "tests/test_a.py", "pytestmark = pytest.mark.small\n" + old, size_scope=True
+            )
+            assert edited(marked_before, marked_after) == [
+                "tests/test_a.py::test_param",
+                "tests/test_a.py::test_same",
+            ]
+            from devtools.pipeline import stage
+
+            changed = getattr(stage, "changed_families", None)
+            assert callable(changed), (
+                "the stage needs changed families from its exact Git endpoints"
+            )
+            repo = tmp_path / "repo"
+            (repo / "tests").mkdir(parents=True)
+
+            def git(*words):
+                return subprocess.run(
+                    ["git", "-C", str(repo), *words],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                ).stdout.strip()
+
+            git("init", "-q")
+            (repo / "tests/test_a.py").write_text(old, encoding="utf-8")
+            git("add", ".")
+            git(
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "base",
+            )
+            base = git("rev-parse", "HEAD")
+            (repo / "tests/test_a.py").write_text(new, encoding="utf-8")
+            (repo / "tests/extra_test.py").write_text(
+                "def testSuffix(): pass\nclass TestOuter:\n"
+                " class TestInner:\n  def test_nested(self): pass\n",
+                encoding="utf-8",
+            )
+            git("add", ".")
+            git(
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "head",
+            )
+            head = git("rev-parse", "HEAD")
+            assert changed(repo, base, head) == [
+                "tests/extra_test.py::TestOuter::TestInner::test_nested",
+                "tests/extra_test.py::testSuffix",
+                "tests/test_a.py::test_new",
+                "tests/test_a.py::test_param",
+            ]
+            return
+        node = "tests/structural/test_example.py::test_one"
+        cases = {
+            "small-in": ("small", 1.0, 10_000_000, None),
+            "small-time": ("small", 1.01, 0, "medium"),
+            "small-bytes": ("small", 0.1, 10_000_001, "medium"),
+            "medium-in": ("medium", 30.0, 500_000_000, None),
+            "medium-time": ("medium", 30.01, 0, "large"),
+            "medium-bytes": ("medium", 0.1, 500_000_001, "large"),
+            "large": ("large", 99999.0, 999_999_999, None),
+        }
+        size, seconds, footprint, next_size = cases[declared[0][10:]]
+        policy = sizes.load_policy(root)
+        if next_size:
+            with pytest.raises(ValueError) as refused:
+                decide(node, size, seconds, footprint, policy)
+            assert all(
+                x in str(refused.value)
+                for x in (
+                    node,
+                    str(seconds),
+                    str(footprint),
+                    next_size,
+                    "tmp footprint at teardown",
+                )
+            )
+        else:
+            assert decide(node, size, seconds, footprint, policy) is None
+        if size == "large":
+            policy["large"].append(
+                {
+                    "pattern": node,
+                    "owner": "tests.structural",
+                    "reason": "Exercises the registered journey.",
+                    "size_contract": "nightly_only",
+                }
+            )
+            assert not sizes.included(node, "large", "merge", policy, None)
+            assert sizes.included(node, "large", "nightly", policy, None)
+        return
     if declared and declared[0].startswith("axis-"):
         from types import SimpleNamespace
 
@@ -963,6 +1406,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         "bad-limit": (policy["limits"], "medium", 0, "limits"),
         "duplicate": (policy, "large", large + large[:1], "large_duplicate"),
         "owner-large": (policy["defaults"][-1], "size", "large", "default_size"),
+        "null-size-contract": (large[0], "size_contract", None, "large_contract"),
     }
     faults |= {
         "post-kind": (policy, "post_merge_only", "tests/x.py", "rule"),
@@ -1072,8 +1516,12 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             {
                 key: value
                 for key, value in os.environ.items()
-                if key != "ALPHALATTICE_PIPELINE_REQUIRED_TESTS"
-                if key != "ALPHALATTICE_REACH_FLOOR"
+                if key
+                not in {
+                    "ALPHALATTICE_PIPELINE_REQUIRED_TESTS",
+                    "PYTEST_CURRENT_TEST",
+                    "ALPHALATTICE_REACH_FLOOR",
+                }
                 if key != "ALPHALATTICE_CHANGED_PATHS"
                 or not os.environ.get("ALPHALATTICE_REACH_FLOOR")
             },
@@ -1207,6 +1655,23 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     except TypeError:
         floor_view = None  # an older reader cannot honor the floor
     assert floor_view == (True, True, False, True, True, False, True, False)
+    nightly_only = policy | {
+        "large": [
+            {"pattern": closure, "owner": "tests.structural", "size_contract": "nightly_only"}
+        ]
+    }
+    assert not included(closure, "large", "merge", nightly_only, floor_change, floor=True)
+    assert included(closure, "large", "nightly", nightly_only, None)
+    from types import SimpleNamespace
+
+    from devtools.testing.collection import _size_included
+
+    item = SimpleNamespace(nodeid=closure)
+    permitted = {closure.split("::")[0]}
+    assert _size_included(
+        item, "medium", "merge", policy, floor_change, (), (), permitted, floor=True
+    )
+    assert not _size_included(item, "medium", "merge", policy, floor_change, (), (), permitted)
     for damaged in ("", "M", "M\t", "R100\told\tnew", 'M\t"quoted"', "M\tbad\ufffd"):
         listing.write_text(damaged, encoding="utf-8")
         assert changed_paths(floor=True) is None
@@ -1217,8 +1682,6 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     assert included(
         other, "medium", "merge", policy, None
     )  # post-merge, unscoped: whole, catching it
-    from types import SimpleNamespace
-
     from devtools.testing.collection import _record_moved, pytest_collection_finish
 
     config = SimpleNamespace(
@@ -1234,6 +1697,9 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     pytest_collection_finish(SimpleNamespace(config=config, items=[nodes[0]]))
     recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
     assert recorded == {"tier": "commit stage", "moved": [other], "ran": [other]}
+    _record_moved(config, "merge", nodes, policy, None, omitted=(nodes[0],))
+    recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
+    assert recorded == {"tier": "post-merge", "moved": [other], "ran": []}
     assert included(closure, "large", "nightly", policy, None) and not scoped(scan, policy, None)
 
     from copy import deepcopy

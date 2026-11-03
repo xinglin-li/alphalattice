@@ -37,7 +37,7 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 
 from devtools.pipeline.definition import DefinitionError
-from devtools.testing.requirements import node_matches
+from devtools.testing.requirements import node_matches, selection
 
 if TYPE_CHECKING:
     import pytest
@@ -171,6 +171,30 @@ class Workspace(_Strict):
     base: Sha
     head: Sha
     clean: bool
+
+
+def pending_workspace(path: Path) -> Workspace:
+    """Read only a running commit stage's flushed identity; this is not a completed receipt."""
+    try:
+        with path.open(encoding="utf-8") as stream:
+            first, second = json.loads(stream.readline()), json.loads(stream.readline())
+        if (
+            not isinstance(first, dict)
+            or first.get("id") != {"started": {}}
+            or not isinstance(second, dict)
+            or second.get("id") != {"workspace": {}}
+        ):
+            raise ValueError("missing ordered started/workspace events")
+        started = Started.model_validate(first["started"])
+        workspace = Workspace.model_validate(second["workspace"])
+        if started.stage != "commit" or workspace.repo != "product":
+            raise ValueError("not a product commit stage")
+        return workspace  # type: ignore[no-any-return]  # Pydantic validates Workspace above.
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError, ValidationError) as error:
+        raise ReceiptError(
+            "pipeline.size_workspace_unmeasured",
+            f"{path}: restore the running stage identity: {error}",
+        ) from error
 
 
 class Configuration(_Strict):
@@ -951,6 +975,20 @@ class _Events:
 def register(config: pytest.Config, path: Path) -> None:
     """Register the result writer on this session, appending to ``path``."""
     config.pluginmanager.register(_Events(path.open("a", encoding="utf-8")), "pipeline-events")
+
+
+def size_families(events: Path) -> tuple[str, ...]:
+    """Bind the stage's test families to its running workspace through the receipt owner."""
+    try:
+        workspace = pending_workspace(events.parent / "receipt.jsonl")
+        record = json.loads((events.parent / "size-stage-selection.json").read_text("utf-8"))
+        if record["base"] != workspace.base or record["head"] != workspace.head:
+            raise ValueError("selection and workspace commits differ")
+        return selection(record["families"])
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        raise ValueError(
+            f"test_size.changed_unmeasured: restore the stage selection: {error}"
+        ) from error
 
 
 def pytest_configure(config: pytest.Config) -> None:

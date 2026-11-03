@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from collections import Counter
 from contextlib import suppress
 from math import isfinite
@@ -18,6 +19,7 @@ from devtools.testing import audit, requirements, sizes
 from devtools.testing.contracts import Backends, LayerContract
 from devtools.testing.sizes import (
     _rule,
+    admission_limit,
     changed_paths,
     classify,
     included,
@@ -25,6 +27,7 @@ from devtools.testing.sizes import (
     moved,
     scoped,
     stage_files,
+    tmp_footprint,
 )
 
 REQUIRED = pytest.StashKey[tuple[tuple[str, ...], tuple[str, ...]]]()
@@ -37,7 +40,91 @@ PHASES = pytest.StashKey[dict[str, float]]()
 FAILED = pytest.StashKey[bool]()
 FRAMEWORK = pytest.StashKey[frozenset[CodeType]]()
 BACKENDS = pytest.StashKey[Backends]()
+SIZE_FAMILIES = pytest.StashKey[tuple[str, ...]]()
+SIZE_SELECTED = pytest.StashKey[bool]()
+SIZE_FOOTPRINT = pytest.StashKey[tuple[int | None, float, str]]()
+SIZE_RECORDED = pytest.StashKey[bool]()
+SIZE_FAILED = pytest.StashKey[bool]()
+SIZE_POLICY = pytest.StashKey[dict[str, Any]]()
+SIZE_CLOCK = pytest.StashKey[dict[str, float]]()
 FIND = 'register its requirement first (python scripts/tests_registry.py find "<words>")'
+
+
+def _family(item: Any) -> str:
+    """One collected parameter belongs to its static test-function family."""
+    path = item.nodeid.split("::", 1)[0].replace("\\", "/")
+    name = getattr(item, "originalname", None) or item.name.partition("[")[0]
+    cls = getattr(item, "cls", None)
+    return path + "::" + ((cls.__qualname__.replace(".", "::") + "::") if cls else "") + name  # type: ignore[no-any-return]  # pytest supplies a string name and class.
+
+
+def _size_families(config: Any) -> tuple[str, ...] | None:
+    """Share the running receipt's pinned workspace observation with workers."""
+    events = os.environ.get("ALPHALATTICE_PIPELINE_EVENTS")
+    if (
+        os.environ.get("ALPHALATTICE_PIPELINE_STAGE") != "commit"
+        or not events
+        or os.environ.get("PYTEST_CURRENT_TEST")
+    ):
+        return None  # a pytest launched inside a test is not the stage's test row
+    try:
+        if hasattr(config, "workerinput"):
+            if config.workerinput.get("alphalattice_size_scope") is False:
+                return None  # a nested controller did not select the stage row
+            if config.workerinput.get("alphalattice_size_scope") is not True:
+                raise ValueError("the controller did not identify the size scope")
+            values = config.workerinput["alphalattice_size_families"]
+        else:
+            owner = config.pluginmanager.get_plugin("devtools.pipeline.receipt")
+            if owner is None and "ALPHALATTICE_PIPELINE_REQUIRED_TESTS" not in os.environ:
+                return None  # the fast guard removes test-row selection before its own pytest
+            if owner is None or not callable(getattr(owner, "size_families", None)):
+                raise ValueError("the running receipt plugin is unavailable")
+            values = owner.size_families(Path(events))
+        return requirements.selection(values)
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        raise pytest.UsageError(
+            f"test_size.changed_unmeasured: restore the commit stage's source identity: {error}"
+        ) from error
+
+
+@pytest.hookimpl(optionalhook=True)  # type: ignore[untyped-decorator]
+def pytest_configure_node(node: Any) -> None:
+    families = node.config.stash.get(SIZE_FAMILIES, None)
+    if os.environ.get("ALPHALATTICE_PIPELINE_STAGE") == "commit" and os.environ.get(
+        "ALPHALATTICE_PIPELINE_EVENTS"
+    ):
+        node.workerinput["alphalattice_size_scope"] = families is not None
+        if families is not None:
+            node.workerinput["alphalattice_size_families"] = list(families)
+
+
+@pytest.hookimpl(wrapper=True, trylast=True)  # type: ignore[untyped-decorator]
+def pytest_fixture_setup(fixturedef: Any, request: Any) -> Any:
+    clock = request.config.stash.get(SIZE_CLOCK, None)
+    began = time.perf_counter() if clock is not None else 0.0
+    item = request.node
+    selected = fixturedef.argname == "tmp_path" and item.stash.get(SIZE_SELECTED, False)
+    before = time.perf_counter() - began if clock is not None else 0.0
+    value = yield
+    began = time.perf_counter() if clock is not None else 0.0
+    if selected:
+
+        def measure() -> None:
+            started = time.perf_counter()
+            try:
+                size, error = tmp_footprint(value), ""
+            except (OSError, ValueError) as failure:
+                size, error = None, str(failure)
+            elapsed = time.perf_counter() - started
+            item.stash[SIZE_FOOTPRINT] = (size, elapsed, error)
+            if clock is not None:
+                clock["footprint_seconds"] += elapsed
+
+        request.addfinalizer(measure)
+    if clock is not None:
+        clock["fixture_hook_seconds"] += before + time.perf_counter() - began
+    return value
 
 
 def _proven(
@@ -99,6 +186,11 @@ def pytest_runtest_setup(item: Any) -> Any:
         with suppress(Exception):
             item.stash[OBSERVATION].phase = "setup"
     level = dict(item.user_properties).get("requirement_layer") or requirements.layer(item.nodeid)
+    if (
+        item.stash.get(SIZE_SELECTED, False)
+        and dict(item.user_properties).get("test_size") == "small"
+    ):
+        level = "unit"  # Small's no-subprocess/no-network contract uses the existing unit owner.
     if level not in {"unit", "integration"}:
         return (yield)
     contract = LayerContract(
@@ -167,11 +259,59 @@ def _observe_report(item: Any, report: Any) -> None:
             node=item.nodeid,
             phases={name: phases.get(name) for name in ("setup", "call", "teardown")},
         )
+        if item.stash.get(SIZE_SELECTED, False):
+            footprint = item.stash.get(SIZE_FOOTPRINT, None)
+            if footprint is None and "tmp_path" not in item.fixturenames:
+                footprint = (0, 0.0, "")
+            value.update(
+                tmp_footprint_bytes=footprint[0] if footprint else None,
+                tmp_footprint_seconds=footprint[1] if footprint else None,
+                tmp_footprint_error=footprint[2] if footprint else "tmp_path observation missing",
+            )
         stream.write(json.dumps(value, allow_nan=False) + "\n")
         stream.flush()
+        if item.stash.get(SIZE_SELECTED, False):
+            item.stash[SIZE_RECORDED] = True
     except Exception as error:
         with suppress(Exception):
             print(f"test observation unavailable: {error}", file=sys.stderr)
+
+
+def _size_report(item: Any, report: Any) -> None:
+    """Refuse a changed test only after its complete phases and tmp_path have been observed."""
+    if not item.stash.get(SIZE_SELECTED, False):
+        return
+    if report.skipped:
+        report.outcome, report.longrepr = (
+            "failed",
+            f"test_size.admission_unmeasured: {item.nodeid}: the edited test was skipped; "
+            "run it to measure its size",
+        )
+    if report.failed:
+        item.stash[SIZE_FAILED] = True
+    if report.when != "teardown" or item.stash.get(SIZE_FAILED, False):
+        return
+    phases = item.stash.get(OBSERVATION_PHASES, {})
+    footprint = item.stash.get(SIZE_FOOTPRINT, None)
+    if footprint is None and "tmp_path" not in item.fixturenames:
+        footprint = (0, 0.0, "")
+    try:
+        if (
+            set(phases) != {"setup", "call", "teardown"}
+            or not item.stash.get(SIZE_RECORDED, False)
+            or footprint is None
+            or footprint[0] is None
+            or footprint[2]
+        ):
+            raise ValueError(
+                f"test_size.admission_unmeasured: {item.nodeid}: restore complete phases "
+                "and tmp footprint at teardown"
+            )
+        policy = item.config.stash[SIZE_POLICY]
+        size = dict(item.user_properties)["test_size"]
+        admission_limit(item.nodeid, size, sum(phases.values()), footprint[0], policy)
+    except (KeyError, TypeError, ValueError) as error:
+        report.outcome, report.longrepr = "failed", str(error)
 
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)  # type: ignore[untyped-decorator]
@@ -179,7 +319,17 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
     """Judge unit cost from its enclosing phases, using the existing solo-timeout route."""
     result = yield
     report = result.get_result()
+    clock = item.config.stash.get(SIZE_CLOCK, None)
+    began = (
+        time.perf_counter() if clock is not None and item.stash.get(SIZE_SELECTED, False) else 0.0
+    )
     _observe_report(item, report)
+    if began:
+        clock["record_seconds"] += time.perf_counter() - began
+    began = time.perf_counter() if clock is not None else 0.0
+    _size_report(item, report)
+    if clock is not None:
+        clock["report_seconds"] += time.perf_counter() - began
     if CONTRACT not in item.stash or item.stash[CONTRACT].layer != "unit":
         return
     if report.failed:
@@ -255,12 +405,18 @@ def _properties(
     row: dict[str, Any],
     declared: list[str],
     classified: tuple[str, str, str, float],
+    *,
+    size_hang_guard: float | None = None,
 ) -> None:
     """Attach each owner's existing size, real bound and requirement metadata once."""
     size, owner, declaration, seconds = classified
     if not declared:
         item.add_marker(size)
     previous = item.get_closest_marker("timeout")
+    if size_hang_guard is not None and previous is None:
+        seconds = max(
+            seconds, size_hang_guard
+        )  # admission measures completed phases; this is only a hang guard
     if previous:
         limit = previous.args[0] if previous.args else previous.kwargs.get("timeout")
         if isinstance(limit, (int, float)) and limit > 0:
@@ -279,6 +435,26 @@ def _properties(
     )
 
 
+def _nested_required(required: tuple[str, ...]) -> tuple[str, ...]:
+    """Do not force a parent's changed families into its child pytest sessions."""
+    events = os.environ.get("ALPHALATTICE_PIPELINE_EVENTS")
+    if (
+        not required
+        or not events
+        or os.environ.get("ALPHALATTICE_PIPELINE_STAGE") != "commit"
+        or not os.environ.get("PYTEST_CURRENT_TEST")
+    ):
+        return required
+    try:
+        record = json.loads((Path(events).parent / "size-stage-selection.json").read_text("utf-8"))
+        inherited = frozenset(requirements.selection(record["families"]))
+        return tuple(node for node in required if node not in inherited)
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        raise pytest.UsageError(
+            f"test_size.changed_unmeasured: restore the parent stage selection: {error}"
+        ) from error
+
+
 def pytest_configure(config: Any) -> None:
     """The producer's optional required nodes override only their own ordinary deselection."""
     try:
@@ -287,10 +463,24 @@ def pytest_configure(config: Any) -> None:
         )
     except (ValueError, TypeError):
         raise pytest.UsageError("test_size.required_selection_invalid") from None
+    required = _nested_required(required)
     deselect = tuple(config.option.deselect or ()) if required else ()
     if required:
         config.option.deselect = []
     config.stash[REQUIRED] = required, deselect
+    began = time.perf_counter()
+    families = _size_families(config)
+    if families is not None:
+        config.stash[SIZE_FAMILIES] = families
+        if families:
+            config.stash[SIZE_CLOCK] = {
+                "selection_seconds": time.perf_counter() - began,
+                "fixture_hook_seconds": 0.0,
+                "footprint_seconds": 0.0,
+                "collection_seconds": 0.0,
+                "record_seconds": 0.0,
+                "report_seconds": 0.0,
+            }
     if os.environ.get("ALPHALATTICE_PIPELINE_EVENTS"):
         try:
             xml = getattr(config.option, "xmlpath", None)
@@ -305,6 +495,27 @@ def pytest_configure(config: Any) -> None:
         except Exception as error:
             with suppress(Exception):
                 print(f"test observation unavailable: {error}", file=sys.stderr)
+
+
+@pytest.hookimpl(trylast=True)  # type: ignore[untyped-decorator]
+def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
+    """Retain component costs once per process; missing evidence cannot prove the stage budget."""
+    clock = session.config.stash.get(SIZE_CLOCK, None)
+    if clock is None:
+        return
+    events = os.environ.get("ALPHALATTICE_PIPELINE_EVENTS")
+    try:
+        if not events or any(not isfinite(value) or value < 0 for value in clock.values()):
+            raise ValueError("missing or invalid size-observer timings")
+        path = Path(events).parent / f"size-overhead-{os.getpid()}-{time.time_ns()}.json"
+        with path.open("x", encoding="utf-8") as stream:
+            json.dump(clock, stream, allow_nan=False)
+    except (OSError, ValueError) as error:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        print(
+            f"test_size.overhead_unmeasured: restore the stage's timing output: {error}",
+            file=sys.stderr,
+        )
 
 
 def pytest_unconfigure(config: Any) -> None:
@@ -347,6 +558,62 @@ def framework_fixtures(
     return frozenset(codes)
 
 
+def _size_attributes(
+    item: Any,
+    config: Any,
+    families: frozenset[str],
+    policy: dict[str, Any],
+    ids: list[str],
+    row: dict[str, Any],
+    declared: list[str],
+    classified: tuple[str, str, str, float],
+) -> bool:
+    """Attach changed-test admission and return the Large nightly-only disposition."""
+    size = classified[0]
+    clock = config.stash.get(SIZE_CLOCK, None)
+    began = time.perf_counter() if clock is not None else 0.0
+    selected = _family(item) in families
+    item.stash[SIZE_SELECTED] = selected
+    large_rule = _rule(item.nodeid, policy["large"]) if size == "large" else None
+    nightly_only = bool(large_rule and large_rule.get("size_contract") == "nightly_only")
+    if clock is not None:
+        clock["collection_seconds"] += time.perf_counter() - began
+    if selected and size == "large" and not nightly_only:
+        raise ValueError(
+            f"test_size.large_contract: {item.nodeid}: register a Large rule "
+            "with size_contract=nightly_only"
+        )
+    _properties(
+        item,
+        ids,
+        row,
+        declared,
+        classified,
+        size_hang_guard=policy["limits"]["medium"] if selected and size == "small" else None,
+    )
+    return nightly_only
+
+
+def _size_included(
+    item: Any,
+    size: str,
+    lane: str,
+    policy: dict[str, Any],
+    changed: frozenset[str] | None,
+    required: tuple[str, ...],
+    deselect: tuple[str, ...],
+    permitted: set[str],
+    *,
+    floor: bool = False,
+) -> bool:
+    """Keep required families and other admitted nodes under the existing lane policy."""
+    return any(requirements.node_matches(item.nodeid, n) for n in required) or (
+        item.nodeid.split("::", 1)[0].replace("\\", "/") in permitted
+        and included(item.nodeid, size, lane, policy, changed, floor=floor)
+        and not item.nodeid.startswith(deselect)
+    )
+
+
 FLOOR_MOVED = pytest.StashKey[dict[str, Any]]()
 
 
@@ -358,6 +625,7 @@ def _record_moved(
     changed: frozenset[str] | None,
     *,
     floor: bool = False,
+    omitted: tuple[Any, ...] = (),
 ) -> None:
     """Beside the run's JUnit, ``structural-moved.json``: the structural guards a commit stage
     leaves to post-merge, and whether this run ran them (a post-merge run, unscoped, always does),
@@ -366,10 +634,15 @@ def _record_moved(
     found = sorted({n.replace("\\", "/") for n in (i.nodeid for i in items) if moved(n, policy)})
     if lane != "merge" or not xml or not found:
         return
+    excluded = {item.nodeid.replace("\\", "/") for item in omitted}
     record = {
         "tier": "commit stage" if floor or changed is not None else "post-merge",
         "moved": found,
-        "ran": [n for n in found if changed is None or n.split("::")[0] in changed],
+        "ran": [
+            n
+            for n in found
+            if n not in excluded and (changed is None or n.split("::")[0] in changed)
+        ],
     }
     if floor:
         config.stash[FLOOR_MOVED] = record
@@ -412,6 +685,7 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     omitted: list[Any] = []
     seen: set[str] = set()
     marks: list[tuple[str, list[str], Path]] = []
+    families = frozenset(config.stash.get(SIZE_FAMILIES, ()))
     root = Path(__file__).resolve().parents[3]
     try:
         required, deselect = _required_selection(config, items)
@@ -424,6 +698,7 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             raise ValueError("test_size.lane_unknown")
         config.stash[FRAMEWORK] = framework_fixtures(config, items, policy)
         config.stash[BACKENDS] = policy.get("unit_backends", [])
+        config.stash[SIZE_POLICY] = policy
         stage = os.environ.get("ALPHALATTICE_PIPELINE_STAGE", "")
         files = {item.nodeid.split("::", 1)[0].replace("\\", "/") for item in items}
         permitted = set(stage_files(policy, stage, files, lane=lane))
@@ -434,26 +709,36 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             seen.add(item.nodeid)
             ids, row, declared, (size, owner, declaration, seconds) = _proven(item, rows, policy)
             marks.append((item.nodeid, ids, Path(item.path)))
-            _properties(item, ids, row, declared, (size, owner, declaration, seconds))
+            nightly_only = _size_attributes(
+                item,
+                config,
+                families,
+                policy,
+                ids,
+                row,
+                declared,
+                (size, owner, declaration, seconds),
+            )
+            if nightly_only and lane != "nightly":
+                omitted.append(item)
+                print(f"test_size.nightly_only: {item.nodeid}; run in the nightly on pc1")
+                continue
             if scoped(item.nodeid, policy, changed, floor=floor):
                 item.add_marker("per_file")  # it reads only the changed files, through scanned()
                 if not python:
                     item.add_marker(empty)
-            forced = any(requirements.node_matches(item.nodeid, n) for n in required)
-            (
+            target = (
                 kept
-                if forced
-                or (
-                    item.nodeid.split("::", 1)[0].replace("\\", "/") in permitted
-                    and included(item.nodeid, size, lane, policy, changed, floor=floor)
-                    and not item.nodeid.startswith(deselect)
+                if _size_included(
+                    item, size, lane, policy, changed, required, deselect, permitted, floor=floor
                 )
                 else omitted
-            ).append(item)
+            )
+            target.append(item)
         gate(lane, marks, counted, root / "tests")
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error
-    _record_moved(config, lane, items, policy, changed, floor=floor)
-    if lane or required:
+    _record_moved(config, lane, items, policy, changed, floor=floor, omitted=tuple(omitted))
+    if lane or required or omitted:
         config.hook.pytest_deselected(items=omitted)
         items[:] = kept

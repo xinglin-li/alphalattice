@@ -14,6 +14,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -25,9 +26,56 @@ from typing import Any
 
 import psutil  # type: ignore[import-untyped]
 
+from devtools.architecture.git_inputs import read_blobs, staged_changes, unique_moves
 from devtools.pipeline.definition import PATH, Definition, DefinitionError, Row, Stage, load
 from devtools.pipeline.receipt import Writer, _now, verify
-from devtools.testing.requirements import selection
+from devtools.testing.requirements import edited_families, file_holders, selection
+
+
+def _changed_test_files(pairs: list[tuple[list[str], str]]) -> list[tuple[list[str], str]]:
+    """Select regular changed test files from the exact Git diff."""
+    changed = [
+        (meta, path)
+        for meta, path in pairs
+        if path.startswith("tests/")
+        and path.endswith(".py")
+        and (Path(path).name.startswith("test_") or Path(path).name.endswith("_test.py"))
+    ]
+    if any(
+        meta[0][1:] not in {"000000", "100644", "100755"}
+        or meta[1] not in {"000000", "100644", "100755"}
+        for meta, _ in changed
+    ):
+        raise ValueError("changed tests must be regular files")
+    return changed
+
+
+def changed_families(root: Path, base: str, head: str) -> list[str]:
+    """Compare the stage's exact Git endpoints in two batched reads, only for changed test files."""
+
+    try:
+        if not all(isinstance(x, str) and re.fullmatch(r"[0-9a-f]{40}", x) for x in (base, head)):
+            raise ValueError("base and head must be full Git commit IDs")
+        pairs = staged_changes(root, tree=head, base=base, timeout=60)
+        if any(len(meta) != 5 or not path for meta, path in pairs):
+            raise ValueError("malformed Git diff")
+        moves = unique_moves(pairs)
+        changed = _changed_test_files(pairs)
+        ids = sorted({oid for meta, _ in changed for oid in meta[2:4] if set(oid) != {"0"}})
+        blobs = read_blobs(ids, root, timeout=60)
+        if set(ids) != set(blobs):
+            raise ValueError("a changed test blob is missing")
+        before, after = [], []
+        for meta, path in changed:
+            if meta[2] in blobs:
+                before.extend(file_holders(path, blobs[meta[2]], size_scope=True))
+            if meta[3] in blobs:
+                after.extend(file_holders(path, blobs[meta[3]], size_scope=True))
+        return edited_families(before, after, moves)
+    except (OSError, ValueError, SyntaxError, UnicodeError, subprocess.SubprocessError) as error:
+        raise ValueError(
+            f"test_size.changed_unmeasured: restore the exact test source and Git history: {error}"
+        ) from error
 
 
 @dataclass(frozen=True)
@@ -156,6 +204,58 @@ def resolve(
     return providers
 
 
+def _cost_configuration(root: Path, name: str, host: str) -> dict[str, str]:
+    """Bind the locked environment for a workshop commit receipt."""
+    cost_configuration: dict[str, str] = {}
+    if name == "commit" and host == "workshop":
+        lock = root / "uv.lock"
+        try:
+            if lock.is_symlink() or not lock.is_file():
+                raise OSError("the lock is missing or not a regular file")
+            cost_configuration = {
+                "lane": "merge",
+                "lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
+            }
+        except OSError as error:
+            raise DefinitionError(
+                "pipeline.receipt_cost_unmeasured",
+                f"{lock}: restore the readable locked environment: {error}",
+            ) from None
+    return cost_configuration
+
+
+def _size_selection(
+    name: str, workspace: dict[str, Any], required: tuple[str, ...], root: Path
+) -> tuple[tuple[str, ...], dict[str, Any] | None]:
+    """Resolve changed families once from this stage's pinned workspace."""
+    if name != "commit":
+        return required, None
+    started = perf_counter()
+    try:
+        edited = selection(changed_families(root, workspace["base"], workspace["head"]))
+    except ValueError as error:
+        raise DefinitionError("pipeline.size_selection_unmeasured", str(error)) from error
+    record = {
+        "base": workspace["base"],
+        "head": workspace["head"],
+        "families": list(edited),
+        "seconds": perf_counter() - started,
+    }
+    return tuple(dict.fromkeys((*required, *edited))), record
+
+
+def _write_size_selection(out: Path, record: dict[str, Any] | None) -> None:
+    """Retain the exact selection with its measured discovery cost."""
+    if record is None:
+        return
+    try:
+        (out / "size-stage-selection.json").write_text(json.dumps(record) + "\n", encoding="utf-8")
+    except OSError as error:
+        raise DefinitionError(
+            "pipeline.size_overhead_unmeasured", f"restore the stage timing output: {error}"
+        ) from error
+
+
 def run(
     root: Path,
     name: str,
@@ -184,24 +284,12 @@ def run(
     except ValueError as error:
         raise DefinitionError("pipeline.stage_invalid", str(error)) from None
     workspace = _workspace(root, base, required)
-    cost_configuration: dict[str, str] = {}
-    if name == "commit" and host == "workshop":
-        lock = root / "uv.lock"
-        try:
-            if lock.is_symlink() or not lock.is_file():
-                raise OSError("the lock is missing or not a regular file")
-            cost_configuration = {
-                "lane": "merge",
-                "lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
-            }
-        except OSError as error:
-            raise DefinitionError(
-                "pipeline.receipt_cost_unmeasured",
-                f"{lock}: restore the readable locked environment: {error}",
-            ) from None
+    selected, size_record = _size_selection(name, workspace, required, root)
+    cost_configuration = _cost_configuration(root, name, host)
     if required and name != "commit":
         raise DefinitionError("pipeline.stage_invalid", "required cost checks belong to commit")
     (out / "logs").mkdir(parents=True, exist_ok=True)
+    _write_size_selection(out, size_record)
     steps = [{"step": {"row": row}} for row in stage.rows]
     children: list[dict[str, Any]] = [
         {"workspace": {}},
@@ -228,7 +316,7 @@ def run(
         deadline,
         definition,
         name,
-        required,
+        selected,
         cache_options or Options(),
         {"line": line, "head": workspace["head"], "invocation": writer.invocation, "at": _now()},
     )

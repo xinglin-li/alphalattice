@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import stat
 from collections.abc import Callable, Iterable
 from datetime import date
 from fnmatch import fnmatchcase
@@ -242,6 +243,31 @@ def _quarantine(policy: dict[str, Any]) -> None:
             raise ValueError("test_size.quarantine_invalid:" + str(row.get("node")))
 
 
+def _admission_limits(policy: dict[str, Any]) -> None:
+    """Validate the optional changed-test admission budget and Large contract."""
+    admission = policy.get(
+        "admission_limits"
+    )  # contract: require after pre-contract policy readers retire
+    if admission is not None:
+        if not isinstance(admission, dict) or set(admission) != {"small", "medium"}:
+            raise ValueError("test_size.admission_limits")
+        for row in admission.values():
+            if (
+                not isinstance(row, dict)
+                or set(row) != {"seconds", "tmp_bytes"}
+                or type(row["seconds"]) not in (int, float)
+                or not isfinite(row["seconds"])
+                or row["seconds"] <= 0
+                or type(row["tmp_bytes"]) is not int
+                or row["tmp_bytes"] < 0
+            ):
+                raise ValueError("test_size.admission_limits")
+    if any(
+        "size_contract" in row and row["size_contract"] != "nightly_only" for row in policy["large"]
+    ):
+        raise ValueError("test_size.large_contract")
+
+
 def _limits(policy: dict[str, Any]) -> None:
     """Refuse disabled bounds, duplicate Large declarations and unexplained resource needs."""
     limits = policy.get("limits")
@@ -253,6 +279,7 @@ def _limits(policy: dict[str, Any]) -> None:
     ]
     if any(type(n) not in (int, float) or not isfinite(n) or n <= 0 for n in bounds):
         raise ValueError("test_size.limits")
+    _admission_limits(policy)
     if len({r["pattern"] for r in policy["large"]}) != len(policy["large"]):
         raise ValueError("test_size.large_duplicate")
     for row in policy["large"]:
@@ -265,6 +292,73 @@ def _limits(policy: dict[str, Any]) -> None:
             in {"", "slow", "integration", "slow test", "integration test"}
         ):
             raise ValueError("test_size.large_reason")
+
+
+def tmp_footprint(root: Path) -> int:
+    """Apparent regular-file bytes retained under tmp_path; never follow links or reparse points."""
+    try:
+        try:
+            info = root.lstat()
+        except FileNotFoundError:
+            return 0  # the owned root was removed before its teardown observation
+        reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        if not stat.S_ISDIR(info.st_mode) or getattr(info, "st_file_attributes", 0) & reparse:
+            raise ValueError("temporary root is not a physical directory")
+        total, pending = 0, [root]
+        while pending:
+            with os.scandir(pending.pop()) as entries:
+                for entry in entries:
+                    info = entry.stat(follow_symlinks=False)
+                    if (
+                        stat.S_ISLNK(info.st_mode)
+                        or getattr(info, "st_file_attributes", 0) & reparse
+                    ):
+                        continue  # an external or shared target is not part of tmp_path
+                    if stat.S_ISDIR(info.st_mode):
+                        pending.append(Path(entry.path))
+                    elif stat.S_ISREG(info.st_mode):
+                        total += info.st_size
+                    else:
+                        raise ValueError(f"unsupported temporary entry {entry.path}")
+        return total
+    except (OSError, ValueError) as error:
+        raise ValueError(
+            f"test_size.footprint_unmeasured: {root}: {error}; restore the temporary tree"
+        ) from error
+
+
+def admission_limit(
+    node: str, size: str, seconds: float, footprint: int, policy: dict[str, Any]
+) -> None:
+    """Judge one changed test's complete phases and retained tmp_path footprint."""
+    if not isinstance(node, str) or not node or size not in {"small", "medium", "large"}:
+        raise ValueError("test_size.admission_invalid: name a test and its registered size")
+    if (
+        type(seconds) not in (int, float)
+        or not isfinite(seconds)
+        or seconds < 0
+        or type(footprint) is not int
+        or footprint < 0
+    ):
+        raise ValueError(
+            f"test_size.admission_unmeasured: {node}: restore complete seconds "
+            "and tmp footprint at teardown"
+        )
+    if size == "large":
+        return
+    limits = policy.get("admission_limits")
+    if not isinstance(limits, dict) or size not in limits:
+        raise ValueError(
+            f"test_size.admission_unmeasured: {node}: restore registered admission limits"
+        )
+    bound = limits[size]
+    if seconds > bound["seconds"] or footprint > bound["tmp_bytes"]:
+        upgrade = "medium" if size == "small" else "large"
+        raise ValueError(
+            f"test_size.admission_limit: {node}: {size} measured {seconds} s and "
+            f"{footprint} bytes tmp footprint at teardown; limits {bound['seconds']} s and "
+            f"{bound['tmp_bytes']} bytes; reduce the test or declare {upgrade}"
+        )
 
 
 def _rule(nodeid: str, rules: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -358,6 +452,10 @@ def included(
     only when it is per_file or triggered, and a moved structural guard (``moved``) only when its
     own file changed; the fast lane keeps only scoped per_file nodes; each lane otherwise admits
     its declared sizes."""
+    large = _rule(nodeid.replace("\\", "/"), policy.get("large", [])) if size == "large" else None
+    if large and large.get("size_contract") == "nightly_only":
+        return lane == "nightly"
+
     row = reach(nodeid, policy) if changed is not None else None
     if lane == "fast":
         return scoped(nodeid, policy, changed)

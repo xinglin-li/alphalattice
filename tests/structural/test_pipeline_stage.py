@@ -26,8 +26,10 @@ rows = ["ok", "red", "local", "job"]
 [rows.job]\n{ROW}["public"]\nkind = "ci-job"\njob = "w"
 """
 SHOP = (  # the adapter records the merge base its context carries
+    "import json\n"
     'PROVIDES = {"local": lambda row, at: (at.out / "base").write_text(at.base)'
     ' and ((at.out / "stage").write_text(getattr(at, "stage", "")) >= 0)'
+    ' and ((at.out / "size-required").write_text(json.dumps(at.required_tests)) >= 0)'
     ' and ({"status": "PASS", "exit": 0, "seconds": 0}, None)}'
 )
 CASES = {  # host, plugin bodies, the providers or the refusal's code
@@ -35,6 +37,7 @@ CASES = {  # host, plugin bodies, the providers or the refusal's code
     "cost receipt": ("public", [], {"ok": "product", "local": "skipped", "job": "ci.yml:w"}),
     "a workshop row with no plugin": ("workshop", [], "row_unprovided"),
     "a plugin's row": ("workshop", [SHOP], {"local": "shop0", "job": "skipped"}),
+    "size-required": ("workshop", [SHOP], {"local": "shop0", "job": "skipped"}),
     "cost identity": ("workshop", [SHOP], {"local": "shop0", "job": "skipped"}),
     "cost lock missing": ("workshop", [SHOP], "receipt_cost_unmeasured"),
     "two plugins for a row": ("workshop", [SHOP, SHOP], "row_provided_twice"),
@@ -52,6 +55,13 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
     tmp_path, case, monkeypatch
 ):
     host, bodies, wanted = CASES[case]
+    if case == "size-required":
+        monkeypatch.setattr(
+            stage,
+            "changed_families",
+            lambda root, base, head: ["tests/test_new.py::test_one"],
+            raising=False,
+        )
     (tmp_path / "config/registries").mkdir(parents=True)
     for name in ("owners-map.json", "test-sizes.json"):
         shutil.copy(ROOT / "config/registries" / name, tmp_path / "config/registries" / name)
@@ -96,6 +106,13 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             )
         assert not bodies or (out / "base").read_text("utf-8") == summary["base"]  # the merge base
         assert not bodies or (out / "stage").read_text("utf-8") == "commit"
+        if case == "size-required":
+            assert json.loads((out / "size-required").read_text("utf-8")) == [
+                "tests/test_new.py::test_one"
+            ]
+            assert (
+                json.loads((out / "size-stage-selection.json").read_text("utf-8"))["seconds"] >= 0
+            )
         stage.run(tmp_path, "commit", out=out, **asked)
     assert refused.value.code == "pipeline." + (wanted if isinstance(wanted, str) else "out_used")
     if case == "cost receipt":

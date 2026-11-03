@@ -1206,6 +1206,16 @@
     "tests/structural/*",
     "tests/portfolio_strategy_lab/test_cli_contract.py*"
   ],
+  "admission_limits": {
+    "small": {
+      "seconds": 1,
+      "tmp_bytes": 10000000
+    },
+    "medium": {
+      "seconds": 30,
+      "tmp_bytes": 500000000
+    }
+  },
   "limits": {
     "small": 1,
     "medium": 60,

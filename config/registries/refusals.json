@@ -1,5 +1,16 @@
 {
 "entries": {
+"pipeline.size_overhead_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE", "classification_note": "The commit stage cannot retain its measurement-cost observation."},
+"pipeline.size_selection_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE", "classification_note": "The commit stage cannot identify changed test families from its pinned source."},
+"pipeline.size_workspace_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE", "classification_note": "The running commit receipt does not provide a verified workspace identity."},
+"test_size.admission_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "The size admission input is not a valid test and declared size."},
+"test_size.admission_limits": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "The registered size admission limits are missing or malformed."},
+"test_size.changed_identity": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "Test-family source identities are duplicated and cannot be compared safely."},
+"test_size.large_contract": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "An edited Large test lacks its registered nightly-only contract."},
+"test_size.changed_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE", "classification_note": "The changed test families cannot be derived from pinned source evidence."},
+"test_size.admission_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE", "classification_note": "An edited test lacks a complete size observation."},
+"test_size.footprint_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE", "classification_note": "The temporary test footprint cannot be measured at teardown."},
+"test_size.admission_limit": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "An edited test exceeds its declared size admission limit."},
 "pipeline.flake_evidence_unavailable": {"owner": "devtools.pipeline", "category": "UNAVAILABLE"},
 "test_size.cost": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION"},
 "test_size.cost_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE"},
