@@ -7,8 +7,39 @@ import pytest
 
 from devtools.architecture.structural import (
     PackageArchitectureRegistry,
+    discover_python_imports,
     physical_namespace_violations,
 )
+
+
+@pytest.mark.proves("architecture.discovered_imports_kept_by_place_and_bytes")
+def test_discovered_imports_are_kept_by_place_and_bytes_and_errors_never(tmp_path):
+    """STRUCTURAL-SCAN-CACHE: the structural tests ask for one unchanged tree test after test, so
+    answers are kept in the process by module place and content; a change misses, an error
+    repeats."""
+    module = tmp_path / "src" / "low" / "owner.py"
+    module.parent.mkdir(parents=True)
+    module.write_text("from high_desk.agent import decide\n", encoding="utf-8")
+    first = discover_python_imports(module, source_root=tmp_path / "src")
+    assert first == ("high_desk.agent", "high_desk.agent.decide")
+    assert discover_python_imports(module, source_root=tmp_path / "src") == first
+    module.write_text("from old_owner.runtime import execute\n", encoding="utf-8")
+    assert discover_python_imports(module, source_root=tmp_path / "src") == (
+        "old_owner.runtime",
+        "old_owner.runtime.execute",
+    )
+    module.write_text("from high_desk.agent import\n", encoding="utf-8")
+    for _ in range(2):
+        with pytest.raises(SyntaxError):
+            discover_python_imports(module, source_root=tmp_path / "src")
+    # The same bytes at another place are another module: a relative import resolves there.
+    sibling = tmp_path / "src" / "high" / "owner.py"
+    sibling.parent.mkdir(parents=True)
+    for path in (module, sibling):
+        path.write_text("from . import peer\n", encoding="utf-8")
+    assert discover_python_imports(module, source_root=tmp_path / "src") == ("low", "low.peer")
+    assert discover_python_imports(sibling, source_root=tmp_path / "src") == ("high", "high.peer")
+
 
 SOURCE = "alphalattice.capabilities.alpha_modeling"
 TARGET = "alphalattice.kernel.shared_kernel"

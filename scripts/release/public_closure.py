@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import bisect
 import fnmatch
 import json
 import posixpath
@@ -145,7 +146,26 @@ class _Paths:
         return result
 
 
-def _python(path: str, text: str, files: set[str]) -> set[Reference]:
+FileIndex = tuple[dict[str, set[str]], set[str], set[str]]
+
+
+def _file_index(files: set[str]) -> FileIndex:
+    """What every Python reader asks of one file set: each module spelling's files, every folder
+    holding a file, and the top-level module names; built once per set, not once per reader."""
+    module_paths: dict[str, set[str]] = {}
+    for target in files:
+        if not target.endswith(".py"):
+            continue
+        for spelling in {target, target.removeprefix("src/"), target.removeprefix("scripts/")}:
+            module = spelling[:-3].replace("/", ".").removesuffix(".__init__")
+            module_paths.setdefault(module, set()).add(target)
+    directories = {p[:end] for p in files for end in range(len(p)) if p[end] == "/"}
+    return module_paths, directories, {name.split(".", 1)[0] for name in module_paths}
+
+
+def _python(
+    path: str, text: str, files: set[str], index: FileIndex | None = None
+) -> set[Reference]:
     tree = ast.parse(text, filename=path)
     global_paths = _Paths(path, tree, files)
     parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
@@ -162,16 +182,9 @@ def _python(path: str, text: str, files: set[str]) -> set[Reference]:
         return scopes[scope]
 
     result = set()
-    module_paths: dict[str, set[str]] = {}
-    for target in files:
-        if not target.endswith(".py"):
-            continue
-        for spelling in {target, target.removeprefix("src/"), target.removeprefix("scripts/")}:
-            module = spelling[:-3].replace("/", ".").removesuffix(".__init__")
-            module_paths.setdefault(module, set()).add(target)
+    module_paths, directories, roots = index or _file_index(files)
     own = path.removeprefix("src/")[:-3].replace("/", ".").removesuffix(".__init__")
     package = own if path.endswith("/__init__.py") else own.rpartition(".")[0]
-    roots = {name.split(".", 1)[0] for name in module_paths}
     aliases = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -183,14 +196,21 @@ def _python(path: str, text: str, files: set[str]) -> set[Reference]:
         candidates = set(module_paths.get(name, ()))
         stem = posixpath.dirname(path) + "/" + name.replace(".", "/")
         candidates.update(p for p in (stem + ".py", stem + "/__init__.py") if p in files)
-        namespace = any(
-            p.startswith((name.replace(".", "/") + "/", "src/" + name.replace(".", "/") + "/"))
-            for p in files
+        folder = name.replace(".", "/")  # a namespace package: some file lies below this folder
+        namespace = (
+            folder in directories or "src/" + folder in directories
+            if folder
+            else any(p.startswith(("/", "src/")) for p in files)
         )
         if not candidates and not namespace and required and name.split(".", 1)[0] in roots:
+            first = name.split(".")[0]
             prefix = (
                 "src/"
-                if any(p.startswith("src/" + name.split(".")[0] + "/") for p in files)
+                if (
+                    "src/" + first in directories
+                    if first
+                    else any(p.startswith("src//") for p in files)
+                )
                 else ""
             )
             candidates.add(prefix + name.replace(".", "/") + ".py")
@@ -370,11 +390,13 @@ _FENCE = re.compile(r"(?m)^\s*(```|~~~)[^\n]*\n(.*?)^\s*\1\s*$", re.DOTALL)
 _CODE_PATH = re.compile(r"(?<![\w/])(?:[\w.-]+/)+[\w.*-]+(?:\.[\w.-]+)?")
 
 
-def references(path: str, raw: bytes, files: set[str]) -> set[Reference]:
+def references(
+    path: str, raw: bytes, files: set[str], index: FileIndex | None = None
+) -> set[Reference]:
     """Source reads only: policy/synthetic string literals are not file dependencies."""
     text = raw.decode("utf-8-sig")
     if path.endswith(".py"):
-        return _python(path, text, files)
+        return _python(path, text, files, index)
     result = set()
     if path.endswith((".js", ".cjs", ".mjs")):
         tokens = [m for m in _JS_TOKEN.finditer(text) if not m.group().startswith(("//", "/*"))]
@@ -453,17 +475,28 @@ def violations(manifest: dict, blobs: dict[str, bytes], readers=None) -> list[Re
     """
     public = {row["path"] for row in manifest["public"]}
     files = set(blobs)
+    ordered, index = sorted(files), _file_index(files)
     produced = generated_outputs(blobs, public)
     failures = set()
+
+    def under(target: str) -> set[str]:
+        """Every file below a directory target: one sorted range, not a scan of every file."""
+        prefix = target.rstrip("/") + "/"
+        found = set()
+        for p in ordered[bisect.bisect_left(ordered, prefix) :]:
+            if not p.startswith(prefix):
+                break
+            found.add(p)
+        return found
+
     for path in sorted(public if readers is None else public & readers):
         if path not in blobs:
             failures.add(Reference(path, 1, path, "PUBLIC_BLOB_MISSING"))
             continue
         if not path.endswith((".py", ".cjs", ".mjs", ".js", ".md")):
             continue
-        for ref in references(path, blobs[path], files):
+        for ref in references(path, blobs[path], files, index):
             target = ref.target
-            children = {p for p in files if p.startswith(target.rstrip("/") + "/")}
             if target in public or _installed_node(target, blobs, public):
                 continue
             if target not in files and target in produced:
@@ -476,6 +509,7 @@ def violations(manifest: dict, blobs: dict[str, bytes], readers=None) -> list[Re
                 )
                 if not private:
                     continue
+            children = under(target)  # only the directory rules below read it
             if (
                 children
                 and ref.kind in {"MARKDOWN_LINK", "MARKDOWN_CODE_PATH"}

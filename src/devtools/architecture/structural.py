@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import re
 import sys
@@ -711,16 +712,31 @@ def assess_performance_measurement(
     return "REVIEW_REQUIRED" if relative_delta > threshold_fraction else "WITHIN_BASELINE"
 
 
+_DISCOVERED_IMPORTS: dict[tuple[tuple[str, ...], bytes], tuple[str, ...]] = {}
+"""This process's answers by module place and content digest: the structural tests ask for the
+same unchanged tree in test after test (STRUCTURAL-SCAN-CACHE, 10-29: about 185 s a stage).
+Never shared across processes or written to disk."""
+
+
 def discover_python_imports(path: Path, *, source_root: Path) -> tuple[str, ...]:
-    """Return normalized absolute imports for one source-root Python module."""
+    """Return normalized absolute imports for one source-root Python module.
+
+    The answer is a function of the module's place under the source root and its bytes alone,
+    so it is kept by those and a changed file misses. A read, decode, parse or escape error is
+    raised every time, never kept."""
 
     relative = path.relative_to(source_root).with_suffix("")
     module_parts = list(relative.parts)
     package_parts = module_parts if module_parts[-1] == "__init__" else module_parts[:-1]
     if package_parts and package_parts[-1] == "__init__":
         package_parts.pop()
+    data = path.read_bytes()
+    key = (tuple(module_parts), hashlib.sha256(data).digest())
+    if (known := _DISCOVERED_IMPORTS.get(key)) is not None:
+        return known
     imports: set[str] = set()
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    text = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")  # as read_text decodes
+    tree = ast.parse(text, filename=str(path))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             imports.update(_logical_module_name(alias.name) for alias in node.names)
@@ -744,7 +760,8 @@ def discover_python_imports(path: Path, *, source_root: Path) -> tuple[str, ...]
             for alias in node.names
             if alias.name != "*"
         )
-    return tuple(sorted(imports))
+    _DISCOVERED_IMPORTS[key] = found = tuple(sorted(imports))
+    return found
 
 
 def retired_import_violations(

@@ -135,6 +135,9 @@ def test_markdown_directory_link_requires_a_public_descendant():
     }
     assert _failures(blobs, {reader}) == {"examples"}
     assert _failures(blobs, {reader, "examples/public.py"}) == set()
+    # A same-prefix sibling sorts beside the directory; only its own files count.
+    siblings = {**blobs, "examples-old/public.py": b"", "examples.md": b""}
+    assert _failures(siblings, {reader, "examples-old/public.py", "examples.md"}) == {"examples"}
 
 
 def test_copytree_requires_every_source_file_even_when_the_directory_is_public():

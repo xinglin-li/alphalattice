@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
 import os
 import re
@@ -510,20 +511,33 @@ def _case_file_facts_for(root: Path) -> dict[str, tuple[frozenset[str] | None, f
                 continue
             key = path.relative_to(root).as_posix()
             try:
-                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
                 imports: frozenset[str] | None = frozenset(
                     discover_python_imports(path, source_root=root)
                 )
+                quoted = _quoted_names(path)
             except (OSError, SyntaxError, UnicodeError, ValueError):
                 facts[key] = (None, frozenset())
                 continue
-            quoted = frozenset(
-                node.value
-                for node in ast.walk(tree)
-                if isinstance(node, ast.Constant) and isinstance(node.value, str)
-            )
             facts[key] = (imports, quoted)
     return facts
+
+
+_QUOTED: dict[bytes, frozenset[str]] = {}  # this process's, by content digest; errors never kept
+
+
+def _quoted_names(path: Path) -> frozenset[str]:
+    """The string constants one case file quotes, parsed once per content in a process
+    (STRUCTURAL-SCAN-CACHE)."""
+    data = path.read_bytes()
+    digest = hashlib.sha256(data).digest()
+    if (known := _QUOTED.get(digest)) is None:
+        text = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")  # as read_text does
+        known = _QUOTED[digest] = frozenset(
+            node.value
+            for node in ast.walk(ast.parse(text, filename=str(path)))
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        )
+    return known
 
 
 def _subtree_tests(directory: str, root: Path | None = None) -> frozenset[str]:
