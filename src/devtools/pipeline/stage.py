@@ -243,8 +243,15 @@ def run(
                 statuses.append("ERROR")
             failed = "FAIL" in statuses or red
             result = "ERROR" if "ERROR" in statuses else "FAIL" if failed else "PASS"
+            over = round(elapsed, 3) > stop
+            classed = (
+                {"red_classes": {}, "red_class": None}
+                if result == "PASS"
+                else writer.red_summary(over_bound=over)
+            )
             writer.finish(
                 {"result": result, "exit": {"PASS": 0, "FAIL": 1}.get(result, 2), "red_nodes": red}
+                | classed
             )
         finally:
             writer.stream.close()
@@ -334,6 +341,7 @@ def _product(row: Row, context: Context) -> Outcome:
 def _call(argv: list[str], log: Path, context: Context, env: dict[str, str]) -> dict[str, Any]:
     """Run one row's process within the stage's deadline; its output goes to the row's log."""
     began = time.monotonic()
+    stopped = None
     with log.open("w", encoding="utf-8") as stream:
         try:
             process = subprocess.Popen(
@@ -350,14 +358,15 @@ def _call(argv: list[str], log: Path, context: Context, env: dict[str, str]) -> 
             _kill(process.pid)
             process.wait()
             stream.write(f"stopped at the stage's bound, {context.deadline - began:.0f} s on\n")
-            status, code = "ERROR", None
+            status, code, stopped = "ERROR", None, "bound"
         except OSError as error:
             stream.write(f"{argv[0]}: {error}\n")
-            status, code = "ERROR", None
+            status, code, stopped = "ERROR", None, "launch"
     if status != "PASS":
         tail = log.read_text("utf-8", errors="replace").splitlines()[-40:]
         print("\n".join([f"--- {log.name} ({status}), last lines:", *tail]), file=sys.stderr)
-    return {"status": status, "exit": code, "seconds": round(time.monotonic() - began, 3)}
+    step = {"status": status, "exit": code, "seconds": round(time.monotonic() - began, 3)}
+    return step | ({"stopped": stopped} if stopped else {})
 
 
 def _kill(pid: int) -> None:

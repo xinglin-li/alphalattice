@@ -252,7 +252,12 @@ def test_control():
             monkeypatch.setattr(stage, "time", SimpleNamespace(monotonic=ticks.__next__))
             target = tmp_path / f"budget-{stop}-{wall}"
             assert stage.run(tmp_path, "commit", out=target, **asked)["result"] == result
-            records = map(json.loads, (target / "receipt.jsonl").read_text("utf-8").splitlines())
+            records = list(
+                map(json.loads, (target / "receipt.jsonl").read_text("utf-8").splitlines())
+            )
+            if result == "PASS":
+                finished = next(row["finished"] for row in records if "finished" in row["id"])
+                assert (finished["red_classes"], finished["red_class"]) == ({}, None)
             seen = next(row["configuration"] for row in records if "configuration" in row["id"])
             metrics = next(row["metrics"] for row in records if row["id"] == {"metrics": {}})
             assert (seen["bound_seconds"], metrics["wall_seconds"] > 60) == (stop * 60, wall > 60)

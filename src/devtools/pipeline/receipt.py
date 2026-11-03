@@ -17,9 +17,10 @@ import os
 import re
 import subprocess
 import uuid
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from math import inf, isfinite
+from math import isfinite
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, TextIO
 
@@ -79,6 +80,9 @@ class Writer:
             "started_at": _now(),
         }
         self.invocation = started["invocation"]
+        self.steps: list[tuple[str, dict[str, Any]]] = []
+        self.classes: dict[str, str] = {}
+        self.tested = False
         self.write({"started": {}}, started, [*children, {"finished": {}}])
 
     def write(
@@ -91,17 +95,21 @@ class Writer:
         }
         self.stream.write(json.dumps(line) + "\n")
         self.stream.flush()
+        if "step" in key:
+            self.steps.append((key["step"]["row"], payload))
 
     def tests(self, row: str, step: dict[str, Any], events: Path) -> list[str]:
         """The tests step, which announces each node's result and size summary, then writes them;
-        a red that passed alone carries its class; it returns the nodes ``classed`` holds red."""
+        each red carries its class; it returns the nodes ``classed`` holds red."""
         raw = read_test_events(events)
         decisions = [r["cache"] for r in raw if "cache" in r]
         results = [r for r in raw if "cache" not in r]
-        red, classes = classed(results)
+        red, classes = classed(results)[0], red_classes(results)
         for result in results:
-            if result["status"] in RED and result["node"] in classes:
+            if result["status"] in RED:
                 result["class"] = classes[result["node"]]
+        self.classes |= classes
+        self.tested = self.tested or bool(results)
         sizes: dict[str, dict[str, Any]] = {}
         for result in results:
             empty = {"total": 0, **dict.fromkeys(COUNTED.values(), 0), "test_seconds": 0.0}
@@ -121,6 +129,13 @@ class Writer:
         ]:
             self.write(key, payload)
         return red
+
+    def red_summary(self, over_bound: bool) -> dict[str, Any]:
+        """A non-passing stage's causes by class and its one class, from what it wrote."""
+        counts, label = red_class(
+            self.steps, self.classes, over_bound=over_bound, tested=self.tested
+        )
+        return {"red_classes": counts, "red_class": label}
 
     def finish(self, payload: dict[str, Any]) -> None:
         line = {
@@ -189,7 +204,9 @@ class Step(_Strict):
 RED = ("FAILED", "ERROR")
 
 
-def classed(results: Sequence[dict[str, Any]]) -> tuple[list[str], dict[str, str]]:
+def classed(
+    results: Sequence[dict[str, Any]], *, legacy: bool = False
+) -> tuple[list[str], dict[str, str]]:
     """The nodes red by their highest attempt, and the class of each node whose red passed alone
     (the protocol's rule 7): within its time a flake, which PROTOCOL GUARDS quarantines, and over
     it a slow test, a test defect that stays red."""
@@ -197,13 +214,139 @@ def classed(results: Sequence[dict[str, Any]]) -> tuple[list[str], dict[str, str
     for result in results:  # by attempt: workers write in the order they finish
         if result["attempt"] >= latest.get(result["node"], result)["attempt"]:
             latest[result["node"]] = result
-    classes = {
-        r["node"]: "slow" if last["seconds"] > (last.get("timeout_seconds") or inf) else "flake"
-        for r in results
-        if r["status"] in RED and (last := latest[r["node"]])["status"] not in RED
-    }
-    red = [n for n, r in latest.items() if r["status"] in RED or classes.get(n) == "slow"]
+    observed_red = {r["node"] for r in results if r["status"] in RED}
+    classes = {}
+    for node in observed_red:
+        last = latest[node]
+        bound = last.get("timeout_seconds")
+        if legacy and last["status"] not in RED:
+            classes[node] = "slow" if last["seconds"] > (bound or float("inf")) else "flake"
+        elif not legacy and last["status"] == "PASSED" and last.get("solo") and _valid_bound(bound):
+            classes[node] = "slow" if last["seconds"] > bound else "flake"
+    red = [n for n in latest if n in observed_red and classes.get(n) != "flake"]
     return red, classes
+
+
+MASS = 20
+"""This many red nodes sharing one failure signature in a stage: the environment, not the tests."""
+CRASH = re.compile(r"worker 'gw[0-9]+' crashed while running")
+"""A node killed with its worker: the timeout's kill, or the runner's."""
+CASCADE = "incomplete session workspace:"
+"""A node failed by the workspace a crashed worker left half-built: a cause only beside a crash."""
+DEFECT_ROWS = frozenset({"fast-guard", "public-scan", "card-budget"})
+"""Rows whose exit 1 is the change's own lint, type, guard, content or budget refusal."""
+TOOLING_EXITS = {2: "interrupted", 3: "internal error", 4: "usage error", 5: "no tests collected"}
+"""pytest's exits that are its runner's, never a test's verdict."""
+
+
+def red_classes(results: Sequence[dict[str, Any]]) -> dict[str, str]:
+    """Each red node's class from its own attempts, never a guess (the protocol's rule 7).
+
+    A shared setup ERROR is tooling only with a known infrastructure signature. Only a solo PASS
+    within a positive recorded bound is a flake, or load when the parallel
+    attempt's worker was killed; over the bound it is slow. A solo FAILED is a defect, and a solo
+    killed again is tooling. Anything else (a red never rerun, a skipped solo, a solo with no
+    recorded bound, a solo setup error) is unclassified, never a defect."""
+    runs: dict[str, list[dict[str, Any]]] = {}
+    for result in sorted(results, key=lambda r: r["attempt"]):
+        runs.setdefault(result["node"], []).append(result)
+    red = {node: tries for node, tries in runs.items() if any(r["status"] in RED for r in tries)}
+    shared = Counter(_signature(t[0]) for t in red.values() if _setup_error(t[0]))
+    crashed = any(_killed(r) for tries in red.values() for r in tries)
+    return {node: _node_class(tries, shared, crashed) for node, tries in red.items()}
+
+
+def _signature(result: dict[str, Any]) -> str:
+    return json.dumps(result.get("failure"), sort_keys=True)
+
+
+def _message(result: dict[str, Any]) -> str:
+    return str((result.get("failure") or {}).get("message", ""))
+
+
+def _killed(result: dict[str, Any]) -> bool:
+    return bool(CRASH.search(_message(result)))
+
+
+def _setup_error(result: dict[str, Any]) -> bool:
+    return result["status"] == "ERROR" and result.get("phase") == "setup"
+
+
+def _valid_bound(value: Any) -> bool:
+    return type(value) in (int, float) and isfinite(value) and value > 0
+
+
+def _node_class(tries: list[dict[str, Any]], shared: Counter[str], crashed: bool) -> str:
+    """One red node's class from its first and last attempts (see ``red_classes``)."""
+    first, last = tries[0], tries[-1]
+    solo = len(tries) > 1 and last.get("solo")
+    if solo and last["status"] == "FAILED":
+        return "defect"
+    if not solo or last["status"] != "PASSED":
+        infrastructure = (
+            _setup_error(first)
+            and shared[_signature(first)] >= MASS
+            and bool(
+                re.search(r"\bno venv\b|\bno module named ['\"]?pytest\b", _message(first), re.I)
+            )
+        )
+        return "tooling" if (solo and _killed(last)) or infrastructure else "unclassified"
+    bound = last.get("timeout_seconds")
+    if not _valid_bound(bound):
+        return "unclassified"
+    if last["seconds"] > bound:
+        return "slow"
+    cut = _killed(first) or (crashed and CASCADE in _message(first))
+    return "load" if cut else "flake"
+
+
+def red_class(
+    steps: Sequence[tuple[str, dict[str, Any]]],
+    classes: Mapping[str, str],
+    *,
+    over_bound: bool,
+    tested: bool,
+) -> tuple[dict[str, int], str]:
+    """A non-passing stage's causes by class, and its one class.
+
+    The class is a defect if any cause is one, else every class present joined, unclassified
+    included, so an unknown part is never hidden behind a known one. A row stopped at the bound is
+    load, one that could not launch is tooling, and an exit-less row after a failed one is its
+    cascade, not a cause. A guard row's exit 1 is the change's own refusal; any other exit is
+    unclassified."""
+    causes = Counter(classes.values())
+    causes["load"] += over_bound
+    failed = over_bound
+    for row, step in steps:
+        status, code = step["status"], step["exit"]
+        if status in ("PASS", "SKIPPED_BY_HOST"):
+            continue
+        if code is None:
+            stopped = step.get("stopped")
+            if stopped:
+                causes["load" if stopped == "bound" else "tooling"] += 1
+            elif not failed:
+                causes["unclassified"] += 1
+        elif row == "tests" and (code in TOOLING_EXITS or not tested):
+            causes["tooling"] += 1
+        elif row == "tests" and not classes:
+            causes["unclassified"] += 1
+        elif row == "environment":
+            causes["tooling"] += 1
+        elif row in DEFECT_ROWS:
+            causes["defect" if code == 1 else "unclassified"] += 1
+        elif row not in (
+            "tests",
+            "load-timeouts",
+        ):  # those two rows' reds are their nodes, classed above
+            causes["unclassified"] += 1
+        failed = True
+    counts = {name: count for name, count in sorted(causes.items()) if count}
+    return counts, "defect" if "defect" in counts else "+".join(counts) or "unclassified"
+
+
+TOOLING_REDS = frozenset({"flake", "tooling", "load"})
+"""The causes 0.2.5's third number counts: a stage red from flakes, tooling or load, no defect."""
 
 
 class CacheOrigin(_Strict):
@@ -364,16 +507,39 @@ class Receipt(_Strict):
         _cost_consistent(events, results)
         caches = [e.cache for e in events if "cache" in e.id]
         _cache_consistent(caches, results)
-        red = classed([e.test_result.model_dump() for e in events if "test_result" in e.id])[0]
+        finished = events[-1].finished
+        legacy = not ({"red_class", "red_classes"} & finished.model_fields_set)
+        red = classed(
+            [e.test_result.model_dump() for e in events if "test_result" in e.id], legacy=legacy
+        )[0]
         red += [
             e.step.provider for e in events if "step" in e.id and e.step.status in ("FAIL", "ERROR")
         ]
-        finished = events[-1].finished
         if (finished.result == "PASS") != (finished.exit == 0) or (
             finished.result == "PASS" and red
         ):
             raise PydanticCustomError("receipt_inconsistent", "its result denies its parts")
+        _red_consistent(events, results, finished)
         return self
+
+
+def _red_consistent(
+    events: Sequence[Any], results: Sequence[TestResult], finished: Finished
+) -> None:
+    """A classed receipt's red classes are what its own steps, nodes and bound make them; a passing
+    receipt carries none, and one written before the classing carries neither field."""
+    if not finished.red_classes and finished.red_class is None:
+        return
+    config = next(e.configuration for e in events if "configuration" in e.id)
+    wall = next((e.metrics.wall_seconds for e in events if "metrics" in e.id), None)
+    steps = [(e.id["step"]["row"], e.step.model_dump()) for e in events if "step" in e.id]
+    dumped = [r.model_dump() for r in results]
+    over = wall is not None and wall > config.bound_seconds
+    found = red_class(steps, red_classes(dumped), over_bound=over, tested=bool(dumped))
+    if finished.result == "PASS" or (dict(finished.red_classes), finished.red_class) != found:
+        raise PydanticCustomError(
+            "receipt_inconsistent", "its red classes deny its own steps and nodes"
+        )
 
 
 def _fresh_cost_matches(

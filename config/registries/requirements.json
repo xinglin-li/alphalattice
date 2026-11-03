@@ -81,6 +81,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "pipeline.receipt_classes_every_red": {
+      "description": "Each red node and non-passing stage row classes as a defect, flake, slow test, load or tooling from its own evidence, and a red with no evidence reads unclassified, never a defect.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
     "pipeline.receipt_plugin_writes_each_node_once": {
       "description": "The receipt plugin writes each test node once, after its last phase or a crash, with its failure's masked signature, and then disposes of itself.",
       "owner": "devtools.pipeline",

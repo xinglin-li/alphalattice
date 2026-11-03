@@ -183,8 +183,13 @@ RED_CLASS_ROWS = {  # the classed writer's fields, read before it ships: (finish
     "red classes on a pass": ({"red_classes": {}, "red_class": None}, {}, True),
     "red classes counted": (
         {"red_classes": {"tooling": 1, "load": 2}, "red_class": "load+tooling"},
-        {},
+        {"stopped": "bound"},
         True,
+    ),
+    "red classes inconsistent": (
+        {"red_classes": {"tooling": 1}, "red_class": "tooling"},
+        {},
+        False,
     ),
     "red classes stopped at the bound": ({}, {"stopped": "bound"}, True),
     "red classes negative count": ({"red_classes": {"tooling": -1}}, {}, False),
@@ -292,32 +297,66 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeyp
         case in RED_CLASS_ROWS
     ):  # a reader that knows the classed fields, strictly, before any writer
         finished, step, admitted = RED_CLASS_ROWS[case]
-        result = "PASS" if case == "red classes on a pass" else "FAIL"
+        counted = case == "red classes counted"
+        result = "PASS" if case == "red classes on a pass" else "ERROR" if counted else "FAIL"
         path = tmp_path / "classed.jsonl"
+        children = [
+            {"workspace": {}},
+            {"configuration": {}},
+            {"step": {"row": "tests"}},
+            {"metrics": {}},
+        ]
+        if counted:
+            children.append({"step": {"row": "environment"}})
         writer = receipt.Writer(
             path,
             {"stage": "commit", "host": "workshop", "command": ["x"]},
-            [{"workspace": {}}, {"configuration": {}}, {"step": {"row": "tests"}}, {"metrics": {}}],
+            children,
         )
         writer.write(
             {"workspace": {}}, {"repo": "product", "base": "b" * 40, "head": HEAD, "clean": True}
         )
-        writer.write({"configuration": {}}, CONFIGURATION)
+        configuration = CONFIGURATION | (
+            {
+                "rows": ["environment", "tests"],
+                "providers": {"environment": "product", "tests": "product"},
+            }
+            if counted
+            else {}
+        )
+        writer.write({"configuration": {}}, configuration)
+        if counted:
+            writer.write(
+                {"step": {"row": "environment"}},
+                {
+                    "status": "ERROR",
+                    "exit": None,
+                    "stopped": "launch",
+                    "seconds": 1.0,
+                    "provider": "workshop",
+                },
+            )
         ran = (
             {"status": "PASS", "exit": 0} if result == "PASS" else {"status": "ERROR", "exit": None}
         )
         writer.write(
             {"step": {"row": "tests"}}, ran | {"seconds": 1.0, "provider": "workshop"} | step
         )
-        writer.write({"metrics": {}}, {"wall_seconds": 1.0})
-        writer.finish({"result": result, "exit": 0 if result == "PASS" else 1, "red_nodes": []})
+        writer.write({"metrics": {}}, {"wall_seconds": 901.0 if counted else 1.0})
+        writer.finish(
+            {"result": result, "exit": {"PASS": 0, "FAIL": 1, "ERROR": 2}[result], "red_nodes": []}
+        )
         lines = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
         lines[-1]["finished"] |= finished
         path.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
         try:
             receipt.read(path)
         except receipt.ReceiptError as error:
-            assert error.code == "pipeline.receipt_malformed", error.code
+            assert error.code == (
+                "pipeline.receipt_inconsistent"
+                if case == "red classes inconsistent"
+                else "pipeline.receipt_malformed"
+            ), error.code
             accepted = False
         else:
             accepted = True
@@ -836,7 +875,14 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
     (tmp_path / "src").mkdir()
     (tmp_path / "src/m.py").write_text("x = 1\n" * 14)
     commit("A tree to report on")
-    flaky = {"node": "t::f", "attempt": 1, "solo": False, "status": "FAILED", "seconds": 1}
+    flaky = {
+        "node": "t::f",
+        "attempt": 1,
+        "solo": False,
+        "status": "FAILED",
+        "seconds": 1,
+        "timeout_seconds": 10,
+    }
     results = [RESULT, RESULT | {"node": "t::slow", "seconds": 12}, flaky]
     results.append(flaky | {"attempt": 2, "solo": True, "status": "PASSED"})
     paths = []
@@ -876,6 +922,12 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
     assert tree["quarantine"] == [held | {"days_left": 3}]
     assert stages["by_result"] == {"PASS": 1, "ERROR": 1, "UNREADABLE": 1}
     assert stages["error_rate"] == 0.667 and stages["unreadable"][0]["code"].endswith("missing")
+    # the ERROR stage was written with no red class: unclassified, so it adds nothing to the share
+    assert (stages["by_red_class"], stages["tooling_red_share"], stages["unclassified_reds"]) == (
+        {"unclassified": 1},
+        0.0,
+        1,
+    )
     assert (stages["flaked_nodes"], stages["flake_rate"]) == (["t::f"], 0.3333)
     assert (stages["slow_tests"], stages["slow_share"]) == (1, 0.8)
     ranked = getattr(health, "ranked", None)
@@ -1372,6 +1424,13 @@ def test_flake_candidates_use_distinct_verified_heads_and_registered_owners(
             "SKIPPED" if case == "skipped-solo" else None
         )
         second.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
+        if case == "skipped-solo":
+            receipt.verify(second)  # the historical wire format remains readable
+            typed = tmp_path / "typed-skipped.jsonl"
+            lines[-1]["finished"].update(red_classes={}, red_class=None)
+            typed.write_text("\n".join(map(json.dumps, lines)) + "\n", encoding="utf-8")
+            with pytest.raises(receipt.ReceiptError):
+                receipt.verify(typed)  # a new PASS cannot turn a skipped retry green
     receipts = [first, second]
     posts = []
     if case in {
@@ -1584,6 +1643,255 @@ def test_flake_candidates_use_distinct_verified_heads_and_registered_owners(
         assert all(observation["head"] in row["reason"] for observation in row["observations"])
         assert len(row["observations"]) == 2
         assert row["same_failure"] is (case != "different-failure")
+
+
+KILL = {"type": "Failure", "message": "worker 'gw1' crashed while running 't::alpha[x::y]'"}
+ROW = {"status": "FAIL", "exit": 1, "seconds": 1, "provider": "workshop"}
+STOPPED = {"status": "ERROR", "exit": None, "seconds": 0, "provider": "workshop"}
+MASSED = [  # one setup error on 20 nodes: the environment, as on the 433-error mornings
+    RESULT
+    | {"node": f"t::n{i}", "status": "ERROR", "phase": "setup", "failure": {"message": "no venv"}}
+    for i in range(20)
+]
+ASSERTED = [  # one assertion failing 20 parameter rows: as consistent with a shared defect as any
+    FIRST | {"node": f"t::p[{i}]", "failure": {"message": "assert 1 == 2"}} for i in range(20)
+]
+RED_CLASSES = {  # node results, rows and an overrun -> the stage's causes and its one class
+    "defect": (
+        [FIRST, ALONE | {"status": "FAILED"}],
+        [("tests", ROW)],
+        False,
+        {"defect": 1},
+        "defect",
+    ),
+    "flake": ([FIRST, ALONE], [("tests", ROW)], False, {"flake": 1}, "flake"),
+    "slow": ([FIRST, ALONE | {"seconds": 2}], [("tests", ROW)], False, {"slow": 1}, "slow"),
+    "load: killed in parallel, passed alone": (
+        [FIRST | {"failure": KILL}, ALONE],
+        [("tests", ROW)],
+        False,
+        {"load": 1},
+        "load",
+    ),
+    "tooling: killed alone too": (
+        [FIRST | {"failure": KILL}, ALONE | {"status": "ERROR", "failure": KILL}],
+        [("tests", ROW)],
+        False,
+        {"tooling": 1},
+        "tooling",
+    ),
+    "tooling: one failure on 20 nodes": (
+        MASSED,
+        [("tests", ROW)],
+        False,
+        {"tooling": 20},
+        "tooling",
+    ),
+    "tooling: pytest's own exit": (
+        [],
+        [("tests", ROW | {"exit": 2})],
+        False,
+        {"tooling": 1},
+        "tooling",
+    ),
+    "tooling: tests failed with no results": (
+        [],
+        [("tests", ROW)],
+        False,
+        {"tooling": 1},
+        "tooling",
+    ),
+    "tooling: the environment": ([], [("environment", ROW)], False, {"tooling": 1}, "tooling"),
+    "load: a row stopped at the bound": (
+        [],
+        [("tests", STOPPED | {"stopped": "bound"})],
+        False,
+        {"load": 1},
+        "load",
+    ),
+    "tooling: a row that could not launch": (
+        [],
+        [("fast-guard", STOPPED | {"stopped": "launch"})],
+        False,
+        {"tooling": 1},
+        "tooling",
+    ),
+    "load: the stage over its bound": ([], [("tests", STOPPED)], True, {"load": 1}, "load"),
+    "defect: the change's own guard": (
+        [],
+        [("fast-guard", ROW), ("tests", STOPPED)],
+        False,
+        {"defect": 1},
+        "defect",
+    ),  # its cascade is no cause
+    "mixed: a flake and a load": (
+        [FIRST, ALONE, FIRST | {"node": "t::beta", "failure": KILL}, ALONE | {"node": "t::beta"}],
+        [("tests", ROW)],
+        False,
+        {"flake": 1, "load": 1},
+        "flake+load",
+    ),
+    "unclassified: one assertion on 20 rows, no solo": (
+        ASSERTED,
+        [("tests", ROW)],
+        False,
+        {"unclassified": 20},
+        "unclassified",
+    ),
+    "unclassified: a skipped solo": (
+        [FIRST, ALONE | {"status": "SKIPPED"}],
+        [("tests", ROW)],
+        False,
+        {"unclassified": 1},
+        "unclassified",
+    ),
+    "defect: a shared fixture assertion still fails alone": (
+        [
+            FIRST
+            | {
+                "node": f"t::p[{i}]",
+                "status": "ERROR",
+                "phase": "setup",
+                "failure": {"message": "AssertionError: invariant"},
+            }
+            for i in range(20)
+        ]
+        + [ALONE | {"node": "t::p[0]", "status": "FAILED"}],
+        [("tests", ROW)],
+        False,
+        {"defect": 1, "unclassified": 19},
+        "defect",
+    ),
+    "mixed: a shared missing environment then a solo pass": (
+        [*MASSED, ALONE | {"node": "t::n0"}],
+        [("tests", ROW)],
+        False,
+        {"flake": 1, "tooling": 19},
+        "flake+tooling",
+    ),
+    "unclassified: a solo pass with a negative bound": (
+        [FIRST, ALONE | {"timeout_seconds": -1}],
+        [("tests", ROW)],
+        False,
+        {"unclassified": 1},
+        "unclassified",
+    ),
+    "unclassified: a solo pass with a zero bound": (
+        [FIRST, ALONE | {"timeout_seconds": 0}],
+        [("tests", ROW)],
+        False,
+        {"unclassified": 1},
+        "unclassified",
+    ),
+    "unclassified: a solo pass with no recorded bound": (
+        [FIRST | {"timeout_seconds": None}, ALONE | {"timeout_seconds": None}],
+        [("tests", ROW)],
+        False,
+        {"unclassified": 1},
+        "unclassified",
+    ),
+    "unclassified: a solo setup error": (
+        [FIRST, ALONE | {"status": "ERROR", "phase": "setup", "failure": {"message": "OSError"}}],
+        [("tests", ROW)],
+        False,
+        {"unclassified": 1},
+        "unclassified",
+    ),
+    "unclassified: a guard's exit other than 1": (
+        [],
+        [("fast-guard", ROW | {"exit": 2})],
+        False,
+        {"unclassified": 1},
+        "unclassified",
+    ),
+    "mixed: tooling beside an unknown": (
+        [FIRST],
+        [("environment", ROW), ("tests", ROW)],
+        False,
+        {"tooling": 1, "unclassified": 1},
+        "tooling+unclassified",
+    ),
+    "unclassified: red once, never rerun alone": (
+        [FIRST],
+        [("tests", ROW)],
+        False,
+        {"unclassified": 1},
+        "unclassified",
+    ),
+    "unclassified: an exit-less row with no reason": (
+        [],
+        [("tests", STOPPED)],
+        False,
+        {"unclassified": 1},
+        "unclassified",
+    ),
+}
+
+
+@pytest.mark.proves("pipeline.receipt_classes_every_red")
+@pytest.mark.parametrize("case", RED_CLASSES)
+def test_every_red_is_classed_from_its_own_evidence_and_unknown_is_never_a_defect(tmp_path, case):
+    """Each red node and non-passing row classes as a defect, flake, slow test, load or tooling from
+    what its stage already wrote; with no evidence it reads unclassified, never a defect, and the
+    receipt carries the counts and the one class, which verifies."""
+    results, steps, over, counts, label = RED_CLASSES[case]
+    if case == "unclassified: a skipped solo":
+        assert receipt.classed(results) == ([FIRST["node"]], {})
+    classes = receipt.red_classes(results)
+    assert receipt.red_class(steps, classes, over_bound=over, tested=bool(results)) == (
+        counts,
+        label,
+    )
+    events = tmp_path / "events.jsonl"
+    events.write_text("\n".join(map(json.dumps, results)))
+    path = tmp_path / "receipt.jsonl"
+    writer = receipt.Writer(
+        path,
+        {"stage": "commit", "host": "workshop", "command": ["x"]},
+        [{"workspace": {}}, {"configuration": {}}],
+    )
+    writer.write({"workspace": {}}, {"repo": "r", "base": "b" * 40, "head": HEAD, "clean": True})
+    writer.write({"configuration": {}}, CONFIGURATION | {"rows": [row for row, _ in steps]})
+    red = []
+    for row, step in steps:
+        if row == "tests" and step["exit"] is not None:
+            red += writer.tests(row, step, events)
+        else:
+            writer.write({"step": {"row": row}}, step)
+    writer.write(
+        {"metrics": {}}, {"wall_seconds": 901 if over else 1}
+    )  # over its 900 s bound, or not
+    result = "ERROR" if any(s["exit"] is None for _, s in steps) or over else "FAIL"
+    writer.finish(
+        {"result": result, "exit": {"FAIL": 1}.get(result, 2), "red_nodes": red}
+        | writer.red_summary(over_bound=over)
+    )
+    lines = path.read_text("utf-8").splitlines()
+    finished = json.loads(lines[-1])["finished"]
+    assert (finished["red_classes"], finished["red_class"]) == (counts, label)
+    receipt.verify(path)  # the classed receipt is a valid receipt
+    from devtools.pipeline.health import stages as stage_health
+
+    share = stage_health(
+        [path]
+    )  # the number counts flakes, tooling or load with no defect; slow is not one
+    known = bool(counts.keys() & {"flake", "tooling", "load"}) and "defect" not in counts
+    assert (share["tooling_red_share"], share["unclassified_reds"]) == (
+        1.0 if known else 0.0,
+        int("unclassified" in counts),
+    )
+    spoiled = (
+        {"red_class": "impossible"},
+        {"red_classes": {"unclassified": -9}},
+        {"red_classes": {}},
+    )
+    for index, change in enumerate(spoiled):  # a claim its own steps and nodes deny never verifies
+        last = json.loads(lines[-1])
+        last["finished"] |= change
+        tampered = tmp_path / f"tampered-{index}.jsonl"
+        tampered.write_text("\n".join([*lines[:-1], json.dumps(last)]) + "\n", encoding="utf-8")
+        with pytest.raises(receipt.ReceiptError):
+            receipt.verify(tampered)
 
 
 def _git(root: Path, *args: str) -> str:

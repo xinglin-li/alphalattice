@@ -25,7 +25,15 @@ from typing import Any, TypedDict
 from pydantic import TypeAdapter, ValidationError
 
 from devtools.pipeline.definition import DefinitionError
-from devtools.pipeline.receipt import ReceiptError, classed, read
+from devtools.pipeline.receipt import (
+    CASCADE,
+    CRASH,
+    TOOLING_REDS,
+    ReceiptError,
+    _valid_bound,
+    classed,
+    read,
+)
 from devtools.testing.requirements import (
     file_holders,
     index,
@@ -267,10 +275,13 @@ def _latest_slow(path: str, tested: list[dict[str, Any]]) -> dict[str, Any]:
 def stages(
     receipts: Sequence[Path], today: date | None = None, merged: Merged = lambda head: None
 ) -> dict[str, Any]:
-    """Speed and reliability: results, flakes and the latest passing stage's slow tests, and
-    with ``today`` the rolling per-test table. A stage with no verdict (an ERROR, or a receipt
-    its reader refuses) is an error; with no receipt each rate is unknown, never zero."""
+    """Speed and reliability: results, red classes, flakes and the latest passing stage's slow
+    tests, and with ``today`` the rolling per-test table. A stage with no verdict (an ERROR, or a
+    receipt its reader refuses) is an error. A red stage counts toward the tooling-red share when
+    its class is known and holds no defect; one with no class (written before RED-CLASS-RECEIPT)
+    is unclassified, never a defect. With no receipt each rate is unknown, never zero."""
     results: Counter[str] = Counter()
+    reds: list[tuple[str | None, dict[str, int]]] = []
     flakes: Counter[str] = Counter()
     nodes = 0
     unreadable: list[dict[str, str]] = []
@@ -279,6 +290,7 @@ def stages(
     for path, events, moment in _stage_inputs(receipts, unreadable):
         finished = events[-1].finished
         results[finished.result] += 1
+        reds += [(finished.red_class, dict(finished.red_classes))] * (finished.result != "PASS")
         tested = [e.test_result.model_dump() for e in events if "test_result" in e.id]
         nodes += len({result["node"] for result in tested})
         runs.append((moment, *_first_attempts(events, tested)))
@@ -292,11 +304,29 @@ def stages(
         "stages": count,
         "by_result": dict(results),
         "error_rate": round((results["ERROR"] + len(unreadable)) / count, 3) if count else None,
+        **_red_share(reds, count),
         "unreadable": unreadable,
         "flake_rate": round(sum(flakes.values()) / nodes, 4) if nodes else None,
         "flaked_nodes": sorted(flakes),
         **_latest_slow(latest[1], latest[2]),
     } | ({"tests": ranked(runs, today, merged)} if today else {})
+
+
+def _red_share(reds: Sequence[tuple[str | None, dict[str, int]]], count: int) -> dict[str, Any]:
+    """The red stages by class, the tooling-red share of all stages, and beside it the stages with
+    an unknown part. A stage counts toward the share by its full causes: a flake, tooling or load
+    cause and no defect; slow alone is not one. A stage with any unclassified cause, or written
+    with no class at all, counts as unclassified even when another cause is known: an unknown is
+    never hidden behind a known one, and never a defect."""
+    classes = Counter(label or "unclassified" for label, _ in reds)
+    tooling = sum(
+        1 for _, causes in reds if causes.keys() & TOOLING_REDS and "defect" not in causes
+    )
+    return {
+        "by_red_class": dict(classes),
+        "tooling_red_share": round(tooling / count, 3) if count else None,
+        "unclassified_reds": sum(1 for _, causes in reds if not causes or "unclassified" in causes),
+    }
 
 
 def _flake_error(detail: str) -> DefinitionError:
@@ -316,18 +346,8 @@ def _first_assertion(text: str, source: str, node: str) -> str:
 def _commit_infrastructure(
     path: Path, errors: list[Any], issues: list[dict[str, str]] | None, head: str
 ) -> set[str]:
-    crash = {
-        r.node
-        for r in errors
-        if re.search(
-            r"worker 'gw[0-9]+' crashed while running", (r.failure or {}).get("message", "")
-        )
-    }
-    cascade = {
-        r.node
-        for r in errors
-        if crash and "incomplete session workspace:" in (r.failure or {}).get("message", "")
-    }
+    crash = {r.node for r in errors if CRASH.search((r.failure or {}).get("message", ""))}
+    cascade = {r.node for r in errors if crash and CASCADE in (r.failure or {}).get("message", "")}
     if issues is not None:
         for result in errors:
             if result.node in crash or result.node in cascade:
@@ -363,7 +383,11 @@ def _receipt_flake_node(
     try:
         if first.status == "ERROR" and first.phase != "setup":
             raise _flake_error(f"{path}: {node}: non-setup error is unmeasured")
-        if not last.timeout_seconds or last.seconds > last.timeout_seconds:
+        if (
+            last.timeout_seconds is None
+            or not _valid_bound(last.timeout_seconds)
+            or last.seconds > last.timeout_seconds
+        ):
             raise _flake_error(f"{path}: {node}: solo bound is missing or exceeded")
         failure = _first_assertion((first.failure or {}).get("message", ""), str(path), node)
     except DefinitionError as error:
@@ -392,6 +416,19 @@ def _receipt_flake_node(
     )
 
 
+def _flake_nodes(rows: list[Any]) -> dict[str, None]:
+    """Candidate solo passes, including an unbounded one whose evidence needs a named refusal."""
+    classes = classed([r.model_dump() for r in rows])[1]
+    unbounded = {
+        r.node
+        for r in rows
+        if r.solo and r.status == "PASSED" and not _valid_bound(r.timeout_seconds)
+    }
+    return dict.fromkeys(
+        [*(node for node, kind in classes.items() if kind == "flake"), *sorted(unbounded)]
+    )
+
+
 def _receipt_flakes(
     path: Path, events: list[Any], at: datetime, issues: list[dict[str, str]] | None = None
 ) -> list[dict[str, Any]]:
@@ -414,10 +451,9 @@ def _receipt_flakes(
             )
         )
     infrastructure = _commit_infrastructure(path, errors, issues, workspace.head)
-    classes = classed([r.model_dump() for r in rows])[1]
     found = []
-    for node, kind in classes.items():
-        if kind != "flake" or node in infrastructure:
+    for node in _flake_nodes(rows):
+        if node in infrastructure:
             continue
         attempts = sorted((r for r in rows if r.node == node), key=lambda r: r.attempt)
         item = _receipt_flake_node(path, node, attempts, workspace.head, at, issues)
