@@ -98,6 +98,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     health = commands.add_parser("health", help="the day's test-health report as JSON")
     health.add_argument("receipts", type=Path, nargs="*", help="commit-stage receipts")
+    health.add_argument(
+        "--durations", type=Path, help="write each test's p50 here (pytest-split's .test_durations)"
+    )
     args = parser.parse_args(argv)
     if args.command == "run" and args.workers < 1:
         parser.error("--workers is at least 1")
@@ -135,7 +138,13 @@ def main(argv: list[str] | None = None) -> int:
             asked["cost_sources"] = sources or None
             print(json.dumps(verify(path, **asked), indent=2))
         elif args.command == "health":
-            print(json.dumps(report(ROOT, args.receipts, date.today()), indent=2))
+            found = report(ROOT, args.receipts, date.today())
+            durations = found["stages"]["tests"].pop("durations")
+            if args.durations:
+                args.durations.write_text(
+                    json.dumps(durations, indent=1) + "\n", encoding="utf-8", newline="\n"
+                )
+            print(json.dumps(found, indent=2))
         else:
             print(show(load(ROOT), args.stage))
     except ValueError as error:

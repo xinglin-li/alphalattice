@@ -1,13 +1,16 @@
 """The daily test-health report the test manager publishes: the test rows of the quality metrics,
 from the checkout, its test-size registry and the commit-stage receipts it is given, each read
-once through the receipt's own reader."""
+once through the receipt's own reader, and the rolling per-test seconds those receipts hold."""
 
 from __future__ import annotations
 
+import math
 import re
+import statistics
 import subprocess
+from bisect import insort
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from datetime import date, datetime, timedelta
 from fnmatch import fnmatchcase
 from hashlib import sha256
@@ -28,6 +31,17 @@ from devtools.testing.requirements import (
 from devtools.testing.sizes import load_policy
 
 SLOW_SECONDS = 10  # the quality metrics' row: commit-stage tests of 10 s or more
+ROLLING_DAYS, TREND_DAYS, RANKED = (
+    28,
+    7,
+    10,
+)  # the table's window, its trend's window, each list's length
+# A run on a degraded machine is left out of every baseline. As the harness's machine-health alert
+# reads it (10-28: the machine drifted 3-9x slower until a reboot), its tests take DEGRADED_RATIO
+# times their best or more; here it is the median node, so one slow test never condemns a run, and
+# a run with fewer than MEASURED_NODES comparable nodes is unmeasured, never healthy.
+DEGRADED_RATIO, MEASURED_NODES = 2, 50
+NOISE_SECONDS = 0.1  # below this a node's time is overhead, never a ratio sample
 LARGE_BYTES = 100 * 1024  # the shape guard's ceiling for any tracked file under tests/
 
 
@@ -122,27 +136,150 @@ def _stage_inputs(
         yield path, events, moment
 
 
-def stages(receipts: Sequence[Path]) -> dict[str, Any]:
-    """Speed and reliability: results, flakes and the latest passing stage's slow tests. A stage
-    with no verdict (an ERROR, or a receipt its reader refuses) counts toward the error rate; with
-    no receipt each rate is unknown, never zero."""
+Observation = tuple[str, float]  # one node's first attempt in one stage: its status and seconds
+Run = tuple[datetime, str, dict[str, Observation]]  # a stage's finish, head and observations
+Merged = Callable[[str], bool | None]  # whether a head is in the reported history; None unknown
+
+
+def _row(
+    node: str, samples: list[tuple[datetime, float, str]], end: date, merged: Merged
+) -> dict[str, Any]:
+    """One node's passed seconds in healthy runs, oldest first: its p50 and nearest-rank p90, its
+    trend (over its runs in the last TREND_DAYS, the newer half's p50 less the older half's;
+    unknown below four runs), the first run at SLOW_SECONDS or more, and the stage in which it
+    doubled (by 1 s or more over the median before) with at least one later run, all staying there,
+    with whether that stage's head is merged, when the history can tell."""
+    values = [seconds for _, seconds, _ in samples]
+    ordered = sorted(values)
+    week = [s for at, s, _ in samples if (end - at.date()).days < TREND_DAYS]
+    half = len(week) // 2
+    earlier: list[float] = []
+    jump = None
+    for i, (at, seconds, head) in enumerate(samples):
+        if earlier:
+            floor = max(2 * statistics.median(earlier), statistics.median(earlier) + 1)
+            # The step must be followed by at least one confirming run.
+            if i + 1 < len(values) and values[i - 1] < floor <= min(values[i:]):
+                jump = {"at": at.isoformat(), "head": head, "merged": merged(head)}
+        insort(earlier, seconds)
+    return {
+        "node": node,
+        "runs": len(values),
+        "p50": round(statistics.median(values), 3),
+        "p90": round(ordered[math.ceil(0.9 * len(ordered)) - 1], 3),
+        "trend": round(statistics.median(week[-half:]) - statistics.median(week[:half]), 3)
+        if half >= 2
+        else None,
+        "first_slow": next((at.isoformat() for at, s, _ in samples if s >= SLOW_SECONDS), None),
+        "jumped_in": jump,
+    }
+
+
+def _machine(window: list[Run]) -> list[tuple[str, float | None]]:
+    """Each run's machine state: a node is compared only with its best passed time in the other
+    runs, so no run vouches for itself; a run with under MEASURED_NODES such comparisons is
+    unmeasured, and one whose median comparison is DEGRADED_RATIO or more is degraded."""
+    best: dict[str, list[tuple[float, int]]] = {}  # each node's two fastest passes, by run
+    for i, (_, _, seen) in enumerate(window):
+        for node, (status, value) in seen.items():
+            if status == "PASSED":
+                best[node] = sorted([*best.get(node, []), (value, i)])[:2]
+    states: list[tuple[str, float | None]] = []
+    for i, (_, _, seen) in enumerate(window):
+        ratios = []
+        for node, (status, value) in seen.items():
+            other = next((v for v, j in best.get(node, []) if j != i), None)
+            if status == "PASSED" and other is not None and other >= NOISE_SECONDS:
+                ratios.append(value / other)
+        if len(ratios) < MEASURED_NODES:
+            states.append(("unmeasured", None))
+        else:
+            factor = statistics.median(ratios)
+            states.append(("degraded" if factor >= DEGRADED_RATIO else "healthy", round(factor, 2)))
+    return states
+
+
+def ranked(runs: list[Run], today: date, merged: Merged = lambda head: None) -> dict[str, Any]:
+    """The rolling per-test table over the last ROLLING_DAYS of stages (finish, head, each first
+    attempt's status and seconds), from healthy runs' passes only: the ten slowest by p50, the ten
+    largest growers, each test whose last three observations were healthy passes of SLOW_SECONDS
+    or more (a missing, failed, skipped, degraded or unmeasured run breaks the series), and every
+    node's p50 in pytest-split's .test_durations form, so the same file balances workers."""
+    window = sorted(
+        (run for run in runs if 0 <= (today - run[0].date()).days < ROLLING_DAYS),
+        key=lambda run: run[0],
+    )
+    states = _machine(window)
+    samples: dict[str, list[tuple[datetime, float, str]]] = {}
+    series: dict[str, list[bool]] = {}  # each observation, in order: a healthy slow pass or not
+    degraded = []
+    for (at, head, seen), (state, factor) in zip(window, states, strict=True):
+        if state == "degraded":
+            degraded.append({"at": at.isoformat(), "head": head, "factor": factor})
+        for node in series.keys() - seen.keys():
+            series[node].append(False)  # a stage without this node cannot confirm a running series
+        for node, (status, value) in seen.items():
+            healthy = state == "healthy" and status == "PASSED"
+            series.setdefault(node, []).append(healthy and value >= SLOW_SECONDS)
+            if healthy:
+                samples.setdefault(node, []).append((at, value, head))
+    table = {node: _row(node, rows, today, merged) for node, rows in sorted(samples.items())}
+    growers = [row for row in table.values() if (row["trend"] or 0) > 0]
+    return {
+        "runs": sum(state == "healthy" for state, _ in states),
+        "degraded": degraded,
+        "unmeasured": sum(state == "unmeasured" for state, _ in states),
+        "slowest": sorted(table.values(), key=lambda r: (-r["p50"], r["node"]))[:RANKED],
+        "growers": sorted(growers, key=lambda r: (-r["trend"], r["node"]))[:RANKED],
+        "slow_three_running": sorted(
+            node for node, seen in series.items() if len(seen) >= 3 and all(seen[-3:])
+        ),
+        "durations": {node: row["p50"] for node, row in table.items()},
+    }
+
+
+def _first_attempts(
+    events: list[Any], tested: list[dict[str, Any]]
+) -> tuple[str, dict[str, Observation]]:
+    """A stage's head and each node's first attempt: its status and seconds."""
+    head = next(e.workspace for e in events if "workspace" in e.id).head
+    return head, {r["node"]: (r["status"], r["seconds"]) for r in tested if r["attempt"] == 1}
+
+
+def _latest_slow(path: str, tested: list[dict[str, Any]]) -> dict[str, Any]:
+    """The latest passing stage's tests of SLOW_SECONDS or more: their count and time share."""
+    total = sum(result["seconds"] for result in tested)
+    slow = [result for result in tested if result["seconds"] >= SLOW_SECONDS]
+    return {
+        "slow_from": path or None,
+        "slow_tests": len(slow) if total else None,
+        "slow_share": round(sum(r["seconds"] for r in slow) / total, 3) if total else None,
+    }
+
+
+def stages(
+    receipts: Sequence[Path], today: date | None = None, merged: Merged = lambda head: None
+) -> dict[str, Any]:
+    """Speed and reliability: results, flakes and the latest passing stage's slow tests, and
+    with ``today`` the rolling per-test table. A stage with no verdict (an ERROR, or a receipt
+    its reader refuses) is an error; with no receipt each rate is unknown, never zero."""
     results: Counter[str] = Counter()
     flakes: Counter[str] = Counter()
     nodes = 0
     unreadable: list[dict[str, str]] = []
     latest: tuple[datetime | None, str, list[dict[str, Any]]] = (None, "", [])
+    runs: list[Run] = []
     for path, events, moment in _stage_inputs(receipts, unreadable):
         finished = events[-1].finished
         results[finished.result] += 1
         tested = [e.test_result.model_dump() for e in events if "test_result" in e.id]
         nodes += len({result["node"] for result in tested})
+        runs.append((moment, *_first_attempts(events, tested)))
         flakes.update(node for node, kind in classed(tested)[1].items() if kind == "flake")
         if finished.result == "PASS" and tested and (latest[0] is None or moment > latest[0]):
             latest = (moment, str(path), tested)
     if unreadable:
         results["UNREADABLE"] = len(unreadable)
-    total = sum(result["seconds"] for result in latest[2])
-    slow = [result for result in latest[2] if result["seconds"] >= SLOW_SECONDS]
     count = sum(results.values())
     return {
         "stages": count,
@@ -151,10 +288,8 @@ def stages(receipts: Sequence[Path]) -> dict[str, Any]:
         "unreadable": unreadable,
         "flake_rate": round(sum(flakes.values()) / nodes, 4) if nodes else None,
         "flaked_nodes": sorted(flakes),
-        "slow_from": latest[1] or None,
-        "slow_tests": len(slow) if total else None,
-        "slow_share": round(sum(r["seconds"] for r in slow) / total, 3) if total else None,
-    }
+        **_latest_slow(latest[1], latest[2]),
+    } | ({"tests": ranked(runs, today, merged)} if today else {})
 
 
 def _flake_error(detail: str) -> DefinitionError:
@@ -713,10 +848,22 @@ def flake_assessment(
     return {"candidates": candidates, "issues": issues}
 
 
+def _merged(root: Path, head: str) -> bool | None:
+    """Whether a stage's head is in this checkout's history; None when Git cannot tell."""
+    found = subprocess.run(
+        ["git", "-C", str(root), "merge-base", "--is-ancestor", head, "HEAD"], capture_output=True
+    )
+    return {0: True, 1: False}.get(found.returncode)
+
+
 def report(root: Path, receipts: Sequence[Path], today: date) -> dict[str, Any]:
     """The day's report: the tree's rows, then the stages'."""
     try:
-        return {"date": today.isoformat(), "tree": tree(root, today), "stages": stages(receipts)}
+        return {
+            "date": today.isoformat(),
+            "tree": tree(root, today),
+            "stages": stages(receipts, today, lambda head: _merged(root, head)),
+        }
     except DefinitionError:
         raise
     except (OSError, ValueError, SyntaxError, subprocess.CalledProcessError) as error:

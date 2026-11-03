@@ -91,7 +91,7 @@
       "seconds": 5
     },
     "pipeline.health_report_counts_the_test_metrics": {
-      "description": "The daily test-health report counts test and source lines, registered and multiply held requirements, large files, quarantines, stage verdicts, flakes and slow tests, and leaves a rate unknown without receipts.",
+      "description": "The daily test-health report counts test and source lines, registered and multiply held requirements, large files, quarantines, stage verdicts, flakes and slow tests, ranks each test's seconds from healthy runs only, and leaves a rate unknown without receipts.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 10

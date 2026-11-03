@@ -1,6 +1,7 @@
 import contextlib
 import json
 import sys
+from datetime import UTC
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -770,13 +771,28 @@ def test_the_plugin_writes_each_node_once_with_its_failure_and_disposes_of_itsel
     assert (c["phase"], d["phase"]) == ("???", "incomplete")
 
 
-@pytest.mark.parametrize("fault", ["duplicate", "clock", "tree", "holder-files", "holder-layers"])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "duplicate",
+        "clock",
+        "tree",
+        "holder-files",
+        "holder-layers",
+        "ranked",
+        "machine",
+        "rank-gap",
+        "rank-spike",
+        "rank-threshold",
+    ],
+)
 @pytest.mark.proves("pipeline.health_report_counts_the_test_metrics")
 def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_history, fault):
     """The report counts what the tree and the receipts hold; an unreadable one gives no verdict."""
     from datetime import date
     from pathlib import Path
 
+    from devtools.pipeline import health
     from devtools.pipeline.definition import DefinitionError
     from devtools.pipeline.health import report
     from devtools.pipeline.health import stages as stage_health
@@ -860,13 +876,24 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
     assert stages["error_rate"] == 0.667 and stages["unreadable"][0]["code"].endswith("missing")
     assert (stages["flaked_nodes"], stages["flake_rate"]) == (["t::f"], 0.3333)
     assert (stages["slow_tests"], stages["slow_share"]) == (1, 0.8)
+    ranked = getattr(health, "ranked", None)
+    assert callable(ranked), "the report must rank each test's seconds across stages"
+    assert (stages["tests"]["runs"], stages["tests"]["unmeasured"]) == (0, 0)  # finished after
+    written = stage_health(paths, date.today())["tests"]  # in its window: under 50 nodes each
+    for day in ([], [tmp_path / "missing.jsonl"]):  # an empty day and an unreadable one
+        quiet = stage_health(day, date(2026, 10, 25))["tests"]
+        assert (quiet["runs"], quiet["slowest"], quiet["durations"]) == (0, [], {})
+    assert (written["runs"], written["unmeasured"], written["durations"]) == (0, 2, {})
     assert report(tmp_path, [], date(2026, 10, 25))["stages"]["error_rate"] is None
 
     if fault == "duplicate":
         copied = tmp_path / "copied.jsonl"
         copied.write_bytes(paths[0].read_bytes())
         assert (
-            stage_health([paths[0], paths[0], copied, *paths[1:], tmp_path / "missing.jsonl"])
+            stage_health(
+                [paths[0], paths[0], copied, *paths[1:], tmp_path / "missing.jsonl"],
+                date(2026, 10, 25),
+            )
             == stages
         )
     elif fault == "clock":
@@ -890,6 +917,99 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
                 invalid["by_result"] == {"UNREADABLE": 1}
                 and invalid["unreadable"][0]["code"] == "pipeline.receipt_malformed"
             )
+    elif fault in {"ranked", "machine", "rank-gap", "rank-spike", "rank-threshold"}:
+        import inspect
+        from datetime import datetime, timedelta
+
+        assert "merged" in inspect.signature(ranked).parameters, "a jump says if it is merged"
+
+        today, base = date(2026, 10, 25), {f"t::n{i}": ("PASSED", 1.0) for i in range(50)}
+
+        def run(days_ago, head, nodes=base, **seen):  # a number is a pass; a tuple says itself
+            at = datetime(2026, 10, 25, 12, tzinfo=UTC) - timedelta(days=days_ago)
+            extra = {
+                f"t::{n}": s if isinstance(s, tuple) else ("PASSED", s) for n, s in seen.items()
+            }
+            return (at, head, nodes | extra)
+
+        if fault == "rank-gap":
+            runs = [run(3 - i, f"g{i}", **({"gap": 12} if i != 2 else {})) for i in range(4)]
+            assert "t::gap" not in ranked(runs, today)["slow_three_running"]
+            return
+        if fault == "rank-spike":
+            rows = ranked([run(1, "a", spike=1), run(0, "b", spike=4)], today)["slowest"]
+            assert next(row for row in rows if row["node"] == "t::spike")["jumped_in"] is None
+            return
+        if fault == "rank-threshold":
+            slower = {n: ("PASSED", 1.996) for n in base}
+            state = ranked([run(1, "a"), run(0, "b", nodes=slower)], today)
+            assert state["runs"] == 2 and state["degraded"] == []
+            # Exactly 2x is degraded; 3x, above it, is the machine case.
+            at = {n: ("PASSED", 2.0) for n in base}
+            state = ranked([run(1, "a"), run(0, "b", nodes=at)], today)
+            assert [(row["head"], row["factor"]) for row in state["degraded"]] == [("b", 2.0)]
+            return
+
+        fail = ("FAILED", 0.1)
+        rows = [(9, 1, 12, 2), (12, 1, 12, 2), (11, 1, 12, 2), (13, 1, 12, 8)]
+        rows += [(12, 4, 12, 8), (12, 4, fail, 2), (12, 4, 12, 2)]
+        grow = [
+            run(
+                6 - i,
+                f"h{i}",
+                slow=s,
+                grow=g,
+                broken=b,
+                rebound=r,
+                **({"once": 7} if i == 6 else {}),
+            )
+            for i, (s, g, b, r) in enumerate(rows)
+        ]
+        table = ranked(grow, today, merged=lambda head: head == "h4")
+        row = {r["node"]: r for r in table["slowest"]}
+        slow, grown, rebound = row["t::slow"], row["t::grow"], row["t::rebound"]
+        assert (slow["p50"], slow["p90"], slow["runs"], slow["first_slow"][:10]) == (
+            12,
+            13,
+            7,
+            "2026-10-20",
+        )
+        assert table["slow_three_running"] == ["t::slow"]  # a fast failure breaks t::broken's
+        assert grown["jumped_in"] == {
+            "at": "2026-10-23T12:00:00+00:00",
+            "head": "h4",
+            "merged": True,
+        }
+        assert rebound["jumped_in"] is None and slow["jumped_in"] is None  # 8, 8 came back down
+        assert [(r["node"], r["trend"]) for r in table["growers"]] == [
+            ("t::grow", 3),
+            ("t::slow", 1),
+        ]
+        assert table["durations"]["t::once"] == row["t::once"]["p90"] == 7  # one sample
+        assert table["durations"]["t::slow"] == 12 and len(table["durations"]) == 55
+        unknown = {r["node"]: r for r in ranked(grow, today)["slowest"]}["t::grow"]["jumped_in"]
+        assert unknown["head"] == "h4" and unknown["merged"] is None  # no history, no claim
+        for count, p90 in ((10, 9), (20, 18)):  # nearest rank: the ceil(0.9 n)-th
+            series = [run(count - 1 - i, f"s{i}", spread=float(i + 1)) for i in range(count)]
+            spread = {r["node"]: r for r in ranked(series, today)["slowest"]}["t::spread"]
+            assert spread["p90"] == p90, count
+        if fault == "machine":  # a 3x run, a thin one and an old one never enter a baseline
+            others = [
+                run(1, "slow-machine", nodes={n: ("PASSED", 3.0) for n in base}, slow=40, grow=12),
+                (run(1, "thin")[0], "thin", {"t::slow": ("PASSED", 90.0)}),
+                run(30, "old", slow=90, grow=90),
+            ]
+            machine = ranked([*grow, *others], today)
+            assert machine["degraded"] == [
+                {"at": "2026-10-24T12:00:00+00:00", "head": "slow-machine", "factor": 3.0}
+            ]
+            assert (machine["runs"], machine["unmeasured"]) == (7, 1)
+            assert machine["slowest"] == ranked(grow, today)["slowest"]
+            alone = ranked([run(0, "only")], today)  # no other run to compare with: unmeasured
+            assert (alone["runs"], alone["unmeasured"], alone["durations"]) == (0, 1, {})
+            other = {f"t::m{i}": ("PASSED", 1.0) for i in range(50)}
+            disjoint = ranked([run(1, "a"), run(0, "b", nodes=other)], today)
+            assert (disjoint["runs"], disjoint["unmeasured"]) == (0, 2)
     elif fault == "tree":
         bad = tmp_path / "tests/a/test_x.py"
         bad.write_bytes(b"\xff")
