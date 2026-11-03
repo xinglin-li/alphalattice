@@ -799,29 +799,21 @@ def validate_internal_id_history(
     """Validate the first landing against its source, then keep the policy lower-only."""
     if source.startswith("-"):
         raise ValueError("a revision cannot be an option")
+    shallow = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if shallow.returncode or shallow.stdout.strip() != "false":
+        raise ValueError(
+            "shallow or unreadable Git history; restore complete Git history and retry"
+        )
     source = subprocess.check_output(
         ["git", "rev-parse", "--verify", f"{source}^{{commit}}"], cwd=repo, text=True
     ).strip()
-    cache = {}
-    anchor_counts = {}
-
-    def policy_at(commit: str) -> dict | None:
-        if commit not in cache:
-            result = subprocess.run(
-                ["git", "-c", "core.longpaths=true", "show", f"{commit}:{INTERNAL_ID_BASELINE}"],
-                cwd=repo,
-                capture_output=True,
-                check=False,
-            )
-            cache[commit] = json.loads(result.stdout) if result.returncode == 0 else None
-        return cache[commit]
-
-    source_policy = policy_at(source)
-    if source_policy is None:
-        raise ValueError("the source has no frozen internal-label policy")
-    # a later reviewed policy (develop's) may admit an earlier commit's exact rows by name; a
-    # commit's own policy never widens its own history beyond what it names
-    admitting = source_policy
+    later = ""
     if admissions_from is not None:
         later = subprocess.run(
             ["git", "rev-parse", "--verify", "-q", f"{admissions_from}^{{commit}}"],
@@ -830,13 +822,147 @@ def validate_internal_id_history(
             text=True,
             check=False,
         ).stdout.strip()
-        admitting = (policy_at(later) if later else None) or source_policy
-    admissions = admitting.get("history_admissions", {})
+    graph = {}
+    for row in subprocess.check_output(
+        ["git", "rev-list", "--parents", source],
+        cwd=repo,
+        text=True,
+    ).splitlines():
+        fields = row.split()
+        if not fields or any(not re.fullmatch(r"[0-9a-f]{40}", oid) for oid in fields):
+            raise ValueError("unreadable internal-label history graph; restore Git history")
+        commit, *parents = fields
+        if commit in graph:
+            raise ValueError("repeated internal-label history graph entry; restore Git history")
+        graph[commit] = parents
+    if source not in graph or any(
+        parent not in graph for parents in graph.values() for parent in parents
+    ):
+        raise ValueError("incomplete internal-label history graph; restore Git history")
     commits = subprocess.check_output(
         ["git", "log", "--full-history", "--format=%H", source, "--", INTERNAL_ID_BASELINE],
         cwd=repo,
         text=True,
     ).splitlines()
+    if any(commit not in graph for commit in commits):
+        raise ValueError("incomplete internal-label history graph; restore Git history")
+    policies = set(commits) | {source} | ({later} if later else set())
+    policies.update(parent for commit in commits for parent in graph[commit])
+    resolved, contents = {}, {}
+
+    def acquire(specs: set[str]) -> None:
+        pending = sorted(specs - resolved.keys())
+        if not pending:
+            return
+        raw = subprocess.check_output(
+            ["git", "cat-file", "--batch-check", "-z"],
+            cwd=repo,
+            input="".join(spec + "\0" for spec in pending).encode(),
+        )
+        cursor = 0
+        for spec in pending:
+            missing = (spec + " missing\n").encode()
+            if raw.startswith(missing, cursor):
+                resolved[spec] = None
+                cursor += len(missing)
+                continue
+            end = raw.find(b"\n", cursor)
+            fields = raw[cursor:end].split() if end >= 0 else []
+            if (
+                len(fields) != 3
+                or not re.fullmatch(rb"[0-9a-f]{40}", fields[0])
+                or fields[1] != b"blob"
+                or not fields[2].isdigit()
+            ):
+                raise ValueError(f"unexpected git object response for {spec}; restore Git objects")
+            resolved[spec] = fields[0].decode("ascii")
+            cursor = end + 1
+        if cursor != len(raw):
+            raise ValueError("unexpected trailing git object response; restore Git objects")
+        contents.update(
+            _read_blob_batch(repo, {oid for oid in resolved.values() if oid} - contents.keys())
+        )
+
+    acquire({f"{commit}:{INTERNAL_ID_BASELINE}" for commit in policies})
+    cache = {
+        commit: json.loads(contents[oid])
+        if (oid := resolved[f"{commit}:{INTERNAL_ID_BASELINE}"])
+        else None
+        for commit in policies
+    }
+    anchor_counts = {}
+
+    def policy_at(commit: str) -> dict | None:
+        return cache[commit]
+
+    source_policy = policy_at(source)
+    if source_policy is None:
+        raise ValueError("the source has no frozen internal-label policy")
+    # a later reviewed policy (develop's) may admit an earlier commit's exact rows by name; a
+    # commit's own policy never widens its own history beyond what it names
+    admitting = source_policy
+    if later:
+        admitting = policy_at(later) or source_policy
+    admissions = admitting.get("history_admissions", {})
+    anchors = {
+        policy.get("source_sha", "")
+        for commit in commits
+        if (policy := cache[commit])
+        if policy and policy.get("schema_version", 1) == 2
+    }
+    anchors = {anchor for anchor in anchors if re.fullmatch(r"[0-9a-f]{40}", anchor)}
+    acquire({f"{anchor}:{INTERNAL_ID_BASELINE}" for anchor in anchors})
+    for anchor in anchors:
+        oid = resolved[f"{anchor}:{INTERNAL_ID_BASELINE}"]
+        cache[anchor] = json.loads(contents[oid]) if oid else None
+    owners = set()
+    for commit in commits:
+        policy = policy_at(commit)
+        if (
+            not policy
+            or policy.get("schema_version", 1) != 2
+            or policy.get("source_sha") not in anchors
+        ):
+            continue
+        for parent in graph[commit]:
+            previous = policy_at(parent) or {}
+            if previous.get("schema_version", 1) == 1:
+                for owner, labels in policy.get("occurrences", {}).items():
+                    if any(
+                        count > previous.get("occurrences", {}).get(owner, {}).get(label, 0)
+                        for label, count in labels.items()
+                    ):
+                        validate_path(owner)
+                        owners.add(f"{policy['source_sha']}:{owner}")
+    acquire(owners)
+    ancestor_sets, children = {}, {}
+    for child, parents in graph.items():
+        for parent in parents:
+            children.setdefault(parent, []).append(child)
+
+    def is_ancestor(anchor: str, commit: str) -> bool:
+        if anchor not in ancestor_sets:
+            # Descendants are shared by every policy commit with this immutable anchor.
+            descendants, todo = {anchor}, [anchor]
+            while todo:
+                for child in children.get(todo.pop(), []):
+                    if child not in descendants:
+                        descendants.add(child)
+                        todo.append(child)
+            ancestor_sets[anchor] = descendants
+        if commit in ancestor_sets[anchor]:
+            return True
+        # Git remains authoritative at shallow boundaries or for unrelated anchors.
+        return (
+            subprocess.run(
+                ["git", "merge-base", "--is-ancestor", anchor, commit],
+                cwd=repo,
+                capture_output=True,
+                check=False,
+            ).returncode
+            == 0
+        )
+
     for commit in commits:
         policy = policy_at(commit)
         if policy is None:
@@ -849,18 +975,11 @@ def validate_internal_id_history(
         anchor = policy.get("source_sha", "")
         if version == 2 and (
             not re.fullmatch(r"[0-9a-f]{40}", anchor)
-            or subprocess.run(
-                ["git", "merge-base", "--is-ancestor", anchor, commit],
-                cwd=repo,
-                capture_output=True,
-                check=False,
-            ).returncode
+            or not is_ancestor(anchor, commit)
             or policy_at(anchor) is not None
         ):
             raise ValueError(f"the first-landing anchor must precede the policy at {commit}")
-        parents = subprocess.check_output(
-            ["git", "rev-list", "-1", "--parents", commit], cwd=repo, text=True
-        ).split()[1:]
+        parents = graph[commit]
         for parent in parents:
             previous = policy_at(parent)
             if previous is None:
@@ -885,14 +1004,9 @@ def validate_internal_id_history(
                         key = (anchor, owner)
                         if key not in anchor_counts:
                             validate_path(owner)
-                            raw = subprocess.run(
-                                ["git", "-c", "core.longpaths=true", "show", f"{anchor}:{owner}"],
-                                cwd=repo,
-                                capture_output=True,
-                                check=False,
-                            )
+                            oid = resolved[f"{anchor}:{owner}"]
                             try:
-                                text = raw.stdout.decode("utf-8-sig") if raw.returncode == 0 else ""
+                                text = contents[oid].decode("utf-8-sig") if oid else ""
                             except UnicodeError:
                                 text = ""
                             pattern = internal_id_pattern(policy)
@@ -914,8 +1028,42 @@ def validate_internal_id_history(
 def validate_path(path: str) -> None:
     """Reject paths that a file manifest cannot safely describe."""
     parsed = PurePosixPath(path)
-    if not path or "\\" in path or parsed.is_absolute() or ".." in parsed.parts or ":" in path:
+    if (
+        not path
+        or "\0" in path
+        or "\\" in path
+        or parsed.is_absolute()
+        or ".." in parsed.parts
+        or ":" in path
+    ):
         raise ValueError(f"unsafe manifest path: {path!r}")
+
+
+def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
+    """Read each immutable blob once and refuse truncated or mismatched batch output."""
+    if not objects:
+        return {}
+    ordered = sorted(objects)
+    raw = subprocess.check_output(
+        ["git", "cat-file", "--batch"],
+        cwd=repo,
+        input="".join(oid + "\n" for oid in ordered).encode(),
+    )
+    blobs, cursor = {}, 0
+    for oid in ordered:
+        end = raw.find(b"\n", cursor)
+        header = raw[cursor:end].split() if end >= 0 else []
+        if len(header) != 3 or header[:2] != [oid.encode(), b"blob"] or not header[2].isdigit():
+            raise ValueError(f"unexpected git object response for {oid}; restore Git objects")
+        size = int(header[2])
+        stop = end + 1 + size
+        if stop >= len(raw) or raw[stop : stop + 1] != b"\n":
+            raise ValueError(f"incomplete git object response for {oid}; restore Git objects")
+        blobs[oid] = raw[end + 1 : stop]
+        cursor = stop + 1
+    if cursor != len(raw):
+        raise ValueError("unexpected trailing git object response; restore Git objects")
+    return blobs
 
 
 def read_tree(repo: Path, revision: str) -> tuple[str, dict[str, bytes], dict[str, str]]:
@@ -938,21 +1086,8 @@ def read_tree(repo: Path, revision: str) -> tuple[str, dict[str, bytes], dict[st
         modes[path] = mode
         if kind == "blob":
             objects.append((path, oid))
-    raw = subprocess.check_output(
-        ["git", "cat-file", "--batch"],
-        cwd=repo,
-        input="".join(oid + "\n" for _, oid in objects).encode(),
-    )
-    blobs = {}
-    cursor = 0
-    for path, oid in objects:
-        end = raw.index(b"\n", cursor)
-        header = raw[cursor:end].decode().split()
-        if header[:2] != [oid, "blob"]:
-            raise ValueError("unexpected git object response")
-        size = int(header[2])
-        blobs[path] = raw[end + 1 : end + 1 + size]
-        cursor = end + 2 + size
+    contents = _read_blob_batch(repo, {oid for _, oid in objects})
+    blobs = {path: contents[oid] for path, oid in objects}
     return sha, blobs, modes
 
 

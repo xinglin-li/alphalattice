@@ -3,6 +3,7 @@
 import hashlib
 import json
 import re
+import subprocess
 from collections import Counter
 from pathlib import Path
 from unittest.mock import Mock
@@ -109,7 +110,9 @@ def test_the_full_release_closure_check_names_its_private_inventory_input():
     )
 
 
-@pytest.mark.parametrize("path", ["../src/one.py", "/src/one.py", "src\\one.py", "C:/one.py"])
+@pytest.mark.parametrize(
+    "path", ["../src/one.py", "/src/one.py", "src\\one.py", "C:/one.py", "src/one\0.py"]
+)
 def test_public_manifest_rejects_unsafe_paths(path):
     with pytest.raises(ValueError, match="unsafe manifest path"):
         validate_path(path)
@@ -337,7 +340,9 @@ def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary
     ] == [ux, perf, fix, cards[6], cards[4]]
 
 
-def test_committed_development_label_allowance_cannot_grow_or_reset(tmp_path, synthetic_history):
+def test_committed_development_label_allowance_cannot_grow_or_reset(
+    tmp_path, synthetic_history, monkeypatch
+):
     _git, commit = synthetic_history
     with pytest.raises(ValueError, match="no frozen internal-label policy"):
         validate_internal_id_history(tmp_path, "HEAD")
@@ -352,6 +357,66 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(tmp_path, sy
     baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
     commit("Establish synthetic allowance")
     validate_internal_id_history(tmp_path, "HEAD")
+    # Long valid histories, including a merge, acquire immutable inputs in bounded batches.
+    branch = _git("rev-parse", "HEAD")
+    stream = b""
+    for number in range(12):
+        raw = json.dumps({**policy, "note": number}).encode()
+        parent = f":{number}" if number else branch
+        stream += (
+            (
+                f"commit refs/heads/batched\nmark :{number + 1}\n"
+                "committer Synthetic Author <synthetic@example.test> 0 +0000\n"
+                f"data 4\nKeep\nfrom {parent}\nM 100644 inline {INTERNAL_ID_BASELINE}\n"
+                f"data {len(raw)}\n"
+            ).encode()
+            + raw
+            + b"\n\n"
+        )
+    subprocess.check_output(["git", "-C", str(tmp_path), "fast-import", "--quiet"], input=stream)
+    tip = _git("rev-parse", "batched")
+    side = _git("commit-tree", _git("write-tree"), "-p", branch, "-m", "Side branch")
+    merged = _git("commit-tree", _git("write-tree"), "-p", tip, "-p", side, "-m", "Merge")
+    check_output, responses = subprocess.check_output, {}
+    with monkeypatch.context() as patch:
+        run = Mock(wraps=subprocess.run)
+        patch.setattr(subprocess, "run", run)
+        patch.setattr(
+            subprocess,
+            "check_output",
+            lambda command, **kwargs: responses.setdefault(
+                tuple(command), check_output(command, **kwargs)
+            ),
+        )
+        validate_internal_id_history(tmp_path, merged)
+        assert run.call_count <= 12, "historical Git acquisition must use bounded batches"
+        requested = [
+            oid
+            for call in run.call_args_list
+            if "--batch" in call.args[0]
+            for oid in call.kwargs["input"].splitlines()
+        ]
+        assert len(requested) == len(set(requested)), "read each immutable blob only once"
+    for option, damage in (
+        ("--batch-check", lambda raw: b""),
+        ("--batch-check", lambda raw: b"malformed\n"),
+        ("--batch", lambda raw: raw[:-2]),
+        ("--batch", lambda raw: raw + b"trailing"),
+        ("--batch", lambda raw: raw.replace(b" blob ", b" tree ", 1)),
+        ("--parents", lambda raw: merged + " " + "0" * 40 + "\n"),
+    ):
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                subprocess,
+                "check_output",
+                lambda command, option=option, damage=damage, **kwargs: (
+                    damage(responses[tuple(command)])
+                    if option in command
+                    else responses[tuple(command)]
+                ),
+            )
+            with pytest.raises(ValueError, match=r"git object response|history graph"):
+                validate_internal_id_history(tmp_path, merged)
     baseline.write_text(json.dumps({**policy, "cards": []}), encoding="utf-8", newline="\n")
     candidate = commit("Remove vocabulary", advance=False)
     with pytest.raises(ValueError, match="vocabulary changed"):
@@ -365,6 +430,16 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(tmp_path, sy
     commit("Increase synthetic allowance")
     with pytest.raises(ValueError, match="allowance increased"):
         validate_internal_id_history(tmp_path, "HEAD")
+    shallow = tmp_path.parent / (tmp_path.name + "-shallow")
+    subprocess.check_output(
+        ["git", "clone", "--quiet", "--depth=1", tmp_path.as_uri(), str(shallow)]
+    )
+    shallow_head = subprocess.check_output(
+        ["git", "-C", str(shallow), "rev-parse", "HEAD"], text=True
+    ).strip()
+    assert _git("rev-parse", "HEAD") == shallow_head
+    with pytest.raises(ValueError, match=r"shallow.*history"):
+        validate_internal_id_history(shallow, "HEAD")
     source = candidate = _git("rev-parse", "HEAD")
     parent = _git("rev-parse", "HEAD^")
     for named_parent, allowed, accepted in (
@@ -424,15 +499,24 @@ def test_first_landing_freezes_only_its_prepolicy_anchors_labels(tmp_path, synth
     baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
     with pytest.raises(ValueError, match="allowance increased"):
         validate_internal_id_history(tmp_path, commit("Admit a post-anchor label", advance=False))
+    baseline.write_text(
+        json.dumps({**policy, "occurrences": {"../foreign.py": {label: 1}}}),
+        encoding="utf-8",
+        newline="\n",
+    )
+    with pytest.raises(ValueError, match="unsafe manifest path"):
+        validate_internal_id_history(tmp_path, commit("Unsafe anchor path", advance=False))
     artifact.write_text(label + "\n", encoding="utf-8", newline="\n")
     policy["occurrences"] = {owner: {label: 1}}
     baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
     commit("Land the anchored allowance")
     validate_internal_id_history(tmp_path, "HEAD")
+    unrelated = git("commit-tree", git("write-tree"), "-m", "Unrelated anchor")
     for update, refusal in (
         ({"occurrences": {owner: {label: 2}}}, "allowance increased"),
         ({"source_sha": earlier}, "anchor or format changed"),
         ({"schema_version": 1}, "anchor or format changed"),
+        ({"source_sha": unrelated}, "anchor must precede"),
     ):
         baseline.write_text(json.dumps({**policy, **update}), encoding="utf-8", newline="\n")
         with pytest.raises(ValueError, match=refusal):
