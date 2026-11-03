@@ -13,7 +13,13 @@ from unittest.mock import Mock
 import pytest
 
 from devtools.architecture.registries import main as registry_main
-from devtools.architecture.registries import private_test_growth, problems, shrink, tracked
+from devtools.architecture.registries import (
+    message_problems,
+    private_test_growth,
+    problems,
+    shrink,
+    tracked,
+)
 from devtools.architecture.where import main, where
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -158,12 +164,25 @@ def test_each_kind_of_new_entry_is_refused_by_its_registry(tmp_path: Path) -> No
 
 
 @pytest.mark.parametrize(
-    "scenario", ["bootstrap", "growth", "shrink", "move", "unicode", "merge", "import-debt"]
+    "scenario",
+    [
+        "bootstrap",
+        "growth",
+        "shrink-words",
+        "shrink-entries",
+        "move",
+        "unicode",
+        "merge",
+        "import-debt",
+    ],
 )
 def test_staged_registry_census_refuses_new_unregistered_items(
     tmp_path, synthetic_history, capsys, monkeypatch, scenario
 ):
     """Independent staged histories retain every admission and read-once control."""
+    # The shrink history's two halves run as separate cases from the same reviewed declarations.
+    part = scenario.removeprefix("shrink-") if scenario.startswith("shrink-") else ""
+    scenario = "shrink" if part else scenario
     if scenario == "bootstrap":
         monkeypatch.delenv("ALPHALATTICE_REGISTRY_BASELINE", raising=False)
         assert registry_main(["--staged"]) == 0 and "not configured" in capsys.readouterr().out
@@ -476,13 +495,20 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         }
         declared_refusals["classification"]["word_selectors"] = selectors
 
-        def word_check(expected, document=declared_refusals, keys=()):
+        def word_stage(document=declared_refusals, keys=()):
             write(refusals, document)
             stage(words, {key: {} for key in ["census.legacy_word", *keys]})
+
+        def word_check(expected, document=declared_refusals, keys=()):
+            word_stage(document, keys)
             return check(expected)
 
-        word_check(0, keys=selectors)
+        if part == "words":
+            word_check(0, keys=selectors)
+        else:
+            word_stage(keys=selectors)  # the words case checks this same reviewed state
         git("-c", "core.longpaths=true", "commit", "-qm", "Reviewed word declarations")
+    if part == "words":
         for key in ("local_client.problem_report_ready", "alternative_evidence.unit_failed"):
             promoted = json.loads(json.dumps(declared_refusals))
             promoted["classification"]["word_selectors"].pop(key)
@@ -510,6 +536,8 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         registered["classification"]["word_selectors"] = {}
         word_check(0, registered)
         word_check(0)
+    elif part == "entries":
+        word_stage()  # the state the words case ends on, staged over the same commit
         for value in ({}, {"category": "UNDECLARED_CATEGORY"}):
             invalid = json.loads(json.dumps(registrations[refusals]))
             invalid["entries"]["census.unregistered"] = {"owner": fresh, **value}
@@ -754,13 +782,17 @@ def test_message_ids_keep_chinese_when_english_changes_and_refuse_invalid_forms(
         words={"en": "Ready {item}", "zh-CN": "就绪 {item}"},
     )
 
-    def check(entries, expected, *, raw=None, diagnostic=""):
-        path.write_text(raw or json.dumps({"entries": entries}), encoding="utf-8")
-        git("add", "--all")
-        assert registry_main(["--root", str(tmp_path), "--staged"]) == expected
-        assert diagnostic in capsys.readouterr().out
+    def check(entries, expected, *, raw=None, diagnostic="", staged=False):
+        text = raw or json.dumps({"entries": entries})
+        found = message_problems(text)
+        assert bool(found) == bool(expected) and diagnostic in "\n".join(found)
+        if staged:  # the staged census refuses through this same catalog reader
+            path.write_text(text, encoding="utf-8")
+            git("add", "--all")
+            assert registry_main(["--root", str(tmp_path), "--staged"]) == expected
+            assert set(found) <= set(capsys.readouterr().out.splitlines())
 
-    check({"job.ready": entry}, 0)
+    check({"job.ready": entry}, 0, staged=True)
     entry["words"]["en"] = "Prepared {item}"
     check({"job.ready": entry}, 0)  # Copy changes do not change message identity.
     for locale in ("en", "zh-CN"):
@@ -791,6 +823,7 @@ def test_message_ids_keep_chinese_when_english_changes_and_refuse_invalid_forms(
         1,
         raw='{"entries":{"job.ready":' + member + ',"job.ready":' + member + "}}",
         diagnostic="job.ready",
+        staged=True,
     )
     check({}, 1, raw='{"entries":{},"entries":{}}', diagnostic="entries")
     check({}, 1, raw='{"entries":[]}', diagnostic="entries")
