@@ -56,9 +56,12 @@ def main(argv: list[str] | None = None) -> int:
     running.add_argument("--workers", type=int, default=max(1, min(4, (os.cpu_count() or 2) // 2)))
     running.add_argument("--plugin", type=Path, action="append", default=[], help="a host's rows")
     running.add_argument(
-        "--required-tests", nargs="+", default=[], help="required cost-card nodes, Large included"
+        "--required-tests",
+        nargs="+",
+        default=[],
+        help="nodes a cost check requires, Large included",
     )
-    running.add_argument("--line", default="pipeline", help="the cache writer line")
+    running.add_argument("--line", default="pipeline", help="who runs the stage; read by nothing")
     running.add_argument("--result-cache", help="verified result store; absent disables it")
     running.add_argument("--cache", choices=("off", "record", "shadow", "on"))
     running.add_argument("--result-cache-bytes", help="positive derived-store byte cap")

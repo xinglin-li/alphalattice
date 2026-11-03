@@ -16,7 +16,7 @@ rows = ["staged-guard"]
 
 [stages.commit]
 order = 2
-reason = "A line proves its card before handing it back; the receipt admits the hand-back."
+reason = "A change's author proves it before handing it to review; the receipt admits the hand-off."
 trigger = "line"
 range = "card"
 lane = "merge"
@@ -31,7 +31,7 @@ rows = ["environment", "fast-guard", "tests", "load-timeouts", "public-scan", "w
 
 [stages.merge-queue]
 order = 3
-reason = "The commit stage on the composed batch, with each card held to its own test budget."
+reason = "The commit stage on the composed batch, with each change in it held to its own test budget."
 trigger = "queue"
 range = "each-card"
 lane = "merge"
@@ -98,7 +98,7 @@ review = "2026-12-01"
 [rows.card-budget]
 kind = "workshop"
 owner = "workshop"
-reason = "Each card in a batch is held to its own test budget, measured against the batch before it."
+reason = "Each change in a batch is held to its own test budget, measured against the batch before it."
 hosts = ["workshop"]
 escape = "tests growing faster than source"
 review = "2026-12-01"
@@ -121,7 +121,7 @@ public = [
 [rows.load-timeouts]
 kind = "workshop"
 owner = "workshop"
-reason = "A node that times out leaves its cause and the heavy places then held, and is rerun alone once."
+reason = "A node that times out leaves its cause and the other heavy runs then active, and is rerun alone once."
 hosts = ["workshop"]
 
 [rows.receipt-events]

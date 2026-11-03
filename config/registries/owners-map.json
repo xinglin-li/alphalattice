@@ -4869,7 +4869,7 @@
         "devtools.pipeline.receipt"
       ],
       "folds_in": [],
-      "note": "Consumers: scripts/pipeline.py verify and health; the READY check and the merge queue read receipts only through verify, and the test-health report through read, the one reader verify checks with. The stage runner that writes receipts follows."
+      "note": "Consumers: scripts/pipeline.py verify and health; the check before review and the merge queue read receipts only through verify, and the test-health report through read, the one reader verify checks with. The stage runner that writes receipts follows."
     },
     "test health report": {
       "description": "The test health report is the day's test rows of the quality metrics, computed from the checkout and the commit-stage receipts it is given, which the test manager publishes.",

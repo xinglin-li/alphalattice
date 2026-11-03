@@ -2,9 +2,9 @@
 
 The first event, ``started``, announces its children; ``finished`` ends the stream with
 ``last_message``. A stream that misses either, or an announced child, is incomplete and counts as no
-receipt. Readers (the READY check, the merge queue, the test manager) read it through ``verify``.
-Loaded as a pytest plugin, it writes each node's result to the stream ALPHALATTICE_PIPELINE_EVENTS
-names, which the stage folds into its receipt.
+receipt. Readers (the check before review, the merge queue, the test manager) read it through
+``verify``. Loaded as a pytest plugin, it writes each node's result to the stream
+ALPHALATTICE_PIPELINE_EVENTS names, which the stage folds into its receipt.
 """
 
 from __future__ import annotations
