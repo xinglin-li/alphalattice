@@ -49,19 +49,22 @@
       "description": "A result-cache entry hits only while every file, listing, probe and variable value its group read is unchanged, and its declared key is the same.",
       "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
     },
     "pipeline.result_cache_never_trusts_a_bad_entry": {
       "description": "A result-cache entry that is damaged, of another schema or key, or names a path outside its checkout is a miss, and a store or tree that cannot be used turns the cache off by its reason.",
       "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
     },
     "pipeline.result_cache_store_stays_within_its_bounds": {
       "description": "The result-cache store drops entries idle past 14 days and then the oldest while it holds more bytes than its cap.",
       "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
     },
     "pipeline.receipt_plugin_writes_each_node_once": {
       "description": "The receipt plugin writes each test node once, after its last phase or a crash, with its failure's masked signature, and then disposes of itself.",
@@ -97,7 +100,8 @@
       "description": "A recorder observes collection and execution inputs, storing only complete first-attempt passing results and declining opaque readers or bound native predicates without changing test outcomes.",
       "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
     },
     "pipeline.cost_receipt_contains_required_nodes": {
       "description": "A cost commit stage runs required named test families, including Large, and records their bounded outcomes without changing ordinary selection.",
@@ -109,7 +113,8 @@
       "description": "The runner reuses only verified passing groups, records cache provenance, and runs misses or shadow comparisons without hiding changed or opaque inputs.",
       "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 30
+      "seconds": 30,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
     },
     "testing.one_holder_per_layer": {
       "description": "A requirement has one holder file in each layer, while focused functions and parameter cases in that file preserve its place.",

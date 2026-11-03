@@ -7579,106 +7579,64 @@
     },
     "env:ALPHALATTICE_RESULT_CACHE": {
       "key": "env:ALPHALATTICE_RESULT_CACHE",
-      "description": "The directory for verified test results; absent disables reuse.",
+      "description": "The directory of the workshop gate's verified results; the stage passes it through, and absent disables reuse.",
       "owner": "devtools.pipeline",
       "type": "path | absent",
       "default": {
         "value": "",
         "resolution": "Explicit CLI option, then environment, then default",
-        "source": "src/devtools/pipeline/reuse.py::Options"
+        "source": "src/devtools/pipeline/stage.py::Options"
       },
       "defined_by": [
-        "src/devtools/pipeline/reuse.py::Options"
+        "src/devtools/pipeline/stage.py::Options"
       ],
       "identity_bearing": false,
-      "identity_scope": "test execution and derived result reuse",
+      "identity_scope": "test execution and the workshop gate's result reuse",
       "readers": {
         "literal": [
-          "src/devtools/pipeline/reuse.py"
+          "src/devtools/pipeline/stage.py"
         ]
       }
     },
     "env:ALPHALATTICE_RESULT_CACHE_BYTES": {
       "key": "env:ALPHALATTICE_RESULT_CACHE_BYTES",
-      "description": "The operator byte cap for the derived result cache.",
+      "description": "The operator byte cap for the workshop gate's result store; the stage passes it through.",
       "owner": "devtools.pipeline",
       "type": "positive int | absent",
       "default": {
-        "value": "1% of volume, at most 4 GiB",
-        "resolution": "Explicit CLI option, then environment, then default",
-        "source": "src/devtools/pipeline/reuse.py::Options"
+        "value": "",
+        "resolution": "Explicit CLI option, then environment; absent leaves the cap to the workshop gate",
+        "source": "src/devtools/pipeline/stage.py::Options"
       },
       "defined_by": [
-        "src/devtools/pipeline/reuse.py::Options"
+        "src/devtools/pipeline/stage.py::Options"
       ],
       "identity_bearing": false,
-      "identity_scope": "test execution and derived result reuse",
+      "identity_scope": "test execution and the workshop gate's result reuse",
       "readers": {
         "literal": [
-          "src/devtools/pipeline/reuse.py"
+          "src/devtools/pipeline/stage.py"
         ]
       }
     },
     "env:ALPHALATTICE_RESULT_CACHE_MODE": {
       "key": "env:ALPHALATTICE_RESULT_CACHE_MODE",
-      "description": "The operator selects recording, comparison or approved reuse; it never promotes itself.",
+      "description": "The operator selects recording, comparison or approved reuse for the workshop gate; it never promotes itself.",
       "owner": "devtools.pipeline",
       "type": "off | record | shadow | on",
       "default": {
         "value": "off",
         "resolution": "Explicit CLI option, then environment, then default",
-        "source": "src/devtools/pipeline/reuse.py::Options"
+        "source": "src/devtools/pipeline/stage.py::Options"
       },
       "defined_by": [
-        "src/devtools/pipeline/reuse.py::Options"
+        "src/devtools/pipeline/stage.py::Options"
       ],
       "identity_bearing": false,
-      "identity_scope": "test execution and derived result reuse",
+      "identity_scope": "test execution and the workshop gate's result reuse",
       "readers": {
         "literal": [
-          "src/devtools/pipeline/reuse.py"
-        ]
-      }
-    },
-    "env:ALPHALATTICE_RESULT_CACHE_WRITER": {
-      "key": "env:ALPHALATTICE_RESULT_CACHE_WRITER",
-      "description": "Carries the stage writer provenance to its observed test groups.",
-      "owner": "devtools.pipeline",
-      "type": "JSON object",
-      "default": {
-        "value": "",
-        "resolution": "Supplied by the stage adapter; absent outside the pipeline",
-        "source": "scripts/check_alpha_verification_impact.py::_selected"
-      },
-      "defined_by": [
-        "scripts/check_alpha_verification_impact.py::_selected"
-      ],
-      "identity_bearing": false,
-      "identity_scope": "test execution metadata",
-      "readers": {
-        "literal": [
-          "scripts/check_alpha_verification_impact.py"
-        ]
-      }
-    },
-    "env:ALPHALATTICE_RESULT_CACHE_SECONDS": {
-      "key": "env:ALPHALATTICE_RESULT_CACHE_SECONDS",
-      "description": "Carries the stage remaining execution budget to the group runner.",
-      "owner": "devtools.pipeline",
-      "type": "positive finite seconds",
-      "default": {
-        "value": "",
-        "resolution": "Supplied by the stage adapter; absent outside the pipeline",
-        "source": "scripts/check_alpha_verification_impact.py::_selected"
-      },
-      "defined_by": [
-        "scripts/check_alpha_verification_impact.py::_selected"
-      ],
-      "identity_bearing": false,
-      "identity_scope": "test execution metadata",
-      "readers": {
-        "literal": [
-          "scripts/check_alpha_verification_impact.py"
+          "src/devtools/pipeline/stage.py"
         ]
       }
     }

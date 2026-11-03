@@ -47,8 +47,6 @@ class Row:
     plugins: tuple[str, ...] = ()
     selection: dict[str, Any] = field(default_factory=dict)
     public: tuple[str, ...] = ()
-    native_readers: tuple[str, ...] = ()
-    cache: dict[str, str] = field(default_factory=dict)
     job: str = ""
     escape: str = ""
     review: str = ""
@@ -149,17 +147,9 @@ def _row(name: str, value: Any, named: frozenset[str]) -> Row:
     if not isinstance(value, dict) or set(value) - ROW_KEYS:
         refuse(f"its keys are among {', '.join(sorted(ROW_KEYS))}")
     if not all(
-        _listed(value[key])
-        for key in ("hosts", "run", "plugins", "public", "native_readers")
-        if key in value
+        _listed(value[key]) for key in ("hosts", "run", "plugins", "public") if key in value
     ):
         refuse("its hosts, run, plugins and public are lists of non-empty strings")
-    if value.get("cache", {}) not in ({}, {"inputs": "tree"}):
-        refuse("cache inputs are tree")
-    if any(
-        not all(p.isidentifier() for p in n.split(".")) for n in value.get("native_readers", ())
-    ):
-        refuse("native readers are module names")
     hosts, kind = tuple(value.get("hosts", ())), value.get("kind")
     if kind not in KINDS:
         refuse(f"kind is one of {', '.join(sorted(KINDS))}")
@@ -173,9 +163,7 @@ def _row(name: str, value: Any, named: frozenset[str]) -> Row:
         value.get("review", "")
     ):
         refuse("a guard names its escape and its review date (YYYY-MM-DD) together")
-    lists = {
-        key: tuple(value.get(key, ())) for key in ("run", "plugins", "public", "native_readers")
-    }
+    lists = {key: tuple(value.get(key, ())) for key in ("run", "plugins", "public")}
     return Row(**{**value, **lists, "id": name, "hosts": hosts})
 
 

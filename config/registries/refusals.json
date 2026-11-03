@@ -14,7 +14,7 @@
 "owner": "devtools.pipeline",
 "category": "INVALID_ARGUMENT",
 "message_id": "result_cache.request_invalid",
-"classification_note": "The runner supplied malformed recording fields or a context that violates the declared fresh-temporary-directory and recording-options contract."
+"classification_note": "The stage was given a result-cache mode other than off, record, shadow or on, or a byte cap that is not a positive integer."
 },
 "test_layout.path_collision": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION"},
 "test_layout.path_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},

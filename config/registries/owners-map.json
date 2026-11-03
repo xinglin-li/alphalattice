@@ -4881,18 +4881,6 @@
       "folds_in": [],
       "note": "Consumers: scripts/pipeline.py health, which the test manager runs daily; the harness's daily metrics reader takes its JSON. It reads receipts through devtools.pipeline.receipt.read and holders through devtools.testing.requirements.file_holders, each file once."
     },
-    "result cache": {
-      "description": "A result cache entry is a test group's passing result, reused only while every input its group was seen to read is unchanged.",
-      "owner": "devtools.pipeline",
-      "covers": "the action key, the strict entry and its digest, the tree a lookup checks entries against, the verified read, the atomic write, the breaker, and eviction by idle time and byte cap; process-scoped observation of files, directory names, existence probes and environment values, declining opaque native metadata and undeclared inputs; opt-in pytest recording before conftests, strict run requests, first-attempt results and one finish-time module inventory; finish-time refusal of bound native path predicates and the pytest runner current-test environment lifecycle; exact-code pytest framework metadata probes confined to declared roots and their entailed directory ancestors",
-      "defined_by": [
-        "devtools.pipeline.cache",
-        "devtools.pipeline.observe",
-        "devtools.pipeline.reuse"
-      ],
-      "folds_in": [],
-      "note": "Consumers: observe records complete first attempts; the impact runner plans reuse and records decisions; receipt validates provenance; scripts/pipeline.py declares cache options. Only clean commit stages publish, and shadow never skips execution."
-    },
     "test layout move": {
       "description": "A test layout move preserves whole-file bodies while reviewed placement decisions relocate tests and their inherited fixture bindings.",
       "owner": "devtools.testing",
@@ -4913,7 +4901,7 @@
         "devtools.testing.contracts"
       ],
       "folds_in": [],
-      "note": "Collection is the consumer; devtools.testing.audit owns the single process hook shared with pipeline.observe through subscribers. The existing pytest timeout and solo-confirmation route remain the timer and verifier; pipeline receipt events consume the measured unit total. Exact root framework fixture entries and reasons are held in test-sizes; only their module inventory scan is exempt, while selected bindings and runtime resources stay guarded. Root conftest and pytest_environment consume the active unit contract. The same policy owns the reasoned unit_backends catalog: collection passes its existing snapshot and the static shape guard freezes one snapshot per process. Only named resource bindings refuse; in-memory native computation remains lawful."
+      "note": "Collection is the consumer; devtools.testing.audit owns the single process hook its subscribers share. The existing pytest timeout and solo-confirmation route remain the timer and verifier; pipeline receipt events consume the measured unit total. Exact root framework fixture entries and reasons are held in test-sizes; only their module inventory scan is exempt, while selected bindings and runtime resources stay guarded. Root conftest and pytest_environment consume the active unit contract. The same policy owns the reasoned unit_backends catalog: collection passes its existing snapshot and the static shape guard freezes one snapshot per process. Only named resource bindings refuse; in-memory native computation remains lawful."
     },
     "test audit subscription": {
       "description": "A test audit subscription observes process events through one installed hook and releases only its own callback on every exit.",
@@ -4923,7 +4911,7 @@
         "devtools.testing.audit"
       ],
       "folds_in": [],
-      "note": "Consumers: devtools.testing.contracts applies test layer resources, and devtools.pipeline.observe subscribes its existing Recorder. The pipeline re-exports subscribe for current callers; the test package never imports the pipeline."
+      "note": "Consumer: devtools.testing.contracts applies test layer resources through a scoped subscription."
     }
   }
 }

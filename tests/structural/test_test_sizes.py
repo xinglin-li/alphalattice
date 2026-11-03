@@ -196,7 +196,7 @@ def held():
             "old_area",
             "",
             """
-from devtools.pipeline import observe
+from devtools.testing import audit as observe
 seen=[]
 with observe.subscribe(lambda event,args: seen.append(('a',event))):
     with observe.subscribe(lambda event,args: seen.append(('b',event))):

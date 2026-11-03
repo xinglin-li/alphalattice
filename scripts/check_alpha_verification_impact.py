@@ -5,18 +5,16 @@ from __future__ import annotations
 import argparse
 import ast
 import json
-import math
 import os
 import re
 import subprocess
 import sys
-import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
-from typing import Any, NamedTuple
+from typing import NamedTuple
 from xml.etree import ElementTree
 
 SCRIPTS_ROOT = Path(__file__).resolve().parent
@@ -298,96 +296,38 @@ def _junit_file_seconds(path: Path, group: tuple[str, ...]) -> dict[str, float]:
 
 
 def _run_group(
-    group: tuple[str, ...], *marker_arguments: str, capture: bool = False, reuse: Any = None
+    group: tuple[str, ...], *marker_arguments: str, capture: bool = False
 ) -> TestGroupRun:
     started = perf_counter()
     print(f"PLAYPEN_TEST_STARTED {json.dumps(group)}", flush=True)
     with TemporaryDirectory(prefix="playpen-test-report-") as temporary:
-        directory = reuse.out / uuid.uuid4().hex if reuse else Path(temporary)
-        plan: dict[str, Any] = reuse.prepare(group, marker_arguments, directory) if reuse else {}
-        if reuse and getattr(reuse, "temp", None):
-            group_temp = reuse.temp / directory.name
-            plan["basetemp"] = group_temp
-            if plan["request"]:
-                request = json.loads(plan["request"].read_text("utf-8"))
-                request["basetemp"] = str(group_temp)
-                plan["request"].write_text(json.dumps(request), "utf-8")
-        report = directory / "junit.xml"
-        events = directory / "results.jsonl"
-        extra = []
-        environment = dict(os.environ)
-        if reuse:
-            from devtools.pipeline.reuse import cached_results
-
-            if not plan["decision"]["executed"]:
-                results = cached_results(plan["entry"], group, reuse.policy)
-                reuse.finish(plan, results)
-                return TestGroupRun(group, 0, perf_counter() - started, {}, "", "")
-            environment.update(
-                ALPHALATTICE_PIPELINE_EVENTS=str(events),
-                PYTHONPATH=os.pathsep.join(
-                    (str(reuse.root / "src"), os.environ.get("PYTHONPATH", ""))
-                ),
-            )
-            extra = [
-                "-p",
-                "no:cacheprovider",
-                "-p",
-                "devtools.pipeline.receipt",
-                "-o",
-                f"log_file={directory / 'debug.log'}",
-                "--basetemp",
-                str(plan.get("basetemp", directory / "temp")),
-            ]
-            if plan["request"]:
-                extra += [
-                    "-p",
-                    "devtools.pipeline.observe",
-                    "--result-cache-record",
-                    str(plan["request"]),
-                ]
+        report = Path(temporary) / "junit.xml"
         completed = subprocess.run(
             (
                 sys.executable,
-                *(["-B"] if reuse else []),
                 "-m",
                 "pytest",
-                *([] if reuse else ["--no-cov"]),
-                *extra,
+                "--no-cov",
                 "-q",
                 "--durations=10",
                 "--durations-min=0.5",
-                *([] if reuse else [f"--junitxml={report}"]),
+                f"--junitxml={report}",
                 "-o",
                 "junit_duration_report=total",
                 *marker_arguments,
                 *group,
             ),
-            cwd=reuse.root if reuse else PLAYPEN_ROOT,
-            env=environment,
+            cwd=PLAYPEN_ROOT,
+            env=dict(os.environ),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
             | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0),
-            timeout=max(1, reuse.deadline - perf_counter())
-            if reuse and reuse.deadline is not None
-            else None,
             check=False,
             capture_output=capture,
             text=True,
             encoding="utf-8",
             errors="replace",
         )
-        if reuse and capture:
-            (directory / "captured.stderr").write_text(completed.stderr, "utf-8")
-        costs = _junit_file_seconds(report, group) if not reuse else {}
-        if reuse:
-            results = (
-                [json.loads(line) for line in events.read_text("utf-8").splitlines()]
-                if events.exists()
-                else []
-            )
-            reuse.finish(plan, results)
-            if not results and completed.returncode == 0:
-                completed.returncode = 2
+        costs = _junit_file_seconds(report, group)
     return TestGroupRun(
         group,
         completed.returncode,
@@ -401,7 +341,6 @@ def _run_group(
 def _run_admitted_tests(
     test_paths: tuple[str, ...],
     *,
-    reuse: Any = None,
     workers: int | None = None,
     arguments: tuple[str, ...] = (),
 ) -> None:
@@ -436,8 +375,6 @@ def _run_admitted_tests(
             "-m",
             _ROUTED_LANE_MARKER_EXPRESSION,
             *arguments,
-            capture=bool(reuse),
-            reuse=reuse,
         )
 
     results = []
@@ -446,8 +383,6 @@ def _run_admitted_tests(
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for future in as_completed([pool.submit(_one, group) for group in groups]):
             result = future.result()
-            if reuse and result.code:
-                print(result.stdout + result.stderr, file=sys.stderr)
             results.append((result.group, result.code, result.elapsed))
             costs.update(result.file_seconds)
             print(
@@ -456,8 +391,7 @@ def _run_admitted_tests(
             )
             if result.code:
                 print(f"PLAYPEN_TEST_EXIT {_group_label(result.group)} {result.code}", flush=True)
-    if reuse is None:
-        _record_timings(results, file_seconds=costs)
+    _record_timings(results, file_seconds=costs)
     for path in sorted(evidence_files):
         print(f"PLAYPEN_EVIDENCE REQUIRED {path}", flush=True)
     if evidence_files:
@@ -964,59 +898,9 @@ def _changed_paths(*, base: str | None, staged: bool) -> tuple[str, ...]:
     return tuple(sorted(paths))
 
 
-def _selected(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    from devtools.pipeline.reuse import Options, Reuse, write_results
-    from devtools.testing.requirements import selection
-
-    try:
-        options = Options.read(args.result_cache, args.cache, args.result_cache_bytes)
-        nodes = selection([n if "::" in n else n + "::file" for n in args.selected])
-        if (
-            not args.out
-            or args.out.exists()
-            or args.workers < 1
-            or not math.isfinite(args.seconds)
-            or args.seconds <= 0
-        ):
-            parser.error(
-                "result_cache.request_invalid: supply a fresh --out and positive execution bounds"
-            )
-        from devtools.pipeline.definition import load
-
-        declared = load(PLAYPEN_ROOT).rows["result-cache"].native_readers
-        owner = Reuse(
-            PLAYPEN_ROOT, args.out, options, json.loads(args.writer), native_readers=declared
-        )
-    except ValueError as error:
-        parser.error(str(error))
-    owner.deadline = perf_counter() + args.seconds
-    owner.temp = args.temp
-    try:
-        _run_admitted_tests(
-            tuple(n.split("::", 1)[0] for n in nodes),
-            reuse=owner,
-            workers=args.workers,
-            arguments=tuple(json.loads(args.extra)),
-        )
-    finally:
-        write_results(owner)
-        owner.close()
-    return 0
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base")
-    parser.add_argument("--selected", nargs="+")
-    parser.add_argument("--out", type=Path)
-    parser.add_argument("--temp", type=Path)
-    parser.add_argument("--workers", type=int, default=1)
-    parser.add_argument("--result-cache")
-    parser.add_argument("--cache", choices=("off", "record", "shadow", "on"))
-    parser.add_argument("--result-cache-bytes")
-    parser.add_argument("--writer", default="{}")
-    parser.add_argument("--extra", default="[]")
-    parser.add_argument("--seconds", type=float, default=600)
     parser.add_argument("--staged", action="store_true")
     parser.add_argument("--run-tests", action="store_true")
     parser.add_argument(
@@ -1033,8 +917,6 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
-    if args.selected:
-        return _selected(args, parser)
     if args.base and args.staged:
         parser.error("--base and --staged are mutually exclusive")
     global _PARENT_REVISION

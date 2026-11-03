@@ -26,8 +26,48 @@ import psutil  # type: ignore[import-untyped]
 
 from devtools.pipeline.definition import PATH, Definition, DefinitionError, Row, Stage, load
 from devtools.pipeline.receipt import Writer, _now, verify
-from devtools.pipeline.reuse import Options
 from devtools.testing.requirements import selection
+
+
+@dataclass(frozen=True)
+class Options:
+    """The result cache's store and mode, handed to the stage's gate; the gate owns reuse."""
+
+    root: Path | None = None
+    mode: str = "off"
+    cap: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"off", "record", "shadow", "on"} or (
+            self.cap is not None and (type(self.cap) is not int or self.cap <= 0)
+        ):
+            raise ValueError("result_cache.request_invalid: supply a mode and a positive byte cap")
+
+    @classmethod
+    def read(
+        cls, root: str | None = None, mode: str | None = None, cap: str | None = None
+    ) -> Options:
+        location = root if root is not None else os.environ.get("ALPHALATTICE_RESULT_CACHE")
+        selected = mode or os.environ.get("ALPHALATTICE_RESULT_CACHE_MODE", "off")
+        raw = cap if cap is not None else os.environ.get("ALPHALATTICE_RESULT_CACHE_BYTES")
+        try:
+            return cls(
+                Path(location).resolve() if location else None,
+                selected,
+                int(raw) if raw else None,
+            )
+        except (ValueError, TypeError):
+            raise ValueError(
+                "result_cache.request_invalid: supply a mode and a positive byte cap"
+            ) from None
+
+    def environment(self) -> dict[str, str]:
+        return {
+            "ALPHALATTICE_RESULT_CACHE": str(self.root or ""),
+            "ALPHALATTICE_RESULT_CACHE_MODE": self.mode,
+            "ALPHALATTICE_RESULT_CACHE_BYTES": str(self.cap) if self.cap is not None else "",
+        }
+
 
 SKIPPED = "skipped"
 """The provider of a row this host does not run: registered for another host."""

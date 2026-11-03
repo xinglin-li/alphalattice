@@ -402,40 +402,13 @@
       },
       "description": "Explains the ordered agent-panel and person-terminal recovery routes without claiming the Host can inspect agent tools."
     },
-    "result_cache.undeclared_input": {
-      "owner": "devtools.pipeline",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "This group used an input the result cache cannot verify. Run it without reuse.",
-        "zh-CN": "此测试组使用了结果缓存无法验证的输入。请直接运行，不复用结果。"
-      }
-    },
-    "result_cache.metadata_read": {
-      "owner": "devtools.pipeline",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "This group read native file metadata that the result cache does not track. Run it without reuse.",
-        "zh-CN": "此测试组读取了结果缓存未跟踪的原生文件元数据。请直接运行，不复用结果。"
-      }
-    },
-    "result_cache.native_reader": {
-      "owner": "devtools.pipeline",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "This group loaded a native reader the result cache cannot observe. Run it without reuse.",
-        "zh-CN": "此测试组加载了结果缓存无法观察的原生读取器。请直接运行，不复用结果。"
-      }
-    },
     "result_cache.not_passing": {
       "owner": "devtools.pipeline",
       "kind": "MESSAGE",
       "arguments": [],
       "words": {
-        "en": "This group is not a wholly passing first attempt. Run it without reuse.",
-        "zh-CN": "此测试组并非首次运行且全部通过。请直接运行，不复用结果。"
+        "en": "This node is not a passing first attempt. Run it without reuse.",
+        "zh-CN": "此测试节点并非首次运行即通过。请直接运行，不复用结果。"
       }
     },
     "result_cache.request_invalid": {
@@ -443,44 +416,8 @@
       "kind": "MESSAGE",
       "arguments": [],
       "words": {
-        "en": "The result recording request is invalid. Supply a valid request and a fresh base temporary directory.",
-        "zh-CN": "结果记录请求无效。请提供有效请求和全新的临时根目录。"
-      }
-    },
-    "result_cache.disabled": {
-      "owner": "devtools.pipeline",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The result cache is disabled. Run without reuse.",
-        "zh-CN": "????????????????????"
-      }
-    },
-    "result_cache.unwritable": {
-      "owner": "devtools.pipeline",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The result cache cannot be written. Run without reuse and check its directory.",
-        "zh-CN": "???????????????????????"
-      }
-    },
-    "result_cache.git_timeout": {
-      "owner": "devtools.pipeline",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "Reading cache inputs exceeded its Git time limit. Run without reuse.",
-        "zh-CN": "??????? Git ?????????????????"
-      }
-    },
-    "result_cache.tree_unreadable": {
-      "owner": "devtools.pipeline",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The checkout inputs cannot be read. Run without reuse and restore checkout access.",
-        "zh-CN": "??????????????????????????????"
+        "en": "The result cache options are invalid. Supply a mode of off, record, shadow or on and a positive byte cap.",
+        "zh-CN": "结果缓存选项无效。请提供 off、record、shadow 或 on 模式，以及正整数字节上限。"
       }
     }
   }

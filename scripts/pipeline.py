@@ -20,8 +20,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from devtools.pipeline.definition import Definition, load  # noqa: E402
 from devtools.pipeline.health import report  # noqa: E402
 from devtools.pipeline.receipt import verify  # noqa: E402
-from devtools.pipeline.reuse import Options  # noqa: E402
-from devtools.pipeline.stage import run  # noqa: E402
+from devtools.pipeline.stage import Options, run  # noqa: E402
 
 
 def show(definition: Definition, name: str | None) -> str:
