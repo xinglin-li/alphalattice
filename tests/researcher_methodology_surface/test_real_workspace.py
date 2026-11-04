@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -222,6 +223,7 @@ def test_the_host_refuses_a_panel_without_feature_clock_authority(
     )
 
 
+@pytest.mark.private_data
 def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities(
     fresh_workspace: RealRiskWorkspace, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
@@ -267,10 +269,11 @@ def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identitie
     assert digest(sibling.workspace / "market-data.duckdb") == original
 
 
+@pytest.mark.private_data
 def test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired(
     fresh_workspace: RealRiskWorkspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A golden that disagrees with its sidecar is refused not repaired."""
+    """A foreign scientific sidecar identity is refused."""
 
     key = _golden_key(fresh_workspace.feature_catalog, fresh_workspace.feature_kernels, SYMBOLS)
     build_real_risk_workspace(tmp_path / "published")  # publishes the golden when absent
@@ -306,25 +309,7 @@ def test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired(
         with pytest.raises(GoldenWorkspaceError, match=field):
             build_real_risk_workspace(tmp_path / field)
 
-    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
-    database = golden / "workspace/market-data.duckdb"
-    size = database.stat().st_size
-    try:
-        with database.open("ab") as stream:
-            stream.write(b"tampered cache payload")
-        with pytest.raises(GoldenWorkspaceError, match="cached file content changed"):
-            build_real_risk_workspace(tmp_path / "tampered-file")
-    finally:
-        with database.open("r+b") as stream:
-            stream.truncate(size)
-
-    # An incomplete *published* root is corrupt, not permission to rebuild it.
-    assert not _golden_is_complete(golden, "0" * 24)
-    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
-    shutil.rmtree(golden / "workspace")
-    assert not _golden_is_complete(golden, key)
-    with pytest.raises(GoldenWorkspaceError, match="invalid published cache"):
-        build_real_risk_workspace(tmp_path / "missing-files")
+    # Payload seal mismatches and incomplete generations are covered by the small seal case below.
 
 
 def test_the_golden_key_binds_the_interpreter_and_the_installed_distributions(
@@ -556,13 +541,107 @@ def test_cache_wait_expiry_does_not_steal_an_active_lease(tmp_path, monkeypatch)
         assert root.is_dir()
 
 
-@pytest.mark.parametrize("case", ["digest", "session-seed"])
+@pytest.mark.parametrize("case", ["digest", "session-seed", "seal", "real-link"])
 def test_cache_environment_tracks_thread_settings_in_the_current_process(
-    monkeypatch, tmp_path, case
+    monkeypatch, tmp_path, tmp_path_factory, case
 ):
     from types import SimpleNamespace
 
     from tests.researcher_methodology_surface import real_workspace as cache
+
+    if case == "real-link":
+        from tests.researcher_methodology_surface import session_workspace as session
+
+        record = cache.build_real_risk_workspace(tmp_path / "real-linked")
+        database = record.workspace / "market-data.duckdb"
+        matches = [
+            seed
+            for seed in session.LINKED_SEEDS
+            if (seed / database.name).is_file() and database.samefile(seed / database.name)
+        ]
+        golden = cache._golden_root() / cache._golden_key(
+            record.feature_catalog, record.feature_kernels, cache.SYMBOLS
+        )
+        assert len(matches) == 1 and not database.samefile(golden / "workspace" / database.name)
+        assert record.return_reader.available_sessions(record.return_surface)
+        return
+
+    if case == "seal":
+        key, builds = "a" * 24, []
+        golden = tmp_path / "golden"
+        verify = getattr(cache, "verify_golden_seal", None)
+        assert callable(verify), "a persistent golden must verify its recorded seal"
+
+        def build():
+            builds.append(1)
+            workspace = golden / "workspace"
+            workspace.mkdir(parents=True)
+            payload = b"market"
+            (workspace / "market-data.duckdb").write_bytes(payload)
+            files = {"market-data.duckdb": hashlib.sha256(payload).hexdigest()}
+            seal = hashlib.sha256(
+                json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            (golden / "golden.json").write_text(
+                json.dumps({"format": 2, "key": key, "files": files, "seal_hash": seal}),
+                encoding="utf-8",
+            )
+
+        assert verify(golden, key, build)[0] is False
+        assert verify(golden, key, build)[0] is True and len(builds) == 1
+        scan = os.scandir
+
+        def denied(path):
+            if Path(path) == golden / "workspace":
+                raise PermissionError("unreadable")
+            return scan(path)
+
+        with monkeypatch.context() as unavailable:
+            unavailable.setattr(os, "scandir", denied)
+            with pytest.raises(GoldenWorkspaceError, match="cache unreadable"):
+                verify(golden, key, build)
+        assert (
+            len(builds) == 1 and (golden / "workspace/market-data.duckdb").read_bytes() == b"market"
+        )
+        (golden / "workspace/market-data.duckdb").write_bytes(b"corrupt")
+        assert verify(golden, key, build)[0] is False and len(builds) == 2
+        shutil.rmtree(golden / "workspace")
+        assert verify(golden, key, build)[0] is False and len(builds) == 3
+        marker = golden / "golden.json"
+        saved = marker.read_bytes()
+        marker.write_text("{", encoding="utf-8")
+        with pytest.raises(GoldenWorkspaceError, match="invalid published cache"):
+            verify(golden, key, build)
+        marker.write_bytes(saved)
+        (golden / "workspace/market-data.duckdb").write_bytes(b"changed")
+
+        def stopped():
+            raise OSError("stopped")
+
+        with pytest.raises(GoldenWorkspaceError, match="rebuild failed; inspect"):
+            verify(golden, key, stopped)
+        retained = list(tmp_path.glob("golden.mismatch-*"))
+        assert (
+            len(retained) == 1
+            and (retained[0] / "workspace/market-data.duckdb").read_bytes() == b"changed"
+        )
+
+        seed = tmp_path / "seed"
+        seed.mkdir()
+        data = seed / "market-data.duckdb"
+        data.write_bytes(b"market")
+        target = tmp_path / "linked.duckdb"
+        os.link(data, target)
+        cache.track_test_seed(
+            "fixture-reader", seed, {"market-data.duckdb": hashlib.sha256(b"market").hexdigest()}
+        )
+        target.write_bytes(b"changed")
+        with pytest.raises(
+            AssertionError, match=r"test_datasets\.write_through.*market-data\.duckdb"
+        ) as failure:
+            cache.verify_test_seed("fixture-reader")
+        assert "fixture-reader" in str(failure.value)
+        return
 
     monkeypatch.setenv("OMP_NUM_THREADS", "1")
     first = cache._environment_digest()

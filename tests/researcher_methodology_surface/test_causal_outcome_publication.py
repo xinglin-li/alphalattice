@@ -168,6 +168,7 @@ def _publish(workspace: RealRiskWorkspace, *, hours: int) -> PublishedCausalExec
         )
 
 
+@pytest.mark.private_data
 def test_a_re_derived_snapshot_keeps_its_one_seal_and_reuses_exactly_afterwards(
     tmp_path: Path,
 ) -> None:
@@ -233,6 +234,7 @@ def test_a_re_derived_snapshot_keeps_its_one_seal_and_reuses_exactly_afterwards(
     assert third.method_binding == first.method_binding
 
 
+@pytest.mark.private_data
 def test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read(
     tmp_path: Path,
 ) -> None:
@@ -580,6 +582,7 @@ def test_existing_seal_reuse_ignores_only_the_source_revision_counter() -> None:
     assert _method_authority(first) != _method_authority(changed_actions)
 
 
+@pytest.mark.private_data
 def test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel(tmp_path: Path) -> None:
     """Outcomes and risk keep the historical members of a ragged panel."""
     from alphalattice.control.data_platform.maintenance.contracts import (

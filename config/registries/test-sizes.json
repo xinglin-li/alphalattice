@@ -249,13 +249,15 @@
     {
       "pattern": "tests/researcher_methodology_surface/test_real_workspace.py::test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds the real scientific workspace and proves a changed golden sidecar is refused.",
+      "reason": "Builds the real scientific workspace and refuses foreign sidecar identities.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 5400
     },
     {
       "pattern": "tests/researcher_methodology_surface/test_real_workspace.py::test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "Builds the real scientific workspace and restores its second consumer with exact identities.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 5400
     },
     {
@@ -514,6 +516,7 @@
       "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_explicit_qualified_data_binding_creates_its_manifest_without_manual_json*",
       "owner": "tests.workspace_readiness",
       "reason": "The qualified binding and publication-retry control embeds a cold workspace build; retain this bound until its seed and control speed work lands.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900
     },
     {
@@ -664,8 +667,17 @@
       "pattern": "tests/researcher_methodology_surface/test_causal_outcome_publication.py::test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "historical maximum 73.423 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900,
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
+    },
+    {
+      "pattern": "tests/researcher_methodology_surface/test_causal_outcome_publication.py::test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "A real market-maintenance and risk journey measured 30.001 s before and 30.230 s after in the same paired run.",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 900,
+      "admitted": "2026-11-03: measured at the Medium boundary; restore Medium when this journey is reduced"
     },
     {
       "pattern": "tests/researcher_methodology_surface/test_experiment_authoring.py::test_the_same_document_and_authority_produce_the_same_program_identity*",

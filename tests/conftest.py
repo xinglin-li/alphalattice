@@ -52,9 +52,17 @@ def _seeds_read_in_place(request: pytest.FixtureRequest) -> Iterator[None]:
     """A test's copies of a session seed read its market data and Parquet in place, linked and
     read-only; one marked private_data writes them, so it gets a private copy."""
     private = request.node.get_closest_marker("private_data") is not None
-    environment.RUNNING_TEST.update(id=request.node.nodeid, private=private)
-    yield
-    environment.RUNNING_TEST.update(id=None, private=False)
+    environment.RUNNING_TEST.update(
+        id=request.node.nodeid, private=private, factory=request.getfixturevalue("tmp_path_factory")
+    )
+    try:
+        yield
+    finally:
+        try:
+            if verify := environment.RUNNING_TEST.get("verify"):
+                verify(request.node.nodeid)
+        finally:
+            environment.RUNNING_TEST.update(id=None, private=False, factory=None, verify=None)
 
 
 @pytest.fixture(scope="session", autouse=True)

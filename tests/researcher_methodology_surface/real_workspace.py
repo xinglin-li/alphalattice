@@ -23,9 +23,10 @@ import json
 import os
 import platform
 import shutil
+import stat
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -455,8 +456,8 @@ def build_real_risk_workspace(
 
     The build runs once per source tree: its result is materialized under
     ``tmp/golden-workspaces/<key>``, or under ``ALPHALATTICE_TEST_GOLDEN_ROOT`` where
-    checkouts share one root, and every caller receives a private copy,
-    restored through the product's own readers. The key binds the builder's
+    checkouts share one root. Tests read immutable data through an invocation-owned
+    seed; builders and tests marked private_data receive private copies. The key binds the builder's
     import/source-identity/resource closure, runtime configuration, lock and
     fixture modules plus the catalog, kernel and
     universe identities, so a stale copy cannot survive a source change; a
@@ -481,19 +482,57 @@ def build_real_risk_workspace(
     golden = _golden_root() / key
     workspace = root / "workspace"
     started = time.perf_counter()
+    from tests.pytest_environment import RUNNING_TEST
+
+    linked = bool(RUNNING_TEST.get("id") and not RUNNING_TEST.get("private"))
     with _golden_lease(golden):
-        hit = _golden_is_complete(golden, key)
-        if golden.exists() and not hit:
-            raise GoldenWorkspaceError(f"golden workspace {key}: invalid published cache")
-        if not hit:
-            _materialize_golden(
+        hit, sidecar = verify_golden_seal(
+            golden,
+            key,
+            lambda: _materialize_golden(
                 golden, key, installed_catalog, installed_kernels, symbols, sector_size
-            )
-        sidecar = _load_sidecar(golden)
-        if sidecar is None:
-            raise GoldenWorkspaceError(f"golden workspace {key}: no sidecar after materialization")
-        shutil.copytree(golden / "workspace", workspace)
+            ),
+        )
+        if not linked:
+            shutil.copytree(golden / "workspace", workspace)
         (golden / "golden.json").touch()
+    if linked:
+        from tests.researcher_methodology_surface.session_workspace import (
+            copy_workspace,
+            session_workspace,
+        )
+
+        factory = RUNNING_TEST.get("factory")
+        if factory is None:
+            raise GoldenWorkspaceError("test_datasets.factory_missing: restore the test invocation")
+
+        def build_seed(target: Path) -> dict:
+            with _golden_lease(golden):
+                _, current = verify_golden_seal(
+                    golden,
+                    key,
+                    lambda: _materialize_golden(
+                        golden, key, installed_catalog, installed_kernels, symbols, sector_size
+                    ),
+                )
+                shutil.copytree(golden / "workspace", target)
+                return current
+
+        generation = hashlib.sha256(json.dumps(sidecar, sort_keys=True).encode()).hexdigest()
+        seed, sidecar = session_workspace(
+            factory,
+            "real_risk_cached",
+            build_seed,
+            inputs={
+                "key": key,
+                "root": str(golden.absolute()),
+                "generation": generation,
+                "worker": os.environ.get("PYTEST_XDIST_WORKER", "main"),
+            },
+        )
+        copy_workspace(seed, workspace)
+        track_test_seed(str(RUNNING_TEST["id"]), seed, sidecar["files"])
+        RUNNING_TEST["verify"] = verify_test_seed
     print(
         f"PLAYPEN_WORKSPACE_CACHE {'HIT' if hit else 'BUILD'} {key} "
         f"{time.perf_counter() - started:.3f}s",
@@ -694,14 +733,75 @@ def _source_tree_digest() -> str:
 
 def _workspace_files(workspace: Path) -> dict[str, str]:
     """Content verification of an immutable test seed, not a scientific identity."""
-    files = sorted(path for path in workspace.rglob("*") if path.is_file())
+    root_info = workspace.lstat()
+    if (
+        not stat.S_ISDIR(root_info.st_mode)
+        or stat.S_ISLNK(root_info.st_mode)
+        or getattr(root_info, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    ):
+        raise GoldenWorkspaceError(f"golden workspace is not a physical directory: {workspace}")
     hashes = {}
-    for path in files:
-        with path.open("rb") as stream:
-            hashes[path.relative_to(workspace).as_posix()] = hashlib.file_digest(
-                stream, "sha256"
-            ).hexdigest()
+    pending = [workspace]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                info = entry.stat(follow_symlinks=False)
+                if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(
+                    stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0
+                ):
+                    raise GoldenWorkspaceError(f"golden workspace contains a link: {path}")
+                if stat.S_ISDIR(info.st_mode):
+                    pending.append(path)
+                elif stat.S_ISREG(info.st_mode):
+                    with path.open("rb") as stream:
+                        hashes[path.relative_to(workspace).as_posix()] = hashlib.file_digest(
+                            stream, "sha256"
+                        ).hexdigest()
+                else:
+                    raise GoldenWorkspaceError(
+                        f"golden workspace contains an unsupported file: {path}"
+                    )
     return hashes
+
+
+_LINKED_RISK_SEEDS: dict[str, dict[Path, object]] = {}
+
+
+def track_test_seed(node: str, seed: Path, files: object) -> None:
+    """Record the linked seed's seal for this test's teardown."""
+    _LINKED_RISK_SEEDS.setdefault(node, {})[seed] = files
+
+
+def verify_test_seed(node: str) -> None:
+    """Name a test and paths if its invocation-owned seed changed while it ran."""
+    for seed, expected in _LINKED_RISK_SEEDS.pop(node, {}).items():
+        try:
+            actual = _workspace_files(seed)
+        except (OSError, RuntimeError, ValueError, AssertionError) as error:
+            raise AssertionError(
+                f"test_datasets.seed_unreadable: {node}: {seed}: {error}"
+            ) from error
+        if actual != expected:
+            names = (
+                sorted(set(actual) | set(expected))
+                if isinstance(expected, dict)
+                else ["unmeasured"]
+            )
+            changed = [
+                name
+                for name in names
+                if not isinstance(expected, dict) or actual.get(name) != expected.get(name)
+            ]
+            raise AssertionError(f"test_datasets.write_through: {node}: {seed}: {changed}")
+
+
+def _seal_hash(files: dict[str, str]) -> str:
+    return hashlib.sha256(
+        json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 _BUILD_SOURCE_READS: set[Path] | None = None
@@ -787,7 +887,7 @@ def _golden_is_complete(golden: Path, key: str) -> bool:
 
 def _sidecar(record: RealRiskWorkspace, symbols: Sequence[str], key: str) -> dict[str, object]:
     """What a restore must agree with: the identities the build resolved, bound to the key."""
-
+    files = _workspace_files(record.workspace)
     return {
         "format": _GOLDEN_FORMAT,
         "key": key,
@@ -801,7 +901,8 @@ def _sidecar(record: RealRiskWorkspace, symbols: Sequence[str], key: str) -> dic
         "panel_snapshot_hash": record.panel_snapshot_hash,
         "surface_hash": record.return_surface.surface_hash,
         "sector_by_listing_id": record.sector_by_listing_id,
-        "files": _workspace_files(record.workspace),
+        "files": files,
+        "seal_hash": _seal_hash(files),
         "built_at": time.time(),
     }
 
@@ -940,6 +1041,76 @@ def _materialize_golden(
         _prune_goldens(keep=golden)
     finally:
         shutil.rmtree(building, ignore_errors=True)
+
+
+def verify_golden_seal(golden: Path, key: str, build: Callable[[], None]) -> tuple[bool, dict]:
+    """Under the golden lease, refuse changed payloads and rebuild a fresh sealed generation."""
+    try:
+        info = golden.lstat()
+    except FileNotFoundError:
+        hit = False
+    except OSError as error:
+        raise GoldenWorkspaceError(f"golden workspace {key}: cache unreadable") from error
+    else:
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or stat.S_ISLNK(info.st_mode)
+            or getattr(info, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        ):
+            raise GoldenWorkspaceError(f"golden workspace {key}: unsafe cache path")
+        hit = True
+    if not hit:
+        build()
+    sidecar = _load_sidecar(golden)
+    if sidecar is None or sidecar.get("format") != _GOLDEN_FORMAT or sidecar.get("key") != key:
+        raise GoldenWorkspaceError(f"golden workspace {key}: invalid published cache")
+    files = sidecar.get("files")
+    try:
+        actual = _workspace_files(golden / "workspace")
+    except FileNotFoundError as error:
+        if os.path.lexists(golden / "workspace"):
+            raise GoldenWorkspaceError(f"golden workspace {key}: cache unreadable") from error
+        actual = None
+    except OSError as error:
+        raise GoldenWorkspaceError(f"golden workspace {key}: cache unreadable") from error
+    if (
+        actual is None
+        or not isinstance(files, dict)
+        or actual != files
+        or sidecar.get("seal_hash") != _seal_hash(actual)
+    ):
+        if not hit:
+            raise GoldenWorkspaceError(f"golden workspace {key}: rebuilt seal mismatch")
+        print(f"test_datasets.golden_seal_mismatch: {key}; rebuilding", flush=True)
+        if (
+            golden.is_symlink()
+            or golden.is_junction()
+            or golden.resolve().parent != golden.parent.resolve()
+        ):
+            raise GoldenWorkspaceError(f"golden workspace {key}: unsafe cache path")
+        invalid = golden.with_name(f"{golden.name}.mismatch-{uuid4().hex}")
+        try:
+            os.replace(golden, invalid)
+        except OSError as error:
+            raise GoldenWorkspaceError(
+                f"golden workspace {key}: cannot quarantine {golden}"
+            ) from error
+        try:
+            build()
+            sidecar = _load_sidecar(golden)
+            if sidecar is None:
+                raise GoldenWorkspaceError(f"golden workspace {key}: no sidecar after rebuild")
+            actual = _workspace_files(golden / "workspace")
+            if sidecar.get("files") != actual or sidecar.get("seal_hash") != _seal_hash(actual):
+                raise GoldenWorkspaceError(f"golden workspace {key}: rebuilt seal mismatch")
+            shutil.rmtree(invalid)
+        except (OSError, GoldenWorkspaceError) as error:
+            raise GoldenWorkspaceError(
+                f"golden workspace {key}: rebuild failed; inspect {invalid}: {error}"
+            ) from error
+        hit = False
+    return hit, sidecar
 
 
 def _publish(building: Path, golden: Path) -> None:
