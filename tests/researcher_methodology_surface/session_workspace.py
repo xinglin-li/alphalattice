@@ -233,3 +233,13 @@ def copy_workspace(
 
     shutil.copytree(source, target, copy_function=copy_file)
     return target
+
+
+def keep_seed_links(source: str, target: str) -> str:
+    """copytree's copy function for a copy of a test's own copy: the seed's market data and
+    Parquet it reads in place stay linked and read-only; everything else is copied."""
+    data = Path(source).name == "market-data.duckdb" or Path(source).suffix == ".parquet"
+    if data and os.stat(source).st_nlink > 1:
+        os.link(source, target)
+        return target
+    return str(shutil.copy2(source, target))

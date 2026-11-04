@@ -470,21 +470,25 @@ def test_executor_creation_and_process_start_refusals_publish_nothing(tmp_path: 
     import psutil
 
     from alphalattice.control.task_control.child import ChildStartFailed
+    from alphalattice.foundation.causal_outcomes.execution import publication as owner
 
-    workspace = build_real_risk_workspace(
-        tmp_path / "workspace", symbols=tuple(f"QA{index:03d}" for index in range(80))
-    )
+    # The shipped workspace takes the parallel path once the row threshold is 1, as in the
+    # parallel test above; a universe big enough to cross it would only add a cold build.
+    workspace = build_real_risk_workspace(tmp_path / "workspace")
     store = MarketDataRepository(workspace.workspace)
     resolver = ArtifactResolver(workspace.artifact_root)
 
     def publish() -> PublishedCausalExecutionOutcome:
-        return CausalExecutionOutcomePublisher(
-            store=store,  # type: ignore[arg-type]
-            resolver=resolver,
-            artifact_root=workspace.artifact_root,
-            mutation_gate=WorkspaceMutationGate(),
-            derivation_workers=2,
-        ).publish_daily(panel_manifest_ref=workspace.panel_manifest_ref, completed_at=OBSERVED_AT)
+        with patch.object(owner, "PARALLEL_DERIVATION_ROW_THRESHOLD", 1):
+            return CausalExecutionOutcomePublisher(
+                store=store,  # type: ignore[arg-type]
+                resolver=resolver,
+                artifact_root=workspace.artifact_root,
+                mutation_gate=WorkspaceMutationGate(),
+                derivation_workers=2,
+            ).publish_daily(
+                panel_manifest_ref=workspace.panel_manifest_ref, completed_at=OBSERVED_AT
+            )
 
     def artifact_files() -> tuple[Path, ...]:
         return tuple(

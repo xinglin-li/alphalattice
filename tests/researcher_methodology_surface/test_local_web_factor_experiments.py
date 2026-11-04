@@ -52,6 +52,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
 from tests.researcher_methodology_surface.factor_web_support import (
     _alpha_payload,
     _drain_trial,
+    _facts,
     _session,
 )
 from tests.researcher_methodology_surface.real_workspace import (
@@ -59,15 +60,9 @@ from tests.researcher_methodology_surface.real_workspace import (
 )
 from tests.researcher_methodology_surface.session_workspace import (
     copy_workspace,
+    keep_seed_links,
     session_workspace,
 )
-
-
-def _facts(body: dict) -> dict:  # type: ignore[type-arg]
-    """A study answer's facts, without how this read proved them (`verification_basis`, L1): a
-    read that reused an earlier full verification and one that verified afresh answer the same."""
-
-    return {key: value for key, value in body.items() if key != "verification_basis"}
 
 
 def _wait_for_boundary(process: subprocess.Popen[bytes], marker: Path, timeout: float) -> bool:
@@ -313,7 +308,7 @@ def _exercise_authored_review(root, selected, tmp_path):
     from tests.alternative_evidence_desk.review_http_support import _Service, build_authority
 
     workspace = tmp_path / "authored-review"
-    shutil.copytree(root, workspace)
+    shutil.copytree(root, workspace, copy_function=keep_seed_links)
     original = read_research_workspace_manifest(workspace)
     manifest = ResearchWorkspaceManifest.research_only(original.workspace_id).with_bindings(
         experiment_inputs=original.experiment_inputs,
@@ -1245,20 +1240,19 @@ def test_alpha_declared_model_runs_reopens_and_reuses_existing_owners(
         exported = _json(live, f"/api/experiments/export?task_id={task_id}")
         assert "Alpha development evidence" in exported["html"]
         assert _facts(json.loads(exported["json"])) == _facts(body)
-        if parameters.get("family", "lightgbm") in {"ridge", "lightgbm"}:
-            child = body["receipt"]["child_lineage"][0]["numerical_result_hash"]
-            folder = root / body["document"]["experiment"]["output_workspace"]
-            paths = list(folder.rglob(f"{child}.json"))
-            assert len(paths) == 1
-            original = paths[0].read_bytes()
-            try:
-                paths[0].write_bytes(b"{}")
-                refused = _json(live, f"/api/experiments/readback?task_id={task_id}")
-                assert refused["status"] == "REFUSED", refused
-            finally:
-                paths[0].write_bytes(original)
-            again = _json(live, f"/api/experiments/readback?task_id={task_id}")
-            assert _facts(again) == _facts(body)
+        child = body["receipt"]["child_lineage"][0]["numerical_result_hash"]
+        folder = root / body["document"]["experiment"]["output_workspace"]
+        paths = list(folder.rglob(f"{child}.json"))
+        assert len(paths) == 1
+        original = paths[0].read_bytes()
+        try:
+            paths[0].write_bytes(b"{}")
+            refused = _json(live, f"/api/experiments/readback?task_id={task_id}")
+            assert refused["status"] == "REFUSED", refused
+        finally:
+            paths[0].write_bytes(original)
+        again = _json(live, f"/api/experiments/readback?task_id={task_id}")
+        assert _facts(again) == _facts(body)
         reused = _json(
             live,
             "/api/experiments/run",

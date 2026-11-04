@@ -286,6 +286,7 @@
       "pattern": "tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_completed_alpha_hands_off_to_portfolio_without_refitting*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "Builds the Alpha prerequisite and executes its Portfolio handoff with refitting forbidden.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900
     },
     {
@@ -322,6 +323,7 @@
       "pattern": "tests/researcher_methodology_surface/test_causal_outcome_publication.py::test_executor_creation_and_process_start_refusals_publish_nothing*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "Builds real Risk inputs and injects executor and child-process start failures during publication.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900
     },
     {
@@ -431,6 +433,7 @@
       "pattern": "tests/researcher_methodology_surface/test_local_web_factor_experiments.py::test_alpha_declared_model_runs_reopens_and_reuses_existing_owners*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "Runs the declared numerical Alpha model and verifies its sealed reopen and owner reuse.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900
     },
     {

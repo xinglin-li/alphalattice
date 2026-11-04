@@ -14,6 +14,13 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from tests.portfolio_strategy_lab.local_web_support import _json, _resolved, _Resolver
 
 
+def _facts(body: dict) -> dict:  # type: ignore[type-arg]
+    """A study answer's facts, without how this read proved them (`verification_basis`, L1): a
+    read that reused an earlier full verification and one that verified afresh answer the same."""
+
+    return {key: value for key, value in body.items() if key != "verification_basis"}
+
+
 @contextmanager
 def _session(root: Path) -> Iterator[LocalPortfolioWebSession]:
     session = LocalPortfolioWebSession(
