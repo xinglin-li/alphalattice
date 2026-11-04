@@ -79,6 +79,10 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
         command = json.loads(capsys.readouterr().out)["full_answer"]["command"]
         replay = subprocess.run(command, capture_output=True, check=False)
         assert replay.returncode == 0 and "representation" not in json.loads(replay.stdout)
+    if (
+        sys.platform != "win32"
+    ):  # a path past macOS's and Linux's length limits is refused before the status
+        pytest.skip("Windows-only long-path status; earlier refusal checks ran")
     store = tmp_path.joinpath(*(["中" * 48] * 120))
     line = ["--status", "--store", str(store)]
     assert installer.main(line) == 0

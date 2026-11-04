@@ -216,18 +216,50 @@ def moved(nodeid: str, policy: dict[str, Any]) -> bool:
     )
 
 
+# A standing red's class, by evidence: red everywhere (real), red then green (unstable), red on one
+# platform from our own code (platform) or from a node's missing tool (environment). Only real and
+# unstable leave the merge lane; a by-design platform red is marked in its test instead.
+QUARANTINE_CLASSES = ("real", "unstable", "platform", "environment")
+
+
+def _iso_day(value: Any) -> bool:
+    """A real calendar date in ISO form, so 2026-99-99 is refused."""
+    try:
+        return bool(date.fromisoformat(str(value)).isoformat() == value)
+    except ValueError:
+        return False
+
+
+def _classed(row: dict[str, Any]) -> bool:
+    """A row's optional class, first red day (no later than its until) and distinct hosts."""
+    hosts = row.get("seen_on")
+    return bool(
+        ("class" not in row or row["class"] in QUARANTINE_CLASSES)
+        and ("since" not in row or (_iso_day(row["since"]) and row["since"] <= row["until"]))
+        and (
+            "seen_on" not in row
+            or (
+                type(hosts) is list
+                and hosts
+                and all(type(host) is str and host.strip() for host in hosts)
+                and len(set(hosts)) == len(hosts)
+            )
+        )
+    )
+
+
 def _quarantine(policy: dict[str, Any]) -> None:
-    """Refuse a quarantined node without an owner, a reason or an until date."""
+    """Refuse a quarantined node without an owner, a reason or an until date; a classed row also
+    names its class and, when given, the day it was first seen red, no later than its until, and
+    the distinct hosts it was seen red on, so a red anywhere else is not taken for it."""
     for row in policy.get("quarantine", []):  # a flaky node runs post-merge only, until its date
-        try:  # a real calendar date in ISO form, so 2026-99-99 is refused
-            dated = date.fromisoformat(str(row.get("until"))).isoformat() == row.get("until")
-        except ValueError:
-            dated = False
+        dated = _iso_day(row.get("until"))
         if not (
             str(row.get("node")).startswith("tests/")
             and row.get("owner")
             and row.get("reason")
             and dated
+            and _classed(row)
             and (
                 "renewals" not in row
                 or (

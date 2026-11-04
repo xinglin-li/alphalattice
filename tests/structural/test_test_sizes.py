@@ -2006,37 +2006,37 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
         _proven(item, {}, carried)
 
 
-@pytest.mark.parametrize(
-    "case",
-    ["date", "legacy", "first", "renewed", "twice", "bool", "string", "no-reason", "multiline"],
-)
+_CASES = {
+    "legacy": ({}, 1),
+    "date": ({"until": "2026-99-99"}, 0),
+    "first": ({"renewals": 0}, 1),
+    "renewed": ({"renewals": 1}, 1),
+    "twice": ({"renewals": 2}, 0),
+    "bool": ({"renewals": True}, 0),
+    "string": ({"renewals": "1"}, 0),
+    "no-why": ({"reason": ""}, 0),
+    "multiline": ({"renewals": 1, "reason": "a\nb"}, 0),
+    "platform": ({"class": "platform"}, 1),
+    "class": ({"class": "flaky"}, 0),
+    "late": ({"since": "2026-11-04"}, 0),
+    "bad-day": ({"since": "2026-11-31"}, 0),
+    "seen": ({"seen_on": "mac1"}, 0),
+}
+
+
+@pytest.mark.parametrize("case", _CASES)
 def test_a_quarantined_node_needs_its_owner_reason_and_date(case):
     """A flaky node leaves the blocking tier only with an owner, a reason and an until date."""
     from devtools.testing.sizes import load_policy, validate_policy
 
     row = {"node": "tests/a.py::t", "owner": "tests.a", "reason": "flaky", "until": "2026-11-03"}
-    if case == "date":
-        row["until"] = "2026-99-99"
-    if case not in {"date", "legacy"}:
-        row["renewals"] = {
-            "first": 0,
-            "renewed": 1,
-            "twice": 2,
-            "bool": True,
-            "string": "1",
-            "no-reason": 1,
-            "multiline": 1,
-        }[case]
-    if case == "no-reason":
-        row["reason"] = ""
-    if case == "multiline":
-        row["reason"] = "fix in flight\nmore"
+    row |= _CASES[case][0]
     policy = load_policy(Path(__file__).resolve().parents[2]) | {"quarantine": [row]}
-    if case in {"date", "twice", "bool", "string", "no-reason", "multiline"}:
+    if _CASES[case][1]:
+        assert validate_policy(policy)["quarantine"] == [row]
+    else:
         with pytest.raises(ValueError, match="quarantine_invalid"):
             validate_policy(policy)
-    else:
-        assert validate_policy(policy)["quarantine"] == [row]
 
 
 HELD = "product_host.detached_start_outlives_the_session"

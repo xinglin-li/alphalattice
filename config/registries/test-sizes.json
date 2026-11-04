@@ -1201,6 +1201,318 @@
       "owner": "tests.structural",
       "reason": "A flake under parallel load in the per-file result recorder: it returns an undeclared-input verdict only in a parallel stage and passes alone on base and head alike (all 91 cases, 2026-10-28). It runs post-merge only until that recorder is deleted; no assertion or limit changes.",
       "until": "2026-10-31"
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[preloaded-pure]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[stdlib]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[own-over]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[own-under]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[own-boundary]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[own-subtests]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[bound-native]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[temporary]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[dynamic-stdlib]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[native-lookalike]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[observe-unit]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/portfolio_strategy_lab/test_local_web_service.py::test_browser_session_cookies_are_port_scoped_and_restart_replaces_only_its_own",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "macOS only: the replacement LocalWebService cannot rebind the stopped service's port while it sits in TIME_WAIT (Address already in use). Red 3/3 on mac1, green on Windows; review when the service rebinds or the test takes a fresh port.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-02",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[size-live-time-under]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[size-live-xdist]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[size-live-time-over]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[size-live-over]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[size-live-under]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/structural/test_test_sizes.py::test_explicit_layers_refuse_resources_and_keep_their_execution_bound[size-live-legacy]",
+      "owner": "devtools.testing",
+      "reason": "POSIX only: with tmp_path_retention_policy failed, pytest removes a passed unit test's tmp_path through shutil.rmtree's fd-based walk, which the unit layer's descriptor audit refuses as an unproved file descriptor. Red 3/3 on mac1, green on Windows; review when the audit admits the walk.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/alpha_research/test_current_artifact_array_cache.py::test_complete_immutable_alpha_models_reuse_validation_only_with_an_opted_in_lease[True]",
+      "owner": "tests.alpha_research",
+      "reason": "macOS only: the opted-in lease's second reuse is not recorded there; green on Windows. If macOS is a supported platform this is a POSIX gap; its owner decides. Review by its date.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-02",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/alternative_evidence_desk/test_official_source_composition.py::test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing",
+      "owner": "tests.alternative_evidence_desk",
+      "reason": "Red on macOS, Windows and this checkout alike: the source is denied only in admission's own environment, so the later preview's network decision reads DEFAULT where the test expects the operator's offline switch. Its owner decides whether the service or the test is wrong.",
+      "until": "2026-11-10",
+      "class": "real",
+      "since": "2026-11-03",
+      "seen_on": [
+        "mac1",
+        "pc1",
+        "workshop"
+      ]
+    },
+    {
+      "node": "tests/feature_engine/test_feature_observation_clock.py::test_process_resource_monitor_reports_a_time_aligned_live_child_tree",
+      "owner": "tests.feature_engine",
+      "reason": "Windows only: the live child tree is measured through the Windows job, so macOS reports no descendants. Review by its date.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-02",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/feature_engine/test_feature_observation_clock.py::test_the_panel_driver_never_deletes_a_development_workspace",
+      "owner": "tests.feature_engine",
+      "reason": "Windows only: the refused other root is another drive letter (C: or D:), which macOS paths have not. Review by its date.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-02",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/feature_engine/test_feature_observation_clock.py::test_the_runner_is_capacity_bounded_before_any_stage",
+      "owner": "tests.feature_engine",
+      "reason": "Windows or Linux only: it pins processor affinity, and macOS has no os.sched_setaffinity. Review by its date.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-02",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/portfolio_strategy_lab/test_cli_contract.py::test_every_answer_is_one_envelope_and_exits_by_its_outcome",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "macOS only: the answer's workspace redaction matches the Windows path form, so a POSIX temp path shows through; green on Windows. If macOS is a supported platform this is a POSIX gap; its owner decides. Review by its date.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-02",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Environment: the node's environment leaves the workspace network decision at DEFAULT, not the operator's offline switch; green in this workshop's checkout. Review by its date.",
+      "until": "2026-12-03",
+      "class": "environment",
+      "since": "2026-11-02",
+      "seen_on": [
+        "mac1",
+        "pc1"
+      ]
+    },
+    {
+      "node": "tests/portfolio_strategy_lab/test_native_bridge.py::test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Windows only: the native bridge's binding is the Windows host's, and macOS refuses it as binding_invalid. If macOS is a supported platform this is a POSIX gap; its owner decides. Review by its date.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-02",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/portfolio_strategy_lab/test_workbench_badge.py::test_real_task_records_drive_home_badges_and_grouped_history",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Environment: the node clone lacks the registered Playwright kit (third_party/playwright, installed by scripts/playwright.ps1 setup), so its browser and node checks stop; green in this workshop's checkout. Review by its date.",
+      "until": "2026-12-03",
+      "class": "environment",
+      "since": "2026-11-02",
+      "seen_on": [
+        "mac1",
+        "pc1"
+      ]
+    },
+    {
+      "node": "tests/workspace_maintenance/test_research_input_storage.py::test_an_alias_removed_after_grouping_is_not_answered",
+      "owner": "tests.workspace_maintenance",
+      "reason": "Windows only: a file removed during verification is named by the Windows sharing error; POSIX reports it as unavailable. Review by its date.",
+      "until": "2026-12-03",
+      "class": "platform",
+      "since": "2026-11-02",
+      "seen_on": [
+        "mac1"
+      ]
     }
   ],
   "mandatory": [
