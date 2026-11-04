@@ -235,6 +235,12 @@
       "layer": "integration",
       "seconds": 1
     },
+    "testing.crash_requeue_keeps_longest_first": {
+      "description": "Under load distribution, a crashed worker's prefetched cases return to their place in the longest-first collection order, never after every other case.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 1
+    },
     "testing.find_matches_requirements_and_unregistered_tests": {
       "description": "One search returns the registered requirements and the unregistered tests whose words match, best first, with each requirement's lifecycle and holders.",
       "owner": "devtools.testing",

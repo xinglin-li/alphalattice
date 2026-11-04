@@ -1,12 +1,17 @@
-"""A full pytest run records session fixture and sampled temporary footprint evidence."""
+"""A full pytest run records session fixture and sampled temporary footprint evidence, and a
+parallel run keeps its longest-first order when a worker crashes."""
 
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from xdist.scheduler import LoadScheduling
+
+from devtools.testing import collection
 
 TEST_SOURCE = "src/devtools/testing/collection.py"
 
@@ -143,3 +148,47 @@ def test_session_fixture_footprint_and_peak_are_recorded(tmp_path, workers, scen
         "PLAYPEN_SESSION_WORKSPACE BUILD seed" in path.read_text(encoding="utf8")
         for path in tmp_path.glob("session-footprint-*.log")
     )
+
+
+class _Worker:
+    """The parts of an xdist worker controller the load scheduler drives."""
+
+    shutting_down = False
+
+    def __init__(self, name: str) -> None:
+        self.gateway = SimpleNamespace(id=name)
+        self.sent: list[int] = []
+
+    def send_runtest_some(self, indices: list[int]) -> None:
+        self.sent.extend(indices)
+
+    def shutdown(self) -> None:
+        self.shutting_down = True
+
+
+def _crash_after_prefetch(scheduler: type) -> tuple[list[int], list[int]]:
+    """Two workers start on cases 0-1 and 2-3; the second dies in case 2 with case 3 prefetched."""
+    config = SimpleNamespace(
+        getvalue=lambda name: ["2*popen"], getoption=lambda name, default=None: 2
+    )
+    schedule = scheduler(config)
+    first, second = _Worker("gw0"), _Worker("gw1")
+    for worker in (first, second):
+        schedule.add_node(worker)
+    for worker in (first, second):
+        schedule.add_node_collection(worker, [f"t{index:02d}" for index in range(12)])
+    schedule.schedule()
+    schedule.mark_test_complete(first, 0, duration=1.0)
+    assert schedule.remove_node(second) == "t02"
+    schedule.mark_test_complete(first, 1, duration=1.0)
+    return first.sent, schedule.pending
+
+
+@pytest.mark.proves("testing.crash_requeue_keeps_longest_first")
+def test_a_crashed_workers_prefetched_case_keeps_its_place_in_the_order() -> None:
+    """xdist appends the prefetched case 3 after case 11; the run's scheduler sends it next."""
+    _, xdist_pending = _crash_after_prefetch(LoadScheduling)
+    assert xdist_pending[-1] == 3  # the control: xdist's own requeue, the cause of a long tail
+    sent, pending = _crash_after_prefetch(collection.ordered_requeue())
+    assert sent[:4] == [0, 1, 4, 3]
+    assert pending == sorted(pending)

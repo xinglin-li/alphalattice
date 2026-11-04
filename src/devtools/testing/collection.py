@@ -104,6 +104,36 @@ def pytest_configure_node(node: Any) -> None:
             node.workerinput["alphalattice_size_families"] = list(families)
 
 
+def ordered_requeue() -> type:
+    """xdist's load scheduler, except that a crashed worker's prefetched cases return to their
+    place in the collection's longest-first order. xdist appends them last; on one nightly that
+    started two cases of over 900 s after the other workers had nearly run out of work."""
+    from xdist.scheduler import LoadScheduling  # type: ignore[import-untyped]
+
+    class OrderedRequeue(LoadScheduling):  # type: ignore[misc]
+        def remove_node(self, node: Any) -> str | None:
+            # pytest-xdist 3.8's remove_node, pinned in pyproject; only the requeue is sorted.
+            pending = self.node2pending.pop(node)
+            if not pending:
+                return None
+            assert self.collection is not None
+            crashed: str = self.collection[pending.pop(0)]
+            self.pending[:] = sorted([*self.pending, *pending])
+            for other in self.node2pending:
+                self.check_schedule(other)
+            return crashed
+
+    return OrderedRequeue
+
+
+@pytest.hookimpl(optionalhook=True)  # type: ignore[untyped-decorator]
+def pytest_xdist_make_scheduler(config: Any, log: Any) -> Any:
+    """xdist, in the main process: load keeps its order through a crash; others are xdist's."""
+    if config.getoption("dist", "no") != "load":
+        return None
+    return ordered_requeue()(config, log)
+
+
 @pytest.hookimpl(wrapper=True, trylast=True)  # type: ignore[untyped-decorator]
 def pytest_fixture_setup(fixturedef: Any, request: Any) -> Any:
     clock = request.config.stash.get(SIZE_CLOCK, None)
