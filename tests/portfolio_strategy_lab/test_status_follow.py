@@ -12,11 +12,12 @@ import os
 import shlex
 import shutil
 import time
-from contextlib import chdir
+from contextlib import chdir, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, ClassVar
+from unittest import mock
 from uuid import uuid4
 
 import pytest
@@ -1415,7 +1416,11 @@ class _FirstUseHost:
         raise AssertionError(document)
 
 
-def _first_use(host: _FirstUseHost, named: str = "2026-10-12") -> dict[str, Any]:
+def _first_use(
+    host: _FirstUseHost, named: str = "2026-10-12", *, setup_ready: bool = True
+) -> dict[str, Any]:
+    """Run the first use; its agent setup counts as filled unless the test reads the real gate
+    (a fresh checkout, as on GitHub's runners, has no installed command or retrieval runtime)."""
     args = SimpleNamespace(
         objective="Positions for Monday.",
         target_date=named,
@@ -1423,7 +1428,17 @@ def _first_use(host: _FirstUseHost, named: str = "2026-10-12") -> dict[str, Any]
         notify=None,
         output=None,
     )
-    with chdir(host.workspace.parent):
+    reading = native_bridge.setup_reading
+
+    def filled(*where: Any) -> dict[str, Any]:  # the gate's items present, every other item as read
+        found = reading(*where)
+        return {
+            **found,
+            **{k: {**(found.get(k) or {}), "present": True} for k in native_bridge.SETUP_GATE},
+        }
+
+    ready = mock.patch.object(native_bridge, "setup_reading", filled)
+    with chdir(host.workspace.parent), ready if setup_ready else nullcontext():
         return client_module._first_use_steps(host, args)  # type: ignore[arg-type]
 
 
@@ -1537,7 +1552,7 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     monkeypatch.setenv("PATH", os.pathsep.join([str(venv / "Scripts"), str(bare)]))
     monkeypatch.setenv("VIRTUAL_ENV", str(venv))
     monkeypatch.setenv("UV_RUN_RECURSION_DEPTH", "1")
-    refused, code = _first_use(host), "local_client.first_use_setup_missing"
+    refused, code = _first_use(host, setup_ready=False), "local_client.first_use_setup_missing"
     words = client_refusal(code)
     assert (refused["failure_code"], refused["next_action"]) == (code, words.next_action)
     assert refused["detail"] == words.detail and host.goals.first_use() is None
@@ -1560,7 +1575,7 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
         (held / name.replace("uv", "alphalattice")).write_text("", encoding="utf-8")
         (held / name.replace("uv", "alphalattice")).chmod(0o755)
     monkeypatch.setattr(native_bridge, "load", lambda: True)
-    continued = _first_use(host)
+    continued = _first_use(host, setup_ready=False)
     assert "installed_leg" not in continued.get("missing", {})
     assert host.goals.first_use() is not None and continued["first_use"]["road"]
     assert command_prefix() == (shutil.which("alphalattice", path=str(held)),)
