@@ -251,9 +251,138 @@ jobs:
         run: |-
           npm ci --omit=dev --ignore-scripts --no-audit --no-fund
           npx --no-install playwright install --with-deps chromium
+      - name: Prepare worker diagnostics
+        shell: bash
+        run: |
+          temp="${RUNNER_TEMP//\\//}"
+          mkdir -p "$temp/worker-diagnostics"
+          cat > "$temp/ci_worker_diagnostics.py" <<'PY'
+          """Keep worker timeouts and fatal traces beside the public test receipt."""
+
+          import faulthandler
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          import pytest
+          import pytest_timeout
+
+          _stream = None
+
+
+          def _event(kind, **fields):
+              if _stream is not None:
+                  try:
+                      _stream.write(json.dumps({"event": kind, **fields}) + "\n")
+                      _stream.flush()
+                  except (OSError, TypeError, ValueError) as error:
+                      print(f"worker diagnostics unavailable: {type(error).__name__}", file=sys.stderr)
+
+
+          @pytest.hookimpl(trylast=True)
+          def pytest_configure(config):
+              global _stream
+              if not hasattr(config, "workerinput"):
+                  return
+              worker = config.workerinput["workerid"]
+              try:
+                  path = Path(os.environ["PYTEST_WORKER_DIAGNOSTICS"]) / f"{worker}-{os.getpid()}.log"
+                  _stream = path.open("w", encoding="utf-8", errors="backslashreplace", buffering=1)
+                  faulthandler.enable(file=_stream, all_threads=True)
+              except Exception as error:
+                  print(f"worker diagnostics unavailable: {type(error).__name__}", file=sys.stderr)
+                  if _stream is not None:
+                      _stream.close()
+                  _stream = None
+                  return
+              _event("worker", worker=worker, pid=os.getpid())
+
+              def capture(original):
+                  def timed_out(item, settings):
+                      if not settings.disable_debugger_detection and pytest_timeout.is_debugging():
+                          return original(item, settings)
+                      try:
+                          _event("timeout", node=item.nodeid, seconds=settings.timeout)
+                          faulthandler.dump_traceback(file=_stream, all_threads=True)
+                      except Exception as error:
+                          print(f"worker diagnostics unavailable: {type(error).__name__}", file=sys.stderr)
+                      return original(item, settings)
+
+                  return timed_out
+
+              pytest_timeout.timeout_timer = capture(pytest_timeout.timeout_timer)
+              pytest_timeout.timeout_sigalrm = capture(pytest_timeout.timeout_sigalrm)
+
+
+          @pytest.hookimpl(wrapper=True, tryfirst=True)
+          def pytest_runtest_protocol(item, nextitem):
+              _event("start", node=item.nodeid)
+              try:
+                  return (yield)
+              finally:
+                  _event("end", node=item.nodeid)
+
+
+          @pytest.hookimpl(wrapper=True)
+          def pytest_runtest_makereport(item, call):
+              report = yield
+              if report.failed and "test_verified_source_leases.py::" in item.nodeid:
+                  store = sys.modules.get("alphalattice.control.workspace_runtime.content_store")
+                  try:
+                      if store is None:
+                          _event("lease", node=item.nodeid, status="module_not_loaded")
+                      elif not store._VERIFIED_ARRAY_CACHE_LOCK.acquire(blocking=False):
+                          _event("lease", node=item.nodeid, status="cache_busy")
+                      else:
+                          try:
+                              leases = [
+                                  lease for group in store._VERIFIED_SOURCE_LEASES.values() for lease in group
+                              ]
+                              hits, misses = (
+                                  store._VERIFIED_ARRAY_PROCESS_CACHE_HITS,
+                                  store._VERIFIED_ARRAY_PROCESS_CACHE_MISSES,
+                              )
+                          finally:
+                              store._VERIFIED_ARRAY_CACHE_LOCK.release()
+                          states = []
+                          for lease in leases:
+                              if not lease.lock.acquire(blocking=False):
+                                  states.append({"status": "lease_busy"})
+                                  continue
+                              try:
+                                  states.append(
+                                      {
+                                          "path_name": lease.path.name,
+                                          "identity": lease.identity[1:],
+                                          "pending": lease.pending,
+                                          "handle_open": lease.handle is not None,
+                                          "event_wait": lease.kernel.WaitForSingleObject(lease.event, 0)
+                                          if lease.event
+                                          else None,
+                                      }
+                                  )
+                              finally:
+                                  lease.lock.release()
+                          _event(
+                              "lease",
+                              node=item.nodeid,
+                              status="observed",
+                              hits=hits,
+                              misses=misses,
+                              leases=states,
+                          )
+                  except Exception as error:
+                      _event("lease", node=item.nodeid, status="unmeasured", reason=type(error).__name__)
+              return report
+          PY
       - name: Run this shard of every public test
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONPATH: ${{ runner.temp }}
+          PYTEST_WORKER_DIAGNOSTICS: ${{ runner.temp }}/worker-diagnostics
         run: >-
-          uv run python -m pytest tests -m "not real_evidence" -n 4
+          uv run python -m pytest tests -m "not real_evidence" -n 4 -p ci_worker_diagnostics
           --splits 4 --group ${{ matrix.group }} --durations-path .test_durations
           --junitxml "${{ runner.temp }}/junit.xml" --basetemp "${{ runner.temp }}/alphalattice-public-tests"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -262,6 +391,16 @@ jobs:
           name: public-tests-junit-${{ matrix.os }}-${{ matrix.group }}
           path: ${{ runner.temp }}/junit.xml
           if-no-files-found: error
+          retention-days: 14
+      - name: Retain worker diagnostics
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: public-tests-diagnostics-${{ matrix.os }}-${{ matrix.group }}
+          path: |
+            ${{ runner.temp }}/worker-diagnostics/*.log
+            ${{ runner.temp }}/alphalattice-public-tests/run.json
+          if-no-files-found: warn
           retention-days: 14
       - name: Record this passing shard
         if: success()
