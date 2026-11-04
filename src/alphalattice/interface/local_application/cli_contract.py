@@ -17,7 +17,6 @@ import functools
 import json
 import os
 import re
-import shlex
 import shutil
 import sys
 import tempfile
@@ -34,7 +33,16 @@ from alphalattice.interface.local_application.labels import titles_in
 from alphalattice.interface.local_application.message_catalog import catalog_words
 from alphalattice.interface.local_application.questions import person_question
 from alphalattice.interface.local_application.request_offers import (
+    _powershell,
+)
+from alphalattice.interface.local_application.request_offers import (
+    join as join,
+)
+from alphalattice.interface.local_application.request_offers import (
     offered_requests as offered_requests,
+)
+from alphalattice.interface.local_application.request_offers import (
+    shell as shell,
 )
 from alphalattice.kernel.shared_kernel.project_layout import (
     REFUSAL_WORDS_RESOURCE,
@@ -1824,13 +1832,18 @@ def client_failure(
     answered: bool,
     workspace: Path | None = None,
 ) -> tuple[ClientRefusal, dict[str, Any]]:
-    """A local refusal's words and, for a connection lost in flight, what it leaves known.
-
-    A read not yet answered changes nothing, so its exact request is offered again; any other
-    request, or a step after an answer, is inspected as its Task before work is sent again.
-    A no-Host refusal names the workspace it checked (`host_checked`).
-    """
+    """Offer a lost read or keyed member submit again; inspect other work before resending."""
     known: dict[str, Any] = {}
+    key = document.get("committee_key")
+    member_retry = (
+        code == "local_client.connection_lost_task_may_still_run"
+        and not answered
+        and document.get("operation") == "AGENT_ANSWER_SUBMIT"
+        and isinstance(key, str)
+        and re.fullmatch(r"[0-9a-f]{32}", key) is not None
+        and isinstance(document.get("agent_answer"), dict)
+        and bool(document.get("bundle_directory"))
+    )
     if code == "local_client.document_unreadable":
         known = {"next_requests": {"schema": schema_request(document.get("operation"))}}
     elif code.startswith("local_client.review_answers_missing:"):
@@ -1856,7 +1869,21 @@ def client_failure(
             **({"next_requests": {"read": dict(document)}} if read else {}),
         }
     refusal = client_refusal(code)
-    if workspace is not None and refusal.outcome == "NO_HOST":
+    if member_retry:
+        refusal = ClientRefusal(
+            "NO_HOST",
+            "RESEND_THE_SAME_KEYED_SUBMISSION",
+            "The submission outcome is unknown. Run the same bundle submit with its key and "
+            "unchanged answer file once; if still refused, return the failure code to your lead.",
+        )
+        known["guidance"] = "Resend the same keyed bundle submission once; change nothing."
+        if workspace is not None:
+            checked, bound = workspace.resolve(), BOUND_WORKSPACE.get()
+            detail = f"{refusal.detail} The workspace checked is {checked}."
+            if bound not in {None, checked}:
+                detail += " " + str(worded(OTHER_BOUND)).replace("{subject}", str(bound))
+            refusal = refusal._replace(detail=detail)
+    elif workspace is not None and refusal.outcome == "NO_HOST":
         refusal = refusal._replace(detail=host_checked(refusal.detail, workspace))
     return refusal, known
 
@@ -2328,23 +2355,6 @@ def entry(
     return (*command_prefix(), "--workspace", str(resolved), *options)
 
 
-def shell() -> str:
-    """The shell printed commands are quoted for (V131).
-
-    ``ALPHALATTICE_SHELL`` (``powershell`` or ``posix``) when set; PowerShell on Windows
-    outside a POSIX shell (Git Bash names itself in ``MSYSTEM``); POSIX otherwise.
-
-    Returns:
-        ``powershell`` or ``posix``.
-    """
-    chosen = os.environ.get("ALPHALATTICE_SHELL", "").strip().lower()
-    if chosen in {"powershell", "posix"}:
-        return chosen
-    if os.name == "nt" and "MSYSTEM" not in os.environ:
-        return "powershell"
-    return "posix"
-
-
 def command(
     request: dict[str, object],
     *,
@@ -2419,27 +2429,6 @@ def command(
     return join(parts, chosen) + tail
 
 
-def join(parts: list[str], quoting: str) -> str:
-    """One command line from its parts, each quoted as the shell reads it back (V131).
-
-    PowerShell takes single quotes (a quote doubled inside), quotes a leading ``@``, which it
-    would read as splatting, and runs a quoted program through ``&``; POSIX takes `shlex`.
-
-    Args:
-        parts: The program and its arguments.
-        quoting: ``powershell`` or ``posix``.
-
-    Returns:
-        The command line.
-    """
-    if quoting == "powershell":
-        quoted = [_powershell(str(part)) for part in parts]
-        return ("& " if quoted and quoted[0].startswith("'") else "") + " ".join(quoted)
-    if parts and os.name == "nt":
-        parts = [str(parts[0]).replace("\\", "/"), *parts[1:]]
-    return " ".join(shlex.quote(str(part)) for part in parts)
-
-
 def output_retry(
     line: tuple[str, ...], path: Path, *, prefix: tuple[str, ...] | None = None
 ) -> list[str] | None:
@@ -2463,11 +2452,6 @@ def _given(value: str) -> str:
     """A text value as the CLI reads it back: `@path` reads a file, so a leading `@` is
     doubled, the CLI's own spelling of a literal one (V149, V449)."""
     return "@" + value if value.startswith("@") else value
-
-
-def _powershell(part: str) -> str:
-    safe = bool(part) and part[0] != "@" and all(c.isalnum() or c in "-_.:/\\=" for c in part)
-    return part if safe else "'" + part.replace("'", "''") + "'"
 
 
 OUTPUT_REPLACED = "Replaced the saved refusal at --output; accepted work was not overwritten."

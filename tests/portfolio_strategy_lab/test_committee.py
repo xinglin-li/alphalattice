@@ -804,6 +804,32 @@ def test_a_review_member_answers_its_own_bundle_on_its_thread(
         finally:
             REQUEST_PROVENANCE.reset(token)
         assert body["conversation"]["author"] == "child-analyst"
+        if sent == member and k == key:
+            # The accepted reply is lost: the member follows only the offered same-key action.
+            from alphalattice.interface.local_application.cli_contract import client_failure
+
+            request = {
+                "operation": "AGENT_ANSWER_SUBMIT",
+                "bundle_directory": directory,
+                "agent_answer": sent[2],
+                "committee_key": key,
+            }
+            refusal, known = client_failure(
+                "local_client.connection_lost_task_may_still_run",
+                request,
+                TimeoutError(),
+                120.0,
+                False,
+            )
+            assert refusal.next_action == "RESEND_THE_SAME_KEYED_SUBMISSION"
+            assert known["operation_outcome"] == "UNKNOWN"
+            token = REQUEST_PROVENANCE.set(replace(lead, session="child-analyst"))
+            try:
+                retry = committee.admit(store, sent, key)
+                assert isinstance(retry, committee.Floor)
+                committee.answered(store, retry, sent, body, now[0], file)
+            finally:
+                REQUEST_PROVENANCE.reset(token)
     closed = [committee.admit(store, other, k) for k in (None, key)]  # a different answer
     assert [isinstance(r, dict) and r["rule"] for r in closed] == ["ENDED", "ENDED"]
     thread = committee.thread_of(store, committee.thread_id(reference))

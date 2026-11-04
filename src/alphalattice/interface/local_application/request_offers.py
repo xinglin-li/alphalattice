@@ -1,8 +1,10 @@
-"""Collect named owner offers for the CLI contract and its request readers."""
+"""Collect named owner offers and quote their commands for the CLI."""
 
 from __future__ import annotations
 
 import json
+import os
+import shlex
 from collections import Counter
 from typing import Any
 
@@ -78,3 +80,46 @@ def offered_requests(
         if any(q.get("operation") == operation for q in peers):
             del requests["complete"]
     return requests
+
+
+def _powershell(part: str) -> str:
+    safe = bool(part) and part[0] != "@" and all(c.isalnum() or c in "-_.:/\\=" for c in part)
+    return part if safe else "'" + part.replace("'", "''") + "'"
+
+
+def join(parts: list[str], quoting: str) -> str:
+    """One command line from its parts, each quoted as the shell reads it back.
+
+    PowerShell takes single quotes (a quote doubled inside), quotes a leading ``@``, which it
+    would read as splatting, and runs a quoted program through ``&``; POSIX takes `shlex`.
+
+    Args:
+        parts: The program and its arguments.
+        quoting: ``powershell`` or ``posix``.
+
+    Returns:
+        The command line.
+    """
+    if quoting == "powershell":
+        quoted = [_powershell(str(part)) for part in parts]
+        return ("& " if quoted and quoted[0].startswith("'") else "") + " ".join(quoted)
+    if parts and os.name == "nt":
+        parts = [str(parts[0]).replace("\\", "/"), *parts[1:]]
+    return " ".join(shlex.quote(str(part)) for part in parts)
+
+
+def shell() -> str:
+    """The shell printed commands are quoted for.
+
+    ``ALPHALATTICE_SHELL`` (``powershell`` or ``posix``) when set; PowerShell on Windows
+    outside a POSIX shell (Git Bash names itself in ``MSYSTEM``); POSIX otherwise.
+
+    Returns:
+        ``powershell`` or ``posix``.
+    """
+    chosen = os.environ.get("ALPHALATTICE_SHELL", "").strip().lower()
+    if chosen in {"powershell", "posix"}:
+        return chosen
+    if os.name == "nt" and "MSYSTEM" not in os.environ:
+        return "powershell"
+    return "posix"

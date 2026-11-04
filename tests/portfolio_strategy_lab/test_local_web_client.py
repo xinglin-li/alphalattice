@@ -909,7 +909,7 @@ def test_cli_saves_owner_refusals_and_rejects_removed_submit_commands(live, tmp_
 
 @pytest.mark.parametrize("fault", ("incomplete_body", "timeout_body", "timeout_open"))
 def test_cli_reports_an_interrupted_response_body_without_retrying_work(
-    read_only_live, monkeypatch, capsys, fault
+    read_only_live, monkeypatch, capsys, tmp_path, fault
 ):
     from alphalattice.interface.local_application.cli import main
 
@@ -963,8 +963,55 @@ def test_cli_reports_an_interrupted_response_body_without_retrying_work(
     refusal, answered = client_failure(lost, read, TimeoutError(), 120.0, True)
     assert refusal.next_action == "RECONNECT_AND_INSPECT_SAME_TASK"
     assert "next_requests" not in answered
+    # A lost member submit has no returned Task ID; its keyed route must name a usable recovery.
+    member = {
+        "operation": "AGENT_ANSWER_SUBMIT",
+        "bundle_directory": "analyst-bundle",
+        "agent_answer": {"findings": []},
+        "committee_key": "0123456789abcdef0123456789abcdef",
+    }
+    retry, details = client_failure(lost, member, TimeoutError(), 120.0, False)
+    assert retry.next_action == "RESEND_THE_SAME_KEYED_SUBMISSION"
+    assert "same" in retry.detail.lower() and "key" in retry.detail.lower()
+    assert details["operation_outcome"] == "UNKNOWN"
+    assert member["committee_key"] not in json.dumps(details)
+    checked, _ = client_failure(
+        lost, member, TimeoutError(), 120.0, False, read_only_live.workspace
+    )
+    assert checked.next_action == retry.next_action and "serve --no-browser" not in checked.detail
+    assert str(read_only_live.workspace.resolve()) in checked.detail
+    already_answered, _ = client_failure(lost, member, TimeoutError(), 120.0, True)
+    assert already_answered.next_action == "RECONNECT_AND_INSPECT_SAME_TASK"
+    keyless, _ = client_failure(
+        lost, {**member, "committee_key": None}, TimeoutError(), 120.0, False
+    )
+    assert keyless.next_action == "RECONNECT_AND_INSPECT_SAME_TASK"
     assert "private transport detail" not in json.dumps(body)
     assert timeouts == [120.0]
+    assert read_only_live.session.task_control_registry.tasks() == tasks_before
+    bundle = tmp_path / "analyst"
+    bundle.mkdir()
+    answer = bundle / "answer.json"
+    answer.write_text(json.dumps(member["agent_answer"]), encoding="utf-8")
+    code = main(
+        [
+            "--workspace",
+            str(read_only_live.workspace),
+            "bundle",
+            "submit",
+            "--dir",
+            str(bundle),
+            "--file",
+            str(answer),
+            "--key",
+            member["committee_key"],
+        ],
+        serve=lambda _: 99,
+    )
+    output = capsys.readouterr().out
+    result = json.loads(output)
+    assert code == 4 and result["next_action"] == "RESEND_THE_SAME_KEYED_SUBMISSION"
+    assert result["operation_outcome"] == "UNKNOWN" and member["committee_key"] not in output
     assert read_only_live.session.task_control_registry.tasks() == tasks_before
 
 

@@ -532,6 +532,26 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
     client = LocalResearchClient(service.session.workspace)
     selected = {"result_hash": service.result_hash()}
     start = client.activity()
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+
+    goal = UUID(int=7)
+    assert service.session.operations is not None
+    service.session.operations.goals.operate(
+        PortfolioResearchOperationRequest(
+            operation="GOAL_OPEN",
+            goal_id=goal,
+            goal_declaration={
+                "title": "Review",
+                "objective": "Review the book.",
+                "kind": "RESEARCH",
+                "criteria": [{"criterion_id": "review", "text": "Review."}],
+            },
+            change_reason="The person's request",
+        ),
+        "EXTERNAL_AUTOMATION",
+    )
 
     def run(*arguments: str) -> tuple[int, dict[str, Any]]:
         code = main(["--view", "full", *arguments], serve=lambda _: 99)
@@ -558,7 +578,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
     def skill(path: str) -> str:
         return (REPO_ROOT / "skills" / path / "SKILL.md").read_text(encoding="utf-8")
 
-    workspace = ("--workspace", str(service.session.workspace))
+    workspace = ("--workspace", str(service.session.workspace), "--goal", str(goal))
     # Commands printed for a POSIX shell, which `shlex` reads back; the PowerShell form is
     # held by its own test.
     monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
@@ -631,6 +651,8 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
     # answer as provenance, and the answer is read whatever it names.
     read = [item["name"] for item in analyst["files"]]
     answer_file.write_text(json.dumps({**invented, "read": read[:1]}), encoding="utf-8")
+    monkeypatch.setenv("CODEX_THREAD_ID", "child-analyst")
+    assert keyed(analyst)[-1]  # the member's own bundle key
     code, verdict = run(*keyed(analyst))
     assert code == 0 and verdict["status"] == "CORRECT" and "receipt" not in verdict
     bundle = EvidenceReviewBundles(service.review).agent_bundle(str(tmp_path / "analyst"))
@@ -652,7 +674,32 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         [1],
     )
     answer_file.write_text(json.dumps({**subset, "read": read}), encoding="utf-8")
-    code, verdict = run(*keyed(analyst))
+    # Lose the actual Host reply after it accepts; the member follows its own offered retry.
+    from alphalattice.interface.local_application.failure_codes import LocalResearchClientError
+
+    exchange, accepted = LocalResearchClient.exchange, []
+
+    def lost_reply(client, document):
+        result = exchange(client, document)
+        if document.get("operation") == "AGENT_ANSWER_SUBMIT":
+            accepted.append(result[0])
+            raise LocalResearchClientError(
+                "local_client.connection_lost_task_may_still_run"
+            ) from TimeoutError()
+        return result
+
+    exact_submit = keyed(analyst)
+    with monkeypatch.context() as patch:
+        patch.setattr(LocalResearchClient, "exchange", lost_reply)
+        code = main(["--view", "full", *exact_submit], serve=lambda _: 99)
+        stopped = json.loads(capsys.readouterr().out)
+    assert code == 4 and stopped["next_action"] == "RESEND_THE_SAME_KEYED_SUBMISSION"
+    assert len(accepted) == 1 and accepted[0]["status"] == "ACCEPTED"
+    task_count = len(service.registry.tasks())
+    code, verdict = run(*exact_submit)
+    assert len(service.registry.tasks()) == task_count
+    assert verdict == accepted[0]  # the complete first outcome, including lifecycle
+    monkeypatch.setenv("CODEX_THREAD_ID", "bundle-review-lead")
     # Accepted, its Task pending: the receipt names the Task's state.
     assert code == 0 and verdict["status"] == "ACCEPTED"
     assert verdict["bundle_reference"] == analyst["bundle_reference"]
@@ -768,6 +815,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
     assert submitted == [
         ("ANALYST", "CORRECT"),
         ("ANALYST", "ACCEPTED"),
+        ("ANALYST", "ACCEPTED"),  # the keyed retry is a separate observed request
         ("CRO", "CORRECT"),
         ("CRO", "CORRECT"),  # an identical retry is still an observed request
         ("CRO", "CORRECT"),

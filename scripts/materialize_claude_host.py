@@ -662,6 +662,11 @@ def command_block(role: str) -> str:
                 "- a shortened read → reread that file by line range until complete",
                 "- the submit's answer CORRECT → fix or remove only the named items in the same "
                 "answer file → the same submit",
+                "- the submit's answer RESEND_THE_SAME_KEYED_SUBMISSION → run the same route's "
+                "submit once with the same key and unchanged answer file; if still refused, "
+                "return its failure code to the lead, not a question to the person",
+                "- any other refused or stopped submit → return its failure code to the lead, "
+                "not a question to the person",
             ],
         )
     flags, meanings, _exit_codes = _cli_reference()
