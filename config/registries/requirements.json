@@ -39,6 +39,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.continuation_snapshot_integrity": {
+      "description": "A native acceptance continuation admits only the exact tracked bytes written by its recorded prestart configure and refuses other tracked changes.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5
+    },
     "evaluation.golden_consumers_queue_behind_their_builder": {
       "description": "Under a parallel run, a session golden's first consumer keeps its place and builds it, and its other consumers are queued where the recorded work ahead passes that build, or last when it is unrecorded, never blocked on its lock.",
       "owner": "devtools.evaluation",
