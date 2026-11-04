@@ -1,5 +1,6 @@
 """Registered test sizes consumed by pytest collection and the canonical gate."""
 
+import ast
 import json
 import os
 import re
@@ -10,6 +11,36 @@ from fnmatch import fnmatchcase
 from math import isfinite
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+
+def _declarations(tree: ast.Module, name: str) -> list[Any]:
+    direct = [
+        node.value
+        for node in tree.body
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        and any(
+            isinstance(target, ast.Name) and target.id == name
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        )
+    ]
+    writes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name)
+        and node.id == name
+        and isinstance(node.ctx, (ast.Store, ast.Del))
+    ]
+    return direct if len(writes) == len(direct) else [*direct, None]
+
+
+def whole_tree_scope(tree: ast.Module) -> bool:
+    """The shared layout declaration is one literal whole-tree scope."""
+    declared = _declarations(tree, "TEST_SCOPE")
+    return (
+        len(declared) == 1
+        and isinstance(declared[0], ast.Constant)
+        and declared[0].value == "whole-tree"
+    )
 
 
 def load_policy(root: Path) -> dict[str, Any]:
@@ -145,14 +176,24 @@ def _foreign_structural_override(pattern: str, policy: dict[str, Any]) -> bool:
 
 
 def _post_merge_only(value: dict[str, Any]) -> None:
-    """Keep structural obligations mandatory and reject malformed stage deferrals."""
+    """Keep fenced obligations mandatory and reject malformed stage deferrals."""
     post = value.get("post_merge_only", [])
+    fenced = value.get("structural_fence", [])
+    fenced = fenced if isinstance(fenced, list) else []
     if (
         not isinstance(post, list)
         or any(
             not isinstance(p, str)
             or not p.startswith("tests/")
-            or _structural_file(p, value)
+            or (_structural_file(p, value) and not p.startswith("tests/structural/"))
+            or (
+                p.startswith("tests/structural/")
+                and any(
+                    fnmatchcase(p, r.get("pattern", "").partition("::")[0])
+                    for r in fenced
+                    if isinstance(r, dict) and isinstance(r.get("pattern"), str)
+                )
+            )
             or not p.endswith(".py")
             or ".." in Path(p).parts
             or "\\" in p
@@ -161,7 +202,23 @@ def _post_merge_only(value: dict[str, Any]) -> None:
         )
         or len(set(post)) != len(post)
     ):
-        raise ValueError("test_size.rule: post_merge_only needs distinct non-structural test files")
+        raise ValueError("test_size.rule: post_merge_only needs distinct non-fenced test files")
+
+
+def validate_post_merge_scopes(policy: dict[str, Any], read: Callable[[str], str]) -> None:
+    """A deferred structural file must carry the layout owner's whole-tree declaration."""
+    paths = [p for p in policy.get("post_merge_only", []) if p.startswith("tests/structural/")]
+    if not paths:
+        return
+    for path in paths:
+        try:
+            tree = ast.parse(read(path))
+        except (OSError, UnicodeError, KeyError, TypeError, SyntaxError) as error:
+            raise ValueError(
+                f"test_size.rule: {path}: read its whole-tree declaration: {error}"
+            ) from error
+        if not whole_tree_scope(tree):
+            raise ValueError(f"test_size.rule: {path}: declare TEST_SCOPE = 'whole-tree'")
 
 
 def _reach(policy: dict[str, Any]) -> None:
@@ -526,14 +583,30 @@ def included(
 
 
 def stage_files(
-    policy: dict[str, Any], stage: str, paths: Iterable[str], *, lane: str = ""
+    policy: dict[str, Any],
+    stage: str,
+    paths: Iterable[str],
+    *,
+    lane: str = "",
+    read: Callable[[str], str] | None = None,
 ) -> list[str]:
-    """Defer these files only in commit; every other stage keeps them."""
+    """Defer verified files only in commit; every other stage keeps them."""
     post = (
         frozenset(policy.get("post_merge_only", []))
         if stage == "commit" and lane not in {"candidate", "nightly"}
         else frozenset()
     )
+    paths = list(paths)
+    names = {path.replace("\\", "/").split("::", 1)[0] for path in paths}
+    structural = [path for path in post & names if path.startswith("tests/structural/")]
+    if structural:
+
+        def read_own(path: str) -> str:
+            return (Path(__file__).resolve().parents[3] / path).read_text("utf-8")
+
+        validate_post_merge_scopes(
+            {"post_merge_only": structural}, read if read is not None else read_own
+        )
     return [path for path in paths if path.replace("\\", "/").split("::", 1)[0] not in post]
 
 

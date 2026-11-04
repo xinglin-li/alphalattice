@@ -1017,7 +1017,7 @@ def _memory_checks_read_no_host():
         )
     ]
     + [("post_" + stage,) for stage in ("commit", "post-merge", "candidate", "nightly")]
-    + [("post-kind",), ("post-structural",), ("post-repeat",)]
+    + [("post-kind",), ("post-repeat",)]
     + [("lane_" + lane,) for lane in ("merge", "candidate", "nightly")]
     + [("framework-" + case,) for case in ("entry", "reason", "pattern", "module")]
     + [("backend-" + case,) for case in ("empty", "kind", "type", "reason", "duplicate")]
@@ -1568,7 +1568,6 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
     }
     faults |= {
         "post-kind": (policy, "post_merge_only", "tests/x.py", "rule"),
-        "post-structural": (policy, "post_merge_only", ["tests/structural/test_x.py"], "rule"),
         "post-repeat": (policy, "post_merge_only", ["tests/a.py", "tests/a.py"], "rule"),
     }
     case = declared[0] if declared else ""

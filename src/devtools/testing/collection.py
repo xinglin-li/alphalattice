@@ -738,7 +738,11 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
         config.stash[SIZE_POLICY] = policy
         stage = os.environ.get("ALPHALATTICE_PIPELINE_STAGE", "")
         files = {item.nodeid.split("::", 1)[0].replace("\\", "/") for item in items}
-        permitted = set(stage_files(policy, stage, files, lane=lane))
+        permitted = set(
+            stage_files(
+                policy, stage, files, lane=lane, read=lambda path: (root / path).read_text("utf-8")
+            )
+        )
         for item in items:
             if (lane or required) and item.nodeid in seen:
                 omitted.append(item)

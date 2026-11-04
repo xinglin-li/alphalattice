@@ -775,7 +775,9 @@
         "tests/structural/conftest.py",
         "+*"
       ],
-      "reason": "It scans the whole tree, while the fast guard already runs the same problems() on every card's changed files; the whole-tree pass is moved only by the registry code or data, or an added or removed file, and runs whole nightly."
+      "reason": "It scans the whole tree, while the fast guard already runs the same problems() on every card's changed files; the whole-tree pass is moved only by the registry code or data, or an added or removed file, and runs whole nightly.",
+      "escape_class": "unregistered product identifier or owner",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_registries.py::test_message_ids_keep_chinese_when_english_changes_and_refuse_invalid_forms*",
@@ -787,7 +789,9 @@
         "config/package-architecture.json",
         "tests/structural/conftest.py"
       ],
-      "reason": "It drives the registry check over a synthetic history in tmp_path, so only the registry code or its data can change it; nightly runs it whole."
+      "reason": "It drives the registry check over a synthetic history in tmp_path, so only the registry code or its data can change it; nightly runs it whole.",
+      "escape_class": "invalid or inconsistent localized message identifier",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_pipeline_receipt.py::*",
@@ -824,7 +828,9 @@
         "tests/setup_support.py",
         "tests/conftest.py"
       ],
-      "reason": "It drives the pipeline stage and its receipt over synthetic repositories in tmp_path, so only the pipeline's code, definition or registries can change it; the post-merge tier runs it whole."
+      "reason": "It drives the pipeline stage and its receipt over synthetic repositories in tmp_path, so only the pipeline's code, definition or registries can change it; the post-merge tier runs it whole.",
+      "escape_class": "incomplete or inconsistent pipeline receipt",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_test_sizes.py::test_a_quarantined_node_needs_its_owner_reason_and_date*",
@@ -847,7 +853,9 @@
         "+src/*",
         "+config/registries/*"
       ],
-      "reason": "The quarantine-policy cases validate the size-policy owner; other size tests keep the family reach."
+      "reason": "The quarantine-policy cases validate the size-policy owner; other size tests keep the family reach.",
+      "escape_class": "quarantine lacks ownership reason or review date",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_test_sizes.py::*",
@@ -872,7 +880,9 @@
         "tests/setup_support.py",
         "tests/conftest.py"
       ],
-      "reason": "It drives size collection and the registry tools over synthetic suites in tmp_path, so only the testing code or its registries can change it; the post-merge tier runs it whole."
+      "reason": "It drives size collection and the registry tools over synthetic suites in tmp_path, so only the testing code or its registries can change it; the post-merge tier runs it whole.",
+      "escape_class": "incorrect test size or selection policy",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_entry_point_startup.py::test_every_product_importing_script_binds_this_tree_as_its_import_root*",
@@ -891,7 +901,9 @@
         "config/registries/test-sizes.json",
         "+src/*"
       ],
-      "reason": "This inventory check reads top-level script sources; entry-point startup keeps the family reach."
+      "reason": "This inventory check reads top-level script sources; entry-point startup keeps the family reach.",
+      "escape_class": "script imports product from another checkout",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_entry_point_startup.py::test_the_entry_point_inventory_separates_commands_from_helpers*",
@@ -910,7 +922,9 @@
         "config/registries/test-sizes.json",
         "+src/*"
       ],
-      "reason": "This inventory check reads top-level script sources; entry-point startup keeps the family reach."
+      "reason": "This inventory check reads top-level script sources; entry-point startup keeps the family reach.",
+      "escape_class": "entry-point inventory confuses a command and helper",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_entry_point_startup.py::*",
@@ -929,7 +943,9 @@
         "tests/conftest.py",
         "config/registries/test-sizes.json"
       ],
-      "reason": "It starts every top-level script, including its product imports; the post-merge tier runs it whole."
+      "reason": "It starts every top-level script, including its product imports; the post-merge tier runs it whole.",
+      "escape_class": "product entry point fails to start",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_local_web_build.py::test_check_*",
@@ -1031,7 +1047,9 @@
         "src/alphalattice/interface/local_application/assets/fonts/*",
         "+src/*"
       ],
-      "reason": "The asset-check cases use the build owner and copied sources; child-pytest cases retain the family reach."
+      "reason": "The asset-check cases use the build owner and copied sources; child-pytest cases retain the family reach.",
+      "escape_class": "stale or inconsistent generated web assets",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_local_web_build.py::*",
@@ -1054,109 +1072,151 @@
         "tests/conftest.py",
         "config/registries/test-sizes.json"
       ],
-      "reason": "It builds and checks the Local Web assets from copies in tmp_path, so only the builder, its assets, labels or registries can change it; the post-merge tier runs it whole."
+      "reason": "It builds and checks the Local Web assets from copies in tmp_path, so only the builder, its assets, labels or registries can change it; the post-merge tier runs it whole.",
+      "escape_class": "web asset build or child check fails",
+      "review_date": "2026-12-03"
     }
   ],
   "structural_fence": [
     {
       "pattern": "tests/structural/test_owner_source_shape.py::test_publication_refuses_to_return_before_the_index_resolves*",
       "law": "evidence",
-      "reason": "Publication completes its semantic index handoff."
+      "reason": "Publication completes its semantic index handoff.",
+      "escape_class": "publication returns before its index handoff",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_task_record_collections.py::test_canonical_task_parsers_cannot_bypass_stored_identity_validation*",
       "law": "identity",
-      "reason": "Canonical Task parsing verifies stored identity."
+      "reason": "Canonical Task parsing verifies stored identity.",
+      "escape_class": "task parser bypasses stored identity validation",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_task_record_collections.py::test_every_whole_task_reader_keeps_its_reviewed_authority_requirement*",
       "law": "evidence",
-      "reason": "Canonical Task readers preserve complete authority for control and retention."
+      "reason": "Canonical Task readers preserve complete authority for control and retention.",
+      "escape_class": "task reader bypasses required authority",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_plan_retention.py::test_every_plan_is_sealed_on_disk_until_it_expires*",
       "law": "identity",
-      "reason": "A plan remains sealed under its hash until expiry."
+      "reason": "A plan remains sealed under its hash until expiry.",
+      "escape_class": "plan changes after its identity seal",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_answer_continuations.py::test_every_compact_locator_restores_by_the_same_rule*",
       "law": "identity",
-      "reason": "Compact locators restore their bound identity consistently."
+      "reason": "Compact locators restore their bound identity consistently.",
+      "escape_class": "compact locator restores a different identity",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_owner_source_shape.py::test_publication_refuses_rows_from_another_catalog_before_composing*",
       "law": "identity",
-      "reason": "Publication refuses records belonging to another catalog."
+      "reason": "Publication refuses records belonging to another catalog.",
+      "escape_class": "publication accepts a row from another catalog",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_documented_commands.py::test_kept_facts_follow_the_bytes_read_and_serve_only_sealed_rows*",
       "law": "identity",
-      "reason": "Kept facts follow the source bytes and sealed rows."
+      "reason": "Kept facts follow the source bytes and sealed rows.",
+      "escape_class": "kept fact differs from its sealed source bytes",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_public_manifest.py*",
       "law": "public-private",
-      "reason": "The public manifest decides what may leave the private tree."
+      "reason": "The public manifest decides what may leave the private tree.",
+      "escape_class": "private content escapes through the public manifest",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_public_closure.py*",
       "law": "public-private",
-      "reason": "Every public file closes over the public manifest."
+      "reason": "Every public file closes over the public manifest.",
+      "escape_class": "public file depends on a private or missing file",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_public_release_lanes.py*",
       "law": "public-private",
-      "reason": "The release lanes keep public and private outputs apart."
+      "reason": "The release lanes keep public and private outputs apart.",
+      "escape_class": "public and private release outputs cross lanes",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_retired_spellings.py*",
       "law": "public-private",
-      "reason": "Retired spellings stay out of published text."
+      "reason": "Retired spellings stay out of published text.",
+      "escape_class": "retired private spelling appears in public text",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_owner_source_shape.py::test_scripts_and_tests_have_no_machine_absolute_paths_outside_literal_fixtures*",
       "law": "public-private",
-      "reason": "A machine's absolute path in a script or test leaks private layout."
+      "reason": "A machine's absolute path in a script or test leaks private layout.",
+      "escape_class": "machine-specific absolute path leaks private layout",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_source_identity.py*",
       "law": "identity",
-      "reason": "Source identity is what every result hash binds."
+      "reason": "Source identity is what every result hash binds.",
+      "escape_class": "source identity fails to bind result bytes",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_sealed_hash_admissions.py*",
       "law": "identity",
-      "reason": "A sealed hash is admitted only by its rule."
+      "reason": "A sealed hash is admitted only by its rule.",
+      "escape_class": "sealed hash is admitted without its identity rule",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_arrow_identity.py*",
       "law": "identity",
-      "reason": "Arrow data identity binds results."
+      "reason": "Arrow data identity binds results.",
+      "escape_class": "Arrow data identity fails to bind results",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_recipe_identity.py*",
       "law": "identity",
-      "reason": "A recipe's identity binds what it produces."
+      "reason": "A recipe's identity binds what it produces.",
+      "escape_class": "recipe identity fails to bind its product",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_feature_year_seals.py*",
       "law": "identity",
-      "reason": "A feature year's seal binds its data."
+      "reason": "A feature year's seal binds its data.",
+      "escape_class": "feature-year seal fails to bind its data",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_content_store_absence.py*",
       "law": "evidence",
-      "reason": "Evidence readers account for a missing or tampered artifact."
+      "reason": "Evidence readers account for a missing or tampered artifact.",
+      "escape_class": "missing or altered evidence artifact is treated as present",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_evaluation_boundary.py*",
       "law": "evidence",
-      "reason": "Evaluation imports stay inside their boundary."
+      "reason": "Evaluation imports stay inside their boundary.",
+      "escape_class": "evaluation imports cross their boundary",
+      "review_date": "2026-12-03"
     },
     {
       "pattern": "tests/structural/test_data_update_coverage.py*",
       "law": "secrets",
-      "reason": "Provider network gates read one owner of provider work and its credentials."
+      "reason": "Provider network gates read one owner of provider work and its credentials.",
+      "escape_class": "provider work and credentials bypass their network gate",
+      "review_date": "2026-12-03"
     }
   ],
   "quarantine": [

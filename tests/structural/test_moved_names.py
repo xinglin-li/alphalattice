@@ -171,7 +171,83 @@ def _model_sources(
 @pytest.mark.proves("testing.whole_file_relocation_restores_bytes")
 def test_whole_file_test_layout_restores_bytes_and_refuses_clashes(tmp_path):
     """Whole-file layout restores bytes and refuses path, export and fixture-name clashes."""
+    from copy import deepcopy
+    from types import SimpleNamespace
+
     from devtools.testing import layout
+    from devtools.testing.collection import _size_included
+    from devtools.testing.sizes import (
+        load_policy,
+        stage_files,
+        validate_policy,
+        validate_post_merge_scopes,
+    )
+
+    registered = load_policy(Path(__file__).resolve().parents[2])
+    floor_change = frozenset({"src/example.py"})
+    post = "tests/structural/test_whole.py"
+    declared_file = tmp_path / post
+    declared_file.parent.mkdir(parents=True, exist_ok=True)
+    declared_file.write_text("TEST_SCOPE = 'whole-tree'\n", encoding="utf-8")
+    candidate = deepcopy(registered) | {"post_merge_only": [post]}
+    try:
+        validate_policy(candidate)
+        admitted = True
+    except ValueError:
+        admitted = False
+    assert admitted, "a structural file may be deferred when its whole-tree declaration is verified"
+    partial = tmp_path / "partial-policy" / "config/registries/test-sizes.json"
+    partial.parent.mkdir(parents=True)
+    partial.write_text(json.dumps(candidate), encoding="utf-8")
+    assert load_policy(partial.parents[2])["post_merge_only"] == [
+        post
+    ]  # policy-only readers need no test tree
+
+    validate_post_merge_scopes(candidate, lambda name: (tmp_path / name).read_text("utf-8"))
+    with pytest.raises(ValueError, match=r"test_size\.rule"):
+        stage_files(
+            candidate, "commit", [post], lane="merge"
+        )  # the default reader refuses the absent declared file
+    assert (
+        stage_files(
+            candidate,
+            "commit",
+            [post],
+            lane="merge",
+            read=lambda name: (tmp_path / name).read_text("utf-8"),
+        )
+        == []
+    )
+    deferred = SimpleNamespace(nodeid=post + "::test_graph")
+    assert not _size_included(
+        deferred, "medium", "merge", candidate, floor_change, (), (), set(), floor=True
+    )
+    assert _size_included(
+        deferred,
+        "medium",
+        "merge",
+        candidate,
+        floor_change,
+        (deferred.nodeid,),
+        (),
+        set(),
+        floor=True,
+    )  # explicit proof still runs
+    assert stage_files(candidate, "post-merge", [post], lane="merge") == [post]
+    assert stage_files(candidate, "commit", [post], lane="candidate") == [post]
+    assert stage_files(candidate, "commit", [post], lane="nightly") == [post]
+    for bad in (
+        "",
+        "TEST_SCOPE = 'per-file'",
+        "TEST_SCOPE = 'whole-tree'\nTEST_SCOPE = 'whole-tree'",
+        "not python !",
+    ):
+        with pytest.raises(ValueError, match=r"test_size\.rule"):
+            validate_post_merge_scopes(candidate, lambda _name, bad=bad: bad)
+    with pytest.raises(ValueError, match=r"test_size\.rule"):
+        validate_post_merge_scopes(
+            candidate, lambda _name: (_ for _ in ()).throw(FileNotFoundError(post))
+        )
 
     placement = getattr(layout, "new_test_file_problems", None)
     assert callable(placement), "new test-file placement owner is missing"
@@ -288,6 +364,7 @@ def test_one(): pass
         "test-sizes.json": {
             "defaults": [{"pattern": "tests/a/*", "owner": "a"}],
             "mandatory": ["tests/a/test_t.py*"],
+            "post_merge_only": ["tests/a/test_t.py"],
         },
         "test-private.json": {"entries": {"tests/a/test_t.py::patch rule": 1}},
         "ledger.json": {

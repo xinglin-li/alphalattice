@@ -15,6 +15,12 @@
       "layer": "integration",
       "seconds": 15
     },
+    "architecture.impact_graph_selection": {
+      "description": "The verification selector finds real consumer and deleted-source tests and dispatches them without repeating structural checks.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 30
+    },
     "architecture.import_law_refuses_higher_levels_and_retired_names": {
       "description": "The import law built from the package registry refuses a package importing a higher level or an undeclared peer, and any file importing a retired owner, direct or relative; an import downward or of a lookalike name passes.",
       "owner": "devtools.architecture",

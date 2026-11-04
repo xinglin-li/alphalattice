@@ -369,7 +369,7 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
             private_test_growth,
             problems,
         )
-        from devtools.testing.sizes import validate_policy
+        from devtools.testing.sizes import validate_policy, validate_post_merge_scopes
     finally:
         sys.path.pop(0)
     inputs = census_inputs(ROOT, baseline) if staged else None
@@ -414,6 +414,27 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
                         validate_policy(value)
                     except ValueError as error:
                         found.append(f"{path}:1: {error}")
+    # The staged policy and its deferred declarations must come from the same index.
+    try:
+        size_path = "config/registries/test-sizes.json"
+        if inputs is not None:
+            stage_prefix = inputs.stage
+            policy_key = stage_prefix + size_path
+            policy = json.loads(inputs.view([policy_key])[policy_key])
+            names = [
+                p
+                for p in policy.get("post_merge_only", [])
+                if isinstance(p, str) and p.startswith("tests/structural/")
+            ]
+            blobs = inputs.view(stage_prefix + p for p in names)
+            validate_post_merge_scopes(policy, lambda name: blobs[stage_prefix + name])
+        else:
+            policy = json.loads((ROOT / size_path).read_text(encoding="utf-8"))
+            validate_post_merge_scopes(
+                policy, lambda name: (ROOT / name).read_text(encoding="utf-8")
+            )
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError) as error:
+        found.append(f"test_size.rule: verify deferred structural declarations: {error}")
     for line in found:
         print(f"REGISTRY {line}", flush=True)
     print(f"PLAYPEN_GATE_TIMING registries {perf_counter() - started:.3f}s", flush=True)

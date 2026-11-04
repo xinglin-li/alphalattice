@@ -3,7 +3,7 @@
 ## Process policy
 
 - Keep the impact runner's file-per-process default; batch only through its audited safe list and revoke batching on a process-global framework import.
-- Defer `post_merge_only` files from commit while retaining whole post-merge, candidate and nightly standing; do not defer structural holders through that field.
+- Defer `post_merge_only` files from commit while retaining whole post-merge, candidate and nightly standing; a structural file must declare whole-tree scope and contain no fenced guard.
 - Run a structural guard with no declared `reach` in the commit stage only when its own file changed or a
   `structural_fence` row names its fence law (public-private, identity, evidence, secrets); post-merge, candidate
   and nightly run every structural guard whole, and each run's `structural-moved.json` names the guards that moved.

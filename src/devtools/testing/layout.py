@@ -20,6 +20,7 @@ from .layout_references import images as reference_images
 from .layout_references import provenance as reference_provenance
 from .layout_references import source_paths as reference_source_paths
 from .requirements import FACTS_SCHEMA, LAYERS, LEGACY_SCHEMA, file_holders, schema_file
+from .sizes import _declarations, whole_tree_scope
 
 REGISTRIES = ("config/registries/test-sizes.json", "config/registries/test-private.json")  # public
 
@@ -40,26 +41,6 @@ DISCOVERY = "from tests._support.project_discovery import project_discovery as p
 def _target(layer: str, domain: str, stem: str, scope: Sequence[str]) -> str:
     """The shared layout map for both existing moves and newly added tests."""
     return "/".join(["tests", layer, domain, *scope, "test_" + stem + ".py"])
-
-
-def _declarations(tree: ast.Module, name: str) -> list[Any]:
-    direct = [
-        node.value
-        for node in tree.body
-        if isinstance(node, (ast.Assign, ast.AnnAssign))
-        and any(
-            isinstance(target, ast.Name) and target.id == name
-            for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
-        )
-    ]
-    writes = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Name)
-        and node.id == name
-        and isinstance(node.ctx, (ast.Store, ast.Del))
-    ]
-    return direct if len(writes) == len(direct) else [*direct, None]
 
 
 def _source_module(source: str, sources: Iterable[str]) -> None:
@@ -116,12 +97,7 @@ def new_test_file_problems(
     try:
         tree = ast.parse(text)
         if path.startswith("tests/structural/"):
-            declared_scope = _declarations(tree, "TEST_SCOPE")
-            if (
-                len(declared_scope) != 1
-                or not isinstance(declared_scope[0], ast.Constant)
-                or declared_scope[0].value != "whole-tree"
-            ):
+            if not whole_tree_scope(tree):
                 raise ValueError("declare TEST_SCOPE = 'whole-tree' for this structural file")
             return []
         stated = _declarations(tree, "TEST_SOURCE")
@@ -226,6 +202,14 @@ def _host_fact_image(document: Any, modules: dict[str, str], path: str) -> dict[
     return document | {"fakes": mapped}
 
 
+def _post_merge_paths(paths: list[str], moves: dict[str, str]) -> list[str]:
+    """Carry exact deferred paths without merging distinct registered files."""
+    result = [moves.get(path, path) for path in paths]
+    if len(result) != len(set(result)):
+        raise ValueError("test_layout.registry_collision:post_merge_only")
+    return result
+
+
 def _registry_images(
     files: dict[str, str], moves: dict[str, str], modules: dict[str, str]
 ) -> dict[str, list[str | None]]:
@@ -268,6 +252,8 @@ def _registry_images(
                         v for p in document["mandatory"] for v in rule_patterns(p, tests, moves)
                     )
                 )
+            if "post_merge_only" in document:
+                document["post_merge_only"] = _post_merge_paths(document["post_merge_only"], moves)
         after = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
         if document != original:
             images[path] = [files[path], after]
