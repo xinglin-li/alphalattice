@@ -20,6 +20,19 @@ Latest released version: [0.2.4](#024). Earlier measurements describe their own 
 - Invalid research plans offer their named recovery controls. A cancelled membership
   update retains the information needed to restore its own change.
 
+### Fixed
+
+- Continuing an Evidence review can follow its existing preparation when the publication,
+  scope and resources still match, avoiding duplicate coverage work.
+- If a reply is lost after an analyst response has been recorded, the agent can resend the
+  same keyed answer and receive the recorded outcome without creating another Task.
+- Analyst submissions can proceed while a long Task runs; when admission is busy, the Host
+  can return a retryable busy response.
+- For Windows Codex evaluations, each run requests its own workspace-writing sandbox.
+- On Windows, Codex setup offers a workspace-specific Host start when its sandbox cannot
+  write the project configuration. Generated PowerShell commands pipe quoted JSON as
+  BOM-free UTF-8 so the request keeps its intended content.
+
 ### Deprecated
 
 - `view:full` full stdout is deprecated (`read.legacy_full_deprecated`); use `--view summary --output PATH` for bounded display and the complete saved answer. Full stdout remains available; earliest removal is 0.3.0.
