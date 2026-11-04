@@ -531,7 +531,7 @@ def test_a_parser_only_change_prepares_again_from_retained_bytes(tmp_path: Path)
 
 
 def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A denied source reads the live preparation back and fetches nothing."""
 
@@ -561,6 +561,7 @@ def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
     finally:
         service.session.stop()
 
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     denied = admit_official_source(
         network_consent=True, environment={"ALPHALATTICE_NETWORK_DISABLED": "1"}
     )
@@ -591,6 +592,7 @@ def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
         access = later["network_access"]
         assert access["network_allowed"] is False
         assert access["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
+        assert later["source_network_access"]["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
         assert access["next_action"] == "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
         assert later["next_requests"]["network"] == {"operation": "NETWORK_ACCESS"}
         assert "prepare" not in later["next_requests"]

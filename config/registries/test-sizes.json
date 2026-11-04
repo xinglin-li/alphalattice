@@ -1473,19 +1473,6 @@
       ]
     },
     {
-      "node": "tests/alternative_evidence_desk/test_official_source_composition.py::test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing",
-      "owner": "tests.alternative_evidence_desk",
-      "reason": "Red on macOS, Windows and this checkout alike: the source is denied only in admission's own environment, so the later preview's network decision reads DEFAULT where the test expects the operator's offline switch. Its owner decides whether the service or the test is wrong.",
-      "until": "2026-11-10",
-      "class": "real",
-      "since": "2026-11-03",
-      "seen_on": [
-        "mac1",
-        "pc1",
-        "workshop"
-      ]
-    },
-    {
       "node": "tests/feature_engine/test_feature_observation_clock.py::test_process_resource_monitor_reports_a_time_aligned_live_child_tree",
       "owner": "tests.feature_engine",
       "reason": "Windows only: the live child tree is measured through the Windows job, so macOS reports no descendants. Review by its date.",
