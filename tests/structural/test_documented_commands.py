@@ -87,6 +87,11 @@ def test_the_frozen_surface_and_release_retirements_match_the_owners() -> None:
     assert "command:committee show" in entries and "option:committee show/--update" in entries
     assert "law:product/PR1" in entries and "law:workbench/PR1" in entries
     assert "message:RULES/STANCE" in entries and "exchange:CORRECTION" in entries
+    assert {"exchange:ANSWER", "exchange:CORRECTION", "exchange:ACCEPTANCE"} <= entries.keys()
+    manifest = json.loads((root / "config/registries/agent-surface.json").read_text("utf-8"))
+    missing = dict(entries)
+    del missing["exchange:CORRECTION"]
+    assert any("exchange:CORRECTION" in problem for problem in surface_problems(manifest, missing))
 
 
 def test_a_command_a_text_names_is_one_the_cli_has(tmp_path: Path) -> None:

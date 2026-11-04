@@ -240,9 +240,11 @@ class WorkspaceActivity:
         and operation execution remains separate.
         """
         try:
+            # Observations have their own SQLite writer; recording an entry or refusal must
+            # not wait behind the workspace mutation whose admission it describes.
             ledger = ObservationLedger(
                 self.workspace / "runtime" / OBSERVATION_LEDGER_NAME,
-                gate=self.gate,
+                gate=WorkspaceMutationGate(),
                 storage_cap_reader=self.storage_cap_reader,
             )
         except ObservationStorageError as error:

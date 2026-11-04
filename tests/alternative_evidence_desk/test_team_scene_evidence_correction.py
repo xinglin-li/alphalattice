@@ -17,7 +17,12 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import socket
+import sys
+import threading
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -27,6 +32,7 @@ from uuid import UUID
 
 import pytest
 
+from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.evidence_review_application import (
     ANSWER_CATEGORY,
 )
@@ -34,7 +40,11 @@ from alphalattice.control.product_host.composition.evidence_review_bundles impor
     EvidenceReviewBundles,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle
+from alphalattice.control.task_control.queue import write_queue_setting
+from alphalattice.interface.local_application.cli_contract import RequestProvenance
 from alphalattice.interface.local_application.client import LocalResearchClient
+from alphalattice.interface.local_application.dispatcher import CommandAdmission
+from alphalattice.interface.local_application.web import AdmittedRequest, LocalWebService
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, answer_slot
@@ -42,11 +52,13 @@ from tests.alternative_evidence_desk.planted_corpus import _CitingActor
 from tests.alternative_evidence_desk.review_dossiers import controlled_answer
 from tests.alternative_evidence_desk.review_http_support import (
     _Service,
+    _service,
     build_authority,
     build_workspace,
     start_service,
 )
 from tests.portfolio_strategy_lab.local_web_support import run_node
+from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter, task_contract
 
 MODULES = (
     resolve_playpen_root(Path(__file__))
@@ -712,6 +724,14 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         code, verdict = run(*keyed(cro))
         assert code == 0 and verdict["status"] == "CORRECT"
         assert (verdict["rounds_left"], verdict["problems"]) == (rounds_left, [problem])
+        if rounds_left == 2:
+            repeated_code, repeated = run(*keyed(cro))
+            assert repeated_code == 0 and repeated["rounds_left"] == rounds_left
+        path = Path(cro["answer_file"])
+        revised = json.loads(path.read_text(encoding="utf-8"))
+        revised["summary"] += " Another reading."
+        path.write_text(json.dumps(revised), encoding="utf-8")
+    submission["summary"] = revised["summary"]
     code, verdict = run(*keyed(cro))
     assert code == 0 and verdict["status"] == "DONE" and verdict["dropped"] == [problem]
     assert verdict["bundle_reference"] == cro["bundle_reference"]
@@ -749,6 +769,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         ("ANALYST", "CORRECT"),
         ("ANALYST", "ACCEPTED"),
         ("CRO", "CORRECT"),
+        ("CRO", "CORRECT"),  # an identical retry is still an observed request
         ("CRO", "CORRECT"),
         ("CRO", "DONE"),
     ]
@@ -783,3 +804,430 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         *("--file", str(stranger / "answer.json")),
     )
     assert code == 2 and refused["failure_code"] == "agent_bundle.not_prepared"
+
+
+@pytest.fixture
+def host(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_THREAD_ID", "analyst-retry-test")
+    monkeypatch.setattr(socket, "gethostname", lambda: "synthetic-test-host")
+    workspace, report = build_workspace(tmp_path)
+    # Integration tests exercise the same admitted web route without opening a socket.
+    monkeypatch.setattr(LocalWebService, "start", lambda _self: "http://127.0.0.1:12345/")
+    server = _service(tmp_path, workspace, report, with_runtime=True, with_actor=True)
+    service = next(server)
+
+    def request_in_process(client, document, **_kwargs):
+        application = service.session.web.application
+        route = application.routes[("POST", "/api/client/operations")]
+        body = json.dumps(document).encode("utf-8")
+        admitted = AdmittedRequest(
+            route=route,
+            asset=None,
+            query={},
+            content_length=len(body),
+            issues_session=False,
+            provenance=RequestProvenance(
+                vendor="codex", session="analyst-retry-test", goal_id=client.goal
+            ),
+        )
+        response = application.dispatch(admitted, body)
+        assert response.status == 200, response.body
+        return json.loads(response.body)
+
+    monkeypatch.setattr(LocalResearchClient, "request", request_in_process)
+    try:
+        adapter = service.review.evidence_task_adapter
+        topics = adapter.resources.analysis_actor.topics
+        adapter.resources = replace(adapter.resources, analysis_actor=None)
+        service.review.model_authority_admitted = False
+        service.review.review_actor = None
+        selected = {"result_hash": service.review.latest_result_hash()}
+        client = LocalResearchClient(workspace)
+        opened = client.request(
+            {
+                "operation": "GOAL_OPEN",
+                "goal_declaration": {
+                    "title": "Synthetic review",
+                    "objective": "Review a synthetic book.",
+                    "kind": "RESEARCH",
+                    "criteria": [{"criterion_id": "review", "text": "The review stands."}],
+                },
+                "change_reason": "Test",
+            }
+        )
+        goal = str(opened.get("goal_id") or opened["record"]["goal_id"])
+        client = LocalResearchClient(workspace, goal=goal)
+        preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
+        prepared = client.request(preview["next_requests"]["prepare"])
+        service.drain()
+        task_id = prepared["task_id"]
+        packet = adapter.prepared_packet(UUID(task_id), now=service.review.clock(), unit_id="u01")
+        answer = _CitingActor(topics=topics)(packet=packet).answer.model_dump(mode="json")
+
+        def bundle(index, value):
+            directory = tmp_path / f"analyst-{index}"
+            made = client.request(
+                {
+                    "operation": "AGENT_BUNDLE_PREPARE",
+                    "agent_role": "ANALYST",
+                    "bundle_directory": str(directory),
+                    "task_id": task_id,
+                    "evidence_unit_id": "u01",
+                    **selected,
+                }
+            )
+            text = "\n".join(item.get("text", "") for item in made.get("files", []))
+            key = re.search(r"--key ([0-9a-f]{32})", text)
+            assert key, made
+            return {
+                "operation": "AGENT_ANSWER_SUBMIT",
+                "bundle_directory": str(directory),
+                "committee_key": key.group(1),
+                "agent_answer": value,
+            }, made
+
+        yield service, client, workspace, goal, answer, bundle
+    finally:
+        server.close()
+
+
+def _fifteen_keyed_submits_finish_while_a_task_runs_and_retries_keep_their_outcomes(
+    host, monkeypatch
+):
+    service, client, workspace, goal, answer, bundle = host
+    invalid = {
+        **answer,
+        "findings": [dict(item) for item in answer["findings"]],
+        "notes": "held-first",
+    }
+    invalid["findings"][0]["cite"] = ["S999"]
+    requests = [bundle(0, invalid)[0]] + [
+        bundle(index, {"findings": [], "notes": f"analyst {index}"})[0] for index in range(1, 15)
+    ]
+    assert len({request["committee_key"] for request in requests}) == 15
+    task_release, task_started = threading.Event(), threading.Event()
+    first_release, first_started = threading.Event(), threading.Event()
+    registry, now = service.registry, datetime.now(UTC)
+    write_queue_setting(
+        workspace / "runtime", 1, chosen_by="HUMAN", chosen_at=now, field="tasks_waiting"
+    )
+    write_queue_setting(
+        workspace / "runtime", 1, chosen_by="HUMAN", chosen_at=now, field="tasks_running"
+    )
+    envelope, goal_contract, plan = task_contract(salt="held-analyst-test")
+
+    class HeldAdapter(FixtureTaskAdapter):
+        def execute_stage(self, *, task, execution, work_item):
+            task_started.set()
+            if not task_release.wait(45):
+                raise TimeoutError("test did not release held Task")
+            return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+    class HeldCommand:
+        command_kind = "factor_research"
+
+        def admit(self):
+            admitted = registry.admit(
+                input_envelope=envelope, goal=goal_contract, plan=plan, observed_at=now
+            )
+            return CommandAdmission(admitted.record.task_id, admitted.record.lifecycle.value)
+
+        def execute(self, task_id, *, expected_task_hash=None):
+            return service.session.session.execute_admitted(
+                registry.task(task_id), HeldAdapter(), lambda: datetime.now(UTC), expected_task_hash
+            )
+
+    actual_submit = service.review.submit_analysis
+
+    def paused(**kwargs):
+        if (kwargs.get("answer") or {}).get("notes") == "held-first":
+            first_started.set()
+            if not first_release.wait(25):
+                raise TimeoutError("test did not release first screening")
+        return actual_submit(**kwargs)
+
+    monkeypatch.setattr(service.review, "submit_analysis", paused)
+    try:
+        held = service.session.dispatcher.submit(HeldCommand())
+        assert held.task_id and task_started.wait(15)
+        with ThreadPoolExecutor(max_workers=15) as pool:
+            first = pool.submit(
+                LocalResearchClient(workspace, goal=goal, timeout=30).request, requests[0]
+            )
+            assert first_started.wait(10)
+            peers = {
+                pool.submit(
+                    LocalResearchClient(workspace, goal=goal, timeout=15).request, request
+                ): index
+                for index, request in enumerate(requests[1:], 1)
+            }
+            _done, late = wait(peers, timeout=10)
+            first_release.set()
+            responses = {index: future.result(timeout=20) for future, index in peers.items()}
+            responses[0] = first.result(timeout=10)
+        assert not late, "other keyed submissions waited for the held packet read"
+        assert len(responses) == 15
+        ledger = service.session.activity._ledger
+        assert ledger is not None
+        recorded = ledger.observations_of_kind("ProductOperationObserved", limit=500)
+        holds = [
+            payload["subject"]["analyst_admission_gate_hold_us"]
+            for row in recorded.items
+            if (payload := row.envelope.inline_safe_payload or {}).get("operation")
+            == "AGENT_ANSWER_SUBMIT"
+            and payload.get("phase") == "RETURNED"
+            and "analyst_admission_gate_hold_us" in payload.get("subject", {})
+        ]
+        assert len(holds) == 15 and all(isinstance(value, int) and value >= 0 for value in holds)
+        assert {response["status"] for response in responses.values()} <= {
+            "CORRECT",
+            "ACCEPTED",
+            "DONE",
+            "REFUSED",
+        }
+        assert all(
+            response.get("failure_code") != "agent_bundle.admission_busy"
+            for response in responses.values()
+        )
+        assert responses[0]["status"] == "CORRECT"
+        assert client.request(requests[0]) == responses[0]
+        accepted = next(
+            index for index, response in responses.items() if response["status"] == "ACCEPTED"
+        )
+        assert responses[accepted]["task_lifecycle"]
+        before = len(registry.tasks())
+        assert client.request(requests[accepted]) == responses[accepted]
+        assert len(registry.tasks()) == before
+        refused = next(
+            index
+            for index, response in responses.items()
+            if response.get("failure_code") == "task_control.queue_full"
+        )
+        write_queue_setting(
+            workspace / "runtime", 2, chosen_by="HUMAN", chosen_at=now, field="tasks_waiting"
+        )
+        assert client.request(requests[refused])["status"] == "ACCEPTED"
+    finally:
+        first_release.set()
+        task_release.set()
+
+
+def _keyed_legacy_correction_is_not_replayed_but_new_correction_is(host, monkeypatch):
+    service, client, _workspace, _goal, answer, bundle = host
+    invalid = {**answer, "findings": [dict(item) for item in answer["findings"]]}
+    invalid["findings"][0]["cite"] = ["S999"]
+    request, made = bundle("legacy", invalid)
+    original = committee.answered
+
+    def legacy(store, floor, member, body, now, file, **kwargs):
+        return original(store, floor, member, body, now, file)
+
+    with monkeypatch.context() as old:
+        old.setattr(committee, "answered", legacy)
+        first = client.request(request)
+    second = client.request(request)
+    third = client.request(request)
+    assert (first["answer_number"], second["answer_number"]) == (1, 2)
+    assert second == third
+    floor = committee.thread_of(
+        service.session.operations.goals.store, committee.thread_id(made["bundle_reference"])
+    )
+    corrections = [message for message in floor.messages if message.get("kind") == "CORRECTION"]
+    assert len(corrections) == 2
+    assert "correction_reference" not in corrections[0]
+    assert corrections[1]["correction_reference"]
+
+
+def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch):
+    service, client, _workspace, _goal, answer, bundle = host
+    invalid = {**answer, "findings": [dict(item) for item in answer["findings"]]}
+    invalid["findings"][0]["cite"] = ["S999"]
+    request, _made = bundle("busy", invalid)
+    gate = service.session.session.mutation_gate
+    try_hold = gate.try_hold
+
+    @contextmanager
+    def short_wait(*, timeout_seconds):
+        with try_hold(timeout_seconds=min(timeout_seconds, 0.5)):
+            yield
+
+    monkeypatch.setattr(gate, "try_hold", short_wait)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with gate.hold():
+            pending = pool.submit(client.request, request)
+            completed, _waiting = wait({pending}, timeout=6)
+        refused = pending.result(timeout=10)
+    assert completed, "the busy request did not finish while the workspace gate was held"
+    assert refused["status"] == "REFUSED"
+    assert refused["failure_code"] == "agent_bundle.admission_busy"
+    assert refused["next_action"] == "RETRY_THE_SAME_ANSWER"
+    assert service.session.activity is not None and service.session.activity._ledger is not None
+    rows = service.session.activity._ledger.refusal_counts(since_day="2000-01-01")
+    assert (
+        next(row for row in rows if row["failure_code"] == "agent_bundle.admission_busy")["count"]
+        == 1
+    )
+    retried = client.request(request)
+    assert (retried["status"], retried["answer_number"]) == ("CORRECT", 1)
+
+
+def _authority_change_during_preflight_refuses_without_filing(host, monkeypatch):
+    service, client, _workspace, _goal, answer, bundle = host
+    request, made = bundle("stale", answer)
+    packet_opened, release = threading.Event(), threading.Event()
+    gate = service.session.session.mutation_gate
+    actual = gate.try_hold
+
+    @contextmanager
+    def paused(*, timeout_seconds):
+        packet_opened.set()
+        if not release.wait(10):
+            raise TimeoutError("test did not release admission")
+        with actual(timeout_seconds=timeout_seconds):
+            yield
+
+    monkeypatch.setattr(gate, "try_hold", paused)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(client.request, request)
+            assert packet_opened.wait(10)
+            with actual(timeout_seconds=1):
+                adapter = service.review.evidence_task_adapter
+                adapter.resources = replace(adapter.resources, minimum_entity_coverage=0.25)
+            release.set()
+            refusal = pending.result(timeout=10)
+        assert refusal["status"] == "REFUSED"
+        assert refusal["failure_code"] == "agent_bundle.preparation_stale"
+        floor = committee.thread_of(
+            service.session.operations.goals.store, committee.thread_id(made["bundle_reference"])
+        )
+        assert not any(
+            message.get("kind") in {"CORRECTION", "ACCEPTANCE"} for message in floor.messages
+        )
+    finally:
+        release.set()
+
+
+def _legacy_acceptance_keeps_receipt_and_offers_the_task_read(host, monkeypatch):
+    service, client, _workspace, _goal, answer, bundle = host
+    request, made = bundle("legacy-accepted", answer)
+    store = service.session.operations.goals.store
+    attribute = store.attribute
+
+    def legacy(goal_id, entry):
+        message = entry.get("committee_message")
+        if isinstance(message, dict) and message.get("kind") == "ACCEPTANCE":
+            entry = {
+                **entry,
+                "committee_message": {k: v for k, v in message.items() if k != "answer_response"},
+            }
+        return attribute(goal_id, entry)
+
+    with monkeypatch.context() as old:
+        old.setattr(store, "attribute", legacy)
+        first = client.request(request)
+    assert first["status"] == "ACCEPTED"
+    store = service.session.operations.goals.store
+    thread = committee.thread_id(made["bundle_reference"])
+    before = committee.thread_of(store, thread).messages
+    tasks = len(service.registry.tasks())
+    replay = client.request(request)
+    assert replay["status"] == "ACCEPTED"
+    assert replay["answer_reference"] == first["answer_reference"]
+    assert replay["receipt"] == first["receipt"]
+    assert replay["task_id"] == first["task_id"]
+    assert replay.get("task_lifecycle") == "UNKNOWN"
+    assert replay["next_requests"]["task"] == {"operation": "STATUS", "task_id": first["task_id"]}
+    assert len(service.registry.tasks()) == tasks
+    assert committee.thread_of(store, thread).messages == before
+
+
+def _held_answer_turn_returns_busy_then_allows_retry(host, monkeypatch, *, same_key):
+    service, client, _workspace, _goal, answer, bundle = host
+    value = {**answer, "findings": [dict(item) for item in answer["findings"]]}
+    if same_key:
+        value["findings"][0]["cite"] = ["S999"]
+    first, _made = bundle("turn-first", value)
+    second = first if same_key else bundle("turn-second", value)[0]
+    entered, release = threading.Event(), threading.Event()
+    if same_key:
+        owner, name = service.review, "submit_analysis"
+    else:
+        owner, name = service.review.evidence_task_adapter, "validate_submission"
+    actual = getattr(owner, name)
+    first_call = True
+
+    def held(*args, **kwargs):
+        nonlocal first_call
+        if first_call:
+            first_call = False
+            entered.set()
+            if not release.wait(10):
+                raise TimeoutError("test did not release the first answer")
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(owner, name, held)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            ongoing = pool.submit(client.request, first)
+            assert entered.wait(10)
+            # Old checkouts have no deadline owner; the same concurrency check still runs.
+            deadline_owner = sys.modules.get(
+                "alphalattice.control.product_host.composition.host_answer_submission"
+            )
+            if deadline_owner is not None:
+                original_budget = deadline_owner.SUBMISSION_WAIT_SECONDS
+                monkeypatch.setattr(deadline_owner, "SUBMISSION_WAIT_SECONDS", 0.5)
+            waiting = pool.submit(client.request, second)
+            completed, _pending = wait({waiting}, timeout=3)
+            release.set()
+            first_result = ongoing.result(timeout=10)
+            second_result = waiting.result(timeout=10)
+        assert completed, "the answer turn did not return a bounded result"
+        assert second_result["status"] == "REFUSED"
+        assert second_result["failure_code"] == "agent_bundle.admission_busy"
+        assert second_result["next_action"] == "RETRY_THE_SAME_ANSWER"
+        if deadline_owner is not None:
+            monkeypatch.setattr(deadline_owner, "SUBMISSION_WAIT_SECONDS", original_budget)
+        retried = client.request(second)
+        if same_key:
+            assert first_result["status"] == "CORRECT" and retried == first_result
+        else:
+            assert retried["status"] in {"ACCEPTED", "DONE", "REFUSED"}
+        rows = service.session.activity._ledger.refusal_counts(since_day="2000-01-01")
+        assert (
+            next(row for row in rows if row["failure_code"] == "agent_bundle.admission_busy")[
+                "count"
+            ]
+            == 1
+        )
+    finally:
+        release.set()
+
+
+@pytest.mark.proves("composition.keyed_analyst_submissions_keep_first_outcome")
+@pytest.mark.parametrize(
+    "case",
+    [
+        "fanout",
+        "legacy",
+        "busy",
+        "authority-change",
+        "legacy-accepted",
+        "same-key-turn",
+        "same-packet-turn",
+    ],
+)
+def test_keyed_analyst_submissions_keep_first_outcome(host, monkeypatch, case):
+    if case in {"same-key-turn", "same-packet-turn"}:
+        _held_answer_turn_returns_busy_then_allows_retry(
+            host, monkeypatch, same_key=case == "same-key-turn"
+        )
+        return
+    {
+        "fanout": _fifteen_keyed_submits_finish_while_a_task_runs_and_retries_keep_their_outcomes,
+        "legacy": _keyed_legacy_correction_is_not_replayed_but_new_correction_is,
+        "busy": _busy_refusal_is_counted_and_the_same_answer_can_be_resent,
+        "authority-change": _authority_change_during_preflight_refuses_without_filing,
+        "legacy-accepted": _legacy_acceptance_keeps_receipt_and_offers_the_task_read,
+    }[case](host, monkeypatch)

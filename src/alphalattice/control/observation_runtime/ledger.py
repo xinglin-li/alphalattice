@@ -218,11 +218,14 @@ class ObservationLedger:
         self.close()
 
     def close(self) -> None:
-        """Close the writer once; later reads and writes are refused."""
-        if self._closed:
-            return
-        self._closed = True
-        self._writer.close()
+        """Close the writer once, after any in-flight write has left its gate."""
+
+        def close_writer() -> None:
+            if not self._closed:
+                self._closed = True
+                self._writer.close()
+
+        self.gate.run(close_writer)
 
     def _require_open(self) -> None:
         if self._closed:

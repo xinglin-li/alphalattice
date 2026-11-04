@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -63,6 +64,57 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.interface.local_application.questions import person_question
 from tests.portfolio_strategy_lab.local_web_support import _cli, _json, _request
+
+
+@pytest.mark.proves("composition.observation_writes_do_not_wait_for_workspace_mutations")
+def test_observation_entry_and_refusal_do_not_wait_for_workspace_mutations(tmp_path: Path) -> None:
+    """The Host can record a busy refusal while another workspace mutation is held."""
+    gate = WorkspaceMutationGate()
+    activity = WorkspaceActivity(tmp_path, "held-gate", gate, "held-gate")
+    request = PortfolioResearchRequestDocument(
+        operation="AGENT_ANSWER_SUBMIT",
+        bundle_directory=str(tmp_path / "bundle"),
+        agent_answer={"text": "A bounded interpretation.", "references": []},
+    ).to_operation_request()
+    finished = threading.Event()
+    errors: list[BaseException] = []
+
+    def record() -> None:
+        try:
+            activity.entered(request, caller="EXTERNAL_AUTOMATION")
+            activity.refused(
+                request.operation, "workspace.mutation_busy", caller="EXTERNAL_AUTOMATION"
+            )
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            finished.set()
+
+    with gate.hold():
+        worker = threading.Thread(target=record)
+        worker.start()
+        completed_while_held = finished.wait(3)
+    worker.join(timeout=5)
+    try:
+        assert completed_while_held and not errors
+        assert activity.read(ActivityReadQuery())["items"][0]["payload"]["phase"] == "REQUESTED"
+        assert activity._ledger is not None
+        counts = activity._ledger.refusal_counts(since_day="2000-01-01")
+        assert counts[0]["failure_code"] == "workspace.mutation_busy"
+        closed = threading.Event()
+
+        def close() -> None:
+            activity.close()
+            closed.set()
+
+        with activity._ledger.gate.hold():
+            closer = threading.Thread(target=close)
+            closer.start()
+            closed_while_writer_held = closed.wait(0.25)
+        closer.join(timeout=5)
+        assert not closed_while_writer_held and closed.is_set()
+    finally:
+        activity.close()
 
 
 @pytest.mark.parametrize("question_code", [None, "unregistered", "network.daily_updates"])

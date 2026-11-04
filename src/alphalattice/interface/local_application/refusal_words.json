@@ -1165,6 +1165,14 @@
   "detail": "The model download was interrupted. Run the same installation command again with its admitted network permission; it resumes the kept partial download.",
   "next_action": "RETRY_THE_ADMITTED_MODEL_INSTALLATION"
  },
+ "agent_bundle.answer_replay_inconsistent": {
+  "detail": "The stored answer does not match its recorded reply. Nothing was replayed; inspect the retained answer and its thread before retrying.",
+  "next_action": "INSPECT_THE_RECORDED_ANSWER"
+ },
+ "agent_bundle.admission_busy": {
+  "detail": "The Host is busy admitting another workspace change. This answer was not filed; resend the same answer.",
+  "next_action": "RETRY_THE_SAME_ANSWER"
+ },
  "task_control.queue_full": {
   "detail": "Every waiting Task place is occupied. Read `alphalattice task list` and `alphalattice cpu-budget show`; the agent may change `tasks_waiting` with `alphalattice cpu-budget set --queue <tasks_waiting>` before submitting another Task, or wait for a queued Task to finish or cancel it.",
   "next_action": "READ_TASKS_OR_CHANGE_TASKS_WAITING"

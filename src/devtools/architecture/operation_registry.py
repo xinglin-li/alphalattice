@@ -174,7 +174,11 @@ def agent_surface(root: Path) -> dict[str, Any]:
                     )
             case ast.AnnAssign(target=ast.Name(id="ROLES"), value=value):
                 entries["message:roles"] = {"enum": list(ast.literal_eval(value))}
-    for source in [committee, local / "native_bridge.py"]:
+    for source in [
+        committee,
+        committee.with_name("committee_answer.py"),
+        local / "native_bridge.py",
+    ]:
         text = source.read_text(encoding="utf-8")
         for kind in re.findall(r'(?:kind=|"(?:message_)?kind":\s*)"([A-Za-z_]+)"', text):
             entries[f"exchange:{kind}"] = {}

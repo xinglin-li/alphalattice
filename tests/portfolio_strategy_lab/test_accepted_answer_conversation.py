@@ -296,7 +296,11 @@ def answer_scene(live, tmp_path, monkeypatch):
         if delivery is not None:
             body["answer"]["accepted_delivery"] = delivery
         monkeypatch.setattr(EvidenceReviewBundles, "agent_bundle", lambda self, directory: bundle)
-        monkeypatch.setattr(live.review, "submit_analysis", lambda **kwargs: body)
+        monkeypatch.setattr(
+            live.review,
+            "submit_analysis",
+            lambda **kwargs: kwargs["admit"](lambda: body) if kwargs.get("admit") else body,
+        )
         token = REQUEST_PROVENANCE.set(
             RequestProvenance(vendor=host, session=session, goal_id=goal_id)
         )
@@ -1536,7 +1540,11 @@ def test_direct_answer_doors_keep_unknown_author_accepted_without_child_credit(
             **bundle.submission,
             "analysis_answer": accepted.model_dump(mode="json"),
         }
-        monkeypatch.setattr(live.review, "submit_analysis", lambda **kwargs: body)
+        monkeypatch.setattr(
+            live.review,
+            "submit_analysis",
+            lambda **kwargs: kwargs["admit"](lambda: body) if kwargs.get("admit") else body,
+        )
     else:
         request = {
             "operation": operation,

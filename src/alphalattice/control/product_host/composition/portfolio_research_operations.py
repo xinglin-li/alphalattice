@@ -49,14 +49,9 @@ from alphalattice.control.product_host.composition.evidence_review_application i
     ReviewOutcome,
 )
 from alphalattice.control.product_host.composition.evidence_review_bundles import (
-    ANSWER_FIELDS,
     PACKET_SELECTOR_CODES,
     EvidenceReviewBundles,
     agent_bundle_refusal,
-    bundle_answered,
-    bundle_book,
-    bundle_refused,
-    sealed_bounds_exceeded,
 )
 from alphalattice.control.product_host.composition.evidence_review_delivery import (
     EvidenceReviewDelivery,
@@ -70,18 +65,24 @@ from alphalattice.control.product_host.composition.feature_trials import (
 )
 from alphalattice.control.product_host.composition.goal_check import goal_refusal
 from alphalattice.control.product_host.composition.goals import GoalApplication
+from alphalattice.control.product_host.composition.host_answer_submission import (
+    CURRENT_OPERATION as _CURRENT_OPERATION,
+)
+from alphalattice.control.product_host.composition.host_answer_submission import (
+    finish_observation,
+    submit_agent_answer,
+    submit_evidence_analysis,
+)
 from alphalattice.control.product_host.composition.pending_decisions import (
     all_data_issues,
     pending_decisions,
 )
 from alphalattice.control.product_host.composition.plain_refusals import (
     SELECTOR_CODES,
-    STALE_PACKET,
     deferral,
     explain,
     invalid_plan_document,
     refused,
-    stale_packet_refusal,
     task_record_refusal,
     unit_refusal,
 )
@@ -395,8 +396,11 @@ from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
 from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
     TASK_KIND as CRO_REVIEW_TASK_KIND,
 )
-from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AgentRun
-from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord, AgentRole, answer_read
+from alphalattice.protocols.actor_execution.answers import (
+    AgentAnswerRecord,
+    AgentRun,
+)
+from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord, AgentRole
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
@@ -1146,6 +1150,7 @@ class PortfolioResearchOperations:
                 )
             )
         )
+        operation_scope = _CURRENT_OPERATION.set(span)
         try:
             recovery = self._recovery_context(request)
             # Prove each lifecycle admission and Evidence record once per operation.
@@ -1242,15 +1247,12 @@ class PortfolioResearchOperations:
                         lambda: observer.refused(request.operation, raised, caller=caller)
                     )
                 # Observation keeps the original transport exception.
+                _CURRENT_OPERATION.reset(operation_scope)
                 raise
-        if observer is not None and span is not None:
-            self._observe(lambda: observer.returned(span, body))
-        # Every refusal is counted, reads included: the one durable trace of where
-        # requests fail (AC, OP14).
-        refusal = refusal_code(body)
-        if observer is not None and refusal is not None:
-            self._observe(lambda: observer.refused(request.operation, refusal, caller=caller))
-        return body
+        return cast(
+            dict[str, object],
+            finish_observation(self, observer, span, request, body, caller, operation_scope),
+        )
 
     def _observe(self, step: Callable[[], _Observed]) -> _Observed | None:
         """One observer step. Its failure is a fact about the observer, kept here."""
@@ -2206,80 +2208,7 @@ class PortfolioResearchOperations:
                     return refusal
                 return committee.issued(store, _review_outcome_body(prepared), now, file)
             case "AGENT_ANSWER_SUBMIT":
-                # The bundle's own submission and answer.
-                assert request.bundle_directory is not None
-                bundle = EvidenceReviewBundles(self.review).agent_bundle(request.bundle_directory)
-                if bundle is None:
-                    return agent_bundle_refusal("agent_bundle.not_prepared")
-                # Files it names as read whole are its word, kept as provenance (OP11).
-                answer, read = answer_read(request.agent_answer or {})
-                agent_run = self._agent_run()
-                store, who = self.goals.store, (bundle.role, bundle.record_hash, answer)
-                if isinstance(thread := committee.admit(store, who, request.committee_key), dict):
-                    return thread
-                if bundle.role not in ANSWER_FIELDS:
-                    try:
-                        with self.workspace_session.mutation_gate.hold():
-                            generic_body = self.review.submit_specialist_answer(
-                                bundle=bundle, answer=answer, read_files=read, agent_run=agent_run
-                            )
-                            accepted_receipt = self._observe(
-                                lambda: self.capture_accepted_answer_context(bundle, generic_body)
-                            )
-                    except PortfolioEvidenceReviewError as error:
-                        if str(error) not in {
-                            "agent_bundle.specialist_task_changed",
-                            "agent_bundle.answer_settled",
-                        }:
-                            raise
-                        return agent_bundle_refusal(str(error), role=bundle.role)
-                    body: dict[str, object] | None = self.observe_accepted_answer(
-                        generic_body, bundle, accepted_receipt=accepted_receipt
-                    )
-                else:
-                    bound = PortfolioResearchRequestDocument.model_validate(
-                        {**bundle.submission, ANSWER_FIELDS[bundle.role]: answer}
-                    ).to_operation_request()
-                    try:
-                        body = self._review_operation(
-                            bound,
-                            caller=caller,
-                            read_files=read,
-                            agent_run=agent_run,
-                            accepted_bundle=bundle,
-                        )
-                    except ValidationError as error:
-                        # A record past its sealed bounds: named by place, count and bound.
-                        over = sealed_bounds_exceeded(error)
-                        if not over:
-                            raise
-                        return agent_bundle_refusal(
-                            "agent_bundle.seal_bound_exceeded", role=bundle.role, bounds=over
-                        )
-                    except PortfolioEvidenceReviewError as error:
-                        return bundle_refused(self, error, bundle, thread, request, caller)
-                    except ValueError as error:
-                        # A packet whose authority an install replaced is refused by what moved.
-                        if not str(error).startswith(STALE_PACKET):
-                            raise
-                        return stale_packet_refusal(
-                            str(error),
-                            role=bundle.role,
-                            book=bundle_book(bundle.submission),
-                            unit_id=bundle.submission.get("evidence_unit_id"),
-                        )
-                assert body is not None
-                answered = bundle_answered(self, bundle, body, thread, request, caller)
-                committee.answered(
-                    store, thread, who, answered, self.dispatcher.clock(), self._file_floor
-                )
-                if answered["status"] in {"ACCEPTED", "DONE"}:
-                    answered["bundle_reference"] = bundle.record_hash
-                if agent_run is not None and answered["status"] not in {"ACCEPTED", "DONE"}:
-                    answered["recorded_agent"] = agent_run.model_dump(mode="json")
-                if "conversation" in body:
-                    answered["conversation"] = body["conversation"]
-                return answered
+                return cast(dict[str, object], submit_agent_answer(self, request, caller))
             case "EVIDENCE_CRO":
                 section = self.evidence_cro(
                     selector,
@@ -2454,32 +2383,18 @@ class PortfolioResearchOperations:
                     }
                 return body
             case "EVIDENCE_ANALYSIS_SUBMIT":
-                assert request.task_id is not None
-                assert request.analysis_context_hash is not None
-                assert request.analysis_answer is not None
-                with (
-                    self.workspace_session.mutation_gate.hold()
-                    if accepted_bundle is not None
-                    else nullcontext()
-                ):
-                    analysis_body = _review_outcome_body(
-                        self.review.submit_analysis(
-                            dispatcher=self.dispatcher,
-                            selector=selector,
-                            task_id=request.task_id,
-                            context_hash=request.analysis_context_hash,
-                            answer=request.analysis_answer,
-                            caller=caller,
-                            unit_id=request.evidence_unit_id,
-                            read_files=read_files,
-                            agent_run=agent_run,
-                        )
-                    )
-                    accepted_receipt = self._observe(
-                        lambda: self.capture_accepted_answer_context(accepted_bundle, analysis_body)
-                    )
-                return self.observe_accepted_answer(
-                    analysis_body, accepted_bundle, accepted_receipt=accepted_receipt
+                return cast(
+                    dict[str, object],
+                    submit_evidence_analysis(
+                        self,
+                        request,
+                        selector,
+                        caller,
+                        read_files,
+                        agent_run,
+                        accepted_bundle,
+                        _review_outcome_body,
+                    ),
                 )
             case "EVIDENCE_SELECT":
                 assert request.analysis_publication_hash is not None

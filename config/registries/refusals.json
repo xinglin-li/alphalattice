@@ -1,5 +1,7 @@
 {
 "entries": {
+"agent_bundle.admission_busy": {"owner": "agent_bundle", "category": "RESOURCE_EXHAUSTED", "classification_note": "The bounded workspace admission is occupied; this answer was not filed and can be retried."},
+"agent_bundle.answer_replay_inconsistent": {"owner": "agent_bundle", "category": "FAILED_PRECONDITION", "classification_note": "A retained keyed response does not match its filed answer; inspect the stored evidence before retrying."},
 "pipeline.size_overhead_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE", "classification_note": "The commit stage cannot retain its measurement-cost observation."},
 "pipeline.size_selection_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE", "classification_note": "The commit stage cannot identify changed test families from its pinned source."},
 "pipeline.size_workspace_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE", "classification_note": "The running commit receipt does not provide a verified workspace identity."},

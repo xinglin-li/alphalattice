@@ -25,6 +25,10 @@ from typing import Any, Final
 from uuid import UUID
 
 from alphalattice.control.data_platform.data_decision_rule import KeptListing, KeptObservations
+from alphalattice.control.product_host.composition.committee_answer import (
+    answer_replay,
+    file_answer,
+)
 from alphalattice.control.product_host.composition.committee_materials import (
     AGENDA_LIMIT as AGENDA_LIMIT,
 )
@@ -2059,6 +2063,9 @@ def admit(
         return None
     accepted, digest = _accepted(floor), str(canonical_hash(answer))
     same = next((m for m in floor.messages if accepted == digest == m.get("answer_digest")), None)
+    # A keyed correction can be replayed even if a later answer closed the thread.
+    if key is not None and answer_replay(floor, member) is not None:
+        same = next((m for m in floor.messages if m.get("answer_digest") == digest), same)
     try:
         return _admit_member(
             floor,
@@ -2106,48 +2113,29 @@ def _accepted(floor: Floor) -> str | None:
 
 
 def answered(
-    store: GoalStore, floor: Any, member: Any, body: Any, now: datetime, file: Any
+    store: GoalStore,
+    floor: Any,
+    member: Any,
+    body: Any,
+    now: datetime,
+    file: Any,
+    *,
+    correction_reference: str | None = None,
 ) -> None:
-    """The member's answer and the Host's verdict on it, on the thread `admit` read."""
-    (role, _reference, answer), status = member, body.get("status")
-    if not isinstance(floor, Floor) or status not in {"CORRECT", "ACCEPTED", "DONE"}:
-        return
-    # Filed on the bundle's thread in the lead's session, the member its author, whoever sent it.
-    session, thread = floor.opened["session"], floor.opened["update_task_id"]
-    own = {"author_session": floor.author_session} if floor.author_session else {}
-    body["conversation"] = {"status": "RECORDED_ON_THREAD", "thread": thread, "host": session[0]}
-    body["conversation"] |= {
-        "session_id": session[1],
-        "author": _speaker(floor, own | {"role": role}),
-    }
-    with store.lock:
-        if _accepted(floor) is not None:
-            return  # the accepted answer read again: its receipt, said once
-        last = floor.messages[-1]["id"] if floor.messages else None  # its issue, or correction
-        said = {"role": role, "kind": "ANSWER", "text": "Answer submitted.", "reply_to": last}
-        said["answer_digest"] = str(canonical_hash(answer))
-        said |= own
-        verdict: dict[str, Any] = {"role": "HOST", "reply_to": _append(store, floor, now, **said)}
-        if status == "CORRECT":
-            problems, left = len(body.get("problems") or ()), body.get("rounds_left")
-            text = f"Correct the {problems} named items; {left} rounds left."
-            _append(store, floor, now, kind="CORRECTION", text=text, **verdict)
-        else:
-            refs = [str(body[k]) for k in ("answer_reference", "task_id") if body.get(k)]
-            text = "Accepted." if status == "ACCEPTED" else "Rounds spent; the valid part stands."
-            verdict |= {"outcome": status, "references": refs}
-            answer_reference = body.get("answer_reference")
-            _append(
-                store,
-                floor,
-                now,
-                kind="ACCEPTANCE",
-                text=text,
-                answer_reference=answer_reference,
-                **verdict,
-            )
-    with suppress(ValueError, OSError):
-        file(floor.opened["update_task_id"], now)
+    """File the member's answer and the Host verdict on its own thread."""
+    file_answer(
+        store,
+        floor,
+        member,
+        body,
+        now,
+        file,
+        correction_reference=correction_reference,
+        floor_type=Floor,
+        speaker=_speaker,
+        accepted=_accepted,
+        append=_append,
+    )
 
 
 def render(

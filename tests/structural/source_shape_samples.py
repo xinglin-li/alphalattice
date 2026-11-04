@@ -77,6 +77,7 @@ def evidence_review_refusal_samples():
     root = Path(__file__).resolve().parents[2] / "src/alphalattice"
     owners = (
         "control/product_host/composition/evidence_review_application.py",
+        "control/product_host/composition/evidence_analysis_submit.py",
         "control/product_host/composition/evidence_review_delivery.py",
         "control/product_host/composition/evidence_review_bundles.py",
         # The book a request's selector names, opened.

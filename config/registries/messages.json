@@ -2,6 +2,42 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "agent_bundle.admission_busy_detail": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Host is busy admitting another workspace change. This answer was not filed; resend the same answer.",
+        "zh-CN": "主机正在接收另一项工作区更改。此回答尚未存档；请重新发送相同的回答。"
+      }
+    },
+    "agent_bundle.answer_replay_inconsistent_detail": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The stored answer does not match its recorded reply. Nothing was replayed; inspect the retained answer and its thread before retrying.",
+        "zh-CN": "已存储的回答与记录的回复不一致。系统没有重放任何内容；请先检查保留的回答和对应线程，再重试。"
+      }
+    },
+    "agent_bundle.admission_busy_message": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Host is busy admitting another workspace change; resend the same answer.",
+        "zh-CN": "主机正在接收另一项工作区更改；请重新发送相同的回答。"
+      }
+    },
+    "agent_bundle.legacy_task_state_unknown": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The original Task state was not recorded; read the Task for its current state.",
+        "zh-CN": "原始任务状态未被记录；请读取任务以查看当前状态。"
+      }
+    },
     "native_bridge.bound_in_workspace": {
       "owner": "alphalattice.interface.local_application",
       "kind": "MESSAGE",

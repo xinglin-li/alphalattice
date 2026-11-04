@@ -39,6 +39,18 @@
       "layer": "integration",
       "seconds": 5
     },
+    "composition.keyed_analyst_submissions_keep_first_outcome": {
+      "description": "Concurrent keyed Analyst submissions receive definite outcomes, filed outcomes replay exactly, and refusals that filed nothing are retryable.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 30
+    },
+    "composition.observation_writes_do_not_wait_for_workspace_mutations": {
+      "description": "A held workspace mutation does not prevent the independent observation owner from recording request entry and a counted refusal.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 10
+    },
     "evaluation.continuation_snapshot_integrity": {
       "description": "A native acceptance continuation admits only the exact tracked bytes written by its recorded prestart configure and refuses other tracked changes.",
       "owner": "devtools.evaluation",
