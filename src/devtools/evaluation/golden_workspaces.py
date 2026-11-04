@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import io
 import json
@@ -11,7 +12,7 @@ import shutil
 import stat
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -284,8 +285,7 @@ def seal_payload(
 
 def _kernel32() -> Any:
     """Windows: kernel32 with CreateFileW, SetFileInformationByHandle and CloseHandle typed."""
-    import ctypes  # lazy: the Windows path alone loads ctypes
-    from ctypes import wintypes  # lazy: the Windows path alone loads ctypes
+    import ctypes.wintypes as wintypes  # lazy: the Windows path alone uses wintypes
 
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.CreateFileW.argtypes = [
@@ -341,7 +341,6 @@ def refuse_writers(path: str) -> None:
         return
     if path in _HELD:
         return
-    import ctypes  # lazy: the Windows path alone loads ctypes
 
     kernel = _kernel32()
     # GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING
@@ -376,8 +375,6 @@ def remove_tree(path: Path, root: Path) -> list[str]:
         return _remove_windows(path, root)
     if not shutil.rmtree.avoids_symlink_attacks:
         return [f"refused: safe directory traversal is unavailable: {path}"]
-    from contextlib import ExitStack
-
     left: list[str] = []
     try:
         parts = path.relative_to(root).parts
@@ -407,8 +404,6 @@ def remove_tree(path: Path, root: Path) -> list[str]:
 
 def _remove_windows(path: Path, root: Path) -> list[str]:
     """Pin every traversed directory against rename; delete each name by its own handle."""
-    import ctypes
-    from contextlib import ExitStack
 
     kernel = _kernel32()
     left: list[str] = []
