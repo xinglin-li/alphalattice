@@ -85,7 +85,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 )
 from alphalattice.kernel.quant.factor_contracts import FactorSpec
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider
+from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider, ordered_window
 
 NOW = datetime(2026, 8, 3, 22, tzinfo=UTC)
 
@@ -179,6 +179,7 @@ class FixtureProvider:
         self.sectors["SPY"] = "Reference"
 
     def fetch_daily(self, symbols, *, start, end):
+        ordered_window(start, end, "daily")
         result = {}
         for symbol in symbols:
             seed = sum(ord(item) for item in symbol)
@@ -218,6 +219,7 @@ class FixtureProvider:
         return result
 
     def fetch_action_history(self, *, listing_id, provider_symbol, start, end):
+        ordered_window(start, end, "action")
         del listing_id, provider_symbol, start, end
         return ()
 

@@ -29,6 +29,7 @@ from tests.researcher_methodology_surface.real_workspace import (
     SYMBOLS,
     SeededWalkProvider,
     _bootstrap,
+    ordered_window,
 )
 
 NOW = datetime(2026, 8, 3, 23, tzinfo=UTC)
@@ -192,6 +193,10 @@ class HeldDataProvider:
         self.unavailable_code = "data.fixture_unavailable"
 
     def _asked(self, call: str, symbol: str, start: date, end: date) -> None:
+        if call != "sector":
+            ordered_window(
+                start, end, {"actions": "action", "adjusted": "adjusted-close"}.get(call, call)
+            )
         self.calls.append((call, symbol, start, end))
         if self.unavailable:
             raise ProviderFetchError(

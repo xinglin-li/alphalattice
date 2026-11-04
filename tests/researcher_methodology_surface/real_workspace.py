@@ -138,6 +138,12 @@ def _intraday_offsets(seed: int, ordinal: int) -> tuple[float, float, float]:
     return opening, above, below
 
 
+def ordered_window(start: date, end: date, kind: str) -> None:
+    """A reversed window is the caller's error, refused as the yfinance adapter refuses it."""
+    if start > end:
+        raise ValueError(f"{kind} provider range start is after end")
+
+
 class SeededWalkProvider:
     """Deterministic non-degenerate prices, plus the sector capability."""
 
@@ -180,6 +186,7 @@ class SeededWalkProvider:
         return _intraday_offsets(self._seed(symbol), session.toordinal())
 
     def fetch_daily(self, symbols: Sequence[str], *, start: date, end: date):  # type: ignore[no-untyped-def]
+        ordered_window(start, end, "daily")
         result = {}
         for symbol in symbols:
             closes = self._closes(symbol, end)
@@ -211,12 +218,14 @@ class SeededWalkProvider:
     def fetch_action_history(
         self, *, listing_id: str, provider_symbol: str, start: date, end: date
     ):  # type: ignore[no-untyped-def]
+        ordered_window(start, end, "action")
         del listing_id, provider_symbol, start, end
         return ()
 
     def fetch_adjusted_close_history(  # type: ignore[no-untyped-def]
         self, *, listing_id: str, provider_symbol: str, start: date, end: date
     ):
+        ordered_window(start, end, "adjusted-close")
         payload = self.fetch_daily((provider_symbol,), start=start, end=end)[provider_symbol]
         return tuple(
             ProviderAdjustedClosePoint(

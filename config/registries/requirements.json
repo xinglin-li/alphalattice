@@ -74,6 +74,24 @@
       "layer": "integration",
       "seconds": 10
     },
+    "market_data_ops.daily_provider_conformance": {
+      "description": "Every daily market-data provider, the yfinance adapter and each shared fake, answers bars, actions and adjusted closes in the port's shape: exactly the requested symbols, every field finite, inside the window, ascending and split-sound.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "contract",
+      "seconds": 10
+    },
+    "market_data_ops.hydration_provider_conformance": {
+      "description": "Every one-response history provider returns the daily port's own rows with in-window actions, adjusted closes and repaired sessions that name only those rows.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "contract",
+      "seconds": 10
+    },
+    "market_data_ops.sector_provider_conformance": {
+      "description": "Every current-sector provider names itself and the symbol asked, gives a stripped sector and a 64-hex payload hash, answers alike twice, and refuses an unknown symbol with a typed provider failure.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "contract",
+      "seconds": 10
+    },
     "observation_runtime.process_is_held_to_half_the_machine_or_its_narrower_allowance": {
       "description": "A runner binds its process to at most half the machine's logical processors, or to the narrower allowance it already inherited, and reads the bound back from the operating system.",
       "owner": "alphalattice.control.observation_runtime",
