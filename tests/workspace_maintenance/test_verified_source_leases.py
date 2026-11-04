@@ -773,13 +773,51 @@ def test_os_changes_reverify_and_refuse_even_with_restored_size_and_time(tmp_pat
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     assert (path.stat().st_size, path.stat().st_mtime_ns) == (before.st_size, before.st_mtime_ns)
     for _ in range(2):
-        with pytest.raises(ValueError, match="sealed bytes changed"):
-            read()
+        returned = None
+        try:
+            with pytest.raises(ValueError, match="sealed bytes changed"):
+                returned = read()
+        except (AssertionError, pytest.fail.Exception) as error:
+            try:
+                observed = path.stat()
+                observed_size, observed_mtime = observed.st_size, observed.st_mtime_ns
+            except OSError as unavailable:
+                observed_size = observed_mtime = f"unavailable:{type(unavailable).__name__}"
+            try:
+                disk = repr(path.read_bytes())
+            except OSError as unavailable:
+                disk = f"unavailable:{type(unavailable).__name__}"
+            pytest.fail(
+                f"{error}; written_bytes={b'broken'!r}; returned_bytes={returned!r}; "
+                f"disk_after_failure={disk}; restored_size={before.st_size}; "
+                f"observed_size={observed_size}; restored_mtime_ns={before.st_mtime_ns}; "
+                f"observed_mtime_ns={observed_mtime}; lease event: not observable from the test",
+                pytrace=False,
+            )
     assert len(calls) == 3  # failures are never retained
     path.write_bytes(b"sealed")
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     assert read() == b"sealed"
     assert len(calls) == 4
+
+
+@pytest.mark.proves("workspace_runtime.source_lease_failure_evidence")
+def test_a_failed_source_change_check_names_its_evidence(tmp_path, monkeypatch):
+    """A forced stale read leaves the bytes, metadata and lease-observability in its failure."""
+    monkeypatch.setattr(
+        sys.modules[__name__], "verified_source_value", lambda *args, **kwargs: b"sealed"
+    )
+    with pytest.raises(pytest.fail.Exception) as failed:
+        test_os_changes_reverify_and_refuse_even_with_restored_size_and_time(
+            tmp_path, "same-size-restored-time"
+        )
+    message = str(failed.value)
+    assert "written_bytes=b'broken'" in message
+    assert "returned_bytes=b'sealed'" in message
+    assert "disk_after_failure=b'broken'" in message
+    assert "restored_size=6" in message and "observed_size=6" in message
+    assert "restored_mtime_ns=" in message and "observed_mtime_ns=" in message
+    assert message.split("; ")[-1] == "lease event: not observable from the test"
 
 
 def _directory_link(link: Path, target: Path) -> None:

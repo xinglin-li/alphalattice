@@ -288,6 +288,12 @@
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 6.248
+    },
+    "workspace_runtime.source_lease_failure_evidence": {
+      "description": "A failed sealed-source mutation check names the written and observed bytes, restored and observed metadata, and the unavailable lease event.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 2
     }
   }
 }
