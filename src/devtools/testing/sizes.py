@@ -2,9 +2,13 @@
 
 import ast
 import json
+import logging
 import os
 import re
 import stat
+import sys
+import threading
+import time
 from collections.abc import Callable, Iterable
 from datetime import date
 from fnmatch import fnmatchcase
@@ -938,3 +942,225 @@ def measured_costs(
 def floor_mode(lane: str) -> bool:
     """The session floor affects only the merge lane; any nonempty flag keeps reach whole."""
     return lane == "merge" and bool(os.environ.get("ALPHALATTICE_REACH_FLOOR"))
+
+
+class SessionFootprint:
+    """One full-suite process's partial session-fixture and sampled basetemp evidence."""
+
+    interval_seconds = 120.0
+
+    def __init__(
+        self, root: Path | None, directory: Path, worker: str, attempt: str, source: str
+    ) -> None:
+
+        if len(attempt) != 32 or any(ch not in "0123456789abcdef" for ch in attempt):
+            raise ValueError("invalid suite attempt identity")
+        self.root, self.directory, self.worker = root, directory, worker
+        self.attempt, self.source = attempt, source
+        self.owner_token = ""
+        self.fixtures: list[dict[str, Any]] = []
+        self.peak: dict[str, Any] = {"bytes": None, "contributors": [], "samples": 0}
+        self.errors: list[str] = []
+        self.started = time.monotonic()
+        self._last_sample: float | None = self.started
+        self._max_gap = 0.0
+        self._sample_seconds = 0.0
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._closed = False
+        self._logger = logging.getLogger("devtools.testing.session_footprint")
+        self._old_level, self._old_propagate = self._logger.level, self._logger.propagate
+        self._handler: Any = None
+        self._stream: Any = None
+        try:
+            self._stream = (directory / f"session-footprint-{attempt}-{worker}.log").open(
+                "x", encoding="utf-8"
+            )
+            self._handler = logging.StreamHandler(self._stream)
+            self._handler.setFormatter(logging.Formatter("%(message)s"))
+            self._logger.addHandler(self._handler)
+            self._logger.setLevel(logging.INFO)
+            self._logger.propagate = False
+        except (OSError, ValueError) as error:
+            self.errors.append("build log unavailable: " + str(error))
+        if worker == "main" and root is not None:
+            self._thread = threading.Thread(
+                target=self._sample_loop, name="session-footprint", daemon=True
+            )
+            try:
+                self._thread.start()
+            except RuntimeError as error:
+                self.errors.append("sampler unavailable: " + str(error))
+                self._thread = None
+
+    def _sample_loop(self) -> None:
+        while not self._stop.wait(self.interval_seconds):
+            self.sample()
+
+    def sample(self) -> None:
+
+        now = time.monotonic()
+        if self._last_sample is not None:
+            self._max_gap = max(self._max_gap, now - self._last_sample)
+        self._last_sample = now
+        try:
+            if self.root is None:
+                raise ValueError("pytest basetemp is not named")
+            info = self.root.lstat()
+            reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+            if not stat.S_ISDIR(info.st_mode) or getattr(info, "st_file_attributes", 0) & reparse:
+                raise ValueError("basetemp is not a physical directory")
+            groups: list[dict[str, Any]] = []
+            with os.scandir(self.root) as entries:
+                top = list(entries)
+            for entry in top:
+                metadata = entry.stat(follow_symlinks=False)
+                if (
+                    re.fullmatch(r"popen-gw[0-9]+", entry.name)
+                    and stat.S_ISDIR(metadata.st_mode)
+                    and not getattr(metadata, "st_file_attributes", 0) & reparse
+                ):
+                    with os.scandir(entry.path) as children:
+                        paths = [Path(child.path) for child in children]
+                else:
+                    paths = [Path(entry.path)]
+                for path in paths:
+                    groups.append(
+                        {
+                            "path": path.relative_to(self.root).as_posix(),
+                            "bytes": tmp_entry_footprint(path),
+                        }
+                    )
+            total = sum(row["bytes"] for row in groups)
+            self.peak["samples"] += 1
+            if self.peak["bytes"] is None or total > self.peak["bytes"]:
+                self.peak.update(
+                    bytes=total,
+                    contributors=sorted(groups, key=lambda row: row["bytes"], reverse=True)[:20],
+                    at_seconds=now - self.started,
+                )
+        except (OSError, ValueError) as error:
+            self.errors.append("sample unmeasured: " + str(error))
+        finally:
+            self._sample_seconds += time.monotonic() - now
+
+    def before_fixture(
+        self, fixture: Any, request: Any
+    ) -> tuple[float, Path | None, set[str] | None, str]:
+
+        if self.root is None or "tmp_path_factory" not in fixture.argnames:
+            return time.perf_counter(), None, None, "no attributable temporary factory root"
+        try:
+            base = request.config._tmp_path_factory.getbasetemp()
+            before = {entry.name for entry in base.iterdir()}
+            return time.perf_counter(), base, before, ""
+        except (OSError, ValueError, AttributeError) as error:
+            return time.perf_counter(), None, None, "fixture root unmeasured: " + str(error)
+
+    def failed_fixture(
+        self,
+        fixture: Any,
+        snapshot: tuple[float, Path | None, set[str] | None, str],
+        error: BaseException,
+    ) -> None:
+
+        self.fixtures.append(
+            {
+                "name": fixture.argname,
+                "owner": str(fixture.baseid),
+                "build_seconds": time.perf_counter() - snapshot[0],
+                "bytes": None,
+                "roots": [],
+                "reason": "fixture setup failed: " + type(error).__name__,
+            }
+        )
+
+    def after_fixture(
+        self, fixture: Any, request: Any, snapshot: tuple[float, Path | None, set[str] | None, str]
+    ) -> None:
+
+        started, base, before, reason = snapshot
+        row: dict[str, Any] = {
+            "name": fixture.argname,
+            "owner": str(fixture.baseid),
+            "build_seconds": time.perf_counter() - started,
+            "bytes": None,
+            "roots": [],
+            "reason": reason or "fixture teardown not observed",
+        }
+        self.fixtures.append(row)
+        if base is None or before is None:
+            return
+        try:
+            roots = [entry for entry in base.iterdir() if entry.name not in before]
+            row["roots"] = (
+                [path.relative_to(self.root).as_posix() for path in roots] if self.root else []
+            )
+        except (OSError, ValueError) as error:
+            row["reason"] = "fixture roots unmeasured: " + str(error)
+            return
+        if not roots:
+            row["reason"] = "no uniquely attributable new root; shared or lazy data may exist"
+            return
+
+        def measure() -> None:
+            try:
+                row["bytes"] = sum(tmp_entry_footprint(path) for path in roots)
+                row["reason"] = ""
+            except (OSError, ValueError) as error:
+                row["reason"] = "fixture bytes unmeasured: " + str(error)
+
+        request.addfinalizer(measure)
+
+    def finish(self) -> None:
+
+        if self._closed:
+            return
+        self._closed = True
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+            if self._thread.is_alive():
+                self.errors.append("sampler did not finish before the bounded join")
+            else:
+                self.sample()
+        if self._handler is not None:
+            self._logger.removeHandler(self._handler)
+            self._handler.close()
+        if self._stream is not None:
+            self._stream.close()
+        self._logger.setLevel(self._old_level)
+        self._logger.propagate = self._old_propagate
+        if self.root is None:
+            self.errors.append("pytest basetemp is not named")
+        if self.worker != "main":
+            self.peak["reason"] = "run peak is sampled by the controller"
+        value = {
+            "schema": "alphalattice.session-footprint.v1",
+            "attempt": self.attempt,
+            "source_sha": self.source,
+            "worker": self.worker,
+            "status": "partial",
+            "scope": "unverified until joined to the attempt manifest",
+            "basis": (
+                "sampled apparent bytes; no-follow; hardlinks counted per path; "
+                "fixture ownership may overlap"
+            ),
+            "fixtures": self.fixtures,
+            "peak": {
+                **self.peak,
+                "interval_seconds": self.interval_seconds,
+                "max_gap_seconds": self._max_gap,
+                "sample_seconds": self._sample_seconds,
+                "elapsed_seconds": time.monotonic() - self.started,
+            },
+            "errors": self.errors,
+        }
+        try:
+            with (self.directory / f"session-footprint-{self.attempt}-{self.worker}.json").open(
+                "x", encoding="utf-8"
+            ) as stream:
+                json.dump(value, stream, allow_nan=False)
+                stream.write("\n")
+        except (OSError, ValueError) as error:
+            print(f"test_size.session_footprint_unmeasured: {error}", file=sys.stderr)

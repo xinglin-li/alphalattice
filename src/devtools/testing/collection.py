@@ -50,6 +50,7 @@ SIZE_RECORDED = pytest.StashKey[bool]()
 SIZE_FAILED = pytest.StashKey[bool]()
 SIZE_POLICY = pytest.StashKey[dict[str, Any]]()
 SIZE_CLOCK = pytest.StashKey[dict[str, float]]()
+SESSION_FOOTPRINT = pytest.StashKey[sizes.SessionFootprint]()
 FIND = 'register its requirement first (python scripts/tests_registry.py find "<words>")'
 
 
@@ -93,6 +94,7 @@ def _size_families(config: Any) -> tuple[str, ...] | None:
 
 @pytest.hookimpl(optionalhook=True)  # type: ignore[untyped-decorator]
 def pytest_configure_node(node: Any) -> None:
+    node.workerinput["session_footprint"] = SESSION_FOOTPRINT in node.config.stash
     families = node.config.stash.get(SIZE_FAMILIES, None)
     if os.environ.get("ALPHALATTICE_PIPELINE_STAGE") == "commit" and os.environ.get(
         "ALPHALATTICE_PIPELINE_EVENTS"
@@ -108,9 +110,29 @@ def pytest_fixture_setup(fixturedef: Any, request: Any) -> Any:
     began = time.perf_counter() if clock is not None else 0.0
     item = request.node
     selected = fixturedef.argname == "tmp_path" and item.stash.get(SIZE_SELECTED, False)
+    observer = request.config.stash.get(SESSION_FOOTPRINT, None)
+    snapshot = None
+    if observer is not None and fixturedef.scope == "session":
+        try:
+            snapshot = observer.before_fixture(fixturedef, request)
+        except Exception as error:
+            observer.errors.append("fixture setup observation unavailable: " + str(error))
     before = time.perf_counter() - began if clock is not None else 0.0
-    value = yield
+    try:
+        value = yield
+    except BaseException as error:
+        if observer is not None and snapshot is not None:
+            try:
+                observer.failed_fixture(fixturedef, snapshot, error)
+            except Exception as failure:
+                observer.errors.append("failed fixture observation unavailable: " + str(failure))
+        raise
     began = time.perf_counter() if clock is not None else 0.0
+    if observer is not None and snapshot is not None:
+        try:
+            observer.after_fixture(fixturedef, request, snapshot)
+        except Exception as error:
+            observer.errors.append("fixture observation unavailable: " + str(error))
     if selected:
 
         def measure() -> None:
@@ -504,6 +526,57 @@ def _nested_required(required: tuple[str, ...]) -> tuple[str, ...]:
         ) from error
 
 
+def _session_footprint_enabled(config: Any) -> bool:
+    """Recognize the suite plugin and its own product pytest session."""
+    plugin = os.environ.get("WK_SUITE_PLUGIN", "")
+    return bool(
+        plugin
+        and os.environ.get("WK_SUITE_REPORT")
+        and not os.environ.get("PYTEST_CURRENT_TEST")
+        and config.pluginmanager.has_plugin(plugin)
+        and Path(config.rootpath).resolve() == Path(__file__).resolve().parents[3]
+    )
+
+
+def _start_session_footprint(config: Any) -> None:
+    """Bind the optional observer only to the current verified suite and its workers."""
+    if not _session_footprint_enabled(config):
+        return
+    worker_input = getattr(config, "workerinput", None)
+    owner_key = "ALPHALATTICE_SESSION_FOOTPRINT_OWNER"
+    if (worker_input is None and os.environ.get(owner_key)) or (
+        worker_input is not None and worker_input.get("session_footprint") is not True
+    ):
+        return
+    token = ""
+    try:
+        xml = getattr(config.option, "xmlpath", None)
+        directory = Path(xml).parent if xml else Path(os.environ["WK_SUITE_REPORT"]).parent
+        worker = worker_input.get("workerid", "main") if worker_input else "main"
+        if not isinstance(worker, str) or not worker.isalnum():
+            raise ValueError("invalid worker identity")
+        base = getattr(config.option, "basetemp", None)
+        root = Path(base).absolute() if base else None
+        if worker != "main" and root is not None and root.name == "popen-" + worker:
+            root = root.parent
+        if worker_input is None:
+            token = f"{os.getpid()}:{os.environ.get('WK_SUITE_ATTEMPT', '')}"
+            os.environ[owner_key] = token
+        observer = sizes.SessionFootprint(
+            root,
+            directory,
+            worker,
+            os.environ.get("WK_SUITE_ATTEMPT", ""),
+            os.environ.get("WK_SUITE_SOURCE_SHA", ""),
+        )
+        observer.owner_token = token
+        config.stash[SESSION_FOOTPRINT] = observer
+    except Exception as error:
+        if token and os.environ.get(owner_key) == token:
+            os.environ.pop(owner_key, None)
+        print(f"test_size.session_footprint_unmeasured: {error}", file=sys.stderr)
+
+
 def pytest_configure(config: Any) -> None:
     """The producer's optional required nodes override only their own ordinary deselection."""
     try:
@@ -544,11 +617,18 @@ def pytest_configure(config: Any) -> None:
         except Exception as error:
             with suppress(Exception):
                 print(f"test observation unavailable: {error}", file=sys.stderr)
+    _start_session_footprint(config)
 
 
 @pytest.hookimpl(trylast=True)  # type: ignore[untyped-decorator]
 def pytest_sessionfinish(session: Any) -> None:
     """Retain component costs once per process; missing evidence cannot prove the stage budget."""
+    observer = session.config.stash.get(SESSION_FOOTPRINT, None)
+    if observer is not None:
+        try:
+            observer.finish()
+        except Exception as error:
+            print(f"test_size.session_footprint_unmeasured: {error}", file=sys.stderr)
     clock = session.config.stash.get(SIZE_CLOCK, None)
     if clock is None:
         return
@@ -568,6 +648,15 @@ def pytest_sessionfinish(session: Any) -> None:
 
 
 def pytest_unconfigure(config: Any) -> None:
+    observer = config.stash.get(SESSION_FOOTPRINT, None)
+    if observer is not None:
+        try:
+            observer.finish()
+        except Exception as error:
+            print(f"test_size.session_footprint_unmeasured: {error}", file=sys.stderr)
+        owner_key = "ALPHALATTICE_SESSION_FOOTPRINT_OWNER"
+        if observer.owner_token and os.environ.get(owner_key) == observer.owner_token:
+            os.environ.pop(owner_key, None)
     stream = config.stash.get(OBSERVATION_STREAM, None)
     if stream is not None:
         with suppress(Exception):

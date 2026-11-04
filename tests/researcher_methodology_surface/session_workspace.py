@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -152,11 +153,12 @@ def session_workspace(
         assert target is not None
         if not (target / "workspace").is_dir() or _files(target / "workspace") != result["files"]:
             raise RuntimeError(f"session workspace was changed: {name}")
-    print(
-        f"PLAYPEN_SESSION_WORKSPACE {'BUILD' if built else 'REUSE'} {name} "
-        f"{time.perf_counter() - started:.3f}s",
-        flush=True,
+    line = (
+        f"PLAYPEN_SESSION_WORKSPACE {'BUILD' if built else 'REUSE'} "
+        f"{name} {time.perf_counter() - started:.3f}s"
     )
+    print(line, flush=True)
+    logging.getLogger("devtools.testing.session_footprint").info(line)
     return target / "workspace", result["metadata"]
 
 

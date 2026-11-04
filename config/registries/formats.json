@@ -451,6 +451,16 @@
 "alphalattice.agent-eval.host-facts"
 ]
 },
+"schema:alphalattice.session-footprint.v1": {
+"owner": "devtools.testing",
+"description": "Partial session fixture and sampled basetemp footprint evidence for a suite attempt.",
+"readers": [
+"src/devtools/testing/sizes.py",
+"tests/integration/testing/test_collection.py"
+],
+"upgraders": [],
+"version": ["alphalattice.session-footprint.v1"]
+},
 "schema:alphalattice.test-sizes.v1": {
 "owner": "devtools.testing",
 "readers": [

@@ -20,6 +20,7 @@ import hashlib
 import importlib.metadata
 import importlib.util
 import json
+import logging
 import os
 import platform
 import shutil
@@ -542,11 +543,12 @@ def build_real_risk_workspace(
         copy_workspace(seed, workspace)
         track_test_seed(str(RUNNING_TEST["id"]), seed, sidecar["files"])
         RUNNING_TEST["verify"] = verify_test_seed
-    print(
-        f"PLAYPEN_WORKSPACE_CACHE {'HIT' if hit else 'BUILD'} {key} "
-        f"{time.perf_counter() - started:.3f}s",
-        flush=True,
+    line = (
+        f"PLAYPEN_WORKSPACE_CACHE {'HIT' if hit else 'BUILD'} "
+        f"{key} {time.perf_counter() - started:.3f}s"
     )
+    print(line, flush=True)
+    logging.getLogger("devtools.testing.session_footprint").info(line)
     return _restore(workspace, installed_catalog, installed_kernels, symbols, key, sidecar)
 
 

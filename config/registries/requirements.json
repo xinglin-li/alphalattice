@@ -241,6 +241,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "testing.session_footprint": {
+      "description": "A verified full pytest run records session-fixture build time and attributed scratch with a sampled basetemp high-water mark and explicit gaps.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10
+    },
     "testing.unplaced_workers_warn_by_name": {
       "description": "Inside the private workshop, an unplaced pytest run asking for more than two workers is warned once with heavy_slot's command, never refused; other runs stay silent.",
       "owner": "devtools.testing",
