@@ -91,7 +91,7 @@ kind = "command"
 owner = "devtools.architecture"
 reason = "Lint, format, strict types and the registry, boundary, shape and budget guards on the change."
 hosts = ["workshop", "public"]
-run = ["{python}", "scripts/check_playpen.py", "--all-python", "--fast"]
+run = ["{python}", "scripts/check_playpen.py", "--all-python", "--fast", "--base", "{base}"]
 escape = "a defect the static guards name, reaching review"
 review = "2026-12-01"
 

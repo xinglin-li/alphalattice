@@ -677,7 +677,7 @@ def _check_test_shape(*, staged: bool) -> bool:
     return result.returncode == 0
 
 
-def _check_test_budget(*, staged: bool) -> bool:
+def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
     """Report growth and refuse unregistered new tests or requirement rows.
 
     Read the merge base and staged holders once; unreadable input never means zero.
@@ -701,8 +701,8 @@ def _check_test_budget(*, staged: bool) -> bool:
     try:
         pending = ROOT / git("rev-parse", "--git-path", "MERGE_HEAD").strip()
         parents = pending.read_text("ascii").splitlines() if staged and pending.is_file() else []
-        # Git compares develop with the hypothetical merge of these parent tips.
-        base = git("merge-base", "develop", "HEAD", *parents).strip()
+        # Compare the named base with the hypothetical merge of these parent tips.
+        base = git("merge-base", base_ref, "HEAD", *parents).strip()
         diff = ("diff", *["--cached"] * staged, "--numstat", "-z", "--no-renames", base, "--")
         rows = [r.split("\t", 2) for r in git(*diff, "src", "scripts", "tests").split("\0") if r]
         nets = [(path, int(a) - int(d)) for a, d, path in rows if a != "-"]
@@ -777,8 +777,8 @@ def _check_test_budget(*, staged: bool) -> bool:
         subprocess.CalledProcessError,
     ) as error:
         print(
-            f"TEST-BUDGET unmeasured, refused: {error}. Repair the index, or create a local "
-            "develop (git branch develop <its commit>); an unread budget is never zero.",
+            f"TEST-BUDGET unmeasured, refused: {error}. Repair the index or choose an "
+            "available base commit; an unread budget is never zero.",
             flush=True,
         )
         return False
@@ -878,6 +878,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         "--registry-baseline", default=os.environ.get("ALPHALATTICE_REGISTRY_BASELINE")
     )
     parser.add_argument("--all-python", action="store_true")
+    parser.add_argument("--base", default="develop", help="base commit for the test budget")
     parser.add_argument(
         "--fast",
         action="store_true",
@@ -988,7 +989,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         return 1
     if not _check_test_shape(staged=args.staged):
         return 1
-    if not _check_test_budget(staged=args.staged):
+    if not _check_test_budget(staged=args.staged, base_ref=args.base):
         return 1
     if args.fast:
         # What actually cost minutes per commit: the whole-repo structural guard

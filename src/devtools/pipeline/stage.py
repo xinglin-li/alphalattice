@@ -401,7 +401,8 @@ def _product(row: Row, context: Context) -> Outcome:
     """The product's adapter: a command row's ``run``, or a pytest row's public selection."""
     log = context.out / "logs" / f"{row.id}.log"
     if row.kind == "command":
-        argv = [sys.executable if word == "{python}" else word for word in row.run]
+        substitutions = {"{python}": sys.executable, "{base}": context.base}
+        argv = [substitutions.get(word, word) for word in row.run]
         return _call(argv, log, context, {}), None
     events = context.out / f"{row.id}-events.jsonl"
     events.touch()
