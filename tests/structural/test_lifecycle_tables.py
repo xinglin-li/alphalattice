@@ -102,6 +102,13 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "an evidence refresh still owed; evidence Tasks never defer, and a cancelling one is not",
     (
+        "control/product_host/composition/evidence_review_resume.py",
+        "_matching_task.active",
+        "QUEUED,RECOVERY_REQUIRED,RUNNING,SUCCEEDED",
+    ): "a same-publication preparation may be read while queued, running or needing recovery, "
+    "or after success with its packets rechecked; cancelling, cancelled, blocked, deferred and "
+    "review-pending Tasks are not selected",
+    (
         "control/product_host/composition/evidence_review_application.py",
         "EvidenceReviewApplication.recovery_commands",
         "QUEUED,RECOVERY_REQUIRED",
