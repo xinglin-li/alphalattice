@@ -1206,14 +1206,15 @@ def discover_package_dependencies(
     modules_by_path = dict(discover_python_modules(paths, source_root=source_root))
     packages = {module.split(".", maxsplit=1)[0] for module in modules_by_path.values()}
     edges: set[tuple[str, str]] = set()
-    for path, module in modules_by_path.items():
-        owner = module.split(".", maxsplit=1)[0]
-        if owner not in packages:
-            continue
-        for imported in discover_python_imports(path, source_root=source_root):
-            target = imported.split(".", maxsplit=1)[0]
-            if target in packages and target != owner:
-                edges.add((owner, target))
+    with kept_facts("package-imports", sys.modules[__name__]):  # each module's, by its bytes
+        for path, module in modules_by_path.items():
+            owner = module.split(".", maxsplit=1)[0]
+            if owner not in packages:
+                continue
+            for imported in discover_python_imports(path, source_root=source_root):
+                target = imported.split(".", maxsplit=1)[0]
+                if target in packages and target != owner:
+                    edges.add((owner, target))
     return tuple(sorted(edges))
 
 
@@ -1289,105 +1290,135 @@ def import_contract_violations(
     out: list[str] = []
     retained = Counter(registry.legacy_lazy_imports)
 
+    this = sys.modules[__name__]
+
+    seen: set[tuple[str, str]] = set()  # this module's private imports, per module
+    eager: set[str] = set()  # this module's top-level imports, per module
+
+    def imported_module(kind: str, target: str) -> str:  # _imported_module, from a kept site
+        return target if kind != "from" or target in modules else target.rpartition(".")[0]
+
     def inspect_module(qualified: str, source: str) -> None:
         module = qualified.removesuffix(".__init__")
-        tree = ast.parse(source)
-        lines = source.splitlines()
-        nodes = list(ast.walk(tree))  # walked once, read three times
-        parents = {child: parent for parent in nodes for child in ast.iter_child_nodes(parent)}
-        top = {id(statement) for statement in tree.body}
-        constants: dict[str, object] = {}
-        loaders = {"__import__", "importlib.import_module"}
-        for item in nodes:
-            match item:
-                case (
-                    ast.Assign(targets=[ast.Name(id=name)], value=ast.Constant(value=value))
-                    | ast.AnnAssign(target=ast.Name(id=name), value=ast.Constant(value=value))
-                ) if id(item) in top:
-                    constants[name] = value
-                case ast.Import(names=names):
-                    loaders.update(
-                        (a.asname or a.name) + ".import_module"
-                        for a in names
-                        if a.name == "importlib"
-                    )
-                case ast.ImportFrom(module="importlib", names=names):
-                    loaders.update(a.asname or a.name for a in names if a.name == "import_module")
-        package = module if qualified.endswith(".__init__") else module.rpartition(".")[0]
-        constants["__package__"] = package
-        seen: set[tuple[str, str]] = set()
-
-        def literal(node: ast.AST | None) -> object:
-            return getattr(node, "value", constants.get(getattr(node, "id", "")))
-
-        def targets_of(node: ast.AST) -> list[str]:
-            match node:
-                case ast.Import(names=names):
-                    return [a.name for a in names]
-                case ast.ImportFrom(module=module, level=level, names=names):
-                    base = resolve_name("." * level + (module or ""), package) if level else module
-                    return [f"{base}.{a.name}" for a in names]
-                case ast.Call(func=func) if ast.unparse(func) in loaders:
-                    args = {k.arg: k.value for k in node.keywords}
-                    if node.args:
-                        args.setdefault("name", node.args[0])
-                    if len(node.args) > 1:
-                        args.setdefault("package", node.args[1])
-                    name = literal(args.get("name"))
-                    context = literal(args["package"]) if "package" in args else package
-                    if isinstance(name, str) and (
-                        not name.startswith(".") or isinstance(context, str)
-                    ):
-                        return [resolve_name(name, str(context)) if name.startswith(".") else name]
-            return []
-
-        def check(node: ast.AST) -> None:
-            targets = targets_of(node)
-            if not targets:
-                return
-            scope, deferred = _import_scope(node, parents)
-            fence = registry.private_import_fences.get(module + "::" + scope, {})
-            located = f"{module}:{getattr(node, 'lineno', 0)}"
-            if deferred:
-                site = f"src/{qualified.replace('.', '/')}.py::{scope}::{ast.unparse(node)}"
-                if not re.search(r"#\s*lazy:\s*\S", lines[getattr(node, "lineno", 1) - 1]):
-                    if retained[site] < 1:
-                        out.append(f"{located}: unexplained-function-import {ast.unparse(node)}")
-                    retained[site] -= 1
+        sites = kept_fact(
+            this,
+            "import-sites " + qualified,
+            source.encode("utf-8"),
+            partial(_import_sites, qualified=qualified),
+            lambda value: isinstance(value, list) and all(len(row) == 8 for row in value),
+        )
+        seen.clear()
+        eager.clear()
+        eager.update(imported_module(site[1], t) for site in sites if site[6] for t in site[7])
+        for line, kind, scope, deferred, lazy, text, _top, targets in sites:
+            located = f"{module}:{line}"
+            if deferred and not lazy:
+                site = f"src/{qualified.replace('.', '/')}.py::{scope}::{text}"
+                if retained[site] < 1:
+                    out.append(f"{located}: unexplained-function-import {text}")
+                retained[site] -= 1
             for target in targets:
-                imported = _imported_module(node, target, modules)
-                if deferred and imported in eager:
-                    out.append(f"{located}: repeated-function-import {imported}")
-                if not target.startswith(("alphalattice.", "devtools.")):
-                    continue
-                private = any(part.startswith("_") for part in target.split(".")) and owner(
-                    module
-                ) != owner(target)
-                if (
-                    deferred
-                    and imported not in registry.deferred_imports
-                    and not (private and target in fence)
-                ):
-                    out.append(f"{located}: unlisted-function-import {imported}")
-                if private:
-                    key = (scope, target)
-                    if target not in fence or key in seen:
-                        out.append(f"{located}: private-import {target}")
-                    seen.add(key)
+                check_target(
+                    module, located, scope, deferred, imported_module(kind, target), target
+                )
 
-        eager = {_imported_module(n, t, modules) for n in tree.body for t in targets_of(n)}
-        for node in nodes:
-            check(node)
+    def check_target(
+        module: str, located: str, scope: str, deferred: bool, imported: str, target: str
+    ) -> None:
+        if deferred and imported in eager:
+            out.append(f"{located}: repeated-function-import {imported}")
+        if not target.startswith(("alphalattice.", "devtools.")):
+            return
+        fence = registry.private_import_fences.get(module + "::" + scope, {})
+        private = any(part.startswith("_") for part in target.split(".")) and owner(
+            module
+        ) != owner(target)
+        if (
+            deferred
+            and imported not in registry.deferred_imports
+            and not (private and target in fence)
+        ):
+            out.append(f"{located}: unlisted-function-import {imported}")
+        if private:
+            key = (scope, target)
+            if target not in fence or key in seen:
+                out.append(f"{located}: private-import {target}")
+            seen.add(key)
 
-    for qualified, source in sources.items():
-        if qualified.startswith(("alphalattice.", "devtools.")):
-            inspect_module(qualified, source)
+    with kept_facts("import-sites", this):  # each module's import sites, kept by its bytes
+        for qualified, source in sources.items():
+            if qualified.startswith(("alphalattice.", "devtools.")):
+                inspect_module(qualified, source)
     out.extend(
         f"stale-legacy-import {k}"
         for k, n in retained.items()
         if n > 0 and k.split("::", 1)[0][4:-3].replace("/", ".") in sources
     )
     return tuple(sorted(out))
+
+
+def _import_sites(data: bytes, qualified: str) -> list[list[Any]]:
+    """One module's import sites from its bytes, in walk order: [line, kind ("from" or "other"),
+    scope, deferred, lazy-marked, text, top-level, targets]. The rules are the caller's."""
+    module = qualified.removesuffix(".__init__")
+    source = data.decode("utf-8")
+    tree = ast.parse(source)
+    lines = source.splitlines()
+    nodes = list(ast.walk(tree))  # walked once, read twice
+    parents = {child: parent for parent in nodes for child in ast.iter_child_nodes(parent)}
+    top = {id(statement) for statement in tree.body}
+    constants: dict[str, object] = {}
+    loaders = {"__import__", "importlib.import_module"}
+    for item in nodes:
+        match item:
+            case (
+                ast.Assign(targets=[ast.Name(id=name)], value=ast.Constant(value=value))
+                | ast.AnnAssign(target=ast.Name(id=name), value=ast.Constant(value=value))
+            ) if id(item) in top:
+                constants[name] = value
+            case ast.Import(names=names):
+                loaders.update(
+                    (a.asname or a.name) + ".import_module" for a in names if a.name == "importlib"
+                )
+            case ast.ImportFrom(module="importlib", names=names):
+                loaders.update(a.asname or a.name for a in names if a.name == "import_module")
+    package = module if qualified.endswith(".__init__") else module.rpartition(".")[0]
+    constants["__package__"] = package
+
+    def literal(node: ast.AST | None) -> object:
+        return getattr(node, "value", constants.get(getattr(node, "id", "")))
+
+    def targets_of(node: ast.AST) -> list[str]:
+        match node:
+            case ast.Import(names=names):
+                return [a.name for a in names]
+            case ast.ImportFrom(module=module, level=level, names=names):
+                base = resolve_name("." * level + (module or ""), package) if level else module
+                return [f"{base}.{a.name}" for a in names]
+            case ast.Call(func=func) if ast.unparse(func) in loaders:
+                args = {k.arg: k.value for k in node.keywords}
+                if node.args:
+                    args.setdefault("name", node.args[0])
+                if len(node.args) > 1:
+                    args.setdefault("package", node.args[1])
+                name = literal(args.get("name"))
+                context = literal(args["package"]) if "package" in args else package
+                if isinstance(name, str) and (not name.startswith(".") or isinstance(context, str)):
+                    return [resolve_name(name, str(context)) if name.startswith(".") else name]
+        return []
+
+    sites: list[list[Any]] = []
+    for node in nodes:
+        if not (targets := targets_of(node)):
+            continue
+        scope, deferred = _import_scope(node, parents)
+        line = getattr(node, "lineno", 0)
+        lazy = bool(re.search(r"#\s*lazy:\s*\S", lines[getattr(node, "lineno", 1) - 1]))
+        kind = "from" if isinstance(node, ast.ImportFrom) else "other"
+        sites.append(
+            [line, kind, scope, deferred, lazy, ast.unparse(node), id(node) in top, targets]
+        )
+    return sites
 
 
 def physical_namespace_violations(

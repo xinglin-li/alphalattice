@@ -478,4 +478,86 @@ def names(value: object) -> bool:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
+def cutover_imports(data: bytes, package: list[str] | None) -> list[list[object]]:
+    """[line, module] for each module one file imports; a relative import resolved within its
+    ``package`` under src, and each name imported from a module counted as a module too."""
+    found: list[list[object]] = []
+    for node in ast.walk(ast.parse(file_text(data))):
+        modules: tuple[str, ...] = ()
+        if isinstance(node, ast.Import):
+            modules = tuple(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.level and package is not None:
+                parent = package[: len(package) - (node.level - 1)]
+                module = ".".join((*parent, *module.split(".")))
+            modules = (module, *(f"{module}.{alias.name}" for alias in node.names if module))
+        found += [[node.lineno, module] for module in modules]
+    return found
+
+
+def sites(value: object) -> bool:
+    """A kept fact's shape: a list of [line, text] rows."""
+    return isinstance(value, list) and all(
+        isinstance(row, list) and len(row) == 2 and type(row[0]) is int and isinstance(row[1], str)
+        for row in value
+    )
+
+
+def function_list(data: bytes) -> list[ast.FunctionDef]:
+    """One module's top-level functions, then its classes' methods, in source order."""
+    tree = ast.parse(file_text(data))
+    functions = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
+    functions.extend(
+        method
+        for owner in tree.body
+        if isinstance(owner, ast.ClassDef)
+        for method in owner.body
+        if isinstance(method, ast.FunctionDef)
+    )
+    return functions
+
+
+def module_functions(data: bytes) -> dict[str, ast.FunctionDef]:
+    """``function_list`` by name; a later one of the same name wins."""
+    return {node.name: node for node in function_list(data)}
+
+
+def review_clock_sites(data: bytes) -> list[list[str]]:
+    """[writers, callers]: one module's functions that write a review read clock, and those that
+    call ``_review_submission``; an inline delivery closure counts for its owning method."""
+    writers: set[str] = set()
+    callers: set[str] = set()
+    for node in function_list(data):  # every one, a repeated name too
+        name = node.name
+        for part in ast.walk(node):
+            if isinstance(part, ast.Dict) and any(
+                isinstance(k, ast.Constant) and k.value == "review_read_at" for k in part.keys
+            ):
+                writers.add(name)
+            if (
+                isinstance(part, ast.keyword)
+                and part.arg == "review_read_at"
+                and isinstance(part.value, ast.Call)
+                and isinstance(part.value.func, ast.Attribute)
+                and part.value.func.attr == "isoformat"
+            ):
+                writers.add(name)
+            if (
+                isinstance(part, ast.Call)
+                and isinstance(part.func, ast.Attribute)
+                and part.func.attr == "_review_submission"
+            ):
+                callers.add(name)
+    return [sorted(writers), sorted(callers)]
+
+
+def name_lists(value: object) -> bool:
+    """A kept fact's shape: a list of lists of names."""
+    return isinstance(value, list) and all(
+        isinstance(row, list) and all(isinstance(item, str) for item in row) for row in value
+    )
+
+
 AGENT_FACTS = (agent_facts, counts)
+REVIEW_CLOCK_FACTS = (review_clock_sites, name_lists)
