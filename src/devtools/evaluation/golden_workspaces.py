@@ -7,6 +7,7 @@ import io
 import json
 import os
 import re
+import shutil
 import stat
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -281,6 +282,47 @@ def seal_payload(
         ) from error
 
 
+def _kernel32() -> Any:
+    """Windows: kernel32 with CreateFileW, SetFileInformationByHandle and CloseHandle typed."""
+    import ctypes  # lazy: the Windows path alone loads ctypes
+    from ctypes import wintypes  # lazy: the Windows path alone loads ctypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.SetFileInformationByHandle.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    ]
+    kernel.SetFileInformationByHandle.restype = wintypes.BOOL
+    kernel.GetFileInformationByHandleEx.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    ]
+    kernel.GetFileInformationByHandleEx.restype = wintypes.BOOL
+    kernel.GetFinalPathNameByHandleW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    ]
+    kernel.GetFinalPathNameByHandleW.restype = wintypes.DWORD
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    return kernel
+
+
 # Windows: each session seed file read in place, held open so that no writer can open it.
 _HELD: dict[str, int] = {}
 
@@ -300,24 +342,141 @@ def refuse_writers(path: str) -> None:
     if path in _HELD:
         return
     import ctypes  # lazy: the Windows path alone loads ctypes
-    from ctypes import wintypes  # lazy: the Windows path alone loads ctypes
 
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel.CreateFileW.argtypes = [
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.LPVOID,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.HANDLE,
-    ]
-    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel = _kernel32()
     # GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING
     handle = kernel.CreateFileW(str(Path(path).absolute()), 0x80000000, 0x1 | 0x4, None, 3, 0, None)
     if handle == ctypes.c_void_p(-1).value:
         raise ctypes.WinError(ctypes.get_last_error(), f"test_datasets.hold_refused: {path}")
     _HELD[path] = handle  # closed with the process; the source outlives every reader of it
+
+
+def remove_tree(path: Path, root: Path) -> list[str]:
+    """Remove a passed test's own scratch `path`, inside `root` (its run's basetemp).
+
+    A link (symlink or junction) is removed itself, never followed; a sealed read-only file, or a
+    hard link to one, is deleted without touching the attribute every link of it shares. On Windows
+    pytest's own cleanup (rmtree, ignoring errors) cannot delete such a file, so each passed
+    journey's whole scratch stayed to the run's end (11-03: 11.5 GB unique in four on pc1).
+    Returns each entry it could not remove with its error, for the caller to name; never raises.
+    """
+    try:
+        if (
+            ".." in path.parts
+            or ".." in root.parts
+            or payload_path(path) == payload_path(root)
+            or not payload_path(path).is_relative_to(payload_path(root))
+            or path.is_symlink()
+            or path.is_junction()
+        ):
+            return [f"refused: {path} is not inside {root}"]
+    except (OSError, RuntimeError) as error:
+        return [f"refused: {path}: {error}"]
+    if os.name == "nt":
+        return _remove_windows(path, root)
+    if not shutil.rmtree.avoids_symlink_attacks:
+        return [f"refused: safe directory traversal is unavailable: {path}"]
+    from contextlib import ExitStack
+
+    left: list[str] = []
+    try:
+        parts = path.relative_to(root).parts
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        before = os.stat(root, follow_symlinks=False)
+        with ExitStack() as held:
+            parent = os.open(root, flags)
+            held.callback(os.close, parent)
+            after = os.fstat(parent)
+            if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+                raise ValueError("basetemp identity changed")
+            for part in parts[:-1]:
+                parent = os.open(part, flags, dir_fd=parent)
+                held.callback(os.close, parent)
+            if stat.S_ISLNK(os.stat(parts[-1], dir_fd=parent, follow_symlinks=False).st_mode):
+                os.unlink(parts[-1], dir_fd=parent)
+            else:
+                shutil.rmtree(
+                    parts[-1],
+                    dir_fd=parent,
+                    onexc=lambda _, name, error: left.append(f"{name}: {error}"),
+                )
+    except (OSError, ValueError, RuntimeError) as error:
+        left.append(f"refused: {path}: {error}")
+    return left
+
+
+def _remove_windows(path: Path, root: Path) -> list[str]:
+    """Pin every traversed directory against rename; delete each name by its own handle."""
+    import ctypes
+    from contextlib import ExitStack
+
+    kernel = _kernel32()
+    left: list[str] = []
+
+    def opened(name: Path, stack: ExitStack) -> tuple[Any, int]:
+        # DELETE | LIST_DIRECTORY | READ_ATTRIBUTES; share read/write, never delete.
+        text = str(name.absolute())
+        if not text.startswith("\\\\?\\"):
+            text = "\\\\?\\" + ("UNC\\" + text[2:] if text.startswith("\\\\") else text)
+        handle = kernel.CreateFileW(text, 0x10000 | 0x1 | 0x80, 0x3, None, 3, 0x02200000, None)
+        if handle == ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        stack.callback(kernel.CloseHandle, handle)
+        info = (ctypes.c_ulong * 2)()
+        if not kernel.GetFileInformationByHandleEx(
+            handle, 9, ctypes.byref(info), ctypes.sizeof(info)
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return handle, info[0]
+
+    def final(handle: Any) -> Path:
+        buf = ctypes.create_unicode_buffer(32768)
+        n = kernel.GetFinalPathNameByHandleW(handle, buf, len(buf), 0)
+        if not n or n >= len(buf):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return Path(buf.value)
+
+    def delete(handle: Any) -> None:
+        flags = ctypes.c_ulong(0x1 | 0x2 | 0x10)
+        if not kernel.SetFileInformationByHandle(handle, 21, ctypes.byref(flags), 4):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def walk(folder: Path, handle: Any) -> None:
+        try:
+            with os.scandir(str(payload_path(folder))) as listed:
+                names = [entry.name for entry in listed]
+            for name in names:
+                child = folder / name
+                try:
+                    with ExitStack() as stack:
+                        opened_child, attrs = opened(child, stack)
+                        if attrs & 0x10 and not attrs & 0x400:
+                            walk(child, opened_child)
+                        else:
+                            delete(opened_child)
+                except (OSError, RuntimeError) as error:
+                    left.append(f"{child}: {error}")
+            delete(handle)
+        except (OSError, RuntimeError) as error:
+            left.append(f"{folder}: {error}")
+
+    try:
+        with ExitStack() as stack:
+            base, attrs = opened(root, stack)
+            if not attrs & 0x10 or attrs & 0x400:
+                raise ValueError("basetemp is not a plain directory")
+            current = root
+            for part in path.relative_to(root).parts:
+                current /= part
+                handle, attrs = opened(current, stack)
+                if not attrs & 0x10 or attrs & 0x400:
+                    raise ValueError(f"scratch ancestor is not a plain directory: {current}")
+            if not final(handle).is_relative_to(final(base)) or final(handle) == final(base):
+                raise ValueError("scratch handle is outside basetemp")
+            walk(path, handle)
+    except (OSError, RuntimeError, ValueError) as error:
+        left.append(f"{path}: {error}")
+    return left
 
 
 def in_invocation(path: Path) -> bool:

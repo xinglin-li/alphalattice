@@ -590,6 +590,37 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     items[:] = [item for name in sorted(modules, key=lambda n: -cost[n]) for item in modules[name]]
 
 
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> Iterator[None]:
+    """A passed test's scratch goes with it, as tmp_path_retention_policy "failed" asks.
+
+    pytest's own removal ignores errors, and on Windows a sealed golden's read-only links defeat
+    it, so a passed journey's whole scratch stayed to the run's end. What still cannot go is named
+    in the test's JUnit properties, never swallowed.
+    """
+    from _pytest.tmpdir import tmppath_result_key
+
+    path = getattr(item, "funcargs", {}).get("tmp_path")
+    passed = item.stash.get(tmppath_result_key, {}).get(
+        "call", False
+    )  # tmp_path's teardown drops it
+    try:
+        yield
+    except BaseException:
+        raise  # a fixture teardown failure keeps the test's diagnostics
+    else:
+        factory = item.config._tmp_path_factory  # type: ignore[attr-defined]
+        if (
+            isinstance(path, Path)
+            and passed
+            and factory._retention_policy == "failed"
+            and path.exists()
+        ):
+            left = evaluation.golden_workspaces.remove_tree(path, factory.getbasetemp())
+            if left:
+                item.user_properties.append(("scratch_left", "; ".join(left)[:2000]))
+
+
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     """The main process adds each phase's seconds; a worker's reports reach it too."""
     if not os.environ.get(_WORKER):
