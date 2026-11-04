@@ -437,6 +437,7 @@ _DURATIONS = Path(__file__).resolve().parents[1] / "tmp" / "test-durations.json"
 costs only the order of the next parallel run."""
 _WORKER = "PYTEST_XDIST_WORKER"
 _measured: dict[str, float] = {}
+_failed: set[str] = set()
 
 
 def _recorded_durations() -> dict[str, float]:
@@ -625,6 +626,8 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     """The main process adds each phase's seconds; a worker's reports reach it too."""
     if not os.environ.get(_WORKER):
         _measured[report.nodeid] = _measured.get(report.nodeid, 0.0) + report.duration
+        if report.failed:
+            _failed.add(report.nodeid)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
@@ -634,7 +637,14 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if os.environ.get(_WORKER) or not _measured:
         return
     merged = _recorded_durations()
-    merged.update({name: round(seconds, 3) for name, seconds in _measured.items()})
+    # A failed or timed-out case stopped early: its short time never replaces a longer record,
+    # which would start it last in the next run's longest-first order.
+    merged.update(
+        {
+            name: round(max(seconds, merged.get(name, 0.0)) if name in _failed else seconds, 3)
+            for name, seconds in _measured.items()
+        }
+    )
     staged = _DURATIONS.with_name(f"{_DURATIONS.name}.{os.getpid()}")
     try:
         _DURATIONS.parent.mkdir(parents=True, exist_ok=True)

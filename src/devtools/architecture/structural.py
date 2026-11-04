@@ -13,6 +13,7 @@ import sys
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping
 from enum import StrEnum
+from functools import partial
 from importlib.util import resolve_name
 from pathlib import Path
 from types import CodeType, FunctionType, ModuleType
@@ -169,15 +170,31 @@ def source_class_names(sources: tuple[Path, ...]) -> frozenset[str]:
     """Every class, and every module-level function, the sources define."""
 
     names: set[str] = set()
-    for path in sources:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        names.update(node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
-        names.update(
-            node.name
-            for node in tree.body
-            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-        )
+    this = sys.modules[__name__]
+    with kept_facts("class-names", this):  # each file's names, kept by its bytes
+        for path in sources:
+            names.update(
+                kept_fact(
+                    this,
+                    "class-names",
+                    path.read_bytes(),
+                    _class_names_of,
+                    lambda value: (
+                        isinstance(value, list) and all(isinstance(item, str) for item in value)
+                    ),
+                )
+            )
     return frozenset(names)
+
+
+def _class_names_of(data: bytes) -> list[str]:
+    """One module's classes, at any depth, and its module-level functions."""
+    tree = ast.parse(file_text(data))
+    names = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    names.update(
+        node.name for node in tree.body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    )
+    return sorted(names)
 
 
 class StoreSurface(_Contract):
@@ -480,88 +497,120 @@ def discover_table_writes(
     """
 
     found: set[TableWrite] = set()
-    for path in sources:
-        module = _logical_module_for_path(path, source_root=source_root)
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        docstrings = {
-            id(node.body[0].value)
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
-            and node.body
-            and isinstance(node.body[0], ast.Expr)
-            and isinstance(node.body[0].value, ast.Constant)
-        }
-        texts = [
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Constant)
-            and isinstance(node.value, str)
-            and id(node) not in docstrings
-        ]
-        temporary = {
-            match.group(1).lower()
-            for node in texts
-            for match in _TEMPORARY_TABLE.finditer(str(node.value))
-        }
-        classes = [
-            (node.lineno, node.end_lineno or node.lineno, node.name)
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ClassDef)
-        ]
-        functions = [
-            (node.lineno, node.end_lineno or node.lineno, node.name)
-            for node in tree.body
-            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-        ]
-        package = module.split(".", 1)[0]
-        for statement in tree.body:
-            if (
-                isinstance(statement, ast.Assign)
-                and any(
-                    isinstance(target, ast.Name) and target.id == "WRITTEN_TABLES"
-                    for target in statement.targets
-                )
-                and isinstance(statement.value, ast.Tuple)
-            ):
-                found.update(
-                    TableWrite(
-                        table=element.value,
-                        kind="data",
-                        writer=f"{module}:WRITTEN_TABLES",
-                        package=package,
-                    )
-                    for element in statement.value.elts
-                    if isinstance(element, ast.Constant) and isinstance(element.value, str)
-                )
-        for node in texts:
-            text = str(node.value)
-            inner = [value for value in classes if value[0] <= node.lineno <= value[1]]
-            writer = (
-                min(inner, key=lambda value: value[1] - value[0])[2]
-                if inner
-                else next(
-                    (name for start, end, name in functions if start <= node.lineno <= end),
-                    "<module>",
+    this = sys.modules[__name__]
+    with kept_facts("table-writes", this):  # each file's writes, kept by its bytes
+        for path in sources:
+            module = _logical_module_for_path(path, source_root=source_root)
+            found.update(
+                TableWrite(table=table, kind=kind, writer=writer, package=package)
+                for table, kind, writer, package in kept_fact(
+                    this,
+                    "table-writes " + module,
+                    path.read_bytes(),
+                    partial(_table_writes_of, module=module),
+                    _string_rows,
                 )
             )
-            statements = [
-                ("schema", match.group(1))
-                for match in _SCHEMA_WRITE.finditer(text)
-                if not _TEMPORARY_TABLE.match(text, match.start())
-            ] + [("data", match.group(1) or match.group(2)) for match in _DATA_WRITE.finditer(text)]
-            for kind, name in statements:
-                table = name.rsplit(".", 1)[-1]
-                if table.upper() in _SQL_WORDS or table.lower() in temporary:
-                    continue
-                found.add(
-                    TableWrite(
-                        table=table,
-                        kind=kind,
-                        writer=f"{module}:{writer}",
-                        package=package,
-                    )
-                )
     return tuple(sorted(found, key=lambda value: (value.table, value.kind, value.writer)))
+
+
+def _table_writes_of(data: bytes, module: str) -> list[list[str]]:
+    """One module's static table writes from its bytes, as [table, kind, writer, package]."""
+    tree = ast.parse(file_text(data))
+    package = module.split(".", 1)[0]
+    found = _declared_written_tables(tree, module, package)
+    texts = _statement_texts(tree)
+    temporary = {
+        match.group(1).lower()
+        for node in texts
+        for match in _TEMPORARY_TABLE.finditer(str(node.value))
+    }
+    classes = [
+        (node.lineno, node.end_lineno or node.lineno, node.name)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef)
+    ]
+    functions = [
+        (node.lineno, node.end_lineno or node.lineno, node.name)
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
+    for node in texts:
+        writer = _enclosing_writer(node.lineno, classes, functions)
+        found.update(
+            (table, kind, f"{module}:{writer}", package)
+            for kind, table in _statement_writes(str(node.value))
+            if table.upper() not in _SQL_WORDS and table.lower() not in temporary
+        )
+    return sorted(map(list, found))
+
+
+def _statement_texts(tree: ast.Module) -> list[ast.Constant]:
+    """Every string constant in a module that is not a docstring."""
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+    }
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+    ]
+
+
+def _enclosing_writer(
+    line: int, classes: list[tuple[int, int, str]], functions: list[tuple[int, int, str]]
+) -> str:
+    """The innermost class around ``line``, else its top-level function, else the module."""
+    inner = [value for value in classes if value[0] <= line <= value[1]]
+    if inner:
+        return min(inner, key=lambda value: value[1] - value[0])[2]
+    return next((name for start, end, name in functions if start <= line <= end), "<module>")
+
+
+def _declared_written_tables(
+    tree: ast.Module, module: str, package: str
+) -> set[tuple[str, str, str, str]]:
+    """The tables a module names in its module-level ``WRITTEN_TABLES`` tuple, as data writes."""
+    found: set[tuple[str, str, str, str]] = set()
+    for statement in tree.body:
+        if (
+            isinstance(statement, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "WRITTEN_TABLES"
+                for target in statement.targets
+            )
+            and isinstance(statement.value, ast.Tuple)
+        ):
+            found.update(
+                (element.value, "data", f"{module}:WRITTEN_TABLES", package)
+                for element in statement.value.elts
+                if isinstance(element, ast.Constant) and isinstance(element.value, str)
+            )
+    return found
+
+
+def _statement_writes(text: str) -> list[tuple[str, str]]:
+    """The (kind, table) of each persistent schema or data statement one string spells."""
+    statements = [
+        ("schema", match.group(1))
+        for match in _SCHEMA_WRITE.finditer(text)
+        if not _TEMPORARY_TABLE.match(text, match.start())
+    ] + [("data", match.group(1) or match.group(2)) for match in _DATA_WRITE.finditer(text)]
+    return [(kind, name.rsplit(".", 1)[-1]) for kind, name in statements]
+
+
+def _string_rows(value: Any) -> bool:
+    """A kept fact's shape: a list of rows, each a list of strings."""
+    return isinstance(value, list) and all(
+        isinstance(row, list) and all(isinstance(item, str) for item in row) for row in value
+    )
 
 
 def table_writer_violations(
@@ -614,22 +663,40 @@ def duckdb_access_mode_violations(paths: tuple[Path, ...]) -> tuple[str, ...]:
     """Require every file-backed DuckDB connection to declare its access mode."""
 
     violations: list[str] = []
-    for path in paths:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if not _is_duckdb_connect(node):
-                continue
-            assert isinstance(node, ast.Call)
-            database = node.args[0] if node.args else None
-            if isinstance(database, ast.Constant) and database.value == ":memory:":
-                continue
-            access_mode = next(
-                (keyword.value for keyword in node.keywords if keyword.arg == "read_only"),
-                None,
-            )
-            if access_mode is None:
-                violations.append(f"{path.as_posix()}:{node.lineno}: missing read_only=...")
+    this = sys.modules[__name__]
+    with kept_facts("duckdb-access-mode", this):  # each file's lines, kept by its bytes
+        for path in paths:
+            violations += [
+                f"{path.as_posix()}:{line}: missing read_only=..."
+                for line in kept_fact(
+                    this,
+                    "duckdb-access-mode",
+                    path.read_bytes(),
+                    partial(_unmoded_duckdb_lines, filename=str(path)),
+                    _int_list,
+                )
+            ]
     return tuple(violations)
+
+
+def _unmoded_duckdb_lines(data: bytes, filename: str) -> list[int]:
+    """The lines of one file's file-backed DuckDB connections that declare no access mode."""
+    lines: list[int] = []
+    for node in ast.walk(ast.parse(file_text(data), filename=filename)):
+        if not _is_duckdb_connect(node):
+            continue
+        assert isinstance(node, ast.Call)
+        database = node.args[0] if node.args else None
+        if isinstance(database, ast.Constant) and database.value == ":memory:":
+            continue
+        if not any(keyword.arg == "read_only" for keyword in node.keywords):
+            lines.append(node.lineno)
+    return lines
+
+
+def _int_list(value: Any) -> bool:
+    """A kept fact's shape: a list of line numbers."""
+    return isinstance(value, list) and all(type(item) is int for item in value)
 
 
 def _is_duckdb_connect(node: ast.AST) -> bool:
@@ -653,38 +720,51 @@ def gate_after_instance_violations(paths: tuple[Path, ...]) -> tuple[str, ...]:
     lock-order recorder's (`tests/workspace_task_runner/lock_order.py`).
     """
     violations: list[str] = []
-    for path in paths:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        late: set[ast.Call] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.With, ast.AsyncWith)):
-                items = [item.context_expr for item in node.items]
-                first = next((i for i, item in enumerate(items) if _calls(item, "retain")), None)
-                if first is not None:
-                    late.update(
-                        item
-                        for item in items[first + 1 :]
-                        if isinstance(item, ast.Call) and _calls(item, "hold")
-                    )
-                    for statement in node.body:
-                        late.update(_own_calls(statement, "hold"))
-            for field in ("body", "orelse", "finalbody"):
-                statements = getattr(node, field, None)
-                if not isinstance(statements, list):
-                    continue
-                entered = next(
-                    (i for i, statement in enumerate(statements) if _enters_retained(statement)),
-                    None,
+    this = sys.modules[__name__]
+    with kept_facts("gate-after-instance", this):  # each file's lines, kept by its bytes
+        for path in paths:
+            violations += [
+                f"{path.as_posix()}:{line}: hold() asked for while a store instance is retained"
+                for line in kept_fact(
+                    this,
+                    "gate-after-instance",
+                    path.read_bytes(),
+                    partial(_late_hold_lines, filename=str(path)),
+                    _int_list,
                 )
-                if entered is None:
-                    continue
-                for statement in statements[entered + 1 :]:
-                    late.update(_own_calls(statement, "hold"))
-        violations += [
-            f"{path.as_posix()}:{call.lineno}: hold() asked for while a store instance is retained"
-            for call in sorted(late, key=lambda call: (call.lineno, call.col_offset))
-        ]
+            ]
     return tuple(violations)
+
+
+def _late_hold_lines(data: bytes, filename: str) -> list[int]:
+    """The lines of one file's ``hold`` calls asked for while a store instance is retained."""
+    tree = ast.parse(file_text(data), filename=filename)
+    late: set[ast.Call] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.With, ast.AsyncWith)):
+            items = [item.context_expr for item in node.items]
+            first = next((i for i, item in enumerate(items) if _calls(item, "retain")), None)
+            if first is not None:
+                late.update(
+                    item
+                    for item in items[first + 1 :]
+                    if isinstance(item, ast.Call) and _calls(item, "hold")
+                )
+                for statement in node.body:
+                    late.update(_own_calls(statement, "hold"))
+        for field in ("body", "orelse", "finalbody"):
+            statements = getattr(node, field, None)
+            if not isinstance(statements, list):
+                continue
+            entered = next(
+                (i for i, statement in enumerate(statements) if _enters_retained(statement)),
+                None,
+            )
+            if entered is None:
+                continue
+            for statement in statements[entered + 1 :]:
+                late.update(_own_calls(statement, "hold"))
+    return [call.lineno for call in sorted(late, key=lambda call: (call.lineno, call.col_offset))]
 
 
 def _calls(node: ast.AST, name: str) -> bool:

@@ -6,6 +6,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from devtools.architecture.structural import file_text
+
 _OPTION_CASES = {
     "accessions": ("--acquire-sec", "--entities", "AAPL", "--accessions", "bad", "--preflight"),
     "entities": ("--acquire-sec", "--entities", *(f"QE{index}" for index in range(9))),
@@ -372,3 +374,108 @@ def in_scope(paths):
 def scanned(root: Path, pattern: str = "*.py", *, recursive: bool = True) -> tuple[Path, ...]:
     """The files a per_file scan reads: root's, or when scoped only the changed ones."""
     return in_scope(sorted(root.rglob(pattern) if recursive else root.glob(pattern)))
+
+
+# Per-file facts the structural guards keep by each file's bytes (structural.kept_fact).
+
+
+def chat_model_imports(data: bytes) -> list[int]:
+    """How often one file imports langchain's chat-model initializer, and a Provider client."""
+    forbidden_modules = {"langchain_deepseek", "langchain_ollama", "langchain_openai", "openai"}
+    init = direct = 0
+    for node in ast.walk(ast.parse(file_text(data))):
+        if isinstance(node, ast.ImportFrom):
+            init += node.module == "langchain.chat_models"
+            direct += node.module in forbidden_modules
+        elif isinstance(node, ast.Import) and any(
+            alias.name in forbidden_modules for alias in node.names
+        ):
+            direct += 1
+    return [init, direct]
+
+
+def counts(value: object) -> bool:
+    """A kept fact's shape: a list of counts."""
+    return isinstance(value, list) and all(type(item) is int for item in value)
+
+
+def agent_facts(data: bytes) -> list[int]:
+    """Whether one file names an agent invocation, imports a framework tool binding, and
+    imports the Alpha agent package: three flags from its bytes."""
+    text = file_text(data)
+    invocation_tokens = (
+        "create_deep_agent",
+        "load_agent_profile",
+        "TypedActionMiddleware",
+        "build_chat_model(",
+    )
+    framework_binding_imports = {
+        ("langchain_core.tools", "StructuredTool"),
+        ("langchain_core.tools", "tool"),
+        ("langchain.tools", "tool"),
+        ("langgraph.prebuilt.tool_node", "ToolRuntime"),
+    }
+    alpha_agent_prefix = "alphalattice.investment.alpha_research.agent"
+    tree = ast.parse(text)
+    binds = any(
+        isinstance(node, ast.ImportFrom)
+        and any((node.module, alias.name) in framework_binding_imports for alias in node.names)
+        for node in ast.walk(tree)
+    )
+    imported_modules = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+    imported_modules.update(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    imports_agent = any(
+        imported == alpha_agent_prefix or imported.startswith(f"{alpha_agent_prefix}.")
+        for imported in imported_modules
+    )
+    invokes = any(token in text for token in invocation_tokens)
+    return [int(invokes), int(binds), int(imports_agent)]
+
+
+def declared_imports_of(data: bytes, package: str) -> list[str]:
+    """One file's ``alphalattice`` imports from its bytes, relative ones resolved in ``package``."""
+    tree = ast.parse(data.decode("utf-8"))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if node.level == 0:
+                if node.module and node.module.startswith("alphalattice"):
+                    found.add(node.module)
+                continue
+            base = package.split(".") if package else []
+            climb = node.level - 1
+            if climb:
+                base = base[: len(base) - climb]
+            resolved = ".".join([*base, node.module] if node.module else base)
+            if resolved.startswith("alphalattice"):
+                found.add(resolved)
+        elif isinstance(node, ast.Import):
+            found |= {a.name for a in node.names if a.name.startswith("alphalattice")}
+        elif isinstance(node, ast.Call):
+            target = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+            if target in {"import_module", "__import__"}:
+                for argument in node.args:
+                    if (
+                        isinstance(argument, ast.Constant)
+                        and isinstance(argument.value, str)
+                        and argument.value.startswith("alphalattice")
+                    ):
+                        found.add(argument.value)
+    return sorted(found)
+
+
+def names(value: object) -> bool:
+    """A kept fact's shape: a list of names."""
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+AGENT_FACTS = (agent_facts, counts)
