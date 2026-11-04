@@ -157,7 +157,16 @@ class ResourceObservation:
 
     def _file(self) -> None:
         frame: FrameType | None = sys._getframe(1)
-        ignored = (__name__, "devtools.pipeline.receipt", "pathlib", "tempfile", "os", "io")
+        ignored = (
+            __name__,
+            "devtools.pipeline.receipt",
+            "devtools.testing.contracts",
+            "pathlib",
+            "tempfile",
+            "os",
+            "io",
+            "shutil",
+        )
         while frame and frame.f_globals.get("__name__", "") in ignored:
             frame = frame.f_back
         name = frame.f_globals.get("__name__", "") if frame else ""

@@ -11,11 +11,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.structural.pytest_support import AUDIT_HOOK_SAMPLE, descriptor_provenance
+
 
 @pytest.mark.proves("testing.layer_contract")
 @pytest.mark.parametrize(
     "case,layer,header,body,refused",
     [
+        ("fd-provenance", "unit", "", "", False),
         ("module-inventory", "unit", "", "import sys; sys.modules.get('duckdb')", True),
         ("root-pure", "unit", "", "", False),
         ("root-lookalike", "unit", "", "", True),
@@ -389,34 +392,12 @@ def held():
             "hook",
             "old_area",
             "",
-            """
-from devtools.testing import audit as observe
-seen=[]
-with observe.subscribe(lambda event,args: seen.append(('a',event))):
-    with observe.subscribe(lambda event,args: seen.append(('b',event))):
-        __import__('sys').audit('test.contract.first')
-with observe.subscribe(lambda event,args: seen.append(('c',event))):
-    __import__('sys').audit('test.contract.second')
-assert seen.count(('a','test.contract.first')) == 1
-assert seen.count(('b','test.contract.first')) == 1
-assert seen.count(('c','test.contract.second')) == 1
-assert ('a','test.contract.second') not in seen
-import pytest
-calls=[]
-def stopped(event,args):
-    if event == 'test.contract.failure':
-        calls.append(event)
-        raise ValueError('stopped')
-with pytest.raises(ValueError):
-    with observe.subscribe(stopped):
-        __import__('sys').audit('test.contract.failure')
-__import__('sys').audit('test.contract.failure')
-assert calls == ['test.contract.failure']
-""",
+            AUDIT_HOOK_SAMPLE,
             False,
         ),
     ],
     ids=[
+        "fd-provenance",
         "module-inventory",
         "root-pure",
         "root-lookalike",
@@ -492,6 +473,9 @@ assert calls == ['test.contract.failure']
 def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
     tmp_path, monkeypatch, case, layer, header, body, refused
 ):
+    if case == "fd-provenance":
+        descriptor_provenance(tmp_path)
+        return
     if case in {"temporary", "root-pure"}:
         monkeypatch.setenv(
             "ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(["tests/outer.py::test_outer"])
