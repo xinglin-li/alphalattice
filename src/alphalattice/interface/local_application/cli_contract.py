@@ -2380,12 +2380,14 @@ def command(
     )
     chosen = quoting or shell()
     if chosen == "powershell" and not left and any('"' in str(p) for p in parts[len(prefix) :]):
-        # Windows PowerShell 5.1 hands a native program an argument's double quotes bare
-        # (`--file '{"a":1}'` arrives as `{a:1}`): such a request goes whole through stdin, as
-        # ASCII JSON, which every PowerShell pipes as written (V449).
+        # PowerShell 5.1 strips argument quotes. Pipe ASCII JSON with a BOM-free encoding
+        # scoped to this invocation, leaving the caller's $OutputEncoding unchanged.
         whole = {key: value for key, value in request.items() if value is not None}
         piped = json.dumps(whole, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
-        return f"{_powershell(piped)} | {join([*prefix, 'request', '--file', '-'], chosen)}"
+        return (
+            "& { $OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+            f"{_powershell(piped)} | {join([*prefix, 'request', '--file', '-'], chosen)}; }}"
+        )
     return join(parts, chosen) + tail
 
 
