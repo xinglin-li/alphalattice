@@ -558,8 +558,9 @@
     {
       "pattern": "tests/alternative_evidence_desk/test_portfolio_coverage_run.py::test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on*",
       "owner": "tests.alternative_evidence_desk",
-      "reason": "historical maximum 74.255 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
+      "reason": "Real multi-unit preparation and partial-failure recovery: historical 74.255 s; focused node 44.308 s on 2026-11-04, above the 30 s Medium bound.",
       "timeout_seconds": 900,
+      "size_contract": "nightly_only",
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
     },
     {
@@ -1396,6 +1397,12 @@
       "seen_on": [
         "mac1"
       ]
+    },
+    {
+      "node": "tests/structural/test_refusal_contracts.py::test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form",
+      "owner": "tests.structural",
+      "until": "2026-11-04",
+      "reason": "Confirmed post-merge regression; expires with its owned repair."
     }
   ],
   "mandatory": [

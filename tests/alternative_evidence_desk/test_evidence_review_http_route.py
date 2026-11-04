@@ -316,7 +316,9 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
     assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
 
 
-def test_a_captured_preparation_is_reused_after_time_moves_on(tmp_path: Path, http_book) -> None:
+def test_a_captured_preparation_is_reused_after_time_moves_on(
+    tmp_path: Path, http_book, monkeypatch, capsys
+) -> None:
     """A captured preparation is reused after time moves on."""
 
     from alphalattice.interface.local_application.client import LocalResearchClient
@@ -342,6 +344,17 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(tmp_path: Path, ht
         prepared = client.request(captured)
         assert prepared["disposition"] == "ADMITTED"
         assert prepared["evidence_as_of"] == _NOW.isoformat()
+        # A review rerun joins this exact queued preparation rather than capturing a new clock.
+        now[0] = _NOW + timedelta(seconds=1)
+        in_flight = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
+        assert "resume" in in_flight["next_requests"]
+        resume = in_flight["next_requests"]["resume"]
+        assert resume == {"operation": "STATUS", "task_id": prepared["task_id"]}
+        for _ in range(2):
+            joined = client.request(resume)
+            assert joined["lifecycle"] in {"QUEUED", "RUNNING"}
+            assert joined["task_id"] == prepared["task_id"]
+            assert len(service.registry.tasks()) == count + 1
         service.drain()
         task_id = prepared["task_id"]
         adapter = service.review.evidence_task_adapter
@@ -362,6 +375,95 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(tmp_path: Path, ht
         later_preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
         assert later_preview["prepared_task_id"] is None, "a new cutoff is a new intent"
         assert later_preview["next_requests"]["prepare"]["evidence_as_of"] == now[0].isoformat()
+        # The deliberate new preview stays available; a rerun can instead reuse the same review.
+        assert later_preview["next_requests"]["resume"] == {
+            "operation": "STATUS",
+            "task_id": task_id,
+        }
+        for _ in range(2):
+            reused = client.request(later_preview["next_requests"]["resume"])
+            assert reused["lifecycle"] == "SUCCEEDED" and reused["task_id"] == task_id
+            assert later_preview["next_requests"]["analyst_bundle_u01"]["task_id"] == task_id
+            assert len(service.registry.tasks()) == count + 1
+
+        # The actual review command reuses the same Host Task on both reruns.
+        from alphalattice.interface.local_application import client as client_module
+        from alphalattice.interface.local_application.cli import main
+
+        class ReviewClient:
+            workspace = service.session.workspace
+            goal = None
+
+            def selected_url(self, *_args):
+                return ""
+
+            def request(self, document, timeout=None):
+                if document["operation"] == "RESEARCH_UPDATE_READBACK":
+                    return {
+                        "status": "PUBLISHED",
+                        "next_requests": {
+                            "evidence_preview": {"operation": "EVIDENCE_PREVIEW", **selected},
+                            "review": {"operation": "EVIDENCE_CRO", **selected},
+                        },
+                    }
+                return client.request(document, timeout=timeout)
+
+        monkeypatch.setattr(client_module, "LocalResearchClient", lambda *a, **k: ReviewClient())
+        for _ in range(2):
+            assert (
+                main(
+                    [
+                        "--workspace",
+                        str(service.session.workspace),
+                        "--view",
+                        "full",
+                        "strategy-book",
+                        "review",
+                        "--package",
+                        "book",
+                        "--dir",
+                        str(tmp_path / "rerun-bundles"),
+                        "--update",
+                        "published",
+                    ],
+                    serve=lambda _: 0,
+                )
+                == 0
+            )
+            answer = json.loads(capsys.readouterr().out)["data"]
+            assert answer["evidence"]["prepared_task_id"] == task_id
+            assert answer["evidence"]["evidence_as_of"] == captured["evidence_as_of"]
+            assert len(service.registry.tasks()) == count + 1
+
+        # An unreadable matching run is unknown, not a reason to admit a new Task.
+        from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
+            BookSelector,
+            PortfolioEvidenceReviewError,
+        )
+
+        chosen = BookSelector(**selected)
+        scope = service.review.resolve_book(chosen).scope
+        read_run = adapter.run_of
+        with monkeypatch.context() as damaged:
+            damaged.setattr(
+                adapter,
+                "run_of",
+                lambda task: None if str(task.task_id) == task_id else read_run(task),
+            )
+            with pytest.raises(
+                PortfolioEvidenceReviewError, match=r"alternative_evidence\.artifact_unavailable"
+            ):
+                service.review._resumable_preparation(chosen, scope, now=now[0])
+        assert len(service.registry.tasks()) == count + 1
+        assert (
+            service.review._resumable_preparation(
+                BookSelector(result_hash="f" * 64), scope, now=now[0]
+            )
+            is None
+        )
+        with monkeypatch.context() as changed:
+            changed.setattr(adapter, "run_binding_hash", lambda **_kwargs: "f" * 64)
+            assert service.review._resumable_preparation(chosen, scope, now=now[0]) is None
 
         # A binding the workspace no longer describes is refused by name and
         # points back to the preview; nothing is admitted.

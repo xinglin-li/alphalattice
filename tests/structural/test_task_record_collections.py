@@ -25,6 +25,8 @@ STRICT_READERS = {
         "_run_tasks _active_refresh_task offered_installs _completed_task "
         "_accepted_answer_delivery recovery_commands",
     ),
+    # Continuation chooses a retained preparation only from complete canonical authority.
+    COMPOSITION + "evidence_review_resume.py": ("", "resumable_preparation"),
     # The same install sent again records itself as each blocked install's successor.
     COMPOSITION + "evidence_authority_setup.py": ("EvidenceInstall", "_continue_blocked"),
     COMPOSITION + "feature_trials.py": ("FeatureTrials", "way_on"),

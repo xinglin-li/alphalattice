@@ -73,6 +73,11 @@ from alphalattice.interface.local_application.goals import (
     first_use_asks,
     target_sessions,
 )
+from alphalattice.interface.local_application.review_evidence import (
+    read_resumed,
+    review_evidence_view,
+    select_preparation,
+)
 from alphalattice.protocols.research_authoring.selection import (
     dump_declaration,
     load_safe_yaml_document,
@@ -2658,20 +2663,11 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         field: getattr(args, field, None)
         for field in ("evidence_as_of", "preparation_binding_hash")
     }
-    preview: dict[str, Any] = {}
-    prepare: dict[str, Any] | None
-    if any(captured.values()):
-        if not all(captured.values()):
-            raise LocalResearchClientError("local_client.request_invalid")
-        # Resume only the named preparation. Its owner rechecks this publication,
-        # cutoff and binding; a new preview would declare a different run.
-        prepare = {**preview_request, "operation": "EVIDENCE_PREPARE", **captured}
-    else:
-        preview = chain.send("evidence_preview", preview_request)
-        prepare = chain.offered(preview, "prepare")
-        if preview.get("status") != "EVIDENCE_PREPARATION_READY" or prepare is None:
-            return chain.stop("evidence_preview", preview)
-    if chain.wake is not None:
+    preview, prepare = select_preparation(chain, captured, preview_request)
+    if prepare is None:
+        return chain.stop("evidence_preview", preview)
+    resuming = prepare.get("operation") == "STATUS"
+    if chain.wake is not None and not resuming:
         continuation = {field: prepare.get(field) for field in captured}
         if not all(continuation.values()):
             raise LocalResearchClientError("local_client.request_invalid")
@@ -2683,8 +2679,14 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
     pending = outcome_of(prepared) == "PENDING"
     if (ended := chain.followed("evidence", prepared)) is not None:
         return ended
-    # The run's own bundles at its cutoff: the same preparation asked again reuses it.
-    current = chain.send("evidence_prepared", prepare) if pending else prepared
+    if resuming:
+        prepared, current, stopped = read_resumed(
+            chain, prepared, prepare, preview_request, pending
+        )
+        if stopped is not None:
+            return stopped
+    else:
+        current = chain.send("evidence_prepared", prepare) if pending else prepared
     bundles = chain.bundles(current, root)
     if isinstance(bundles, dict):
         return bundles
@@ -2693,12 +2695,7 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         "status": "BOOK_REVIEW_READY" if bundles else "EVIDENCE_PREPARED",
         "strategy_package_id": package,
         ("positions" if update else "book"): subject,
-        "evidence": {
-            "status": current.get("status") or current.get("disposition"),
-            "evidence_as_of": current.get("evidence_as_of") or prepared.get("evidence_as_of"),
-            "coverage": current.get("coverage") or preview.get("coverage"),
-            "prepared_task_id": prepared.get("task_id"),
-        },
+        "evidence": review_evidence_view(preview, current, prepared, resuming=resuming),
         "analyst_bundles": bundles,
         "steps": chain.steps,
         "next_action": "DISPATCH_ANALYSTS" if bundles else "READ_EVIDENCE",

@@ -28,6 +28,10 @@ from alphalattice.control.product_host.composition.evidence_review_resume import
     CURRENT_WITHIN,
     answered_units,
     current_answers,
+    preview_binding,
+    preview_units,
+    resumable_preparation,
+    resume_offers,
     resumed,
     unanswered,
 )
@@ -1983,6 +1987,18 @@ class EvidenceReviewApplication:
             return None if book is None else self._open_book(self.inputs(), book)
         return None
 
+    def _resumable_preparation(
+        self, selector: BookSelector, scope: PortfolioIssuerScope, *, now: datetime
+    ) -> tuple[TaskRecord, AlternativeEvidenceCoverageRun] | None:
+        return resumable_preparation(
+            self,
+            scope,
+            now=now,
+            matches=lambda subject: (
+                EvidenceTaskAdmission.model_validate(subject).selector == selector.request_fields()
+            ),
+        )
+
     def preview_evidence(
         self, selector: BookSelector | None = None, *, caller: str = "HUMAN"
     ) -> dict[str, object]:
@@ -2030,49 +2046,19 @@ class EvidenceReviewApplication:
         request = self.evidence_policy.run_request(run)
         selector_fields = chosen.request_fields()
         next_requests: dict[str, dict[str, str]] = {}
+        resumable = self._resumable_preparation(chosen, scope, now=now)
+        if resumable is not None:
+            next_requests["resume"] = {"operation": "STATUS", "task_id": str(resumable[0].task_id)}
         prepared_task_id: str | None = None
         intent = coverage_intent_hash(run, policy=request)
-        units_body: list[dict[str, object]] = []
-        units_prepared = 0
-        for unit in run.units:
-            found = adapter.completed_unit(
-                unit.preparation_intent_hash, now=now, evidence_as_of=unit.request.evidence_as_of
-            )
-            if found is not None:
-                units_prepared += 1
-                next_requests[f"packet_{unit.unit_id}"] = {
-                    "operation": "EVIDENCE_PACKET",
-                    **selector_fields,
-                    "task_id": str(found[0]),
-                    **({} if found[1] is None else {"evidence_unit_id": found[1]}),
-                }
-            units_body.append(
-                {
-                    "unit_id": unit.unit_id,
-                    "ordered_entity_ids": list(unit.ordered_entity_ids),
-                    "request_hash": unit.request.request_hash,
-                    "obligation_hash": unit.obligation.obligation_hash,
-                    "preparation_intent_hash": unit.preparation_intent_hash,
-                    "prepared_task_id": None if found is None else str(found[0]),
-                    "prepared_unit_id": None if found is None else found[1],
-                    "source_check": (
-                        None
-                        if found is None
-                        else adapter.prepared_source_check(str(found[0]), found[1])
-                    ),
-                }
-            )
+        units_body, units_prepared = preview_units(
+            adapter, run, selector_fields, next_requests, now=now
+        )
+        next_requests.update(resume_offers(self, chosen, resumable))
         completed = adapter.completed_run(run, now=now)
         if completed is not None:
             prepared_task_id = str(completed.task_id)
-        binding: dict[str, object] = {
-            "run_hash": run.run_hash,
-            "issuer_scope_hash": scope.scope_hash,
-            "resource_binding_hash": run.resource_binding_hash,
-            "unit_count": len(run.units),
-            "unit_limit": run.unit_limit,
-            "packing_rules_id": run.packing_rules_id,
-        }
+        binding = preview_binding(run, scope)
         inventory = adapter.source_inventory(
             run, recorded, mode=self.evidence_policy.mode, ciks=self._issuer_ciks()
         )
@@ -2189,6 +2175,19 @@ class EvidenceReviewApplication:
             "preparation_binding_hash": intent,
             "preparation_binding": binding,
             "prepared_task_id": prepared_task_id,
+            **(
+                {
+                    "resumable_preparation": {
+                        "task_id": str(resumable[0].task_id),
+                        "evidence_as_of": resumable[1].evidence_as_of.isoformat(),
+                        "preparation_binding_hash": coverage_intent_hash(
+                            resumable[1], policy=self.evidence_policy.run_request(resumable[1])
+                        ),
+                    }
+                }
+                if resumable is not None
+                else {}
+            ),
             # A one-unit book's check is the book's; a wider book's are per unit (`coverage.units`).
             "source_check": units_body[0]["source_check"] if len(units_body) == 1 else None,
             "admission": self._admission_view(),

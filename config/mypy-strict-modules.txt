@@ -143,6 +143,7 @@ src/alphalattice/control/product_host/composition/workspace_activity.py
 scripts/run_local_portfolio_web.py
 src/alphalattice/oversight/chief_risk_officer
 src/alphalattice/control/product_host/composition/evidence_review_application.py
+src/alphalattice/control/product_host/composition/evidence_review_resume.py
 src/alphalattice/control/product_host/composition/evidence_review_delivery.py
 src/alphalattice/control/product_host/composition/evidence_review_projection.py
 src/alphalattice/control/product_host/composition/evidence_review_bundles.py

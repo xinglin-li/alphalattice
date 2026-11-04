@@ -7671,6 +7671,12 @@
     "meaning": "The Task whose completed preparation already answers this run, by its id; none when none does."
    },
    {
+    "name": "resumable_preparation",
+    "kind": "object",
+    "required": false,
+    "meaning": "A still-bound preparation of this same book, naming its task_id, original evidence_as_of and preparation_binding_hash; its offered resume reads that Task without admitting a new one."
+   },
+   {
     "name": "source_check",
     "kind": "object|null",
     "required": true,
@@ -7698,7 +7704,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The requests this preview offers, each ready to send: `prepare`, and for each prepared unit `packet_<unit>` and `analyst_bundle_<unit>`; with no Evidence installed, `install`, its issuers named by the Host's rule."
+    "meaning": "The requests this preview offers, each ready to send: `prepare` for this cutoff, `resume` to read a still-bound Task of this book, and for prepared units `packet_<unit>` and `analyst_bundle_<unit>`; with no Evidence installed, `install`, its issuers named by the Host's rule."
    },
    {
     "name": "claim",

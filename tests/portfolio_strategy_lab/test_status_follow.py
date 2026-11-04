@@ -978,19 +978,54 @@ class _ScriptedHost:
                 subject = {k: v for k, v in document.items() if k != "operation"}
                 subject["evidence_as_of"] = f"2026-10-12T12:{self.previews:02d}:00+00:00"
                 subject["preparation_binding_hash"] = "c" * 64
+                prior = {}
+                if self.prepared_request:
+                    prior = {
+                        f"analyst_bundle_{unit}": {
+                            "operation": "AGENT_BUNDLE_PREPARE",
+                            "agent_role": "ANALYST",
+                            "evidence_unit_id": unit,
+                            "task_id": "t-evidence",
+                            "bundle_directory": None,
+                            **book,
+                        }
+                        for unit in ("u1", "u2")
+                    }
                 return {
                     "status": "EVIDENCE_PREPARATION_READY",
                     "coverage": {"unit_count": 2},
-                    "next_requests": {"prepare": {"operation": "EVIDENCE_PREPARE", **subject}},
+                    **(
+                        {
+                            "resumable_preparation": {
+                                "task_id": "t-evidence",
+                                "evidence_as_of": self.prepared_request["evidence_as_of"],
+                                "preparation_binding_hash": self.prepared_request[
+                                    "preparation_binding_hash"
+                                ],
+                            }
+                        }
+                        if self.prepared_request
+                        else {}
+                    ),
+                    "next_requests": {
+                        "prepare": {"operation": "EVIDENCE_PREPARE", **subject},
+                        **prior,
+                        **(
+                            {"resume": {"operation": "STATUS", "task_id": "t-evidence"}}
+                            if self.prepared_request
+                            else {}
+                        ),
+                    },
                 }
             case "EVIDENCE_PREPARE" if not self.prepares:
                 self.prepares += 1
                 self.prepared_request = document
                 return {"status": "ADMITTED", "task_id": "t-evidence", "lifecycle": "QUEUED"}
-            case "EVIDENCE_PREPARE":
-                assert document == self.prepared_request
+            case "EVIDENCE_PREPARE" | "EVIDENCE_CRO":
+                if document["operation"] == "EVIDENCE_PREPARE":
+                    assert document == self.prepared_request
                 # The same preparation asked again: reused, its own units offered.
-                subject = {k: v for k, v in document.items() if k != "operation"}
+                subject = {k: v for k, v in self.prepared_request.items() if k != "operation"}
                 units = {
                     f"analyst_bundle_{unit}": {
                         "operation": "AGENT_BUNDLE_PREPARE",
@@ -1077,6 +1112,24 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     assert answer["next_requests"] == {
         "review": {"operation": "EVIDENCE_CRO", "result_hash": "b" * 64}
     }
+    for _ in range(2):
+        repeated = client_module._review_steps(host, _review_args(tmp_path / "analysts"))
+        assert repeated["evidence"]["prepared_task_id"] == "t-evidence"
+        assert host.prepares == 1
+    request, seen = host.request, []
+
+    def moved(document, timeout=None):
+        result = request(document, timeout)
+        if document["operation"] == "EVIDENCE_PREVIEW":
+            seen.append(True)
+            if len(seen) == 2:
+                result["resumable_preparation"]["task_id"] = "another-task"
+        return result
+
+    host.request = moved
+    changed = client_module._review_steps(host, _review_args(tmp_path / "analysts"))
+    assert changed["book_review"]["stopped_at"] == "evidence_prepared" and host.prepares == 1
+    host.request = request
     assert {d["task_id"] for d in host.sent if d["operation"] == "STATUS"} == {
         "t-book",
         "t-evidence",
@@ -1089,7 +1142,9 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     stopped = client_module._review_steps(host, _review_args(folder.parent))
     assert stopped["book_review"]["stopped_at"] == "evidence_preview"
     host.prerequisites = True
+    before_resume = len(host.sent)
     assert client_module._review_steps(host, resume)["analyst_bundles"] == answer["analyst_bundles"]
+    assert not any(d["operation"] == "EVIDENCE_PREPARE" for d in host.sent[before_resume:])
     assert (folder / "answer.json").read_bytes() == b"{}\n"
 
 
@@ -1149,10 +1204,10 @@ def test_a_review_of_a_dates_positions_binds_their_publication(
     assert answer["status"] == "BOOK_REVIEW_READY"
     assert answer["positions"]["review_selector"]["update_publication_hash"] == "p" * 64
     previews = [d for d in host.sent if d["operation"] == "EVIDENCE_PREVIEW"]
-    assert [d["update_publication_hash"] for d in previews] == ["p" * 64]
+    assert [d["update_publication_hash"] for d in previews] == ["p" * 64] * 3
     assert not any(d["operation"] in {"CONTROLS", "RUN"} for d in host.sent)
     assert [bundle["unit"] for bundle in answer["analyst_bundles"]] == ["u1", "u2"]
-    assert host.previews == 1 and host.prepares == 1
+    assert host.previews == 3 and host.prepares == 1
     assert answer["evidence"]["prepared_task_id"] == "t-evidence"
 
 
