@@ -838,7 +838,6 @@
         "src/devtools/testing/sizes.py",
         "+src/*",
         "config/pipeline.toml",
-        "config/registries/*",
         "config/import-hygiene.json",
         "config/package-architecture.json",
         "pyproject.toml",
@@ -850,7 +849,8 @@
         "tests/__init__.py",
         "tests/pytest_environment.py",
         "tests/setup_support.py",
-        "tests/conftest.py"
+        "tests/conftest.py",
+        "config/registries/test-sizes.json"
       ],
       "reason": "It drives the pipeline stage and its receipt over synthetic repositories in tmp_path, so only the pipeline's code, definition or registries can change it; the post-merge tier runs it whole.",
       "escape_class": "incomplete or inconsistent pipeline receipt",
@@ -885,10 +885,8 @@
       "pattern": "tests/structural/test_test_sizes.py::*",
       "owner": "tests.structural",
       "inputs": [
-        "src/*",
         "scripts/tests_registry.py",
         "scripts/check_test_shape.py",
-        "config/registries/*",
         "config/import-hygiene.json",
         "config/release/*",
         "pyproject.toml",
@@ -902,7 +900,9 @@
         "tests/__init__.py",
         "tests/pytest_environment.py",
         "tests/setup_support.py",
-        "tests/conftest.py"
+        "tests/conftest.py",
+        "src/devtools/testing/*",
+        "config/registries/test-sizes.json"
       ],
       "reason": "It drives size collection and the registry tools over synthetic suites in tmp_path, so only the testing code or its registries can change it; the post-merge tier runs it whole.",
       "escape_class": "incorrect test size or selection policy",
