@@ -1,13 +1,11 @@
 # AlphaLattice release notes
-Last checked: 2026-11-04 against the 0.2.4 release candidate
+Last checked: 2026-11-04 against 0.2.4
 
-Latest released version: [0.2.3](#023). Unreleased changes are separate below;
-earlier measurements describe their own versions.
+Latest released version: [0.2.4](#024). Earlier measurements describe their own versions.
 
-## 0.2.4 (unreleased)
+## 0.2.4
 
-This candidate improves the daily research workflow and the way its results are read.
-Native acceptance on both supported agent hosts remains a release check.
+0.2.4 makes the daily research workflow smoother and its results easier to read.
 
 ### Changed
 

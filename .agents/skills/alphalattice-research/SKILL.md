@@ -4,7 +4,7 @@ description: Conduct quantitative research in an AlphaLattice workspace through 
 ---
 
 # AlphaLattice Research
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-04 against 0.2.4
 
 You lead the research. AlphaLattice's owners calculate, validate, record and publish; you choose the question, follow each answer's `next_action` and `next_requests`, seek judgment and explain what the evidence supports. The [research-agent guide](../../../AGENTS.md) covers setup, the first use and what only a person decides; a specialist gives judgment, never product authority. If `.alphalattice/user/skills/alphalattice-research.md` exists, read it too: the person's additions to this Skill.
 

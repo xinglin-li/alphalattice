@@ -1,5 +1,5 @@
 # Upgrading AlphaLattice
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-04 against 0.2.4
 
 Use this guide to upgrade from 0.2.0 to a later 0.2.x patch. Keep using your
 existing agent project and research workspace. [Getting started](getting-started.md)
@@ -63,12 +63,12 @@ Run the doctor again after repairs or configuration.
 Download the new release's wheel to a separate installation directory. Extract
 the runtime requirements from that same wheel and use them as both requirements
 and constraints, as in the [operating reference](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch).
-The example below uses the 0.2.3 wheel; replace its filename in both commands
+The example below uses the 0.2.4 wheel; replace its filename in both commands
 with the wheel you downloaded:
 
 ```powershell
-python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.2.3-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
-uv tool install --force --python 3.12 ./alphalattice-0.2.3-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
+python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.2.4-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
+uv tool install --force --python 3.12 ./alphalattice-0.2.4-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
 ```
 
 `--force` replaces the previous tool installation. To switch between the wheel

@@ -24,13 +24,14 @@ and limits in older sector and price records. Verification runs check for
 look-ahead. The committee can decline to endorse a result. AlphaLattice runs
 locally and is open source.
 
-## 0.2.3, now
+## 0.2.4, now
 
-- Network-permission questions have stable codes beside their English and Chinese words, with the question's scope and reply kept in the activity record.
-- A Goal's time profile shows recorded requests, Task stages and gaps. Missing observations stay unobserved; elapsed time without an attribution is not called agent time.
-- On Claude Code, the first start can ask you once to run the offered command in your own terminal. Codex detaches the Host on its own. This startup step is separate from the network-permission question.
+- Reads show a bounded summary with a pointer to the complete answer, which `--output` saves whole.
+- Completing a Goal starts from a filled-in request: its recorded facts and references are already bound, and the agent adds its judgment.
+- The local Host can stay up between sessions. A matching session reuses it, and it stops by itself once no work is owed and it has been idle for its configured period. On Claude Code desktop, the agent can start it in the app's Terminal panel.
+- An invalid research plan offers its named recovery steps, and a cancelled membership update keeps what it needs to restore its change.
 
-See the [0.2.3 release notes](docs/public-source/release-notes.md#023) for the message catalog and the limits of these diagnostics. The versioned notes keep each measured workload and its limits.
+See the [0.2.4 release notes](docs/public-source/release-notes.md#024) for each change. The versioned notes keep each measured workload and its limits.
 
 Use Claude Code or Codex as the lead. To see what a run used, open a session's
 **Participants** in the Workbench (**Team**, then **Sessions**): it shows the models and
@@ -251,11 +252,11 @@ explains recorded usage and its switch.
 
 ## This release and where it is going
 
-**0.2.3 is the current release.** It adds coded network-permission questions,
-a shared catalog for new bilingual messages, recorded Goal profiles with gaps,
-and a check that a detached Host survives its launching session. The
-[release notes](docs/public-source/release-notes.md#023) distinguish the delivered
-behaviour, observed workloads and remaining limits.
+**0.2.4 is the current release.** It brings bounded reads with a saved complete
+answer, a Goal completion that starts from its recorded facts, a local Host that stays
+up between sessions and stops itself when idle, and named recovery for invalid plans.
+The [release notes](docs/public-source/release-notes.md#024) describe the delivered
+behaviour; earlier notes keep their observed workloads and remaining limits.
 
 Each minor version's scope is planned in advance. Its release notes state the
 checks run, measured workloads and unproved limits; patches in between make the
@@ -266,8 +267,6 @@ inputs, sealed results and your authority.
 The next 0.2.x patches, in order. Each holds one theme, and each publishes its
 measured time, disk and memory against a stated budget:
 
-- **0.2.4: a smoother daily update.** A shorter wrap-up for the agent, a measured time
-  for each stage, and a background service that stays up between sessions.
 - **0.2.5: a measured baseline.** A first use and a daily, replayed without a model,
   report each stage's time and the program's peak memory in minutes; later speed and
   memory changes are measured against it.
@@ -338,7 +337,7 @@ For a security vulnerability, report privately as described in [SECURITY](SECURI
 
 ## About
 
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-04 against 0.2.4
 
 The [design principles](docs/public-source/design-principles.md) explain how the
 agent, the software and the person share the work.

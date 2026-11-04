@@ -1,5 +1,5 @@
 # Use the CLI
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-04 against 0.2.4
 
 Use `alphalattice <noun> <verb>`. Global `--workspace`, `--view`,
 `--goal` and `--lang` options work before the noun or after the action. Most
@@ -104,8 +104,10 @@ coverage gaps. Follow the Goal's profile read and use `--output` for the complet
 profile. Missing observations stay unobserved; unattributed elapsed time is not
 agent time, and incomplete clocks do not establish a critical path. The
 [0.2.3 release notes](release-notes.md#023) describe the scope of these diagnostics.
-Version 0.2.3 accepts `compact` and `full`; the
-[unreleased read-view changes](release-notes.md#024-unreleased) are separate.
+Reads accept `summary`, `compact` and `full`. `summary` keeps the complete envelope
+within 32 KiB, with whole offers and a `full_answer` pointer; full stdout from
+`--view full` is deprecated in favour of the summary and a saved answer
+([0.2.4 notes](release-notes.md#024)).
 
 ## Dates and network permission
 

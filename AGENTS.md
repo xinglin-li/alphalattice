@@ -1,5 +1,5 @@
 # AlphaLattice: guide for your research agent
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-04 against 0.2.4
 
 **Your first step in every session, before any answer:** run `Get-Content
 .alphalattice/user/memory/MEMORY.md, .alphalattice/user/guide.md` (or `cat` them),
@@ -54,12 +54,7 @@ If you installed AlphaLattice in this session, continue here: read this guide an
 the research Skill by the paths `configure` printed under `continue_here`, start
 each specialist as a general subagent whose prompt is its card's text, and tell the
 person its `disclosure` in one line ([setup](.agents/skills/alphalattice-research/references/operating.md)).
-In released 0.2.3, a Claude Code startup refusal can ask the person to run its
-offered `terminal_command` once in a terminal they own. Wait for their word before
-continuing; this is separate from the network-permission question.
-
-The next terminal-panel capability is a later-checkout preview; use it only when
-that checkout advertises the capability and offers the named route.
+A Claude Code startup step is separate from the network-permission question.
 For a new Host on Claude Code desktop, use its available `run_in_terminal` tool to
 probe the Terminal panel shell as the operating guide describes; only after a successful outside-every-Job result, declare
 `ALPHALATTICE_TERMINAL_PANEL_HOST=claude-code` for this serve invocation, then remove it.
@@ -82,13 +77,8 @@ process starting: follow its offered log or stop recovery before another launch.
 An explicitly session-only Host still accepts `--stop-on-stdin`; a held update then waits
 for the next session. Never bypass Job containment through a broker, service
 or scheduler. `alphalattice host stop` joins running work and stops your Host.
-In 0.2.3, a detached Host serves until its explicit stop; use the returned startup
-and shutdown answers. Later checkouts add the following idle policy.
 A detached Host stays while a held update, Task, request or enabled automation needs it;
 otherwise it stops after 900 idle seconds (0 disables idle shutdown).
-
-The marked authenticated-reuse procedure below is also a later-checkout preview.
-In 0.2.3, follow only the `ALREADY_SERVING` answer actually returned by the launcher.
 
 <!-- message: host.reuse.guide -->
 A matching serving Host can be reused even when this shell cannot detach a new process. ALREADY_SERVING reuses only an authenticated Host for this workspace and instance, preserving its authority and idle policy. Activity's observer names its instance, process and start time; the Workbench shows the same Host. On an unverified or stale descriptor, read the named Host log and identify its owning process before retrying the original serve command; leave the descriptor and writer lease unchanged.
@@ -118,12 +108,10 @@ on each command, with nothing to approve. Use the **alphalattice-research** Skil
 
 ## Run the first use from the person's sentence
 
-Version 0.2.3 accepts `compact` (the default) and `full`. Save the complete owner
+Reads accept `summary`, `compact` and `full`. Save the complete owner
 answer with `--output` when you will continue from it, cite it or hand it on.
 Goal-profile displays remain compact; their `--output` contains the full profile.
 
-The following bounded-summary procedure is an unreleased preview for later
-checkouts that advertise `summary` in their installed grammar.
 On Claude Code and Codex, use `--view summary` for reads: the complete envelope stays
 within 32 KiB and gives whole offers and a `full_answer` pointer. Use `--output "<out>/answer.json"`
 when you need the complete owner answer; it saves the exact owner bytes, independently of
@@ -414,12 +402,9 @@ tool window ends, send that read. With structured `--output`, it also saves the
 admission and names `output_file` before stage progress; without it, no file is saved.
 
 Complete a goal by the versioned [procedure](.agents/skills/alphalattice-research/references/goals.md)
-with actual criterion answers, references, findings and unresolved work. In 0.2.3,
-fill and submit the saved declaration, follow any offered attaches and resubmit,
-then report from the sealed `goal show` with its ids, hashes and result links.
-Later checkouts can offer completion with bound inline references and return the
-`report`, sealed ids/hashes and `workbench.launch_url` together. Where that offer
-exists, fill it and submit once; use its returned artifacts without repeating
+with actual criterion answers, references, findings and unresolved work. Its
+completion offer binds inline references and returns the `report`, sealed ids/hashes
+and `workbench.launch_url` together: fill it and submit once; use its returned artifacts without repeating
 Goal reads or exports. Repair a returned `report_error` with its offered export,
 without resubmission. Keep the experience-recording action and link the
 **Timeline**, **Conversation**, **Results** and each result's `local_web_url`.

@@ -1,5 +1,5 @@
 # Getting started
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-04 against 0.2.4
 
 Give your agent the repository link and one research intent. It installs
 AlphaLattice and continues in the same session. The
@@ -76,10 +76,12 @@ holds the installation and launch procedure.
    alphalattice --workspace "workspaces/my-research" serve --no-browser --detach
    ```
 
-   On Claude Code, the first start can ask you to run the offered
+   On Claude Code desktop, the agent can start it in the app's Terminal panel.
+   Without a panel, the first start can ask you to run the offered
    `terminal_command` once in a terminal you own, outside the agent's command
    shell. Tell the agent when it is running so it can continue. Codex detaches
-   the Host itself. This startup step is separate from the network-permission
+   the Host itself. A detached Host stays up between sessions and stops by itself
+   once no work is owed and it has been idle for its configured period. This startup step is separate from the network-permission
    question. Follow the returned startup answer and keep its ready link.
 
    The [agent guide](../../AGENTS.md) says how the agent opens that link visibly
