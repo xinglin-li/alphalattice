@@ -83,6 +83,28 @@
         "zh-CN": "策略声明无效。读取提供的策略控制项，修正无效字段后重新规划；保留你的研究选择。"
       }
     },
+    "workspace.select_existing": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "PERSON_QUESTION",
+      "reason": {
+        "en": "Existing research workspaces require the person's choice.",
+        "zh-CN": "已有研究工作区需要由本人选择。"
+      },
+      "scope": {
+        "en": "The research workspace for this project and session.",
+        "zh-CN": "此项目和会话使用的研究工作区。"
+      },
+      "way_on": {
+        "en": "Choose a listed workspace and configure again with --workspace.",
+        "zh-CN": "选择列出的工作区，并使用 --workspace 重新配置。"
+      },
+      "operations": ["NATIVE_CONFIGURE"],
+      "ask_operations": ["NATIVE_CONFIGURE"],
+      "words": {
+        "en": "Which existing research workspace should this session use?",
+        "zh-CN": "此会话应使用哪个已有研究工作区？"
+      }
+    },
     "network.daily_updates": {
       "owner": "alphalattice.interface.local_application",
       "kind": "PERSON_QUESTION",

@@ -9,6 +9,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import sys
 import tomllib
 from collections import Counter
@@ -65,6 +66,7 @@ from alphalattice.interface.local_application.native_bridge import (
     session_project,
 )
 from alphalattice.interface.local_application.native_usage import codex_thread_spawn
+from alphalattice.interface.local_application.questions import person_question
 from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.interface.local_application.retrieval_environment import LOCKED_SETUP_WORDS
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
@@ -1469,8 +1471,30 @@ def _configure(host: str, workspace: Path | None) -> dict[str, Any]:
             "detail": detail,
             "next_action": "SERVE_WORKSPACE_THEN_FIRST_USE",
             "session_binding": {"status": "WORKSPACE_REQUIRED", "detail": detail},
-            "next_commands": {"serve": terminal_serve_command(workspace)},
         }
+        if workspace is None:
+            try:
+                with os.scandir(ROOT / "workspaces") as entries:
+                    candidates = [Path(entry.path) for entry in entries if entry.is_dir()]
+            except FileNotFoundError:
+                candidates = []
+            existing = []
+            for candidate in candidates:
+                try:
+                    mode = (candidate / "research-workspace.json").stat().st_mode
+                except FileNotFoundError:
+                    continue
+                if stat.S_ISREG(mode):
+                    existing.append(str(candidate.resolve()))
+            if existing:
+                result.update(
+                    next_action="CHOOSE_WORKSPACE_THEN_CONFIGURE",
+                    person_questions=[person_question("workspace.select_existing")],
+                    workspaces=sorted(existing),
+                )
+                return result
+            workspace = ROOT / "workspaces" / "my-research"
+        result["next_commands"] = {"serve": terminal_serve_command(workspace)}
     else:
         _install_declarations(host)
         removed = strip_product_hooks(ROOT, host)

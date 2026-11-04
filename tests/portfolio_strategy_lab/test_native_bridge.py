@@ -339,8 +339,18 @@ def test_configure_removes_only_the_products_retired_hook_groups(tmp_path, monke
     }
 
 
+@pytest.mark.proves("local_application.configure_offers_a_workspace")
 @pytest.mark.parametrize(
-    "git_checkout", (False, True, "protected", "protected-named", "protected-off-path", "other")
+    "git_checkout",
+    (
+        False,
+        True,
+        "protected",
+        "protected-existing",
+        "protected-named",
+        "protected-off-path",
+        "other",
+    ),
 )
 def test_ordinary_project_setup_validates_local_declarations_without_trust(
     tmp_path, monkeypatch, capsys, git_checkout
@@ -355,6 +365,16 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
     if git_checkout:
         (project / ".git").mkdir()
         (project / ".git/HEAD").write_text("ref: refs/heads/main\n", newline="\n")
+    if git_checkout == "protected-existing":
+        existing = project / "workspaces" / "existing"
+        existing.mkdir(parents=True)
+        from alphalattice.control.product_host.composition.research_workspace import (
+            ResearchWorkspaceManifest,
+        )
+
+        (existing / "research-workspace.json").write_text(
+            ResearchWorkspaceManifest.research_only("existing").model_dump_json(), encoding="utf-8"
+        )
     entry = _entry()
     monkeypatch.setattr(entry.sys, "argv", ["native", "--project", str(project), "doctor"])
     assert entry.main() == 2  # not yet configured: both steps offered, ready to run
@@ -390,14 +410,22 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
         if git_checkout == "other":
             assert result["failure_code"] == "native_bridge.files_unavailable:PermissionError"
         else:
-            assert result["next_action"] == "SERVE_WORKSPACE_THEN_FIRST_USE"
             assert result["session_binding"]["status"] == "WORKSPACE_REQUIRED"
-            serve = result["next_commands"]["serve"]
-            if git_checkout == "protected-off-path":
-                assert serve[0] == str(launcher.absolute())
-            assert serve[serve.index("--workspace") + 1] == (
-                str(workspace) if git_checkout != "protected" else "<dir>"
-            )
+            if git_checkout == "protected-existing":
+                assert result["next_action"] == "CHOOSE_WORKSPACE_THEN_CONFIGURE"
+                assert result["person_questions"][0]["code"] == "workspace.select_existing"
+                assert result["workspaces"] == [str(existing.resolve())]
+                assert "serve" not in result.get("next_commands", {})
+            else:
+                assert result["next_action"] == "SERVE_WORKSPACE_THEN_FIRST_USE"
+                serve = result["next_commands"]["serve"]
+                if git_checkout == "protected-off-path":
+                    assert serve[0] == str(launcher.absolute())
+                assert serve[serve.index("--workspace") + 1] == str(
+                    project / "workspaces" / "my-research"
+                    if git_checkout == "protected"
+                    else workspace
+                )
             assert not marker.exists() and not workspace.exists()
             assert {
                 p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()

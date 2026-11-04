@@ -86,6 +86,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "local_application.configure_offers_a_workspace": {
+      "description": "A sandboxed configure offers the default new workspace when none exists and a coded choice when existing workspaces need selection.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 5
+    },
     "local_application.node_invocation_preserves_runtime_environment": {
       "description": "Node test invocation preserves availability and caller environment while resolving absolute browser directory aliases to their physical targets.",
       "owner": "alphalattice.interface.local_application",
