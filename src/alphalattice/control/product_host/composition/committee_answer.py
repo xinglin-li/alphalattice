@@ -5,15 +5,23 @@ from __future__ import annotations
 from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any, Protocol
 
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
-if TYPE_CHECKING:
-    from .committee import Floor
+
+class AnswerThread(Protocol):
+    """The stored thread messages used to identify a filed answer."""
+
+    @property
+    def messages(self) -> list[dict[str, Any]]:
+        """Return the filed messages on this thread."""
+        ...
 
 
-def answer_replay(floor: Floor, member: tuple[str, str, Any]) -> tuple[str, dict[str, Any]] | None:
+def answer_replay(
+    floor: AnswerThread, member: tuple[str, str, Any]
+) -> tuple[str, dict[str, Any]] | None:
     """Read a keyed answer's first filed response, never infer an unreferenced legacy correction.
 
     Queue-full and busy refusals file no outcome, so the same request is evaluated again.
@@ -38,7 +46,7 @@ def answer_replay(floor: Floor, member: tuple[str, str, Any]) -> tuple[str, dict
     return None
 
 
-def legacy_acceptance(floor: Floor, member: tuple[str, str, Any]) -> tuple[str, str] | None:
+def legacy_acceptance(floor: AnswerThread, member: tuple[str, str, Any]) -> tuple[str, str] | None:
     """Find an old accepted receipt by its exact answer and Task; never invent its lifecycle."""
     role, _reference, answer = member
     digest = str(canonical_hash(answer))

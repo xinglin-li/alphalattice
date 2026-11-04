@@ -110,6 +110,18 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
     # liveness after the join. Coverage's deadline is an admission expiry, not a waiter.
     reviewed.update(
         {
+            # Keyed submission spends one deadline across the bundle, packet and admission turns.
+            # The registry lock protects lookup; the per-key wait uses remaining time.
+            ("control/product_host/composition/answer_turns.py", "bounded_answer_turn"),
+            (
+                "control/product_host/composition/evidence_analysis_submit.py",
+                "submit_analyst_analysis",
+            ),
+            ("control/product_host/composition/host_answer_submission.py", "submit_agent_answer"),
+            (
+                "control/product_host/composition/host_answer_submission.py",
+                "submit_evidence_analysis",
+            ),
             ("control/product_host/composition/portfolio_research_operations.py", "_moved_on"),
             ("control/workspace_runtime/database.py", "_acquire"),
             ("control/workspace_runtime/database.py", "wait"),
