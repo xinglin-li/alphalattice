@@ -39,6 +39,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.golden_consumers_queue_behind_their_builder": {
+      "description": "Under a parallel run, a session golden's first consumer keeps its place and builds it, and its other consumers are queued where the recorded work ahead passes that build, or last when it is unrecorded, never blocked on its lock.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 1
+    },
     "evaluation.listener_boundary_samples_survive_fast_host_exit": {
       "description": "A replay monitor samples the local Host at both declared ACK markers before acknowledging them, including when work ends before the next periodic sample.",
       "owner": "devtools.evaluation",
