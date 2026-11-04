@@ -184,11 +184,12 @@ jobs:
           NIGHTLY: ${{ inputs.nightly }}
           REF: ${{ github.event_name == 'schedule' && 'next' || github.sha }}
         run: |
+          set -o pipefail
           sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" --jq .sha)
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'unreadable commit SHA' >&2; exit 1; }
-          count_windows=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-windows-$sha&per_page=100" --jq "[.[] | .artifacts[] | select(.name == \"public-tests-windows-$sha\" and .expired == false)] | length")
-          count_legacy=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-$sha&per_page=100" --jq "[.[] | .artifacts[] | select(.name == \"public-tests-$sha\" and .expired == false)] | length")
-          count_linux=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-linux-$sha&per_page=100" --jq "[.[] | .artifacts[] | select(.name == \"public-tests-linux-$sha\" and .expired == false)] | length")
+          count_windows=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-windows-$sha&per_page=100" | jq "[.[] | .artifacts[] | select(.name == \"public-tests-windows-$sha\" and .expired == false)] | length")
+          count_legacy=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-$sha&per_page=100" | jq "[.[] | .artifacts[] | select(.name == \"public-tests-$sha\" and .expired == false)] | length")
+          count_linux=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-linux-$sha&per_page=100" | jq "[.[] | .artifacts[] | select(.name == \"public-tests-linux-$sha\" and .expired == false)] | length")
           windows_run=true
           linux_run=true
           if { [ "$EVENT" = schedule ] || [ "$NIGHTLY" = true ]; }; then
