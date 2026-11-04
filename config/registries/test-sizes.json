@@ -758,7 +758,8 @@
     "merge",
     "candidate",
     "nightly",
-    "fast"
+    "fast",
+    "release"
   ],
   "reach": [
     {

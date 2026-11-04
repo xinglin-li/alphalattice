@@ -332,6 +332,11 @@ def _quarantine(policy: dict[str, Any]) -> None:
             raise ValueError("test_size.quarantine_invalid:" + str(row.get("node")))
 
 
+# A Large rule's lane contract: nightly_only runs only in the nightly; release_only runs in the
+# release lane at promotion (it reads the release archives), and the nightly lists it skipped.
+SIZE_CONTRACTS = ("nightly_only", "release_only")
+
+
 def _admission_limits(policy: dict[str, Any]) -> None:
     """Validate the optional changed-test admission budget and Large contract."""
     admission = policy.get(
@@ -352,7 +357,8 @@ def _admission_limits(policy: dict[str, Any]) -> None:
             ):
                 raise ValueError("test_size.admission_limits")
     if any(
-        "size_contract" in row and row["size_contract"] != "nightly_only" for row in policy["large"]
+        "size_contract" in row and row["size_contract"] not in SIZE_CONTRACTS
+        for row in policy["large"]
     ):
         raise ValueError("test_size.large_contract")
 
@@ -549,6 +555,16 @@ def scoped(
     )
 
 
+def _contracted(contract: Any, lane: str) -> bool | None:
+    """A Large rule's lane contract decides alone, and the release lane runs only release_only
+    rules (the nightly lists those skipped); None leaves the lane rules to decide."""
+    if lane == "release" or contract == "release_only":
+        return contract == "release_only" and lane in ("nightly", "release")
+    if contract == "nightly_only":
+        return lane == "nightly"
+    return None
+
+
 def included(
     nodeid: str,
     size: str,
@@ -563,8 +579,9 @@ def included(
     own file changed; the fast lane keeps only scoped per_file nodes; each lane otherwise admits
     its declared sizes."""
     large = _rule(nodeid.replace("\\", "/"), policy.get("large", [])) if size == "large" else None
-    if large and large.get("size_contract") == "nightly_only":
-        return lane == "nightly"
+    decided = _contracted(large.get("size_contract") if large else None, lane)
+    if decided is not None:
+        return decided
 
     row = reach(nodeid, policy) if changed is not None else None
     if lane == "fast":

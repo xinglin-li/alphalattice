@@ -351,6 +351,17 @@ def _size_report(item: Any, report: Any) -> None:
         report.outcome, report.longrepr = "failed", str(error)
 
 
+def _timeline(item: Any, report: Any) -> None:
+    """The run's timeline in its JUnit: which worker ran each case, from when to when."""
+    if report.when == "call":
+        return
+    edge = ("started_at", report.start) if report.when == "setup" else ("ended_at", report.stop)
+    item.user_properties.append((edge[0], round(edge[1], 3)))
+    if report.when == "setup":
+        item.user_properties.append(("worker", os.environ.get("PYTEST_XDIST_WORKER", "main")))
+    report.user_properties = list(item.user_properties)
+
+
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)  # type: ignore[untyped-decorator]
 def pytest_runtest_makereport(item: Any, call: Any) -> Any:
     """Judge unit cost from its enclosing phases, using the existing solo-timeout route."""
@@ -367,6 +378,7 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
     _size_report(item, report)
     if clock is not None:
         clock["report_seconds"] += time.perf_counter() - began
+    _timeline(item, report)
     if CONTRACT not in item.stash or item.stash[CONTRACT].layer != "unit":
         return
     if report.failed:
@@ -595,6 +607,9 @@ def framework_fixtures(
     return frozenset(codes)
 
 
+RELEASE_ONLY = "release-lane test: it reads the release archives, so it runs at promotion, not here"
+
+
 def _size_attributes(
     item: Any,
     config: Any,
@@ -604,18 +619,20 @@ def _size_attributes(
     row: dict[str, Any],
     declared: list[str],
     classified: tuple[str, str, str, float],
-) -> bool:
-    """Attach changed-test admission and return the Large nightly-only disposition."""
+) -> str | None:
+    """Attach changed-test admission and return the Large rule's lane contract, if any."""
     size = classified[0]
     clock = config.stash.get(SIZE_CLOCK, None)
     began = time.perf_counter() if clock is not None else 0.0
     selected = _family(item) in families
     item.stash[SIZE_SELECTED] = selected
     large_rule = _rule(item.nodeid, policy["large"]) if size == "large" else None
-    nightly_only = bool(large_rule and large_rule.get("size_contract") == "nightly_only")
+    contract = (
+        str(large_rule["size_contract"]) if large_rule and "size_contract" in large_rule else None
+    )
     if clock is not None:
         clock["collection_seconds"] += time.perf_counter() - began
-    if selected and size == "large" and not nightly_only:
+    if selected and size == "large" and not contract:
         raise ValueError(
             "test_size.large_contract: register a Large rule with "
             f"size_contract=nightly_only: {item.nodeid}"
@@ -628,7 +645,18 @@ def _size_attributes(
         classified,
         size_hang_guard=policy["limits"]["medium"] if selected and size == "small" else None,
     )
-    return nightly_only
+    return contract
+
+
+def _lane_contract(item: Any, contract: str | None, lane: str) -> bool:
+    """Whether a Large rule's lane contract omits the item here; the nightly lists a release-only
+    one skipped, with its reason, so it is never a red."""
+    if contract == "nightly_only" and lane != "nightly":
+        print(f"test_size.nightly_only: {item.nodeid}; run in the nightly on pc1")
+        return True
+    if contract == "release_only" and lane == "nightly":
+        item.add_marker(pytest.mark.skip(reason=RELEASE_ONLY))
+    return False
 
 
 def _size_included(
@@ -750,7 +778,7 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             seen.add(item.nodeid)
             ids, row, declared, (size, owner, declaration, seconds) = _proven(item, rows, policy)
             marks.append((item.nodeid, ids, Path(item.path)))
-            nightly_only = _size_attributes(
+            contract = _size_attributes(
                 item,
                 config,
                 families,
@@ -760,9 +788,8 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
                 declared,
                 (size, owner, declaration, seconds),
             )
-            if nightly_only and lane != "nightly":
+            if _lane_contract(item, contract, lane):
                 omitted.append(item)
-                print(f"test_size.nightly_only: {item.nodeid}; run in the nightly on pc1")
                 continue
             if scoped(item.nodeid, policy, changed, floor=floor):
                 item.add_marker("per_file")  # it reads only the changed files, through scanned()

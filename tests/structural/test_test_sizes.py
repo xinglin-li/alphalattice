@@ -1812,13 +1812,9 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     except TypeError:
         floor_view = None  # an older reader cannot honor the floor
     assert floor_view == (True, True, False, True, True, False, True, False)
-    nightly_only = policy | {
-        "large": [
-            {"pattern": closure, "owner": "tests.structural", "size_contract": "nightly_only"}
-        ]
-    }
-    assert not included(closure, "large", "merge", nightly_only, floor_change, floor=True)
-    assert included(closure, "large", "nightly", nightly_only, None)
+    for rule, want in (("nightly_only", {"nightly"}), ("release_only", {"nightly", "release"})):
+        rules = policy | {"large": [{"pattern": closure, "owner": "o", "size_contract": rule}]}
+        assert {x for x in want | {"merge"} if included(closure, "large", x, rules, None)} == want
     from types import SimpleNamespace
 
     from devtools.testing.collection import _size_included
