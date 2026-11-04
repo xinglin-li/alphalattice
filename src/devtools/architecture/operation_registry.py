@@ -17,6 +17,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,7 @@ from collections.abc import Iterable
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
 from typing import Any, Final, cast, get_args
+from unittest import mock
 
 from packaging.version import Version
 
@@ -1220,6 +1222,9 @@ def walk(root: Path) -> list[str]:
             if variable in os.environ:
                 value = os.environ.pop(variable)
                 outside.callback(os.environ.__setitem__, variable, value)
+        # Each answer prints its command prefix, found on PATH: one lookup per name for the
+        # walk's whole run, not one PATH scan per answer (179 scans, 1.3 s of the guard).
+        outside.enter_context(mock.patch("shutil.which", functools.cache(shutil.which)))
         return _walk(root, cli)
 
 
