@@ -1397,12 +1397,6 @@
       "seen_on": [
         "mac1"
       ]
-    },
-    {
-      "node": "tests/structural/test_refusal_contracts.py::test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form",
-      "owner": "tests.structural",
-      "until": "2026-11-04",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
     }
   ],
   "mandatory": [

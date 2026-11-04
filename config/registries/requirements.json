@@ -62,6 +62,12 @@
         "decided": "2026-10-29: approved; real Host sampling exercises the ACK markers"
       }
     },
+    "evaluation.native_hosts_stop_with_their_run": {
+      "description": "A native acceptance run stops its own recorded workspace Hosts and proves each listener and process ended, or names the unproved stop.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5
+    },
     "evaluation.persistent_golden_root_follows_its_setting": {
       "description": "The persistent golden cache root is the operator's shared setting when present and the checkout's own folder when absent.",
       "owner": "devtools.evaluation",
