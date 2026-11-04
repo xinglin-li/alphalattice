@@ -164,6 +164,13 @@ extend-select = ["T20", "TID251"]
 [tool.ruff.format]
 line-ending = "lf"
 
+[tool.vulture]
+# Names an interface requires but its implementer does not read; vulture's 100% findings are false positives here.
+ignore_names = [
+    "exc_type", "exc_value", "traceback",  # context-manager protocol arguments (WorkspaceLock.__exit__)
+    "chunk_published",  # progress protocol field, ignored by its one implementer (_FoldCancellation)
+]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true

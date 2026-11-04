@@ -159,7 +159,7 @@ def _proven(
 
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)  # type: ignore[untyped-decorator]
-def pytest_runtest_protocol(item: Any, nextitem: Any) -> Any:
+def pytest_runtest_protocol(item: Any) -> Any:
     """Observe only managed pipeline tests; telemetry failure never changes their outcome."""
     scope = None
     entered = False
@@ -547,7 +547,7 @@ def pytest_configure(config: Any) -> None:
 
 
 @pytest.hookimpl(trylast=True)  # type: ignore[untyped-decorator]
-def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
+def pytest_sessionfinish(session: Any) -> None:
     """Retain component costs once per process; missing evidence cannot prove the stage budget."""
     clock = session.config.stash.get(SIZE_CLOCK, None)
     if clock is None:
