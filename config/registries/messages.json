@@ -2,6 +2,15 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "native_bridge.bound_in_workspace": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This Session is bound in the workspace's own folder, so name `--workspace` on each command; its Sessions row, usage and deliveries are recorded as usual.",
+        "zh-CN": "此会话绑定在工作区自己的文件夹中，请在每条命令上指定 `--workspace`；会话行、用量和交付照常记录。"
+      }
+    },
     "test_size.required_selection_invalid": {
       "owner": "devtools.testing",
       "kind": "MESSAGE",

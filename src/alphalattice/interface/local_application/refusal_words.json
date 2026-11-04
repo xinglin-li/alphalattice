@@ -1266,7 +1266,7 @@
   "next_action": "USE_THE_WORKSPACE_HOST_OR_CHECK_THE_NAMED_LOCAL_PATH"
  },
  "native_bridge.bound_in_workspace": {
-  "detail": "This Session is bound in the workspace's own folder, because the Host could not write the project's `.codex` folder (an agent sandbox protects it). Its Sessions row, usage and deliveries are recorded as usual; name `--workspace` on each command, since the project holds no binding to find it from.",
+  "detail": "This Session is bound in the workspace's own folder, so name `--workspace` on each command; its Sessions row, usage and deliveries are recorded as usual.",
   "next_action": "NAME_THE_WORKSPACE_ON_EACH_COMMAND"
  },
  "native_bridge.session_not_bound": {

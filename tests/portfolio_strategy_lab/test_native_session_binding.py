@@ -563,13 +563,19 @@ def _usage_files(tmp_path, monkeypatch, session: str) -> None:
     monkeypatch.setenv("CODEX_HOME", str(home))
 
 
-@pytest.mark.parametrize("host", ("codex", "claude-code"))
+@pytest.mark.parametrize("host", ("codex", "claude-code", "codex-protected"))
 def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_configure(
     live, tmp_path, monkeypatch, capsys, host
 ):
     """A fresh clone binds a workspace kept outside it after the documented configure."""
     from scripts import native_research
 
+    from alphalattice.interface.local_application import native_setup
+    from alphalattice.interface.local_application.native_bridge import autobind_root
+
+    protected = host == "codex-protected"
+    if protected:
+        host = "codex"
     monkeypatch.setattr(native_research, "ROOT", native_research.ROOT)
     clone = tmp_path / "fresh-clone"
     (clone / ".codex").mkdir(parents=True)
@@ -583,12 +589,41 @@ def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_co
     python.parent.mkdir(parents=True)
     python.touch()
     assert not live.workspace.resolve().is_relative_to(clone.resolve())
+    if protected:
+        marker = clone / ".codex" / PROJECT_DECLARATION_NAME
+        opening = Path.open
+
+        def denied(path, mode="r", *args, **kwargs):
+            if path == marker and "x" in mode:
+                raise PermissionError(13, "sandbox fixture", str(path))
+            return opening(path, mode, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", denied)
     monkeypatch.setattr(
         sys, "argv", ["native_research.py", "--project", str(clone), "configure", "--host", host]
     )
     assert native_research.main() == 0
-    assert json.loads(capsys.readouterr().out)["status"] == "LOCAL_DECLARATIONS_VALIDATED"
+    assert json.loads(capsys.readouterr().out)["status"] == (
+        "WORKSPACE_REQUIRED" if protected else "LOCAL_DECLARATIONS_VALIDATED"
+    )
     _session(monkeypatch, host)
+    if protected:
+        for _ in range(2):
+            native_setup._BINDING_MEMO.clear()
+            cli.main(_research(live, tmp_path), serve=lambda _: 99)
+            notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
+            assert (notice["status"], notice["next_action"]) == (
+                "BOUND_IN_WORKSPACE",
+                "NAME_THE_WORKSPACE_ON_EACH_COMMAND",
+            )
+        assert (
+            NativeResearchBinding.read(
+                autobind_root(live.workspace), session=("codex", "fixture-parent")
+            )
+            is not None
+        )
+        assert not marker.exists()
+        return
     if host == "codex":
         _usage_files(tmp_path, monkeypatch, "fixture-parent")
     else:

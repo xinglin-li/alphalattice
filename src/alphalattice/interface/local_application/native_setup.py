@@ -32,6 +32,7 @@ from alphalattice.interface.local_application.cli_contract import (
     command_table,
     join,
     refusal_words,
+    terminal_serve_command,
     worded,
 )
 from alphalattice.interface.local_application.client import (
@@ -1228,9 +1229,8 @@ def autobind_session(
                 raise
     root = autobind_root(workspace)
     bind_session(root, host=host, session_id=lead, workspace=workspace, roles=tuple(_roles(host)))
-    if project is not None:  # kept here because the agent's sandbox refused the project
-        _BINDING_MEMO[(host, session_id, workspace.resolve())] = True
-        BINDING_NOTICE.set(binding_notice("BOUND_IN_WORKSPACE"))
+    _BINDING_MEMO[(host, session_id, workspace.resolve())] = True
+    BINDING_NOTICE.set(binding_notice("BOUND_IN_WORKSPACE"))
     return root, lead
 
 
@@ -1282,7 +1282,7 @@ def unbound(error: Exception) -> None:
 def remind_binding(host: str, session_id: str, workspace: Path) -> None:
     """Repeat, on this answer, the notice of a Session bound in the workspace's own folder.
 
-    Only beside a configured project; a forgotten memo entry rereads the durable binding.
+    A forgotten memo entry rereads the durable binding.
     """
     key = (host, session_id, workspace.resolve())
     held = _BINDING_MEMO.get(key)
@@ -1292,7 +1292,10 @@ def remind_binding(host: str, session_id: str, workspace: Path) -> None:
                 project = session_project(key[2], host)
                 needs_workspace = session_binding(project, None, (host, session_id)) is None
             except NativeBridgeError as error:
-                if str(error) != "native_bridge.binding_unreadable":
+                if str(error) not in {
+                    "native_bridge.binding_unreadable",
+                    "native_bridge.project_declaration_missing",
+                }:
                     raise
                 needs_workspace = True
             held = needs_workspace and bool(session_binding(None, key[2], (host, session_id)))
@@ -1443,6 +1446,50 @@ def _create_or_match(
             raise NativeBridgeError("native_bridge.existing_configuration_differs") from None
 
 
+def _configure(host: str, workspace: Path | None) -> dict[str, Any]:
+    """Configure this project or offer the sandbox-safe workspace route."""
+    result: dict[str, Any]
+    try:
+        declare_project(ROOT, host)
+    except PermissionError as error:
+        marker = ROOT / ".codex" / PROJECT_DECLARATION_NAME
+        if (
+            host != "codex"
+            or not error.filename
+            or Path(error.filename).absolute() != marker.absolute()
+        ):
+            raise
+        detail = (
+            "The sandbox protects the project's .codex; "
+            "serve a named workspace, then begin first use."
+        )
+        result = {
+            "status": "WORKSPACE_REQUIRED",
+            "host": host,
+            "detail": detail,
+            "next_action": "SERVE_WORKSPACE_THEN_FIRST_USE",
+            "session_binding": {"status": "WORKSPACE_REQUIRED", "detail": detail},
+            "next_commands": {"serve": terminal_serve_command(workspace)},
+        }
+    else:
+        _install_declarations(host)
+        removed = strip_product_hooks(ROOT, host)
+        _configuration(host)
+        result = {
+            "status": "LOCAL_DECLARATIONS_VALIDATED",
+            "host": host,
+            "retired_hook_groups_removed": removed,
+            "trust_changed": False,
+            "next": (
+                "Continue the research in this session: read the files in `read` by path, "
+                "start each specialist from its card in `specialists`, and tell the person "
+                "`disclosure` in one line."
+            ),
+            "continue_here": continue_here(ROOT, host),
+        }
+    return result
+
+
 def main() -> int:
     """Configure, bind or inspect the project: zero on success, two on refusal."""
     global ROOT
@@ -1455,6 +1502,7 @@ def main() -> int:
         "configure", help="Install role guidance and declare a project without product hooks."
     )
     configure.add_argument("--host", choices=HOSTS, default="codex")
+    configure.add_argument("--workspace", type=Path, help="A workspace to serve for first use.")
     bind = commands.add_parser("bind", help="Bind this bridge to an explicit session/workspace.")
     bind.add_argument("--session-id", required=True)
     bind.add_argument("--workspace", required=True, type=Path)
@@ -1492,22 +1540,7 @@ def main() -> int:
     try:
         replace = client.output_replacement(output, line=args.command_line, prefix=())
         if args.command == "configure":
-            _install_declarations(args.host)
-            removed = strip_product_hooks(ROOT, args.host)
-            _configuration(args.host)
-            declare_project(ROOT, args.host)
-            result = {
-                "status": "LOCAL_DECLARATIONS_VALIDATED",
-                "host": args.host,
-                "retired_hook_groups_removed": removed,
-                "trust_changed": False,
-                "next": (
-                    "Continue the research in this session: read the files in `read` by path, "
-                    "start each specialist from its card in `specialists`, and tell the person "
-                    "`disclosure` in one line."
-                ),
-                "continue_here": continue_here(ROOT, args.host),
-            }
+            result = _configure(args.host, args.workspace)
         elif args.command == "bind":
             result = bind_session(
                 ROOT,

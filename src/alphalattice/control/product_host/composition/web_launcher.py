@@ -40,14 +40,20 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
+from alphalattice.interface.local_application.cli_contract import (
+    ANSWER_LANGUAGE as ANSWER_LANGUAGE,
+)
+from alphalattice.interface.local_application.cli_contract import (
+    terminal_serve_command,
+    worded,
+)
 from alphalattice.interface.local_application.failure_codes import safe_failure_code
 from alphalattice.interface.local_application.web import (
     DEFAULT_IDLE_TIMEOUT_SECONDS,
     LAUNCH_KEY_VARIABLE,
     OPEN_THE_WORKBENCH,
 )
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix, runtime_json
+from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 
 from .process_job import ChildJob
 
@@ -366,19 +372,9 @@ def _detach(
                     "local_web.detached_breakaway_denied"
                 ]["terminal_routes"]
             ],
-            terminal_command=[
-                *command_prefix(),
-                "--lang",
-                ANSWER_LANGUAGE.get(),
-                "--workspace",
-                str(arguments.workspace.resolve()),
-                "serve",
-                "--port",
-                str(arguments.port),
-                "--no-browser",
-                "--detach",
-                *(["--new-research"] if new_research else []),
-            ],
+            terminal_command=terminal_serve_command(
+                arguments.workspace, port=arguments.port, new_research=new_research
+            ),
         )
     deadline = time.monotonic() + READY_SECONDS
     while time.monotonic() < deadline:

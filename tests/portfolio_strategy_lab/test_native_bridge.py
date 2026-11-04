@@ -339,7 +339,9 @@ def test_configure_removes_only_the_products_retired_hook_groups(tmp_path, monke
     }
 
 
-@pytest.mark.parametrize("git_checkout", (False, True))
+@pytest.mark.parametrize(
+    "git_checkout", (False, True, "protected", "protected-named", "protected-off-path", "other")
+)
 def test_ordinary_project_setup_validates_local_declarations_without_trust(
     tmp_path, monkeypatch, capsys, git_checkout
 ):
@@ -361,6 +363,46 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
     configure, bind = preflight["commands"]
     assert configure.endswith("configure --host codex") and str(project.resolve()) in configure
     assert bind.endswith("session bind")
+    if isinstance(git_checkout, str):
+        marker = project / ".codex" / native_bridge.PROJECT_DECLARATION_NAME
+        opening = Path.open
+
+        def denied(path, mode="r", *args, **kwargs):
+            if path == marker and "x" in mode:
+                refused = project / ".codex" / "other.json" if git_checkout == "other" else path
+                raise PermissionError(13, "sandbox fixture", str(refused))
+            return opening(path, mode, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", denied)
+        workspace = tmp_path / "workspace"
+        argv = ["native", "--project", str(project), "configure", "--host", "codex"]
+        if git_checkout in {"protected-named", "protected-off-path"}:
+            argv += ["--workspace", str(workspace)]
+        if git_checkout == "protected-off-path":
+            launcher = python.parent / ("alphalattice.exe" if os.name == "nt" else "alphalattice")
+            launcher.touch()
+            monkeypatch.setenv("PATH", "")
+            monkeypatch.setattr(entry.sys, "executable", str(python))
+        monkeypatch.setattr(entry.sys, "argv", argv)
+        before = {p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()}
+        assert entry.main() == (2 if git_checkout == "other" else 0)
+        result = json.loads(capsys.readouterr().out)
+        if git_checkout == "other":
+            assert result["failure_code"] == "native_bridge.files_unavailable:PermissionError"
+        else:
+            assert result["next_action"] == "SERVE_WORKSPACE_THEN_FIRST_USE"
+            assert result["session_binding"]["status"] == "WORKSPACE_REQUIRED"
+            serve = result["next_commands"]["serve"]
+            if git_checkout == "protected-off-path":
+                assert serve[0] == str(launcher.absolute())
+            assert serve[serve.index("--workspace") + 1] == (
+                str(workspace) if git_checkout != "protected" else "<dir>"
+            )
+            assert not marker.exists() and not workspace.exists()
+            assert {
+                p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()
+            } == before
+        return
     for command, status, code in (
         ("configure", "LOCAL_DECLARATIONS_VALIDATED", 0),
         ("doctor", "REFUSED", 2),

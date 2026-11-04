@@ -602,6 +602,17 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
         assert routes[1]["next_action"] == "SERVE_FROM_A_PERSON_OWNED_TERMINAL"
         assert all(r["command_field"] == "terminal_command" for r in routes)
         assert exited["terminal_command"] == ["alphalattice", *launch]
+        if escape == "denied" and lang == "en" and panel_host == "codex":
+            from alphalattice.interface.local_application import native_setup
+
+            marker = native_setup.ROOT / ".codex" / native_setup.PROJECT_DECLARATION_NAME
+
+            def deny_declaration(*_args):
+                raise PermissionError(13, "sandbox fixture", str(marker))
+
+            monkeypatch.setattr(native_setup, "declare_project", deny_declaration)
+            configured = native_setup._configure("codex", taken)
+            assert configured["next_commands"]["serve"] == exited["terminal_command"]
         assert not list(tmp_path.glob("alphalattice-host-*.log"))
     assert spawned and all(child.poll() is not None for child in spawned)
     assert web_launcher.main(["--workspace", str(tmp_path), "--detach", "--stop-on-stdin"]) == 2

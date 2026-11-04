@@ -18,6 +18,8 @@ import json
 import os
 import re
 import shlex
+import shutil
+import sys
 import tempfile
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
@@ -1767,6 +1769,32 @@ OTHER_BOUND: Final = (
     "This Session is bound to another workspace, {subject}: name that one with --workspace to "
     "use its Host."
 )
+
+
+def terminal_serve_command(
+    workspace: Path | None, *, port: int = 0, new_research: bool = False
+) -> list[str]:
+    """The same documented serve action for configure and a Host's terminal refusal."""
+    prefix = command_prefix()
+    if prefix == ("alphalattice",) and shutil.which("alphalattice") is None:
+        sibling = Path(sys.executable).with_name(
+            "alphalattice.exe" if os.name == "nt" else "alphalattice"
+        )
+        if sibling.is_file():
+            prefix = (str(sibling.absolute()),)
+    return [
+        *prefix,
+        "--lang",
+        ANSWER_LANGUAGE.get(),
+        "--workspace",
+        "<dir>" if workspace is None else str(workspace.resolve()),
+        "serve",
+        "--port",
+        str(port),
+        "--no-browser",
+        "--detach",
+        *(["--new-research"] if new_research else []),
+    ]
 
 
 def host_checked(detail: str, workspace: Path) -> str:
