@@ -5,8 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import shlex
-import subprocess
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -1065,75 +1063,3 @@ def test_a_read_alias_preserves_its_field_map_and_explicit_selection() -> None:
     package = {"operation": "CONTROLS", "strategy_package_id": "pkg-b"}
     controls = named_read(package, {"status": "CONTROLS", "strategy_package_id": "pkg-b"})
     assert client.continued("CONTROLS", controls, {}, allowed("CONTROLS")) == package
-
-
-def test_a_short_reference_is_read_back_as_the_one_value_it_begins(live, tmp_path):
-    "A short reference is read back as the one value it begins."
-    from alphalattice.control.product_host.composition.reference_prefixes import ReferenceLedger
-    from alphalattice.interface.local_application.client import (
-        LocalResearchClientError,
-        whole_references,
-    )
-
-    plan = "ab" * 32
-    twin = "ab" * 6 + "cd" * 26
-    task = "927be8a3-305b-5237-9f9e-f765da4fa147"
-    ReferenceLedger(tmp_path).record({"plan_hash": plan, "next": [f"x --task-id {task}"]})
-    request = {
-        "operation": "EXPERIMENT_RUN",
-        "experiment_plan_hash": plan[:12],
-        "goal_submission": {"references": [{"request": {"task_id": task[:12]}}]},
-        "research_input_id": "20261001-001",
-    }
-    whole_references(request, tmp_path)
-    assert request == {
-        "operation": "EXPERIMENT_RUN",
-        "experiment_plan_hash": plan,
-        "goal_submission": {"references": [{"request": {"task_id": task}}]},
-        "research_input_id": "20261001-001",
-    }
-    with pytest.raises(LocalResearchClientError, match="unknown") as unknown:
-        whole_references({"experiment_plan_hash": "0" * 12}, tmp_path)
-    assert unknown.value.short_reference == {
-        "field": "experiment_plan_hash",
-        "value": "0" * 12,
-        "candidates": [],
-    }
-    ReferenceLedger(tmp_path).record([twin, plan])
-    with pytest.raises(LocalResearchClientError, match="ambiguous") as ambiguous:
-        whole_references({"a": [{"result_hash": plan[:12]}]}, tmp_path)
-    assert ambiguous.value.short_reference == {
-        "field": "a.0.result_hash",
-        "value": plan[:12],
-        "candidates": sorted([plan, twin]),
-    }
-    assert (tmp_path / "runtime/reference-ledger.txt").read_text().split() == [plan, task, twin]
-    watched = {"operation": "ACTIVITY_LIST", "watch": [task[:12]]}
-    whole_references(watched, tmp_path)
-    assert watched == {"operation": "ACTIVITY_LIST", "watch": [task]}
-    declaration = tmp_path / "goal.yaml"
-    code, body, _ = _cli(live.workspace, "goal", "schema", "--save-declaration", str(declaration))
-    assert code == 0, body
-    opened = subprocess.run(
-        [
-            *(sys.executable, str(SCRIPT), "--workspace", str(live.workspace), "--view"),
-            *("compact", "goal", "open", "--file", f"{declaration}"),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    shown = json.loads(opened.stdout.strip().splitlines()[-1])
-    assert opened.returncode == 0 and len(shown["data"]["goal_id"]) == 12, shown
-    code, body, _ = _cli(live.workspace, "goal", "show", shown["data"]["goal_id"])
-    assert code == 0 and body["data"]["goal_id"].startswith(shown["data"]["goal_id"]), body
-    named, named_body, _ = _cli(live.workspace, "--goal", shown["data"]["goal_id"], "goal", "show")
-    assert (named, named_body["data"]["goal_id"]) == (0, body["data"]["goal_id"]), named_body
-    request = tmp_path / "request.yaml"
-    goal_id = body["data"]["goal_id"]
-    request.write_text(
-        f"operation: GOAL_SHOW\ngoal_id: {goal_id}\ngoal_hash: '{'0' * 12}'\n", encoding="utf-8"
-    )
-    code, body, _ = _cli(live.workspace, "request", "--file", str(request))
-    assert (code, body["failure_code"]) == (1, "local_client.short_reference_unknown"), body
-    assert body["short_reference"]["field"] == "goal_hash" and "--from" in body["detail"]

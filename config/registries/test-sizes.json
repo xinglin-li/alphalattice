@@ -574,9 +574,18 @@
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
     },
     {
+      "pattern": "tests/portfolio_strategy_lab/test_daily_input_history.py::test_an_old_value_correction_rebuilds_what_it_touched_even_without_a_revision*",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Rebuilds a corrected sector's kept history across the real daily input owner; its other six cases were deleted by AREA-PORTFOLIO-LAB-1's evidence.",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 900,
+      "admitted": "2026-11-03: 50.6 s and 220 MB at teardown in a commit stage, over the 30 s Medium limit."
+    },
+    {
       "pattern": "tests/portfolio_strategy_lab/test_daily_input_history.py::test_three_consecutive_days_write_only_their_last_frozen_block*",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "historical maximum 77.784 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900,
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
     },
@@ -591,6 +600,7 @@
       "pattern": "tests/portfolio_strategy_lab/test_input_prefix.py::test_prepared_history_keeps_every_cutoff_array_and_observation_hash[[]True[]]",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "historical maximum 75.248 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900,
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
     },

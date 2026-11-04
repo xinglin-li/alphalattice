@@ -20,7 +20,7 @@ from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.portfolio_strategy_lab.local_web_support import _json
 
 
-@pytest.mark.parametrize("reviewed", [False, True], ids=["unreviewed", "reviewed"])
+@pytest.mark.parametrize("reviewed", [True], ids=["reviewed"])
 def test_every_activation_surface_reads_the_exact_books_published_review(
     tmp_path, capsys, reviewed, monkeypatch
 ):

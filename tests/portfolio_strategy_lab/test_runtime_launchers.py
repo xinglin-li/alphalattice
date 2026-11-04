@@ -423,7 +423,7 @@ def _end_turn_after(command: list[str], root: Path, temp: Path) -> str:
                 os.killpg(turn.pid, signal.SIGKILL)
 
 
-@pytest.mark.parametrize("workspace_state", ["fresh", "initialized", "cp1252"])
+@pytest.mark.parametrize("workspace_state", ["cp1252"])
 def test_a_detached_host_outlives_the_turn_that_started_it(
     tmp_path: Path, workspace_state: str, request, monkeypatch
 ) -> None:

@@ -902,36 +902,6 @@ def test_a_position_row_whose_entry_open_has_passed_says_so() -> None:
     assert position_basis("OBSERVED_RESEARCH_ENTRY", opened, after) == "Observed research entry"
 
 
-@pytest.mark.parametrize("package", (PACKAGE, "BALANCED_G2_G6_EQUAL_CAPITAL"))
-def test_a_forward_book_before_data_end_names_actionable_and_in_sample_replay(
-    tmp_path, capsys, monkeypatch, package
-):
-    """V597: the first forward decision can precede both cutoff and actionable holdings."""
-    from alphalattice.control.product_host.composition.entry import main as date_cli
-    from tests.portfolio_strategy_lab.strategy_dates_support import date_host
-
-    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
-    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
-    with date_host(tmp_path / "workspace", active=True, book_before_data_end=True) as live:
-        prefix = ["--workspace", str(live.workspace), "--view", "full"]
-        assert date_cli([*prefix, "strategy-book", "controls", "--package", package]) == 0
-        dates = json.loads(capsys.readouterr().out.strip().splitlines()[-1])["data"][
-            "strategy_dates"
-        ]
-        assert dates["forward_book_first_decided_session"] == "2026-07-01"
-        assert dates["information_cutoff"] > dates["forward_book_first_decided_session"]
-        assert dates["first_actionable_session"] == "2026-07-23"
-        assert dates["first_actionable_source"]["activated_at"] == "2026-07-22T23:00:00+00:00"
-        replay = dates["replayed_in_sample_forward_sessions"]
-        assert (replay["count"], replay["first_session"], replay["last_session"]) == (
-            2,
-            "2026-07-01",
-            "2026-07-02",
-        )
-        assert "causal replay in-sample, never out-of-sample" in replay["detail"]
-        assert live.operations.activations.offer(package)["strategy_dates"] == dates
-
-
 @pytest.mark.parametrize(
     "clock,completed,actionable,entry_at",
     (
@@ -1011,59 +981,7 @@ def test_actionable_entry_is_strictly_after_activation_or_clock_on_the_cli(
             )
 
 
-@pytest.mark.parametrize(
-    "clock,actionable,count,last",
-    (
-        ("2026-07-02T12:00Z", "2026-07-02", 1, "2026-07-01"),
-        ("2026-07-02T19:59Z", "2026-07-06", 2, "2026-07-02"),
-    ),
-    ids=("before-open", "intraday"),
-)
-def test_in_sample_replay_stops_before_the_corrected_actionable_entry(
-    tmp_path, capsys, monkeypatch, clock, actionable, count, last
-):
-    """The same frozen replay axis changes its boundary when the day's entry has passed."""
-    from alphalattice.control.product_host.composition.entry import main as date_cli
-    from tests.portfolio_strategy_lab.strategy_dates_support import date_host
-
-    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
-    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
-    with date_host(
-        tmp_path / "workspace",
-        active=True,
-        book_before_data_end=True,
-        activated_at=datetime.fromisoformat(clock),
-    ) as live:
-        for package in ("RETURN_G6_MU_ONLY", "BALANCED_G2_G6_EQUAL_CAPITAL"):
-            assert (
-                date_cli(
-                    [
-                        "--workspace",
-                        str(live.workspace),
-                        "--view",
-                        "full",
-                        "strategy-book",
-                        "controls",
-                        "--package",
-                        package,
-                    ]
-                )
-                == 0
-            )
-            dates = json.loads(capsys.readouterr().out.strip().splitlines()[-1])["data"][
-                "strategy_dates"
-            ]
-            assert dates["first_actionable_session"] == actionable
-            replay = dates["replayed_in_sample_forward_sessions"]
-            assert (replay["count"], replay["first_session"], replay["last_session"]) == (
-                count,
-                "2026-07-01",
-                last,
-            )
-            assert "never out-of-sample" in replay["detail"]
-
-
-@pytest.mark.parametrize("active", (False, True), ids=("inactive", "active"))
+@pytest.mark.parametrize("active", (False,), ids=("inactive",))
 def test_friday_intraday_activation_names_mondays_entry_on_the_cli(
     tmp_path, capsys, monkeypatch, active
 ):

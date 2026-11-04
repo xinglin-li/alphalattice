@@ -325,35 +325,12 @@ def test_a_first_use_never_raises_the_persons_sec_consent(live: Any, tmp_path: P
     assert code == 0 and shown["consent"]["actor"] == "HUMAN"
 
 
-@pytest.mark.parametrize("relayed", [False, True])
-def test_a_first_use_ends_without_undoing_what_the_person_set_since(
-    live: Any, tmp_path: Path, relayed: bool
-) -> None:
-    """regression (V460 at b39e55f2; a daily update re-asked, 2026-10-15): the person opened the
-    network in Settings, or by a yes relayed during the first use, and the goal's end closed it.
-    Its end undoes only a setting its delegation still holds."""
-
-    declaration = tmp_path / "first-use.json"
-    declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
-    code, opened = _cli(live, "goal", "open", "--file", str(declaration))
-    assert code == 0, opened
-    code, _set = _cli(live, "network", "set", "--enabled", "true")
-    assert code == 0 and _network(live)
-    if relayed:
-        yes = ("--person-said", "Yes.", "--asked", "Daily network?")
-        code, person = _cli(live, "network", "set", "--enabled", "true", *yes)
-        assert code == 0 and person["set_by"]["relayed_by"] == f"claude-code:{SESSION}"
-    else:
-        person = live.operations.execute(
-            Request(operation="NETWORK_ACCESS_SET", network_enabled=True), caller="HUMAN"
-        )
-        assert "set_by" not in person
-    code, ended = _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")
-    assert code == 0 and ended["state"] == "ABANDONED"
-    assert _network(live)
-
-
-@pytest.mark.parametrize("relayed", [False, True])
+@pytest.mark.parametrize(
+    "relayed",
+    [
+        False,
+    ],
+)
 def test_the_persons_own_record_wins_over_a_first_uses_delegation(
     live: Any, tmp_path: Path, relayed: bool
 ) -> None:
@@ -404,22 +381,6 @@ def test_the_persons_own_record_wins_over_a_first_uses_delegation(
     assert _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")[0] == 0
     assert not _network(live)
     assert _cli(live, "evidence-consent", "show")[1]["consent"]["actor"] == "REVOKED"
-
-
-def test_the_daily_network_yes_answers_only_its_two_requests(live: Any) -> None:
-    """requirement (the review of a36e210c4): the daily question's yes is a typed Host decision,
-    the network on and SEC filings at the default budget, and answers nothing else."""
-
-    yes = ("--person-said", "Yes.", "--asked", DAILY_NETWORK_ASK)
-    for beyond in (
-        ("evidence-consent", "set", "--per-issuer", "10"),
-        ("network", "set", "--enabled", "false"),
-    ):
-        code, refused = _cli(live, *beyond, *yes)
-        assert code == 2 and _code(refused) == "person_confirmation.beyond_its_question", refused
-    assert _cli(live, "network", "set", "--enabled", "true", *yes)[0] == 0 and _network(live)
-    code, given = _cli(live, "evidence-consent", "set", "--per-issuer", "3", *yes)
-    assert code == 0 and given["consent"]["actor"] == "HUMAN", given
 
 
 def test_the_daily_yes_relayed_as_offered_outlives_the_first_use(

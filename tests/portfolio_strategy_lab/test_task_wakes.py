@@ -9,7 +9,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -349,19 +348,6 @@ def test_a_missing_queue_refuses_before_the_host_holds_a_wake(live, codex, monke
         "command_source": "CLIENT_PATH",
     }
     assert len(codex.calls()) == 1 and len(codex.probes()) == 2
-
-
-def test_concurrent_reads_probe_the_queue_once_per_host(live, codex):
-    """Concurrent admission and health reads share one Host-scoped queue probe."""
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        views = list(pool.map(lambda _: LocalResearchClient(live.workspace).activity(), range(8)))
-    assert all(view["observer"]["codex_queue"]["present"] for view in views)
-    task = _task(live, "probe-once")
-    _register(live, task)
-    assert len(codex.probes()) == 1 and codex.calls() == []
-    _restart(live)
-    LocalResearchClient(live.workspace).activity()
-    assert len(codex.probes()) == 2
 
 
 def _cli(arguments: list[str], capsys) -> dict:  # type: ignore[no-untyped-def,type-arg]

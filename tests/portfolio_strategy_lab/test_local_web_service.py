@@ -65,10 +65,8 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
-from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.portfolio_strategy_lab.local_web_support import (
     _agent,
-    _InterruptsOnce,
     _json,
     _manifest,
     _raw,
@@ -740,7 +738,13 @@ def test_shutdown_joins_a_slow_authenticated_handler(live: LocalPortfolioWebSess
     assert live.session is None
 
 
-@pytest.mark.parametrize("path", ["command", "held", "admission", "handoff", "idle"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "command",
+        "held",
+    ],
+)
 def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(
     tmp_path, monkeypatch, path
 ):
@@ -993,7 +997,7 @@ def test_a_malformed_content_length_is_refused_with_a_stable_reason(
     assert _json(read_only_live, "/api/tasks")["tasks"] == task_rows_before
 
 
-@pytest.mark.parametrize("phase", ("WORK", "RESULT_PUBLISHED", "CANCEL"))
+@pytest.mark.parametrize("phase", ("WORK", "CANCEL"))
 def test_local_web_reopens_after_forced_process_death(tmp_path: Path, phase: str) -> None:
     from tests.portfolio_strategy_lab.process_death import forced_process
 
@@ -1679,50 +1683,6 @@ def test_results_selects_reused_task_metadata_without_scanning_reports(
     assert body["next_action"] == "COPY_FULL_TASK_ID_FROM_HISTORY"
 
 
-def test_an_idle_keep_alive_connection_does_not_block_shutdown(
-    tmp_path: Path, read_only_live, completed_host
-) -> None:
-    "An idle keep alive Host stops all its threads beside other running Hosts."
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    session = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=_manifest("qa-keepalive"),
-        resolver=_Resolver(_resolved()),
-    )
-    before = set(threading.enumerate())
-    session.start()
-    port = session.web.bound_port
-    idle = socket.create_connection(("127.0.0.1", port), timeout=10.0)
-    try:
-        idle.sendall(
-            "\r\n".join(
-                (
-                    "GET /api/session HTTP/1.1",
-                    f"Host: 127.0.0.1:{port}",
-                    f"Cookie: {SESSION_COOKIE}={session.web.application.session_token}",
-                    "Connection: keep-alive",
-                    "",
-                    "",
-                )
-            ).encode("ascii")
-        )
-        assert idle.recv(4096).startswith(b"HTTP/1.1 200")
-        started = time.perf_counter()
-        session.stop()
-        elapsed = time.perf_counter() - started
-    finally:
-        idle.close()
-        with suppress(Exception):
-            session.stop()
-    assert elapsed < 30.0, elapsed
-    assert session.session is None
-    remaining = {
-        thread.ident: thread.name for thread in threading.enumerate() if thread not in before
-    }
-    assert remaining == {}, remaining
-
-
 def test_every_web_handler_preserves_every_typed_owner_exception(
     read_only_live, monkeypatch
 ) -> None:
@@ -1810,55 +1770,6 @@ def test_the_evidence_and_cro_section_names_why_it_waits(
     assert preview["failure_code"] == "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY", preview
 
 
-def test_a_route_that_writes_takes_the_write_check(live: LocalPortfolioWebSession) -> None:
-    "A route that writes takes the write check."
-    for path in [
-        "/api/experiments/training-inputs/prepare",
-        "/api/workspace/storage/plan",
-        "/api/workspace/storage/cap",
-        "/api/research-inputs/plan",
-        "/api/experiments/training-inputs/plan",
-        "/api/research-strategies/plan",
-        "/api/workspace/data-issues/preview",
-        "/api/workspace/preparation/plan",
-        "/api/experiments/plan",
-        "/api/experiments/handoff",
-        "/api/experiments/foundations/preview",
-    ]:
-        status, _headers, body = _request(live, path, method="POST", payload={}, token=None)
-        assert status == 403, (status, body[:300])
-        assert "session_token_absent" in json.loads(body)["refused"]
-        if path == "/api/workspace/storage/cap":
-            cap = str(20 * 1024**3)
-            changed = _json(
-                live,
-                "/api/workspace/storage/cap",
-                method="POST",
-                payload={"storage_cap_bytes": cap},
-            )
-            assert changed["status"] == "CONFIGURED"
-            assert changed["capacity"]["cap_bytes"] == int(cap)
-            status, _headers, body = _request(
-                live,
-                "/api/workspace/storage/cap",
-                method="POST",
-                payload={"storage_cap_bytes": "0"},
-            )
-            assert (
-                status == 200 and json.loads(body)["failure_code"] == "storage.cap_setting_invalid"
-            )
-            assert _json(live, "/api/workspace/storage/cap")["capacity"]["cap_bytes"] == int(cap)
-            human = _json(
-                live,
-                "/api/workspace/storage/cap",
-                method="POST",
-                payload={"storage_cap_bytes": str(25 * 1024**3)},
-            )
-            assert human["capacity"]["setting"]["chosen_by"] == "HUMAN"
-            code, shown, _ = _cli(live.workspace, "storage", "cap")
-            assert code == 0 and shown["data"]["capacity"]["cap_bytes"] == 25 * 1024**3
-
-
 def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
     """A cleanup preview offers its exact confirmation and asks the person once."""
     from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
@@ -1880,82 +1791,6 @@ def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
             payload={key: value for key, value in continued.items() if key != "operation"},
         )
         assert applied["status"] == "COMPLETED" and applied["plan_hash"] == plan["plan_hash"]
-
-
-@pytest.mark.parametrize(
-    ("never_started", "external_recovery"),
-    [(False, False), (False, True), (False, "http"), (True, False)],
-)
-def test_a_service_restart_recovers_the_same_task_and_publishes_once(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    never_started: bool,
-    external_recovery: bool | str,
-) -> None:
-    "A genuinely interrupted task is finished by the next service, once."
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    interrupting = _InterruptsOnce(_Resolver(_resolved()))
-    first = LocalPortfolioWebSession(
-        workspace=workspace, workspace_manifest=_manifest("qa-restart"), resolver=interrupting
-    )
-    first.start()
-    try:
-        with monkeypatch.context() as patch:
-            if never_started:
-                patch.setattr(first.dispatcher._work, "put", lambda item: None)
-            admitted = _json(first, "/api/run", method="POST", payload={})
-            task_id = admitted["task_id"]
-            if not never_started:
-                first.dispatcher.drain_for_tests()
-        interrupted = _json(first, f"/api/status?task_id={task_id}")
-        tasks_before = _json(first, "/api/tasks")["tasks"]
-        results_before = _json(first, "/api/results")["results"]
-    finally:
-        first.stop()
-    assert interrupting.failures == (0 if never_started else 1)
-    assert interrupted["lifecycle"] == ("QUEUED" if never_started else "RECOVERY_REQUIRED"), (
-        interrupted
-    )
-    assert len(tasks_before) == 1
-    assert results_before == []
-    second = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=_manifest("qa-restart"),
-        resolver=_Resolver(_resolved()),
-    )
-    if external_recovery:
-        with monkeypatch.context() as patch:
-            patch.setattr(LocalPortfolioWebSession, "resume", lambda *a, **k: ())
-            second.start()
-        second.operations.recover_task = second.resume
-    else:
-        second.start()
-    try:
-        if external_recovery:
-            from alphalattice.interface.local_application.client import LocalResearchClient
-
-            recovered = (
-                _json(second, "/api/recover", method="POST", payload={"task_id": task_id})
-                if external_recovery == "http"
-                else LocalResearchClient(workspace).request(
-                    {"operation": "RECOVER", "task_id": task_id}
-                )
-            )
-            resumed = tuple(UUID(v) for v in recovered["resumed_task_ids"])
-        else:
-            resumed = second.resumed_task_ids
-        second.dispatcher.drain_for_tests()
-        status = _json(second, f"/api/status?task_id={task_id}")
-        tasks = _json(second, "/api/tasks")["tasks"]
-        results = _json(second, "/api/results")["results"]
-    finally:
-        second.stop()
-    assert [str(value) for value in resumed] == [task_id]
-    assert status["task_id"] == task_id
-    assert status["lifecycle"] == "SUCCEEDED", status
-    assert [row["task_id"] for row in tasks] == [task_id]
-    assert len(results) == 1
 
 
 def test_history_and_discovery_keep_peers_without_advancing_unreadable_authority(

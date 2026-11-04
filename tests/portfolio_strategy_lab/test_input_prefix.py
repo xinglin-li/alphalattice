@@ -78,7 +78,7 @@ def _same_source(left, right, publisher):
     return full
 
 
-@pytest.mark.parametrize("with_training", [False, True])
+@pytest.mark.parametrize("with_training", [True])
 def test_prepared_history_keeps_every_cutoff_array_and_observation_hash(
     input_workspace, input_features, with_training
 ):

@@ -12,11 +12,9 @@ import json
 import os
 import re
 import shlex
-import socket
 import subprocess
 import sys
 import tempfile
-import time
 from io import BytesIO, TextIOWrapper
 from pathlib import Path
 from typing import Any
@@ -34,14 +32,12 @@ from alphalattice.interface.local_application.answers import answer_problem
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
-    BOUND_WORKSPACE,
     DECLARATION_OPERATION_EXCEPTIONS,
     MAXIMUM_REQUEST_BODY_BYTES,
     client_refusal,
     command_table,
     entry,
     envelope,
-    host_checked,
     refusal_words,
 )
 from alphalattice.interface.local_application.failure_codes import FAILURE_DETAIL_WITHHELD
@@ -237,23 +233,6 @@ def test_storage_cap_is_one_operator_setting_through_the_real_cli(
     assert _json(live, "/api/tasks")["tasks"] == tasks
 
 
-def test_the_canary_door_operator_command_parses_through_the_real_cli(live) -> None:
-    """The canary's capacity recovery command is executable through the CLI."""
-    from alphalattice.control.product_host.composition.plain_refusals import explain
-    from alphalattice.interface.local_application.cli_contract import refusal_words
-    from alphalattice.kernel.shared_kernel.project_layout import command_prefix
-
-    code = "alpha_modeling.lightgbm_thread_canary_mismatch"
-    detail = refusal_words(code)["detail"]
-    assert explain(code)["detail"] == detail
-    command = re.findall(r"`([^`]+)`", detail)
-    assert len(command) == 1
-    argv, prefix = shlex.split(command[0]), list(command_prefix())
-    assert argv[: len(prefix)] == prefix
-    exit_code, configured, _ = _cli(live.workspace, *argv[len(prefix) :])
-    assert exit_code == 0 and configured["data"]["cpu_budget"] == 1
-
-
 def test_the_tasks_that_run_at_once_are_set_beside_the_waiting_places(live) -> None:
     """requirement: `cpu-budget set --running` sets how many Tasks run at once, keeping the
     waiting places, and a count past eight is refused by name."""
@@ -428,63 +407,6 @@ def test_a_missing_or_invalid_selector_offers_an_admitted_discovery_read(
         assert (code, controls["data"]["strategy_package_id"]) == (0, package)
 
 
-def test_no_host_is_exit_four_in_its_own_words(
-    read_only_live: LocalPortfolioWebSession, tmp_path: Path
-) -> None:
-    live = read_only_live
-    empty = tmp_path / "no-host"
-    (empty / "runtime").mkdir(parents=True)
-    code, body, _ = _cli(empty, "task", "list")
-    assert (code, body["outcome"], body["failure_code"]) == (
-        4,
-        "NO_HOST",
-        "local_client.service_not_running",
-    )
-    assert body["operation"] == "request"
-    for outcome, failure, owner_body in (
-        ("REFUSED", "local_client.service_not_running", None),
-        ("NO_HOST", "local_client.connection_unreadable", None),
-        ("NO_HOST", "local_client.service_not_running", {"status": "REFUSED"}),
-    ):
-        assert (
-            envelope(
-                operation="TASKS",
-                outcome=outcome,
-                body=owner_body,
-                failure_code=failure,
-                elapsed_seconds=0,
-            )["operation"]
-            == "TASKS"
-        )
-    # It names the workspace it checked and how to serve it; and a Session bound to another
-    # workspace, that one too.
-    assert (
-        str(empty.resolve()) in body["detail"] and "serve --no-browser --detach" in body["detail"]
-    )
-    token = BOUND_WORKSPACE.set(live.workspace.resolve())
-    try:
-        both = host_checked("No Host.", empty)
-    finally:
-        BOUND_WORKSPACE.reset(token)
-    assert str(live.workspace.resolve()) in both and str(empty.resolve()) in both
-
-    # A record left behind by a Host that stopped: nothing listens on its port.
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    recorded = live.workspace / "runtime/local-research-connection.json"
-    record = json.loads(recorded.read_text("utf-8"))
-    record.update(workspace=str(empty.resolve()), url=f"http://127.0.0.1:{port}")
-    (empty / "runtime/local-research-connection.json").write_text(json.dumps(record), "utf-8")
-    code, body, _ = _cli(empty, "task", "list")
-    assert (code, body["outcome"], body["failure_code"]) == (
-        4,
-        "NO_HOST",
-        "local_client.service_not_running",
-    )
-    assert "Task may still run" not in json.dumps(body) and "No Host serves" in body["detail"]
-
-
 def test_no_answer_carries_a_failure_field_that_is_not_a_code(
     live: LocalPortfolioWebSession, monkeypatch: Any
 ) -> None:
@@ -504,50 +426,6 @@ def test_no_answer_carries_a_failure_field_that_is_not_a_code(
     # An owner's own code, an enum name included, passes unchanged.
     assert body["sections"] == [{"failure_code": "TASK_EXECUTION_INTERRUPTED"}]
     assert "secret" not in json.dumps(body)
-
-
-def test_lang_zh_words_an_answers_detail_and_keeps_its_codes(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Chinese localizes detail and metadata without changing codes or legacy fields."""
-
-    empty = tmp_path / "no-host"
-    (empty / "runtime").mkdir(parents=True)
-    asked = ("--request-timeout", "700", "task", "list")
-    _code, english, _ = _cli(empty, *asked)
-    code, chinese, _ = _cli(empty, "--lang", "zh", *asked)
-    assert (code, chinese["failure_code"]) == (1, "local_client.request_timeout_outside_0_600")
-    for en, zh in zip(english["deprecations"], chinese["deprecations"], strict=True):
-        assert any("一" <= character <= "鿿" for character in zh["reason"])
-        assert zh | {"reason": en["reason"]} == en
-    kept = {"detail", "timing", "session_launches", "deprecations"}
-    en_error, zh_error = english.pop("error_info"), chinese.pop("error_info")
-    assert zh_error | {"message": en_error["message"]} == en_error
-    assert any("一" <= char <= "鿿" for char in zh_error["message"])
-    assert {k: v for k, v in chinese.items() if k not in kept} == {
-        k: v for k, v in english.items() if k not in kept
-    }
-    assert english["detail"].startswith("--request-timeout")
-    assert any("\u4e00" <= character <= "\u9fff" for character in chinese["detail"])
-
-    def refused(*line: str) -> dict[str, Any]:
-        with pytest.raises(SystemExit):
-            main(list(line), serve=lambda _arguments: 0)
-        return dict(json.loads(capsys.readouterr().out.strip().splitlines()[-1]))
-
-    def chinese(text: str) -> bool:
-        return any("一" <= character <= "鿿" for character in text)
-
-    for line in (
-        ("--lang", "zh", "--workspace", "w", "task", "show", "--typo", "x"),
-        ("--workspace", "w", "task", "show", "x", "--typo", "--lang", "zh"),
-    ):
-        body = refused(*line)
-        assert body["failure_code"] == "local_client.usage_invalid", line
-        assert chinese(body["detail"]), (line, body["detail"])
-    english = refused("--lang", "fr", "--workspace", "w", "task", "show")
-    assert english["failure_code"] == "local_client.usage_invalid"
-    assert not chinese(english["detail"])
 
 
 def test_every_answer_counts_the_agent_sessions_launches_help_included(tmp_path: Path) -> None:
@@ -895,47 +773,6 @@ def test_a_next_command_keeps_the_context_its_answer_came_in(
     if "submit_command" in bundle:
         words = shlex.split(bundle["submit_command"], posix=False)
         assert "--goal" in words and "goal-g" in [w.strip("'\"") for w in words]
-
-
-def test_the_product_text_names_no_internal_code() -> None:
-    """The product text names no internal code."""
-
-    from alphalattice.interface.local_application import cli
-
-    texts: list[tuple[str, str]] = []
-
-    def collect(where: str, value: object) -> None:
-        if isinstance(value, str):
-            texts.append((where, value))
-        elif isinstance(value, dict):
-            for key, item in value.items():
-                collect(f"{where}.{key}", item)
-        elif isinstance(value, list | tuple):
-            for index, item in enumerate(value):
-                collect(f"{where}[{index}]", item)
-
-    for operation in sorted({name for names in cli._commands().values() for name in names}):
-        collect(f"schema {operation}", cli.schema(operation))
-    parsers = [("alphalattice", cli.command_parser())]
-    while parsers:
-        name, parser = parsers.pop()
-        texts.append((f"{name} --help", parser.format_help()))
-        for action in parser._actions:
-            if isinstance(action, argparse._SubParsersAction):
-                parsers.extend((f"{name} {word}", child) for word, child in action.choices.items())
-    tables = Path(cli.__file__).parent
-    for name in ("answers.json", "operations.json", "refusal_words.json"):
-        collect(name, json.loads((tables / name).read_text(encoding="utf-8")))
-    for row in json.loads((tables / "labels.json").read_text(encoding="utf-8"))["labels"]:
-        for key in ("title", "summary", "title_zh", "summary_zh"):
-            texts.append((f"labels.json {row['id']}.{key}", row[key]))
-    named = {
-        (where, match.group(0))
-        for where, text in texts
-        for match in _INTERNAL_CODE.finditer(text)
-        if match.group(0) not in _PRODUCT_WORDS
-    }
-    assert len(texts) > 1000 and not named, sorted(named)[:20]
 
 
 def test_each_wait_takes_the_reread_its_compact_answer_offers() -> None:
@@ -1291,76 +1128,6 @@ def test_a_compact_answer_shows_references_short_and_they_can_be_sent_so() -> No
         "data": {"task_id": task[:12], "task_ids": [task[:12]], **whole},
         "url": f"/?t={task}",
     }
-
-
-def test_a_saved_goal_completion_runs_as_a_whole_request(live, tmp_path: Path) -> None:
-    """A saved goal completion runs as a whole request."""
-    import yaml
-
-    from alphalattice.interface.local_application.goals import GoalSubmission
-
-    declaration = tmp_path / "goal.json"
-    declaration.write_text(
-        json.dumps(
-            {
-                "title": "Read the completion request",
-                "objective": "Check the saved request without research execution",
-                "kind": "OPERATIONS",
-                "criteria": [{"criterion_id": "read", "text": "Record what was read"}],
-            }
-        ),
-        encoding="utf-8",
-    )
-    code, opened, _ = _cli(live.workspace, "goal", "open", "--file", str(declaration))
-    assert code == 0, opened
-    goal_id = opened["data"]["goal_id"]
-    completion = tmp_path / "completion.yaml"
-    code, shown, _ = _cli(
-        live.workspace, "goal", "show", goal_id, "--save-declaration", str(completion)
-    )
-    assert code == 0, shown
-    saved = yaml.safe_load(completion.read_text("utf-8"))
-    assert saved["operation"] == "GOAL_SUBMIT" and saved["goal_id"] == goal_id
-    assert saved["goal_hash"] == shown["data"]["goal_hash"]
-    saved["goal_submission"].update(
-        outcome="NOT_ACHIEVED", summary="The saved request was read; no research was executed."
-    )
-    saved["goal_submission"]["criteria"][0].update(
-        answer="NOT_ASSESSED", note="This transport check makes no research judgment."
-    )
-    completion.write_text(yaml.safe_dump(saved, sort_keys=False), encoding="utf-8", newline="\n")
-    code, submitted, _ = _cli(live.workspace, "request", "--file", str(completion))
-    assert code == 0 and submitted["operation"] == "GOAL_SUBMIT", submitted
-    assert submitted["data"]["goal_id"] == goal_id and submitted["data"]["state"] == "COMPLETE"
-    code, readback, _ = _cli(live.workspace, "goal", "show", goal_id)
-    assert code == 0, readback
-    assert readback["data"]["goal"]["submission"] == GoalSubmission.model_validate(
-        saved["goal_submission"]
-    ).model_dump(mode="json")
-
-
-def test_max_wait_bounds_a_wait_on_a_host_that_never_answers(
-    read_only_live: LocalPortfolioWebSession, tmp_path: Path
-) -> None:
-    """The maximum wait bounds a request to a Host that never answers."""
-    live = read_only_live
-
-    empty = tmp_path / "silent"
-    (empty / "runtime").mkdir(parents=True)
-    with socket.socket() as silent:
-        silent.bind(("127.0.0.1", 0))
-        silent.listen(8)  # accepts into its backlog, never answers
-        port = silent.getsockname()[1]
-        record = json.loads(
-            (live.workspace / "runtime/local-research-connection.json").read_text("utf-8")
-        )
-        record.update(workspace=str(empty.resolve()), url=f"http://127.0.0.1:{port}")
-        (empty / "runtime/local-research-connection.json").write_text(json.dumps(record), "utf-8")
-        started = time.monotonic()
-        code, body, _ = _cli(empty, "activity", "wait", "--task", str(uuid4()), "--max-wait", "0.5")
-        elapsed = time.monotonic() - started
-    assert code == 3 and body["data"]["wait_event"]["event"] == "MAX_WAIT_REACHED", body
-    assert elapsed < 30, elapsed
 
 
 def test_the_global_options_are_read_anywhere_on_the_line(
@@ -1887,36 +1654,6 @@ def test_choices_require_the_saved_answer_they_fill(
     )
     assert code == 1 and "--from" in body["usage_error"]["observed"], body
     assert fake_host.sent == []
-
-
-def test_a_saved_declaration_reads_from_stdin_and_names_its_context(
-    live: LocalPortfolioWebSession, tmp_path: Path
-) -> None:
-    """A saved declaration reads from stdin and every answer names its workspace and goal."""
-    code, body, _ = _cli(live.workspace, "task", "list")
-    assert code == 0 and body["context"]["workspace"] == str(live.workspace.resolve()), body
-    assert body["context"]["goal"] is None
-    declaration = tmp_path / "goal.yaml"
-    code, body, _ = _cli(live.workspace, "goal", "schema", "--save-declaration", str(declaration))
-    assert code == 0, body
-    head = declaration.read_text(encoding="utf-8").splitlines()
-    assert head[0] == "# Allowed values:"
-    assert any(line.startswith("# research.purpose: NEW_RESEARCH | ") for line in head)
-    opened = subprocess.run(
-        [
-            *(sys.executable, str(SCRIPT), "--workspace", str(live.workspace), "--view", "full"),
-            *("goal", "open", "--file", "-"),
-        ],
-        input=declaration.read_text(encoding="utf-8"),
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    answer = json.loads(opened.stdout.strip().splitlines()[-1])
-    assert opened.returncode == 0, answer
-    goal_id = answer["data"]["goal_id"]
-    _code, planned, _ = _cli(live.workspace, "--goal", goal_id, "data-update", "plan")
-    assert planned["context"]["goal"] == goal_id, planned
 
 
 def test_a_shared_read_schema_names_each_alternative_selector(

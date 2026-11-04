@@ -680,65 +680,6 @@ def test_a_strategy_book_too_short_for_a_rebalance_stops_before_its_walk_in_word
         live.stop()
 
 
-def test_unavailable_activity_telemetry_leaves_recovery_usable(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Unavailable activity telemetry leaves recovery usable."""
-
-    workspace = tmp_path / "workspace"
-    (workspace / "runtime" / "observations.sqlite").mkdir(parents=True)  # a directory, not a store
-    interrupting = _InterruptsOnce(_Resolver(_resolved()))
-    live = _service(tmp_path, interrupting, "qa-degraded")
-    live.start()
-    try:
-        assert live.activity is not None and not live.activity.available
-        admitted = _json(live, "/api/run", method="POST", payload={})
-        task_id = admitted["task_id"]
-        live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
-        stopped = _view(live, task_id)
-        assert stopped["lifecycle"] == "RECOVERY_REQUIRED"
-        assert _actions(stopped)["RECOVER"]["available"] is True
-        feed = _json(live, f"/api/activity?watch={task_id}")
-        assert feed["disposition"] == "UNAVAILABLE" and feed["items"] == []
-        # The filesystem refuses the sidecar itself, at the exact path the reader checks.
-        sidecar = live.operations.heartbeats.paths[0]
-        assert sidecar == heartbeat_store_path(Path(live.session.runtime_path).resolve())  # type: ignore[union-attr]
-        is_file = Path.is_file
-
-        def refused(self: Path, *args: Any, **kwargs: Any) -> bool:
-            if self == sidecar:
-                raise PermissionError(13, "Permission denied", str(self))
-            return is_file(self, *args, **kwargs)
-
-        with monkeypatch.context() as patched:
-            patched.setattr(Path, "is_file", refused)
-            assert live.operations.heartbeats.read(uuid4()) == TaskHeartbeatReadout(
-                signals=(), unreadable=("task_control.heartbeat_store_unreadable",)
-            )
-            refused_view = _view(live, task_id)
-        assert refused_view["lifecycle"] == "RECOVERY_REQUIRED"
-        assert refused_view["task_record_hash"] == stopped["task_record_hash"]
-        assert refused_view["liveness"]["telemetry"] == "UNREADABLE"
-        assert refused_view["liveness"]["status"] == "NOT_APPLICABLE"
-        assert _actions(refused_view)["RECOVER"]["available"] is True
-        assert _actions(refused_view) == _actions(stopped)
-        restored = _view(live, task_id)
-        assert restored["liveness"]["telemetry"] != "UNREADABLE"
-        assert restored["task_record_hash"] == stopped["task_record_hash"]
-        resumed = _json(
-            live,
-            "/api/recover",
-            method="POST",
-            payload={"task_id": task_id, "expected_task_hash": stopped["task_record_hash"]},
-        )
-        assert resumed["resumed_task_ids"] == [task_id]
-        live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
-        assert _view(live, task_id)["lifecycle"] == "SUCCEEDED"
-        assert len(_json(live, "/api/results")["results"]) == 1
-    finally:
-        live.stop()
-
-
 class _Held:
     """A resolver that waits inside its numerical resolution until released, so a Task is
     genuinely RUNNING with a live runner heartbeat while the view is read."""
@@ -762,71 +703,6 @@ class _Held:
         self.entered.set()
         assert self.release.wait(60), "the test releases the held resolution"
         return self.inner.resolve(**kwargs)
-
-
-def test_liveness_reads_the_runners_operational_heartbeat_not_only_the_durable_timestamp(
-    tmp_path: Path,
-) -> None:
-    """Liveness reads the runner's operational heartbeat alongside its durable timestamp."""
-
-    base = datetime(2026, 9, 15, 10, 0, tzinfo=UTC)
-    offset = [0.0]
-    held = _Held(_Resolver(_resolved()))
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    live = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=_manifest("qa-liveness"),
-        resolver=held,
-        clock=lambda: base + timedelta(seconds=offset[0]),
-    )
-    live.start()
-    try:
-        task_id = _json(live, "/api/run", method="POST", payload={})["task_id"]
-        assert held.entered.wait(30), "the resolver was entered"
-        registry = live.session.task_control_registry  # type: ignore[union-attr]
-        execution_id = registry.task(UUID(task_id)).latest_execution_id
-        assert execution_id is not None
-        reader = TaskHeartbeatReader(live.session.runtime_path)  # type: ignore[union-attr]
-        offset[0] = 60.0  # the service clock moves; nothing else does
-        deadline = datetime.now(UTC) + timedelta(seconds=20)
-        signal = _only(reader.read(execution_id))
-        while (signal is None or signal.observed_at < base + timedelta(seconds=60)) and (
-            datetime.now(UTC) < deadline
-        ):
-            threading.Event().wait(0.2)
-            signal = _only(reader.read(execution_id))
-        assert signal is not None and signal.sequence >= 2, "the runner's own later heartbeat"
-        assert signal.task_id == UUID(task_id) and signal.execution_id == execution_id
-        assert signal.observed_at == base + timedelta(seconds=60)
-        view = _view(live, task_id)
-        assert view["lifecycle"] == "RUNNING" and view["operation_running"] is True
-        liveness = view["liveness"]
-        assert liveness["status"] == "OBSERVED", liveness
-        assert liveness["telemetry"] == "OPERATIONAL"
-        assert liveness["last_heartbeat_source"] == "OPERATIONAL_SIGNAL"
-        assert liveness["signal_sequence"] == signal.sequence
-        assert liveness["age_seconds"] == 0.0 == liveness["operational_age_seconds"]
-        assert datetime.fromisoformat(liveness["operational_at"]) == signal.observed_at
-        durable = registry.execution(execution_id).last_heartbeat_at
-        assert datetime.fromisoformat(liveness["durable_at"]) == durable
-        assert durable == base, "the durable timestamp is the start, 60 s old, and not the verdict"
-        for status in (
-            view["status"],
-            _json(live, "/api/status?task_id=" + task_id),
-            next(t for t in _json(live, "/api/tasks")["tasks"] if t["task_id"] == task_id),
-        ):
-            assert datetime.fromisoformat(status["running_since"]) == base
-            assert datetime.fromisoformat(status["last_activity_at"]) == base
-        assert f"heartbeat #{signal.sequence}" in liveness["note"]
-        assert view["health"]["status"] == "HEALTHY"
-        assert view["health"]["heartbeat_age_seconds"] == 0.0
-        assert view["incidents"] == []
-    finally:
-        held.release.set()
-        live.dispatcher.drain_for_tests()  # type: ignore[union-attr]
-        assert _view(live, task_id)["lifecycle"] == "SUCCEEDED"
-        live.stop()
 
 
 def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_liveness(

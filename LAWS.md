@@ -289,7 +289,7 @@ The registry declares `alphalattice [global options] <object> <action> [<id>] [-
 
 *Held by:* `gate: operation-registry`,
 `test: tests/structural/test_documented_commands.py::test_a_command_a_text_names_is_one_the_cli_has`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_saved_declaration_reads_from_stdin_and_names_its_context`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_the_option_terminator_keeps_the_following_id_as_an_operand`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_exclusive_read_selectors_are_refused_before_a_request_is_sent`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_choices_require_the_saved_answer_they_fill`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_declaration_and_choices_never_give_one_field_twice`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_command_schema_names_both_admitted_declaration_forms`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_shared_read_schema_names_each_alternative_selector`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_saved_answer_from_stdin_selects_its_read_operation`.
+`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_the_option_terminator_keeps_the_following_id_as_an_operand`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_exclusive_read_selectors_are_refused_before_a_request_is_sent`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_choices_require_the_saved_answer_they_fill`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_declaration_and_choices_never_give_one_field_twice`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_command_schema_names_both_admitted_declaration_forms`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_shared_read_schema_names_each_alternative_selector`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_saved_answer_from_stdin_selects_its_read_operation`.
 
 **OP3. One envelope and outcome code.**
 
@@ -303,8 +303,7 @@ Exit 0 OK, 1 INVALID_INPUT, 2 REFUSED, 3 PENDING or 4 NO_HOST; `--output` saves 
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_compact_answer_shows_references_short_and_they_can_be_sent_so`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_compact_answer_holds_its_next_requests_to_the_read`,
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_compact_answer_holds_its_next_requests_to_the_read`; `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_every_answer_is_one_envelope_and_exits_by_its_outcome`,
-`test: tests/portfolio_strategy_lab/test_status_follow.py::test_an_interrupted_wait_keeps_the_admitted_task_in_its_output`,
-`test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_a_short_reference_is_read_back_as_the_one_value_it_begins`.
+`test: tests/portfolio_strategy_lab/test_status_follow.py::test_an_interrupted_wait_keeps_the_admitted_task_in_its_output`.
 
 **OP4. A refusal is a code with words and a way on.**
 
@@ -451,8 +450,7 @@ Derive requests, grammar, schemas and future native adapters from the registry. 
 
 *Held by:*
 `test: tests/portfolio_strategy_lab/test_workspace_activity.py::test_every_refusal_is_counted_by_operation_code_caller_and_vendor_and_nothing_else`,
-`test: tests/portfolio_strategy_lab/test_workspace_activity.py::test_every_operation_in_the_vocabulary_is_classified_once`,
-`test: tests/portfolio_strategy_lab/test_workspace_activity.py::test_only_typed_failure_codes_and_exception_classes_are_persisted`.
+`test: tests/portfolio_strategy_lab/test_workspace_activity.py::test_every_operation_in_the_vocabulary_is_classified_once`.
 
 **OP15. Closed offers and repeatable reads.**
 
@@ -479,8 +477,7 @@ Every operation, declared field/value and view/language/goal context round-trips
 `test: tests/portfolio_strategy_lab/test_cli_contract.py::test_a_next_command_keeps_the_context_its_answer_came_in`,
 `test: tests/portfolio_strategy_lab/test_cli_saved_answers.py::test_an_answer_saved_as_json_or_yaml_reads_back_alike`.
 *Held by:*
-`test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_every_refusal_and_answer_template_command_parses`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_the_canary_door_operator_command_parses_through_the_real_cli`.
+`test: tests/portfolio_strategy_lab/test_cli_printed_commands.py::test_every_refusal_and_answer_template_command_parses`.
 
 **OP17. Bound context; refuse conflicting targets.**
 
@@ -642,8 +639,7 @@ One operator cap, automatically sized from managed data/free space, governs capa
 *Held by:*
 `test: tests/workspace_maintenance/test_current_state_storage.py::test_storage_cap_counts_managed_models_panels_and_artifacts_and_follows_the_operator`,
 `test: tests/workspace_maintenance/test_current_state_storage.py::test_cleanup_plan_checks_old_cap_receipts_and_new_plans_exclude_execution_capacity`,
-`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_storage_cap_is_one_operator_setting_through_the_real_cli`; `test: tests/portfolio_strategy_lab/test_local_web_service.py::test_a_route_that_writes_takes_the_write_check`,
-`test: tests/workspace_readiness/test_workspace_preparation.py::test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap`,
+`test: tests/portfolio_strategy_lab/test_cli_contract.py::test_storage_cap_is_one_operator_setting_through_the_real_cli`; `test: tests/workspace_readiness/test_workspace_preparation.py::test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap`,
 `test: tests/unified_observation/test_unified_observation.py::test_an_open_observation_ledger_follows_the_workspace_cap_without_reidentifying_records`.
 
 

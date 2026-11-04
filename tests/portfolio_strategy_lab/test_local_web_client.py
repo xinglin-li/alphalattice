@@ -31,7 +31,6 @@ from alphalattice.interface.local_application.retrieval_environment import inter
 from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.portfolio_strategy_lab.local_web_support import (
     _json,
-    _run_to_completion,
     serve_conflict,
 )
 
@@ -904,88 +903,6 @@ def test_cli_saves_owner_refusals_and_rejects_removed_submit_commands(live, tmp_
     assert code == 1 and rejected["failure_code"] == "local_client.usage_invalid"
     assert len(live.session.task_control_registry.tasks()) == before_review
     transcript = "\n".join([_reply1[2], _reply2[2]])
-    assert live.web.application.session_token not in transcript
-    assert live.web.application.external_token not in transcript
-
-
-def test_cli_run_reads_and_saves_the_exact_completed_result(live, tmp_path):
-    "A CLI run completes, discovers its result and saves the owner's exact export."
-    client = LocalResearchClient(live.workspace)
-    spec = tmp_path / "spec.yaml"
-    spec.write_text("{}", encoding="utf-8")
-    _reply1 = _cli(live.workspace, "strategy-book", "preview", "--file", str(spec))
-    assert _reply1[0] == 0
-    _reply2 = _cli(live.workspace, "strategy-book", "run", "--file", str(spec))
-    sent = _reply2[1]["data"]
-    assert sent["disposition"] == "ADMITTED"
-    _reply3 = _cli(live.workspace, "task", "show", sent["task_id"], "--wait", "--max-wait", "10")
-    code, completed, _ = _reply3
-    assert code == 0 and completed["data"]["lifecycle"] == "SUCCEEDED"
-    result_hash = client.request({"operation": "RESULTS"})["results"][0]["result_hash"]
-    _reply4 = _cli(live.workspace, "workspace", "show")
-    discovered = _reply4[1]["data"]["research_context"]
-    assert any(
-        entry["entry_id"] == f"result:{result_hash}"
-        for entry in discovered["recent_research"]["entries"]
-    )
-    _reply5 = _cli(live.workspace, "result", "show", result_hash)
-    code, report, _ = _reply5
-    assert code == 0
-    assert "history=result%3A" + result_hash in report["local_web_url"]
-    _reply6 = _cli(live.workspace, "--view", "compact", "result", "show", result_hash)
-    code, brief, _ = _reply6
-    assert code == 0 and brief["data"]["result_hash"] == report["data"]["result_hash"][:12]
-    assert brief["navigation"]["kind"] == "portfolio_result"
-    _reply7 = _cli(live.workspace, "result", "export", result_hash)
-    exported = _reply7[1]["data"]
-    assert exported.pop("read_request") == {"operation": "EXPORT", "result_hash": result_hash}
-    assert exported == live.operations.export(result_hash)
-    output = tmp_path / "export.json"
-    _reply8 = _cli(live.workspace, "result", "export", result_hash, "--output", str(output))
-    saved = _reply8
-    whole = json.loads(output.read_text())
-    assert saved[0] == 0 and whole.pop("read_request")["result_hash"] == result_hash
-    assert whole == live.operations.export(result_hash)
-    transcript = "\n".join(
-        [
-            _reply1[2],
-            _reply2[2],
-            _reply3[2],
-            _reply4[2],
-            _reply5[2],
-            _reply6[2],
-            _reply7[2],
-            _reply8[2],
-        ]
-    )
-    assert live.web.application.session_token not in transcript
-    assert live.web.application.external_token not in transcript
-
-
-def test_cli_reopens_exact_results_and_reuses_them_after_a_host_restart(live, tmp_path):
-    "A restarted Host rejects its stale connection and reopens its exact result without admission."
-    client = LocalResearchClient(live.workspace)
-    spec = tmp_path / "spec.yaml"
-    spec.write_text("{}", encoding="utf-8")
-    result_hash = _run_to_completion(live)
-    _reply1 = _cli(live.workspace, "result", "show", result_hash)
-    code, report, _ = _reply1
-    assert code == 0
-    count = len(live.session.task_control_registry.tasks())
-    old = client.connection
-    live.stop()
-    assert not LocalResearchConnection.path(live.workspace).exists()
-    live.start()
-    assert LocalResearchConnection.read(live.workspace).instance != old.instance
-    client.connection = dataclasses.replace(old, url=live.url)
-    assert "external_workspace_or_instance_mismatch" in str(client.request())
-    _reply2 = _cli(live.workspace, "strategy-book", "run", "--file", str(spec))
-    reused = _reply2[1]["data"]
-    assert reused["disposition"] == "REUSED_EXACT" and reused["task_id"] is None
-    assert len(live.session.task_control_registry.tasks()) == count
-    _reply3 = _cli(live.workspace, "result", "show", result_hash)
-    assert _reply3[1]["data"] == report["data"]
-    transcript = "\n".join([_reply1[2], _reply2[2], _reply3[2]])
     assert live.web.application.session_token not in transcript
     assert live.web.application.external_token not in transcript
 

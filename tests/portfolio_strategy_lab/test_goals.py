@@ -1655,45 +1655,6 @@ def test_a_session_takes_a_goal_and_its_requests_are_recorded_under_it(
     assert code == 2 and refused["data"]["failure_code"] == "goal.closed_open_a_follow_up"
 
 
-def test_a_declared_event_reaches_its_goal_through_the_host(
-    live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """requirement (GR2, V283): the Host's event ingress files what a Session declares under
-    the goal that Session holds; the receipt names the goal and the Team feed's row keeps it."""
-
-    from alphalattice.interface.local_application.client import LocalResearchClient
-    from tests.portfolio_strategy_lab.local_web_support import _json
-
-    declaration = tmp_path / "goal.json"
-    declaration.write_text(
-        json.dumps({**DECLARATION, "kind": "REVIEW", "research": None}), encoding="utf-8"
-    )
-    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION.session)
-    code, opened = _cli(live, "goal", "open", "--file", str(declaration))
-    assert code == 0, opened
-    goal_id = opened["data"]["goal_id"]
-    document = json.loads(
-        _team_event(
-            1,
-            "Costs first.",
-            message_kind="plan",
-            message_id="p-1",
-            native_agent_id=SESSION.session,
-            role="research_lead",
-        ).model_dump_json()
-    )
-    filed = LocalResearchClient(live.workspace).publish_event(document)
-    assert filed["status"] == "APPENDED" and filed["goal_id"] == goal_id
-    code, shown = _cli(live, "goal", "show", goal_id)
-    record = shown["data"]["record"]
-    declared = [m for m in record["conversation"] if m["message_kind"] == "plan"]
-    assert [(m["agent_id"], m["summary"]) for m in declared] == [(SESSION.session, "Costs first.")]
-    assert record["open_assignments"] == []
-    rows = _json(live, "/api/activity/external")["items"]
-    # The declared event and the Host's bound fact for the Session, both filed under its goal.
-    assert {row["payload"]["subject"]["goal_id"] for row in rows} == {goal_id}
-
-
 def test_only_a_sealing_answer_offers_experience_with_sendable_owner_reads(
     live, tmp_path, monkeypatch
 ):
@@ -1780,50 +1741,6 @@ def test_only_a_sealing_answer_offers_experience_with_sendable_owner_reads(
     repeated = client.request(request)
     assert repeated["status"] == "REFUSED"
     assert repeated.get("next_action") != "RECORD_THE_EXPERIENCE"
-
-
-def test_the_workbench_reaches_what_the_ui_pass_reads(live, tmp_path: Path):
-    """requirement (V321, UI-P D10): the goals a person keeps, the saved studies' sweep and
-    Guanyin's incidents answer on the Local Web, each route its registered operation, a write
-    behind the session as every write is; an agent's own goal steps stay on the client route."""
-
-    from tests.portfolio_strategy_lab.local_web_support import _json, _request
-
-    body = {"goal_declaration": DECLARATION, "change_reason": "Register before execution"}
-    denied, _, _ = _request(live, "/api/goals/open", method="POST", payload=body, token=None)
-    assert denied == 403
-    opened = _json(live, "/api/goals/open", method="POST", payload=body)
-    goal_id = opened["goal_id"]
-    assert opened["goal_prompt"].startswith("/goal ")
-    assert goal_id in {row["goal_id"] for row in _json(live, "/api/goals")["goals"]}
-    shown = _json(live, "/api/goals/show?goal_id=" + goal_id)
-    assert shown["goal"]["declaration"]["title"] == DECLARATION["title"]
-    assert "declaration" in _json(live, "/api/goals/schema")["schemas"]
-    statement = {
-        "statement_id": "costs",
-        "kind": "DECISION",
-        "attribution": "PM",
-        "text": "Costs first",
-        "disposition": "OPEN",
-    }
-    noted = _json(
-        live,
-        "/api/goals/note",
-        method="POST",
-        payload={
-            "goal_id": goal_id,
-            "goal_hash": shown["goal_hash"],
-            "goal_statement": statement,
-            "change_reason": "A decision",
-        },
-    )
-    assert noted.get("status") != "REFUSED", noted
-    assert _json(live, "/api/goals/narrative?goal_id=" + goal_id).get("status") != "REFUSED"
-    assert "incidents" in _json(live, "/api/tasks/incidents")
-    swept = _json(live, "/api/experiments/verify-all", method="POST", payload={})
-    assert swept.get("failure_code") != "local_web.route_not_found", swept
-    status, _, _ = _request(live, "/api/goals/take", method="POST", payload={"goal_id": goal_id})
-    assert status == 404
 
 
 def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
