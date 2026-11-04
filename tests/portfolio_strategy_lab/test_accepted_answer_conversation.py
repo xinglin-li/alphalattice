@@ -35,6 +35,7 @@ from alphalattice.control.task_control.contracts import (
     ResearchPlan,
     TaskInputEnvelope,
 )
+from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceAnalystAnswer,
     AlternativeEvidenceResearchObligation,
@@ -147,6 +148,13 @@ def open_goal(live, title):
 @pytest.fixture
 def answer_scene(live, tmp_path, monkeypatch):
     """Synthetic acceptance seam: no evidence, specialist or scientific work executes."""
+    write_queue_setting(
+        live.workspace / "runtime",
+        2,
+        chosen_by="HUMAN",
+        chosen_at=datetime(2026, 10, 4, tzinfo=UTC),
+        field="tasks_waiting",
+    )
     envelope, goal, plan = task_contract(salt="accepted-answer-conversation")
     task = live.session.task_control_registry.admit(
         input_envelope=envelope,
@@ -319,6 +327,13 @@ def answer_scene(live, tmp_path, monkeypatch):
 @pytest.fixture
 def product_answer_scene(live, tmp_path):
     """Use the actual generic owners and sealed records without native author claims."""
+    write_queue_setting(
+        live.workspace / "runtime",
+        2,
+        chosen_by="HUMAN",
+        chosen_at=datetime(2026, 10, 6, tzinfo=UTC),
+        field="tasks_waiting",
+    )
     envelope, goal, plan = task_contract(salt="product-accepted-answer-read")
     task = live.session.task_control_registry.admit(
         input_envelope=envelope,

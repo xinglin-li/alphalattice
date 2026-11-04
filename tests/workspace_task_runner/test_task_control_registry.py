@@ -72,6 +72,7 @@ from tests.workspace_task_runner.task_control_support import (
 from tests.workspace_task_runner.task_control_support import (
     compatibility,
     digest,
+    set_tasks_waiting,
     task_contract,
     work_item,
 )
@@ -208,10 +209,11 @@ def test_registry_owns_queue_work_board_receipts_and_projection(tmp_path: Path) 
 def test_projection_collection_keeps_queue_head_failure_out_of_requested_task_refusal(
     tmp_path: Path,
 ) -> None:
-    """A broken queued head is a queue authority dependency, not the requested cache miss."""
+    """A broken queued head is an authority error, not the requested cache miss."""
     import duckdb
 
     now = datetime(2026, 8, 5, 14, tzinfo=UTC)
+    set_tasks_waiting(tmp_path, 2, now)
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
     )
@@ -1684,6 +1686,7 @@ def test_tasks_admitted_behind_a_deferral_start_once_it_frees_in_admission_order
     """Tasks admitted behind a deferral start once it frees in admission order."""
 
     now = datetime.now(UTC)
+    set_tasks_waiting(tmp_path, 2, now)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         registry = session.task_control_registry
         finished: list[str] = []
@@ -1720,7 +1723,7 @@ def test_tasks_admitted_behind_a_deferral_start_once_it_frees_in_admission_order
             }
             dispatcher.drain_for_tests()
             for task_id in behind.values():
-                # Its turn has not come: queued, owned, and no failure of its command.
+                # Each waiting task remains queued and healthy.
                 assert registry.task(task_id).lifecycle is TaskLifecycle.QUEUED
                 assert dispatcher.command_running(task_id)
                 assert dispatcher.failure(task_id) is None
@@ -2516,6 +2519,7 @@ def test_recovery_links_seal_preview_and_confirmed_successor_in_the_event_journa
     from alphalattice.control.task_control.registry import TaskControlDatabaseAuthorityError
 
     now = datetime(2026, 8, 21, 12, tzinfo=UTC)
+    set_tasks_waiting(tmp_path, 2, now)
     database = resolve_task_control_database(tmp_path)
     registry = DuckDbTaskControlRegistry(database, gate=WorkspaceMutationGate())
 
@@ -2635,8 +2639,7 @@ def test_recovery_links_seal_preview_and_confirmed_successor_in_the_event_journa
             observed_at=now + timedelta(seconds=11),
         )
 
-    # Corrupt fixture bytes through the store, then read with a fresh owner. A broken
-    # link seal is an authority refusal, never a guessed successful continuation.
+    # A fresh owner refuses a broken link seal.
     damaged = preview.model_dump(mode="json")
     damaged["link_hash"] = "f" * 64
     with duckdb.connect(str(database)) as connection:

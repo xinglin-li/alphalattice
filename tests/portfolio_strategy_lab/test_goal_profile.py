@@ -9,6 +9,7 @@ import pytest
 
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.publication.goals import session_work_declaration
+from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.runner import TaskHeartbeatReader
 from alphalattice.control.task_control.timing import record_stage_spans, stage_spans_path
 from alphalattice.interface.local_application.cli_contract import (
@@ -191,6 +192,9 @@ def test_host_profile_scopes_unions_reads_once_and_writes_nothing(
     live, monkeypatch, kind, namespace
 ):
     """A served read scopes the ledger and phase owner once and preserves every stored input."""
+    write_queue_setting(
+        live.workspace / "runtime", 2, chosen_by="HUMAN", chosen_at=NOW, field="tasks_waiting"
+    )
     client, goal, registry, runtime = _profile_scene(live, monkeypatch, kind, namespace)
     _profile_scene(live, monkeypatch, "OPERATIONS", "foreign")
     monkeypatch.setattr(live.operations, "heartbeats", TaskHeartbeatReader(runtime, runtime))

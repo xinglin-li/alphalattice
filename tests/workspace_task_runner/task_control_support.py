@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from uuid import uuid4
 
 from alphalattice.control.task_control.contracts import (
@@ -17,8 +18,16 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.control.task_control.contracts import (
     TaskExecutionCompatibility as Compatibility,
 )
+from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+
+def set_tasks_waiting(workspace: Path, count: int, at: datetime) -> None:
+    """Declare the waiting places used by this synthetic task fixture."""
+    write_queue_setting(
+        workspace / "runtime", count, chosen_by="HUMAN", chosen_at=at, field="tasks_waiting"
+    )
 
 
 def task_execution(task: TaskRecord, compatibility: Compatibility, at: datetime) -> TaskExecution:
