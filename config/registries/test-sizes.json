@@ -1397,12 +1397,6 @@
       "seen_on": [
         "mac1"
       ]
-    },
-    {
-      "node": "tests/structural/test_wait_caps.py::test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed",
-      "owner": "tests.structural",
-      "until": "2026-11-04",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
     }
   ],
   "mandatory": [
