@@ -80,9 +80,9 @@ def test_the_import_law_names_a_partial_listing_and_launches_a_long_tree_in_boun
     )
     launches = import_contracts.launch_batches(["ruff"], names)[0]
     assert len(launches) > 1 and sum(map(len, launches)) == len(names)
-    # Windows counts UTF-16 units: about 19,000 characters of supplementary names are 35,000 units
+    # Supplementary names exceed one Windows command line while each component fits POSIX NAME_MAX.
     wide = _tree(tmp_path / "wide")
-    names = [f"tests/{index:03d}_{chr(0x1D4B3) * 70}.py" for index in range(230)]
+    names = [f"tests/{index:03d}_{chr(0x1D4B3) * 60}.py" for index in range(270)]
     (wide / "tests").mkdir()
     for name in names:
         (wide / name).write_text("", encoding="utf-8")
@@ -90,7 +90,9 @@ def test_the_import_law_names_a_partial_listing_and_launches_a_long_tree_in_boun
     subprocess.run(["git", "-c", "core.longpaths=true", "add", "-A"], cwd=wide, check=True)
     violations = import_contracts.check(wide, tmp_path / "wide-evidence", _registry())
     assert len(violations) == 1 and "TID251" in violations[0], violations
-    for batch in import_contracts.launch_batches(["ruff"], names)[0]:
+    wide_batches = import_contracts.launch_batches(["ruff"], names)[0]
+    assert len(wide_batches) > 1
+    for batch in wide_batches:
         assert len(subprocess.list2cmdline(["ruff", *batch]).encode("utf-16-le")) // 2 < 32_767
     monkeypatch.setattr(import_contracts, "COMMAND_LINE", 60)
     assert import_contracts.launch_batches(["ruff"], ["a.py", names[0]]) == ([["a.py"]], [names[0]])
