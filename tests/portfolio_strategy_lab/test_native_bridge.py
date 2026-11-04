@@ -1094,11 +1094,19 @@ def test_an_unrelated_read_binding_cannot_discover_an_off_parents_child(tmp_path
         assert not path.is_relative_to(home), "OFF must not open a child or parent native file"
         return opening(path, mode, *args, **kwargs)
 
-    monkeypatch.setattr(os, "scandir", no_discovery)
-    monkeypatch.setattr(Path, "open", no_native_open)
-    assert NativeResearchBinding.find(project, session=("codex", "fixture-unbound-child")) is None
-    exact = NativeResearchBinding.find(project, session=("codex", "fixture-unrelated-read"))
-    assert exact[1].session_id == "fixture-unrelated-read"
-    assert (
-        NativeResearchBinding.read(project, session=("codex", "fixture-off-parent")).usage == "OFF"
-    )
+    with monkeypatch.context() as native_guard:
+        native_guard.setattr(os, "scandir", no_discovery)
+        native_guard.setattr(Path, "open", no_native_open)
+        with pytest.raises(AssertionError, match="OFF must not discover native files"):
+            os.scandir(home)
+        with pytest.raises(AssertionError, match="OFF must not open a child or parent native file"):
+            (home / "child.jsonl").open()
+        assert (
+            NativeResearchBinding.find(project, session=("codex", "fixture-unbound-child")) is None
+        )
+        exact = NativeResearchBinding.find(project, session=("codex", "fixture-unrelated-read"))
+        assert exact[1].session_id == "fixture-unrelated-read"
+        assert (
+            NativeResearchBinding.read(project, session=("codex", "fixture-off-parent")).usage
+            == "OFF"
+        )
