@@ -1,10 +1,26 @@
 # AlphaLattice release notes
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-04 against the 0.2.4 release candidate
 
 Latest released version: [0.2.3](#023). Unreleased changes are separate below;
 earlier measurements describe their own versions.
 
 ## 0.2.4 (unreleased)
+
+This candidate improves the daily research workflow and the way its results are read.
+Native acceptance on both supported agent hosts remains a release check.
+
+### Changed
+
+- Agent-facing reads offer a bounded summary and a pointer to the complete saved answer;
+  use `--output` when the complete record is needed.
+- A Goal completion template fills recorded facts and references; the agent supplies its
+  judgment before submitting the request.
+- A detached local Host can be reused by a matching session. It remains available while
+  work is owed and shuts down after the configured idle period; startup still requires
+  an authenticated ready Host. On supported desktop hosts the agent can use a terminal
+  panel before asking the person to run a startup command.
+- Invalid research plans offer their named recovery controls. A cancelled membership
+  update retains the information needed to restore its own change.
 
 ### Deprecated
 
