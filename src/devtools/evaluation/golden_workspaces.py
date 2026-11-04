@@ -299,8 +299,8 @@ def refuse_writers(path: str) -> None:
         return
     if path in _HELD:
         return
-    import ctypes
-    from ctypes import wintypes
+    import ctypes  # lazy: the Windows path alone loads ctypes
+    from ctypes import wintypes  # lazy: the Windows path alone loads ctypes
 
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.CreateFileW.argtypes = [
