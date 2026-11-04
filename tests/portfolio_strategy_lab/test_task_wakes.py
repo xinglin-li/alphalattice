@@ -405,6 +405,11 @@ def test_an_agent_verb_registers_its_running_task_and_its_rerun_keeps_every_answ
     live, codex, tmp_path, monkeypatch, capsys, verb, setup_done
 ) -> None:
     """An agent verb registers its running task and its rerun keeps every answer."""
+    if verb == "first-use prepare":
+        from alphalattice.interface.local_application.native_bridge import fresh_path
+
+        launcher = shutil.which("alphalattice", path=fresh_path())
+        assert launcher is not None and Path(launcher).parent == tmp_path / "setup-done"
     task = _task(live, "verb")
     monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
     original = LocalResearchClient.request
