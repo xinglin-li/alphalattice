@@ -1895,3 +1895,23 @@ class TestFocused:
         assert len(added) == 1
     if case in {"new-marker", "marker-addition"}:
         assert added[0].ids == (key,)
+
+
+@pytest.mark.proves("testing.codspeed_marks_every_selected_test")
+def test_codspeed_measures_every_selected_test_and_a_plain_run_marks_none(
+    monkeypatch, pytestconfig
+):
+    """CodSpeed deselects unmarked tests, so the cost job marks each; a plain run marks none."""
+    from types import SimpleNamespace
+
+    from devtools.testing import collection
+
+    marks: list = []
+    config = SimpleNamespace(getoption=lambda name, default=None: default)
+    item = SimpleNamespace(config=config, add_marker=marks.append)
+    monkeypatch.delenv("CODSPEED_ENV", raising=False)
+    collection.pytest_itemcollected(item)
+    monkeypatch.setenv("CODSPEED_ENV", "1")  # the CodSpeed action's runner sets it
+    pytestconfig.addinivalue_line("markers", "benchmark: registered by pytest-codspeed when on")
+    collection.pytest_itemcollected(item)
+    assert [mark.name for mark in marks] == ["benchmark"]

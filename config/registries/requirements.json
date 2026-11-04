@@ -199,6 +199,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "testing.codspeed_marks_every_selected_test": {
+      "description": "Under CodSpeed, which deselects unmarked tests, every selected test is marked as a benchmark so the public cost job measures each one; a run without CodSpeed marks none.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
     "testing.find_matches_requirements_and_unregistered_tests": {
       "description": "One search returns the registered requirements and the unregistered tests whose words match, best first, with each requirement's lifecycle and holders.",
       "owner": "devtools.testing",

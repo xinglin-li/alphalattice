@@ -58,7 +58,7 @@ range = "tree"
 lane = "nightly"
 sizes = ["small", "medium", "large"]
 bound_minutes = 120
-rows = ["environment", "nightly-tests", "load-timeouts", "public-scan", "public-tests"]
+rows = ["environment", "nightly-tests", "load-timeouts", "public-scan", "public-tests", "test-cost"]
 
 [stages.release]
 order = 6
@@ -159,6 +159,13 @@ owner = "devtools.pipeline"
 reason = "Every public test, split over GitHub's free runners: nightly on next's tip once per SHA, and on a promotion candidate."
 hosts = ["public"]
 job = "public-tests"
+
+[rows.test-cost]
+kind = "ci-job"
+owner = "devtools.pipeline"
+reason = "Each test of a public slice measured in CPU instructions on CodSpeed's free app, with the nightly public tests and on dispatch: a cost reading, never a gate."
+hosts = ["public"]
+job = "test-cost"
 
 [rows.affected-tests]
 kind = "workshop"

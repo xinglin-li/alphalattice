@@ -737,6 +737,12 @@ def pytest_collection_finish(session: Any) -> None:
         _write_moved(session.config, record)
 
 
+def pytest_itemcollected(item: Any) -> None:
+    """Under CodSpeed every selected test is measured as its cost: it deselects unmarked tests."""
+    if os.environ.get("CODSPEED_ENV") is not None or item.config.getoption("codspeed", False):
+        item.add_marker(pytest.mark.benchmark)
+
+
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
 
