@@ -108,7 +108,7 @@ def ordered_requeue() -> type:
     """xdist's load scheduler, except that a crashed worker's prefetched cases return to their
     place in the collection's longest-first order. xdist appends them last; on one nightly that
     started two cases of over 900 s after the other workers had nearly run out of work."""
-    from xdist.scheduler import LoadScheduling  # type: ignore[import-untyped]
+    from xdist.scheduler import LoadScheduling  # type: ignore[import-untyped]  # lazy: only -n
 
     class OrderedRequeue(LoadScheduling):  # type: ignore[misc]
         def remove_node(self, node: Any) -> str | None:
