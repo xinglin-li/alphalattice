@@ -2000,12 +2000,13 @@ _CASES = {
     "late": ({"since": "2026-11-04"}, 0),
     "bad-day": ({"since": "2026-11-31"}, 0),
     "seen": ({"seen_on": "mac1"}, 0),
+    "private": ({"reason": "mac1"}, 0),
 }
 
 
 @pytest.mark.parametrize("case", _CASES)
 def test_a_quarantined_node_needs_its_owner_reason_and_date(case):
-    """A flaky node leaves the blocking tier only with an owner, a reason and an until date."""
+    """A quarantine needs an owner, reason and date."""
     from devtools.testing.sizes import load_policy, validate_policy
 
     row = {"node": "tests/a.py::t", "owner": "tests.a", "reason": "flaky", "until": "2026-11-03"}

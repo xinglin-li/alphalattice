@@ -310,6 +310,16 @@ def _quarantine(policy: dict[str, Any]) -> None:
     names its class and, when given, the day it was first seen red, no later than its until, and
     the distinct hosts it was seen red on, so a red anywhere else is not taken for it."""
     for row in policy.get("quarantine", []):  # a flaky node runs post-merge only, until its date
+        reason = row.get("reason")
+        if isinstance(reason, str) and re.search(
+            r"(?<![A-Za-z0-9])(?:workshops?|harness(?:es)?|(?:mac|pc)[-_]?\d+)(?![A-Za-z0-9])",
+            reason,
+            re.IGNORECASE,
+        ):
+            raise ValueError(
+                f"test_size.quarantine_invalid:{row.get('node')}: "
+                "describe the platform without internal machine or development terms"
+            )
         dated = _iso_day(row.get("until"))
         if not (
             str(row.get("node")).startswith("tests/")

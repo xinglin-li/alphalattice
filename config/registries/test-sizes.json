@@ -1276,7 +1276,7 @@
     {
       "node": "tests/portfolio_strategy_lab/test_local_web_service.py::test_browser_session_cookies_are_port_scoped_and_restart_replaces_only_its_own",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "macOS only: the replacement LocalWebService cannot rebind the stopped service's port while it sits in TIME_WAIT (Address already in use). Red 3/3 on mac1, green on Windows; review when the service rebinds or the test takes a fresh port.",
+      "reason": "macOS only: the replacement LocalWebService cannot rebind the stopped service's port while it sits in TIME_WAIT (Address already in use). Three macOS runs failed; a Windows environment passed. Review when the service rebinds or the test takes a fresh port.",
       "until": "2026-12-03",
       "class": "platform",
       "since": "2026-11-02",
@@ -1342,7 +1342,7 @@
     {
       "node": "tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "Environment: the node's environment leaves the workspace network decision at DEFAULT, not the operator's offline switch; green in this workshop's checkout. Review by its date.",
+      "reason": "In observed macOS and Windows environments, the workspace network decision remains DEFAULT rather than the offline selection; a configured Windows environment passed. Review by its date.",
       "until": "2026-12-03",
       "class": "environment",
       "since": "2026-11-02",
@@ -1365,7 +1365,7 @@
     {
       "node": "tests/portfolio_strategy_lab/test_workbench_badge.py::test_real_task_records_drive_home_badges_and_grouped_history",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "Environment: the node clone lacks the registered Playwright kit (third_party/playwright, installed by scripts/playwright.ps1 setup), so its browser and node checks stop; green in this workshop's checkout. Review by its date.",
+      "reason": "In observed macOS and Windows environments, Playwright setup is missing (third_party/playwright, installed by scripts/playwright.ps1 setup), so browser and Node.js checks stop; a configured Windows environment passed. Review by its date.",
       "until": "2026-12-03",
       "class": "environment",
       "since": "2026-11-02",
