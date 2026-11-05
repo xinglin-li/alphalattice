@@ -127,6 +127,22 @@ def test_every_documented_command_line_parses(
 ) -> None:
     """Every documented invocation parses through the CLI command grammar."""
     repository = SCRIPT.parents[1]
+    guide = (repository / "AGENTS.md").read_text(encoding="utf-8")
+    handoff = (
+        repository / ".agents/skills/alphalattice-research/references/specialist-handoff.md"
+    ).read_text(encoding="utf-8")
+    for text in (guide, handoff):
+        assert "if the tool lists the role" in text
+        assert "only when the tool does not list the role" in text
+        assert "read the card file whole" in text
+    assert (
+        repository / ".claude/skills/alphalattice-research/references/specialist-handoff.md"
+    ).read_text(encoding="utf-8") == handoff
+    for card in (
+        repository / ".codex/agents/alphalattice_cro.toml",
+        repository / ".claude/agents/alphalattice_cro.md",
+    ):
+        assert "lead starts you as a general subagent" not in card.read_text(encoding="utf-8")
     roots = [repository / name for name in ("AGENTS.md", "README.md", "README.zh-CN.md")]
     roots.extend(
         repository / name

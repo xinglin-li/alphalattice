@@ -51,9 +51,12 @@ At first use and any refusal naming a missing dependency, run the doctor from th
 Off PATH, use the binding block in the shared guides and pass the matching absolute prefix to every specialist; no shell update or restart is needed. Portable examples use alphalattice as a placeholder. When serving from another shell, set ALPHALATTICE_SHELL to your specialists' shell: posix or powershell.
 
 If you installed AlphaLattice in this session, continue here: read this guide and
-the research Skill by the paths `configure` printed under `continue_here`, start
-each specialist as a general subagent whose prompt is its card's text, and tell the
-person its `disclosure` in one line ([setup](.agents/skills/alphalattice-research/references/operating.md)).
+the research Skill by the paths `configure` printed under `continue_here`, and tell
+the person its `disclosure` in one line ([setup](.agents/skills/alphalattice-research/references/operating.md)).
+For each specialist, if the tool lists the role (for example, `alphalattice_alpha`),
+start that shipped role with its assignment; only when the tool does not list the role,
+start a general subagent and tell it to read the card file whole at its shipped path
+(`.codex/agents/<card>.toml` or `.claude/agents/<card>.md`), then act as that role.
 A Claude Code startup step is separate from the network-permission question.
 For a new Host on Claude Code desktop, use its available `run_in_terminal` tool to
 probe the Terminal panel shell as the operating guide describes; only after a successful outside-every-Job result, declare
@@ -250,9 +253,9 @@ alphalattice bundle prepare --role ALPHA --task <task> --dir "<out>/committee/al
 On a date's published positions, you, the PM, convene the investment committee
 with Alpha, Risk and the CRO. `alphalattice committee open` offers each specialist's bundle: its
 view of the date's positions and its `submit` and `wait` on the floor. Prepare the
-three (ALPHA, RISK, CRO), then in one turn start them as general subagents (each
-bundle's route runs two commands, which the registered CRO type's allowlist also covers), each
-prompt its card's text and its bundle's path, and in that same turn submit your own stance,
+three (ALPHA, RISK, CRO), then in one turn start them using the role-selection rule above
+(each bundle's route runs two commands, which the registered CRO type's allowlist also covers),
+each with its bundle's path, and in that same turn submit your own stance,
 argued from `alphalattice committee show --update <task>`, which lists each member's questions with the
 floor's facts by their S alias: the reveal waits for your stance, and nothing of theirs shows before it. As PM you judge whether the book adds
 up: what changed and what it cost, its research envelope, whether it can be carried out,
