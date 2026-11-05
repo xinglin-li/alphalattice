@@ -54,7 +54,7 @@ On macOS and Linux the interpreter is `bin/python`:
 "$(uv tool dir)/alphalattice/bin/python" -m alphalattice.interface.local_application.native_setup --project <agent-project> configure --host <codex-or-claude-code>
 ```
 
-`configure` refuses to overwrite different files and answers `continue_here`: the files to read, the cards to start specialists from and a one-line `disclosure` for the person. A session opened with its `open_session` command loads them itself; offer it, never require it. On Claude Code with Bedrock, Vertex or Foundry, set `ANTHROPIC_DEFAULT_SONNET_MODEL` to pin a Sonnet version. Evidence review needs its declared retrieval environment, local model packs and an admitted issuer-source package; when `serve` reports one missing, run the setup command it returns.
+`configure` refuses to overwrite different files and answers `continue_here`: the files to read, the cards to start specialists from and a one-line `disclosure` for the person. Before each specialist, check whether its role is listed by the host's subagent tool. If it is not listed, open a fresh session with `open_session` so the host can load the role, then resume the same research; if it is still missing, stop and report it. On Claude Code with Bedrock, Vertex or Foundry, set `ANTHROPIC_DEFAULT_SONNET_MODEL` to pin a Sonnet version. Evidence review needs its declared retrieval environment, local model packs and an admitted issuer-source package; when `serve` reports one missing, run the setup command it returns.
 
 When Claude Code startup returns `SERVE_FROM_A_PERSON_OWNED_TERMINAL` and no Terminal panel route applies, give the person its offered command once and wait for their word before continuing. This is separate from research network consent.
 

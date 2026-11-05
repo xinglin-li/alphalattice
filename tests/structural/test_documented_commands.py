@@ -131,13 +131,30 @@ def test_every_documented_command_line_parses(
     handoff = (
         repository / ".agents/skills/alphalattice-research/references/specialist-handoff.md"
     ).read_text(encoding="utf-8")
-    for text in (guide, handoff):
-        assert "if the tool lists the role" in text
-        assert "only when the tool does not list the role" in text
-        assert "read the card file whole" in text
+    catalog = json.loads(
+        (repository / "config/registries/messages.json").read_text(encoding="utf-8")
+    )
+    route = catalog["entries"]["native_setup.specialist_route"]["words"]
+    assert "{command}" in route["en"] and "{command}" in route["zh-CN"]
+    assert "新会话" in route["zh-CN"]
+    for text in (guide, handoff, route["en"]):
+        assert "if the tool lists the role" in text.lower()
+        assert "if the tool does not list the role" in text.lower()
+        assert "open a fresh session" in text.lower()
+        assert "general subagent" not in text.lower()
     assert (
         repository / ".claude/skills/alphalattice-research/references/specialist-handoff.md"
     ).read_text(encoding="utf-8") == handoff
+    operating = (
+        repository / ".agents/skills/alphalattice-research/references/operating.md"
+    ).read_text(encoding="utf-8")
+    assert "if it is not listed, open a fresh session" in operating.lower()
+    assert (repository / ".claude/skills/alphalattice-research/references/operating.md").read_text(
+        encoding="utf-8"
+    ) == operating
+    from alphalattice.control.product_host.composition.committee_words import ROUTE_END
+
+    assert "general subagent" not in ROUTE_END.lower()
     for card in (
         repository / ".codex/agents/alphalattice_cro.toml",
         repository / ".claude/agents/alphalattice_cro.md",

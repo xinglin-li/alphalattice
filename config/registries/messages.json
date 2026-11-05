@@ -159,6 +159,24 @@
         "zh-CN": "从代码目录运行提供的工作台构建命令并告知用户；构建文件与源文件不匹配时无法启动。"
       }
     },
+    "native_setup.specialist_next": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Read the files in `read` by path and tell the person `disclosure` in one line. Before each specialist, check the tool's role list and follow `disclosure`.",
+        "zh-CN": "按路径读取 `read` 中的文件，并向本人用一句话说明 `disclosure`。启动每位专家前，检查工具的角色列表并遵循 `disclosure`。"
+      }
+    },
+    "native_setup.specialist_route": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["command"],
+      "words": {
+        "en": "AlphaLattice is set up; if the tool lists the role, start that specialist here; if the tool does not list the role, open a fresh session with `{command}` so the host can load it, then resume the research; if the role is still missing, stop and report it.",
+        "zh-CN": "AlphaLattice 已设置完成；如果工具列出了该角色，就在此启动该专家；如果工具没有列出该角色，请用 `{command}` 打开新会话，让宿主加载角色后继续研究；如果角色仍然缺失，请停止并报告。"
+      }
+    },
     "native_setup.serve_agent": {
       "owner": "alphalattice.interface.local_application",
       "kind": "MESSAGE",

@@ -53,10 +53,10 @@ Off PATH, use the binding block in the shared guides and pass the matching absol
 If you installed AlphaLattice in this session, continue here: read this guide and
 the research Skill by the paths `configure` printed under `continue_here`, and tell
 the person its `disclosure` in one line ([setup](.agents/skills/alphalattice-research/references/operating.md)).
-For each specialist, if the tool lists the role (for example, `alphalattice_alpha`),
-start that shipped role with its assignment; only when the tool does not list the role,
-start a general subagent and tell it to read the card file whole at its shipped path
-(`.codex/agents/<card>.toml` or `.claude/agents/<card>.md`), then act as that role.
+Before each specialist, check your host's subagent tool: if the tool lists the role
+(for example, `alphalattice_alpha`), start that shipped role with its assignment. If the tool does not list the role,
+open a fresh session in the configured project using `continue_here.open_session` so the host can load it,
+then resume the same research. If the role is still missing, stop and report it.
 A Claude Code startup step is separate from the network-permission question.
 For a new Host on Claude Code desktop, use its available `run_in_terminal` tool to
 probe the Terminal panel shell as the operating guide describes; only after a successful outside-every-Job result, declare

@@ -1489,6 +1489,7 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     assert at in said and f"CRO route {committee.status_word(route)}" in said
     way = committee.route("CRO", floor, NOW) or ()
     assert f"--role CRO --key {floor.key('CRO')}" in way[1] and "only final action" in way[-1]
+    assert "general subagent" not in way[-1].lower()
     assert committee.route("CRO", None, NOW) is None  # no floor: the answer file stands
     directory = Path("bundle with spaces 文")
     for role in committee.ROLES[1:]:

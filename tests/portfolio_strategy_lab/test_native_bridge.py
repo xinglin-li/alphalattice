@@ -494,9 +494,10 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
         result = json.loads(capsys.readouterr().out)
         assert result["status"] == status
         if command == "configure":
-            # The installing session continues: it reads the guide and Skill by path, and a
-            # session the host enforces the cards in is an option it discloses (STOPS-1).
+            # The installing session reads the guide and Skill; before each specialist it
+            # checks the host's role list and opens a fresh session if the role is missing.
             here = result["continue_here"]
+            assert result["next"] == setup.worded("native_setup.specialist_next")
             assert here["read"] == [
                 str(project.resolve() / "AGENTS.md"),
                 str(project.resolve() / ".agents/skills/alphalattice-research/SKILL.md"),
@@ -504,6 +505,9 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
             assert here["specialists"] == str(project.resolve() / ".codex/agents")
             assert here["open_session"] == f'codex -C "{project.resolve()}"'
             assert here["open_session"] in here["disclosure"]
+            assert here["disclosure"] == str(setup.worded("native_setup.specialist_route")).replace(
+                "{command}", here["open_session"]
+            )
         if command == "doctor":
             assert result["failure_code"] == "native_bridge.not_bound"
             assert {"alphalattice_evidence_analyst", "alphalattice_cro"} <= set(result["roles"])
@@ -555,7 +559,15 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
         "alphalattice_cro",
         "alphalattice_maintainer",
     }
-    assert run("configure", "--host", "claude-code")[1]["status"] == "LOCAL_DECLARATIONS_VALIDATED"
+    configured = run("configure", "--host", "claude-code")[1]
+    assert configured["status"] == "LOCAL_DECLARATIONS_VALIDATED"
+    here = configured["continue_here"]
+    assert configured["next"] == setup.worded("native_setup.specialist_next")
+    assert here["open_session"] == f'cd "{project.resolve()}"; claude'
+    assert here["open_session"] in here["disclosure"]
+    assert here["disclosure"] == str(setup.worded("native_setup.specialist_route")).replace(
+        "{command}", here["open_session"]
+    )
     assert (project / ".claude/settings.json").read_bytes() == settings
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "parent")

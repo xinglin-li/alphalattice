@@ -1056,11 +1056,9 @@ def _roles(host: str = "codex", root: Path | None = None) -> list[str]:
 def continue_here(project: Path, host: str) -> dict[str, Any]:
     """How the session that installed AlphaLattice continues the research (STOPS-1).
 
-    A host loads AGENTS.md, the research Skill and the specialist cards on its own only in a
-    session started in the configured folder. The installing session reads the first two by
-    path and starts each specialist as a general subagent from its card, so a card's tool
-    limits hold there by instruction; `open_session` is the command for a session where the
-    host enforces them, offered as an option and never a step.
+    The installing session reads the guide and Skill by path. The agent checks its own
+    subagent tool before each specialist; only a session advertising the role can start it.
+    `open_session` names the configured project where a fresh host session can load the role.
     """
     folder = project.resolve()
     claude = host == "claude-code"
@@ -1070,11 +1068,7 @@ def continue_here(project: Path, host: str) -> dict[str, Any]:
         "read": [str(folder / "AGENTS.md"), str(skill / "SKILL.md")],
         "specialists": str(folder / (".claude/agents" if claude else ".codex/agents")),
         "open_session": command,
-        "disclosure": (
-            "AlphaLattice is set up and the research continues in this session. Its specialists "
-            "start here from their cards as general subagents, so their tool limits hold by "
-            f"instruction; for limits the host enforces, open a session with `{command}`."
-        ),
+        "disclosure": str(worded("native_setup.specialist_route")).replace("{command}", command),
     }
 
 
@@ -1568,11 +1562,7 @@ def _configure(host: str, workspace: Path | None) -> dict[str, Any]:
             "host": host,
             "retired_hook_groups_removed": removed,
             "trust_changed": False,
-            "next": (
-                "Continue the research in this session: read the files in `read` by path, "
-                "start each specialist from its card in `specialists`, and tell the person "
-                "`disclosure` in one line."
-            ),
+            "next": worded("native_setup.specialist_next"),
             "continue_here": continue_here(ROOT, host),
         }
     return result
