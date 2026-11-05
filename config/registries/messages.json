@@ -2,6 +2,24 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "workbench.review_stalled_status": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Refused: review stalled; answer not filed",
+        "zh-CN": "已拒绝：审阅受阻，答复未记录"
+      }
+    },
+    "alpha_research.development_artifact_identity_invalid_detail": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "A stored Alpha record does not match its requested identity, so it was not read. Restore a verified workspace backup into a new folder and work there.",
+        "zh-CN": "已存储的 Alpha 记录与所请求的身份不符，因此未予读取。请将经过验证的工作区备份恢复到新文件夹，并在那里继续工作。"
+      }
+    },
     "agent_bundle.review_stalled_message": {
       "owner": "alphalattice.control.product_host",
       "kind": "MESSAGE",
