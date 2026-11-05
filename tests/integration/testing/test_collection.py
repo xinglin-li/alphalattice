@@ -12,6 +12,7 @@ import pytest
 from xdist.scheduler import LoadScheduling
 
 from devtools.testing import collection
+from tests.structural.pytest_support import child_environment
 
 TEST_SOURCE = "src/devtools/testing/collection.py"
 
@@ -28,7 +29,7 @@ TEST_SOURCE = "src/devtools/testing/collection.py"
         (0, "other-attempt"),
     ],
 )
-def test_session_fixture_footprint_and_peak_are_recorded(tmp_path, workers, scenario):
+def test_session_fixture_footprint_and_peak_are_recorded(tmp_path, workers, scenario, monkeypatch):
     root = Path(__file__).resolve().parents[3]
     (tmp_path / "suite_marker.py").write_text("", encoding="utf-8")
     (tmp_path / "test_session_fixture.py").write_text(
@@ -47,8 +48,10 @@ def test_session_fixture_footprint_and_peak_are_recorded(tmp_path, workers, scen
         "    assert (seed/'payload').stat().st_size == 37 and no_root == 7\n",
         encoding="utf-8",
     )
-    env = dict(
-        os.environ,
+    monkeypatch.setenv(
+        "PYTEST_ADDOPTS", "-k parent_only_marker"
+    )  # the child must not inherit the parent's selection
+    env = child_environment(
         WK_SUITE_REPORT=str(tmp_path / "suite.json"),
         WK_SUITE_PLUGIN="suite_marker",
         WK_SUITE_ATTEMPT="f" * 32,
@@ -58,16 +61,6 @@ def test_session_fixture_footprint_and_peak_are_recorded(tmp_path, workers, scen
         PYTEST_PLUGINS="",
         ALPHALATTICE_NETWORK_DISABLED="1",
     )
-    for key in (
-        "PYTEST_CURRENT_TEST",
-        "PYTEST_XDIST_WORKER",
-        "ALPHALATTICE_PIPELINE_EVENTS",
-        "ALPHALATTICE_PIPELINE_STAGE",
-        "ALPHALATTICE_PIPELINE_REQUIRED_TESTS",
-        "ALPHALATTICE_TEST_LANE",
-        "ALPHALATTICE_SESSION_FOOTPRINT_OWNER",
-    ):
-        env.pop(key, None)
     if scenario == "nested":
         env["ALPHALATTICE_SESSION_FOOTPRINT_OWNER"] = "outer:fixture"
     if scenario == "other-attempt":

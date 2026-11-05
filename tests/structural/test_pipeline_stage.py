@@ -2,7 +2,6 @@ import contextlib
 import hashlib
 import io
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -13,6 +12,7 @@ import pytest
 
 from devtools.pipeline import receipt, stage
 from devtools.pipeline.definition import DefinitionError
+from tests.structural.pytest_support import child_environment
 
 ROOT = Path(__file__).resolve().parents[2]
 ROW = 'owner = "devtools.pipeline"\nreason = "r"\nhosts = '
@@ -159,16 +159,7 @@ def test_control():
             "--workers",
             "1",
         ]
-        env = dict(
-            os.environ,
-            ALPHALATTICE_TEST_LANE="merge",
-            ALPHALATTICE_PIPELINE_EVENTS="",
-            PYTEST_ADDOPTS="",
-            PYTHONPATH=str(ROOT / "src"),
-        )
-        if env.pop("ALPHALATTICE_REACH_FLOOR", None):
-            env.pop("ALPHALATTICE_CHANGED_PATHS", None)
-        env.pop("PYTEST_DISABLE_PLUGIN_AUTOLOAD", None)
+        env = child_environment(ALPHALATTICE_TEST_LANE="merge", PYTHONPATH=str(ROOT / "src"))
         family = source.relative_to(tmp_path).as_posix() + "::test_cost_family"
         ordinary = tmp_path / "ordinary"
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(

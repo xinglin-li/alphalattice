@@ -6,6 +6,45 @@ import os
 import shutil
 from pathlib import Path
 
+PLATFORM_KEYS = frozenset(
+    """
+    ALLUSERSPROFILE APPDATA COMMONPROGRAMFILES COMMONPROGRAMFILES(X86) COMMONPROGRAMW6432
+    COMPUTERNAME COMSPEC HOMEDRIVE HOMEPATH LOCALAPPDATA NUMBER_OF_PROCESSORS OS PATHEXT
+    PROCESSOR_ARCHITECTURE PROCESSOR_IDENTIFIER PROCESSOR_LEVEL PROCESSOR_REVISION PROGRAMDATA
+    PROGRAMFILES PROGRAMFILES(X86) PROGRAMW6432 PUBLIC SYSTEMDRIVE SYSTEMROOT USERDOMAIN USERNAME
+    USERPROFILE WINDIR HOME LANG LC_ALL LC_CTYPE LOGNAME SHELL USER PATH TEMP TMP TMPDIR
+    """.split()  # noqa: SIM905 - one readable block of names
+)
+"""What a process, Git and the interpreter need from the machine and its user."""
+CARRIED_KEYS = frozenset(
+    {
+        "ALPHALATTICE_TEST_GOLDEN_ROOT",  # the machine's shared golden cache
+        "ALPHALATTICE_SCAN_CACHE_DIR",  # scan facts kept by content
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONIOENCODING",
+        "PYTHONUTF8",
+    }
+)
+
+
+def child_environment(**given: str) -> dict[str, str]:
+    """A nested pytest child's whole environment: the platform keys, the carried caches, offline.
+
+    Nothing else of the outer run reaches the child: not its lane, pipeline stage, selection,
+    events or footprint owner, its suite attempt and plugin, PYTHONPATH or pytest options. A
+    copied environment carried them in: a nightly outer run's lane deselected a child's own
+    cases, and a worker's suite plugin was required where its directory was not on the path.
+    A child that needs one of them names it in ``given``, which is applied last.
+    """
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() in PLATFORM_KEYS or key.upper() in CARRIED_KEYS
+    }
+    environment["ALPHALATTICE_NETWORK_DISABLED"] = "1"
+    environment.update(given)
+    return environment
+
 
 def pytest_checkout(tmp_path: Path, source: Path) -> tuple[Path, dict[str, str]]:
     """The real suite support, reached by pytest in a disposable external checkout."""
@@ -115,14 +154,7 @@ def pytest_checkout(tmp_path: Path, source: Path) -> tuple[Path, dict[str, str]]
     GoalStore(workspace / "artifacts", manifest.workspace_id).publish(goal, None)
     external = tmp_path / "system-temp"
     external.mkdir()
-    environment = {
-        key: value
-        for key, value in os.environ.items()
-        if not key.startswith("PYTEST_") and key != "ALPHALATTICE_PIPELINE_REQUIRED_TESTS"
-        if key != "ALPHALATTICE_REACH_FLOOR"
-        if key != "ALPHALATTICE_CHANGED_PATHS" or not os.environ.get("ALPHALATTICE_REACH_FLOOR")
-    }
-    environment.update(
+    environment = child_environment(
         PYTHONPATH=os.pathsep.join((str(source), str(source / "src"), str(source / "scripts"))),
         PYTHONDONTWRITEBYTECODE="1",
         PYTHONIOENCODING="utf-8",

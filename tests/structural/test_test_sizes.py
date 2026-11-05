@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tests.structural.pytest_support import descriptor_provenance
+from tests.structural.pytest_support import child_environment, descriptor_provenance
 from tests.structural.size_fixture_support import (
     _CASES,
     ADMISSION_CASES,
@@ -284,21 +284,8 @@ def _memory_checks_read_no_host():
             str(target),
         ],
         cwd=tmp_path,
-        env=dict(
-            {
-                key: value
-                for key, value in os.environ.items()
-                if key
-                not in {
-                    "ALPHALATTICE_PIPELINE_REQUIRED_TESTS",
-                    "PYTEST_CURRENT_TEST",
-                    "ALPHALATTICE_REACH_FLOOR",
-                }
-                if key != "ALPHALATTICE_CHANGED_PATHS"
-                or not os.environ.get("ALPHALATTICE_REACH_FLOOR")
-            },
+        env=child_environment(
             PYTHONPATH=os.pathsep.join([str(tmp_path), str(root / "src")]),
-            ALPHALATTICE_NETWORK_DISABLED="1",
             ALPHALATTICE_TEST_LANE="merge"
             if case in {"size-live-large-merge", "size-live-large-missing"}
             else "nightly"
@@ -1150,20 +1137,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
     result = subprocess.run(
         command,
         cwd=root,
-        env=dict(
-            {
-                key: value
-                for key, value in os.environ.items()
-                if key
-                not in {
-                    "ALPHALATTICE_CHANGED_PATHS",
-                    "ALPHALATTICE_PIPELINE_EVENTS",
-                    "ALPHALATTICE_PIPELINE_REQUIRED_TESTS",
-                    "PYTEST_CURRENT_TEST",
-                    "ALPHALATTICE_REACH_FLOOR",
-                }
-            },
-            ALPHALATTICE_NETWORK_DISABLED="1",
+        env=child_environment(
             PYTHONPATH=str(root / "src"),
             ALPHALATTICE_TEST_LANE=lane,
             ALPHALATTICE_PIPELINE_STAGE=post_stage,

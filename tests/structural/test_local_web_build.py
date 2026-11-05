@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 from scripts import build_local_web_ui
 
+from tests.structural.pytest_support import child_environment
+
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUTS = (
     "workbench.html",
@@ -147,18 +149,10 @@ def _test_checkout(
         encoding="utf-8",
         newline="\n",
     )
-    env = {
-        key: value
-        for key, value in os.environ.items()
-        if not key.startswith("PYTEST_") and key != "ALPHALATTICE_PIPELINE_REQUIRED_TESTS"
-        if key != "ALPHALATTICE_REACH_FLOOR"
-        if key != "ALPHALATTICE_CHANGED_PATHS" or not os.environ.get("ALPHALATTICE_REACH_FLOOR")
-    }
-    env.update(
+    env = child_environment(
         PYTHONPATH=os.pathsep.join((str(checkout), str(ROOT / "src"))),
         PYTHONIOENCODING="utf-8",
         PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
-        ALPHALATTICE_NETWORK_DISABLED="1",
     )
     return checkout, env
 
