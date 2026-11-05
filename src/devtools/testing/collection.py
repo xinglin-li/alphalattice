@@ -943,3 +943,61 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     if lane or required or omitted:
         config.hook.pytest_deselected(items=omitted)
         items[:] = kept
+
+
+def timeout_hints(lines: list[str], failed: set[str]) -> dict[str, float]:
+    """Use only this run's named failed timeout events as measured lower bounds."""
+    hints: dict[str, float] = {}
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(row, dict) or row.get("event") != "TIMEOUT":
+            continue
+        node, elapsed = row.get("nodeid"), row.get("elapsed_seconds")
+        if (
+            not isinstance(node, str)
+            or node not in failed
+            or not isinstance(elapsed, (int, float))
+            or isinstance(elapsed, bool)
+        ):
+            continue
+        try:
+            seconds = float(elapsed)
+        except OverflowError:
+            continue
+        if isfinite(seconds) and seconds > 0:
+            hints[node] = max(hints.get(node, 0.0), seconds)
+    return hints
+
+
+def scheduling_hints(recorded: dict[str, float], policy: dict[str, Any]) -> dict[str, float]:
+    """Rank a zero-time Large case by its bound; keep the recorded measurements intact."""
+    hints = dict(recorded)
+    for node, seconds in recorded.items():
+        if seconds != 0:
+            continue
+        try:
+            size, _, _, bound = classify(node, (), policy)
+        except ValueError:
+            continue  # the normal collection owner will name a bad size declaration
+        if size == "large":
+            hints[node] = bound
+    return hints
+
+
+def merge_timing_hints(
+    recorded: dict[str, float], measured: dict[str, float], failed: set[str], lines: list[str]
+) -> dict[str, float]:
+    """Keep failed durations conservative and retain a timed-out worker's measured lower bound."""
+    merged = dict(recorded)
+    merged.update(
+        {
+            name: round(max(seconds, merged.get(name, 0.0)) if name in failed else seconds, 3)
+            for name, seconds in measured.items()
+        }
+    )
+    for name, seconds in timeout_hints(lines, failed).items():
+        merged[name] = max(merged.get(name, 0.0), seconds)
+    return merged

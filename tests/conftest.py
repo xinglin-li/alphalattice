@@ -16,7 +16,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterator
-from contextlib import nullcontext
+from contextlib import nullcontext, suppress
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -460,10 +460,22 @@ def pytest_configure(config: pytest.Config) -> None:
         raise pytest.UsageError(str(error)) from error
     if not hasattr(config, "workerinput"):  # the controller alone: one warning per run
         environment.warn_unplaced(config, checkout.parents, sys.stderr)
+        recorded = _recorded_durations() if config.getoption("dist", "no") != "no" else {}
+        if (
+            os.environ.get("ALPHALATTICE_TEST_LANE") == "nightly"
+            and config.getoption("dist", "no") == "load"
+            and recorded
+            and 0 in recorded.values()
+        ):
+            from devtools.testing.collection import load_policy, scheduling_hints
+
+            with suppress(OSError, ValueError):  # the cache cannot stop a test suite
+                recorded = scheduling_hints(recorded, load_policy(checkout))
+        config._recorded_scheduling_hints = recorded
     if (
         config.getoption("dist", "no") == "load"
         and config.getoption("maxschedchunk", None) is None
-        and _recorded_durations()
+        and getattr(config, "_recorded_scheduling_hints", {})
     ):
         # xdist otherwise reserves a large consecutive batch on each worker.
         # Two is its minimum prefetch; explicit operator settings stay intact.
@@ -474,7 +486,7 @@ def pytest_configure(config: pytest.Config) -> None:
 def pytest_configure_node(node: object) -> None:
     """xdist, in the main process: every worker sorts by the one reading taken here, so their
     collections agree even when another run rewrites the file meanwhile."""
-    node.workerinput["recorded_durations"] = _recorded_durations()  # type: ignore[attr-defined]
+    node.workerinput["recorded_durations"] = node.config._recorded_scheduling_hints  # type: ignore[attr-defined]
     node.workerinput["maintainer_thread"] = _MAINTAINER_THREAD  # type: ignore[attr-defined]
     # xdist sets config.option.dist to "no" inside a worker. Preserve the
     # controller's mode alongside the snapshot its collection uses.
@@ -636,15 +648,13 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         controller.__exit__(None, None, None)
     if os.environ.get(_WORKER) or not _measured:
         return
-    merged = _recorded_durations()
-    # A failed or timed-out case stopped early: its short time never replaces a longer record,
-    # which would start it last in the next run's longest-first order.
-    merged.update(
-        {
-            name: round(max(seconds, merged.get(name, 0.0)) if name in _failed else seconds, 3)
-            for name, seconds in _measured.items()
-        }
-    )
+    from devtools.testing.collection import merge_timing_hints
+
+    lines: list[str] = []
+    if log := session.config.getini("log_file"):
+        with suppress(OSError, UnicodeError):  # the existing cache is only a scheduling hint
+            lines = Path(log).read_text(encoding="utf-8").splitlines()
+    merged = merge_timing_hints(_recorded_durations(), _measured, _failed, lines)
     staged = _DURATIONS.with_name(f"{_DURATIONS.name}.{os.getpid()}")
     try:
         _DURATIONS.parent.mkdir(parents=True, exist_ok=True)

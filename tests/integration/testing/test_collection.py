@@ -179,9 +179,39 @@ def _crash_after_prefetch(scheduler: type) -> tuple[list[int], list[int]]:
 
 @pytest.mark.proves("testing.crash_requeue_keeps_longest_first")
 def test_a_crashed_workers_prefetched_case_keeps_its_place_in_the_order() -> None:
-    """xdist appends the prefetched case 3 after case 11; the run's scheduler sends it next."""
+    """A crash preserves queued priority and its timeout is not recorded as a fast test."""
     _, xdist_pending = _crash_after_prefetch(LoadScheduling)
-    assert xdist_pending[-1] == 3  # the control: xdist's own requeue, the cause of a long tail
+    assert xdist_pending[-1] == 3
     sent, pending = _crash_after_prefetch(collection.ordered_requeue())
-    assert sent[:4] == [0, 1, 4, 3]
-    assert pending == sorted(pending)
+    assert sent[:4] == [0, 1, 4, 3] and pending == sorted(pending)
+    node = (
+        "tests/workspace_readiness/test_input_revisions.py::"
+        "test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged"
+    )
+    other = "tests/test_scheduling_example.py::test_measured"
+    fast = "tests/test_scheduling_example.py::test_fast"
+    recorded = {node: 0.0, other: 1584.016, fast: 1.0}
+    policy = collection.load_policy(Path(__file__).resolve().parents[3])
+    hints = getattr(collection, "scheduling_hints", lambda *_: {})(recorded, policy)
+    assert hints.get(node) == 900.0 and hints.get(other) == 1584.016 and recorded[node] == 0.0
+    assert collection.scheduling_hints({fast: 0.0}, policy)[fast] == 0.0
+    timeout = json.dumps({"event": "TIMEOUT", "nodeid": node, "elapsed_seconds": 900.02})
+    assert (
+        collection.merge_timing_hints(recorded, {node: 0.0}, {node}, ["log", timeout])[node]
+        == 900.02
+    )
+    from tests import conftest as scheduler
+
+    items = [SimpleNamespace(nodeid=name) for name in (node, fast, other)]
+    config = SimpleNamespace(
+        workerinput={"recorded_durations": hints, "recorded_distribution": "load"},
+        getoption=lambda _name, default=None: default,
+    )
+    scheduler.pytest_collection_modifyitems(config, items)
+    assert [item.nodeid for item in items] == [other, node, fast]
+    controller = SimpleNamespace(
+        _recorded_scheduling_hints=hints, getoption=lambda _name, default=None: default
+    )
+    worker = SimpleNamespace(workerinput={}, config=controller)
+    scheduler.pytest_configure_node(worker)
+    assert worker.workerinput["recorded_durations"][node] == 900.0
