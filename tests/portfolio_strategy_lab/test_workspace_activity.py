@@ -1301,8 +1301,6 @@ def test_task_and_activity_lists_name_an_unreadable_queue_dependency_without_bla
     live: LocalPortfolioWebSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A damaged queued head blocks cache reconstruction without assigning it to the peer."""
-    import duckdb
-
     from alphalattice.control.task_control.contracts import (
         ResearchGoal,
         ResearchPlan,
@@ -1310,6 +1308,7 @@ def test_task_and_activity_lists_name_an_unreadable_queue_dependency_without_bla
         WorkItemDefinition,
     )
     from alphalattice.control.task_control.registry import resolve_task_control_database
+    from alphalattice.control.workspace_runtime.database import open_workspace_database
 
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     session_id = "queue-authority-peer"
@@ -1355,7 +1354,7 @@ def test_task_and_activity_lists_name_an_unreadable_queue_dependency_without_bla
     assert head.lifecycle.value == "QUEUED" and str(head.task_id) != peer_id
 
     database = resolve_task_control_database(live.workspace)
-    with duckdb.connect(str(database)) as connection:
+    with open_workspace_database(database, read_only=False) as connection:
         connection.execute(
             "UPDATE workspace_task SET record_json = '{' WHERE task_id = ?",
             [str(head.task_id)],
@@ -1393,7 +1392,7 @@ def test_task_and_activity_lists_name_an_unreadable_queue_dependency_without_bla
         assert code == 2
         assert_queue_refusal(activity_answer["data"])
     finally:
-        with duckdb.connect(str(database)) as connection:
+        with open_workspace_database(database, read_only=False) as connection:
             connection.execute(
                 "UPDATE workspace_task SET record_json = ? WHERE task_id = ?",
                 [head.model_dump_json(), str(head.task_id)],
