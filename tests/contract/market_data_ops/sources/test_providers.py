@@ -40,6 +40,7 @@ from tests.workspace_maintenance.bounded_provider_support import RecordingBounde
 from tests.workspace_maintenance.local_data_provider import (
     HistoricalChartReplay,
     recording_provider,
+    reset_yfinance_cache,
 )
 
 TEST_SOURCE = "src/alphalattice/foundation/market_data_ops/sources/providers.py"
@@ -67,6 +68,7 @@ class Scenario:
 
 def _replayed_yahoo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Real yfinance, its HTTP answered from synthetic chart bytes: no network, a paid dividend."""
+    reset_yfinance_cache(tmp_path / "yahoo-cache")
     source = recording_provider(
         now=datetime(2026, 8, 4, 23, tzinfo=UTC), symbols=("AAPL",), start=REPLAY_START
     )

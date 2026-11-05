@@ -39,6 +39,19 @@ PRODUCT_QA_SYMBOLS = tuple(f"QA{index:03d}" for index in range(80))
 """The eighty-name universe of the synthetic Data/Feature product QA workspace."""
 
 
+def reset_yfinance_cache(cache_root: Path) -> None:
+    """Isolate successive test workspaces before any provider in this test starts."""
+    from yfinance import cache
+
+    # yfinance 1.5.1 moves its DB managers but retains singleton cache objects.
+    cache.set_cache_location(str(cache_root))
+    for name in ("get_tz_cache", "get_cookie_cache", "get_isin_cache"):
+        instance = getattr(cache, name)()
+        instance.db = None
+        instance.initialised = -1
+        instance.dummy = False
+
+
 class RecordingProvider(SeededWalkProvider):
     """The seeded walk, recording every fetch and able to fail on demand."""
 
