@@ -187,7 +187,14 @@ def _linux_descendant_process_ids(root_pid: int) -> tuple[tuple[int, ...], str |
         for path in Path("/proc").iterdir():
             if not path.name.isdigit():
                 continue
-            payload = (path / "stat").read_text(encoding="ascii")
+            try:
+                payload = (path / "stat").read_text(encoding="ascii")
+            except FileNotFoundError:
+                try:
+                    os.kill(int(path.name), 0)
+                except ProcessLookupError:
+                    continue
+                raise
             tail = payload.rsplit(")", 1)[1].split()
             parents.setdefault(int(tail[1]), []).append(int(path.name))
     except (OSError, ValueError, IndexError):

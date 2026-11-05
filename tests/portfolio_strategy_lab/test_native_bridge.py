@@ -922,7 +922,7 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
     # The widest binding `session bind` writes, as it writes it (`_create_or_match`).
     document = {
         "session_id": "s" * bridge.CORRELATION_CHARACTERS,
-        "workspace": "D:\\" + "\u00e9" * (bridge.TEXT_CHARACTERS - 3),
+        "workspace": tmp_path.anchor + "\u00e9" * (bridge.TEXT_CHARACTERS - len(tmp_path.anchor)),
         "roles": [f"r{index:02d}" + "x" * 61 for index in range(bridge.BINDING_ROLES)],
         "host": "claude-code",
         "usage": "OFF",
