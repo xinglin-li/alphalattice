@@ -273,6 +273,30 @@ def test_a_valid_content_seal_cannot_replace_the_alpha_models_structure(current_
             with pytest.raises(ValueError, match="frozen_feature_preparation_invalid"):
                 store.load_frozen_feature_preparation(identity)
 
+    from alphalattice.interface.local_application.failure_codes import public_failure
+
+    path.write_text(json.dumps({**payload, "preparation_hash": "0" * 64}), encoding="utf-8")
+    with pytest.raises(development_artifacts.AlphaDevelopmentArtifactReadbackError) as rejected:
+        store.load_frozen_feature_preparation(identity)
+    code = public_failure(rejected.value, "research_update.refused")
+    assert code == "alpha_research.development_artifact_identity_invalid"
+    from alphalattice.interface.local_application.failure_codes import untyped_failure
+
+    assert untyped_failure(
+        public_failure(ValueError(str(rejected.value)), "research_update.refused")
+    )
+    assert untyped_failure(
+        public_failure(
+            development_artifacts.AlphaDevelopmentArtifactReadbackError("another readback error"),
+            "research_update.refused",
+        )
+    )
+    from alphalattice.interface.local_application.cli_contract import refusal_words
+
+    words = refusal_words(code)
+    assert words["next_action"] == "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+    assert "verified workspace backup" in words["detail"]
+
 
 def test_observation_admission_proof_refuses_current_bytes_tampered_after_verification(
     current_artifacts,

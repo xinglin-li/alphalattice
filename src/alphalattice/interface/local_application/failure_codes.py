@@ -172,6 +172,14 @@ def public_failure(error: BaseException, fallback: str) -> str:
     code = owner_failure_code(error)
     if code is not None:
         return code
+    # The Alpha readback owner predates typed refusals; preserve its implementation identity.
+    if (
+        type(error).__name__ == "AlphaDevelopmentArtifactReadbackError"
+        and type(error).__module__
+        == "alphalattice.investment.alpha_research.experiments.development_artifacts"
+        and error.args == ("Alpha JSON requested identity is invalid",)
+    ):
+        return "alpha_research.development_artifact_identity_invalid"
     if isinstance(error, ValueError):
         code = safe_failure_code(str(error))
         if code is not None:

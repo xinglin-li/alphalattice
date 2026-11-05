@@ -1,4 +1,8 @@
 {
+ "alpha_research.development_artifact_identity_invalid": {
+  "detail": "A stored Alpha record does not match its requested identity, so it was not read. Restore a verified workspace backup into a new folder and work there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
  "feature_input.case_store_unavailable": {
   "message_id": "feature.input.case_store_unavailable",
   "detail": "feature.input.case_store_unavailable",

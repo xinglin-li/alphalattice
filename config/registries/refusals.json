@@ -1220,6 +1220,10 @@
 "owner": "alpha_research",
 "category": "INVALID_ARGUMENT"
 },
+"alpha_research.development_artifact_identity_invalid": {
+"owner": "alpha_research",
+"category": "FAILED_PRECONDITION"
+},
 "alpha_research.development_receipt_identity_conflict": {
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"
