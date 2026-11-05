@@ -8544,7 +8544,7 @@
     "name": "status",
     "kind": "string",
     "required": true,
-    "meaning": "What the Host did with the answer: `ACCEPTED` (admitted as written), `CORRECT` (problems named, answer again) or `DONE` (valid items kept, the rest dropped)."
+    "meaning": "What the Host did with the answer: `ACCEPTED`, `CORRECT`, `DONE`, or `REFUSED_REVIEW_STALLED` when a bounded workspace admission did not file it."
    },
    {
     "name": "agent_role",
@@ -8562,7 +8562,19 @@
     "name": "next_action",
     "kind": "string",
     "required": true,
-    "meaning": "What the agent does next: `CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN` or `RETURN_THE_RECEIPT_TO_YOUR_LEAD`; refused on a review bundle's thread, `START_THE_MEMBER` (MEMBER, KEY) or `RETURN_THE_RECEIPT_TO_YOUR_LEAD` (ENDED); the lead's earlier bundle refused as stale or ambiguous after a second preparation, on its Task's own publication whose review stands published, `CONVENE_THE_COMMITTEE` or `REPORT_THE_COMMITTEE`, its failure code kept."
+    "meaning": "What the agent does next: `CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN`, `RETURN_THE_RECEIPT_TO_YOUR_LEAD`, or `REPORT_REVIEW_STALLED`; refused on a review bundle's thread, `START_THE_MEMBER` (MEMBER, KEY) or `RETURN_THE_RECEIPT_TO_YOUR_LEAD` (ENDED); the lead's earlier bundle refused as stale or ambiguous after a second preparation, on its Task's own publication whose review stands published, `CONVENE_THE_COMMITTEE` or `REPORT_THE_COMMITTEE`, its failure code kept."
+   },
+   {
+    "name": "blocker",
+    "kind": "object",
+    "required": false,
+    "meaning": "The blocking workspace gate and its holder, or UNMEASURED until its owner proves the holder."
+   },
+   {
+    "name": "waited_seconds",
+    "kind": "number",
+    "required": false,
+    "meaning": "The measured seconds spent waiting for the workspace gate before the review stalled."
    },
    {
     "name": "accepted_items",
@@ -8610,7 +8622,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": false,
-    "meaning": "For the lead, each ready to send: `task` reads the Task the answer started and `book` reads the book it answered for. On that refusal to the lead: the published review's `committee`, or `committee_report` once its floor has closed."
+    "meaning": "For the lead, each ready to send: `task` reads the Task the answer started and `book` reads the book it answered for. On that refusal to the lead: the published review's `committee`, or `committee_report` once its floor has closed. A stalled review offers `activity` and `tasks` to inspect the blocking work."
    },
    {
     "name": "recorded_agent",

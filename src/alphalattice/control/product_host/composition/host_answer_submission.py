@@ -36,6 +36,7 @@ from alphalattice.control.product_host.composition.plain_refusals import (
     stale_packet_refusal,
 )
 from alphalattice.interface.local_application.activity import OperationSpan, refusal_code
+from alphalattice.interface.local_application.cli_contract import worded
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
@@ -223,6 +224,25 @@ def _perform_answer(
             )
     assert body is not None
     answered = bundle_answered(self, bundle, body, thread, request, caller)
+    if (
+        isinstance(thread, committee.Floor)
+        and request.committee_key is not None
+        and body.get("failure_code") == "agent_bundle.admission_busy"
+        and isinstance(body.get("waited_seconds"), (int, float))
+    ):
+        # Only the keyed, admitted review member may report this Goal's terminal stall.
+        answered.update(
+            status="REFUSED_REVIEW_STALLED",
+            next_action="REPORT_REVIEW_STALLED",
+            message_id="agent_bundle.review_stalled_message",
+            message=worded("agent_bundle.review_stalled_message"),
+            blocker={"kind": "WORKSPACE_MUTATION_GATE", "holder": "UNMEASURED"},
+            waited_seconds=body["waited_seconds"],
+            next_requests={
+                "activity": {"operation": "ACTIVITY_RECENT"},
+                "tasks": {"operation": "TASKS"},
+            },
+        )
     if answered["status"] in {"ACCEPTED", "DONE"}:
         answered["bundle_reference"] = bundle.record_hash
     if agent_run is not None and answered["status"] not in {"ACCEPTED", "DONE"}:
@@ -271,7 +291,10 @@ def submit_evidence_analysis(
         # The standard local client waits 120 seconds. Reserve 30 seconds for
         # screening, observation and the return; a no-effect busy refusal is
         # retryable like queue-full, and never becomes a filed outcome.
-        remaining = deadline - monotonic()
+        started_wait = monotonic()
+        remaining = deadline - started_wait
+        if remaining <= 0:
+            raise AnswerTurnBusy  # no gate attempt: its holder and wait are not proved
         entered = False
         if remaining > 0:
             try:
@@ -293,9 +316,18 @@ def submit_evidence_analysis(
             except TimeoutError:
                 if entered:
                     raise
+        waited = max(0.0, monotonic() - started_wait)
+        current = CURRENT_OPERATION.get()
+        if current is not None:
+            current.subject.update(
+                review_stall_blocker="WORKSPACE_MUTATION_GATE",
+                review_stall_holder="UNMEASURED",
+                review_stall_wait_us=int(waited * 1_000_000),
+            )
         return {
             "status": "REFUSED",
             "failure_code": "agent_bundle.admission_busy",
+            "waited_seconds": waited,
             "detail": (
                 "The Host is busy admitting another workspace change; resend the same answer."
             ),

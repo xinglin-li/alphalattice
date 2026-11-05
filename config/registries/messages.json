@@ -2,6 +2,15 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "agent_bundle.review_stalled_message": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The review stalled while the workspace mutation gate was busy. This answer was not filed. Tell your lead, read the workspace activity and Tasks, and resend this same answer only after the blocking change ends.",
+        "zh-CN": "工作区更改锁繁忙，审核因此停滞。此回答尚未存档。请告知负责人，读取工作区活动和任务，并仅在阻塞的更改结束后重发同一回答。"
+      }
+    },
     "agent_bundle.admission_busy_detail": {
       "owner": "alphalattice.control.product_host",
       "kind": "MESSAGE",

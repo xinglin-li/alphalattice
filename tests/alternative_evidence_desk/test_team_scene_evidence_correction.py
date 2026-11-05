@@ -875,7 +875,9 @@ def host(tmp_path, monkeypatch):
             content_length=len(body),
             issues_session=False,
             provenance=RequestProvenance(
-                vendor="codex", session="analyst-retry-test", goal_id=client.goal
+                vendor="codex",
+                session=getattr(client, "_test_session", "analyst-retry-test"),
+                goal_id=client.goal,
             ),
         )
         response = application.dispatch(admitted, body)
@@ -1091,6 +1093,11 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
     invalid = {**answer, "findings": [dict(item) for item in answer["findings"]]}
     invalid["findings"][0]["cite"] = ["S999"]
     request, _made = bundle("busy", invalid)
+    client._test_session = "specialist-session"
+    # First-bind under a held gate is HOST-GATE-LONG-HOLDER; this case starts bound.
+    client.request(
+        {"operation": "EVIDENCE_PREVIEW", "result_hash": service.review.latest_result_hash()}
+    )
     gate = service.session.session.mutation_gate
     try_hold = gate.try_hold
 
@@ -1106,10 +1113,34 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
             completed, _waiting = wait({pending}, timeout=6)
         refused = pending.result(timeout=10)
     assert completed, "the busy request did not finish while the workspace gate was held"
-    assert refused["status"] == "REFUSED"
+    assert refused["status"] == "REFUSED_REVIEW_STALLED"
     assert refused["failure_code"] == "agent_bundle.admission_busy"
-    assert refused["next_action"] == "RETRY_THE_SAME_ANSWER"
+    assert refused["next_action"] == "REPORT_REVIEW_STALLED"
+    assert refused["message_id"] == "agent_bundle.review_stalled_message"
+    assert refused["blocker"] == {"kind": "WORKSPACE_MUTATION_GATE", "holder": "UNMEASURED"}
+    assert refused["waited_seconds"] > 0
+    assert refused["next_requests"] == {
+        "activity": {"operation": "ACTIVITY_RECENT"},
+        "tasks": {"operation": "TASKS"},
+    }
     assert service.session.activity is not None and service.session.activity._ledger is not None
+    # The same-Goal observation is the Host's, not the member's transcript.
+    page = client.activity(limit=200)
+    stalls = [
+        item
+        for item in page["items"]
+        if (item.get("payload") or {}).get("status") == "REFUSED_REVIEW_STALLED"
+    ]
+    assert len(stalls) == 1 and stalls[0]["source_id"] == service.session.activity.source_id
+    payload = stalls[0]["payload"]
+    subject = payload["subject"]
+    assert subject["goal_id"] == _goal and subject["agent_session"] == "specialist-session"
+    assert payload["operation_ref"] in stalls[0]["correlation_ids"]
+    assert (subject["review_stall_blocker"], subject["review_stall_holder"]) == (
+        "WORKSPACE_MUTATION_GATE",
+        "UNMEASURED",
+    )
+    assert abs(subject["review_stall_wait_us"] / 1_000_000 - refused["waited_seconds"]) < 0.001
     rows = service.session.activity._ledger.refusal_counts(since_day="2000-01-01")
     assert (
         next(row for row in rows if row["failure_code"] == "agent_bundle.admission_busy")["count"]
@@ -1117,6 +1148,29 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
     )
     retried = client.request(request)
     assert (retried["status"], retried["answer_number"]) == ("CORRECT", 1)
+    # A deadline spent before reaching the gate proves no gate holder or gate wait.
+    from alphalattice.control.product_host.composition import host_answer_submission as submission
+
+    expired_request, _ = bundle("expired", invalid)
+    with monkeypatch.context() as fault:
+        clock, original = {"expired": False}, submission.monotonic
+        fault.setattr(
+            submission, "monotonic", lambda: original() + (1000 if clock["expired"] else 0)
+        )
+
+        def exhausted(**kwargs):
+            clock["expired"] = True
+            return kwargs["admit"](lambda: pytest.fail("expired request reached the gate"))
+
+        fault.setattr(service.review, "submit_analysis", exhausted)
+        expired = client.request(expired_request)
+        assert expired["status"] == "REFUSED" and expired["next_action"] == "RETRY_THE_SAME_ANSWER"
+        assert "blocker" not in expired and "waited_seconds" not in expired
+        statuses = [
+            (item.get("payload") or {}).get("status")
+            for item in client.activity(limit=200)["items"]
+        ]
+        assert statuses.count("REFUSED_REVIEW_STALLED") == 1  # only the actual gate timeout
 
 
 def _authority_change_during_preflight_refuses_without_filing(host, monkeypatch):

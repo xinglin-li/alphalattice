@@ -440,6 +440,14 @@
         "type": "string"
       }
     },
+    "answer:AGENT_ANSWER_SUBMIT.blocker": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
+      }
+    },
     "answer:AGENT_ANSWER_SUBMIT.dropped": {
       "required": false,
       "schema": {
@@ -531,6 +539,13 @@
       "schema": {
         "default": null,
         "type": "string"
+      }
+    },
+    "answer:AGENT_ANSWER_SUBMIT.waited_seconds": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "number"
       }
     },
     "answer:AGENT_ANSWER_SUBMIT/ErrorInfo.category": {
