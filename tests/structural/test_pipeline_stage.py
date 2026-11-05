@@ -175,11 +175,16 @@ def test_control():
         assert done.returncode == 0, done.stderr
         with pytest.raises(receipt.ReceiptError, match="missing required tests"):
             receipt.verify(ordinary / "receipt.jsonl", required_tests=[family], within_limits=True)
+        cache = source.parent / "__pycache__"
+        cache.mkdir(exist_ok=True)
+        (cache / "fixture.pyc").write_bytes(b"bytecode is not source")
         for words in (
-            ["add", "config", "scripts", "tests", "pytest.ini"],
+            ["add", "config/pipeline.toml", "scripts/pipeline.py", relative, "pytest.ini"],
             ["commit", "-qm", "cost fixture", "-m", "Change-Kind: cost"],
         ):
             subprocess.run([*git, *words], check=True)
+        tracked = subprocess.check_output([*git, "ls-files", "-z"]).split(b"\0")
+        assert not any(name.endswith(b".pyc") for name in tracked)
         cost = tmp_path / "cost"
         done = subprocess.run(
             [*argv, "--out", str(cost), "--required-tests", family],
