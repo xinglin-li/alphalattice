@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
+from functools import partial
 from time import monotonic
 from typing import Any, cast
 
@@ -11,12 +13,16 @@ from pydantic import ValidationError
 
 from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.answer_turns import (
+    ANSWER_FILING,
     SUBMISSION_DEADLINE,
     SUBMISSION_WAIT_SECONDS,
     AnswerTurnBusy,
     bounded_answer_turn,
 )
-from alphalattice.control.product_host.composition.committee_answer import legacy_acceptance
+from alphalattice.control.product_host.composition.committee_answer import (
+    legacy_acceptance,
+    unfinished_answer,
+)
 from alphalattice.control.product_host.composition.evidence_review_application import (
     ANSWER_CATEGORY,
     ReviewOutcome,
@@ -160,12 +166,16 @@ def submit_agent_answer(self: Any, request: Any, caller: Any) -> dict[str, objec
                     )
                     retained = replayed
                     return retained
-            return cast(
-                dict[str, object],
-                _perform_answer(
-                    self, request, caller, bundle, answer, read, agent_run, store, who, thread
-                ),
-            )
+                recovered = _cut_short(self, request, caller, bundle, answer, store, who, thread)
+                if recovered is not None:
+                    return recovered
+            with _named_first(self, request, store, who, thread):
+                return cast(
+                    dict[str, object],
+                    _perform_answer(
+                        self, request, caller, bundle, answer, read, agent_run, store, who, thread
+                    ),
+                )
     except (AnswerTurnBusy, GateBusy) as busy:
         if isinstance(busy, GateBusy):
             _name_holder(busy.holder)
@@ -181,6 +191,34 @@ def submit_agent_answer(self: Any, request: Any, caller: Any) -> dict[str, objec
         }
     finally:
         SUBMISSION_DEADLINE.reset(scope)
+
+
+def _cut_short(
+    self: Any,
+    request: Any,
+    caller: Any,
+    bundle: Any,
+    answer: Any,
+    store: Any,
+    who: Any,
+    thread: Any,
+) -> dict[str, object] | None:
+    """A keyed correction whose record was filed and its thread cut short, completed now.
+
+    Its unfinished intent names the record; recovered only when that record exists with this
+    answer's digest and verdict CORRECT, never counted twice. Otherwise None: evaluate it.
+    """
+    pending = unfinished_answer(thread, who)
+    if pending is None or not self.review.artifacts.exists(ANSWER_CATEGORY, pending[1]):
+        return None
+    record = self.review.artifacts.load(ANSWER_CATEGORY, pending[1], AgentAnswerRecord)
+    if record.answer_digest != answer_digest(answer) or record.verdict.value != "CORRECT":
+        return None
+    filed = {"status": "CORRECT", "task_id": None, "answer": answer_view(record)}
+    return cast(
+        dict[str, object],
+        _answered(self, request, caller, bundle, filed, record.agent_run, store, who, thread),
+    )
 
 
 def _perform_answer(
@@ -251,6 +289,37 @@ def _perform_answer(
                 unit_id=bundle.submission.get("evidence_unit_id"),
             )
     assert body is not None
+    return _answered(self, request, caller, bundle, body, agent_run, store, who, thread)
+
+
+@contextmanager
+def _named_first(self: Any, request: Any, store: Any, who: Any, thread: Any) -> Iterator[None]:
+    """While a keyed answer is evaluated, its correction is named on its thread before filing."""
+    keyed = request.committee_key is not None and isinstance(thread, committee.Floor)
+    intent = ANSWER_FILING.set(partial(_name_intent, self, store, thread, who) if keyed else None)
+    try:
+        yield
+    finally:
+        ANSWER_FILING.reset(intent)
+
+
+def _name_intent(self: Any, store: Any, thread: Any, who: Any, record: AgentAnswerRecord) -> None:
+    """Name the record a keyed correction will be on its thread, before it is filed."""
+    committee.answer_intent(store, thread, who, record.record_hash, self.dispatcher.clock())
+
+
+def _answered(
+    self: Any,
+    request: Any,
+    caller: Any,
+    bundle: Any,
+    body: Any,
+    agent_run: Any,
+    store: Any,
+    who: Any,
+    thread: Any,
+) -> Any:
+    """The Host's verdict on an answer's outcome, filed on its thread with its record."""
     answered = bundle_answered(self, bundle, body, thread, request, caller)
     if (
         isinstance(thread, committee.Floor)

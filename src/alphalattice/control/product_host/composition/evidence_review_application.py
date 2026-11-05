@@ -21,6 +21,7 @@ from uuid import UUID
 
 from pydantic import Field, TypeAdapter, ValidationError, model_validator
 
+from alphalattice.control.product_host.composition.answer_turns import ANSWER_FILING
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -59,6 +60,7 @@ from alphalattice.control.product_host.composition.evidence_source_ways import (
     offered_installs as source_offered_installs,
 )
 from alphalattice.control.product_host.composition.plain_refusals import refused
+from alphalattice.control.product_host.composition.retrieval_recipe import retrieval_recipe_view
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -172,12 +174,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    ENCODER_RUNTIME_TORCH_CUDA,
-    RERANKER_RUNTIME_TORCH_CUDA,
-    HybridIndexSpec,
-)
-from alphalattice.kernel.knowledge.model_store import runtime_availability
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.sealing import validate_hash_compatible
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
@@ -558,39 +554,6 @@ class ReviewOutcome:
     def reused(self) -> bool:
         """Whether this outcome reused exact retained evidence."""
         return self.disposition == "REUSED_EXACT"
-
-
-def retrieval_recipe_view(spec: HybridIndexSpec) -> dict[str, object]:
-    """Project the bound retrieval recipe and its resolved device requirements.
-
-    The retrieval recipe a workspace is bound to, as a reader sees it: the
-    encoder and reranker by name and revision, the device the recipe needs,
-    and -- for a GPU recipe -- what this host resolves for it. Never a
-    quality claim; a pack's presence is proven by the capability hash the
-    manifest binds, not restated here.
-    """
-    gpu = (
-        spec.encoder_runtime == ENCODER_RUNTIME_TORCH_CUDA
-        or spec.reranker_runtime == RERANKER_RUNTIME_TORCH_CUDA
-    )
-    view: dict[str, object] = {
-        "recipe": spec.policy_id,
-        "encoder": {
-            "model_id": spec.model_id,
-            "revision": spec.model_revision,
-            "runtime": spec.encoder_runtime,
-            "dimension": spec.embedding_dimension,
-        },
-        "reranker": {
-            "model_id": spec.reranker_model_id,
-            "revision": spec.reranker_model_revision,
-            "runtime": spec.reranker_runtime,
-        },
-        "device": "gpu" if gpu else "cpu",
-    }
-    if gpu:
-        view["host_runtime"] = runtime_availability()
-    return view
 
 
 ANSWER_CATEGORY = "agent-answers"
@@ -4027,6 +3990,8 @@ class EvidenceReviewApplication:
         sent again (V417), however old its record -- and another in a slot already taken is
         refused, never skipped (V557)."""
         if not self.artifacts.exists(ANSWER_CATEGORY, record.record_hash):
+            if record.verdict is AnswerVerdict.CORRECT and (intent := ANSWER_FILING.get()):
+                intent(record)  # named on its thread before it exists
             self.artifacts.publish(ANSWER_CATEGORY, record.record_hash, record)
             return True
         filed = self.artifacts.load(ANSWER_CATEGORY, record.record_hash, AgentAnswerRecord)

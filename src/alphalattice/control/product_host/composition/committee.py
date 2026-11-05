@@ -28,6 +28,7 @@ from alphalattice.control.data_platform.data_decision_rule import KeptListing, K
 from alphalattice.control.product_host.composition.committee_answer import (
     answer_replay,
     file_answer,
+    file_intent,
 )
 from alphalattice.control.product_host.composition.committee_materials import (
     AGENDA_LIMIT as AGENDA_LIMIT,
@@ -2136,6 +2137,13 @@ def answered(
         accepted=_accepted,
         append=_append,
     )
+
+
+def answer_intent(
+    store: GoalStore, floor: Floor, member: Any, reference: str, now: datetime
+) -> None:
+    """Name the record a member's correction will be, on its own thread, before it is filed."""
+    file_intent(store, floor, member, reference, now, append=_append)
 
 
 def render(

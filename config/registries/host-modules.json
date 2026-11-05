@@ -51,6 +51,7 @@
     "src/alphalattice/control/product_host/composition/resource_estimates.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/result_standing.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py": "COMPOSITION",
+    "src/alphalattice/control/product_host/composition/retrieval_recipe.py": {"kind": "COMPOSITION", "description": "Projects the bound retrieval recipe and its resolved device needs for a reader, moved out of the evidence review module."},
     "src/alphalattice/control/product_host/composition/review_updates.py": {"kind": "COMPOSITION", "description": "Reads a sealed review update once for the readers verifying it at the same time."},
     "src/alphalattice/control/product_host/composition/rolling_portfolio_report.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/saved_object_readback.py": "COMPOSITION",

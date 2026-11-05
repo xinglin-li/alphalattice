@@ -70,6 +70,57 @@ def legacy_acceptance(floor: AnswerThread, member: tuple[str, str, Any]) -> tupl
     return None
 
 
+def unfinished_answer(floor: AnswerThread, member: tuple[str, str, Any]) -> tuple[str, str] | None:
+    """A keyed answer's intent that no verdict completed: its message and the record it named.
+
+    The intent is filed before its correction's record; a verdict replies to it once the thread
+    is complete. One left without a verdict marks a filing cut short and stays as history.
+    """
+    role, _reference, answer = member
+    digest = str(canonical_hash(answer))
+    completed = {
+        message.get("reply_to")
+        for message in floor.messages
+        if message.get("kind") in {"CORRECTION", "ACCEPTANCE"}
+    }
+    for message in reversed(floor.messages):
+        intended = message.get("intended_reference")
+        if (
+            message.get("kind") == "ANSWER"
+            and message.get("role") == role
+            and message.get("answer_digest") == digest
+            and isinstance(intended, str)
+            and message.get("id") not in completed
+        ):
+            return str(message["id"]), intended
+    return None
+
+
+def file_intent(
+    store: Any, floor: Any, member: Any, reference: str, now: datetime, *, append: Any
+) -> None:
+    """The member's answer on its thread before its correction's record is filed, naming it."""
+    role, _reference, answer = member
+    own = {"author_session": floor.author_session} if floor.author_session else {}
+    with store.lock:
+        pending = unfinished_answer(floor, member)
+        if pending is not None and pending[1] == reference:
+            return  # the same filing, tried again
+        last = floor.messages[-1]["id"] if floor.messages else None
+        append(
+            store,
+            floor,
+            now,
+            role=role,
+            kind="ANSWER",
+            text="Answer submitted.",
+            reply_to=last,
+            answer_digest=str(canonical_hash(answer)),
+            intended_reference=reference,
+            **own,
+        )
+
+
 def file_answer(
     store: Any,
     floor: Any,
@@ -99,11 +150,20 @@ def file_answer(
     with store.lock:
         if accepted(floor) is not None:
             return  # the accepted answer read again: its receipt, said once
-        last = floor.messages[-1]["id"] if floor.messages else None  # its issue, or correction
-        said = {"role": role, "kind": "ANSWER", "text": "Answer submitted.", "reply_to": last}
-        said["answer_digest"] = str(canonical_hash(answer))
-        said |= own
-        verdict: dict[str, Any] = {"role": "HOST", "reply_to": append(store, floor, now, **said)}
+        pending = unfinished_answer(floor, member)
+        if (
+            pending is not None
+            and status == "CORRECT"
+            and correction_reference in (None, pending[1])
+        ):
+            asked = pending[0]  # the named correction, or a legacy verdict without a reference
+        else:
+            last = floor.messages[-1]["id"] if floor.messages else None  # its issue, or correction
+            said = {"role": role, "kind": "ANSWER", "text": "Answer submitted.", "reply_to": last}
+            said["answer_digest"] = str(canonical_hash(answer))
+            said |= own
+            asked = append(store, floor, now, **said)
+        verdict: dict[str, Any] = {"role": "HOST", "reply_to": asked}
         if status == "CORRECT":
             problems, left = len(body.get("problems") or ()), body.get("rounds_left")
             text = f"Correct the {problems} named items; {left} rounds left."
