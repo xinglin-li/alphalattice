@@ -32,6 +32,18 @@ Latest released version: [0.2.4](#024). Earlier measurements describe their own 
 - On Windows, Codex setup offers a workspace-specific Host start when its sandbox cannot
   write the project configuration. Generated PowerShell commands pipe quoted JSON as
   BOM-free UTF-8 so the request keeps its intended content.
+- In that sandbox recovery route, configure offers a complete command for the default
+  workspace when none exists; otherwise it offers the existing workspace paths for a choice.
+- First-use setup keeps its temporary files in the project and offers the delegated network
+  action separately from the daily network question.
+- Concurrent readers share an in-progress verification of the same saved review update.
+  If an authenticated, keyed review answer cannot enter a busy workspace within its bound,
+  the response says it was not filed and explains when to resend it.
+- On Windows, the Host avoids repeating a processor query while Tasks run. Codex guidance
+  uses an available specialist role or opens a fresh configured-project session if it is
+  unavailable; if the role is still missing, the agent stops and reports it.
+- The Workbench names a stalled review in English and Chinese and gives Chinese recovery
+  guidance when a saved Alpha record does not match its requested identity.
 
 ### Deprecated
 
