@@ -69,6 +69,7 @@ from alphalattice.control.product_host.composition.host_answer_submission import
     CURRENT_OPERATION as _CURRENT_OPERATION,
 )
 from alphalattice.control.product_host.composition.host_answer_submission import (
+    answer_deadline,
     finish_observation,
     submit_agent_answer,
     submit_evidence_analysis,
@@ -135,6 +136,7 @@ from alphalattice.control.product_host.composition.resource_estimates import (
     MEMORY_INSUFFICIENT,
     gate_for,
 )
+from alphalattice.control.product_host.composition.review_updates import read_review_update
 from alphalattice.control.product_host.composition.strategy_activation import (
     INSTALLED_BOOK_WORDS,
     RUN_FORWARD_WORDS,
@@ -270,10 +272,16 @@ from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStoreError,
     verified_model_read_scope,
 )
+from alphalattice.control.workspace_runtime.mutation_gate import (
+    GateBusy,
+    gate_subject,
+    request_deadline,
+)
 from alphalattice.control.workspace_runtime.network_access import (
     network_access,
     set_network_access,
 )
+from alphalattice.control.workspace_runtime.verified_readbacks import VerifiedReadbacks
 from alphalattice.evidence.alternative_evidence.publication.artifacts import (
     verified_evidence_records,
 )
@@ -373,7 +381,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
 )
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     PortfolioUpdatePositions,
-    PortfolioUpdatePublication,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.resolution import (
     StrategyPortfolioResolver,
@@ -593,6 +600,7 @@ class PortfolioResearchOperations:
     sweep: StudyVerificationSweep = field(init=False)
     evidence_install: EvidenceInstall = field(init=False)
     supervisor: TaskSupervisor = field(init=False)
+    readbacks: VerifiedReadbacks = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Compose workspace owners and resume retained feature trials.
@@ -603,6 +611,7 @@ class PortfolioResearchOperations:
         """
         if self.manifests is None:
             self.manifests = ResearchWorkspaceManifestHolder(self.workspace_manifest)
+        self.readbacks = VerifiedReadbacks()
         self.experiments = ResearchExperimentApplication(
             session=self.workspace_session,
             manifest=self.manifests,
@@ -828,6 +837,22 @@ class PortfolioResearchOperations:
         caller: OperationCaller = "HUMAN",
         agent_execution: AgentExecutionBinding | None = None,
     ) -> dict[str, object]:
+        """Run one operation; a keyed answer's one deadline bounds every gate wait it meets."""
+        run = partial(
+            self._execute_request, request, caller=caller, agent_execution=agent_execution
+        )
+        if (deadline := answer_deadline(request)) is None:
+            return run()
+        with request_deadline(deadline):
+            return run()
+
+    def _execute_request(
+        self,
+        request: PortfolioResearchOperationRequest,
+        *,
+        caller: OperationCaller,
+        agent_execution: AgentExecutionBinding | None,
+    ) -> dict[str, object]:
         """Run one operation, recorded under the open goal it works for, if any (OP13).
 
         A request works for the goal its client names, else for the goal its agent session
@@ -993,6 +1018,9 @@ class PortfolioResearchOperations:
                 )
                 if goal is not None:
                     self.goals_named.add((*key, str(goal.goal_id)))
+        except GateBusy:  # nothing was filed: the Session's next request binds it
+            self.autobound.discard(key)
+            return
         except Exception as error:
             unbound(error)
             return
@@ -1023,12 +1051,15 @@ class PortfolioResearchOperations:
             workspace = Path(self.workspace_session.workspace)
             found = self._session_binding((provenance.vendor, provenance.session), workspace)
             if found is not None:
-                file_bound_fact(
-                    *found,
-                    at=self.dispatcher.clock(),
-                    publish=lambda document: self.declare_event(observer, document),
-                    goal_hash=goal.goal_hash,
-                )
+                try:
+                    file_bound_fact(
+                        *found,
+                        at=self.dispatcher.clock(),
+                        publish=lambda document: self.declare_event(observer, document),
+                        goal_hash=goal.goal_hash,
+                    )
+                except GateBusy:  # nothing was filed: the next request names it
+                    self.goals_named.discard(key)
 
     def _session_binding(
         self, session: tuple[str, str], workspace: Path
@@ -1286,7 +1317,8 @@ class PortfolioResearchOperations:
         if refusal is not None:
             return refusal
         action = partial(self._execute, request, caller=caller, agent_execution=agent_execution)
-        body = self.dispatcher._admit(action) if request.operation == "RECOVER" else action()
+        with gate_subject(request.operation, request.task_id):
+            body = self.dispatcher._admit(action) if request.operation == "RECOVER" else action()
         gate.plan_answered(request.operation, body)
         task_id = body.get("task_id")
         if isinstance(task_id, str):
@@ -5566,40 +5598,8 @@ class PortfolioResearchOperations:
         readback: dict[str, object] | None = None,
     ) -> dict[str, object]:
         """Read the exact review origin, reusing a matching result verified in this request."""
-        assert self.updates is not None
-        task = self.workspace_session.task_control_registry.task(task_id)
-        reader: DecisionAdvancementApplication | PortfolioUpdateApplication
-        if task.input.input_schema_id == DECISION_ADVANCEMENT_SCHEMA:
-            if self.research_updates is None:
-                raise ValueError("product_host.evidence_review_update_not_configured")
-            reader = self.research_updates
-        elif task.task_kind == PORTFOLIO_UPDATE_TASK_KIND:
-            reader = self.updates
-        else:
-            raise ValueError("product_host.evidence_review_update_task_mismatch")
-        publication = None if readback is None else readback.get("publication")
-        body = (
-            dict(readback)
-            if readback is not None
-            and readback.get("task_id") == str(task_id)
-            and isinstance(publication, dict)
-            and publication.get("content_hash") == publication_hash
-            else reader.readback(task_id, publication_hash=publication_hash)
-        )
-        plan = cast(dict[str, object], task.input.payload["plan"])
-        if publication_hash == plan.get("parent_hash"):
-            value = PortfolioUpdatePublication.model_validate(body["publication"])
-            producers = [self.updates.publication_task(value)]
-            if self.research_updates is not None:
-                producers.append(self.research_updates.publication_task(publication_hash))
-            found = [v for v in producers if v is not None]
-            if len(found) != 1:
-                raise ValueError("product_host.evidence_review_publication_origin_unavailable")
-            # A displayed parent keeps its original review identity and exact reuse.
-            return self._read_review_update(found[0], publication_hash)
-        floor = committee.published_floor(self.goals.store, str(task_id), publication_hash)
-        committee.contextualize(body, floor, self.dispatcher.clock())
-        return body
+        body = read_review_update(self, task_id, publication_hash, readback=readback)
+        return cast(dict[str, object], body)
 
     def evidence_refresh(
         self, selector: BookSelector | None, *, caller: str = "HUMAN"

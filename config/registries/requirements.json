@@ -51,6 +51,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "composition.sealed_review_update_verified_once": {
+      "description": "Concurrent readers of one sealed review update share one verification, each with its own copy, and a failed verification is never kept.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 30
+    },
     "evaluation.continuation_snapshot_integrity": {
       "description": "A native acceptance continuation admits only the exact tracked bytes written by its recorded prestart configure and refuses other tracked changes.",
       "owner": "devtools.evaluation",

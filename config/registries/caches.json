@@ -3842,6 +3842,26 @@
         "scope": "cross-invocation",
         "path_expression": "persistent_golden_root(ROOT / tmp / golden-workspaces)"
       }
+    },
+    "src/alphalattice/control/workspace_runtime/verified_readbacks.py::VerifiedReadbacks._flights::verified-review-update-readbacks": {
+      "description": "Shares one sealed review update verification among concurrent readers; no result outlives its flight.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/verified_readbacks.py::VerifiedReadbacks._flights"
+      ],
+      "definition_line": 23,
+      "key": "reader kind + update task id + task record hash + publication hash",
+      "dependency_coverage": "Yes: a sealed SUCCEEDED update's record and publication hashes",
+      "invalidation_rule": "none kept",
+      "size_bound": "one entry per key in flight",
+      "bound_scope": "concurrent keys per Host operations owner",
+      "eviction": "on completion",
+      "safe_to_drop": "Yes",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory VerifiedReadbacks._flights on PortfolioResearchOperations.readbacks"
+      },
+      "source_commit": "050bc399d899c7c5112a7720eda3d34e82dd0d97"
     }
   }
 }

@@ -51,6 +51,7 @@
     "src/alphalattice/control/product_host/composition/resource_estimates.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/result_standing.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py": "COMPOSITION",
+    "src/alphalattice/control/product_host/composition/review_updates.py": {"kind": "COMPOSITION", "description": "Reads a sealed review update once for the readers verifying it at the same time."},
     "src/alphalattice/control/product_host/composition/rolling_portfolio_report.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/saved_object_readback.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/strategy_activation.py": "COMPOSITION",

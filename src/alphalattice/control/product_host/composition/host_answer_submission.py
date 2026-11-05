@@ -35,6 +35,7 @@ from alphalattice.control.product_host.composition.plain_refusals import (
     STALE_PACKET,
     stale_packet_refusal,
 )
+from alphalattice.control.workspace_runtime.mutation_gate import GateBusy, current_deadline
 from alphalattice.interface.local_application.activity import OperationSpan, refusal_code
 from alphalattice.interface.local_application.cli_contract import worded
 from alphalattice.interface.local_application.portfolio_research import (
@@ -55,9 +56,34 @@ CURRENT_OPERATION: ContextVar[OperationSpan | None] = ContextVar(
 )
 
 
+def answer_deadline(request: Any) -> float | None:
+    """A keyed answer's one deadline, from where it enters the Host; None for other requests.
+
+    Args:
+        request: The operation request.
+
+    Returns:
+        The monotonic deadline every gate wait of a keyed answer meets, its first bind included.
+    """
+    if request.operation != "AGENT_ANSWER_SUBMIT" or request.committee_key is None:
+        return None
+    return monotonic() + SUBMISSION_WAIT_SECONDS
+
+
+def _name_holder(holder: dict[str, object] | None) -> None:
+    """Record on this operation whom its busy answer waited behind, where the gate named one."""
+    current = CURRENT_OPERATION.get()
+    if current is not None and holder is not None:
+        current.subject["gate_holder_operation"] = holder["operation"]
+        current.subject["gate_holder_task_id"] = holder["task_id"]
+        current.subject["gate_holder_held_us"] = int(cast(float, holder["held_seconds"]) * 1e6)
+
+
 def submit_agent_answer(self: Any, request: Any, caller: Any) -> dict[str, object]:
     """Authenticate a bundle, serialize its retry and return its first filed result."""
-    deadline = monotonic() + SUBMISSION_WAIT_SECONDS if request.committee_key is not None else None
+    # The request's own deadline, set where it entered the Host, bounds this answer too.
+    started = current_deadline() or monotonic() + SUBMISSION_WAIT_SECONDS
+    deadline = started if request.committee_key is not None else None
     scope = SUBMISSION_DEADLINE.set(deadline)
     bundle = None
     try:
@@ -140,7 +166,9 @@ def submit_agent_answer(self: Any, request: Any, caller: Any) -> dict[str, objec
                     self, request, caller, bundle, answer, read, agent_run, store, who, thread
                 ),
             )
-    except AnswerTurnBusy:
+    except (AnswerTurnBusy, GateBusy) as busy:
+        if isinstance(busy, GateBusy):
+            _name_holder(busy.holder)
         return {
             "status": "REFUSED",
             "answer_status": "REFUSED",
@@ -236,7 +264,10 @@ def _perform_answer(
             next_action="REPORT_REVIEW_STALLED",
             message_id="agent_bundle.review_stalled_message",
             message=worded("agent_bundle.review_stalled_message"),
-            blocker={"kind": "WORKSPACE_MUTATION_GATE", "holder": "UNMEASURED"},
+            blocker={
+                "kind": "WORKSPACE_MUTATION_GATE",
+                "holder": body.get("stall_holder", "UNMEASURED"),
+            },
             waited_seconds=body["waited_seconds"],
             next_requests={
                 "activity": {"operation": "ACTIVITY_RECENT"},
@@ -317,17 +348,22 @@ def submit_evidence_analysis(
                 if entered:
                     raise
         waited = max(0.0, monotonic() - started_wait)
+        holder = self.workspace_session.mutation_gate.holder()
+        _name_holder(holder)
+        # The gate's own record names the holder; an unnamed holder stays unmeasured, never guessed.
+        named = str((holder or {}).get("operation") or "UNMEASURED")
         current = CURRENT_OPERATION.get()
         if current is not None:
             current.subject.update(
                 review_stall_blocker="WORKSPACE_MUTATION_GATE",
-                review_stall_holder="UNMEASURED",
+                review_stall_holder=named,
                 review_stall_wait_us=int(waited * 1_000_000),
             )
         return {
             "status": "REFUSED",
             "failure_code": "agent_bundle.admission_busy",
             "waited_seconds": waited,
+            "stall_holder": named,
             "detail": (
                 "The Host is busy admitting another workspace change; resend the same answer."
             ),

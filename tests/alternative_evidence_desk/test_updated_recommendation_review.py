@@ -6,10 +6,13 @@ The numerical fixture uses frozen Return/Balanced recipes with synthetic inputs;
 it is not another model fit or a claim about the admitted research corpus.
 """
 
+import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -29,6 +32,7 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as Request,
 )
+from alphalattice.interface.local_application.web import AdmittedRequest, LocalWebService
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     PortfolioObservedSettlement,
     PortfolioUpdatePublication,
@@ -51,6 +55,7 @@ from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task imp
 from tests.alternative_evidence_desk.planted_corpus import _NOW
 from tests.alternative_evidence_desk.review_http_support import (
     _raise_interruption,
+    _Service,
     build_authority,
     build_workspace,
     start_service,
@@ -621,3 +626,94 @@ def test_update_review_recovery_revalidates_its_exact_source(updated, monkeypatc
             assert len(c.service.review.review_actor.observed_deadlines) == calls + 1
     finally:
         path.write_bytes(original)
+
+
+def _in_process(service, path, *, method="GET", payload=None, token="valid"):
+    """The Host's own route, dispatched in this process: the same answer without a socket."""
+    del token
+    route, _, query = path.partition("?")
+    application = service.session.web.application
+    body = b"" if payload is None else json.dumps(payload).encode("utf-8")
+    admitted = AdmittedRequest(
+        route=application.routes[(method, route)],
+        asset=None,
+        query=parse_qs(query),
+        content_length=len(body),
+        issues_session=False,
+    )
+    response = application.dispatch(admitted, body)
+    return response.status, json.loads(response.body or b"{}")
+
+
+@pytest.mark.proves("composition.sealed_review_update_verified_once")
+@pytest.mark.parametrize("numerical", [REBOUND_RETURN_BOOK_RECIPE], ids=["Return"], indirect=True)
+def test_a_sealed_review_update_is_verified_once_for_its_concurrent_readers(
+    tmp_path, numerical, monkeypatch
+):
+    """Fifteen readers of one sealed update share one verification, each with its own copy, and a
+    failed verification is never kept. On 11-04 every one of 15 Analyst submits re-verified the
+    reviewed update, about 165 s apiece, and none answered within its deadline."""
+    monkeypatch.setattr(LocalWebService, "start", lambda _self: "http://127.0.0.1:12345/")
+    monkeypatch.setattr(_Service, "request", _in_process)
+    workspace, _ = build_workspace(tmp_path)
+    service = start_service(workspace, None, tmp_path)
+    try:
+        value, selector = seed_update(service, numerical)
+        operations = service.session.operations
+        task, publication = UUID(selector["update_task_id"]), value.content_hash
+        reader, real, verified = operations.updates, operations.updates.readback, []
+        entered, release, failing = threading.Event(), threading.Event(), [True]
+        from alphalattice.control.workspace_runtime import verified_readbacks
+
+        waiting, waiters, wait_lock = threading.Event(), [0], threading.Lock()
+
+        class ObservedFuture(verified_readbacks.Future):
+            def result(self, timeout=None):
+                with wait_lock:
+                    waiters[0] += 1
+                    if waiters[0] == 14:
+                        waiting.set()
+                return super().result(timeout)
+
+        monkeypatch.setattr(verified_readbacks, "Future", ObservedFuture)
+
+        def counted(*args, **kwargs):
+            verified.append(args)
+            entered.set()
+            assert release.wait(10)
+            if failing[0]:
+                raise ValueError("portfolio_update.verification_failed")
+            return real(*args, **kwargs)
+
+        def fifteen_readers():
+            entered.clear(), release.clear(), waiting.clear()
+            waiters[0] = 0
+            with ThreadPoolExecutor(max_workers=15) as pool:
+                reads = [
+                    pool.submit(operations._read_review_update, task, publication)
+                    for _ in range(15)
+                ]
+                assert entered.wait(10) and waiting.wait(10)
+                release.set()
+                return [r.exception(timeout=20) or r.result() for r in reads]
+
+        monkeypatch.setattr(reader, "readback", counted)
+        assert all(isinstance(r, ValueError) for r in fifteen_readers())  # shared while in flight
+        failing[0], before = False, len(verified)
+        bodies = fifteen_readers()  # the failure was not kept: verified afresh, once for all 15
+        assert len(verified) == before + 1 and all(b == bodies[0] for b in bodies)
+        bodies[0]["publication"] = None  # each reader holds its own copy
+        assert operations._read_review_update(task, publication) == bodies[1]
+        assert len(verified) == before + 2  # a completed flight is not kept
+        path = operations.updates.store.root / "decision-updates" / f"{publication}.json"
+        original_bytes = path.read_bytes()
+        try:
+            path.write_bytes(b"tampered")
+            with pytest.raises(ValueError):
+                real(task, publication_hash=publication)
+            with pytest.raises(ValueError):
+                operations._read_review_update(task, publication)
+        finally:
+            path.write_bytes(original_bytes)
+    finally:
+        service.session.stop()
