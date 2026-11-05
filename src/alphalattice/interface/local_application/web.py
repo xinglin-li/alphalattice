@@ -849,7 +849,13 @@ class _Server(ThreadingHTTPServer):
     which is exactly the second writer the lease exists to prevent.
     """
 
-    allow_reuse_address = False
+    allow_reuse_address = os.name != "nt"
+    """POSIX rebinds a port its stopped Host's closed connections still hold in TIME_WAIT.
+
+    Without SO_REUSEADDR a same-port restart there fails with EADDRINUSE; it never lets a second
+    socket bind over a live listener. Windows binds over TIME_WAIT already, and its SO_REUSEADDR
+    would let another socket take a port this Host is listening on, so it stays off there.
+    """
 
     def __init__(self, address: tuple[str, int], application: LocalWebApplication) -> None:
         self.application = application

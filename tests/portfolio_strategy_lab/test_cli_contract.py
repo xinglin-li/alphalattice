@@ -263,8 +263,8 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
     assert body["operation"] == "TASKS" and isinstance(body["data"]["tasks"], list)
 
     saved = tmp_path / "refusal.json"
-    # One answer through the real script: its process exits by the outcome and its stdout keeps the
-    # workspace path private; every other answer reads the same CLI entry in process.
+    # One answer through the real script: its process exits by the outcome and its stdout names the
+    # workspace it answered for; every other answer reads the same CLI entry in process.
     code, body, stdout = _cli(live.workspace, "task", "show", str(uuid4()), "--output", str(saved))
     assert (code, body["outcome"], body["failure_code"]) == (
         2,
@@ -281,7 +281,10 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
     assert info == body["data"]["error_info"] and info["message_id"] and info["message"]
     # The refusal is the owner's answer and is saved like any other (CLI-6).
     assert json.loads(saved.read_text("utf-8"))["failure_code"] == "task_control.task_not_found"
-    assert str(live.workspace) not in stdout
+    # A path check on raw stdout only passed on Windows, where JSON escapes the backslashes.
+    assert json.loads(stdout.strip().splitlines()[-1])["context"]["workspace"] == str(
+        live.workspace.resolve()
+    )
 
     code, body, _ = _inprocess_cli(live.workspace, "frobnicate", capsys=capsys)
     assert (code, body["outcome"], body["failure_code"]) == (

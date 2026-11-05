@@ -231,13 +231,10 @@ def test_complete_immutable_alpha_models_reuse_validation_only_with_an_opted_in_
             preparation.preparation_hash
         )
     assert first == second == preparation
-    if os.name == "nt" and reuse_verified:
-        assert len(validations) == first_count
-        assert first is second
-        assert first_surfaces is second_surfaces
-    else:
-        assert len(validations) == first_count + 1
-        assert first is not second
+    # Reuse follows the opt-in alone, on every OS: each reuse is keyed by the exact bytes read and
+    # hashed this time. An OS read lease, which only Windows grants, only spares that re-read.
+    assert len(validations) == first_count + (not reuse_verified)
+    assert (first is second) == (first_surfaces is second_surfaces) == reuse_verified
     assert tuple(surface.feature_values_hash for surface in first_surfaces) == tuple(
         surface.feature_values_hash for surface in second_surfaces
     )
