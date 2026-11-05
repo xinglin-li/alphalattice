@@ -82,6 +82,12 @@
         "decided": "2026-10-29: approved; real Host sampling exercises the ACK markers"
       }
     },
+    "evaluation.live_read_watches_every_task": {
+      "description": "A native run's live read keeps every Task it has seen current past the Host's per-page watch cap, so a leg sees its goal end.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5
+    },
     "evaluation.native_hosts_stop_with_their_run": {
       "description": "A native acceptance run stops its own recorded workspace Hosts and proves each listener and process ended, or names the unproved stop.",
       "owner": "devtools.evaluation",
