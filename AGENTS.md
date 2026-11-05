@@ -54,7 +54,8 @@ If you installed AlphaLattice in this session, continue here: read this guide an
 the research Skill by the paths `configure` printed under `continue_here`, and tell
 the person its `disclosure` in one line ([setup](.agents/skills/alphalattice-research/references/operating.md)).
 Before each specialist, check your host's subagent tool: if the tool lists the role
-(for example, `alphalattice_alpha`), start that shipped role with its assignment. If the tool does not list the role,
+(for example, `alphalattice_alpha`), start that shipped role with its assignment.
+On Codex, pass `fork_turns="none"` to `spawn_agent`. If the tool does not list the role,
 open a fresh session in the configured project using `continue_here.open_session` so the host can load it,
 then resume the same research. If the role is still missing, stop and report it.
 A Claude Code startup step is separate from the network-permission question.
@@ -230,7 +231,7 @@ Bundle outputs accept new/empty directories or matching output from the same rev
 rerun with that directory after a stop. Unrelated files are refused and never overwritten.
 The first reads that update's published positions, bound by their publication,
 prepares their Evidence and writes every Analyst bundle; start one Evidence Analyst
-per bundle. Where no Evidence is installed it stops with the install offered ready (`install`),
+per bundle using the role-selection rule above. Where no Evidence is installed it stops with the install offered ready (`install`),
 its issuers named by the Host's rule: send it as it stands, once, then run the same command
 again; the review acquires the rest. An install whose issuers all filed nothing offers the next
 eight as `install`. Where none is offered, the answer says why and the way on.

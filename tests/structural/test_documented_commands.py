@@ -142,9 +142,18 @@ def test_every_documented_command_line_parses(
         assert "if the tool does not list the role" in text.lower()
         assert "open a fresh session" in text.lower()
         assert "general subagent" not in text.lower()
+    codex_start = 'On Codex, pass `fork_turns="none"` to `spawn_agent`.'
+    assert codex_start in guide and codex_start in handoff
     assert (
         repository / ".claude/skills/alphalattice-research/references/specialist-handoff.md"
-    ).read_text(encoding="utf-8") == handoff
+    ).read_text(encoding="utf-8") == handoff.replace(codex_start + " ", "")
+    analyst = (
+        repository / ".agents/skills/alphalattice-research/references/evidence-analysis-handoff.md"
+    ).read_text(encoding="utf-8")
+    assert codex_start in analyst
+    assert (
+        repository / ".claude/skills/alphalattice-research/references/evidence-analysis-handoff.md"
+    ).read_text(encoding="utf-8") == analyst.replace(codex_start + " ", "")
     operating = (
         repository / ".agents/skills/alphalattice-research/references/operating.md"
     ).read_text(encoding="utf-8")
