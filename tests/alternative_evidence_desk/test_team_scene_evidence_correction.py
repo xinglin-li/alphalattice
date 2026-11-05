@@ -33,6 +33,7 @@ from uuid import UUID
 import pytest
 
 from alphalattice.control.product_host.composition import committee
+from alphalattice.control.product_host.composition import host_answer_submission as answer_owner
 from alphalattice.control.product_host.composition.evidence_review_application import (
     ANSWER_CATEGORY,
 )
@@ -1088,7 +1089,103 @@ def _keyed_legacy_correction_is_not_replayed_but_new_correction_is(host, monkeyp
     assert corrections[1]["correction_reference"]
 
 
+def _a_correction_cut_short_is_completed_once(host, monkeypatch, *, filed: bool):
+    """A keyed correction stopped after its record was filed is recovered as answer one on retry;
+    one stopped before it was filed is evaluated once, normally. Either way the thread holds one
+    answer and one correction, the answer being the intent filed before the record."""
+    service, client, _workspace, _goal, answer, bundle = host
+    invalid = {**answer, "findings": [dict(item) for item in answer["findings"]]}
+    invalid["findings"][0]["cite"] = ["S999"]
+    request, made = bundle("filed" if filed else "unfiled", invalid)
+    artifacts = service.review.artifacts
+    publish = artifacts.publish
+    if filed:
+        from alphalattice.protocols.actor_execution.answers import AgentRun
+
+        first_agent = AgentRun(host="codex", session_id="original", basis="NOT_OBSERVED")
+        client._test_session = "original"
+
+    def stopped(*args, **kwargs):
+        raise RuntimeError("synthetic stop")
+
+    def unfiled(category, *args, **kwargs):
+        if category == ANSWER_CATEGORY:
+            raise RuntimeError("synthetic stop before the record")
+        return publish(category, *args, **kwargs)
+
+    with monkeypatch.context() as cut:
+        if filed:
+            cut.setattr(committee, "answered", stopped)
+        else:
+            cut.setattr(artifacts, "publish", unfiled)
+        try:
+            first = client.request(request)
+        except (RuntimeError, AssertionError):  # the client's own check of the Host's 500
+            first = {}
+    assert first.get("status") != "CORRECT"
+    if filed:
+        client._test_session = "retry"
+    retried = client.request(request)
+    assert retried["status"] == "CORRECT"
+    if filed:
+        assert retried["recorded_agent"] == first_agent.model_dump(mode="json")
+    assert retried["answer_number"] == 1  # never a second answer counted for the first
+    if filed:
+        client._test_session = "original"
+    assert client.request(request) == retried
+    floor = committee.thread_of(
+        service.session.operations.goals.store, committee.thread_id(made["bundle_reference"])
+    )
+    said = [m for m in floor.messages if m["kind"] in {"ANSWER", "CORRECTION"}]
+    assert [m["kind"] for m in said] == ["ANSWER", "CORRECTION"]
+    assert said[1]["reply_to"] == said[0]["id"]
+    assert said[0]["intended_reference"] == said[1]["correction_reference"]
+    if not filed:  # an unfiled correction intent cannot become an acceptance of another record
+        from threading import RLock
+        from types import SimpleNamespace
+
+        from alphalattice.control.product_host.composition import committee_answer
+        from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+        pending = {
+            "id": "pending",
+            "role": "ANALYST",
+            "kind": "ANSWER",
+            "answer_digest": str(canonical_hash(invalid)),
+            "intended_reference": "unfiled",
+        }
+        mock_floor = SimpleNamespace(
+            messages=[pending],
+            author_session=None,
+            opened={"session": ["codex", "first"], "update_task_id": "task"},
+        )
+        rows = []
+
+        def append(_store, _floor, _now, **row):
+            rows.append(row)
+            return "new-answer"
+
+        committee_answer.file_answer(
+            SimpleNamespace(lock=RLock()),
+            mock_floor,
+            ("ANALYST", "bundle", invalid),
+            {"status": "ACCEPTED", "answer_reference": "other"},
+            None,
+            lambda *_: None,
+            correction_reference=None,
+            floor_type=SimpleNamespace,
+            speaker=lambda *_: "agent",
+            accepted=lambda _: None,
+            append=append,
+        )
+        assert [row["kind"] for row in rows] == ["ANSWER", "ACCEPTANCE"] and rows[1][
+            "reply_to"
+        ] == "new-answer"
+
+
 def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch):
+    from alphalattice.control.workspace_runtime.mutation_gate import gate_subject
+
     service, client, _workspace, _goal, answer, bundle = host
     invalid = {**answer, "findings": [dict(item) for item in answer["findings"]]}
     invalid["findings"][0]["cite"] = ["S999"]
@@ -1108,16 +1205,27 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
 
     monkeypatch.setattr(gate, "try_hold", short_wait)
     with ThreadPoolExecutor(max_workers=1) as pool:
-        with gate.hold():
+        with gate_subject("AGENT_BUNDLE_PREPARE", "held-task"), gate.hold():
             pending = pool.submit(client.request, request)
             completed, _waiting = wait({pending}, timeout=6)
+            # The wait can name whom it waited behind, read without the gate.
+            held = gate.holder()
+            assert held and (held["operation"], held["task_id"]) == (
+                "AGENT_BUNDLE_PREPARE",
+                "held-task",
+            )
         refused = pending.result(timeout=10)
+    assert gate.holder() is None
     assert completed, "the busy request did not finish while the workspace gate was held"
     assert refused["status"] == "REFUSED_REVIEW_STALLED"
     assert refused["failure_code"] == "agent_bundle.admission_busy"
     assert refused["next_action"] == "REPORT_REVIEW_STALLED"
     assert refused["message_id"] == "agent_bundle.review_stalled_message"
-    assert refused["blocker"] == {"kind": "WORKSPACE_MUTATION_GATE", "holder": "UNMEASURED"}
+    # A known holder is named by the gate's own record.
+    assert refused["blocker"] == {
+        "kind": "WORKSPACE_MUTATION_GATE",
+        "holder": "AGENT_BUNDLE_PREPARE",
+    }
     assert refused["waited_seconds"] > 0
     assert refused["next_requests"] == {
         "activity": {"operation": "ACTIVITY_RECENT"},
@@ -1138,7 +1246,7 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
     assert payload["operation_ref"] in stalls[0]["correlation_ids"]
     assert (subject["review_stall_blocker"], subject["review_stall_holder"]) == (
         "WORKSPACE_MUTATION_GATE",
-        "UNMEASURED",
+        "AGENT_BUNDLE_PREPARE",
     )
     assert abs(subject["review_stall_wait_us"] / 1_000_000 - refused["waited_seconds"]) < 0.001
     rows = service.session.activity._ledger.refusal_counts(since_day="2000-01-01")
@@ -1171,6 +1279,25 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
             for item in client.activity(limit=200)["items"]
         ]
         assert statuses.count("REFUSED_REVIEW_STALLED") == 1  # only the actual gate timeout
+
+
+def _a_first_bind_behind_a_held_gate_answers_busy_within_its_deadline(host, monkeypatch):
+    service, client, _workspace, _goal, answer, bundle = host
+    request, _made = bundle("first-bind", answer)
+    client._test_session = "specialist-session"  # never bound: this request binds it first
+    monkeypatch.setattr(answer_owner, "SUBMISSION_WAIT_SECONDS", 1.0)
+    gate = service.session.session.mutation_gate
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with gate.hold():
+            pending = pool.submit(client.request, request)
+            completed, _waiting = wait({pending}, timeout=6)
+        refused = pending.result(timeout=10)
+    assert completed, "the first bind waited past its deadline behind the held gate"
+    assert (refused["status"], refused["failure_code"]) == (
+        "REFUSED",
+        "agent_bundle.admission_busy",
+    )
+    assert client.request(request)["status"] == "ACCEPTED"  # nothing was filed: it binds now
 
 
 def _authority_change_during_preflight_refuses_without_filing(host, monkeypatch):
@@ -1314,13 +1441,21 @@ def _held_answer_turn_returns_busy_then_allows_retry(host, monkeypatch, *, same_
         "fanout",
         "legacy",
         "busy",
+        "first-bind",
         "authority-change",
         "legacy-accepted",
         "same-key-turn",
         "same-packet-turn",
+        pytest.param("cut-after-filing", marks=pytest.mark.untyped_failure),
+        pytest.param("cut-before-filing", marks=pytest.mark.untyped_failure),
     ],
 )
 def test_keyed_analyst_submissions_keep_first_outcome(host, monkeypatch, case):
+    if case.startswith("cut-"):
+        _a_correction_cut_short_is_completed_once(
+            host, monkeypatch, filed=case == "cut-after-filing"
+        )
+        return
     if case in {"same-key-turn", "same-packet-turn"}:
         _held_answer_turn_returns_busy_then_allows_retry(
             host, monkeypatch, same_key=case == "same-key-turn"
@@ -1330,6 +1465,7 @@ def test_keyed_analyst_submissions_keep_first_outcome(host, monkeypatch, case):
         "fanout": _fifteen_keyed_submits_finish_while_a_task_runs_and_retries_keep_their_outcomes,
         "legacy": _keyed_legacy_correction_is_not_replayed_but_new_correction_is,
         "busy": _busy_refusal_is_counted_and_the_same_answer_can_be_resent,
+        "first-bind": _a_first_bind_behind_a_held_gate_answers_busy_within_its_deadline,
         "authority-change": _authority_change_during_preflight_refuses_without_filing,
         "legacy-accepted": _legacy_acceptance_keeps_receipt_and_offers_the_task_read,
     }[case](host, monkeypatch)

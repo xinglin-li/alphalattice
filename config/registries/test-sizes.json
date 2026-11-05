@@ -217,6 +217,14 @@
   ],
   "large": [
     {
+      "pattern": "tests/workspace_maintenance/test_membership_change_recovery.py::test_a_cancelled_tasks_orphaned_candidate_list_returns_to_its_panels_own[[]AMBIGUOUS[]]",
+      "owner": "tests.workspace_maintenance",
+      "reason": "Builds the stopped membership change before checking the ambiguous recovery case.",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 60,
+      "admitted": "2026-11-04: AMBIGUOUS took 38.627 s, including a 35.688 s stopped-change seed build; until the seed is reusable across sessions."
+    },
+    {
       "pattern": "tests/workspace_readiness/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged",
       "owner": "tests.workspace_readiness",
       "reason": "Cold setup builds the prepared workspace and input revision journey before checking recovery.",
@@ -238,6 +246,7 @@
       "pattern": "tests/workspace_maintenance/test_membership_change_recovery.py::test_a_change_stopped_before_the_cycle_record_is_adopted_through_its_admission*",
       "owner": "tests.workspace_maintenance",
       "reason": "Its cold seed setup takes 45 to 54 s, so the whole test sits at the 60 s Medium limit until the build-once fixture lands.",
+      "size_contract": "nightly_only",
       "admitted": "2026-10-23: timed out at the 60 s Medium limit in a merge-lane gate after taking 51.9 s and 59.3 s in the two gates before; returns to Medium with the build-once fixture."
     },
     {
@@ -460,6 +469,7 @@
       "pattern": "tests/workspace_maintenance/test_membership_change_recovery.py::test_a_stopped_membership_change_resumes_through_the_membership_its_cycle_made*",
       "owner": "tests.workspace_maintenance",
       "reason": "Builds the stopped membership-change cycle and resumes its same Task across a Host restart.",
+      "size_contract": "nightly_only",
       "timeout_seconds": 900
     },
     {
@@ -1244,48 +1254,6 @@
     }
   ],
   "quarantine": [
-    {
-      "node": "tests/portfolio_strategy_lab/test_cli_contract.py::test_an_operation_only_a_person_completes_is_marked_so",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "About 25 separate CLI process starts, one per checked operation, each importing the product: 50 s alone against its 60 s limit, over it under any gate load, and it is selected in every pre tier. It runs post-merge only until its owner drives the person-only checks through one process; no assertion or limit changes. Renewed 10-28: owners retired; cut by 10-31.",
-      "until": "2026-10-31"
-    },
-    {
-      "node": "tests/researcher_methodology_surface/test_real_workspace.py::test_the_host_admits_a_successor_panel_only_after_its_observation_close",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds its own workspace and times out at its 60 s limit alone on develop 15941a858 (59.4 s, failed). It runs post-merge only until its owner cuts the build out of its body; no assertion or limit changes. Renewed 10-28: owners retired; cut by 10-31.",
-      "until": "2026-10-31"
-    },
-    {
-      "node": "tests/workspace_maintenance/test_membership_change_recovery.py::test_a_cancelled_tasks_orphaned_candidate_list_returns_to_its_panels_own[DEFERRED]",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Times out at its 60 s limit alone on develop 15941a858 and on the near-limit head alike. It runs post-merge only until its owner cuts its setup; no assertion or limit changes. Renewed 10-28: owners retired; cut by 10-31.",
-      "until": "2026-10-31"
-    },
-    {
-      "node": "tests/workspace_maintenance/test_membership_change_recovery.py::test_a_working_membership_names_the_task_whose_cycle_bound_it",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Times out at its 60 s limit alone on develop and on a later head alike (2026-10-25), the same file and setup cost as the quarantined DEFERRED case. It runs post-merge only until its owner cuts its setup; no assertion or limit changes. Renewed 10-28: owners retired; cut by 10-31.",
-      "until": "2026-10-31"
-    },
-    {
-      "node": "tests/structural/test_pipeline_cache.py::test_a_recorder_keeps_only_inputs_the_shared_cache_can_verify[pytest-bound-exists]",
-      "owner": "tests.structural",
-      "reason": "A flake under parallel load in the per-file result recorder: it returns an undeclared-input verdict only in a parallel stage and passes alone on base and head alike (all 91 cases, 2026-10-28). It runs post-merge only until that recorder is deleted; no assertion or limit changes.",
-      "until": "2026-10-31"
-    },
-    {
-      "node": "tests/structural/test_pipeline_cache.py::test_a_recorder_keeps_only_inputs_the_shared_cache_can_verify[pytest-bound-isfile]",
-      "owner": "tests.structural",
-      "reason": "A flake under parallel load in the per-file result recorder: it returns an undeclared-input verdict only in a parallel stage and passes alone on base and head alike (all 91 cases, 2026-10-28). It runs post-merge only until that recorder is deleted; no assertion or limit changes.",
-      "until": "2026-10-31"
-    },
-    {
-      "node": "tests/structural/test_pipeline_cache.py::test_a_recorder_keeps_only_inputs_the_shared_cache_can_verify[pytest-bound-isdir]",
-      "owner": "tests.structural",
-      "reason": "A flake under parallel load in the per-file result recorder: it returns an undeclared-input verdict only in a parallel stage and passes alone on base and head alike (all 91 cases, 2026-10-28). It runs post-merge only until that recorder is deleted; no assertion or limit changes.",
-      "until": "2026-10-31"
-    },
     {
       "node": "tests/portfolio_strategy_lab/test_local_web_service.py::test_browser_session_cookies_are_port_scoped_and_restart_replaces_only_its_own",
       "owner": "tests.portfolio_strategy_lab",

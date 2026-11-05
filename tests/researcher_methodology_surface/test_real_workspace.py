@@ -149,7 +149,7 @@ def _envelope(
 
 
 def test_the_host_admits_a_successor_panel_only_after_its_observation_close(
-    fresh_workspace: RealRiskWorkspace,
+    real_risk_workspace: RealRiskWorkspace,
 ) -> None:
     """The host admits a successor panel only after its observation close."""
 
@@ -158,25 +158,25 @@ def test_the_host_admits_a_successor_panel_only_after_its_observation_close(
     )
     from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
-    resolver = WorkspaceResearchAuthorityResolver(workspace=fresh_workspace.workspace)
-    at_close = resolver.resolve(_envelope(fresh_workspace))
+    resolver = WorkspaceResearchAuthorityResolver(workspace=real_risk_workspace.workspace)
+    at_close = resolver.resolve(_envelope(real_risk_workspace))
     final = at_close.sessions[-1]
 
     before_close = resolver.resolve(
-        _envelope(fresh_workspace, as_of={"session": final, "phase": "INTRADAY"})
+        _envelope(real_risk_workspace, as_of={"session": final, "phase": "INTRADAY"})
     )
     assert before_close.sessions[-1] < final
     assert final not in before_close.sessions
 
     post = resolver.resolve(
-        _envelope(fresh_workspace, as_of={"session": final, "phase": "POST_CLOSE"})
+        _envelope(real_risk_workspace, as_of={"session": final, "phase": "POST_CLOSE"})
     )
     assert post.sessions[-1] == final
 
     # A date alone cannot say which of those three it was, so it is refused
     # rather than promoted to the most permissive reading.
     with pytest.raises(AuthoringError, match="decision_cutoff_phase_ambiguous"):
-        resolver.resolve(_envelope(fresh_workspace, as_of=final))
+        resolver.resolve(_envelope(real_risk_workspace, as_of=final))
 
 
 def test_the_host_refuses_a_panel_without_feature_clock_authority(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +29,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as Request,
 )
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from devtools.evaluation.golden_workspaces import refuse_writers
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
     _json,
@@ -36,6 +38,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
 )
 from tests.researcher_methodology_surface.real_workspace import SYMBOLS
 from tests.researcher_methodology_surface.session_workspace import (
+    LINKED_SEEDS,
     copy_workspace,
     session_workspace,
 )
@@ -45,6 +48,9 @@ from tests.workspace_maintenance.local_data_provider import (
     recording_provider,
     unchanged_membership_source,
 )
+
+# Each case writes its own database, while the immutable Parquet seed is shared.
+pytestmark = pytest.mark.private_data
 
 ROOT = resolve_playpen_root(Path(__file__))
 PROFILE = "us-current-index-research"
@@ -170,7 +176,10 @@ def stopped_change(tmp_path_factory) -> SimpleNamespace:  # type: ignore[no-unty
         "membership_stopped_change",
         lambda workspace: _stop_change(tmp_path_factory, workspace),
     )
-    workspace = copy_workspace(seed, tmp_path_factory.mktemp("stopped") / "workspace")
+    for path in seed.rglob("*.parquet"):
+        refuse_writers(str(path))
+    LINKED_SEEDS.add(seed)
+    workspace = seed
     market = MarketDataRepository(workspace)
     prior = market.load_universe_manifest_revision(str(built["prior"]))
     provider, source = _change_source(market, prior, date.fromisoformat(str(built["restated"])))
@@ -223,7 +232,7 @@ def test_a_stopped_membership_change_resumes_through_the_membership_its_cycle_ma
     assert stopped_change.active != journal.next_manifest_revision
     assert seen["working"] == stopped_change.active
 
-    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace")
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace", link_parquet=True)
     with _host(
         workspace, stopped_change.binding, stopped_change.provider, stopped_change.source
     ) as live:
@@ -241,7 +250,12 @@ def test_a_stopped_membership_change_resumes_through_the_membership_its_cycle_ma
 def test_a_working_membership_names_the_task_whose_cycle_bound_it(stopped_change, tmp_path):
     """A cycle's working membership names the Task whose stage bound it; another writer's bind of
     the same membership on that cycle is recorded after it, never folded into the first."""
-    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace")
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace", link_parquet=True)
+    sample = next(stopped_change.workspace.rglob("*.parquet"))
+    assert os.path.samefile(sample, workspace / sample.relative_to(stopped_change.workspace))
+    assert not os.path.samefile(
+        stopped_change.workspace / "market-data.duckdb", workspace / "market-data.duckdb"
+    )
     with _host(
         workspace, stopped_change.binding, stopped_change.provider, stopped_change.source
     ) as live:
@@ -266,7 +280,7 @@ def test_a_cancelled_tasks_orphaned_candidate_list_returns_to_its_panels_own(
     """A candidate list a cancelled Task's cycle left active returns to its Panel's own, once;
     a live owner's stays, so does a journaled change, and a plan refuses an owner nothing proves
     while a cancel skips it. Its 40 s are the module's stopped change, shared with the file."""
-    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace")
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace", link_parquet=True)
     task = SimpleNamespace(lifecycle=SimpleNamespace(value=owner))
     tasks, later = SimpleNamespace(task=lambda _task_id: task), CHANGED_AT + timedelta(hours=1)
     with _host(
@@ -322,7 +336,7 @@ def test_a_cancelled_tasks_orphaned_candidate_list_returns_to_its_panels_own(
 def test_a_cycle_record_naming_another_membership_is_refused_by_name(stopped_change, tmp_path):
     """tamper: recovery accepts exactly the membership the stopped change's own cycle made
     active. A cycle record naming any other is refused by name, and nothing runs."""
-    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace")
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace", link_parquet=True)
     with _host(
         workspace, stopped_change.binding, stopped_change.provider, stopped_change.source
     ) as live:
@@ -348,7 +362,7 @@ def test_a_change_stopped_before_the_cycle_record_is_adopted_through_its_admissi
     through the gateway's admission."""
     import duckdb
 
-    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace")
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace", link_parquet=True)
     events = "SELECT kind, details_json FROM workspace_maintenance_event WHERE cycle_id = ?"
     connection = duckdb.connect(str(workspace / "market-data.duckdb"))
     try:
