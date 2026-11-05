@@ -2,6 +2,51 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "workbench.session_unknown": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Session unknown",
+        "zh-CN": "会话未知"
+      }
+    },
+    "workbench.session_usage_unknown": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Session usage unknown",
+        "zh-CN": "会话用量未知"
+      }
+    },
+    "workbench.session_usage_unrecorded": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "No usage reading is recorded for this session.",
+        "zh-CN": "此会话没有记录用量读数。"
+      }
+    },
+    "workbench.sessions_unknown": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Some sessions are unknown",
+        "zh-CN": "部分会话未知"
+      }
+    },
+    "workbench.sessionless_requests_unassigned": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Some retained requests did not name a session; they cannot be assigned to one.",
+        "zh-CN": "部分保留的请求未指明会话，无法将其归属于某个会话。"
+      }
+    },
     "workbench.review_stalled_status": {
       "owner": "alphalattice.interface.local_application",
       "kind": "MESSAGE",

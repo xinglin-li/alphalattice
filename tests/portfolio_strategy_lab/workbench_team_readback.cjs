@@ -6,6 +6,11 @@ module.exports.checkSessionReadback=async({c,root,library,vm,fs,path,A,TM,reads,
   const reviewSession='review-native-parent',reviewThread='047ec6ef-0000-4000-8000-000000000001',reviewRef='review-thread:'+reviewThread;
   const reviewIssue=message(reviewSession,reviewSession,'research_lead','issue','Fixture bundle issued.',{reference:reviewThread,recipient:'review-native-child'});
   reviewIssue.payload.subject.input_channel='PRODUCT_REVIEW';A.absorbPage(page('CONTINUED',[reviewIssue]));TM.select(reviewSession);
+  const anonymous=message(reviewSession,reviewSession,'research_lead','question','Fixture.');
+  Object.assign(anonymous,{schema_kind:'ProductOperationObserved',source_kind:'PRODUCT_OPERATION',authority:'OPERATIONAL_ASSERTION',availability:'AVAILABLE',payload:{operation:'GOAL_OPEN',caller:'EXTERNAL_AUTOMATION',phase:'RETURNED',operation_ref:'anonymous',subject:{}}});
+  A.absorbPage(page('CONTINUED',[anonymous]));
+  assert.ok(teamSection().includes(c.t('Some sessions are unknown')),'unidentified requests are named in the Session view');
+  assert.ok(TM.scene().sessions.flatMap(s=>s.facts).filter(f=>f.item.observation_id===anonymous.observation_id).every(f=>!f.attributed),'the anonymous request is not assigned');
   const reviewEntry=TM.scene().sessions.find(s=>s.id===reviewSession).entries.get(reviewIssue.observation_id);
   assert.equal(reviewEntry.reference,reviewRef);assert.equal(reviewEntry.qualified.kind,'review_thread');
   const reviewReads=reads.length;await TM.resolve(reviewRef);const reviewResolved=TM.resolved().get(reviewRef);
@@ -16,7 +21,7 @@ module.exports.checkSessionReadback=async({c,root,library,vm,fs,path,A,TM,reads,
   assert.ok(reviewShown.includes('LINK(team')&&reviewShown.includes(reviewIssue.observation_id));
   const windowSession='window-native-parent',windowGoal='82000001-0000-4000-8000-000000000001';
   const windowBinding=message(windowSession,windowSession,'research_lead','session_bound','Fixture scoped binding.');
-  Object.assign(windowBinding.payload.subject,{input_channel:'PRODUCT_OPERATION',goal_id:windowGoal});
+  Object.assign(windowBinding.payload.subject,{input_channel:'PRODUCT_OPERATION',goal_id:windowGoal,native_host:'codex'});
   const windowIssue=message(windowSession,windowSession,'research_lead','issue','Fixture retained review.',{reference:reviewThread,recipient:'window-analyst'}),windowAnswer=message(windowSession,'window-analyst','alphalattice_evidence_analyst','answer','Fixture retained answer.',{reference:reviewThread});
   const windowCro=message(windowSession,'window-cro','alphalattice_cro','answer','Fixture CRO answer.',{reference:reviewThread});
   for(const e of [windowIssue,windowAnswer,windowCro])Object.assign(e.payload.subject,{input_channel:'PRODUCT_REVIEW',goal_id:windowGoal});
@@ -40,7 +45,7 @@ module.exports.checkSessionReadback=async({c,root,library,vm,fs,path,A,TM,reads,
     for(const locale of ['en','zh']) {
       words.I18N.set(locale==='zh'?'zh-CN':'en');
       for(const status of ['OBSERVING','DELIVERED']) {
-        fresh.WindowActivity.absorbPage({...page('CONTINUED',[]),epoch:'window-epoch',observer:{native_usage:{status,reason:'native_bridge.usage_catching_up',read_through:4,total_bytes:12}}});
+        fresh.WindowActivity.absorbPage({...page('CONTINUED',[]),epoch:'window-epoch',observer:{native_usage:{status,reason:'native_bridge.usage_catching_up',read_through:4,total_bytes:12,sessions:{['codex:'+windowSession]:{status,reason:'native_bridge.usage_catching_up',read_through:4,total_bytes:12}}}}});
         const rendered=fresh.WindowTeam.section();
         assert.equal(rendered.includes('data-usage-notice="CATCHING_UP"'),status==='OBSERVING');
         if(status==='OBSERVING')assert.ok(rendered.includes(words.t('Usage read through {read} of {total} bytes; the next read continues.',{read:4,total:12})));
@@ -49,11 +54,11 @@ module.exports.checkSessionReadback=async({c,root,library,vm,fs,path,A,TM,reads,
     }
     if(initial==='team'){ // a later lead's failure is its own; an unverified child is a row
       words.I18N.set('en');const code='native_bridge.lead_usage_read_failed',own={status:'OBSERVING',reason:null,unverified:['window-stranger'],unverified_count:100,unverified_detail:'Fixture unverified child.'};
-      fresh.WindowActivity.absorbPage({...page('CONTINUED',[]),epoch:'window-epoch',observer:{native_usage:{status:'UNAVAILABLE',reason:code,sessions:{[windowSession]:own,'later-lead':{status:'UNAVAILABLE',reason:code}}}}});
+      fresh.WindowActivity.absorbPage({...page('CONTINUED',[]),epoch:'window-epoch',observer:{native_usage:{status:'UNAVAILABLE',reason:code,sessions:{['codex:'+windowSession]:own,'codex:later-lead':{status:'UNAVAILABLE',reason:code}}}}});
       assert.ok(!fresh.WindowTeam.section().includes(words.t('Usage observation unavailable')));
       fresh.WindowActivity.absorbPage({...page('CONTINUED',[]),epoch:'window-epoch',observer:{native_usage:{sessions:{['codex:'+windowSession]:{status:'UNAVAILABLE',reason:code},['claude-code:'+windowSession]:own}}}});
-      assert.ok(fresh.WindowActivity.usageNote(windowSession,'codex').includes(words.t('Usage observation unavailable')));assert.equal(fresh.WindowActivity.usageNote(windowSession,'claude-code'),'');
-      fresh.WindowActivity.absorbPage({...page('CONTINUED',[]),epoch:'window-epoch',observer:{native_usage:{sessions:{[windowSession]:own}}}});
+      assert.ok(fresh.WindowActivity.usageNote(windowSession,'codex').includes(words.t('Usage observation unavailable')));assert.ok(!fresh.WindowActivity.usageNote(windowSession,'claude-code').includes(words.t('Usage observation unavailable')));
+      fresh.WindowActivity.absorbPage({...page('CONTINUED',[]),epoch:'window-epoch',observer:{native_usage:{sessions:{['codex:'+windowSession]:own}}}});
       fresh.app.page='team-participants';const listed=fresh.WindowTeam.section();
       assert.ok(listed.includes(words.t('Participant not verified'))&&listed.includes('Fixture unverified child.'),listed);
       assert.ok(listed.includes(words.t('{shown} of {total} shown',{shown:1,total:100})),listed);

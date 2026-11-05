@@ -271,6 +271,7 @@ def _two_bound(tmp_path, monkeypatch, receipts):
     return workspace, projects, NativeUsageReader(operations), elapsed, bind
 
 
+@pytest.mark.proves("composition.workspace_binding_usage_unknown")
 def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
     tmp_path, monkeypatch
 ):
@@ -345,6 +346,38 @@ def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
         unbind_session(project, session_id=project.name, host="codex")
     reader.read()
     assert reader.state() == {"status": "NOT_BOUND", "reason": None, "sessions": {}}
+    # A damaged workspace-owned binding cannot be reported as no binding or hide a good one.
+    reader.operations.native_projects = [projects[0]]
+    bind(projects[0])
+    broken = projects[1] / ".codex" / BINDING_NAME
+    broken.write_text("{", encoding="utf-8")
+    elapsed[0] += 10
+    partial = reader.read()
+    assert (
+        partial["status"] == "UNAVAILABLE" and partial["reason"] == "native_bridge.binding_invalid"
+    )
+    assert [row["host"] for row in partial["sessions"]] == ["codex"]
+    assert reader.state()["status"] == "UNAVAILABLE"
+    unbind_session(projects[0], session_id=projects[0].name, host="codex")
+    absent = reader.read()
+    assert absent == {
+        "status": "UNAVAILABLE",
+        "reason": "native_bridge.binding_invalid",
+        "sessions": [],
+    }
+    broken.unlink()
+    bind(projects[1])
+    project_binding = projects[0] / ".codex" / BINDING_NAME
+    project_binding.write_text("{", encoding="utf-8")
+    elapsed[0] += 10
+    partial = reader.read()
+    assert (
+        partial["status"] == "UNAVAILABLE" and partial["reason"] == "native_bridge.binding_invalid"
+    )
+    assert [row["host"] for row in partial["sessions"]] == ["codex"]
+    unbind_session(projects[1], session_id=projects[1].name, host="codex")
+    project_binding.unlink()
+    assert reader.read()["status"] == "NOT_BOUND"
     cache = workspace / "runtime/native-usage"
     cache.mkdir(parents=True)
     (cache / "orphan.lock").touch()

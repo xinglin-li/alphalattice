@@ -139,6 +139,12 @@
       "size": "medium"
     },
     {
+      "pattern": "tests/portfolio_strategy_lab/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[[]*",
+      "owner": "tests.portfolio_strategy_lab",
+      "size": "medium",
+      "reason": "The served-Host sandbox binding cases took 5.712 and 6.254 seconds in Windows JUnit; their temporary footprint remains subject to medium admission."
+    },
+    {
       "pattern": "tests/workspace_readiness/test_workspace_preparation.py::test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_short",
       "owner": "tests.workspace_readiness",
       "size": "medium",

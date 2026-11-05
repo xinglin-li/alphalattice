@@ -1060,7 +1060,8 @@ class WorkspaceActivity:
 
         One read finds what just happened, whichever session asks: the newest returned
         operations with the agent session and goal their rows recorded, and the read that
-        opens each. The feed is transient; a goal keeps its own record.
+        opens each. A missing or unsupported session identity is UNKNOWN, never inferred
+        from workspace bindings. The feed is transient; a goal keeps its own record.
 
         Args:
             limit: How many groups, from 1 to 50.
@@ -1091,6 +1092,9 @@ class WorkspaceActivity:
                     continue
                 groups[key] = {
                     "agent": {"vendor": key[0], "session_id": key[1]} if key[1] else None,
+                    "agent_attribution": "RECORDED"
+                    if key[0] in {"codex", "claude-code"} and key[1]
+                    else "UNKNOWN",
                     "goal_id": key[2] or None,
                     "latest_at": row["occurred_at"],
                     "items": [],

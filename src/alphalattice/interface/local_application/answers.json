@@ -10494,7 +10494,7 @@
     "name": "groups",
     "kind": "array",
     "required": true,
-    "meaning": "The newest requests grouped by agent session and goal, newest group first; each holds its latest time and up to five requests with the read that opens each."
+    "meaning": "The newest requests grouped by agent session and goal, newest group first; each holds its latest time and up to five requests with the read that opens each. Each group names agent_attribution as RECORDED when a supported vendor and session were recorded, otherwise UNKNOWN."
    },
    {
     "name": "claim",
@@ -10806,7 +10806,7 @@
     "name": "status",
     "kind": "string",
     "required": true,
-    "meaning": "`READ` when the bound Sessions were read now; `OFF` when reading is off and nothing was read; `NOT_BOUND` when no Session is bound to this workspace; `BUSY` while another read runs; `UNAVAILABLE` when the reader is not running."
+    "meaning": "`READ` when the bound Sessions were read now; `OFF` when reading is off and nothing was read; `NOT_BOUND` when no Session is bound to this workspace; `BUSY` while another read runs; `UNAVAILABLE` when the reader or a binding is unavailable; any sessions returned are the readable subset."
    },
    {
     "name": "sessions",

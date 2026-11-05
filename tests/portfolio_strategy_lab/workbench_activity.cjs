@@ -44,7 +44,21 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
   assert.ok(!reads[0].includes('after='),'first read has no cursor');
   assert.ok(A.section().includes('Agent · API'),'the entry class, not a host identity (round 63: the class in words)');
   assert.ok(!A.section().includes('Codex'));
+  assert.ok(A.usageNote('not-recorded','codex').includes('Session usage unknown'),'missing session usage is not silently omitted');
+  assert.ok(A.section().includes('Session unknown'),'a sessionless API request stays visible as unknown');
+  assert.ok(A.usageNote().includes('Some sessions are unknown'), 'workspace notice does not assign a session');
   const planned=A.groups()[0];assert.equal(A.facts(planned).state,'PLANNED');assert.ok(A.section().includes('spec abcdef01'));
+  Object.assign(planned.items.at(-1).payload.subject,{agent_vendor:'codex',agent_session:'fixture'});
+  assert.ok(!A.section().includes('Session unknown'),'a named request is not relabelled unknown');
+  delete planned.items.at(-1).payload.subject.agent_vendor;delete planned.items.at(-1).payload.subject.agent_session;
+  const usagePage={...page('CONTINUED','e1',[],{},false,{status:'OK',native_usage:{status:'OFF',sessions:{}}}),cursor:'e1:2',head:2};
+  A.absorbPage(usagePage);assert.ok(!A.usageNote('not-recorded','codex').includes('Session usage unknown'),'a switched-off reading is not unknown');
+  A.absorbPage({...usagePage,observer:{status:'OK',native_usage:{status:'OBSERVING',sessions:{'shared':{status:'UNAVAILABLE'},'claude-code:shared':{status:'UNAVAILABLE'}}}}});
+  assert.ok(A.usageNote('shared','codex').includes('Session usage unknown'),'an unqualified or foreign-host reading cannot identify this session');
+  A.absorbPage({...usagePage,observer:{status:'OK',native_usage:{status:'OBSERVING',reason:'native_bridge.usage_catching_up'}}});
+  assert.ok(A.usageNote('shared','codex').includes('Session usage unknown'),'workspace progress is not a session reading');
+  A.absorbPage({...usagePage,observer:{status:'OK'}});
+
   // The row reads the API's projection in both locales, retaining its code and state.
   const question=JSON.parse(fs.readFileSync(path.resolve(root,'../../../../../../../../config/registries/messages.json'),'utf8')).entries['network.daily_updates'];
   planned.items.at(-1).person_questions=[{code:'network.daily_updates',state:'ASKED',words:question.words.en,words_zh:question.words['zh-CN']}];

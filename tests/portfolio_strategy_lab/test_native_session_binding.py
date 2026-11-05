@@ -269,6 +269,7 @@ def test_host_bind_refuses_unadmitted_paths_and_session_fields(live, monkeypatch
     assert not (project / ".codex" / BINDING_NAME).exists()
 
 
+@pytest.mark.proves("composition.session_observation_attribution")
 @pytest.mark.parametrize("held", [False, True])
 @pytest.mark.parametrize("read_denied", [False, True])
 def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
@@ -328,6 +329,58 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
     read_blocked = False
     root = native_setup.autobind_root(live.workspace)
     assert NativeResearchBinding.read(root, session=("codex", "sandboxed")) is not None
+    # Compare an identified caller with a sessionless caller of the same bound workspace.
+    client = LocalResearchClient(live.workspace)
+    declaration = {
+        "title": "Session evidence",
+        "objective": "Assess attribution",
+        "kind": "FIRST_USE",
+        "target_date": "2026-11-02",
+        "criteria": [{"criterion_id": "done", "text": "Check."}],
+        "deliverables": [{"deliverable_id": "result", "kind": "RESULT", "description": "It"}],
+    }
+    _session(monkeypatch, "codex", "sandboxed")
+    named_goal = client.request({"operation": "GOAL_OPEN", "goal_declaration": declaration})
+    assert named_goal["status"] == "GOAL_SAVED"
+    assert named_goal.get("session_binding", {}).get("status") == "BOUND_IN_WORKSPACE"
+    _session(monkeypatch, "codex", None)
+    anonymous_goal = client.request(
+        {"operation": "GOAL_OPEN", "goal_declaration": {**declaration, "kind": "REVIEW"}}
+    )
+    assert anonymous_goal["status"] == "GOAL_SAVED"
+    rows = [
+        row["payload"]["subject"]
+        for row in client.activity(limit=200)["items"]
+        if row["payload"].get("operation") == "GOAL_OPEN"
+        and row["payload"].get("phase") == "RETURNED"
+    ]
+    named = next(row for row in rows if row.get("goal_id") == named_goal["goal_id"])
+    anonymous = next(row for row in rows if row.get("goal_id") == anonymous_goal["goal_id"])
+    assert named.get("agent_session") == "sandboxed" and named.get("agent_vendor") == "codex"
+    question = next(
+        question
+        for question in named["person_questions"]
+        if question["code"] == "network.daily_updates"
+    )
+    assert question["catalog_hash"] == named_goal["person_questions"][0]["catalog_hash"]
+    assert question["references"]["agent_session"] == "sandboxed"
+    assert question["references"]["goal_id"] == named_goal["goal_id"]
+    assert question["references"]["goal_hash"] == named_goal["goal_hash"]
+    assert question["references"]["workspace_id"] == live.workspace_manifest.workspace_id
+    assert question["references"]["operation_ref"]
+    assert anonymous.get("agent_session") is None and anonymous.get("agent_vendor") is None
+    recent = client.activity_recent()["groups"]
+    named_group = next(group for group in recent if group["goal_id"] == named_goal["goal_id"])
+    anonymous_group = next(
+        group for group in recent if group["goal_id"] == anonymous_goal["goal_id"]
+    )
+    assert named_group["agent"] == {"vendor": "codex", "session_id": "sandboxed"}
+    assert named_group["agent_attribution"] == "RECORDED"
+    assert anonymous_group["agent"] is None and anonymous_group["agent_attribution"] == "UNKNOWN"
+    product = client.read_external(native_session_id="sandboxed")["product_items"]
+    shown = [item["payload"]["subject"].get("goal_id") for item in product]
+    assert named_goal["goal_id"] in shown and anonymous_goal["goal_id"] not in shown
+    _session(monkeypatch, "codex", "sandboxed")
     _usage_files(tmp_path, monkeypatch, "sandboxed")
     reading = LocalResearchClient(live.workspace).publish_native_event(
         root, {"source": "native_usage_read"}
