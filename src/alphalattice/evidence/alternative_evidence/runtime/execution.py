@@ -121,7 +121,7 @@ class PlatformIdentity(_Record):
     libraries: dict[str, str]
 
 
-def platform_identity() -> PlatformIdentity:
+def platform_identity(*, processor: str) -> PlatformIdentity:
 
     libraries = {}
     for name in ("numpy", "pandas", "pyarrow", "duckdb", "lightgbm", "scikit-learn"):
@@ -133,7 +133,7 @@ def platform_identity() -> PlatformIdentity:
         system=platform.system(),
         release=platform.release(),
         architecture=platform.machine(),
-        processor=platform.processor() or platform.machine(),
+        processor=processor,
         python=platform.python_version(),
         libraries=libraries,
     )

@@ -268,6 +268,7 @@ def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[
     environment = {
         **os.environ,
         "PYTHONPATH": source + os.pathsep + inherited if inherited else source,
+        "PYTHONFAULTHANDLER": "1",
         LAUNCH_KEY_VARIABLE: key,
     }
     common: dict[str, Any] = {

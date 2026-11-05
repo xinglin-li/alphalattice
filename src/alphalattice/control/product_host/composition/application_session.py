@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import platform
+import sys
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
@@ -36,6 +38,7 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     process_priority,
 )
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
+from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PORTFOLIO_PUBLIC_RUNTIME_FILENAME = "portfolio-public-task-checkpoints.sqlite"
@@ -50,6 +53,7 @@ class WorkspaceApplicationSession:
     mutation_gate: WorkspaceMutationGate
     task_control_registry: DuckDbTaskControlRegistry
     runtime_path: Path
+    processor: str
 
     def execute_admitted(
         self,
@@ -119,7 +123,7 @@ class WorkspaceApplicationSession:
                     reason=reason,
                     machine=machine,
                     started_at=clock(),
-                    platform=platform_identity(),
+                    platform=platform_identity(processor=self.processor),
                     running_beside=beside,
                     cpu_ceiling=ceiling,
                     # A Task beside another runs below normal, whatever the process runs at.
@@ -154,6 +158,11 @@ class WorkspaceApplicationSession:
             Exception: Registry/session construction fails; the acquired lease is closed before
                 refusal propagates.
         """
+        # Resolve the process's platform facts before requests reach the Task runner.
+        # CPython caches these values; keep the original processor string in each receipt.
+        if sys.platform == "win32":
+            recorded_environment()
+        processor = platform.processor() or platform.machine()
         root = workspace.resolve()
         runtime = root / "runtime"
         lease = WorkspaceWriterLease.acquire(root)
@@ -176,6 +185,7 @@ class WorkspaceApplicationSession:
                 mutation_gate=gate,
                 task_control_registry=registry,
                 runtime_path=runtime / PORTFOLIO_PUBLIC_RUNTIME_FILENAME,
+                processor=processor,
             )
         except Exception:
             lease.close()

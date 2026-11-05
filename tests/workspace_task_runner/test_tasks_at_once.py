@@ -129,7 +129,9 @@ def test_tasks_that_may_run_beside_others_share_the_places_in_queue_order(tmp_pa
     registry.restart_recovery(task_id=ids["alone"], observed_at=NOW, **recover)
 
 
-def test_the_host_runs_two_studies_at_once_within_the_budget(tmp_path: Path) -> None:
+def test_the_host_runs_two_studies_at_once_within_the_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """requirement: with two running places two Tasks that may run beside others run at once,
     their leases within the CPU budget and the process's priority kept in the execution log."""
     _places(tmp_path / "runtime", "2")
@@ -142,7 +144,27 @@ def test_the_host_runs_two_studies_at_once_within_the_budget(tmp_path: Path) -> 
                 both.wait()  # each stage waits for the other Task's: they run at once
             return super().execute_stage(task=task, execution=execution, work_item=work_item)
 
+    import platform
+
+    original_processor = platform.processor
+    expected_processor = original_processor() or platform.machine()
+    processor_calls = []
+
+    def processor():
+        processor_calls.append(True)
+        return original_processor()
+
+    monkeypatch.setattr(platform, "processor", processor)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        assert len(processor_calls) == 1  # the persisted value is acquired at Host start
+        events = []
+        watching = [True]
+
+        def audit(event, _args):
+            if watching[0] and event == "_wmi.exec_query":
+                events.append(event)
+
+        sys.addaudithook(audit)
         registry = session.task_control_registry
         registry.overlapping = lambda _task: True
         dispatcher = LocalBackgroundDispatcher(
@@ -157,10 +179,14 @@ def test_the_host_runs_two_studies_at_once_within_the_budget(tmp_path: Path) -> 
             for task_id in sent:
                 assert registry.task(task_id).lifecycle is TaskLifecycle.SUCCEEDED
         finally:
+            watching[0] = False
             dispatcher.close()
+    assert events == []  # startup is excluded; served Task requests issue no WMI query
     log = (tmp_path / "runtime" / "execution" / "tasks.jsonl").read_text(encoding="utf-8")
     # Each Task's last line is the one it ran with; a command driven again wrote one before it.
     lines = list({row["task_id"]: row for row in map(json.loads, log.splitlines())}.values())
+    assert len(processor_calls) == 1  # no processor/WMI lookup while requests run
+    assert {line["platform"]["processor"] for line in lines} == {expected_processor}
     assert sorted(line["running_beside"] for line in lines) == [0, 1]
     assert sorted(leased) == sorted(line["cores"] for line in lines)  # the fits' cores
     assert sum(line["cores"] for line in lines) <= lines[0]["cpu_ceiling"]

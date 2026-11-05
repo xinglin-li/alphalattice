@@ -536,9 +536,12 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
     for name in ("TEMP", "TMP", "TMPDIR"):
         monkeypatch.setenv(name, str(tmp_path))
     monkeypatch.setattr(web_launcher.tempfile, "tempdir", None)
-    native, spawned, flags = subprocess.Popen, [], []
+    monkeypatch.delenv("PYTHONFAULTHANDLER", raising=False)
+    native, spawned, flags, host_fault_handlers = subprocess.Popen, [], [], []
 
     def spawn(*args, **kwargs):
+        if "alphalattice.control.product_host.composition.web_launcher" in args[0]:
+            host_fault_handlers.append(kwargs["env"].get("PYTHONFAULTHANDLER"))
         flags.append(kwargs.get("creationflags", 0))
         kwargs["creationflags"] = flags[-1] & ~getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
         spawned.append(native(*args, **kwargs))
@@ -614,6 +617,7 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
             configured = native_setup._configure("codex", taken)
             assert configured["next_commands"]["serve"] == exited["terminal_command"]
         assert not list(tmp_path.glob("alphalattice-host-*.log"))
+    assert host_fault_handlers and all(value == "1" for value in host_fault_handlers)
     assert spawned and all(child.poll() is not None for child in spawned)
     assert web_launcher.main(["--workspace", str(tmp_path), "--detach", "--stop-on-stdin"]) == 2
     tied = json.loads(capsys.readouterr().out)
