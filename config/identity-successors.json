@@ -14736,6 +14736,27 @@
    "successor": "713d92b995b96aa83683a34472d2a032df348d8205d12748c8fe5cd44798281c",
    "change": "Study libraries load on first use under the thread limit; one admission check",
    "reason": "The Host no longer imports its statistics, model and optimisation libraries at start: each loads where it is first used, inside the active thread limit, and the Risk estimate refuses by name a thread pool that escaped that limit. The score utility's admission check is now one method shared by both solvers. Only source text moved; every value these roles compute is unchanged, shown by the numerical and thread checks over the Alpha models, the Risk estimators, the optimiser and its oracle."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "f922f48ee9caae3f337b46717e4473416ba6b9d38149bb64ee9c9d10f125e42e",
+   "successor": "fbfebae4b1dedb2a5bd6950fad662f3fd64dee4ec81a0d172f26756d66c5b07d",
+   "change": "The Windows read lease sees a closed rewrite whose modified time was restored",
+   "reason": "The lease adds the file's change time and refuses reuse for a file changed within 100 ms, so a cached proof can no longer certify a damaged source when the break event is late. Only source text moved in these closures: it decides when a verification may be reused, never what a role computes. One real replan output of each role and synthetic sealed arrays across two opted-in reads are byte-identical before and after."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "afb6912e13564ea75d1df54590b2c6fc64906000f822661680bc22c6951b69af",
+   "successor": "40dde8db88c35adb37200c58f7f0448f3c287954b67be9e4662255c4e523aaf2",
+   "change": "The Windows read lease sees a closed rewrite whose modified time was restored",
+   "reason": "The lease adds the file's change time and refuses reuse for a file changed within 100 ms, so a cached proof can no longer certify a damaged source when the break event is late. Only source text moved in these closures: it decides when a verification may be reused, never what a role computes. One real replan output of each role and synthetic sealed arrays across two opted-in reads are byte-identical before and after."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "6af64270cc875f4ced22cffbe857a80211dbf3c71102b2e7bde7dc1719b5b90f",
+   "successor": "dc59b788c73a42d838443e26955b8802490516e5f9d2830d4f493e9be7b5b53d",
+   "change": "The Windows read lease sees a closed rewrite whose modified time was restored",
+   "reason": "The lease adds the file's change time and refuses reuse for a file changed within 100 ms, so a cached proof can no longer certify a damaged source when the break event is late. Only source text moved in these closures: it decides when a verification may be reused, never what a role computes. One real replan output of each role and synthetic sealed arrays across two opted-in reads are byte-identical before and after."
   }
  ]
 }

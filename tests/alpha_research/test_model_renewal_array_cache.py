@@ -18,6 +18,7 @@ from alphalattice.investment.alpha_research.experiments.development_artifacts im
     AlphaDevelopmentArtifactStore,
 )
 from alphalattice.investment.alpha_research.scores import model_renewal
+from tests._support.lease_age import age_lease_file
 
 
 def _store_with_arrays(root, payload: bytes) -> tuple[AlphaDevelopmentArtifactStore, str]:
@@ -131,6 +132,7 @@ def test_verified_arrays_reuse_across_opted_in_scopes_with_unbroken_os_lease(tmp
     load_calls = 0
     reads = 0
     payload_path = (store.root / "current/lifecycle-arrays" / f"{identity}.bin").resolve()
+    age_lease_file(payload_path)
     open_file = Path.open
 
     def counted_load(*args, **kwargs):
@@ -338,6 +340,7 @@ def test_prepared_readback_proof_keeps_training_binding_check_and_current_rehash
     tmp_path, monkeypatch
 ):
     store, identity = _store_with_arrays(tmp_path / "one", _payload())
+    age_lease_file(store._path("current/lifecycle-arrays", identity, "bin"))
     binding = "a" * 64
     prepared = SimpleNamespace(
         content_hash="b" * 64,

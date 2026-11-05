@@ -31,6 +31,7 @@ from alphalattice.control.workspace_runtime.content_store import (
     verified_source_value,
     verify_source_checks,
 )
+from tests._support.lease_age import age_lease_file
 
 if os.name == "nt":
     import msvcrt
@@ -40,6 +41,7 @@ if os.name == "nt":
 def _reader(path: Path, payload: bytes = b"sealed"):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
+    age_lease_file(path)
     expected = hashlib.sha256(payload).hexdigest()
     calls = []
 
@@ -115,8 +117,10 @@ def test_concurrent_source_reads_share_only_valid_lease_proof_without_blocking_o
 ):
     path = tmp_path / "sealed.bin"
     path.write_bytes(b"sealed")
+    age_lease_file(path)
     entered, release = Event(), Event()
     calls = []
+    other, other_calls = _reader(tmp_path / "independent.bin")
     if signal == "unavailable":
 
         def unavailable(*args, **kwargs):
@@ -136,7 +140,6 @@ def test_concurrent_source_reads_share_only_valid_lease_proof_without_blocking_o
         with verified_model_read_scope(reuse_verified=True):
             return verified_source_value(("single-flight",), (path,), verify, nbytes=6)
 
-    other, other_calls = _reader(tmp_path / "independent.bin")
     with _concurrent_source_reads(read, entered, release, monkeypatch) as outcomes:
         independent = Thread(target=other, name="independent-source")
         independent.start()
@@ -158,6 +161,7 @@ def test_concurrent_producer_failure_releases_waiters_and_later_reads_verify_aga
 ):
     path = tmp_path / "sealed.bin"
     path.write_bytes(b"sealed")
+    age_lease_file(path)
     entered, release = Event(), Event()
     calls = []
     failing = True
@@ -193,6 +197,7 @@ def test_concurrent_producer_failure_releases_waiters_and_later_reads_verify_aga
 def test_a_waiter_rechecks_the_lease_after_its_producer_finishes(tmp_path, monkeypatch):
     path = tmp_path / "sealed.bin"
     path.write_bytes(b"sealed")
+    age_lease_file(path)
     entered, release, waiting, resumed, consume = (Event() for _ in range(5))
     result = Future.result
     calls = []
@@ -635,6 +640,7 @@ def test_complete_source_owner_retains_decoded_values_without_a_second_process_c
     payload = stream.getvalue()
     path = tmp_path / "arrays.bin"
     path.write_bytes(payload)
+    age_lease_file(path)
     expected = hashlib.sha256(payload).hexdigest()
     load = np.load
     decodes = 0
@@ -924,6 +930,7 @@ def test_missing_or_failed_os_signal_forces_full_verification(tmp_path, monkeypa
 def test_a_source_change_during_verification_is_reverified_before_return(tmp_path):
     path = tmp_path / "sealed.bin"
     path.write_bytes(b"sealed")
+    age_lease_file(path)
     calls = []
 
     def racing_verifier():
@@ -968,6 +975,7 @@ def test_every_source_in_a_proof_is_watched_and_mutable_results_are_not_retained
     paths = tuple(tmp_path / f"source-{index}.bin" for index in range(2))
     for path in paths:
         path.write_bytes(b"sealed")
+        age_lease_file(path)
     calls = []
 
     def verify():
@@ -1014,6 +1022,7 @@ def test_source_leases_are_bounded_and_evicted_sources_verify_again(tmp_path):
 def test_restart_verifies_bytes_changed_while_the_host_process_was_down(tmp_path):
     path = tmp_path / "sealed.bin"
     path.write_bytes(b"sealed")
+    age_lease_file(path)
     program = """
 import hashlib
 import sys

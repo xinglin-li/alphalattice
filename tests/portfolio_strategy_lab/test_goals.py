@@ -30,6 +30,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests._support.lease_age import age_lease_file
 from tests.portfolio_strategy_lab.goal_support import (
     DECLARATION,
     NOW,
@@ -961,6 +962,7 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
         )
     )
     assert attached.get("failure_code") is None, attached
+    age_lease_file(path)
     calls.clear()
     source_reads = []
     original_open = Path.open

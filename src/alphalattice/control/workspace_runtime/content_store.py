@@ -30,7 +30,7 @@ from io import BytesIO
 from pathlib import Path
 from queue import Queue
 from threading import BoundedSemaphore, Event, Lock, Thread
-from time import sleep
+from time import sleep, time_ns
 from typing import Any, cast
 from uuid import UUID, uuid4
 from weakref import WeakSet
@@ -97,10 +97,15 @@ _VERIFIED_PROOF_CACHE_LOCK = Lock()
 
 
 class _WindowsReadLease:
-    """A file-level read-handle oplock, never a timestamp or notification guess.
+    """A file-level read-handle oplock with a same-handle path identity check.
 
-    Modern Read-Handle oplocks break before incompatible writes, including writes through
-    another hard link and writable mappings. Closing a broken handle acknowledges rename,
+    A break event can be observed after an incompatible write has completed. The path's
+    NTFS ChangeTime detects a closed same-size write with restored mtime, provided the
+    initial value is older than the clock's resolution. A fresh or future ChangeTime
+    grants no reuse. A writer that still holds its handle open is not covered by that
+    timing guarantee; neither is a writer that deliberately restores ChangeTime or a
+    filesystem that does not maintain it.
+    Closing a broken handle acknowledges rename,
     replacement and ancestor-directory rename, so retaining proof never obstructs those acts.
     The event is one-shot: a completed or failed request is
     discarded, never reset. A current path identity check additionally detects deletion,
@@ -215,7 +220,7 @@ class _WindowsReadLease:
             function = getattr(self.kernel, name)
             function.argtypes = arguments
             function.restype = result
-        self.identity = self._path_identity()
+        self.identity = self._lease_identity()
         self.handle = None
         self.event = None
         self.pending = False
@@ -265,7 +270,16 @@ class _WindowsReadLease:
             self.close()
             raise
 
-    def _path_identity(self) -> tuple[object, ...]:
+    def _lease_identity(self) -> tuple[str, int, int, int, int, int, int]:
+        """Refuse a racily fresh ChangeTime before acquiring a reusable lease."""
+        identity = self._path_identity()
+        # FILETIME is in 100 ns units since 1601; read the clock after the identity.
+        now_filetime = time_ns() // 100 + 116444736000000000
+        if identity[-1] <= 0 or identity[-1] > now_filetime - 1_000_000:
+            raise OSError("OS read lease unavailable: source ChangeTime is too recent")
+        return identity
+
+    def _path_identity(self) -> tuple[str, int, int, int, int, int, int]:
         """The path's current resolution and file, all read from one handle opened by it.
 
         The final path is what realpath reads (GetFinalPathNameByHandle on a handle opened by
@@ -286,11 +300,15 @@ class _WindowsReadLease:
                 size = length + 1
             observed = self.information_type()
             file_id = self.file_id_type()
+            basic = (ctypes.c_longlong * 5)()  # FILE_BASIC_INFO: four times, then attributes
             if not (
                 length
                 and self.kernel.GetFileInformationByHandle(handle, ctypes.byref(observed))
                 and self.kernel.GetFileInformationByHandleEx(
                     handle, 18, ctypes.byref(file_id), ctypes.sizeof(file_id)
+                )
+                and self.kernel.GetFileInformationByHandleEx(
+                    handle, 0, ctypes.byref(basic), ctypes.sizeof(basic)
                 )
             ):
                 raise OSError("OS read lease path unavailable")
@@ -301,6 +319,7 @@ class _WindowsReadLease:
                 (observed.size_high << 32) | observed.size_low,
                 (observed.write.dwHighDateTime << 32) | observed.write.dwLowDateTime,
                 (observed.creation.dwHighDateTime << 32) | observed.creation.dwLowDateTime,
+                basic[3],
             )
         finally:
             self.kernel.CloseHandle(handle)
