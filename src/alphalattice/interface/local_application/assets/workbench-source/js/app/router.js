@@ -217,9 +217,12 @@ function setTheme(theme) {
 }
 /* The sun / moon: the other appearance, chosen (following the host ends with the click). */
 function toggleTheme() { setTheme(effectiveTheme() === 'dark' ? 'light' : 'dark'); }
+let localeRequest = 0; // the newest language choice; a dictionary that arrives after a newer choice is dropped
 function setLocale(lang) {
   const normalized = ['zh-CN', 'cn', 'zh'].includes(lang) ? 'zh-CN' : 'en'; // the public API takes every spelling I18N.set takes (round E2)
+  const request = ++localeRequest;
   const apply = () => {
+    if (request !== localeRequest) return; // a later choice was made while this dictionary loaded: it wins
     I18N.set(normalized);
     savePreference('lang', normalized);
     replaceHash({lang: normalized, page: app.page});
@@ -230,7 +233,7 @@ function setLocale(lang) {
   const dictionary = I18N.ensure(normalized); // the dictionary loads once, on the first switch (round 96)
   // a dictionary that did not load is named, never applied as an empty catalog: the page was
   // opened before the product changed (its content-hashed assets are gone), and a reload is the way
-  if (dictionary) dictionary.then((ok) => { if (ok) apply(); else notify(t('The dictionary did not load: the product changed since this page was opened. Reload the page to switch the language.')); }); else apply();
+  if (dictionary) dictionary.then((ok) => { if (ok) apply(); else if (request === localeRequest) notify(t('The dictionary did not load: the product changed since this page was opened. Reload the page to switch the language.')); }); else apply();
 }
 
 function pageTitleText() {
