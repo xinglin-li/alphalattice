@@ -1497,6 +1497,45 @@ def _first_use(
         return client_module._first_use_steps(host, args)  # type: ignore[arg-type]
 
 
+@pytest.mark.proves("local_application.first_use_offers_delegated_network")
+def test_first_use_offers_delegated_network_before_daily_consent(tmp_path, setup_done):
+    from alphalattice.control.workspace_runtime.network_access import NetworkAccess
+
+    host = _FirstUseHost(tmp_path / "workspace")
+    request = host.request
+    sent = []
+
+    def on_request(document, timeout=None):
+        operation = document["operation"]
+        if operation == "DATA_ISSUES":
+            return {"issues": [], "next_requests": {}}
+        if operation == "WORKSPACE_PREPARE_PLAN":
+            access = NetworkAccess(False, "DEFAULT").body(
+                for_refusal=True, delegation=f"first-use-goal:{host.goal}"
+            )
+            return {
+                "status": "CONFIRMATION_REQUIRED",
+                "next_action": "ADMIT_SOURCE_ACCESS_THEN_PREVIEW_AGAIN",
+                "next_requests": {},
+                "source_access": {"network_access": access},
+            }
+        if operation == "NETWORK_ACCESS_SET":
+            sent.append(document)
+            return {"status": "NETWORK_ACCESS", "network_allowed": True}
+        return request(document, timeout=timeout)
+
+    host.request = on_request
+    answer = _first_use(host)
+    assert answer["next_action"] == "SET_NETWORK_UNDER_FIRST_USE_DELEGATION"
+    offer = answer["next_requests"]["network"]
+    assert offer == {"operation": "NETWORK_ACCESS_SET", "network_enabled": True}
+    assert "network set" in answer["next_command"]
+    assert answer["first_use"]["person_questions"][0]["code"] == "network.daily_updates"
+    assert "without waiting" in answer["first_use"]["ask_now"][1].lower()
+    assert host.request(offer)["network_allowed"] is True
+    assert sent == [offer]
+
+
 def test_a_first_use_opens_its_goal_from_the_sentence_and_stops_at_its_data_issues(
     tmp_path: Path,
     setup_done: dict[str, str],
@@ -1613,7 +1652,8 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     assert refused["detail"] == words.detail and host.goals.first_use() is None
     tool, runtime = refused["missing"]["installed_leg"], refused["missing"]["retrieval_runtime"]
     assert (tool["who_decides"], runtime["who_decides"]) == ("AGENT", "AGENT")
-    assert tool["commands"][-1].startswith("uv tool install") and "--bin" in tool["words"]
+    assert tool["commands"][0].endswith("install-tool") and "--bin" in tool["words"]
+    assert native_bridge.TOOL_INSTALL[-1].startswith("uv tool install")
     assert "--offline" not in runtime["commands"][0]
     assert runtime["network_commands"] and host.sent == []
     held.mkdir()  # uv holds the command where this PATH does not reach

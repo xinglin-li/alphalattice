@@ -162,6 +162,66 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
     assert _refusal(capsys)["failure_code"] == "retrieval_environment.uv_unavailable"
 
 
+@pytest.mark.proves("local_application.retrieval_setup_uses_writable_scratch")
+@pytest.mark.proves("local_application.native_tool_setup_uses_writable_scratch")
+@pytest.mark.skipif(os.name != "nt", reason="Windows executable temp handling")
+def test_retrieval_setup_uses_checkout_scratch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts import create_retrieval_environment as setup
+
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "pyproject.toml").touch()
+    (checkout / "uv.lock").touch()
+    seen = []
+    blocked_temp = tmp_path / "not-a-directory"
+    blocked_temp.write_text("not a temporary directory", encoding="utf-8")
+    for name in ("TEMP", "TMP", "TMPDIR"):
+        monkeypatch.setenv(name, str(blocked_temp))
+    assert setup.fill_command()[1:3] == [
+        "-m",
+        "alphalattice.interface.local_application.retrieval_environment",
+    ]
+
+    def checked(_command: tuple[str, ...], **options: Any) -> None:
+        env = options["env"]
+        temporary = Path(env["TEMP"])
+        assert temporary.is_dir() and temporary.is_relative_to(checkout)
+        assert env["TMP"] == env["TEMP"] and env["TMPDIR"] == env["TEMP"]
+        seen.append(temporary)
+
+    with monkeypatch.context() as local:
+        local.setattr(setup, "PLAYPEN", checkout)
+        local.setattr(setup, "LOCK", checkout / "uv.lock")
+        local.setattr(setup, "ENVIRONMENT", checkout / ".venv-retrieval")
+        local.setattr(setup.subprocess, "run", checked)
+        setup.create(offline=True)
+        assert len(seen) == 2 and seen[0] == seen[1] and not seen[0].exists()
+        assert os.environ["TEMP"] == str(blocked_temp)
+
+        def failed(command: tuple[str, ...], **options: Any) -> None:
+            checked(command, **options)
+            raise subprocess.CalledProcessError(2, command)
+
+        local.setattr(setup.subprocess, "run", failed)
+        with pytest.raises(subprocess.CalledProcessError):
+            setup.create(offline=True)
+    assert len(seen) == 3 and not seen[-1].exists()
+
+    from alphalattice.interface.local_application import native_setup
+
+    with monkeypatch.context() as local:
+        local.setattr(native_setup, "ROOT", checkout)
+        local.setattr(native_setup.subprocess, "run", checked)
+        assert native_setup._install_tool()["status"] == "TOOL_INSTALLED"
+        assert len(seen) == 7 and len(set(seen[3:])) == 1 and not seen[3].exists()
+        local.setattr(native_setup.subprocess, "run", failed)
+        with pytest.raises(subprocess.CalledProcessError):
+            native_setup._install_tool()
+    assert len(seen) == 8 and not seen[-1].exists()
+
+
 def test_the_local_web_build_answers_an_asset_it_cannot_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

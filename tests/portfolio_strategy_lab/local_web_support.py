@@ -873,9 +873,9 @@ def serve_conflict(workspace, monkeypatch):
 _CATALOG_READER = r"""
 const fs=require('fs'),vm=require('vm');
 const library = require(process.argv[2]);
-const [root,said]=[process.argv[1],JSON.parse(fs.readFileSync(0,'utf8'))];
+const root=process.argv[1], {said,messages}=JSON.parse(fs.readFileSync(0,'utf8'));
 const c={window:{},document:{documentElement:{}},console};library.context(c);
-vm.runInContext(process.argv[3],c);
+vm.runInContext(messages,c);
 vm.runInContext(fs.readFileSync(root+'/data/zh.js','utf8'),c);
 vm.runInContext(fs.readFileSync(root+'/app/i18n.js','utf8')+';globalThis.I18N=I18N;',c);
 c.I18N.set('zh');
@@ -899,11 +899,12 @@ def read_in_chinese(said: list[str], *, missing: str, required: bool) -> dict[st
             _CATALOG_READER,
             str(root),
             str(Path(__file__).with_name("workbench_library.cjs")),
-            getattr(build_local_web_ui, "messages_js", lambda: "")(),
         ],
         missing=missing,
         required=required,
-        input=json.dumps(said),
+        input=json.dumps(
+            {"said": said, "messages": getattr(build_local_web_ui, "messages_js", lambda: "")()}
+        ),
         capture_output=True,
         text=True,
         encoding="utf-8",

@@ -25,7 +25,10 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
@@ -93,6 +96,21 @@ def load() -> bool:
     return importlib.util.find_spec("fastembed") is not None
 
 
+@contextmanager
+def setup_environment(project: Path) -> Iterator[dict[str, str]]:
+    """Give setup children writable project scratch without changing the caller's environment."""
+    temporary = (
+        TemporaryDirectory(prefix=".retrieval-setup-", dir=project)
+        if os.name == "nt"
+        else nullcontext(None)
+    )
+    with temporary as scratch:
+        environment = dict(os.environ)
+        if scratch is not None:
+            environment.update(TEMP=scratch, TMP=scratch, TMPDIR=scratch)
+        yield environment
+
+
 def create(*, offline: bool) -> Path:
     """Build the environment; return the interpreter that owns it."""
     if not (PLAYPEN / "pyproject.toml").is_file():
@@ -115,39 +133,40 @@ def create(*, offline: bool) -> Path:
     if not LOCK.is_file():
         raise FileNotFoundError(LOCK)
     interpreter = interpreter_path()
-    environment = {**os.environ, "UV_PROJECT_ENVIRONMENT": str(ENVIRONMENT)}
     offline_flag = ("--offline",) if offline else ()
-    subprocess.run(
-        (
-            _uv(),
-            "sync",
-            "--project",
-            str(PLAYPEN),
-            "--locked",
-            "--all-extras",
-            "--group",
-            "dev",
-            *offline_flag,
-        ),
-        check=True,
-        cwd=PLAYPEN,
-        env=environment,
-    )
-    subprocess.run(
-        (
-            _uv(),
-            "pip",
-            "install",
-            "--python",
-            str(interpreter),
-            "-r",
-            str(ADDITIONS),
-            *offline_flag,
-        ),
-        check=True,
-        cwd=PLAYPEN,
-        env=environment,
-    )
+    with setup_environment(PLAYPEN) as environment:
+        environment["UV_PROJECT_ENVIRONMENT"] = str(ENVIRONMENT)
+        subprocess.run(
+            (
+                _uv(),
+                "sync",
+                "--project",
+                str(PLAYPEN),
+                "--locked",
+                "--all-extras",
+                "--group",
+                "dev",
+                *offline_flag,
+            ),
+            check=True,
+            cwd=PLAYPEN,
+            env=environment,
+        )
+        subprocess.run(
+            (
+                _uv(),
+                "pip",
+                "install",
+                "--python",
+                str(interpreter),
+                "-r",
+                str(ADDITIONS),
+                *offline_flag,
+            ),
+            check=True,
+            cwd=PLAYPEN,
+            env=environment,
+        )
     return interpreter
 
 

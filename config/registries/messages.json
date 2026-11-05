@@ -114,6 +114,42 @@
         "zh-CN": "此会话应使用哪个已有研究工作区？"
       }
     },
+    "first_use.daily_question_instructions": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Unless this workspace's Evidence is set up already, the review of the date's positions acquires recent SEC filings within the default budget under the first use's delegation, and downloads the retrieval model at the size its setup states; the agent also installs the locked retrieval packages under this consent without another question: say so in one line now. Then ask the person once, in these words, and carry on without waiting for the answer. On their yes, run each command after the question once, their words verbatim in place of `<their words>`; the delegation never answers it:",
+        "zh-CN": "除非此工作区的证据已经设置好，否则对该日期持仓的复核会在首次使用的委托下按默认额度获取近期的 SEC 文件，并按设置所述的大小下载检索模型；智能体还会在此次同意范围内安装已锁定的检索依赖包，无需再次询问。现在用一句话告知用户。随后按以下原话询问用户一次，无需等待回答即可继续执行。用户同意后，将问题之后的每条命令各运行一次，用用户原话逐字替换 `<their words>`；委托本身不回答这个问题："
+      }
+    },
+    "native_setup.complete_prerequisites": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Complete the listed setup steps in order, then run the offered serve command yourself in this shell. If it is refused, follow its terminal route.",
+        "zh-CN": "请按顺序完成列出的缺失设置步骤，然后自己在当前终端运行提供的启动命令；只有遭到拒绝时才按其终端方案操作。"
+      }
+    },
+    "native_setup.workbench_build": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Run the offered Workbench build from the checkout root, disclosing it; serve refuses until the built files match the sources.",
+        "zh-CN": "从代码目录运行提供的工作台构建命令并告知用户；构建文件与源文件不匹配时无法启动。"
+      }
+    },
+    "native_setup.serve_agent": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The sandbox protects the project configuration. Run the offered serve command yourself in this shell; if it is refused, follow its terminal route.",
+        "zh-CN": "沙箱保护项目的配置目录；请自己先在当前终端运行提供的启动命令，只有被拒绝时才按其终端方案操作。"
+      }
+    },
     "network.daily_updates": {
       "owner": "alphalattice.interface.local_application",
       "kind": "PERSON_QUESTION",

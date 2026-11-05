@@ -1532,7 +1532,18 @@ def tool_setup() -> dict[str, Any]:
     return {
         "present": False,
         "who_decides": "AGENT",
-        "commands": list(TOOL_INSTALL),
+        "commands": [
+            join(
+                [
+                    sys.executable,
+                    "-m",
+                    "alphalattice.interface.local_application.native_setup",
+                    "install-tool",
+                ],
+                shell(),
+            )
+        ],
+        "includes_workbench_build": True,
         "words": str(worded(OFF_PATH)),
     }
 

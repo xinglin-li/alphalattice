@@ -69,7 +69,9 @@
       "layer": "e2e",
       "seconds": 45,
       "exception": {
-        "kinds": ["journey"],
+        "kinds": [
+          "journey"
+        ],
         "why": "A real Host exercises the sampled ACK markers",
         "decided": "2026-10-29: approved; real Host sampling exercises the ACK markers"
       }
@@ -86,11 +88,35 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.sessionless_first_use_question_identity": {
+      "description": "A sessionless first-use question is attributed only when its authenticated Host record matches the sole verified workspace and goal identity.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 10
+    },
     "local_application.configure_offers_a_workspace": {
       "description": "A sandboxed configure offers the default new workspace when none exists and a coded choice when existing workspaces need selection.",
       "owner": "alphalattice.interface.local_application",
       "layer": "integration",
       "seconds": 5
+    },
+    "local_application.configure_offers_missing_setup_before_serve": {
+      "description": "Sandboxed configure offers each missing setup prerequisite in order before its serve command.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "local_application.first_use_offers_delegated_network": {
+      "description": "A first-use plan offers its delegated network action immediately without waiting for the separate coded daily-consent answer.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "local_application.native_tool_setup_uses_writable_scratch": {
+      "description": "The offered locked tool setup runs its existing steps with checkout-owned Windows scratch and removes the scratch on success or failure.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 10
     },
     "local_application.node_invocation_preserves_runtime_environment": {
       "description": "Node test invocation preserves availability and caller environment while resolving absolute browser directory aliases to their physical targets.",
@@ -100,6 +126,12 @@
     },
     "local_application.playwright_setup_refuses_unowned_installation_aliases": {
       "description": "Playwright setup refuses linked or unverifiable installation paths before mutating them while preserving independently owned physical installations.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "local_application.retrieval_setup_uses_writable_scratch": {
+      "description": "Retrieval setup gives its Windows subprocesses a temporary directory inside the writable checkout and removes it after use.",
       "owner": "alphalattice.interface.local_application",
       "layer": "integration",
       "seconds": 10

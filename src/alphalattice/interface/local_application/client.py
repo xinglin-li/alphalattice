@@ -70,6 +70,7 @@ from alphalattice.interface.local_application.failure_codes import (
 )
 from alphalattice.interface.local_application.goals import (
     NEW_RESEARCH_SCOPE,
+    delegated_network,
     first_use_asks,
     target_sessions,
 )
@@ -2924,7 +2925,7 @@ _NOT_RECORDED: Final = (
 
 
 def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """Prepare the person's first use under its Goal, with its stops and whole road."""
+    """Run first use."""
     chain = _chain(client, args, "first_use")
     try:
         named = target_sessions(date.fromisoformat(str(args.target_date)))
@@ -2965,8 +2966,8 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
         **asks,
         **({"sentence": note} if note else {}),
     }
+    answer.update(delegated_network(answer, client.goal, prefix))
     if answer.get("status") == "ALREADY_PREPARED":
-        # The road goes on.
         intents = chain.send("workspace", {"operation": "WORKSPACE_SHOW"}).get("intents") or ()
         forward: dict[str, Any] = next((i for i in intents if i["flow"] == "RUN_FORWARD"), {})
         package = forward.get("strategy_package_id")

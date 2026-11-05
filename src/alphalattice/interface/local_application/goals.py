@@ -54,7 +54,8 @@ FIRST_USE_ASK_NOW: Final = (
     "downloads the retrieval model at the size its setup states; the agent also installs "
     "the locked retrieval packages under this consent without another question: "
     "say so in one line now. Then "
-    "ask the person once, in these words, and carry on. On their yes, run each command after the "
+    "ask the person once, in these words, and carry on without waiting for the answer. "
+    "On their yes, run each command after the "
     "question once, their words verbatim in place of `<their words>`; the delegation never "
     "answers it:",
     DAILY_NETWORK_ASK,
@@ -122,6 +123,25 @@ def opened_goal(answer: dict[str, Any], declaration: Mapping[str, Any] | None) -
     if answer.get("goal_id") and (declaration or {}).get("kind") == "FIRST_USE":
         answer["person_questions"] = [person_question("network.daily_updates")]
     return answer
+
+
+def delegated_network(
+    answer: dict[str, Any], goal: str | None, prefix: Sequence[str]
+) -> dict[str, Any]:
+    """Surface only the network action the first-use plan delegated to this Goal."""
+    access = (answer.get("source_access") or {}).get("network_access") or {}
+    network = (access.get("next_requests") or {}).get("set")
+    if (
+        access.get("next_action") == "SET_NETWORK_UNDER_FIRST_USE_DELEGATION"
+        and access.get("delegation") == f"first-use-goal:{goal}"
+        and network == {"operation": "NETWORK_ACCESS_SET", "network_enabled": True}
+    ):
+        return {
+            "next_action": "SET_NETWORK_UNDER_FIRST_USE_DELEGATION",
+            "next_requests": {**(answer.get("next_requests") or {}), "network": network},
+            "next_command": join([*prefix, "network", "set", "--enabled", "true"], shell()),
+        }
+    return {}
 
 
 def first_use_asks(

@@ -340,6 +340,7 @@ def test_configure_removes_only_the_products_retired_hook_groups(tmp_path, monke
 
 
 @pytest.mark.proves("local_application.configure_offers_a_workspace")
+@pytest.mark.proves("local_application.configure_offers_missing_setup_before_serve")
 @pytest.mark.parametrize(
     "git_checkout",
     (
@@ -347,6 +348,8 @@ def test_configure_removes_only_the_products_retired_hook_groups(tmp_path, monke
         True,
         "protected",
         "protected-existing",
+        "protected-needs-build",
+        "protected-needs-many",
         "protected-named",
         "protected-off-path",
         "other",
@@ -394,6 +397,37 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
             return opening(path, mode, *args, **kwargs)
 
         monkeypatch.setattr(Path, "open", denied)
+        ready = [
+            {
+                "key": "workbench_build",
+                "present": git_checkout != "protected-needs-build",
+                "who_decides": "AGENT",
+                "facts": {"command": "uv run python scripts/build_local_web_ui.py --product"},
+            }
+        ]
+        if git_checkout == "protected-needs-many":
+            build = ready[0]["facts"]["command"]
+            ready = [
+                {
+                    "key": "installed_leg",
+                    "present": False,
+                    "who_decides": "AGENT",
+                    "facts": {"commands": ["install", build]},
+                },
+                {
+                    "key": "workbench_build",
+                    "present": False,
+                    "who_decides": "AGENT",
+                    "facts": {"command": build},
+                },
+                {
+                    "key": "retrieval_runtime",
+                    "present": False,
+                    "who_decides": "AGENT",
+                    "facts": {"commands": ["retrieval"]},
+                },
+            ]
+        monkeypatch.setattr(entry, "host_readiness", lambda *_args: ready)
         workspace = tmp_path / "workspace"
         argv = ["native", "--project", str(project), "configure", "--host", "codex"]
         if git_checkout in {"protected-named", "protected-off-path"}:
@@ -417,13 +451,32 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
                 assert result["workspaces"] == [str(existing.resolve())]
                 assert "serve" not in result.get("next_commands", {})
             else:
-                assert result["next_action"] == "SERVE_WORKSPACE_THEN_FIRST_USE"
+                assert result["serve_who_decides"] == "AGENT"
+                assert "yourself" in result["detail"].lower()
+                assert "refus" in result["detail"].lower()
+                if git_checkout in {"protected-needs-build", "protected-needs-many"}:
+                    assert result["next_action"] == "COMPLETE_SETUP_THEN_SERVE"
+                    if git_checkout == "protected-needs-build":
+                        assert result["next_command"] == ready[0]["facts"]["command"]
+                        assert result["setup_steps"][0]["key"] == "workbench_build"
+                    else:
+                        assert result["next_command"] == "install"
+                        assert [step["key"] for step in result["setup_steps"]] == [
+                            "installed_leg",
+                            "workbench_build",
+                            "retrieval_runtime",
+                        ]
+                        assert result["setup_steps"][1]["covered_by_prior_step"]
+                        assert result["setup_steps"][2]["commands"] == ["retrieval"]
+                else:
+                    assert result["next_action"] == "SERVE_WORKSPACE_THEN_FIRST_USE"
                 serve = result["next_commands"]["serve"]
                 if git_checkout == "protected-off-path":
                     assert serve[0] == str(launcher.absolute())
                 assert serve[serve.index("--workspace") + 1] == str(
                     project / "workspaces" / "my-research"
-                    if git_checkout == "protected"
+                    if git_checkout
+                    in {"protected", "protected-needs-build", "protected-needs-many"}
                     else workspace
                 )
             assert not marker.exists() and not workspace.exists()
@@ -659,6 +712,19 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
         assert all(item["present"] is True for item in items.values())
     else:
         assert items[missing]["present"] is (None if missing == "network" else False)
+    if missing == "installed_leg":
+        commands = items[missing]["facts"]["commands"]
+        assert (
+            len(commands) == 1
+            and "alphalattice.interface.local_application.native_setup" in commands[0]
+        )
+        assert commands[0].endswith("install-tool")
+    if missing == "workbench_build":
+        offered = items[missing]["facts"]["command"]
+        assert str(python) in offered and "scripts/build_local_web_ui.py" in offered.replace(
+            "\\", "/"
+        )
+        assert "uv run" not in offered
     if missing == "user_layer":
         facts = items[missing]["facts"]
         assert (facts["over"], facts["next_action"]) == (["index_lines"], "REVIEW_THE_USER_LAYER")

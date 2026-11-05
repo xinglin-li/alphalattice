@@ -8,8 +8,10 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import stat
+import subprocess
 import sys
 import tomllib
 from collections import Counter
@@ -33,6 +35,7 @@ from alphalattice.interface.local_application.cli_contract import (
     command_table,
     join,
     refusal_words,
+    shell,
     terminal_serve_command,
     worded,
 )
@@ -49,6 +52,7 @@ from alphalattice.interface.local_application.native_bridge import (
     PROJECT_DECLARATION_NAME,
     PROJECT_DECLARATION_SCHEMA,
     SPAWN_HOPS,
+    TOOL_INSTALL,
     USAGE_READINGS,
     WORKBENCH_BUILD,
     NativeBridgeError,
@@ -68,7 +72,10 @@ from alphalattice.interface.local_application.native_bridge import (
 from alphalattice.interface.local_application.native_usage import codex_thread_spawn
 from alphalattice.interface.local_application.questions import person_question
 from alphalattice.interface.local_application.read_views import emit_owner
-from alphalattice.interface.local_application.retrieval_environment import LOCKED_SETUP_WORDS
+from alphalattice.interface.local_application.retrieval_environment import (
+    LOCKED_SETUP_WORDS,
+    setup_environment,
+)
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import (
     offline,
@@ -157,8 +164,7 @@ HOST_DEPENDENCIES = {
     ),
     "workbench_build": (
         "Serve the Workbench",
-        f"Run the documented Workbench build (`{WORKBENCH_BUILD}`) from the checkout root, "
-        "disclosing it; serve refuses until the built files match the sources.",
+        str(worded("native_setup.workbench_build")),
         "AGENT",
     ),
     "retrieval_runtime": (
@@ -428,6 +434,13 @@ def _stale(front: _Fields, version: str, package: Callable[[str], str | None] | 
     return "verified_over_30_days" if old else None
 
 
+def _workbench_build() -> str:
+    """Offer the existing builder through the interpreter already running the doctor."""
+    return join(
+        [sys.executable, str(RESOURCE_ROOT / "scripts/build_local_web_ui.py"), "--product"], shell()
+    )
+
+
 def host_readiness(
     project: Path, host: str, binding: NativeResearchBinding | None
 ) -> list[dict[str, Any]]:
@@ -475,7 +488,7 @@ def host_readiness(
             (tool := fillable["installed_leg"]).pop("present"),
             {**{k: v for k, v in _installed_leg().items() if k != "present"}, **tool},
         ),
-        ("workbench_build", workbench_assets.workbench_current(), {"command": WORKBENCH_BUILD}),
+        ("workbench_build", workbench_assets.workbench_current(), {"command": _workbench_build()}),
         (
             "retrieval_runtime",
             (retrieval := fillable["retrieval_runtime"]).pop("present"),
@@ -1448,6 +1461,44 @@ def _create_or_match(
             raise NativeBridgeError("native_bridge.existing_configuration_differs") from None
 
 
+def _missing_setup(host: str) -> list[dict[str, Any]]:
+    """Keep the doctor's missing prerequisite commands once, in their reported order."""
+    required = {
+        "python",
+        "uv",
+        "installed_leg",
+        "workbench_build",
+        "retrieval_runtime",
+        "system_libraries",
+    }
+    steps, seen = [], set()
+    readiness = host_readiness(ROOT, host, None)
+    build = next(
+        (item["facts"]["command"] for item in readiness if item["key"] == "workbench_build"),
+        WORKBENCH_BUILD,
+    )
+    for item in readiness:
+        if item["key"] not in required or item["present"] is not False:
+            continue
+        facts = item.get("facts") or {}
+        commands = facts.get("commands") or ([facts["command"]] if facts.get("command") else [])
+        commands = [build if command == WORKBENCH_BUILD else command for command in commands]
+        unique = [command for command in commands if command not in seen]
+        seen.update(unique)
+        if item["key"] == "installed_leg" and facts.get("includes_workbench_build"):
+            seen.add(build)
+        steps.append(
+            {
+                "key": item["key"],
+                "who_decides": item["who_decides"],
+                "how_to_fill": item.get("how_to_fill"),
+                "commands": unique,
+                **({"covered_by_prior_step": True} if commands and not unique else {}),
+            }
+        )
+    return steps
+
+
 def _configure(host: str, workspace: Path | None) -> dict[str, Any]:
     """Configure this project or offer the sandbox-safe workspace route."""
     result: dict[str, Any]
@@ -1494,7 +1545,20 @@ def _configure(host: str, workspace: Path | None) -> dict[str, Any]:
                 )
                 return result
             workspace = ROOT / "workspaces" / "my-research"
-        result["next_commands"] = {"serve": terminal_serve_command(workspace)}
+        result.update(
+            detail=worded("native_setup.serve_agent"),
+            serve_who_decides="AGENT",
+            next_commands={"serve": terminal_serve_command(workspace)},
+        )
+        steps = _missing_setup(host)
+        if steps:
+            result.update(
+                detail=worded("native_setup.complete_prerequisites"),
+                next_action="COMPLETE_SETUP_THEN_SERVE",
+                setup_steps=steps,
+            )
+            if steps[0]["who_decides"] == "AGENT" and steps[0]["commands"]:
+                result["next_command"] = steps[0]["commands"][0]
     else:
         _install_declarations(host)
         removed = strip_product_hooks(ROOT, host)
@@ -1514,6 +1578,20 @@ def _configure(host: str, workspace: Path | None) -> dict[str, Any]:
     return result
 
 
+def _install_tool() -> dict[str, Any]:
+    """Run the existing locked tool-install steps with subprocess-owned scratch."""
+    with setup_environment(ROOT) as environment:
+        for command in TOOL_INSTALL:
+            subprocess.run(
+                shlex.split(command),
+                cwd=ROOT,
+                env=environment,
+                check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+    return {"status": "TOOL_INSTALLED", "next_action": "CONFIGURE_THE_AGENT_PROJECT"}
+
+
 def main() -> int:
     """Configure, bind or inspect the project: zero on success, two on refusal."""
     global ROOT
@@ -1527,6 +1605,7 @@ def main() -> int:
     )
     configure.add_argument("--host", choices=HOSTS, default="codex")
     configure.add_argument("--workspace", type=Path, help="A workspace to serve for first use.")
+    commands.add_parser("install-tool", help="Install the locked checkout tool and its Workbench.")
     bind = commands.add_parser("bind", help="Bind this bridge to an explicit session/workspace.")
     bind.add_argument("--session-id", required=True)
     bind.add_argument("--workspace", required=True, type=Path)
@@ -1565,6 +1644,8 @@ def main() -> int:
         replace = client.output_replacement(output, line=args.command_line, prefix=())
         if args.command == "configure":
             result = _configure(args.host, args.workspace)
+        elif args.command == "install-tool":
+            result = _install_tool()
         elif args.command == "bind":
             result = bind_session(
                 ROOT,
