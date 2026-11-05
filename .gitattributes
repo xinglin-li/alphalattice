@@ -10,3 +10,10 @@
 *.ps1 text eol=crlf
 *.cmd text eol=crlf
 *.bat text eol=crlf
+
+# How a merge settles a conflict in a file rebuilt from the merged source, read with
+# `git check-attr landing` (a folder's own .gitattributes may declare its files): `regenerate` reruns the file's
+# generator on the composed tree; `rows:<field>` merges an object of rows keyed by id, `rows:<field>.<key>` a list of
+# rows keyed by <key>, `+` joining fields. A row both sides changed merges field by field, and a field both changed
+# differently refuses; any other conflicting file refuses by name.
+config/registries/requirements.json landing=rows:entries
