@@ -629,6 +629,17 @@ SCANS = {
     ),
 }
 
+_PUBLIC_FACT_KIND = "public-v2:"
+
+
+def _cache_safe(raw: bytes) -> bool:
+    """Never persist source-derived names from a file with a disclosure finding."""
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeError:
+        return False
+    return not any(pattern.search(text) for pattern in SCANS.values())
+
 
 def internal_id_pattern(policy: dict | None = None) -> re.Pattern:
     """Match numbered labels and internal card or line forms, never ordinary prose."""
@@ -719,6 +730,60 @@ def _product_identifier_spans(path: str, source: str, forms: list) -> set[tuple[
     return spans
 
 
+_TEST_NAMES = re.compile(r"(?m)^\s*(?:async\s+)?def\s+test_\w+(?=\s*\()")
+
+
+def _label_matches(
+    path: str, raw: bytes, forms: list[Any], pattern: re.Pattern[str], rules: str
+) -> list[tuple[int, int, str, bool]]:
+    """One PUBLIC file's development labels, as (line, column, label, inside a secret finding),
+    outside its product identifier spans and test names; kept by its path, bytes and ``rules``
+    within a `generate`."""
+
+    def matched(data: bytes) -> list[list[Any]]:
+        source = data.decode("utf-8-sig")
+        permitted = _product_identifier_spans(path, source, forms)
+        secret_spans = {
+            number: [(match.start(), match.end()) for match in SCANS["NO_SECRET"].finditer(line)]
+            for number, line in enumerate(source.splitlines(), 1)
+        }
+        source = _TEST_NAMES.sub(lambda m: m[0].replace("_", " "), source)
+        return [
+            [
+                number,
+                match.start() + 1,
+                internal_id_label(match.group()),
+                any(
+                    match.start() < end and start < match.end()
+                    for start, end in secret_spans[number]
+                ),
+            ]
+            for number, line in enumerate(source.splitlines(), 1)
+            for match in pattern.finditer(line)
+            if not any(
+                n == number and a <= match.start() and match.end() <= b for n, a, b in permitted
+            )
+        ]
+
+    def shaped(rows: Any) -> bool:
+        return isinstance(rows, list) and all(
+            isinstance(row, list)
+            and len(row) == 4
+            and type(row[0]) is int
+            and type(row[1]) is int
+            and type(row[2]) is str
+            and type(row[3]) is bool
+            for row in rows
+        )
+
+    rows = (
+        matched(raw)
+        if _FACTS is None or not _cache_safe(raw)
+        else _FACTS.of(f"{_PUBLIC_FACT_KIND}labels {rules} {path}", raw, matched, shaped)
+    )
+    return [(line, column, label, sensitive) for line, column, label, sensitive in rows]
+
+
 def internal_id_ratchet(
     blobs: dict[str, bytes], decisions: list[dict], policy: dict | None = None
 ) -> dict:
@@ -732,7 +797,6 @@ def internal_id_ratchet(
         for f in noun.get("identifier_forms", [])
     ]
     reserved = internal_id_pattern()
-    test_names = re.compile(r"(?m)^\s*(?:async\s+)?def\s+test_\w+(?=\s*\()")
     for form in forms:
         owned, producers = "src/" + form["owner"].replace(".", "/") + "/", form["producers"]
         if not producers or any(p not in blobs or not p.startswith(owned) for p in producers):
@@ -750,36 +814,21 @@ def internal_id_ratchet(
     sensitive_labels = set()
     allowed = 0
     violations = []
+    rules = hashlib.sha256(  # what a file's matches depend on beside its path and bytes
+        json.dumps(
+            [pattern.pattern, [{k: v for k, v in f.items() if k != "compiled"} for f in forms]],
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()[:16]
     for row in decisions:
         if row["kind"] != "PUBLIC":
             continue
         path = row["path"]
         try:
-            source = blobs[path].decode("utf-8-sig")
+            blobs[path].decode("utf-8-sig")
         except UnicodeError:
             continue
-        permitted = _product_identifier_spans(path, source, forms)
-        secret_spans = {
-            number: [(match.start(), match.end()) for match in SCANS["NO_SECRET"].finditer(line)]
-            for number, line in enumerate(source.splitlines(), 1)
-        }
-        source = test_names.sub(lambda m: m[0].replace("_", " "), source)
-        matches = [
-            (
-                number,
-                match.start() + 1,
-                internal_id_label(match.group()),
-                any(
-                    match.start() < end and start < match.end()
-                    for start, end in secret_spans[number]
-                ),
-            )
-            for number, line in enumerate(source.splitlines(), 1)
-            for match in pattern.finditer(line)
-            if not any(
-                n == number and a <= match.start() and match.end() <= b for n, a, b in permitted
-            )
-        ]
+        matches = _label_matches(path, blobs[path], forms, pattern, rules)
         if matches:
             current[path] = len(matches)
         seen = Counter()
@@ -1165,7 +1214,11 @@ def _statements(path: str, raw: bytes) -> list[list]:
             for line, module, level, names, frm in rows
         )
 
-    return parsed(raw) if _FACTS is None else _FACTS.of("imports", raw, parsed, shaped)
+    return (
+        parsed(raw)
+        if _FACTS is None or not _cache_safe(raw)
+        else _FACTS.of(f"{_PUBLIC_FACT_KIND}imports", raw, parsed, shaped)
+    )
 
 
 def _absolute(package: str, module: str, level: int, names: list[str], frm: bool) -> list[str]:
@@ -1357,36 +1410,32 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
                 }
                 for line, targets in sorted(imports.items())
             )
+        scanned = _text_facts(raw, text)
+        for number, column, rule, assessment in scanned:
+            findings.append(
+                {
+                    "kind": "FINDING",
+                    "path": row["path"],
+                    "line": number,
+                    "column": column,
+                    "rule": rule,
+                    "assessment": (
+                        "TEST_LITERAL_REVIEW" if row["path"].startswith("tests/") else assessment
+                    ),
+                }
+            )
         for number, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
-            for rule, pattern in SCANS.items():
-                for match in pattern.finditer(line):
-                    assessment = "REVIEW_REQUIRED"
-                    if rule == "NO_INTERNAL_ID" and not re.search(
-                        r"thread|session|codex|claude|agent", line, re.I
-                    ):
-                        assessment = "UUID_PURPOSE_UNSETTLED"
-                    if row["path"].startswith("tests/"):
-                        assessment = "TEST_LITERAL_REVIEW"
-                    findings.append(
-                        {
-                            "kind": "FINDING",
-                            "path": row["path"],
-                            "line": number,
-                            "column": match.start() + 1,
-                            "rule": rule,
-                            "assessment": assessment,
-                        }
-                    )
-            for ref in sorted(private_references(row["path"], line, private, blobs.keys())):
-                findings.append(
-                    {
-                        "kind": "FINDING",
-                        "path": row["path"],
-                        "line": number,
-                        "rule": "NO_PRIVATE_REFERENCE",
-                        "assessment": ref,
-                    }
-                )
+            refs = private_references(row["path"], line, private, blobs.keys())
+            findings.extend(
+                {
+                    "kind": "FINDING",
+                    "path": row["path"],
+                    "line": number,
+                    "rule": "NO_PRIVATE_REFERENCE",
+                    "assessment": ref,
+                }
+                for ref in sorted(refs)
+            )
     return sorted(
         findings, key=lambda r: (r["path"], r["line"], r["rule"], r.get("column", 0))
     ), binary
@@ -1396,16 +1445,64 @@ def private_references(reader: str, text: str, private: set[str], tracked) -> se
     """The NO_PRIVATE_REFERENCE assessments one line of a PUBLIC file earns: a token naming a
     tracked private file, or a reference into an internal tree. The scan and the registry
     projection ask this one rule, so "private" means one thing."""
+    return _references(reader, *_reference_tokens(text), private, tracked)
+
+
+def _reference_tokens(text: str) -> tuple[list[str], bool]:
+    """One line's path-like tokens, and whether it names an internal tree, by its text alone."""
     normalized = text.replace("\\\\", "/").replace("\\", "/")
+    tokens = sorted(set(re.findall(r"[A-Za-z0-9_./-]+\.[A-Za-z0-9_-]+", normalized)))
+    return tokens, any(prefix in normalized for prefix in PRIVATE_PREFIXES)
+
+
+def _references(
+    reader: str, tokens: list[str], internal: bool, private: set[str], tracked: Any
+) -> set[str]:
+    """``private_references`` from one line's tokens: the half of the rule that reads the tree."""
     refs = set()
-    for token in re.findall(r"[A-Za-z0-9_./-]+\.[A-Za-z0-9_-]+", normalized):
+    for token in tokens:
         direct = token[2:] if token.startswith("./") else token
         relative = posixpath.normpath(posixpath.join(posixpath.dirname(reader), token))
         if relative in private or (relative not in tracked and direct in private):
             refs.add("TRACKED_PRIVATE_FILE")
-    if any(prefix in normalized for prefix in PRIVATE_PREFIXES):
+    if internal:
         refs.add("INTERNAL_TREE_REFERENCE")
     return refs
+
+
+_TEXT_RULES = hashlib.sha256(  # SCANS and PRIVATE_PREFIXES, which a loaded code identity omits
+    json.dumps(
+        [{rule: [p.pattern, p.flags] for rule, p in SCANS.items()}, list(PRIVATE_PREFIXES)]
+    ).encode()
+).hexdigest()[:16]
+
+
+def _text_facts(raw: bytes, text: str) -> list[Any]:
+    """One PUBLIC file's location-only pattern findings, kept by its bytes within a `generate`."""
+
+    def found(_data: bytes) -> list[list[Any]]:
+        scanned: list[list[Any]] = []
+        for number, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
+            for rule, pattern in SCANS.items():
+                for match in pattern.finditer(line):
+                    assessment = "REVIEW_REQUIRED"
+                    if rule == "NO_INTERNAL_ID" and not re.search(
+                        r"thread|session|codex|claude|agent", line, re.I
+                    ):
+                        assessment = "UUID_PURPOSE_UNSETTLED"
+                    scanned.append([number, match.start() + 1, rule, assessment])
+        return scanned
+
+    def shaped(value: Any) -> bool:
+        return isinstance(value, list) and all(
+            isinstance(row, list) and len(row) == 4 for row in value
+        )
+
+    return (
+        found(raw)
+        if _FACTS is None
+        else _FACTS.of(f"{_PUBLIC_FACT_KIND}text {_TEXT_RULES}", raw, found, shaped)
+    )
 
 
 NOT_PROJECTED = {
@@ -1573,6 +1670,8 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
 
     with kept_facts("public-manifest", sys.modules[__name__]) as _FACTS:
         try:
+            if (purged := _FACTS.retire_predecessors(_PUBLIC_FACT_KIND)) is not None:
+                print(f"public-manifest: purged {purged} predecessor facts", file=sys.stderr)
             return _generate(sha, blobs, modes)
         finally:
             _FACTS = None

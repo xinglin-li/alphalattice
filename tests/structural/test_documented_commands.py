@@ -402,6 +402,29 @@ def test_kept_facts_follow_the_bytes_read_and_serve_only_sealed_rows(
     assert scan(tmp_path) == found and "misses 1" in registry.LAST_SCAN_CACHE  # fails this seal
     assert [entry.name for entry in store.iterdir()] == [kept.name]  # one file for every version
     held.close()
+    # a whole tree's facts survive a small run and a patched scan's other version; only the
+    # byte cap rewrites the store
+    shape = lambda value: value == [1]  # noqa: E731
+    stale = structural.FileFacts(tmp_path, "tree", "v0")  # an earlier code version's row
+    stale.of("p", b"old", lambda data: [1], shape)
+    assert "persistent" in stale.close(returned=True)
+    tree = structural.FileFacts(tmp_path, "tree", "v1")
+    for name in range(9):
+        tree.of("p", str(name).encode(), lambda data: [1], shape)
+    assert "persistent" in tree.close(returned=True)
+    small = structural.FileFacts(tmp_path, "tree", "v1")
+    small.of("p", b"synthetic", lambda data: [1], shape)
+    assert "persistent" in small.close(returned=True)
+    patched = structural.FileFacts(tmp_path, "tree", "v2")  # its code patched by a test
+    patched.of("p", b"patched", lambda data: [1], shape)
+    assert "persistent" in patched.close(returned=True)
+    whole = structural.FileFacts(tmp_path, "tree", "v1")
+    for name in (*range(9), "synthetic"):
+        whole.of("p", str(name).encode(), lambda data: pytest.fail("evicted"), shape)
+    assert whole.hits == 10 and whole.close(returned=True)
+    rows = sqlite3.connect(store / "tree.sqlite")
+    assert rows.execute("SELECT count(*) FROM facts").fetchone() == (12,)  # every version's row
+    rows.close()
     # a source-defined pattern is identity, though its class says "re": a pattern-only change,
     # reloaded in place, is a new version, while a value the module rebinds at run time is state
     import importlib

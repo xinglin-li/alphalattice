@@ -839,8 +839,10 @@ class FileFacts:
     rows fail their seal and are misses, which this run's rows replace in place. Opening it
     drops a file past the cap, and keeps the store off when another process holds that file.
     Closing it writes the run's new facts only when the scan returned and the file stays within
-    ``SCAN_CACHE_BYTES`` and four times the keys this run read; otherwise it rewrites the store
-    in place from the facts this run used, or empties it when they alone would not fit. An
+    ``SCAN_CACHE_BYTES``; otherwise it rewrites the store in place from the facts this run used,
+    or empties it when they alone would not fit. The byte cap is the store's only bound, so a
+    small run, such as a test's synthetic tree or a scan whose code a test patched, never evicts
+    a whole tree's facts; other versions' rows stay misses until the cap rewrites them away. An
     unreadable store is rebuilt; with no directory named, nothing is kept and every fact is
     computed.
     """
@@ -850,7 +852,6 @@ class FileFacts:
         self.state = "off"
         self._pending: dict[tuple[str, str], str] = {}
         self._used: dict[tuple[str, str], str] = {}
-        self._read: set[str] = set()
         self._db: sqlite3.Connection | None = None
         self._store: Path | None = None
         directory = os.environ.get(SCAN_CACHE_ENV)
@@ -918,7 +919,6 @@ class FileFacts:
             self.misses += 1
             return json.loads(json.dumps(compute(data)))
         key = hashlib.sha256(data).hexdigest()
-        self._read.add(key)
         try:
             row = self._db.execute(
                 "SELECT value, seal FROM facts WHERE part = ? AND key = ?", (part, key)
@@ -935,6 +935,28 @@ class FileFacts:
         self.misses += 1
         self._pending[(part, key)] = self._used[(part, key)] = value
         return json.loads(value)
+
+    def retire_predecessors(self, prefix: str) -> int | None:
+        """Once per store, remove older fact kinds under SQLite's writer lock."""
+        if self._db is None:
+            return None
+        db = self._db
+        try:
+            db.execute("PRAGMA secure_delete=ON")
+            db.execute("BEGIN IMMEDIATE")
+            count = None
+            if db.execute("PRAGMA user_version").fetchone()[0] < 1:
+                count = db.execute(
+                    "DELETE FROM facts WHERE part IS NULL OR substr(part, 1, ?) != ?",
+                    (len(prefix), prefix),
+                ).rowcount
+                db.execute("PRAGMA user_version=1")
+            db.execute("COMMIT")
+            return count
+        except sqlite3.DatabaseError as error:
+            with contextlib.suppress(sqlite3.DatabaseError):
+                db.execute("ROLLBACK")
+            raise ValueError("public scan cache predecessor retirement failed") from error
 
     def _bytes(self, rows: dict[tuple[str, str], str]) -> int:
         """Twice the rows' text, a bound on the pages SQLite gives them."""
@@ -953,20 +975,19 @@ class FileFacts:
         )
 
     def close(self, *, returned: bool) -> str:
-        """Write this run's facts if the scan ``returned``, within the store's byte cap and key
-        bound, and say how it went. The measure and the write are one immediate transaction,
-        SQLite's own write lock, so a concurrent writer of the same store waits for it rather
-        than adding to a size it did not see; making room deletes rows inside the file, whose
-        freed pages the next rows reuse, so the file never grows past what the cap admitted."""
+        """Write this run's facts if the scan ``returned``, within the store's byte cap, and say
+        how it went. The measure and the write are one immediate transaction, SQLite's own write
+        lock, so a concurrent writer of the same store waits for it rather than adding to a size
+        it did not see; making room deletes rows inside the file, whose freed pages the next rows
+        reuse, so the file never grows past what the cap admitted."""
         if self._db is None or self._store is None:
             return f"{self.scan} hits {self.hits} misses {self.misses} {self.state}"
         store = self._store
         try:
             if returned and self._pending:
                 self._db.execute("BEGIN IMMEDIATE")
-                held = self._db.execute("SELECT count(DISTINCT key) FROM facts").fetchone()[0]
                 grown = store.stat().st_size + self._bytes(self._pending)
-                if grown <= SCAN_CACHE_BYTES and held + len(self._pending) <= 4 * len(self._read):
+                if grown <= SCAN_CACHE_BYTES:
                     self._write(self._pending)
                 elif self._bytes(self._used) <= SCAN_CACHE_BYTES:
                     self._db.execute("DELETE FROM facts")

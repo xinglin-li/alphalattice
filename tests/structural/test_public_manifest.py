@@ -193,7 +193,9 @@ def test_public_manifest_hashes_supplied_git_bytes_and_covers_every_file():
     )
 
 
-def test_generate_walks_development_labels_once_and_merges_its_findings(monkeypatch):
+def test_generate_walks_development_labels_once_and_merges_its_findings(
+    monkeypatch, tmp_path, capsys
+):
     """Generation runs the development-label walk once and keeps its findings."""
     walk = Mock(wraps=internal_id_ratchet)
     monkeypatch.setattr("release.public_manifest.internal_id_ratchet", walk)
@@ -208,6 +210,44 @@ def test_generate_walks_development_labels_once_and_merges_its_findings(monkeypa
     assert audit["findings"] == audit["internal_id_ratchet"]["violations"]
     assert len(audit["findings"]) == 1 and audit["internal_id_ratchet"]["policy_present"]
     assert INTERNAL_ID_BASELINE not in {row["path"] for row in manifest["public"]}
+    # A rejected dotted secret must not be persisted as a private-reference token.
+    import sqlite3
+
+    monkeypatch.setenv("ALPHALATTICE_SCAN_CACHE_DIR", str(tmp_path))
+    secret = "synthetic" + ".secretvalue123456"
+    blobs["README.md"] = ('password = "' + secret + '"\n').encode()
+    with sqlite3.connect(tmp_path / "public-manifest.sqlite") as db:
+        db.execute(
+            "CREATE TABLE facts (part TEXT, key TEXT, value TEXT, seal TEXT, "
+            "PRIMARY KEY (part, key))"
+        )
+        old_key = hashlib.sha256(b"print('demo')\n").hexdigest()  # the probe script's bytes
+        old_value = json.dumps([[1, secret, 0, [], False]])
+        db.execute("INSERT INTO facts VALUES (?, ?, ?, ?)", ("imports", old_key, old_value, "old"))
+    _, disclosure = generate("a" * 40, blobs, dict.fromkeys(blobs, "100644"))
+    assert any(row["rule"] == "NO_SECRET" for row in disclosure["findings"])
+    with sqlite3.connect(tmp_path / "public-manifest.sqlite") as db:
+        assert all(secret not in value for (value,) in db.execute("SELECT value FROM facts"))
+        assert db.execute("SELECT count(*) FROM facts WHERE part = 'imports'").fetchone()[0] == 0
+    retired = capsys.readouterr().err
+    assert "purged 1 predecessor facts" in retired and secret not in retired
+    for path, secret, text in (
+        ("README.md", "V" + "8" * 15, 'password = "{}"\n'),
+        ("tests/structural/test_probe.py", "ghp_" + "Q" * 30, "import {}\n"),
+    ):
+        blobs[path] = text.format(secret).encode()
+        _, disclosure = generate("a" * 40, blobs, dict.fromkeys(blobs, "100644"))
+        assert any(row["rule"] == "NO_SECRET" for row in disclosure["findings"])
+        with sqlite3.connect(tmp_path / "public-manifest.sqlite") as db:
+            assert all(secret not in value for (value,) in db.execute("SELECT value FROM facts"))
+    # The store is an optimization: clean uncached, cold and warm outputs agree.
+    blobs["README.md"] = b"ordinary documentation\n"
+    del blobs["tests/structural/test_probe.py"]
+    monkeypatch.delenv("ALPHALATTICE_SCAN_CACHE_DIR")
+    uncached = generate("a" * 40, blobs, dict.fromkeys(blobs, "100644"))
+    monkeypatch.setenv("ALPHALATTICE_SCAN_CACHE_DIR", str(tmp_path / "fresh-cache"))
+    cold = generate("a" * 40, blobs, dict.fromkeys(blobs, "100644"))
+    assert cold == uncached == generate("a" * 40, blobs, dict.fromkeys(blobs, "100644"))
 
 
 def test_public_manifest_records_locations_without_copying_disclosures():
