@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import platform
+import re
 import shutil
 import stat
 import sys
@@ -597,6 +598,21 @@ def warm_real_risk_golden(
                 _materialize_golden(golden, key, catalog, kernels, symbols, sector_size)
 
 
+def warm_before_tests() -> None:
+    """Publish the default Risk golden before a test session, confined as the session's own build.
+
+    A pipeline starts this beside the steps that come before its tests. Each worker would
+    otherwise build or wait for a cold golden at collection, before any test ran (about a
+    minute after a source change). The session still warms every variant it uses at
+    collection, and then finds this one published.
+    """
+    from tests import pytest_environment as environment
+
+    (root := _golden_root()).mkdir(parents=True, exist_ok=True)
+    with environment.project_scope(root, root):
+        warm_real_risk_golden()
+
+
 def _golden_root() -> Path:
     """The persistent golden root: the shared setting when present, else ``_GOLDEN_ROOT``."""
     try:
@@ -617,6 +633,53 @@ class GoldenWorkspaceError(RuntimeError):
     """A complete golden workspace that does not match what its consumer asked for."""
 
 
+def _installed_distributions() -> list[str]:
+    """Each installation as name==version, sorted; an editable checkout's own metadata is no other.
+
+    With the checkout's source on the path (a pytest session's src), the project is described twice:
+    by its installed record, whose direct_url names the checkout as editable, and by the checkout's
+    own root or src-layout egg-info. Only that second record is an alias and is not counted.
+    Every other record counts, so two separate installations of one version, whichever the path
+    imports, still differ.
+    """
+    from urllib.parse import urlparse
+    from urllib.request import url2pathname
+
+    prefix = Path(sys.prefix).resolve()
+    found, editable = [], set()
+    for distribution in importlib.metadata.distributions():
+        name = distribution.metadata["Name"]
+        if not name:
+            continue
+        metadata_path = getattr(distribution, "_path", None)
+        found.append(
+            (
+                name,
+                distribution.version,
+                Path(distribution.locate_file("")).resolve(),
+                Path(metadata_path).resolve() if metadata_path is not None else None,
+            )
+        )
+        try:
+            url = json.loads(distribution.read_text("direct_url.json") or "{}")
+        except ValueError:
+            continue
+        if url.get("dir_info", {}).get("editable") and str(url.get("url", "")).startswith("file:"):
+            root = Path(url2pathname(urlparse(url["url"]).path)).resolve()
+            editable.add((name, distribution.version, root))
+    return sorted(
+        f"{name}=={version}"
+        for name, version, where, metadata_path in found
+        if not any(
+            (name, version) == (other, release)
+            and where in (root, root / "src")
+            and metadata_path == where / (re.sub(r"[-_.]+", "_", name).lower() + ".egg-info")
+            and not where.is_relative_to(prefix)
+            for other, release, root in editable
+        )
+    )
+
+
 def _environment_digest() -> str:
     """The interpreter, the platform and every installed distribution a build ran under.
 
@@ -625,11 +688,7 @@ def _environment_digest() -> str:
     under another.
     """
 
-    distributions = sorted(
-        f"{distribution.metadata['Name']}=={distribution.version}"
-        for distribution in importlib.metadata.distributions()
-        if distribution.metadata["Name"]
-    )
+    distributions = _installed_distributions()
     identity = {
         "python": sys.version,
         "implementation": platform.python_implementation(),

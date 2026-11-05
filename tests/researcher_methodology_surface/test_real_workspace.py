@@ -703,10 +703,66 @@ def test_cache_environment_tracks_thread_settings_in_the_current_process(
 
 @pytest.mark.proves("evaluation.persistent_golden_root_follows_its_setting")
 def test_the_persistent_golden_root_follows_its_shared_setting(tmp_path, monkeypatch):
-    """Checkouts share one golden root through the setting; without it each keeps its own."""
+    """Checkouts share one golden root through the setting; without it each keeps its own.
+    A pipeline's warm-up builds into that shared root, confined to it as a session's build."""
     from devtools.evaluation.golden_workspaces import GOLDEN_ROOT_VARIABLE, persistent_golden_root
+    from tests import pytest_environment as environment
+    from tests.researcher_methodology_surface import real_workspace as builder
 
     monkeypatch.delenv(GOLDEN_ROOT_VARIABLE, raising=False)
     assert persistent_golden_root(tmp_path / "own") == tmp_path / "own"
     monkeypatch.setenv(GOLDEN_ROOT_VARIABLE, str(tmp_path / "shared"))
     assert persistent_golden_root(tmp_path / "own") == tmp_path / "shared"
+    scopes = []
+    monkeypatch.setattr(
+        builder, "warm_real_risk_golden", lambda: scopes.append(environment.PROJECT_ROOT.get())
+    )
+    builder.warm_before_tests()
+    assert scopes == [(tmp_path / "shared").resolve()] and (tmp_path / "shared").is_dir()
+    # The warm-up and a pytest session (src on its path) share that golden only with one key; a
+    # separate installation of the same version is still another key.
+    import importlib.metadata
+    import sys
+    from types import SimpleNamespace
+
+    from tests.researcher_methodology_surface.real_workspace import _environment_digest
+
+    checkout, prefix = tmp_path / "checkout", tmp_path / "checkout/.venv"
+    url = '{"url": "' + checkout.resolve().as_uri() + '", "dir_info": {"editable": true}}'
+
+    def record(where, direct=None, metadata_name="alphalattice.egg-info"):
+        return SimpleNamespace(
+            metadata={"Name": "alphalattice"},
+            version="0.2.4",
+            locate_file=lambda _: where,
+            read_text=lambda _: direct,
+            _path=where / metadata_name,
+        )
+
+    installed = record(prefix / "Lib/site-packages", url)
+    with monkeypatch.context() as path:
+        path.setattr(sys, "prefix", str(prefix))
+        path.setattr(importlib.metadata, "distributions", lambda: [installed])
+        once = _environment_digest()
+        path.setattr(
+            importlib.metadata, "distributions", lambda: [installed, record(checkout / "src")]
+        )
+        aliased = _environment_digest()  # the checkout's own metadata, as a pytest session sees it
+        path.setattr(
+            importlib.metadata, "distributions", lambda: [installed, record(tmp_path / "other")]
+        )
+        separate = _environment_digest()  # another installation of the same version
+        path.setattr(
+            importlib.metadata, "distributions", lambda: [installed, record(checkout / "vendor")]
+        )
+        nested = _environment_digest()  # a separate installation inside the checkout
+        path.setattr(
+            importlib.metadata,
+            "distributions",
+            lambda: [
+                installed,
+                record(checkout / "src", metadata_name="alphalattice-0.2.4.dist-info"),
+            ],
+        )
+        source_install = _environment_digest()  # a separate wheel, not the checkout's egg-info
+    assert once == aliased and once != separate == nested == source_install
