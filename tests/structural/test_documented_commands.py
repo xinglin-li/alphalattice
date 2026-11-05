@@ -146,14 +146,14 @@ def test_every_documented_command_line_parses(
     assert codex_start in guide and codex_start in handoff
     assert (
         repository / ".claude/skills/alphalattice-research/references/specialist-handoff.md"
-    ).read_text(encoding="utf-8") == handoff.replace(codex_start + " ", "")
+    ).read_text(encoding="utf-8") == handoff
     analyst = (
         repository / ".agents/skills/alphalattice-research/references/evidence-analysis-handoff.md"
     ).read_text(encoding="utf-8")
     assert codex_start in analyst
     assert (
         repository / ".claude/skills/alphalattice-research/references/evidence-analysis-handoff.md"
-    ).read_text(encoding="utf-8") == analyst.replace(codex_start + " ", "")
+    ).read_text(encoding="utf-8") == analyst
     operating = (
         repository / ".agents/skills/alphalattice-research/references/operating.md"
     ).read_text(encoding="utf-8")
