@@ -1365,12 +1365,6 @@
       "seen_on": [
         "mac1"
       ]
-    },
-    {
-      "node": "tests/structural/test_documented_commands.py::test_every_documented_command_line_parses",
-      "owner": "tests.structural",
-      "until": "2026-11-05",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
     }
   ],
   "mandatory": [
