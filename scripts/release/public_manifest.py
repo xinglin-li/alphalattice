@@ -747,6 +747,7 @@ def internal_id_ratchet(
         raise ValueError("internal development label counts must be nonnegative integers")
     current = {}
     current_occurrences = {}
+    sensitive_labels = set()
     allowed = 0
     violations = []
     for row in decisions:
@@ -758,9 +759,21 @@ def internal_id_ratchet(
         except UnicodeError:
             continue
         permitted = _product_identifier_spans(path, source, forms)
+        secret_spans = {
+            number: [(match.start(), match.end()) for match in SCANS["NO_SECRET"].finditer(line)]
+            for number, line in enumerate(source.splitlines(), 1)
+        }
         source = test_names.sub(lambda m: m[0].replace("_", " "), source)
         matches = [
-            (number, match.start() + 1, internal_id_label(match.group()))
+            (
+                number,
+                match.start() + 1,
+                internal_id_label(match.group()),
+                any(
+                    match.start() < end and start < match.end()
+                    for start, end in secret_spans[number]
+                ),
+            )
             for number, line in enumerate(source.splitlines(), 1)
             for match in pattern.finditer(line)
             if not any(
@@ -770,7 +783,9 @@ def internal_id_ratchet(
         if matches:
             current[path] = len(matches)
         seen = Counter()
-        for line, column, label in matches:
+        for line, column, label, sensitive in matches:
+            if sensitive:
+                sensitive_labels.add(label)
             seen[label] += 1
             if seen[label] <= occurrences.get(path, {}).get(label, 0):
                 allowed += 1
@@ -786,7 +801,24 @@ def internal_id_ratchet(
                 }
             )
         if seen:
-            current_occurrences[path] = dict(sorted(seen.items()))
+            current_occurrences[path] = seen
+    # Baseline decisions above use the original label. Only the returned keys are redacted,
+    # including occurrences elsewhere of any label that appeared inside a secret finding.
+    occupied = {label for seen in current_occurrences.values() for label in seen}
+    aliases = {}
+    ordinal = 0
+    for label in sorted(sensitive_labels):
+        while True:
+            ordinal += 1
+            alias = f"<NO_SECRET:{ordinal}>"
+            if alias not in occupied:
+                aliases[label] = alias
+                occupied.add(alias)
+                break
+    current_occurrences = {
+        path: dict(sorted((aliases.get(label, label), count) for label, count in seen.items()))
+        for path, seen in current_occurrences.items()
+    }
     return {
         "policy_present": policy is not None,
         "count": sum(current.values()),

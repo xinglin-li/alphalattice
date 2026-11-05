@@ -282,6 +282,31 @@ def test_development_label_ratchet_pins_each_public_files_count_and_spelling():
     assert [(row["path"], row["line"], row["column"]) for row in new_findings] == [(new, 1, 8)]
     assert len(internal_id_ratchet(blobs, rows)["violations"]) == 4
 
+    # A password which is also a numbered label keeps its frozen count without echoing its value.
+    sensitive = "V" + "8" * 15
+    private_text = 'password = "' + sensitive + '"\n' + sensitive + "\n"
+    fixture_policy = {
+        "cards": [],
+        "lines": [],
+        "occurrences": {"README.md": {sensitive: 2}, "README.zh-CN.md": {sensitive: 1}},
+    }
+    synthetic = {
+        "census/entry_reach.json": b'{"modules": []}',
+        INTERNAL_ID_BASELINE: json.dumps(fixture_policy).encode(),
+        "README.md": private_text.encode(),
+        "README.zh-CN.md": sensitive.encode(),
+    }
+    _, audit = generate("a" * 40, synthetic, dict.fromkeys(synthetic, "100644"))
+    assert any(row["rule"] == "NO_SECRET" for row in audit["findings"])
+    assert audit["internal_id_ratchet"]["count"] == audit["internal_id_ratchet"]["allowed"] == 3
+    assert sensitive not in json.dumps(audit)
+    fixture_policy["occurrences"]["README.md"][sensitive] = 1
+    synthetic[INTERNAL_ID_BASELINE] = json.dumps(fixture_policy).encode()
+    _, lowered_audit = generate("a" * 40, synthetic, dict.fromkeys(synthetic, "100644"))
+    ratchet = lowered_audit["internal_id_ratchet"]
+    assert (ratchet["count"], ratchet["allowed"], len(ratchet["violations"])) == (3, 2, 1)
+    assert sensitive not in json.dumps(lowered_audit)
+
     # Product-form controls need actual detector bytes, assembled to avoid public self-scan.
     owner_path = "config/registries/owners-map.json"
     alias, other, prefix = "C" + "1", "C" + "2", "V" + "900."

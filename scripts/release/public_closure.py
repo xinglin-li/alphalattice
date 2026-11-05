@@ -16,6 +16,7 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote, urlsplit
 
+from release.public_manifest import SCANS
 from release.public_outputs import generated_outputs
 
 if TYPE_CHECKING:
@@ -428,11 +429,31 @@ def references(
     """Source reads only: policy/synthetic string literals are not file dependencies."""
     text = raw.decode("utf-8-sig")
     if path.endswith(".py"):
-        found = (
-            python_facts(path, text)
-            if facts is None
-            else facts.of("python:" + path, raw, lambda _: python_facts(path, text), _shaped)
-        )
+        secret = SCANS["NO_SECRET"]
+
+        def sensitive(found):
+            values = [name for name, _, _ in found["imports"]]
+            values.extend(value for _, _, reads in found["reads"] for value in reads)
+            return any(secret.search(value) for value in values)
+
+        def safe_facts(_):
+            found = python_facts(path, text)
+            # An expression can assemble a credential-shaped value that is absent from the source.
+            return {"withheld": True} if sensitive(found) else found
+
+        if facts is None or secret.search(text) or secret.search(path):
+            found = python_facts(path, text)
+        else:
+            found = facts.of(
+                "python:" + path,
+                raw,
+                safe_facts,
+                lambda value: (
+                    value == {"withheld": True} or (_shaped(value) and not sensitive(value))
+                ),
+            )
+            if found == {"withheld": True}:
+                found = python_facts(path, text)
         return _resolved(path, found, files, index)
     result = set()
     if path.endswith((".js", ".cjs", ".mjs")):
@@ -515,7 +536,9 @@ def violations(manifest: dict, blobs: dict[str, bytes], readers=None) -> list[Re
         return _violations(manifest, blobs, readers, None)
     from devtools.architecture.structural import kept_facts  # named only where it is importable
 
-    with kept_facts("public-closure", sys.modules[__name__]) as facts:
+    with kept_facts(
+        "public-closure", sys.modules[__name__], sys.modules["release.public_manifest"]
+    ) as facts:
         return _violations(manifest, blobs, readers, facts)
 
 

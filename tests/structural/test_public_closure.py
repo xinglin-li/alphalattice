@@ -37,6 +37,27 @@ def test_python_import_requires_a_public_local_module(imported, kept, tmp_path, 
         assert _failures(blobs, public) == {target}
         blobs[reader] = b"import demo.other\n"
         assert _failures(blobs, public) == {"src/demo/other.py"}
+        if imported == "hidden":
+            import sqlite3
+
+            token = "ghp_" + "P" * 30
+            target = "src/demo/" + token + ".json"
+            for literal in (repr(target), repr("src/demo/ghp_") + " + " + repr("P" * 30 + ".json")):
+                sensitive = {
+                    reader: (
+                        "from pathlib import Path\nPath(" + literal + ").read_text()\n"
+                    ).encode(),
+                    target: b"{}",
+                }
+                result = violations({"public": [{"path": reader}]}, sensitive)
+                assert [row.target for row in result] == [target]
+                assert violations({"public": [{"path": reader}]}, sensitive) == result
+                with sqlite3.connect(tmp_path / "public-closure.sqlite") as db:
+                    assert all(
+                        token not in value for (value,) in db.execute("SELECT value FROM facts")
+                    )
+                assert token.encode() not in (tmp_path / "public-closure.sqlite").read_bytes()
+
         # code loaded, then its file replaced: the old code's facts never serve the new code,
         # loaded anew or reloaded in place (importlib.reload keeps the module object)
         source = Path(public_closure.__file__).read_text("utf-8")
