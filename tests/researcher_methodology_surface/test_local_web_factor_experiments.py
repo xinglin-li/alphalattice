@@ -106,10 +106,8 @@ def completed_alpha_seed(alpha_seed, tmp_path_factory):
 
 
 @pytest.fixture
-def completed_alpha_case(completed_alpha_seed, tmp_path_factory):
-    root = copy_workspace(
-        completed_alpha_seed[0], tmp_path_factory.mktemp("completed-alpha") / "workspace"
-    )
+def completed_alpha_case(completed_alpha_seed, tmp_path):
+    root = copy_workspace(completed_alpha_seed[0], tmp_path / "completed-alpha" / "workspace")
     return root, *completed_alpha_seed[1:4], deepcopy(completed_alpha_seed[4])
 
 
@@ -3497,14 +3495,12 @@ def risk_seed(completed_alpha_seed, tmp_path_factory):
 
 
 @pytest.fixture
-def risk_link(risk_seed, tmp_path_factory):
+def risk_link(risk_seed, tmp_path):
     """Each consumer opens its own writable copy and Host."""
     from types import SimpleNamespace
 
     source, metadata = risk_seed
-    root = copy_workspace(
-        source, tmp_path_factory.mktemp("risk-link") / "workspace", link_parquet=True
-    )
+    root = copy_workspace(source, tmp_path / "risk-link" / "workspace", link_parquet=True)
     with _session(root) as live:
         yield SimpleNamespace(
             live=live, document=deepcopy(metadata["document"]), risk_task=metadata["risk_task"]

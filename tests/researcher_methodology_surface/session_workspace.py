@@ -180,18 +180,30 @@ def seeds_changed() -> list[str]:
     return changed
 
 
+def _shared_data(path: Path) -> bool:
+    """Use the product's byte-addressed array categories alongside the existing datasets."""
+    if path.name == "market-data.duckdb" or path.suffix == ".parquet":
+        return True
+    if path.suffix != ".bin" or re.fullmatch(r"[0-9a-f]{64}", path.stem) is None:
+        return False
+    from alphalattice.control.product_host.storage.backup import BYTE_ADDRESSED
+
+    return path.parent.parts[-3:] in BYTE_ADDRESSED
+
+
 def copy_workspace(
     source: Path, target: Path, *, link_parquet: bool = False, link_data: bool | None = None
 ) -> Path:
     """Private writable files; only callers that never edit Parquet opt into links.
 
     The session seed remains alive for the entire run, including every linked
-    consumer. Databases, records and model files always get independent copies of
-    the seed. Paths the product linked to one file inside the seed (a research
-    input's pooled database and its source) stay one file inside the copy, as the
+    consumer. Writable databases, records and model files get independent copies of
+    the seed; the product's byte-addressed frozen arrays are shared read-only.
+    Paths the product linked to one file inside the seed (a research input's
+    pooled database and its source) stay one file inside the copy, as the
     product wrote them, so a copy never holds the same database twice.
 
-    A running test reads a session seed's market data and Parquet objects in place:
+    A running test reads the seed's market data, Parquet and byte-addressed arrays in place:
     linked, never copied, the seed's file refusing writers first (refuse_writers) so a test
     that writes one fails loudly, and seeds_changed() names any change at session end. Only a
     test marked private_data, which writes them, gets them copied; any other test
@@ -203,12 +215,12 @@ def copy_workspace(
         if link_data is False:
             raise RuntimeError(
                 f"test_datasets.private_copy_unmarked: {test} copies the seed {source}; mark "
-                "it private_data if it writes the seed's market data or Parquet, else read in place"
+                "it private_data if it writes the seed's protected data, else read in place"
             )
         link_data = True
 
     def copy_file(src: str, dst: str) -> str:
-        data = Path(src).name == "market-data.duckdb" or Path(src).suffix == ".parquet"
+        data = _shared_data(Path(src))
         if link_data and data:
             refuse_writers(src)
             try:
@@ -238,9 +250,8 @@ def copy_workspace(
 
 
 def keep_seed_links(source: str, target: str) -> str:
-    """copytree's copy function for a copy of a test's own copy: the seed's market data and
-    Parquet it reads in place stay linked and read-only; everything else is copied."""
-    data = Path(source).name == "market-data.duckdb" or Path(source).suffix == ".parquet"
+    """Keep a seed's read-only datasets linked in a copy of a test's own copy."""
+    data = _shared_data(Path(source))
     if data and os.stat(source).st_nlink > 1:
         os.link(source, target)
         return target

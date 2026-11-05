@@ -290,8 +290,8 @@ def alpha_seed(factor_seed, tmp_path_factory):
 
 
 @pytest.fixture
-def alpha_case(alpha_seed, tmp_path_factory):
-    root = copy_workspace(alpha_seed[0], tmp_path_factory.mktemp("alpha-web") / "workspace")
+def alpha_case(alpha_seed, tmp_path):
+    root = copy_workspace(alpha_seed[0], tmp_path / "alpha-web" / "workspace")
     return root, *alpha_seed[1:4], deepcopy(alpha_seed[4])
 
 
@@ -346,9 +346,9 @@ def sampled_alpha_seed(alpha_seed, tmp_path_factory):
 
 
 @pytest.fixture
-def sampled_alpha_case(sampled_alpha_seed, tmp_path_factory):
+def sampled_alpha_case(sampled_alpha_seed, tmp_path):
     seed, metadata = sampled_alpha_seed
-    root = copy_workspace(seed[0], tmp_path_factory.mktemp("sampled-alpha") / "workspace")
+    root = copy_workspace(seed[0], tmp_path / "sampled-alpha" / "workspace")
     return (root, *seed[1:4], deepcopy(seed[4])), deepcopy(metadata)
 
 

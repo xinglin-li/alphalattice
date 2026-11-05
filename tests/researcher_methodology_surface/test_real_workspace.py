@@ -384,6 +384,14 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
         (root / "pool.duckdb").write_bytes(b"db")  # a linked input, as the product binds one
         (root / "source.duckdb").hardlink_to(root / "pool.duckdb")
         (root / "market-data.duckdb").write_bytes(b"market data")
+        digest = hashlib.sha256(b"sealed arrays").hexdigest()
+        for category in ("frozen-observation-arrays", "lifecycle-arrays", "unregistered-arrays"):
+            folder = root / "artifacts/alpha-research/current" / category
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / f"{digest}.bin").write_bytes(b"sealed arrays")
+        (root / "artifacts/alpha-research/current/lifecycle-arrays/not-a-digest.bin").write_bytes(
+            b"other"
+        )
         attempts.append(value[0])
         if len(attempts) == 1:
             raise InterruptedError("worker stopped mid-build")
@@ -416,6 +424,20 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
     assert linked.samefile(second / "market-data.duckdb") and session.seeds_changed() == []
     with pytest.raises(PermissionError):
         linked.open("r+b")
+    digest = hashlib.sha256(b"sealed arrays").hexdigest()
+    for category in ("frozen-observation-arrays", "lifecycle-arrays"):
+        relative = Path("artifacts/alpha-research/current") / category / f"{digest}.bin"
+        assert (in_place / relative).samefile(second / relative)
+        with pytest.raises(PermissionError):
+            (in_place / relative).open("r+b")
+        nested = tmp_path / (category + ".bin")
+        session.keep_seed_links(str(in_place / relative), str(nested))
+        assert nested.samefile(second / relative)
+    for relative in (
+        Path("artifacts/alpha-research/current/unregistered-arrays") / f"{digest}.bin",
+        Path("artifacts/alpha-research/current/lifecycle-arrays/not-a-digest.bin"),
+    ):
+        assert not (in_place / relative).samefile(second / relative)
     shutil.rmtree(in_place)
     with pytest.raises(PermissionError):
         (second / "market-data.duckdb").open("r+b")
@@ -425,6 +447,13 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
     session.LINKED_SEEDS.clear()
     with pytest.raises(RuntimeError, match="private_copy_unmarked"):  # unmarked: no private copy
         copy(second, tmp_path / "private", link_data=False)
+    with monkeypatch.context() as private_test:
+        private_test.setitem(session.RUNNING_TEST, "private", True)
+        private = copy(second, tmp_path / "private-arrays", link_data=False)
+        relative = Path("artifacts/alpha-research/current/lifecycle-arrays") / f"{digest}.bin"
+        assert not (private / relative).samefile(second / relative)
+        (private / relative).write_bytes(b"private change")
+        assert (second / relative).read_bytes() == b"sealed arrays"
 
     value[0] = "original"
     for field in ("name", "builder", "inputs", "", "missing"):
