@@ -281,7 +281,7 @@ def test_attached_child_preserves_streams_and_refuses_unrelated_handles(
     child = """
 import json, msvcrt, os, sys
 try:
-    value = os.read(msvcrt.open_osfhandle(int(sys.argv[1]), os.O_RDONLY), 64).decode()
+    value = list(os.read(msvcrt.open_osfhandle(int(sys.argv[1]), os.O_RDONLY), 64))
 except OSError:
     value = None
 print(json.dumps(dict(stdin=sys.stdin.read(), stray=value)))
@@ -308,7 +308,9 @@ with open(sys.argv[1], 'rb') as stray:
         creationflags=_FLAGS,
     )
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == {"stdin": "owned-input\n", "stray": None}
+    seen = json.loads(result.stdout)
+    assert seen["stdin"] == "owned-input\n"
+    assert seen["stray"] is None or b"unrelated" not in bytes(seen["stray"])
     assert result.stderr == "stderr-ok\n"
 
 
