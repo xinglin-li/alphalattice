@@ -1,7 +1,9 @@
 """The public checkout refuses unavailable private verification by name."""
 
+import subprocess
 import sys
 
+import pytest
 from scripts import check_playpen as gate
 
 
@@ -15,6 +17,17 @@ def test_public_full_gate_names_missing_private_guard(tmp_path, monkeypatch, cap
     assert "playpen.private_structural_inputs_unavailable" in message
     assert guard.relative_to(tmp_path).as_posix() in message
     assert "private records" in message and "--all-python --fast" in message
+    # A refusing materializer must stop the fast gate before any later check.
+    script = tmp_path / "scripts/materialize_claude_host.py"
+    script.parent.mkdir()
+    script.write_text(
+        "import sys\nassert sys.argv[1:] == ['--check']\nraise SystemExit(7)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys, "argv", ["check_playpen.py", "--all-python", "--fast"])
+    with pytest.raises(subprocess.CalledProcessError) as stopped:
+        gate.main(ensure_environment=lambda: None)
+    assert stopped.value.returncode == 7
 
 
 def test_public_evidence_gate_names_missing_private_root_declaration(tmp_path, monkeypatch, capsys):

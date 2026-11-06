@@ -44,6 +44,7 @@ from check_playpen import STRUCTURAL_TEST_PATHS  # type: ignore[import-not-found
 # The build-time owner of import resolution. Reused rather than reimplemented:
 # it already resolves relative imports and package initializers, and a second
 # parser here is what produced a wrong answer for `__init__.py`.
+from devtools.architecture.git_inputs import read_blobs  # noqa: E402
 from devtools.architecture.neutral_changes import (  # noqa: E402
     git_previous,
     moved_files,
@@ -56,6 +57,7 @@ from devtools.architecture.structural import (  # noqa: E402
     kept_fact,
     kept_facts,
 )
+from devtools.pipeline.stage import DEADLINE_ROOTS, derived_holders  # noqa: E402
 
 _PARENT_REVISION = "HEAD"
 """The commit a change is measured against: `--base`, else HEAD. `main` sets it."""
@@ -1078,6 +1080,68 @@ def _reach_roles(changed: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(sorted(roles))
 
 
+def _declared_holders(
+    changed: tuple[str, ...], *, base: str | None, staged: bool
+) -> tuple[str, ...]:
+    """Use the stage's declared owners for both the standalone and workshop plans."""
+    if not changed:
+        return ()
+    zero = "0" * 40
+    command = ["git", "-C", str(PLAYPEN_ROOT), "diff", "--raw", "-z", "--no-renames", "--no-abbrev"]
+    if staged:
+        command.append("--cached")
+    elif base:
+        command.append(base)
+    raw = subprocess.run(
+        command, check=True, capture_output=True, text=True, encoding="utf-8"
+    ).stdout
+    fields = raw.split("\0")
+    if fields[-1:] == [""]:
+        fields.pop()
+    if len(fields) % 2:
+        raise ValueError("malformed changed-file record")
+    entries = {path: header.split() for header, path in zip(fields[::2], fields[1::2], strict=True)}
+    paths = set(changed) | entries.keys()
+    candidates = {
+        path for path in paths if path.startswith(DEADLINE_ROOTS) and path.endswith(".py")
+    }
+    pairs = [([":000000", "000000", zero, zero, "A"], path) for path in paths - candidates]
+    found = {}
+    for path in candidates & entries.keys():
+        meta = entries[path]
+        if (
+            len(meta) != 5
+            or not meta[0].startswith(":")
+            or meta[4] not in {"A", "D", "M", "T"}
+            or meta[0][1:] not in {"000000", "100644", "100755"}
+            or meta[1] not in {"000000", "100644", "100755"}
+            or any(not re.fullmatch(r"[0-9a-f]{40}", oid) for oid in meta[2:4])
+        ):
+            raise ValueError(f"changed deadline source is not a regular file: {path}")
+        found[path] = meta
+    missing = candidates - found.keys()
+    if missing and (staged or base):
+        raise ValueError(
+            "changed deadline source missing from Git diff: " + ", ".join(sorted(missing))
+        )
+    for path in missing:
+        found[path] = [":000000", "100644", zero, zero, "A"]
+    ids = {meta[2] for meta in found.values() if meta[2] != zero}
+    if staged:
+        ids.update(meta[3] for meta in found.values() if meta[3] != zero)
+    blobs = read_blobs(sorted(ids), PLAYPEN_ROOT, timeout=60)
+    if set(blobs) != ids:
+        raise ValueError("changed deadline-source blob is unavailable")
+    for path, meta in found.items():
+        if not staged and meta[4] != "D":
+            source = (PLAYPEN_ROOT / path).read_bytes()
+            oid = hashlib.sha256(source).hexdigest()
+            blobs[oid] = source.decode("utf-8")
+            meta[3] = oid
+        pairs.append((meta, path))
+    return derived_holders(pairs, blobs)
+
+
 def _changed_paths(*, base: str | None, staged: bool) -> tuple[str, ...]:
     args = ["git", "-c", "core.quotepath=false", "-C", str(PLAYPEN_ROOT), "diff"]
     if staged:
@@ -1155,6 +1219,10 @@ def _select() -> int:
         if verdict.neutral
     )
     changed = tuple(value for value in all_changed if value not in neutral)
+    try:
+        declared = _declared_holders(all_changed, base=args.base, staged=args.staged)
+    except (OSError, ValueError, SyntaxError, UnicodeError, subprocess.SubprocessError) as error:
+        raise SystemExit(f"declared verification selection unavailable: {error}") from error
     moved = moved_files(PLAYPEN_ROOT, changed, previous)
     if neutral:
         # A syntax-equal file no code reads the text of moves no closure by rule, and
@@ -1173,12 +1241,27 @@ def _select() -> int:
         # The same table the gate holds (GB): what the changed areas may move.
         print(f"reach: the changed areas may move {len(reach)} roles", file=sys.stderr)
     if not changed:
-        print(
-            json.dumps(
-                {"changed_paths": [], "neutral_paths": neutral, "required_test_paths": []},
-                indent=2,
+        neutral_files = tuple(sorted({node.partition("::")[0] for node in declared}))
+        neutral_absent = [path for path in neutral_files if not (PLAYPEN_ROOT / path).is_file()]
+        if neutral_absent:
+            raise SystemExit(f"declared verification tests are absent: {neutral_absent}")
+        payload: dict[str, object] = {
+            "changed_paths": [],
+            "neutral_paths": neutral,
+            "required_test_paths": neutral_files,
+        }
+        if declared:
+            execution = _execution_tests(
+                neutral_files, structural_already_passed=args.structural_tests_already_passed
             )
-        )
+            payload["declared_test_nodes"] = declared
+            payload["execution_test_paths"] = execution
+        print(json.dumps(payload, indent=2))
+        if declared and args.run_tests and execution:
+            if args.evidence:
+                _run_evidence_tests(execution)
+            else:
+                _run_admitted_tests(execution)
         return 0
     impact = alpha_verification_impact(changed)
     absent = tuple(
@@ -1209,6 +1292,11 @@ def _select() -> int:
         # full coverage for a change nobody can map to a test.
         raise SystemExit(f"product verification selection unavailable: {error}") from error
     required_tests = set(impact.required_test_paths)
+    declared_files = {node.partition("::")[0] for node in declared}
+    absent_declared = sorted(path for path in declared_files if not (PLAYPEN_ROOT / path).is_file())
+    if absent_declared:
+        raise SystemExit(f"declared verification tests are absent: {absent_declared}")
+    required_tests.update(declared_files)
     required_tests.update(consumer_tests)
     required_tests.update(
         test_path for value in changed for test_path in _case_tests_for_changed_path(value)
@@ -1227,6 +1315,7 @@ def _select() -> int:
         "reach_roles": reach,
         "domains": impact.domains,
         "required_test_paths": admitted_tests,
+        "declared_test_nodes": declared,
         # Reported separately from Alpha's domain selection: these are product
         # consumer tests for changed owners, and they carry no claim about
         # scientific invalidation. Merging the two lists would make an

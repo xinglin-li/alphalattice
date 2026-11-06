@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from devtools.pipeline.stage import deadline_names
+
 
 def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:
     """TE12: discover capped owners and polling sleeps, so a new waiter needs class review."""
@@ -68,29 +70,10 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
         "control/workspace_runtime",
     ):
         for path in (base / root).rglob("*.py"):
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            for function in ast.walk(tree):
-                if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    continue
-                args = {
-                    arg.arg
-                    for arg in (
-                        *function.args.posonlyargs,
-                        *function.args.args,
-                        *function.args.kwonlyargs,
-                    )
-                }
-                assigned = {
-                    target.id
-                    for node in ast.walk(function)
-                    if isinstance(node, (ast.Assign, ast.AnnAssign))
-                    for target in (
-                        [node.target] if isinstance(node, ast.AnnAssign) else node.targets
-                    )
-                    if isinstance(target, ast.Name)
-                }
-                if "deadline" in args | assigned or "max_wait" in args:
-                    found.add((path.relative_to(base).as_posix(), function.name))
+            found.update(
+                (path.relative_to(base).as_posix(), name)
+                for name in deadline_names(path.read_text(encoding="utf-8"))
+            )
     client_path = "interface/local_application/client.py"
     reviewed = {
         (client_path, name)

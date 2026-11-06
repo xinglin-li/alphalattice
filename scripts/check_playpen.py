@@ -931,6 +931,13 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         )
         return 0
 
+    if args.fast:
+        _run(
+            "claude-host-materialization",
+            sys.executable,
+            str(ROOT / "scripts" / "materialize_claude_host.py"),
+            "--check",
+        )
     if not args.fast and not _require_private_structural_inputs():
         return 1
     python_targets = _python_targets(staged=args.staged, all_python=args.all_python)
