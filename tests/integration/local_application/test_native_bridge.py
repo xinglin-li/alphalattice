@@ -1,4 +1,4 @@
-"""The native bridge after FLOW-1: Session bindings and Host-read observations, no hooks."""
+"""The native bridge: Session bindings and Host-read observations, no hooks."""
 
 import ast
 import importlib.metadata
@@ -79,7 +79,7 @@ def _usage(host: str, **changes: object) -> dict[str, object]:
 @pytest.mark.parametrize("host", ("codex", "claude-code"))
 def test_complete_usage_snapshot_fits_public_event_subject_and_files_once(live, tmp_path, host):
     """A Host-read snapshot fits the event contract, and the same snapshot files one row: its
-    sequence is its own content's, so no stored counter or lock is needed (FLOW-1)."""
+    sequence is its own content's, so no stored counter or lock is needed."""
     project = tmp_path / "usage-project"
     (project / ".codex").mkdir(parents=True)
     binding = NativeResearchBinding(

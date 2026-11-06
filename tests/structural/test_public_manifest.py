@@ -470,9 +470,7 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
     moved, table = "src/moved.py", tmp_path / "config/registries/test-layout.json"
     table.parent.mkdir(parents=True)
     base = _git("rev-parse", "HEAD")
-    extra = (
-        "V" + "902"
-    )  # assembled, as `label` is: a whole label here would be a finding in this file
+    extra = "SYNTHETIC-CARD"
     for named, occurrences, refusal in (
         ({moved: owner}, {moved: {label: 1}}, None),
         ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),

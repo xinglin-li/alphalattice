@@ -279,7 +279,7 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
         "task_control",
     )
     assert info == body["data"]["error_info"] and info["message_id"] and info["message"]
-    # The refusal is the owner's answer and is saved like any other (CLI-6).
+    # The refusal is the owner's answer and is saved like any other.
     assert json.loads(saved.read_text("utf-8"))["failure_code"] == "task_control.task_not_found"
     # A path check on raw stdout only passed on Windows, where JSON escapes the backslashes.
     assert json.loads(stdout.strip().splitlines()[-1])["context"]["workspace"] == str(
@@ -1206,7 +1206,7 @@ def test_a_compact_answer_holds_its_next_requests_to_the_read(
         start = page["next_left"]["list"].rsplit(" ", 1)[1]
     # Each listed once; a full view's command carries --view full and whole ids (V406, V393).
     assert set(paged) == set(listed)
-    # Each page holds to the read whatever length the workspace path adds (FLOW-0): next_left's
+    # Each page holds to the read whatever length the workspace path adds: next_left's
     # key was left out of a page's room, a page one byte over at one temporary path's length.
     for pad in (1, 16, 32, 64, 128, 160):
         command = ["--workspace", str(tmp_path / ("w" * pad)), "task", "list", "--list-next"]

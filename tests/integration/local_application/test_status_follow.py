@@ -1065,7 +1065,7 @@ def _review_args(root: Path, update: str | None = None) -> SimpleNamespace:
 def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_bundle(
     tmp_path: Path,
 ) -> None:
-    """requirement (AGENT-TIME verb 2, approved 2026-10-08): one call sends the requests the
+    """requirement: one call sends the requests the
     answers offer, in their order, following each Task to its end, and returns every Analyst
     bundle written with its answer path and submit command; each step stays a command."""
     host = _ScriptedHost(tmp_path / "workspace")
@@ -1149,7 +1149,7 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
 
 
 def test_a_book_review_stops_at_the_first_answer_that_needs_another_step(tmp_path: Path) -> None:
-    """requirement (AGENT-TIME verb 2): a missing prerequisite ends the call with that answer,
+    """requirement: a missing prerequisite ends the call with that answer,
     its way on kept and the steps taken named; no bundle is written."""
     host = _ScriptedHost(tmp_path / "workspace", prerequisites=False)
     answer = client_module._review_steps(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
@@ -1316,7 +1316,7 @@ def _continue_args(root: Path, **fields: Any) -> SimpleNamespace:
 
 
 def test_review_continue_submits_the_analysts_and_writes_the_cros_bundle(tmp_path: Path) -> None:
-    """requirement (AGENT-TIME verb 3): one call submits every Analyst answer within the Host's
+    """requirement: one call submits every Analyst answer within the Host's
     waiting places, follows each publication, and writes the CRO's offered bundle with its
     answer path and submit command."""
     host = _ReviewHost(tmp_path / "workspace", places=1)
@@ -1349,7 +1349,7 @@ def test_review_continue_submits_the_analysts_and_writes_the_cros_bundle(tmp_pat
 
 
 def test_review_continue_names_each_correction_and_goes_no_further(tmp_path: Path) -> None:
-    """requirement (AGENT-TIME verb 3): an answer the Host asks to correct is named with its
+    """requirement: an answer the Host asks to correct is named with its
     problems; the accepted ones stand, and nothing past the submissions runs."""
     host = _ReviewHost(tmp_path / "workspace", correct="analyst-u2")
     root = _answers(tmp_path / "analysts", "analyst-u1", "analyst-u2")
@@ -1393,7 +1393,7 @@ def test_a_dated_review_goes_on_to_the_committee_its_evidence_offers(tmp_path: P
 def test_review_continue_publishes_the_cros_review_and_reads_the_activation_offer(
     tmp_path: Path,
 ) -> None:
-    """requirement (AGENT-TIME verb 3): after the CRO's answer its publication is followed and
+    """requirement: after the CRO's answer its publication is followed and
     the answer is Evidence's state with the strategy's activation offer and reviewed holdings."""
     host = _ReviewHost(tmp_path / "workspace")
     root = _answers(tmp_path, "cro") / "cro"

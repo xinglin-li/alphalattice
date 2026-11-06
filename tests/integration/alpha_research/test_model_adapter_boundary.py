@@ -706,7 +706,7 @@ def test_goal_development_adapter_matches_frozen_linear_state(tmp_path: Path) ->
 def test_a_formation_scope_verifies_each_sidecar_once_and_copies_the_estimator(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (PERF-1 lever 5): one formation verifies a sidecar once, not once a use."""
+    """requirement: one formation verifies a sidecar once, not once a use."""
     from alphalattice.investment.alpha_research.experiments.development_artifacts import (
         model_fit_sidecar_scope,
     )

@@ -417,7 +417,7 @@ def test_a_persons_yes_relayed_whole_completes_their_decision_once(
     session; the same command run again, or the yes carried to another decision, is refused,
     and their next yes goes with the nonce the refusal named."""
 
-    # regression (RELAY-ORIGIN, the final confirmation's day two): words that say no person gave
+    # regression: words that say no person gave
     # them relay nothing, and nothing changes.
     invented = "No person is present: a person-only question is answered yes as authorized."
     operator = ("network", "set", "--enabled", "true", "--person-said", invented)

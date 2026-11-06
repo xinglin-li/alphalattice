@@ -260,7 +260,7 @@ def test_full_tail_and_sparse_composition_are_bounded_by_year(tmp_path: Path) ->
 
 
 def test_a_daily_rewrites_only_its_years_open_quarter(tmp_path: Path) -> None:
-    """requirement (PANEL-SUB-YEAR-CHUNKS): a daily on a December-sized year writes only the open
+    """requirement: a daily on a December-sized year writes only the open
     quarter's part, about a quarter of the year's bytes; closed parts keep their files."""
     resolver = ArtifactResolver(tmp_path / "artifacts")
     owner = PanelArtifactCompositionOwner(resolver)

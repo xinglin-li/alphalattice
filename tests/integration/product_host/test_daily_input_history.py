@@ -381,7 +381,7 @@ def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_re
 
 
 def test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm(daily_workspace):
-    """regression (FINAL-022's real D2, 2026-10-15): the provider restated every adjusted series
+    """regression: the provider restated every adjusted series
     and the kept prefix went cold, though no captured value reads the reference's closes."""
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
     previous = _publish(store, _capture(daily_workspace, FIRST, WIDE[:1]))

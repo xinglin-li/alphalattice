@@ -447,7 +447,7 @@ def _accepted_rows(record):
 
 
 def test_an_accepted_answer_is_filed_as_the_leads_product_fact(no_hook_answer_scene):
-    """FLOW-1: with no hook and no dispatch message, the product's acceptance is filed in the
+    """With no hook and no dispatch message, the product's acceptance is filed in the
     Goal's conversation as the lead's fact, its author unobserved; a retry is the same row."""
     scene = no_hook_answer_scene
     goal = open_goal(scene.live, "Default accepted contribution")
