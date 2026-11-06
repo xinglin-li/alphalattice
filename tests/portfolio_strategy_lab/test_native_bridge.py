@@ -733,9 +733,8 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
         assert commands[0].endswith("install-tool")
     if missing == "workbench_build":
         offered = items[missing]["facts"]["command"]
-        assert str(python) in offered and "scripts/build_local_web_ui.py" in offered.replace(
-            "\\", "/"
-        )
+        written = offered.replace("\\", "/")  # the shell's own spelling of a Windows path
+        assert python.as_posix() in written and "scripts/build_local_web_ui.py" in written
         assert "uv run" not in offered
     if missing == "user_layer":
         facts = items[missing]["facts"]
