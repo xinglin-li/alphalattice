@@ -592,6 +592,12 @@
       "layer": "integration",
       "seconds": 6.248
     },
+    "testing.windows_worker_without_wmi": {
+      "description": "A Windows pytest worker obtains platform information without issuing a WMI query.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
     "workspace_runtime.background_task_gate_wait_and_cancel": {
       "description": "A background Task waits for a workspace mutation holder, names the holder and preserves its deferred cancellation without duplicating execution.",
       "owner": "alphalattice.control.workspace_runtime",

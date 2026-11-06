@@ -7,6 +7,7 @@ import contextlib
 import ctypes
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -606,7 +607,11 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
         assert routes[0]["next_action"] == "SERVE_FROM_THE_HOST_TERMINAL_PANEL"
         assert routes[1]["next_action"] == "SERVE_FROM_A_PERSON_OWNED_TERMINAL"
         assert all(r["command_field"] == "terminal_command" for r in routes)
-        assert exited["terminal_command"] == ["alphalattice", *launch]
+        command = exited["terminal_command"]
+        assert command[1:] == launch
+        assert Path(command[0]).stem.casefold() == "alphalattice"
+        resolved = shutil.which(command[0])
+        assert resolved and Path(resolved).is_file()
         if escape == "denied" and lang == "en" and panel_host == "codex":
             from alphalattice.interface.local_application import native_setup
 
