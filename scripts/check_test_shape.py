@@ -23,7 +23,7 @@ from devtools.architecture.git_inputs import read_blobs as _blobs
 from devtools.architecture.git_inputs import staged_moves
 from devtools.testing.contracts import import_violations
 from devtools.testing.layout import new_test_file_problems
-from devtools.testing.requirements import file_holders
+from devtools.testing.requirements import PROVES_LINE, file_holders
 from devtools.testing.requirements import parse as parse_requirements
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -381,8 +381,12 @@ def problems(path: str, old: str | None, new: str) -> list[str]:
     if not path.startswith("tests/"):
         return []
     found = []
-    size = len(new.encode("utf-8", errors="surrogateescape"))
-    if size > CAP_BYTES and size > len((old or "").encode("utf-8", errors="surrogateescape")):
+
+    def counted(text: str) -> int:  # tracing a test to its requirement never grows its file
+        return len(PROVES_LINE.sub("", text).encode("utf-8", errors="surrogateescape"))
+
+    size = counted(new)
+    if size > CAP_BYTES and size > counted(old or ""):
         found.append(f"{path}: grows to {size // 1024} KB; a test file stays under 100 KB (rule 9)")
     # a line only re-indented is kept, not added
     before = {line.strip() for line in (old or "").splitlines()}

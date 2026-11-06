@@ -228,6 +228,7 @@ def test_a_reordered_or_duplicated_axis_is_refused_rather_than_hashed() -> None:
         ordered_listing_axis_hash(("a", "b", "a"))
 
 
+@pytest.mark.proves("portfolio_strategy_lab.listing_axis_order_is_part_of_a_path")
 def test_the_listing_axis_binds_order_not_only_cardinality() -> None:
     """Same names, same count, different order: a different path."""
 

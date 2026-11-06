@@ -418,6 +418,7 @@ def test_portfolio_artifact_readers_keep_missing_corrupt_and_invalid_distinct(
         load(identity)
 
 
+@pytest.mark.proves("portfolio_strategy_lab.ledger_index_tells_lost_work_from_tampering")
 @pytest.mark.parametrize("lookup", ["execution", "program", "plan", "result", "outcome", "receipt"])
 def test_indexed_missing_content_is_lost_work_and_not_a_tampered_index(
     tmp_path: Path, lookup: str

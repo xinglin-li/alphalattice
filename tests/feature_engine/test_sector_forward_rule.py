@@ -293,6 +293,7 @@ def _receipt(
     )
 
 
+@pytest.mark.proves("feature_engine.closure_history_folds_its_revisions")
 def test_the_ledger_rebuilds_a_history_and_folds_what_came_before_the_rule(
     tmp_path: Path,
 ) -> None:

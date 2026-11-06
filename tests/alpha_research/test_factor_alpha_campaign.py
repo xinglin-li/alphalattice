@@ -906,6 +906,7 @@ def test_a_shrunk_constant_configuration_cannot_win_on_cheap_turnover() -> None:
     ) == ("RIDGE", trials[1])
 
 
+@pytest.mark.proves("alpha_research.sealed_selection_survives_added_members")
 def test_sealed_inner_selection_record_survives_the_new_members() -> None:
     """Sealed inner selection record survives the new members."""
 

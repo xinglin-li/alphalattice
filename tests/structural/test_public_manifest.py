@@ -36,6 +36,7 @@ _REVIEW_FIXTURE = "sk-" + "X" * 40 + " x@example.invalid"
 _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 @pytest.mark.parametrize(
     ("path", "kind", "rule"),
     [
@@ -112,6 +113,7 @@ def test_public_manifest_prioritizes_private_rules_and_never_guesses(path, kind,
     assert decision[2]
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_the_full_release_closure_check_names_its_private_inventory_input():
     assert classify("tests/structural/test_public_release_closure.py", set(), set(), set()) == (
         "PRIVATE",
@@ -145,6 +147,7 @@ def test_the_full_release_closure_check_names_its_private_inventory_input():
         )
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 @pytest.mark.parametrize(
     "path", ["", "../src/one.py", "/src/one.py", "src\\one.py", "C:/one.py", "src/one\0.py"]
 )
@@ -153,6 +156,7 @@ def test_public_manifest_rejects_unsafe_paths(path):
         validate_path(path)
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_public_manifest_hashes_supplied_git_bytes_and_covers_every_file():
     sha = "a" * 40
     census = {"base": "b" * 40, "modules": [{"path": "src/alphalattice/main.py", "class": "LIVE"}]}
@@ -194,6 +198,7 @@ def test_public_manifest_hashes_supplied_git_bytes_and_covers_every_file():
     )
 
 
+@pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_generate_walks_development_labels_once_and_merges_its_findings(
     monkeypatch, tmp_path, capsys
 ):
@@ -251,6 +256,7 @@ def test_generate_walks_development_labels_once_and_merges_its_findings(
     assert cold == uncached == generate("a" * 40, blobs, dict.fromkeys(blobs, "100644"))
 
 
+@pytest.mark.proves("pipeline.public_review_never_copies_a_disclosure")
 def test_public_manifest_records_locations_without_copying_disclosures():
     secret = "sk-" + "X" * 40
     session = "12345678-1234-4123-8123-123456789abc"
@@ -282,6 +288,7 @@ def test_public_manifest_records_locations_without_copying_disclosures():
     assert all(r["path"] == "src/public.py" and r["line"] > 0 for r in findings)
 
 
+@pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_development_label_ratchet_pins_each_public_files_count_and_spelling():
     owner = "src/public.py"
     private = "experience/private.md"
@@ -429,6 +436,7 @@ def test_development_label_ratchet_pins_each_public_files_count_and_spelling():
     assert len(internal_id_ratchet(changed, choices, catalog)["violations"]) == 1
 
 
+@pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary_words():
     """Ordinary words stay prose while qualified line and card forms remain labels."""
     cards = ["UI", "LEAD", "IS", "ACCEPT", "BADGE", "JOURNEY", "LAUNCH", "LAWS", "SEAL"]
@@ -440,6 +448,7 @@ def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary
     ] == [ux, perf, fix, cards[6], cards[4]]
 
 
+@pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_committed_development_label_allowance_cannot_grow_or_reset(
     tmp_path, synthetic_history, monkeypatch
 ):
@@ -577,6 +586,7 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
         validate_internal_id_history(tmp_path, "HEAD")
 
 
+@pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_first_landing_freezes_only_its_prepolicy_anchors_labels(tmp_path, synthetic_history):
     """First landing admits anchor labels, then keeps its allowance, source and format fixed."""
     git, commit = synthetic_history
@@ -625,6 +635,7 @@ def test_first_landing_freezes_only_its_prepolicy_anchors_labels(tmp_path, synth
             )
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_candidate_script_needs_a_consumer_outside_release_policy():
     script = "scripts/probe_panel_identity.py"
     blobs = {
@@ -642,6 +653,7 @@ def test_candidate_script_needs_a_consumer_outside_release_policy():
     assert script in {row["path"] for row in manifest["public"]}
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_candidate_script_reference_composed_from_path_parts_is_public():
     script = "scripts/run_alpha_model_adapter_parity.py"
     blobs = {
@@ -657,6 +669,7 @@ def test_candidate_script_reference_composed_from_path_parts_is_public():
     assert script in {row["path"] for row in manifest["public"]}
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_release_audit_tool_and_pin_stay_private_even_with_public_consumers():
     rule = next(row for row in RULES if row["rule"] == "PRIVATE_RELEASE_AUDIT")
     assert rule["patterns"]
@@ -669,6 +682,7 @@ def test_release_audit_tool_and_pin_stay_private_even_with_public_consumers():
         )
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_private_test_trees_keep_all_file_kinds_out_of_public_scope():
     rule = next(row for row in RULES if row["rule"] == "PRIVATE_TEST")
     trees = [pattern for pattern in rule["patterns"] if pattern.endswith("/**")]
@@ -683,6 +697,7 @@ def test_private_test_trees_keep_all_file_kinds_out_of_public_scope():
             )
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 @pytest.mark.parametrize(
     "path",
     [
@@ -701,6 +716,7 @@ def test_workbench_verification_needs_the_private_ui_qa_kit(path):
     )
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 @pytest.mark.parametrize(
     ("path", "reason"),
     [
@@ -1105,6 +1121,7 @@ def test_the_durations_come_from_junit_keep_the_latest_run_and_leave_out_private
             assert json.loads(result.read_text(encoding="utf-8"))["status"] == "unknown"
 
 
+@pytest.mark.proves("pipeline.public_review_never_copies_a_disclosure")
 @pytest.mark.parametrize(
     "path,text,rule,mode,admitted",
     [

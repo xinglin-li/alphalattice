@@ -95,6 +95,7 @@ def _assert_guidance_links_resolve(
                 assert unquote(url.fragment) in anchors, f"{name}: {href!r} has no heading"
 
 
+@pytest.mark.proves("pipeline.shipped_instruction_links_reach_their_targets")
 def test_every_shipped_instruction_link_reaches_its_checkout_target() -> None:
     """Every shipped instruction link reaches its checkout target."""
     from scripts.release.public_manifest import classify

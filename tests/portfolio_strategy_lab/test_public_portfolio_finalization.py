@@ -345,6 +345,7 @@ def test_the_validation_receipt_carries_no_metric_and_the_handoff_copies_none() 
 # ============================== rows 4 and 5: interruption and exact recovery
 
 
+@pytest.mark.proves("portfolio_strategy_lab.finalization_ledger_closes_each_package_once")
 @pytest.mark.parametrize(
     ("interrupt_at", "expected_permits", "expected_continuations"),
     [
@@ -466,6 +467,7 @@ def test_a_second_permit_for_the_same_candidate_is_refused(tmp_path: Path) -> No
         assert gate.reopen_permit(candidate=candidate) == permit
 
 
+@pytest.mark.proves("portfolio_strategy_lab.finalization_ledger_closes_each_package_once")
 def test_a_second_closure_of_one_permit_is_refused(tmp_path: Path) -> None:
     """The permit is spent at closure; a package cannot be swapped afterwards."""
 
@@ -481,6 +483,7 @@ def test_a_second_closure_of_one_permit_is_refused(tmp_path: Path) -> None:
         assert gate.reopen_receipt(permit=finalized.permit) == finalized.receipt
 
 
+@pytest.mark.proves("portfolio_strategy_lab.finalization_ledger_closes_each_package_once")
 def test_a_second_handoff_for_one_package_is_refused(tmp_path: Path) -> None:
     """One package, one handoff: downstream work cannot be given two answers."""
 
@@ -581,6 +584,7 @@ def test_a_permit_this_gate_never_issued_is_refused(tmp_path: Path) -> None:
             wired.application.gate.close(permit=foreign, candidate=candidate, package=package)
 
 
+@pytest.mark.proves("portfolio_strategy_lab.finalization_ledger_closes_each_package_once")
 def test_the_release_refuses_a_receipt_for_another_package(tmp_path: Path) -> None:
     """Row 7: the atomic bind is about the pair, not about either half."""
 

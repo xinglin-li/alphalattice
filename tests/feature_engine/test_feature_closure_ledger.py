@@ -519,6 +519,7 @@ def test_a_patch_keeps_a_missing_cell_apart_from_a_nan_one(tmp_path) -> None:
     assert table[f"{present}__valid"].to_pylist() == [True]
 
 
+@pytest.mark.proves("feature_engine.closure_ledger_survives_a_failed_commit")
 def test_commit_before_marker_is_reconciled_without_recomputing_store(
     tmp_path, monkeypatch
 ) -> None:
@@ -625,6 +626,7 @@ def test_new_listing_is_closed_with_the_complete_factor_axis(tmp_path) -> None:
     assert binding.sector_map_hash == recipe.sector_map_hash
 
 
+@pytest.mark.proves("feature_engine.closure_ledger_survives_a_failed_commit")
 def test_store_failure_leaves_prior_state_and_same_admission_can_retry(
     tmp_path, monkeypatch
 ) -> None:

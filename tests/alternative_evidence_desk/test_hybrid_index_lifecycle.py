@@ -358,6 +358,7 @@ def test_a_mismatched_or_tampered_priming_refuses_before_any_result(tmp_path: Pa
     assert corrupt.value.failure.code == "retrieval.vector_commitment_mismatch"
 
 
+@pytest.mark.proves("alternative_evidence.runtime_identity_binds_what_decides_selection")
 def test_the_retrieval_binding_covers_the_owners_that_decide_selection(tmp_path: Path) -> None:
     """The retrieval binding covers the owners that decide selection."""
 

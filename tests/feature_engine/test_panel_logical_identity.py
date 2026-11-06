@@ -21,6 +21,7 @@ from alphalattice.foundation.feature_engine.panels.logical_identity import (
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
+@pytest.mark.proves("feature_engine.logical_identity_moves_only_with_content")
 def test_physical_encoding_and_provenance_do_not_change_logical_identity(
     tmp_path: Path,
 ) -> None:
@@ -48,6 +49,7 @@ def test_physical_encoding_and_provenance_do_not_change_logical_identity(
     assert publisher.publish_snapshot(first, published_at=_later()) == first_marker
 
 
+@pytest.mark.proves("feature_engine.logical_identity_moves_only_with_content")
 @pytest.mark.parametrize(
     ("changed_values", "changed_valid"),
     [
@@ -84,6 +86,7 @@ def test_signed_zero_null_mask_and_values_rotate_logical_identity(
     )
 
 
+@pytest.mark.proves("feature_engine.logical_identity_moves_only_with_content")
 def test_policy_rotates_revision_without_changing_logical_content_manifest(
     tmp_path: Path,
 ) -> None:
@@ -117,6 +120,7 @@ def test_policy_rotates_revision_without_changing_logical_content_manifest(
     assert first_revision.logical_panel_hash != second_revision.logical_panel_hash
 
 
+@pytest.mark.proves("feature_engine.logical_identity_moves_only_with_content")
 def test_logical_semantic_index_binds_panel_factor_axis_and_selected_sessions(
     tmp_path: Path,
 ) -> None:
@@ -140,6 +144,7 @@ def test_logical_semantic_index_binds_panel_factor_axis_and_selected_sessions(
         index.slice_hash((date(2025, 1, 2),))
 
 
+@pytest.mark.proves("feature_engine.logical_identity_moves_only_with_content")
 def test_legacy_safe_summary_may_be_subset_of_physical_factor_axis(
     tmp_path: Path,
 ) -> None:
@@ -162,6 +167,7 @@ def test_legacy_safe_summary_may_be_subset_of_physical_factor_axis(
     assert index.factor_ids == ("factor_a", "legacy_factor")
 
 
+@pytest.mark.proves("feature_engine.current_pointer_swaps_fail_closed")
 def test_current_pointer_compare_and_swap_is_fail_closed(tmp_path: Path) -> None:
     resolver = ArtifactResolver(tmp_path / "artifacts")
     first = _publish_fixture(
@@ -187,6 +193,7 @@ def test_current_pointer_compare_and_swap_is_fail_closed(tmp_path: Path) -> None
     assert store.current_marker() == first_marker
 
 
+@pytest.mark.proves("feature_engine.logical_identity_moves_only_with_content")
 def test_an_unchanged_chunk_is_taken_as_published(tmp_path: Path, monkeypatch) -> None:
     """A chunk the current publication holds gives its year as published, equal to a build."""
     reads: list[object] = []
@@ -315,6 +322,7 @@ def _later() -> datetime:
     return datetime(2026, 8, 7, 0, 1, tzinfo=UTC)
 
 
+@pytest.mark.proves("feature_engine.logical_identity_moves_only_with_content")
 def test_the_write_batch_does_not_enter_a_panels_derivation_binding(tmp_path: Path) -> None:
     """Regression: the Feature closure's head is decided by how many listings each
     transition writes, an execution parameter, and it entered every Panel's derivation binding;

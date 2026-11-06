@@ -385,6 +385,7 @@ def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
     assert reader.read() == {"status": "OFF", "sessions": []} and not list(cache.iterdir())
 
 
+@pytest.mark.proves("observation_runtime.usage_recording_exposes_only_safe_health")
 @pytest.mark.parametrize("status", ["NOT_BOUND", "OFF", "OBSERVING", "STOPPED", "UNAVAILABLE"])
 def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_path, status):
     """Usage health exposes no callback identity, native path, content or supplied prose."""
@@ -466,6 +467,7 @@ def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_pat
         observer.close()
 
 
+@pytest.mark.proves("observation_runtime.usage_recording_exposes_only_safe_health")
 @pytest.mark.parametrize(
     "status,reason,expected_reason",
     [
@@ -499,6 +501,7 @@ def test_native_usage_callback_refuses_unknown_status_or_untyped_reason(
         observer.close()
 
 
+@pytest.mark.proves("observation_runtime.usage_recording_exposes_only_safe_health")
 @pytest.mark.untyped_failure
 def test_native_usage_callback_failure_is_isolated_from_recording_health(tmp_path):
     """A failed health read reveals its safe code without changing recording or counters."""

@@ -1268,6 +1268,7 @@ def test_child_tampering_refuses_before_capability_or_model_work(tmp_path: Path)
     assert calls == []
 
 
+@pytest.mark.proves("alternative_evidence.runtime_identity_refuses_a_changed_capability")
 def test_a_semantic_capability_mismatch_refuses_installation(tmp_path: Path) -> None:
     binding, _registry_path = _package(tmp_path)
     with pytest.raises(ResearchWorkspaceError, match="semantic_capability_invalid"):

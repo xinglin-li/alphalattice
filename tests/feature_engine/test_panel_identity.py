@@ -38,6 +38,7 @@ def _raw_panel_table() -> pa.Table:
     )
 
 
+@pytest.mark.proves("feature_engine.panel_chunks_stay_bound_to_their_writer")
 def test_ephemeral_duckdb_preserves_legacy_row_hash_golden() -> None:
     """Control: Ephemeral duckdb preserves legacy row hash golden."""
     table = identity_panel_table(_raw_panel_table())
@@ -60,6 +61,7 @@ def test_ephemeral_duckdb_preserves_legacy_row_hash_golden() -> None:
     ]
 
 
+@pytest.mark.proves("feature_engine.panel_chunks_stay_bound_to_their_writer")
 def test_annual_parquet_rewrite_is_byte_stable(tmp_path: Path) -> None:
     """Control: Annual parquet rewrite is byte stable."""
     table = identity_panel_table(_raw_panel_table())
@@ -672,6 +674,7 @@ def test_an_interrupted_composition_retried_under_the_same_binding_keeps_its_fil
     assert not reachability.incomplete_publication
 
 
+@pytest.mark.proves("feature_engine.panel_chunks_stay_bound_to_their_writer")
 def test_reader_validates_each_chunk_under_the_binding_that_wrote_it(
     tmp_path: Path, request
 ) -> None:

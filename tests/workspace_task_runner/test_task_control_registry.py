@@ -702,6 +702,7 @@ def test_the_queue_keeps_the_operators_places_and_a_recovery_holds_no_running_pl
     registry.check_capacity()  # one Task waits in two places
 
 
+@pytest.mark.proves("task_control.a_lost_ledger_rebuilds_only_admitted_work")
 def test_a_lost_ledger_lists_its_tasks_again_from_their_frozen_requests(tmp_path: Path) -> None:
     """requirement (V181, U33, LAWS DA2): each admission's request, with the session that
     submitted it, is written before its row; a store lost and made again lists the Task from it,
@@ -755,6 +756,7 @@ def test_a_lost_ledger_lists_its_tasks_again_from_their_frozen_requests(tmp_path
         rebuilt_store.rebuild_from_requests(observed_at=now + timedelta(minutes=4))
 
 
+@pytest.mark.proves("task_control.a_lost_ledger_rebuilds_only_admitted_work")
 @pytest.mark.parametrize("failure_code", ["task_control.ledger_rebuilt", "fixture.blocked"])
 def test_only_a_ledger_rebuilt_block_can_close_without_discarding_its_history(
     tmp_path: Path, failure_code: str
@@ -1967,6 +1969,7 @@ def test_blocked_task_recovery_requires_explicit_matching_failure(tmp_path: Path
     assert registry.task(blocked.task_id) == reopened, "the stale loser changed nothing"
 
 
+@pytest.mark.proves("task_control.a_lost_ledger_rebuilds_only_admitted_work")
 @pytest.mark.parametrize("state", (*TaskLifecycle, "RECOVERY_WITH_CANCEL"))
 def test_new_writer_reconciles_only_orphan_execution_and_accepted_cancel(
     tmp_path: Path, state

@@ -1653,6 +1653,7 @@ def test_a_study_stopped_under_the_old_schema_rule_is_refused_by_name_and_planne
         assert body["result"]["fit_call_count"] == folds - 2
 
 
+@pytest.mark.proves("feature_engine.factor_handoff_refuses_a_changed_input")
 def test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool(
     inputs: Path, tmp_path: Path, monkeypatch
 ):
@@ -1734,6 +1735,7 @@ def test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool(
     assert read_factor_bundle(workspace, binding.binding_hash) == enhanced
 
 
+@pytest.mark.proves("feature_engine.handoff_binds_logical_closure_without_mutating_inputs")
 def test_handoff_binding_adds_logical_closure_without_mutating_factor_inputs(
     inputs: Path, tmp_path: Path
 ):
@@ -1860,6 +1862,7 @@ def test_controls_and_a_missing_prerequisite_name_the_flows_way_on(inputs: Path,
         assert unknown["fields"] == [["input_binding_hash"]] and unknown["detail"]
 
 
+@pytest.mark.proves("factor_research.curation_and_handoff_are_durable_without_execution")
 def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_train(
     inputs: Path,
     published,

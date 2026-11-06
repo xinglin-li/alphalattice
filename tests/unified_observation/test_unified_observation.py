@@ -114,6 +114,7 @@ def _draft(
     )
 
 
+@pytest.mark.proves("observation_runtime.ledger_records_each_event_once_and_keeps_history")
 def test_append_is_idempotent_and_sequence_collision_fails(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     first = port.emit(_draft(sequence=1))
@@ -131,6 +132,7 @@ def test_append_is_idempotent_and_sequence_collision_fails(tmp_path: Path) -> No
         port.emit(_draft(sequence=1, status="BLOCKED"))
 
 
+@pytest.mark.proves("observation_runtime.ledger_records_each_event_once_and_keeps_history")
 def test_correction_appends_and_retains_prior(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     first = port.emit(_draft(sequence=1))
@@ -141,6 +143,7 @@ def test_correction_appends_and_retains_prior(tmp_path: Path) -> None:
     assert ledger.read(first.observation_id).availability is ObservationAvailability.AVAILABLE
 
 
+@pytest.mark.proves("observation_runtime.ledger_reads_answer_exactly_or_refuse")
 def test_unique_correlation_read_uses_exact_run_schema_and_array_membership(tmp_path: Path) -> None:
     """An exact RETURNED-envelope link cannot follow a prefix, payload, or another run."""
     ledger, port = _runtime(tmp_path)
@@ -180,6 +183,7 @@ def test_unique_correlation_read_uses_exact_run_schema_and_array_membership(tmp_
     ledger.close()
 
 
+@pytest.mark.proves("observation_runtime.ledger_reads_answer_exactly_or_refuse")
 def test_unique_correlation_read_refuses_multiple_envelopes(tmp_path: Path) -> None:
     """A reused correlation does not select the newest record or credit either candidate."""
     ledger, port = _runtime(tmp_path)
@@ -190,6 +194,7 @@ def test_unique_correlation_read_refuses_multiple_envelopes(tmp_path: Path) -> N
     ledger.close()
 
 
+@pytest.mark.proves("observation_runtime.ledger_reads_answer_exactly_or_refuse")
 @pytest.mark.parametrize("selector", ["run", "schema"])
 def test_unique_correlation_read_does_not_decode_outside_its_scope(
     tmp_path: Path, selector: str
@@ -215,6 +220,7 @@ def test_unique_correlation_read_does_not_decode_outside_its_scope(
     ledger.close()
 
 
+@pytest.mark.proves("observation_runtime.ledger_reads_answer_exactly_or_refuse")
 @pytest.mark.parametrize("corruption", ["indexed_column", "envelope_json"])
 def test_unique_correlation_read_preserves_store_integrity_refusals(
     tmp_path: Path, corruption: str
@@ -244,6 +250,7 @@ def test_unique_correlation_read_preserves_store_integrity_refusals(
     ledger.close()
 
 
+@pytest.mark.proves("observation_runtime.ledger_reads_answer_exactly_or_refuse")
 @pytest.mark.parametrize(
     "selectors", [("", "schema", "correlation"), ("run", "", "correlation"), ("run", "schema", "")]
 )
@@ -256,6 +263,7 @@ def test_unique_correlation_read_refuses_empty_selectors(
     ledger.close()
 
 
+@pytest.mark.proves("observation_runtime.ledger_refuses_what_it_must_never_hold")
 def test_unknown_fields_and_secret_like_fields_fail_before_append(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     draft = _draft(sequence=1).model_copy(
@@ -273,6 +281,7 @@ def test_unknown_fields_and_secret_like_fields_fail_before_append(tmp_path: Path
     assert ledger.all_observations() == ()
 
 
+@pytest.mark.proves("observation_runtime.ledger_refuses_what_it_must_never_hold")
 @pytest.mark.parametrize(
     ("sensitivity", "retention"),
     (
@@ -300,6 +309,7 @@ def test_public_port_rejects_private_and_internal_cognition_payloads_before_appe
     assert ledger.all_observations() == ()
 
 
+@pytest.mark.proves("observation_runtime.ledger_refuses_what_it_must_never_hold")
 def test_public_api_does_not_expose_a_raw_ledger_append_bypass(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     unsafe = _draft(sequence=1).model_copy(
@@ -321,6 +331,7 @@ def test_public_api_does_not_expose_a_raw_ledger_append_bypass(tmp_path: Path) -
     assert ledger.all_observations() == ()
 
 
+@pytest.mark.proves("observation_runtime.ledger_refuses_what_it_must_never_hold")
 def test_durable_decision_requires_external_authority_reference(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     without_authority = _draft(sequence=1, retention=ObservationRetentionClass.DURABLE_DECISION)
@@ -331,6 +342,7 @@ def test_durable_decision_requires_external_authority_reference(tmp_path: Path) 
     assert ledger.all_observations() == ()
 
 
+@pytest.mark.proves("observation_runtime.ledger_refuses_what_it_must_never_hold")
 def test_durable_decision_rejects_hash_shaped_but_unreadable_authority(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     unreadable = build_observation_authority_reference(
@@ -365,6 +377,7 @@ def test_durable_decision_rejects_hash_shaped_but_unreadable_authority(tmp_path:
     assert ledger.all_observations() == ()
 
 
+@pytest.mark.proves("observation_runtime.ledger_stays_inside_its_storage_cap")
 def test_retention_evicts_transient_ring_and_compacts_completed_run(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     transient_ids: list[str] = []
@@ -411,6 +424,7 @@ def test_retention_evicts_transient_ring_and_compacts_completed_run(tmp_path: Pa
     assert report.physical_bytes_after <= policy.ledger_cap_bytes
 
 
+@pytest.mark.proves("observation_runtime.ledger_stays_inside_its_storage_cap")
 def test_append_lifecycle_enforces_transient_ring_and_physical_cap(tmp_path: Path) -> None:
     policy = ObservationRetentionPolicy.model_construct(
         workspace_managed_cap_bytes=10 * 1024 * 1024,
@@ -452,6 +466,7 @@ def test_append_lifecycle_enforces_transient_ring_and_physical_cap(tmp_path: Pat
     assert ledger.physical_store_bytes() <= policy.ledger_cap_bytes
 
 
+@pytest.mark.proves("observation_runtime.ledger_stays_inside_its_storage_cap")
 def test_protected_root_over_budget_fails_without_partial_compaction(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     appended = port.emit(_draft(sequence=1))
@@ -472,6 +487,7 @@ def test_protected_root_over_budget_fails_without_partial_compaction(tmp_path: P
     assert ledger.read(appended.observation_id).availability is ObservationAvailability.AVAILABLE
 
 
+@pytest.mark.proves("observation_runtime.ledger_has_one_sqlite_writer")
 def test_sqlite_wal_reader_does_not_block_single_writer(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     first = port.emit(_draft(sequence=1))
@@ -486,6 +502,7 @@ def test_sqlite_wal_reader_does_not_block_single_writer(tmp_path: Path) -> None:
     assert ledger.read(second.observation_id).availability is ObservationAvailability.AVAILABLE
 
 
+@pytest.mark.proves("observation_runtime.ledger_has_one_sqlite_writer")
 def test_sqlite_writer_configuration_matches_derived_projection_policy(tmp_path: Path) -> None:
     StorageCapStore(tmp_path).write(200 * 1024**2, chosen_by="HUMAN", chosen_at=NOW)
     ledger, _port = _runtime(tmp_path)
@@ -500,6 +517,7 @@ def test_sqlite_writer_configuration_matches_derived_projection_policy(tmp_path:
     assert ledger._writer.execute("PRAGMA auto_vacuum").fetchone()[0] == 2
 
 
+@pytest.mark.proves("observation_runtime.ledger_stays_inside_its_storage_cap")
 def test_an_open_observation_ledger_follows_the_workspace_cap_without_reidentifying_records(
     tmp_path: Path,
 ) -> None:
@@ -536,6 +554,7 @@ def test_an_open_observation_ledger_follows_the_workspace_cap_without_reidentify
     reopened.close()
 
 
+@pytest.mark.proves("observation_runtime.ledger_has_one_sqlite_writer")
 def test_second_sqlite_writer_fails_with_bounded_safe_detail(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     with sqlite3.connect(ledger.database_path, isolation_level=None) as competing_writer:
@@ -552,6 +571,7 @@ def test_second_sqlite_writer_fails_with_bounded_safe_detail(tmp_path: Path) -> 
     assert tuple((tmp_path / "observation-storage-failures").glob("*.json"))
 
 
+@pytest.mark.proves("observation_runtime.ledger_records_each_event_once_and_keeps_history")
 def test_failed_write_rolls_back_and_reuses_persistent_writer(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     writer_identity = id(ledger._writer)
@@ -572,6 +592,7 @@ def test_failed_write_rolls_back_and_reuses_persistent_writer(tmp_path: Path) ->
     assert id(ledger._writer) == writer_identity
 
 
+@pytest.mark.proves("observation_runtime.ledger_reads_answer_exactly_or_refuse")
 def test_bounded_read_has_tail_cursor_gap_reset_and_restart_semantics(tmp_path: Path) -> None:
     """The workspace activity feed's contract: what a reader can rely on across
     a poll, a producer replay, retention, a service restart and a rebuilt store."""

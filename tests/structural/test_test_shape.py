@@ -2,9 +2,12 @@
 
 import json
 
+import pytest
+
 import check_test_shape as shape
 from check_playpen import shrink_only_growth
 from check_test_shape import problems
+from devtools.testing.requirements import file_holders
 
 PATH = "tests/owner/test_example.py"
 
@@ -98,6 +101,35 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps() -
     assert not problems(PATH, None, marked) and not problems(PATH, None, "import pytest\n" + held)
     debt = "class A:\n    " + missing.replace("\n", "\n    ")
     assert problems(PATH, debt, debt.replace("class A", "class B"))
+
+
+@pytest.mark.proves("testing.only_a_requirement_marker_may_join_an_oversized_test_file")
+def test_an_oversized_test_file_takes_a_marker_line_and_nothing_else() -> None:
+    """A whole proves line is free; a comment on it, or any other line, still counts as growth."""
+    path = "tests/example/test_big.py"
+    big = "# " + "x" * shape.CAP_BYTES + "\ndef test_a():\n    pass\n"
+
+    def refused(new: str) -> bool:
+        return any("a test file stays under 100 KB" in line for line in problems(path, big, new))
+
+    assert not refused(big.replace("def test_a", '@pytest.mark.proves("a.b")\ndef test_a'))
+    assert not refused(big.replace("def test_a", '@pytest.mark.proves("a.b")\r\ndef test_a'))
+    assert refused(big.replace("def test_a", '@pytest.mark.proves("a.b")  # why\ndef test_a'))
+    assert refused(big.replace("def test_a", "@pytest.mark.slow\ndef test_a"))
+    assert refused(big + "# one more line\n")
+    plain = "def test_a():\n    pass\n"
+    mark = '@pytest.mark.proves("a.b")\n'
+    marked = mark + plain
+    digest = [file_holders("t.py", text, size_scope=True)[0].digest for text in (plain, marked)]
+    assert digest[0] == digest[1]  # a Large test keeps its lanes when it gains a marker
+    edited = marked.replace("pass", "assert True")
+    assert file_holders("t.py", edited, size_scope=True)[0].digest != digest[0]
+    fixture = 'def test_a():\n    source = """\n' + mark + '"""\n'
+    changed_fixture = fixture.replace('"a.b"', '"a.c"')
+    assert (
+        file_holders("t.py", fixture, size_scope=True)[0].digest
+        != file_holders("t.py", changed_fixture, size_scope=True)[0].digest
+    )
 
 
 def test_source_caps_hold_growth_by_qualified_function_and_spare_existing_debt() -> None:

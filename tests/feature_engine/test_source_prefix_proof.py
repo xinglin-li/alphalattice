@@ -335,6 +335,7 @@ def test_feature_prefix_reads_only_declared_values_dates_and_listings(feature_so
     )
 
 
+@pytest.mark.proves("feature_engine.source_prefix_proof_tells_changed_rows_apart")
 def test_feature_prefix_keeps_null_nan_negative_zero_and_absent_rows_distinct(feature_source):
     feature, catalog = feature_source
     factors = catalog.factor_ids[:3]
@@ -820,6 +821,7 @@ def test_a_closed_year_answers_by_its_seal_as_its_values_would(feature_source):
     )
 
 
+@pytest.mark.proves("feature_engine.source_prefix_proof_tells_changed_rows_apart")
 def test_a_write_to_a_closed_year_removes_its_seal_and_moves_the_proof(feature_source):
     """requirement: every Feature writer ends its years' seals in its own
     transaction, so a correction to a closed year moves the proof the next day."""

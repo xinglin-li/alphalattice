@@ -516,6 +516,7 @@ def test_the_environment_is_read_by_one_helper_and_the_named_keys() -> None:
     assert _environment_readers(ROOT / "src" / "alphalattice") == set(_ENVIRONMENT_READERS)
 
 
+@pytest.mark.proves("shared_kernel.schema_hash_ignores_prose_and_binds_structure")
 def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
     """requirement (SH, LAWS.md SC3, V98, V247): a schema's words -- a model's docstring, a
     field's description, an enum's docstring, a title, examples -- move no schema hash; a type,

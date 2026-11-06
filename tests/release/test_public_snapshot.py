@@ -85,6 +85,7 @@ def _manifest(repository: Path, path: Path, files: list[str]) -> str:
     return source
 
 
+@pytest.mark.proves("pipeline.public_snapshot_holds_only_proved_bytes")
 def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
     private: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -222,6 +223,7 @@ def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
     assert project_public(sizes, clean, private_paths, private_paths | public_paths) == (clean, [])
 
 
+@pytest.mark.proves("pipeline.public_snapshot_holds_only_proved_bytes")
 def test_the_builder_refuses_what_it_cannot_prove(private: Path, tmp_path: Path) -> None:
     """requirement (RR2): a blob whose hash is not the manifest's, a file no rule settles, an
     identity that is not `Name <email>` and an output that already holds files are refused by
