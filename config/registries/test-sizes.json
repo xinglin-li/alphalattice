@@ -2591,12 +2591,6 @@
       "seen_on": [
         "mac1"
       ]
-    },
-    {
-      "node": "tests/integration/product_host/test_workspace_activity.py::test_cursor_reconnect_restart_and_typed_read_refusals",
-      "owner": "tests.portfolio_strategy_lab",
-      "until": "2026-11-06",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
     }
   ],
   "mandatory": [
