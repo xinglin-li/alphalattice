@@ -631,6 +631,135 @@ def _case_dependents(
     return dependents
 
 
+def _registered_fixtures(conftest: str, root: Path | None) -> dict[str, set[str]] | None:
+    """The fixtures a conftest only registers, by provider file; None when it does anything else."""
+    found: dict[str, set[str]] = {}
+    for node in ast.parse(((root or PLAYPEN_ROOT) / conftest).read_text("utf-8")).body:
+        if not isinstance(node, ast.ImportFrom) or not (node.module or "").startswith("tests."):
+            return None
+        if any(item.asname not in (None, item.name) or item.name == "*" for item in node.names):
+            return None
+        names = found.setdefault((node.module or "").replace(".", "/") + ".py", set())
+        names.update(item.name for item in node.names)
+    return found
+
+
+@cache
+def _names_in(path: Path) -> frozenset[str]:
+    """Each parameter and string a test file holds: what can name a fixture."""
+    nodes = tuple(ast.walk(ast.parse(path.read_text("utf-8"))))
+    named = {node.arg for node in nodes if isinstance(node, ast.arg)}
+    named |= {
+        node.value
+        for node in nodes
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    return frozenset(named)
+
+
+def _fixture_users(
+    conftest: str, impacted: set[str], seeds: frozenset[str], root: Path | None
+) -> tuple[str, ...] | None:
+    """The tests a conftest carries when it is impacted only as a registry of fixture providers:
+    those naming a reached provider's fixture or an indirect dependent.
+    None when it must carry every test below it."""
+    registered = None if conftest in seeds else _registered_fixtures(conftest, root)
+    reached = {path for path in (registered or {}) if path in impacted}
+    if not reached or any(
+        not path.startswith("tests/_support/") or not path.endswith("_fixtures.py")
+        for path in reached
+    ):
+        return None
+    assert registered is not None
+    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    automatic: set[str] = set()
+    try:
+        for path, names in registered.items():
+            body = ast.parse(((root or PLAYPEN_ROOT) / path).read_text("utf-8")).body
+            definitions = {
+                node.name: node
+                for node in body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            if path in reached:
+                if any(name.startswith("pytest_") for name in definitions.keys() | names):
+                    return None
+                for function in definitions.values():
+                    for decorator in function.decorator_list:
+                        if isinstance(decorator, ast.Call) and any(
+                            keyword.arg in {None, "name"}
+                            or (
+                                keyword.arg == "autouse"
+                                and not (
+                                    isinstance(keyword.value, ast.Constant)
+                                    and keyword.value.value is False
+                                )
+                            )
+                            for keyword in decorator.keywords
+                        ):
+                            return None
+            for name in names:
+                if name.startswith("pytest_"):
+                    continue
+                if name not in definitions:
+                    return None  # re-exported or dynamic fixture: its dependencies are unknown
+                functions[name] = definitions[name]
+                if any(
+                    isinstance(decorator, ast.Call)
+                    and any(
+                        keyword.arg in {None, "autouse", "name"} for keyword in decorator.keywords
+                    )
+                    for decorator in definitions[name].decorator_list
+                ):
+                    automatic.add(name)
+    except (OSError, SyntaxError, UnicodeError):
+        return None
+    names = {name for path in reached for name in registered[path]}
+    while True:
+        expanded = names | {
+            name
+            for name, function in functions.items()
+            if names
+            & {
+                arg.arg
+                for arg in (
+                    *function.args.posonlyargs,
+                    *function.args.args,
+                    *function.args.kwonlyargs,
+                )
+            }
+        }
+        if expanded == names:
+            break
+        names = expanded
+    if names & automatic:
+        return None
+    directory = conftest.rsplit("/", 1)[0]
+    facts = _case_file_facts() if root is None else _case_file_facts_for(root)
+    try:
+        for child in facts:
+            if (
+                child != conftest
+                and child.startswith(directory + "/")
+                and child.endswith("/conftest.py")
+            ):
+                body = ast.parse(((root or PLAYPEN_ROOT) / child).read_text("utf-8")).body
+                if any(
+                    names
+                    & {
+                        arg.arg
+                        for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+                    }
+                    for node in body
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                ):
+                    return None
+    except (OSError, SyntaxError, UnicodeError):
+        return None
+    below = _subtree_tests(directory, root)
+    return tuple(test for test in below if names & _names_in((root or PLAYPEN_ROOT) / test))
+
+
 def _tests_depending_on(seeds: frozenset[str], root: Path | None = None) -> tuple[str, ...]:
     """Every test that reaches a seed file, transitively through case files.
 
@@ -638,8 +767,9 @@ def _tests_depending_on(seeds: frozenset[str], root: Path | None = None) -> tupl
     name (`tests.pkg.helper`, or a name below it), imports it by bare stem from
     the same directory (the pre-package spelling the routing cases still use),
     or quotes its file name as a string constant. An impacted `conftest.py` or
-    `__init__.py` impacts every test below it; an unparsable file impacts its
-    whole directory.
+    `__init__.py` impacts every test below it, except a conftest that only registers
+    fixture providers, which impacts the tests naming their fixtures; an unparsable
+    file impacts its whole directory.
     """
 
     facts = _case_file_facts() if root is None else _case_file_facts_for(root)
@@ -660,7 +790,10 @@ def _tests_depending_on(seeds: frozenset[str], root: Path | None = None) -> tupl
     for key in impacted:
         directory = key.rsplit("/", 1)[0]
         if Path(key).name in {"conftest.py", "__init__.py"}:
-            selected |= _subtree_tests(directory, root)
+            users = (
+                _fixture_users(key, impacted, seeds, root) if key.endswith("conftest.py") else None
+            )
+            selected |= _subtree_tests(directory, root) if users is None else set(users)
         imports, _quoted = facts.get(key, (frozenset(), frozenset()))
         if imports is None or directory in unparsable_directories:
             # An unreadable file beside an impacted one is an unknown
