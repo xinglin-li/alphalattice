@@ -185,7 +185,7 @@ def test_a_crashed_workers_prefetched_case_keeps_its_place_in_the_order() -> Non
     sent, pending = _crash_after_prefetch(collection.ordered_requeue())
     assert sent[:4] == [0, 1, 4, 3] and pending == sorted(pending)
     node = (
-        "tests/workspace_readiness/test_input_revisions.py::"
+        "tests/integration/product_host/test_input_revisions.py::"
         "test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged"
     )
     other = "tests/test_scheduling_example.py::test_measured"

@@ -21,7 +21,7 @@ frozen research whitelist.
 Run the offline invariant:
 
 ```powershell
-.venv\Scripts\python.exe -m pytest --no-cov tests/current_universe_bootstrap/test_current_universe.py -q
+.venv\Scripts\python.exe -m pytest --no-cov tests/integration/data/test_current_universe.py -q
 ```
 
 Run an explicit live discovery (the current source pages may legitimately fail

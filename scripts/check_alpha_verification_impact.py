@@ -14,7 +14,7 @@ import sys
 import types
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from time import perf_counter
 from typing import NamedTuple
@@ -44,7 +44,11 @@ from check_playpen import STRUCTURAL_TEST_PATHS  # type: ignore[import-not-found
 # The build-time owner of import resolution. Reused rather than reimplemented:
 # it already resolves relative imports and package initializers, and a second
 # parser here is what produced a wrong answer for `__init__.py`.
-from devtools.architecture.git_inputs import read_blobs  # noqa: E402
+from devtools.architecture.git_inputs import (  # noqa: E402
+    read_blobs,
+    staged_changes,
+    table_moves,
+)
 from devtools.architecture.neutral_changes import (  # noqa: E402
     git_previous,
     moved_files,
@@ -58,6 +62,7 @@ from devtools.architecture.structural import (  # noqa: E402
     kept_facts,
 )
 from devtools.pipeline.stage import DEADLINE_ROOTS, derived_holders  # noqa: E402
+from devtools.testing.layout import placed_tests  # noqa: E402
 
 _PARENT_REVISION = "HEAD"
 """The commit a change is measured against: `--base`, else HEAD. `main` sets it."""
@@ -633,6 +638,98 @@ def _case_dependents(
     return dependents
 
 
+def _anchored(node: ast.AST, path: PurePosixPath) -> PurePosixPath | None:
+    """The repository path a `Path(__file__)...` expression names, read from this file's place."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and len(node.args) == 1:
+        named = node.args[0]
+        stated = isinstance(named, ast.Name) and named.id == "__file__"
+        return path if stated and node.func.id.endswith("Path") else None
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        base = _anchored(node.func.value, path)
+        if base is None or node.keywords:
+            return None
+        if node.func.attr == "resolve" and not node.args:
+            return base
+        names = [arg.value for arg in node.args if isinstance(arg, ast.Constant)]
+        wanted = node.func.attr == "with_name" and len(node.args) == len(names) == 1
+        return base.with_name(str(names[0])) if wanted else None
+    if isinstance(node, ast.Attribute) and node.attr == "parent":
+        base = _anchored(node.value, path)
+        return None if base is None else base.parent
+    if (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == "parents"
+        and isinstance(node.slice, ast.Constant)
+        and isinstance(node.slice.value, int)
+    ):
+        base = _anchored(node.value.value, path)
+        return None if base is None else base.parents[node.slice.value]
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        base = _anchored(node.left, path)
+        part = node.right.value if isinstance(node.right, ast.Constant) else None
+        return None if base is None or not isinstance(part, str) else base / part
+    return None
+
+
+class _MoveRewrite(ast.NodeTransformer):
+    """A file with what a move's map owns made equal: imports, anchors and the map's own names."""
+
+    def __init__(self, path: str, names: re.Pattern[str], places: dict[str, str]) -> None:
+        self.path, self.names, self.places = PurePosixPath(path), names, places
+
+    def visit(self, node: ast.AST) -> ast.AST | None:
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            return None
+        resolved = _anchored(node, self.path) if isinstance(node, ast.expr) else None
+        return ast.Constant(resolved.as_posix()) if resolved else super().visit(node)
+
+    def visit_Constant(self, node: ast.Constant) -> ast.Constant:
+        if isinstance(node.value, str):
+            node.value = self.names.sub(lambda found: self.places[found[0]], node.value)
+        return node
+
+
+def _follows_the_move(before: str, after: str, old: str, new: str, moves: dict[str, str]) -> bool:
+    """Whether a moved test differs from its old self only by what the move's rewrite owns: its
+    imports, its file-relative anchors where each still names the same path, and the map's names."""
+    places = {key: value for key, value in moves.items()}
+    places |= {k[:-3].replace("/", "."): v[:-3].replace("/", ".") for k, v in moves.items()}
+    order = sorted(places, key=len, reverse=True)
+    names = re.compile("|".join(re.escape(name) for name in order))
+    try:
+        trees = [ast.parse(before), ast.parse(after)]
+    except SyntaxError:
+        return False
+    for path, tree in zip((old, new), trees, strict=True):
+        _MoveRewrite(path, names, places).visit(tree)
+    return ast.dump(trees[0]) == ast.dump(trees[1])
+
+
+def _spared_moves(base: str | None) -> frozenset[str]:
+    """Both paths of each moved test this change's table pairs and its rewrite alone explains:
+    its nodes map one to one, so the map's proof answers for it and the stage does not repeat it."""
+    if base is None:
+        return frozenset()
+    pairs = staged_changes(PLAYPEN_ROOT, base=base, tree="HEAD")
+    config = {
+        path: meta[3] for meta, path in pairs if path.startswith("config/") and meta[4] != "D"
+    }
+    read = read_blobs(list(config.values()), PLAYPEN_ROOT)
+    moves = table_moves(pairs, {path: read[oid] for path, oid in config.items()})
+    tests = {new: old for new, old in moves.items() if Path(new).name.startswith("test_")}
+    specs = [f"{base}:{old}" for old in tests.values()] + [f"HEAD:{new}" for new in tests]
+    blobs = read_blobs(specs, PLAYPEN_ROOT)
+    return frozenset(
+        path
+        for new, old in tests.items()
+        if f"{base}:{old}" in blobs
+        and f"HEAD:{new}" in blobs
+        and _follows_the_move(blobs[f"{base}:{old}"], blobs[f"HEAD:{new}"], old, new, moves)
+        for path in (new, old)
+    )
+
+
 def _registered_fixtures(conftest: str, root: Path | None) -> dict[str, set[str]] | None:
     """The fixtures a conftest only registers, by provider file; None when it does anything else."""
     found: dict[str, set[str]] = {}
@@ -1041,7 +1138,9 @@ def _deleted_module_tests(value: str) -> tuple[str, ...]:
     if value.endswith("/__init__.py"):
         seeds.update(name for name in by_path.values() if name.startswith(f"{module}."))
     reached = _tests_touching(_reaching_modules(frozenset(seeds), parent), parent)
-    return tuple(path for path in reached if (PLAYPEN_ROOT / path).is_file())
+    places = placed_tests(PLAYPEN_ROOT)  # a test moved since the parent still covers the module
+    moved = (places.get(path, path) for path in reached)
+    return tuple(path for path in moved if (PLAYPEN_ROOT / path).is_file())
 
 
 def _moved_module_tests(value: str) -> tuple[str, ...]:
@@ -1219,6 +1318,10 @@ def _select() -> int:
         if verdict.neutral
     )
     changed = tuple(value for value in all_changed if value not in neutral)
+    spared = _spared_moves(args.base)
+    changed = tuple(value for value in changed if value not in spared)
+    if spared:
+        print(f"spared: {len(spared) // 2} moved tests follow their map", file=sys.stderr)
     try:
         declared = _declared_holders(all_changed, base=args.base, staged=args.staged)
     except (OSError, ValueError, SyntaxError, UnicodeError, subprocess.SubprocessError) as error:
@@ -1264,9 +1367,9 @@ def _select() -> int:
                 _run_admitted_tests(execution)
         return 0
     impact = alpha_verification_impact(changed)
-    absent = tuple(
-        value for value in impact.required_test_paths if not (PLAYPEN_ROOT / value).is_file()
-    )
+    places = placed_tests(PLAYPEN_ROOT)
+    selected = tuple(places.get(value, value) for value in impact.required_test_paths)
+    absent = tuple(value for value in selected if not (PLAYPEN_ROOT / value).is_file())
     if absent:
         # This used to be an `is_file()` filter, which turned a declared
         # verification test that had been moved or deleted into a silent
@@ -1291,7 +1394,7 @@ def _select() -> int:
         # Refusing is the only honest answer left: an empty plan would report
         # full coverage for a change nobody can map to a test.
         raise SystemExit(f"product verification selection unavailable: {error}") from error
-    required_tests = set(impact.required_test_paths)
+    required_tests = set(selected)
     declared_files = {node.partition("::")[0] for node in declared}
     absent_declared = sorted(path for path in declared_files if not (PLAYPEN_ROOT / path).is_file())
     if absent_declared:
@@ -1311,6 +1414,9 @@ def _select() -> int:
         # GN: the files proved neutral (no tests) and the files only moved (their own
         # tests and those naming them, not every importer's).
         "neutral_paths": neutral,
+        # The moved tests that follow their map: the commit tier leaves them out, so a stage
+        # answers for what a move actually edited. Post-merge and the nightly still run them.
+        "spared_paths": tuple(sorted(spared)),
         "moved_paths": {path: sorted(names) for path, names in sorted(moved.items())},
         "reach_roles": reach,
         "domains": impact.domains,

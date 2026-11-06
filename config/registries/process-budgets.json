@@ -1,5 +1,5 @@
 {
-  "note": "What the product may leave on the person's machine, by process kind: how many processes, how much commit and CPU while it serves and idles, nothing left once stopped, no console window, and no file outside the workspace but the declared ones. The hygiene gate (tests/portfolio_strategy_lab/test_runtime_launchers.py) reads these budgets; a process kind the registry census lists takes its budget from here.",
+  "note": "What the product may leave on the person's machine, by process kind: how many processes, how much commit and CPU while it serves and idles, nothing left once stopped, no console window, and no file outside the workspace but the declared ones. The hygiene gate (tests/integration/local_application/test_runtime_launchers.py) reads these budgets; a process kind the registry census lists takes its budget from here.",
   "kinds": {
     "host": {
       "owner": "src/alphalattice/control/product_host/composition/web_launcher.py",
@@ -61,9 +61,9 @@
       "consumers": {
         "import": [
           "src/alphalattice/control/product_host/composition/local_web_session.py:117",
-          "tests/portfolio_strategy_lab/test_committee.py:32",
-          "tests/portfolio_strategy_lab/test_native_lead_usage.py:17",
-          "tests/portfolio_strategy_lab/test_workspace_activity.py:42"
+          "tests/integration/product_host/test_committee.py:32",
+          "tests/integration/local_application/test_native_lead_usage.py:17",
+          "tests/integration/product_host/test_workspace_activity.py:42"
         ],
         "path": [
           "config/registries/host-modules.json:61"
@@ -146,10 +146,10 @@
         "import": [
           "src/alphalattice/control/product_host/research_authoring/factor_inputs.py:43",
           "tests/researcher_methodology_surface/real_workspace.py:53",
-          "tests/researcher_methodology_surface/test_causal_outcome_publication.py:32",
-          "tests/researcher_methodology_surface/test_causal_outcome_publication.py:326",
-          "tests/researcher_methodology_surface/test_causal_outcome_publication.py:414",
-          "tests/researcher_methodology_surface/test_causal_outcome_publication.py:555"
+          "tests/integration/causal_outcomes/test_causal_outcome_publication.py:32",
+          "tests/integration/causal_outcomes/test_causal_outcome_publication.py:326",
+          "tests/integration/causal_outcomes/test_causal_outcome_publication.py:414",
+          "tests/integration/causal_outcomes/test_causal_outcome_publication.py:555"
         ],
         "path": [
           "config/registries/parameters.json:2327",
@@ -236,23 +236,23 @@
           "src/alphalattice/interface/local_application/client.py:2963",
           "src/alphalattice/interface/local_application/client.py:663",
           "src/alphalattice/interface/local_application/native_setup.py:28",
-          "tests/portfolio_strategy_lab/test_accepted_answer_conversation.py:65",
-          "tests/portfolio_strategy_lab/test_local_web_service.py:38",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:198",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:26",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:691",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:898",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:982",
-          "tests/portfolio_strategy_lab/test_native_lead_usage.py:21",
-          "tests/portfolio_strategy_lab/test_native_lead_usage.py:28",
-          "tests/portfolio_strategy_lab/test_native_session_binding.py:22",
-          "tests/portfolio_strategy_lab/test_native_usage.py:14",
-          "tests/portfolio_strategy_lab/test_native_usage.py:17",
-          "tests/portfolio_strategy_lab/test_native_usage.py:887",
-          "tests/portfolio_strategy_lab/test_native_usage.py:925",
-          "tests/portfolio_strategy_lab/test_workspace_activity.py:57",
-          "tests/portfolio_strategy_lab/test_workspace_activity.py:58",
-          "tests/release/test_wheel_runtime.py:24"
+          "tests/integration/product_host/test_accepted_answer_conversation.py:65",
+          "tests/integration/product_host/test_local_web_service.py:38",
+          "tests/integration/local_application/test_native_bridge.py:198",
+          "tests/integration/local_application/test_native_bridge.py:26",
+          "tests/integration/local_application/test_native_bridge.py:691",
+          "tests/integration/local_application/test_native_bridge.py:898",
+          "tests/integration/local_application/test_native_bridge.py:982",
+          "tests/integration/local_application/test_native_lead_usage.py:21",
+          "tests/integration/local_application/test_native_lead_usage.py:28",
+          "tests/integration/product_host/test_native_session_binding.py:22",
+          "tests/integration/local_application/test_native_usage.py:14",
+          "tests/integration/local_application/test_native_usage.py:17",
+          "tests/integration/local_application/test_native_usage.py:887",
+          "tests/integration/local_application/test_native_usage.py:925",
+          "tests/integration/product_host/test_workspace_activity.py:57",
+          "tests/integration/product_host/test_workspace_activity.py:58",
+          "tests/integration/local_application/test_wheel_runtime.py:24"
         ],
         "path": [
           "scripts/release/public_outputs.py:12",
@@ -263,7 +263,7 @@
           "src/alphalattice/interface/local_application/native_bridge.py:109",
           "src/alphalattice/interface/local_application/native_setup.py:455",
           "src/alphalattice/interface/local_application/native_setup.py:637",
-          "tests/portfolio_strategy_lab/test_cli_contract.py:108",
+          "tests/integration/local_application/test_cli_contract.py:108",
           "tests/portfolio_strategy_lab/web_refusal_support.py:487",
           "tests/structural/test_public_closure.py:286"
         ]
@@ -334,23 +334,23 @@
           "src/alphalattice/interface/local_application/client.py:2963",
           "src/alphalattice/interface/local_application/client.py:663",
           "src/alphalattice/interface/local_application/native_setup.py:28",
-          "tests/portfolio_strategy_lab/test_accepted_answer_conversation.py:65",
-          "tests/portfolio_strategy_lab/test_local_web_service.py:38",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:198",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:26",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:691",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:898",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:982",
-          "tests/portfolio_strategy_lab/test_native_lead_usage.py:21",
-          "tests/portfolio_strategy_lab/test_native_lead_usage.py:28",
-          "tests/portfolio_strategy_lab/test_native_session_binding.py:22",
-          "tests/portfolio_strategy_lab/test_native_usage.py:14",
-          "tests/portfolio_strategy_lab/test_native_usage.py:17",
-          "tests/portfolio_strategy_lab/test_native_usage.py:887",
-          "tests/portfolio_strategy_lab/test_native_usage.py:925",
-          "tests/portfolio_strategy_lab/test_workspace_activity.py:57",
-          "tests/portfolio_strategy_lab/test_workspace_activity.py:58",
-          "tests/release/test_wheel_runtime.py:24"
+          "tests/integration/product_host/test_accepted_answer_conversation.py:65",
+          "tests/integration/product_host/test_local_web_service.py:38",
+          "tests/integration/local_application/test_native_bridge.py:198",
+          "tests/integration/local_application/test_native_bridge.py:26",
+          "tests/integration/local_application/test_native_bridge.py:691",
+          "tests/integration/local_application/test_native_bridge.py:898",
+          "tests/integration/local_application/test_native_bridge.py:982",
+          "tests/integration/local_application/test_native_lead_usage.py:21",
+          "tests/integration/local_application/test_native_lead_usage.py:28",
+          "tests/integration/product_host/test_native_session_binding.py:22",
+          "tests/integration/local_application/test_native_usage.py:14",
+          "tests/integration/local_application/test_native_usage.py:17",
+          "tests/integration/local_application/test_native_usage.py:887",
+          "tests/integration/local_application/test_native_usage.py:925",
+          "tests/integration/product_host/test_workspace_activity.py:57",
+          "tests/integration/product_host/test_workspace_activity.py:58",
+          "tests/integration/local_application/test_wheel_runtime.py:24"
         ],
         "path": [
           "scripts/release/public_outputs.py:12",
@@ -486,10 +486,10 @@
           "src/alphalattice/control/product_host/composition/evidence_authority_setup.py:129",
           "src/alphalattice/control/product_host/composition/evidence_source_ways.py:142",
           "src/alphalattice/interface/local_application/native_bridge.py:1598",
-          "tests/alternative_evidence_desk/test_evidence_review_workspace.py:1165",
-          "tests/alternative_evidence_desk/test_evidence_review_workspace.py:282",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:21",
-          "tests/portfolio_strategy_lab/test_status_follow.py:29",
+          "tests/integration/product_host/test_evidence_review_workspace.py:1165",
+          "tests/integration/product_host/test_evidence_review_workspace.py:282",
+          "tests/integration/local_application/test_native_bridge.py:21",
+          "tests/integration/local_application/test_status_follow.py:29",
           "tests/setup_support.py:12"
         ],
         "path": [
@@ -561,9 +561,9 @@
           "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py:36",
           "src/alphalattice/control/product_host/storage/input_references.py:79",
           "src/alphalattice/interface/local_application/native_setup.py:418",
-          "tests/portfolio_strategy_lab/test_native_bridge.py:39",
-          "tests/workspace_maintenance/test_model_store.py:20",
-          "tests/workspace_maintenance/test_research_input_storage.py:911"
+          "tests/integration/local_application/test_native_bridge.py:39",
+          "tests/integration/knowledge/test_model_store.py:20",
+          "tests/integration/product_host/test_research_input_storage.py:911"
         ],
         "path": [
           "tests/structural/test_source_identity.py:441"
@@ -574,10 +574,10 @@
           "src/alphalattice/kernel/knowledge/model_store.py:652",
           "src/alphalattice/kernel/knowledge/model_store.py:655",
           "tests/portfolio_strategy_lab/typed_owner_refusals.py:31",
-          "tests/workspace_maintenance/test_workspace_path_confinement.py:118",
-          "tests/workspace_maintenance/test_workspace_path_confinement.py:126",
-          "tests/workspace_maintenance/test_workspace_path_confinement.py:59",
-          "tests/workspace_maintenance/test_workspace_path_confinement.py:71"
+          "tests/integration/workspace_runtime/test_workspace_path_confinement.py:118",
+          "tests/integration/workspace_runtime/test_workspace_path_confinement.py:126",
+          "tests/integration/workspace_runtime/test_workspace_path_confinement.py:59",
+          "tests/integration/workspace_runtime/test_workspace_path_confinement.py:71"
         ]
       },
       "consumer_basis": {

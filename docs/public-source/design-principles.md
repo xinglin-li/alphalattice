@@ -46,7 +46,7 @@ A language model cannot provide these by design, and they are where most of the 
 
 The program owns every number and its binding to inputs and methods. The agent interprets results, names their limits and challenges conclusions. The person keeps the decisions that change authority or put research to work. Keeping these roles apart lets a debate be reviewed without persuasive language moving a result.
 
-In the investment committee, members refer to figures by the aliases the floor shows, and the Host renders the kept value. A member can argue that a weight is too large without copying, rounding or recomputing it. In the [committee admission test](../../tests/portfolio_strategy_lab/test_committee.py), `Hold H1.` is admitted and `Hold 5%.` is refused as a typed figure, with the same message offered using the alias. The committee changes no number.
+In the investment committee, members refer to figures by the aliases the floor shows, and the Host renders the kept value. A member can argue that a weight is too large without copying, rounding or recomputing it. In the [committee admission test](../../tests/integration/product_host/test_committee.py), `Hold H1.` is admitted and `Hold 5%.` is refused as a typed figure, with the same message offered using the alias. The committee changes no number.
 
 **Judgment is argued, not averaged.** The committee is built so that disagreement surfaces instead of blending away:
 - the first round is blind: each member's stance stays hidden until all four are in, or the stance window ends with the portfolio manager's in, so no one anchors on another;
@@ -66,7 +66,7 @@ A system that makes research easy also makes it easy to fool oneself. The numeri
 - **A comparison may end inconclusive.** Methods are compared paired, on the same sessions, and a comparison reports superior, inferior or inconclusive from its interval. An interval that spans zero is inconclusive, never a narrow win.
 - **Data enters on one declared basis.** Prices enter on the provider's split-adjusted basis, and every corporate action that can move a return, splits included, is part of that return's identity. An adjustment cannot be applied twice unnoticed, and a tampered one is visible.
 
-Dates are part of the method. An information cutoff, a first actionable session and a horizon mean different things, and a later date never silently makes earlier information available. The [first-use goal test](../../tests/portfolio_strategy_lab/test_first_use_goal.py) fixes the clock and targets a later session. It checks that the update is held until its data is ready and is reported in market time and the person's time. The records let an agent explain what happened and what remains held without inventing either; the [agent guide](agents.md) states their limits.
+Dates are part of the method. An information cutoff, a first actionable session and a horizon mean different things, and a later date never silently makes earlier information available. The [first-use goal test](../../tests/integration/product_host/test_first_use_goal.py) fixes the clock and targets a later session. It checks that the update is held until its data is ready and is reported in market time and the person's time. The records let an agent explain what happened and what remains held without inventing either; the [agent guide](agents.md) states their limits.
 
 These choices make some results less exciting. A large return that comes from a data error, or a winner that comes from noise, is the most expensive result a research system can produce, because it is believed.
 
@@ -145,7 +145,7 @@ The aim is not imitation but a lighter load: the less an agent must learn that i
 
 The agent guide, the role cards, the Skills and every answer's words decide what the agent does next, so they change in the same change as the behaviour they describe. A renamed command is renamed in its guidance, and every offered request must be accepted by its owner. A stale line does not crash; it quietly sends an agent the wrong way. One source produces both hosts' guidance, and the [materializer](../../scripts/materialize_claude_host.py) refuses drift between them.
 
-Recovery is part of the contract. A stopped Task's answer always names its way on and never asks the agent to wait on work that will not move. A cancelled verification sweep, for example, offers a bound re-plan that starts a new Task while the cancelled one stays in history. The [recovery test](../../tests/portfolio_strategy_lab/test_task_recovery_view.py) sends that offer from the saved answer and checks the new work.
+Recovery is part of the contract. A stopped Task's answer always names its way on and never asks the agent to wait on work that will not move. A cancelled verification sweep, for example, offers a bound re-plan that starts a new Task while the cancelled one stays in history. The [recovery test](../../tests/integration/product_host/test_task_recovery_view.py) sends that offer from the saved answer and checks the new work.
 
 The same text is how the system learns, with no fine-tuning and no training service. The flywheel (principle 12) improves the shared guidance, and each person's own layer improves at their pace. Their preferences, corrections and local method live in their own files: memories, a local guide, and additions to the cards and Skills. The agent reads the layer first and keeps it current; a request to report results in a particular format becomes a small dated memory. It is plain text the person can read, edit, version and reverse. No release writes it, it is backed up before an upgrade, and it refines the work without widening what the shipped guide permits. The [maintenance Skill](../../.agents/skills/alphalattice-maintenance/SKILL.md) says what to record and how.
 
@@ -155,7 +155,7 @@ An agent will pick the wrong action, quote a figure incorrectly or misread a hel
 
 So the system assumes the agent errs, and corrects it. Every refusal names the rule that failed and offers the request that resolves it, keeping the work already done. A refusal that only says no leaves the same mistake waiting for the next attempt. When an answer itself sends the agent down a false route, the answer is fixed at its owner; the guide grows only when the agent truly lacks a rule.
 
-The committee's number refusal shows the pattern: the judgment can stay, and the figure becomes an alias that can be checked. The [feedback-grader tests](../../tests/evaluation/test_feedback.py) grade exactly this loop. A refused attempt followed by an accepted, bound correction converges; a safety breach on any turn fails the attempt, even if a later turn succeeds.
+The committee's number refusal shows the pattern: the judgment can stay, and the figure becomes an alias that can be checked. The [feedback-grader tests](../../tests/unit/evaluation/test_feedback.py) grade exactly this loop. A refused attempt followed by an accepted, bound correction converges; a safety breach on any turn fails the attempt, even if a later turn succeeds.
 
 ## 12. A flywheel over the whole loop, measured like an optimizer
 

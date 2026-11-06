@@ -684,7 +684,7 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
     """
     sys.path.insert(0, str(ROOT / "src"))
     try:
-        from devtools.architecture.git_inputs import read_blobs
+        from devtools.architecture.git_inputs import read_blobs, staged_changes, staged_moves
         from devtools.testing import requirements
     finally:
         sys.path.pop(0)
@@ -749,7 +749,8 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
                 else []
             )
             earlier += requirements.file_holders(path, then) if then else []
-        fresh = requirements.fresh(earlier, later)
+        pairs = staged_changes(ROOT, base=None if staged else base, tree=None if staged else "HEAD")
+        fresh = requirements.fresh(earlier, later, staged_moves(ROOT, pairs=pairs))
         old_nodes = {test.node for test in earlier}
         added = [test.node for test in fresh if test.node not in old_nodes]
         registry = requirements.REGISTRY.as_posix()

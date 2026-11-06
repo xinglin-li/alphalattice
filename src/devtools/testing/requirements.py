@@ -31,6 +31,7 @@ from devtools.testing.sizes import load_policy
 
 REGISTRY = Path("config/registries/requirements.json")
 LEGACY_SCHEMA = "alphalattice.tests-unregistered.v1"  # private: it names private tests
+LAYOUT_SCHEMA = "alphalattice.test-layout.v1"  # private: it names private tests too
 FACTS_SCHEMA = "alphalattice.agent-eval.host-facts"  # private, never exported: marks a private tree
 LAYERS = ("unit", "integration", "contract", "e2e", "native")
 SIZES = dict(unit="small", integration="medium", contract="medium", e2e="large", native="large")
@@ -286,18 +287,27 @@ def edited_families(
     return sorted(result)
 
 
-def fresh(before: Iterable[Holder], after: Iterable[Holder]) -> list[Holder]:
+def fresh(
+    before: Iterable[Holder], after: Iterable[Holder], moves: Mapping[str, str] | None = None
+) -> list[Holder]:
     """New functions or newly proved ids on an existing function.
 
     A qualified unchanged definition relocating carries its standing; each removal matches one copy.
+    A file in ``moves`` (new path to old) is the same file, so its functions are existing ones.
     """
     old, now = {test.node: test for test in before}, {test.node: test for test in after}
+    moved = {}
+    for node in now:
+        path, _, name = node.partition("::")
+        if path in (moves or {}):
+            moved[node] = f"{(moves or {})[path]}::{name}"
     gone = Counter((n.split("::", 1)[1], t.digest) for n, t in old.items() if n not in now)
     found = []
     for node, test in sorted(now.items()):
         identity = (node.split("::", 1)[1], test.digest)
-        if node in old:
-            added_ids = tuple(key for key in test.ids if key not in old[node].ids)
+        origin = moved.get(node, node)
+        if origin in old:
+            added_ids = tuple(key for key in test.ids if key not in old[origin].ids)
             if added_ids:
                 found.append(test._replace(ids=added_ids))
             continue

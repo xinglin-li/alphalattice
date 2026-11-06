@@ -68,9 +68,9 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         ("tests/integration/evaluation/test_unlisted_scope_contract.py", "PUBLIC", "PUBLIC_TEST"),
         ("tests/structural/test_catalog_gate.py", "PRIVATE", "PRIVATE_TEST"),
         ("src/devtools/evaluation/forms.py", "PUBLIC", "PUBLIC_VERIFICATION"),
-        ("tests/evaluation/test_forms.py", "PUBLIC", "PUBLIC_TEST"),
+        ("tests/integration/evaluation/test_forms.py", "PUBLIC", "PUBLIC_TEST"),
         (
-            "tests/portfolio_strategy_lab/test_native_answer_route_class.py",
+            "tests/integration/local_application/test_native_answer_route_class.py",
             "PRIVATE",
             "PRIVATE_TEST",
         ),
@@ -88,7 +88,7 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         ("product-design/execution-plans/plan.md", "PRIVATE", "PRIVATE_RECORD"),
         ("scripts/agent_eval/one.py", "PRIVATE", "PRIVATE_QA_TOOL"),
         ("scripts/qa_retention.py", "PRIVATE", "PRIVATE_QA_TOOL"),
-        ("tests/researcher_methodology_surface/test_qa_retention.py", "PRIVATE", "PRIVATE_TEST"),
+        ("tests/integration/product_host/test_qa_retention.py", "PRIVATE", "PRIVATE_TEST"),
         ("config/agent-eval/one.yaml", "PRIVATE", "PRIVATE_QA_TOOL"),
         (".claude/agents/research.md", "PUBLIC", "PUBLIC_INTEGRATION"),
         (".codex/config.toml", "PUBLIC", "PUBLIC_INTEGRATION"),
@@ -359,7 +359,7 @@ def test_development_label_ratchet_pins_each_public_files_count_and_spelling():
     owner_path = "config/registries/owners-map.json"
     alias, other, prefix = "C" + "1", "C" + "2", "V" + "900."
     source = "src/alphalattice/control/product_host/composition/committee_materials.py"
-    test = "tests/portfolio_strategy_lab/test_committee.py"
+    test = "tests/integration/product_host/test_committee.py"
     form = {
         "name": "component floor alias",
         "pattern": r"C[1-9][0-9]*",
@@ -466,6 +466,49 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
     baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
     commit("Establish synthetic allowance")
     validate_internal_id_history(tmp_path, "HEAD")
+    # A mapped move carries its allowance whole; anything else is refused by name.
+    moved, table = "src/moved.py", tmp_path / "config/registries/test-layout.json"
+    table.parent.mkdir(parents=True)
+    base = _git("rev-parse", "HEAD")
+    extra = "V" + "902"
+    for named, occurrences, refusal in (
+        ({moved: owner}, {moved: {label: 1}}, None),
+        ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),
+        ({moved: owner}, {moved: {label: 2}}, "labels differ"),
+        ({}, {moved: {label: 1}}, "map does not name it"),
+        ({moved: "src/absent.py"}, {moved: {label: 1}}, "holds no allowance"),
+        ({moved: owner}, {owner: {label: 1}, moved: {label: 1}}, "keeps its allowance"),
+    ):
+        rows = {new: {"domain": "d", "old": old, "reason": "r"} for new, old in named.items()}
+        table.write_text(json.dumps({"files": rows}), encoding="utf-8", newline="\n")
+        baseline.write_text(json.dumps({**policy, "occurrences": occurrences}), encoding="utf-8")
+        _git("add", "--all")
+        candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Move")
+        if refusal is None:
+            validate_internal_id_history(tmp_path, candidate)
+        else:
+            with pytest.raises(ValueError, match=rf"allowance increased.*{refusal}"):
+                validate_internal_id_history(tmp_path, candidate)
+    held = {**policy, "occurrences": {owner: {label: 1}, moved: {label: 1}}}
+    baseline.write_text(json.dumps(held), encoding="utf-8", newline="\n")
+    _git("add", "--all")
+    both = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Both")
+    baseline.write_text(
+        json.dumps({**policy, "occurrences": {moved: {label: 2}}}), encoding="utf-8", newline="\n"
+    )
+    _git("add", "--all")
+    grown = _git("commit-tree", _git("write-tree"), "-p", both, "-m", "Grown")
+    with pytest.raises(ValueError, match=r"allowance increased.*an allowance of its own"):
+        validate_internal_id_history(tmp_path, grown)
+    table.write_text("not a map", encoding="utf-8", newline="\n")
+    baseline.write_text(
+        json.dumps({**policy, "occurrences": {moved: {label: 1}}}), encoding="utf-8"
+    )
+    _git("add", "--all")
+    candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Unreadable")
+    with pytest.raises(ValueError, match="test layout map is unreadable"):
+        validate_internal_id_history(tmp_path, candidate)
+    _git("reset", "--hard", base)
     # Long valid histories, including a merge, acquire immutable inputs in bounded batches.
     branch = _git("rev-parse", "HEAD")
     stream = b""
@@ -701,8 +744,8 @@ def test_private_test_trees_keep_all_file_kinds_out_of_public_scope():
 @pytest.mark.parametrize(
     "path",
     [
-        "tests/portfolio_strategy_lab/test_workbench_readback.py",
-        "tests/portfolio_strategy_lab/test_workbench_owner_words.py",
+        "tests/integration/local_application/test_workbench_readback.py",
+        "tests/integration/portfolio_strategy_lab/test_workbench_owner_words.py",
         "tests/portfolio_strategy_lab/workbench_dom.cjs",
         "tests/portfolio_strategy_lab/workbench_minor_ui.cjs",
         "tests/structural/test_workbench_agent_parity.py",
@@ -720,21 +763,21 @@ def test_workbench_verification_needs_the_private_ui_qa_kit(path):
 @pytest.mark.parametrize(
     ("path", "reason"),
     [
-        ("tests/alternative_evidence_desk/test_evidence_review_route.py", None),
+        ("tests/integration/alternative_evidence/test_evidence_review_route.py", None),
         (
-            "tests/portfolio_strategy_lab/test_ui_qa_launch_session.py",
+            "tests/integration/product_host/test_ui_qa_launch_session.py",
             "imports the private UI QA launch-session owner and executes its private drivers",
         ),
         (
-            "tests/portfolio_strategy_lab/test_ui_goal_composer.py",
+            "tests/integration/product_host/test_ui_goal_composer.py",
             "requires the private UI QA browser and kit from its embedded Node.js program",
         ),
         (
-            "tests/portfolio_strategy_lab/test_workbench_portfolio_provenance.py",
+            "tests/integration/portfolio_strategy_lab/test_workbench_portfolio_provenance.py",
             "runs the private Portfolio provenance harness and UI QA page census",
         ),
         (
-            "tests/portfolio_strategy_lab/test_workbench_recovery_stack.py",
+            "tests/integration/task_control/test_workbench_recovery_stack.py",
             "runs the private recovery-stack harness and UI QA stack census",
         ),
         (

@@ -84,20 +84,13 @@
     "composition.session_observation_attribution": {
       "description": "A named sandbox-bound Session keeps its request attribution while an anonymous request remains unassigned and Activity names that attribution unknown.",
       "owner": "alphalattice.control.product_host.composition",
-      "layer": "e2e",
-      "seconds": 30,
-      "exception": {
-        "kinds": [
-          "journey"
-        ],
-        "why": "The requirement follows a real request through the loopback Host in an existing holder. When TEST-LAYOUT-ALL admits loopback to integration, move the holder there and remove this exception.",
-        "decided": "2026-11-05: Lead granted the journey for this existing holder."
-      }
+      "layer": "integration",
+      "seconds": 30
     },
     "composition.workspace_binding_usage_unknown": {
       "description": "An unreadable workspace-owned Session binding makes usage unavailable without hiding other readable Session results or treating the binding as absent.",
       "owner": "alphalattice.control.product_host.composition",
-      "layer": "contract",
+      "layer": "integration",
       "seconds": 5
     },
     "evaluation.continuation_snapshot_integrity": {

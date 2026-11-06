@@ -6,7 +6,9 @@ import builtins
 import dis
 import importlib
 import inspect
+import ipaddress
 import os
+import socket
 import sys
 import tempfile
 import threading
@@ -55,6 +57,30 @@ def import_violations(
             for row in catalog
         )
     )
+
+
+def _loopback_host(host: object) -> bool:
+    """A name or address that stays on this machine; anything unreadable does not."""
+    host = host.decode("ascii", "replace") if isinstance(host, bytes) else host
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(str(host)).is_loopback
+    except ValueError:
+        return False
+
+
+def _stays_on_this_machine(event: str, args: tuple[Any, ...]) -> bool:
+    """Whether one socket audit event is an in-process Host's, which integration admits. Making a
+    socket or reading this machine's name sends nothing; every address is read, never assumed."""
+    if event in {"socket.__new__", "socket.gethostname"}:
+        return True
+    if event in {"socket.bind", "socket.connect", "socket.sendto"}:
+        family = getattr(args[0], "family", None)
+        if family not in (socket.AF_INET, socket.AF_INET6):
+            return family == getattr(socket, "AF_UNIX", object())
+        return _loopback_host(args[-1][0])
+    return event in {"socket.getaddrinfo", "socket.gethostbyaddr"} and _loopback_host(args[0])
 
 
 class LayerContract:
@@ -210,7 +236,9 @@ class LayerContract:
             self._forget_closed()
         if event in {"open", "os.remove"} and self.framework_io(args[0]):
             return
-        if event.startswith("socket."):
+        if event.startswith("socket.") and not (
+            self.layer == "integration" and _stays_on_this_machine(event, args)
+        ):
             self.refuse(event)
         if self.layer != "unit":
             return

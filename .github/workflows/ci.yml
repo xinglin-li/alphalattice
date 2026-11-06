@@ -96,7 +96,7 @@ jobs:
           done
       - name: Run the wheel runtime tests
         run: >-
-          uv run python -m pytest tests/release/test_wheel_runtime.py -n auto
+          uv run python -m pytest tests/integration/local_application/test_wheel_runtime.py -n auto
           --basetemp "${{ runner.temp }}/alphalattice-wheel-tests"
 
   platforms:
@@ -146,7 +146,7 @@ jobs:
       - name: Run the offline first-use scenario
         run: >-
           uv run python -m pytest
-          tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on
+          tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on
           -n 1 -m "not real_evidence"
           --basetemp "${{ runner.temp }}/alphalattice-first-use"
       - name: Build and install the wheel; smoke in fresh bash
@@ -588,5 +588,5 @@ jobs:
         with:
           mode: simulation
           run: >-
-            uv run python -m pytest tests/evaluation tests/feature_engine/test_factor_arithmetic_identity.py
+            uv run python -m pytest tests/evaluation tests/integration/feature_engine/test_factor_arithmetic_identity.py
             -m "not real_evidence" --codspeed -p no:cacheprovider

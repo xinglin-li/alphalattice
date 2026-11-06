@@ -63,7 +63,7 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             return ([":100644", "100644", old, new, "M"], path)
 
         materializer = (
-            "tests/portfolio_strategy_lab/test_claude_host_materialization.py::"
+            "tests/integration/local_application/test_claude_host_materialization.py::"
             "test_committed_derivatives_match_their_owners"
         )
         host_holder = (

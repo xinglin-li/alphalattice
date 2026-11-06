@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parents[2]
 INTERNAL_ID_BASELINE = "census/public-internal-id-baseline.json"
+TEST_LAYOUT = "config/registries/test-layout.json"
 REVIEW_KEY = "alphalattice.release.review-key.v1"
 RULES = [
     {
@@ -140,37 +141,38 @@ RULES = [
         "kind": "PRIVATE",
         "patterns": [
             "tests/agent_eval/**",
+            "tests/*/agent_eval/**",
             "tests/operation_suite/**",
-            "tests/alpha_research/test_alpha_product_replay.py",
-            "tests/alpha_research/test_live_closure_entry_points.py",
-            "tests/alternative_evidence_desk/test_evidence_review_route.py",
-            "tests/alternative_evidence_desk/test_retrieval_product_acceptance.py",
-            "tests/feature_engine/test_feature_closure_genesis.py",
-            "tests/feature_engine/test_panel_runtime_authority.py",
-            "tests/feature_engine/test_panel_upgrade.py",
+            "tests/integration/alpha_research/test_alpha_product_replay.py",
+            "tests/integration/scripts/test_live_closure_entry_points.py",
+            "tests/integration/alternative_evidence/test_evidence_review_route.py",
+            "tests/integration/product_host/test_retrieval_product_acceptance.py",
+            "tests/integration/feature_engine/test_feature_closure_genesis.py",
+            "tests/integration/feature_engine/test_panel_runtime_authority.py",
+            "tests/integration/feature_engine/test_panel_upgrade.py",
             "tests/feature_engine/panel_upgrade.py",
-            "tests/portfolio_strategy_lab/test_frozen_strategy_packages.py",
-            "tests/portfolio_strategy_lab/test_native_answer_route_class.py",
-            "tests/portfolio_strategy_lab/test_strategy_scoring.py",
-            "tests/portfolio_strategy_lab/test_workbench_readback.py",
-            "tests/portfolio_strategy_lab/test_workbench_zh_catalog.py",
+            "tests/integration/portfolio_strategy_lab/test_frozen_strategy_packages.py",
+            "tests/integration/local_application/test_native_answer_route_class.py",
+            "tests/integration/product_host/test_strategy_scoring.py",
+            "tests/integration/local_application/test_workbench_readback.py",
+            "tests/integration/product_host/test_workbench_zh_catalog.py",
             "tests/portfolio_strategy_lab/workbench_stack_census.cjs",
-            "tests/portfolio_strategy_lab/test_workbench_goal_follow_browser.py",
-            "tests/portfolio_strategy_lab/test_workbench_owner_words.py",
-            "tests/portfolio_strategy_lab/test_daily_book_records_gate.py",
-            "tests/portfolio_strategy_lab/test_team_scene_producers.py",
-            "tests/portfolio_strategy_lab/test_workbench_goal_request_words.py",
-            "tests/portfolio_strategy_lab/test_workbench_usage_reading.py",
-            "tests/portfolio_strategy_lab/test_ui_qa_conditions.py",
-            "tests/portfolio_strategy_lab/test_ui_qa_launch_session.py",
-            "tests/portfolio_strategy_lab/test_ui_goal_composer.py",
-            "tests/portfolio_strategy_lab/test_workbench_portfolio_provenance.py",
-            "tests/portfolio_strategy_lab/test_workbench_recovery_stack.py",
-            "tests/portfolio_strategy_lab/test_workbench_home_recent.py",
-            "tests/portfolio_strategy_lab/test_workbench_hover_witness.py",
-            "tests/portfolio_strategy_lab/test_workbench_pointer_and_copy.py",
-            "tests/portfolio_strategy_lab/test_workbench_review_publication.py",
-            "tests/portfolio_strategy_lab/test_workbench_shared_readers.py",
+            "tests/integration/testing/test_workbench_goal_follow_browser.py",
+            "tests/integration/portfolio_strategy_lab/test_workbench_owner_words.py",
+            "tests/integration/shared_kernel/test_daily_book_records_gate.py",
+            "tests/integration/local_application/test_team_scene_producers.py",
+            "tests/integration/testing/test_workbench_goal_request_words.py",
+            "tests/integration/testing/test_workbench_usage_reading.py",
+            "tests/integration/testing/test_ui_qa_conditions.py",
+            "tests/integration/product_host/test_ui_qa_launch_session.py",
+            "tests/integration/product_host/test_ui_goal_composer.py",
+            "tests/integration/portfolio_strategy_lab/test_workbench_portfolio_provenance.py",
+            "tests/integration/task_control/test_workbench_recovery_stack.py",
+            "tests/integration/portfolio_strategy_lab/test_workbench_home_recent.py",
+            "tests/integration/portfolio_strategy_lab/test_workbench_hover_witness.py",
+            "tests/integration/portfolio_strategy_lab/test_workbench_pointer_and_copy.py",
+            "tests/integration/testing/test_workbench_review_publication.py",
+            "tests/integration/testing/test_workbench_shared_readers.py",
             "tests/portfolio_strategy_lab/workbench_dom.cjs",
             "tests/portfolio_strategy_lab/workbench_handoffs.cjs",
             "tests/portfolio_strategy_lab/workbench_home_recent.cjs",
@@ -183,19 +185,19 @@ RULES = [
             "tests/portfolio_strategy_lab/workbench_shared_readers.cjs",
             "tests/structural/test_public_release_closure.py",
             "tests/structural/test_workbench_agent_parity.py",
-            "tests/workspace_maintenance/test_workspace_backup.py",
+            "tests/integration/product_host/test_workspace_backup.py",
             "tests/researcher_methodology_surface/panel_value_parity_probe.py",
-            "tests/researcher_methodology_surface/test_dogfood_authority_probe.py",
-            "tests/researcher_methodology_surface/test_qa_retention.py",
+            "tests/integration/product_host/test_dogfood_authority_probe.py",
+            "tests/integration/product_host/test_qa_retention.py",
             "tests/structural/test_source_candidate.py",
             "tests/structural/test_structural_guards.py",
             "tests/structural/test_playpen_gate_routing.py",
             "tests/structural/test_catalog_gate.py",
-            "tests/alpha_research/test_dynamic_panel_portfolio_campaign.py",
-            "tests/alpha_research/test_verification_impact.py",
+            "tests/integration/alpha_research/test_dynamic_panel_portfolio_campaign.py",
+            "tests/integration/alpha_research/test_verification_impact.py",
             "tests/portfolio_strategy_lab/cli_golden_capture.py",
             "tests/portfolio_strategy_lab/cli-golden-transcripts.json",
-            "tests/portfolio_strategy_lab/test_cli_golden_transcripts.py",
+            "tests/integration/testing/test_cli_golden_transcripts.py",
             "tests/e2e/evaluation/test_first_use_completion.py",
             "tests/integration/evaluation/test_as_of.py",
             "tests/integration/evaluation/test_assignment_coordinate_rebinding.py",
@@ -277,35 +279,35 @@ RULES = [
             "tests/structural/test_catalog_gate.py": (
                 "covers private locale-input registrations and their public-absence control"
             ),
-            "tests/alternative_evidence_desk/test_evidence_review_route.py": (
+            "tests/integration/alternative_evidence/test_evidence_review_route.py": (
                 "runs the private Review publication harness for exact admitted Task subjects"
             ),
-            "tests/portfolio_strategy_lab/test_daily_book_records_gate.py": (
+            "tests/integration/shared_kernel/test_daily_book_records_gate.py": (
                 "needs the private served-Host fixture and first-use write meter"
             ),
-            "tests/portfolio_strategy_lab/test_team_scene_producers.py": (
+            "tests/integration/local_application/test_team_scene_producers.py": (
                 "runs the private UI QA Team scene producers"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_goal_request_words.py": (
+            "tests/integration/testing/test_workbench_goal_request_words.py": (
                 "uses the private UI QA handoffs harness for Goal request words"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_usage_reading.py": (
+            "tests/integration/testing/test_workbench_usage_reading.py": (
                 "uses the private UI QA handoffs harness for Settings usage reading"
             ),
-            "tests/portfolio_strategy_lab/test_native_answer_route_class.py": (
+            "tests/integration/local_application/test_native_answer_route_class.py": (
                 "needs the private native instruction source validator"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_readback.py": (
+            "tests/integration/local_application/test_workbench_readback.py": (
                 "needs the private UI QA kit"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_zh_catalog.py": (
+            "tests/integration/product_host/test_workbench_zh_catalog.py": (
                 "needs the private UI QA catalog census"
             ),
             "tests/portfolio_strategy_lab/workbench_stack_census.cjs": (
                 "plants geometry cases for the private stack census"
             ),
             "tests/portfolio_strategy_lab/workbench_dom.cjs": "needs the private UI QA kit",
-            "tests/portfolio_strategy_lab/test_workbench_goal_follow_browser.py": (
+            "tests/integration/testing/test_workbench_goal_follow_browser.py": (
                 "needs the private UI QA kit"
             ),
             "tests/portfolio_strategy_lab/workbench_handoffs.cjs": "needs the private UI QA kit",
@@ -325,22 +327,22 @@ RULES = [
             "tests/portfolio_strategy_lab/workbench_shared_readers.cjs": (
                 "measures shared readback controls with the private UI QA stack census"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_owner_words.py": (
+            "tests/integration/portfolio_strategy_lab/test_workbench_owner_words.py": (
                 "needs the private UI QA kit"
             ),
-            "tests/portfolio_strategy_lab/test_ui_qa_conditions.py": (
+            "tests/integration/testing/test_ui_qa_conditions.py": (
                 "loads private UI QA checks from embedded Node.js programs"
             ),
-            "tests/portfolio_strategy_lab/test_ui_qa_launch_session.py": (
+            "tests/integration/product_host/test_ui_qa_launch_session.py": (
                 "imports the private UI QA launch-session owner and executes its private drivers"
             ),
-            "tests/portfolio_strategy_lab/test_ui_goal_composer.py": (
+            "tests/integration/product_host/test_ui_goal_composer.py": (
                 "requires the private UI QA browser and kit from its embedded Node.js program"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_portfolio_provenance.py": (
+            "tests/integration/portfolio_strategy_lab/test_workbench_portfolio_provenance.py": (
                 "runs the private Portfolio provenance harness and UI QA page census"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_recovery_stack.py": (
+            "tests/integration/task_control/test_workbench_recovery_stack.py": (
                 "runs the private recovery-stack harness and UI QA stack census"
             ),
             "tests/portfolio_strategy_lab/workbench_portfolio_provenance.cjs": (
@@ -349,19 +351,19 @@ RULES = [
             "tests/portfolio_strategy_lab/workbench_recovery_stack.cjs": (
                 "requires the private UI QA stack census and pinned-browser runtime"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_home_recent.py": (
+            "tests/integration/portfolio_strategy_lab/test_workbench_home_recent.py": (
                 "runs the private Home disclosure harness and pinned-browser runtime"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_hover_witness.py": (
+            "tests/integration/portfolio_strategy_lab/test_workbench_hover_witness.py": (
                 "runs the private UI QA painted-ink and hover witness harness"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_pointer_and_copy.py": (
+            "tests/integration/portfolio_strategy_lab/test_workbench_pointer_and_copy.py": (
                 "runs the private UI QA pointer and copy callback harness"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_review_publication.py": (
+            "tests/integration/testing/test_workbench_review_publication.py": (
                 "runs the private published Review and Report stack harness"
             ),
-            "tests/portfolio_strategy_lab/test_workbench_shared_readers.py": (
+            "tests/integration/testing/test_workbench_shared_readers.py": (
                 "runs the private shared-reader controls and stack harness"
             ),
             "tests/structural/test_workbench_agent_parity.py": "needs the private UI QA kit",
@@ -1048,6 +1050,20 @@ def validate_internal_id_history(
             == 0
         )
 
+    moves: dict[str, dict[str, str]] = {}
+
+    def mapped(commit: str) -> dict[str, str]:
+        """This commit's test layout map, new path to old: empty when it holds none."""
+        if commit not in moves:
+            spec = f"{commit}:{TEST_LAYOUT}"
+            acquire({spec})
+            try:
+                rows = json.loads(contents[resolved[spec]])["files"] if resolved[spec] else {}
+                moves[commit] = {new: row["old"] for new, row in rows.items()}
+            except (AttributeError, KeyError, TypeError, ValueError):
+                raise ValueError(f"the test layout map is unreadable at {commit}") from None
+        return moves[commit]
+
     for commit in commits:
         policy = policy_at(commit)
         if policy is None:
@@ -1107,7 +1123,30 @@ def validate_internal_id_history(
                         "occurrences", {}
                     ).get(owner, {}).get(label):
                         continue
-                    raise ValueError(f"the frozen internal-label allowance increased at {commit}")
+                    why = _carry_refusal(owner, labels, policy, previous, mapped(commit))
+                    if why:
+                        raise ValueError(
+                            f"the frozen internal-label allowance increased at {commit}: "
+                            f"{owner}: {why}"
+                        )
+
+
+def _carry_refusal(
+    owner: str, labels: dict, policy: dict, previous: dict, moved: dict[str, str]
+) -> str | None:
+    """Why this owner's allowance is not one a mapped move carried from its old path, or None: the
+    same file at a new path keeps its labels, and nothing else widens the history."""
+    held = previous["occurrences"]
+    old = moved.get(owner)
+    if old is None:
+        return "the commit's test layout map does not name it"
+    if owner in held:
+        return "the new path already has an allowance of its own"
+    if old not in held:
+        return f"the parent's policy holds no allowance for {old}"
+    if old in policy["occurrences"]:
+        return f"{old} keeps its allowance beside the new path"
+    return None if labels == held[old] else f"its labels differ from {old}'s"
 
 
 def validate_path(path: str) -> None:
@@ -1275,6 +1314,7 @@ PRIVATE_SCHEMAS = frozenset(
     {
         "alphalattice.release.public-manifest",
         "alphalattice.tests-unregistered.v1",
+        "alphalattice.test-layout.v1",
         "alphalattice.agent-eval.host-facts",
     }
 )

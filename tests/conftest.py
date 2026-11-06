@@ -36,7 +36,10 @@ from devtools.evaluation.round_trip import (
 )
 from tests import pytest_environment as environment
 
-pytest_plugins = ["devtools.testing.collection"]
+pytest_plugins = [
+    "devtools.testing.collection",
+    *(["tests.agent_eval.hooks"] if (Path(__file__).parent / "agent_eval").is_dir() else []),
+]
 
 
 def _unit_contract(request: pytest.FixtureRequest) -> bool:

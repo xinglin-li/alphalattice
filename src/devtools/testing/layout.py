@@ -19,10 +19,26 @@ from .layout_references import declarations as reference_declarations
 from .layout_references import images as reference_images
 from .layout_references import provenance as reference_provenance
 from .layout_references import source_paths as reference_source_paths
-from .requirements import FACTS_SCHEMA, LAYERS, LEGACY_SCHEMA, file_holders, schema_file
+from .requirements import (
+    FACTS_SCHEMA,
+    LAYERS,
+    LAYOUT_SCHEMA,
+    LEGACY_SCHEMA,
+    file_holders,
+    schema_file,
+    schema_path,
+)
 from .sizes import _declarations, whole_tree_scope
 
 REGISTRIES = ("config/registries/test-sizes.json", "config/registries/test-private.json")  # public
+
+
+def placed_tests(root: Path) -> dict[str, str]:
+    """Where each moved test is now, by its old path. A source inside an identity closure keeps
+    naming the path it froze, since rewriting it would rotate that identity for a test move."""
+    table = schema_path(root, LAYOUT_SCHEMA)  # private: a public tree has none, and no old names
+    rows = json.loads(table.read_text("utf-8"))["files"] if table else {}
+    return {row["old"]: path for path, row in rows.items()}
 
 
 def registries(files: Mapping[str, str]) -> dict[str, str]:

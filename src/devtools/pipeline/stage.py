@@ -28,7 +28,7 @@ from typing import Any
 
 import psutil  # type: ignore[import-untyped]
 
-from devtools.architecture.git_inputs import read_blobs, staged_changes, unique_moves
+from devtools.architecture.git_inputs import read_blobs, staged_changes, table_moves, unique_moves
 from devtools.pipeline.definition import PATH, Definition, DefinitionError, Row, Stage, load
 from devtools.pipeline.receipt import Writer, _now, verify
 from devtools.testing.requirements import edited_families, file_holders, selection
@@ -70,7 +70,7 @@ DERIVED_OWNERS = (
             "src/alphalattice/kernel/shared_kernel/project_layout.py",
             "src/alphalattice/interface/local_application/failure_codes.py",
         ),
-        "tests/portfolio_strategy_lab/test_claude_host_materialization.py::"
+        "tests/integration/local_application/test_claude_host_materialization.py::"
         "test_committed_derivatives_match_their_owners",
     ),
     (
@@ -139,6 +139,15 @@ def derived_holders(pairs: list[tuple[list[str], str]], blobs: dict[str, str]) -
     return tuple(sorted(selected))
 
 
+def _carried_moves(root: Path, pairs: list[tuple[list[str], str]]) -> dict[str, str]:
+    """The moves the path map carries, read from the config files this diff changes."""
+    config = {
+        path: meta[3] for meta, path in pairs if path.startswith("config/") and meta[4] != "D"
+    }
+    read = read_blobs(list(config.values()), root, timeout=60)
+    return table_moves(pairs, {path: read[oid] for path, oid in config.items()})
+
+
 def changed_families(
     root: Path, base: str, head: str, *, pairs: list[tuple[list[str], str]] | None = None
 ) -> list[str]:
@@ -150,7 +159,8 @@ def changed_families(
         pairs = staged_changes(root, tree=head, base=base, timeout=60) if pairs is None else pairs
         if any(len(meta) != 5 or not path for meta, path in pairs):
             raise ValueError("malformed Git diff")
-        moves = unique_moves(pairs)
+        carried = _carried_moves(root, pairs)
+        moves = unique_moves(pairs) | carried
         changed = _changed_test_files(pairs)
         ids = sorted({oid for meta, _ in changed for oid in meta[2:4] if set(oid) != {"0"}})
         blobs = read_blobs(ids, root, timeout=60)
@@ -162,7 +172,8 @@ def changed_families(
                 before.extend(file_holders(path, blobs[meta[2]], size_scope=True))
             if meta[3] in blobs:
                 after.extend(file_holders(path, blobs[meta[3]], size_scope=True))
-        return edited_families(before, after, moves)
+        edited = edited_families(before, after, moves)
+        return [node for node in edited if node.partition("::")[0] not in carried]
     except (OSError, ValueError, SyntaxError, UnicodeError, subprocess.SubprocessError) as error:
         raise ValueError(
             f"test_size.changed_unmeasured: restore the exact test source and Git history: {error}"

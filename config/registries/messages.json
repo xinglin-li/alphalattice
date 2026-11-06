@@ -2,6 +2,15 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "workspace_context.writer_busy_detail": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The workspace is busy with another change. Read recent activity and Task status before deciding what to do next.",
+        "zh-CN": "工作区正忙于另一项更改。请先查看最近活动和任务状态，再决定下一步。"
+      }
+    },
     "workbench.session_unknown": {
       "owner": "alphalattice.interface.local_application",
       "kind": "MESSAGE",

@@ -247,6 +247,26 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
         monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [new], state))
         assert shape.main([]) == code
 
+    table = "config/registries/test-layout.json"
+    edited = (
+        raw.replace(f"{'a' * 40} A", f"{'b' * 40} A")
+        + f":100644 100644 {'c' * 40} {'d' * 40} M\0{table}\0"
+    )
+    for row_old, added, code in (
+        (old, "", 0),  # the move's table pairs an edited move: it is an edit of its old file
+        (old, "def test_added(): pass\n", 1),  # whose added lines stay judged
+        ("tests/area/test_elsewhere.py", "", 1),  # a row names only a path this change deletes
+    ):
+        texts[":" + table] = json.dumps(
+            {"schema": "alphalattice.test-layout.v1", "files": {new: {"old": row_old}}}
+        )
+        texts[":" + new] = legacy + added
+        monkeypatch.setattr(
+            shape.subprocess, "run", _git_backend(texts, [new, table], {"raw": edited})
+        )
+        assert shape.main([]) == code
+    texts[":" + new] = legacy
+
     source = "src/devtools/testing/layout.py"
     wrong, right = "tests/unit/testing/test_wrong.py", "tests/unit/testing/test_layout.py"
     test = (

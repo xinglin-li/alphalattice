@@ -1,13 +1,15 @@
 """Shared Git blob input for registry and test-shape guards."""
 
 import io
+import json
 import re
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from functools import cached_property
 from pathlib import Path
 
 from devtools.testing.layout import rule_patterns  # the mover's own rule projection
+from devtools.testing.requirements import LAYOUT_SCHEMA, schema_file
 
 
 def read_blobs(
@@ -80,10 +82,26 @@ def staged_changes(
 def staged_moves(
     root: Path | None = None, *, pairs: list[tuple[list[str], str]] | None = None
 ) -> Moves:
-    """Each staged path whose blob equals a path the change deletes, to that path: a move."""
+    """Each staged path whose blob equals a path the change deletes, to that path: a move. A row of
+    the staged move table pairs an edited move too: the same test, its added lines still judged."""
     pairs = staged_changes(root) if pairs is None else pairs
     gone = {meta[2]: path for meta, path in pairs if meta[4] == "D"}
-    return {path: gone[meta[3]] for meta, path in pairs if meta[4] == "A" and meta[3] in gone}
+    moves = {path: gone[meta[3]] for meta, path in pairs if meta[4] == "A" and meta[3] in gone}
+    names = [":" + path for meta, path in pairs if meta[4] != "D" and path.startswith("config/")]
+    configs = {name[1:]: text for name, text in read_blobs(names, root).items()}
+    return moves | table_moves(pairs, configs)
+
+
+def table_moves(pairs: list[tuple[list[str], str]], configs: Mapping[str, str]) -> Moves:
+    """The edited moves a change's own move table pairs: each row names a path this change adds
+    and one it deletes. `configs` holds the change's config files by path."""
+    table = schema_file(configs, configs.__getitem__, LAYOUT_SCHEMA)
+    if table is None:
+        return {}
+    added = {path for meta, path in pairs if meta[4] == "A"}
+    deleted = {path for meta, path in pairs if meta[4] == "D"}
+    rows = json.loads(configs[table])["files"]
+    return {new: row["old"] for new, row in rows.items() if new in added and row["old"] in deleted}
 
 
 def unique_moves(pairs: list[tuple[list[str], str]]) -> Moves:

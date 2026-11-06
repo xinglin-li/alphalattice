@@ -65,7 +65,7 @@ Existing files and byte-identical moves keep their standing.
 | Layer | Contract |
 | --- | --- |
 | Unit | Use temporary files only; no database, subprocess, socket, network or Host. |
-| Integration | Use files, databases and an in-process Host; no network. |
+| Integration | Use files, databases and an in-process Host over loopback; no other network. |
 | Contract | Run one port's suite against every adapter. |
 | E2E | Use registered journeys, real composition and external readback; check that untouched files are byte-identical; keep doubles to model, network and clock. |
 | Native | Use real host agents in admitted nightly and release lanes. |

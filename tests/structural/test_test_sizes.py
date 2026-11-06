@@ -149,7 +149,7 @@ def _memory_checks_read_no_host():
     target.parent.mkdir(parents=True)
     if case == "integration-import-hostname":
         (tmp_path / "hostname_import.py").write_text(
-            "import socket\nsocket.gethostname()\n", "utf-8"
+            "import socket\nsocket.getaddrinfo('example.invalid', 80)\n", "utf-8"
         )
     target.write_text(
         header
@@ -668,6 +668,34 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
                 "base",
             )
             base = git("rev-parse", "HEAD")
+
+            def commit(message):
+                git("add", ".")
+                git(
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "commit",
+                    "-qm",
+                    message,
+                )
+                return git("rev-parse", "HEAD")
+
+            # an edited move with no row in the move's table is new; with one, the same test
+            (repo / "tests/test_a.py").unlink()
+            moved = repo / "tests/unit/x/test_a.py"
+            moved.parent.mkdir(parents=True)
+            moved.write_text(new, encoding="utf-8")
+            assert changed(repo, base, commit("moved"))
+            (repo / "config").mkdir()
+            row = {"tests/unit/x/test_a.py": {"old": "tests/test_a.py"}}
+            (repo / "config/test-layout.json").write_text(
+                json.dumps({"schema": "alphalattice.test-layout.v1", "files": row}),
+                encoding="utf-8",
+            )
+            assert changed(repo, base, commit("paired")) == []
+            git("reset", "-q", "--hard", base)
             (repo / "tests/test_a.py").write_text(new, encoding="utf-8")
             (repo / "tests/extra_test.py").write_text(
                 "def testSuffix(): pass\nclass TestOuter:\n"
@@ -737,7 +765,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         from devtools.testing import collection
         from devtools.testing.sizes import load_policy
 
-        node = "tests/workspace_readiness/test_workspace_preparation.py::test_measured"
+        node = "tests/integration/product_host/test_workspace_preparation.py::test_measured"
         policy = load_policy(root)
         case = declared[0][5:]
         if case == "measured":
@@ -1079,7 +1107,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         mandatory.parent.mkdir(parents=True)
         mandatory.write_text(header + "@pytest.mark.large\ndef test_mandatory(): pass\n")
     if registered:
-        target = str(root / "tests/portfolio_strategy_lab/test_strategy_activation.py")
+        target = str(root / "tests/integration/product_host/test_strategy_activation.py")
         target += "::test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session"
     script = (
         "import pytest,json,sys\nfrom pathlib import Path\n"
@@ -1198,10 +1226,9 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             assert not (public / "tests").exists()
             policy = load_policy(public)
             policy["defaults"].reverse()
-            scope = "tests/portfolio_strategy_lab"
-            node = scope + "/test_public_control_surface.py"
-            node += "::test_coverage_names_the_owner_a_request_escapes"
-            expected = ("medium", scope.replace("/", "."), scope + "/*", 60)
+            path = "tests/integration/portfolio_strategy_lab/test_public_control_surface.py"
+            node = path + "::test_coverage_names_the_owner_a_request_escapes"
+            expected = ("medium", "tests.portfolio_strategy_lab", path + "*", 60)
             assert classify(node, (), policy) == expected
 
 
@@ -1639,6 +1666,11 @@ def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
         assert r.fresh([kept], [kept, other]) == [other]  # a basename never matches
         moved, copy = (kept._replace(node=f"{f}::TestA::test_anchor") for f in ("u.py", "v.py"))
         assert r.fresh([kept], [moved]) == [] and r.fresh([kept], [moved, copy]) == [copy]
+        edited = moved._replace(digest="edited")  # the move's table pairs the file: the same test
+        assert r.fresh([kept], [edited]) == [edited]
+        assert r.fresh([kept], [edited], {"u.py": "t.py"}) == []
+        proved = edited._replace(ids=("x.y",))  # whose newly proved ids stay judged
+        assert r.fresh([kept], [proved], {"u.py": "t.py"}) == [proved]
         suite, outside = tmp_path / "tests", [(node, [], tmp_path / "child/test_host.py")]
         gate("merge", outside, {}, suite)  # a child session's own tests are not the suite's
         with pytest.raises(ValueError, match=r"unregistered:tests/a/test_host\.py"):
