@@ -2,6 +2,15 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "evidence.unit_stopped": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["subject"],
+      "words": {
+        "en": "This unit stopped with `{subject}`.",
+        "zh-CN": "此单元因 `{subject}` 而停止。"
+      }
+    },
     "workspace_context.writer_busy_detail": {
       "owner": "alphalattice.interface.local_application",
       "kind": "MESSAGE",
