@@ -2,19 +2,28 @@ name: Verify
 
 # Both legs a person can install: the source checkout and the built wheel. Runs only in a public
 # repository, for main and next and pull requests against either; actions are pinned to the commit
-# of the named release.
+# of the named release. Every public test runs split over free runners once a night on next's tip
+# (skipped when that commit already has a full run) and on workflow_dispatch for a promotion candidate;
+# a push keeps the fast legs only.
 on:
   push:
     branches: [main, next]
   pull_request:
     branches: [main, next]
   workflow_dispatch:
+    inputs:
+      nightly:
+        description: Skip a commit with existing full test artifacts
+        type: boolean
+        default: false
+  schedule:
+    - cron: "17 7 * * *"  # 07:17 UTC: 03:17 New York in summer, 02:17 in winter; after the next export
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ inputs.nightly }}  # a nightly never cancels a manual promotion run
   cancel-in-progress: true
 
 env:
@@ -23,7 +32,7 @@ env:
 jobs:
   checkout:
     name: Source checkout
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && github.event_name != 'schedule' }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -40,24 +49,16 @@ jobs:
         run: uv sync --locked --all-extras
       - name: Build Local Web
         run: uv run python scripts/build_local_web_ui.py --product
-      - name: Check Python
-        run: uv run python scripts/check_playpen.py --all-python --fast
       - name: Check Local Web freshness and syntax
         run: uv run python scripts/build_local_web_ui.py --product --check
-      - name: Run the offline Local Web and Evidence tests
+      - name: Run the commit stage of config/pipeline.toml
         run: >-
-          uv run python -m pytest
-          tests/portfolio_strategy_lab/test_local_web_service.py
-          tests/portfolio_strategy_lab/test_local_web_client.py
-          tests/portfolio_strategy_lab/test_research_flow_answers.py
-          tests/alternative_evidence_desk/test_evidence_review_http_route.py
-          tests/structural/test_local_web_build.py
-          -n auto -m "not real_evidence"
-          --basetemp "${{ runner.temp }}/alphalattice-public-tests"
+          uv run python scripts/pipeline.py run commit --host public --base HEAD --workers 4
+          --out "${{ runner.temp }}/pipeline"
 
   wheel:
     name: Installed wheel
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && github.event_name != 'schedule' }}
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -100,7 +101,7 @@ jobs:
 
   platforms:
     name: Offline first use (${{ matrix.os }})
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && github.event_name != 'schedule' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -159,3 +160,375 @@ jobs:
           uv run python -c "import sys, zipfile, pathlib; pathlib.Path(sys.argv[2]).write_bytes(zipfile.ZipFile(sys.argv[1]).read('alphalattice/_runtime/config/release/runtime-requirements.txt'))" "$wheel" "$requirements"
           uv tool install --python 3.12 "$wheel" --with-requirements "$requirements" --constraints "$requirements"
           uv run python scripts/release/wheel_smoke.py --command "$UV_TOOL_BIN_DIR/alphalattice" --output "$RUNNER_TEMP/smoke-bash.json" --fresh-shell bash
+
+  public-tests-plan:
+    name: Plan the public tests
+    if: ${{ !github.event.repository.private && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+      run: ${{ steps.plan.outputs.run }}
+      shards: ${{ steps.plan.outputs.shards }}
+      oses: ${{ steps.plan.outputs.oses }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Pick each operating system that needs a run
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          NIGHTLY: ${{ inputs.nightly }}
+          REF: ${{ github.event_name == 'schedule' && 'next' || github.sha }}
+        run: |
+          set -o pipefail
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" --jq .sha)
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'unreadable commit SHA' >&2; exit 1; }
+          count_windows=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-windows-$sha&per_page=100" | jq "[.[] | .artifacts[] | select(.name == \"public-tests-windows-$sha\" and .expired == false)] | length")
+          count_legacy=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-$sha&per_page=100" | jq "[.[] | .artifacts[] | select(.name == \"public-tests-$sha\" and .expired == false)] | length")
+          count_linux=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts?name=public-tests-linux-$sha&per_page=100" | jq "[.[] | .artifacts[] | select(.name == \"public-tests-linux-$sha\" and .expired == false)] | length")
+          windows_run=true
+          linux_run=true
+          if { [ "$EVENT" = schedule ] || [ "$NIGHTLY" = true ]; }; then
+            if [ "$count_windows" != 0 ] || [ "$count_legacy" != 0 ]; then windows_run=false; fi
+            if [ "$count_linux" != 0 ]; then linux_run=false; fi
+          fi
+          oses='[]'
+          if [ "$windows_run" = true ]; then oses=$(jq -cn --argjson a "$oses" '$a + ["windows"]'); fi
+          if [ "$linux_run" = true ]; then oses=$(jq -cn --argjson a "$oses" '$a + ["linux"]'); fi
+          matrix=$(jq -cn --argjson oses "$oses" '{include: [$oses[] as $os | [1,2,3,4][] | {os:$os,runner:(if $os == "windows" then "windows-latest" else "ubuntu-latest" end),group:.}]}')
+          run=false
+          if [ "$windows_run" = true ] || [ "$linux_run" = true ]; then run=true; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo 'shards=[1,2,3,4]' >> "$GITHUB_OUTPUT"
+          echo "oses=$oses" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  public-tests-shard:
+    name: Public tests (${{ matrix.os }}, shard ${{ matrix.group }})
+    needs: public-tests-plan
+    if: ${{ needs.public-tests-plan.outputs.run == 'true' }}
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.os == 'linux' }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.public-tests-plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.public-tests-plan.outputs.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.11.28"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Install the locked environment
+        run: uv sync --locked --all-extras
+      - name: Build Local Web
+        run: uv run python scripts/build_local_web_ui.py --product
+      - name: Install the locked browser tooling on Windows
+        if: ${{ matrix.os == 'windows' }}
+        shell: bash
+        working-directory: third_party/playwright
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .browsers
+        run: |-
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+          npx --no-install playwright install chromium
+      - name: Install the locked browser tooling on Linux
+        if: ${{ matrix.os == 'linux' }}
+        shell: bash
+        working-directory: third_party/playwright
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .browsers
+        run: |-
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+          npx --no-install playwright install --with-deps chromium
+      - name: Prepare worker diagnostics
+        shell: bash
+        run: |
+          temp="${RUNNER_TEMP//\\//}"
+          mkdir -p "$temp/worker-diagnostics"
+          cat > "$temp/ci_worker_diagnostics.py" <<'PY'
+          """Keep worker timeouts and fatal traces beside the public test receipt."""
+
+          import faulthandler
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          import pytest
+          import pytest_timeout
+
+          _stream = None
+          HANG_SECONDS = 900  # a public run stops a hang, never a slow test; size budgets are the commit stage's
+
+
+          @pytest.hookimpl(wrapper=True)
+          def pytest_collection_modifyitems(items):
+              result = yield
+              for item in items:
+                  marker = item.get_closest_marker("timeout")
+                  limit = (marker.args[0] if marker.args else marker.kwargs.get("timeout")) if marker else None
+                  hang = max(HANG_SECONDS, limit or 0)  # a test's own longer bound stays
+                  item.add_marker(pytest.mark.timeout(hang, func_only=False), append=False)
+                  item.user_properties[:] = [
+                      (key, hang if key == "test_timeout_seconds" else value)
+                      for key, value in item.user_properties
+                  ]
+              return result
+
+
+          def _event(kind, **fields):
+              if _stream is not None:
+                  try:
+                      _stream.write(json.dumps({"event": kind, **fields}) + "\n")
+                      _stream.flush()
+                  except (OSError, TypeError, ValueError) as error:
+                      print(f"worker diagnostics unavailable: {type(error).__name__}", file=sys.stderr)
+
+
+          @pytest.hookimpl(trylast=True)
+          def pytest_configure(config):
+              global _stream
+              if not hasattr(config, "workerinput"):
+                  return
+              worker = config.workerinput["workerid"]
+              try:
+                  path = Path(os.environ["PYTEST_WORKER_DIAGNOSTICS"]) / f"{worker}-{os.getpid()}.log"
+                  _stream = path.open("w", encoding="utf-8", errors="backslashreplace", buffering=1)
+                  faulthandler.enable(file=_stream, all_threads=True)
+              except Exception as error:
+                  print(f"worker diagnostics unavailable: {type(error).__name__}", file=sys.stderr)
+                  if _stream is not None:
+                      _stream.close()
+                  _stream = None
+                  return
+              _event("worker", worker=worker, pid=os.getpid())
+
+              def capture(original):
+                  def timed_out(item, settings):
+                      if not settings.disable_debugger_detection and pytest_timeout.is_debugging():
+                          return original(item, settings)
+                      try:
+                          _event("timeout", node=item.nodeid, seconds=settings.timeout)
+                          faulthandler.dump_traceback(file=_stream, all_threads=True)
+                      except Exception as error:
+                          print(f"worker diagnostics unavailable: {type(error).__name__}", file=sys.stderr)
+                      return original(item, settings)
+
+                  return timed_out
+
+              pytest_timeout.timeout_timer = capture(pytest_timeout.timeout_timer)
+              pytest_timeout.timeout_sigalrm = capture(pytest_timeout.timeout_sigalrm)
+
+
+          @pytest.hookimpl(wrapper=True, tryfirst=True)
+          def pytest_runtest_protocol(item, nextitem):
+              _event("start", node=item.nodeid)
+              try:
+                  return (yield)
+              finally:
+                  _event("end", node=item.nodeid)
+
+
+          @pytest.hookimpl(wrapper=True)
+          def pytest_runtest_makereport(item, call):
+              report = yield
+              if report.failed and "test_verified_source_leases.py::" in item.nodeid:
+                  store = sys.modules.get("alphalattice.control.workspace_runtime.content_store")
+                  try:
+                      if store is None:
+                          _event("lease", node=item.nodeid, status="module_not_loaded")
+                      elif not store._VERIFIED_ARRAY_CACHE_LOCK.acquire(blocking=False):
+                          _event("lease", node=item.nodeid, status="cache_busy")
+                      else:
+                          try:
+                              leases = [
+                                  lease for group in store._VERIFIED_SOURCE_LEASES.values() for lease in group
+                              ]
+                              hits, misses = (
+                                  store._VERIFIED_ARRAY_PROCESS_CACHE_HITS,
+                                  store._VERIFIED_ARRAY_PROCESS_CACHE_MISSES,
+                              )
+                          finally:
+                              store._VERIFIED_ARRAY_CACHE_LOCK.release()
+                          states = []
+                          for lease in leases:
+                              if not lease.lock.acquire(blocking=False):
+                                  states.append({"status": "lease_busy"})
+                                  continue
+                              try:
+                                  states.append(
+                                      {
+                                          "path_name": lease.path.name,
+                                          "identity": lease.identity[1:],
+                                          "pending": lease.pending,
+                                          "handle_open": lease.handle is not None,
+                                          "event_wait": lease.kernel.WaitForSingleObject(lease.event, 0)
+                                          if lease.event
+                                          else None,
+                                      }
+                                  )
+                              finally:
+                                  lease.lock.release()
+                          _event(
+                              "lease",
+                              node=item.nodeid,
+                              status="observed",
+                              hits=hits,
+                              misses=misses,
+                              leases=states,
+                          )
+                  except Exception as error:
+                      _event("lease", node=item.nodeid, status="unmeasured", reason=type(error).__name__)
+              return report
+          PY
+      - name: Run this shard of every public test
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONPATH: ${{ runner.temp }}
+          PYTEST_WORKER_DIAGNOSTICS: ${{ runner.temp }}/worker-diagnostics
+        run: >-
+          uv run python -m pytest tests -m "not real_evidence" -n 4 -p ci_worker_diagnostics
+          --splits 4 --group ${{ matrix.group }} --durations-path .test_durations
+          --junitxml "${{ runner.temp }}/junit.xml" --basetemp "${{ runner.temp }}/alphalattice-public-tests"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: public-tests-junit-${{ matrix.os }}-${{ matrix.group }}
+          path: ${{ runner.temp }}/junit.xml
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain worker diagnostics
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: public-tests-diagnostics-${{ matrix.os }}-${{ matrix.group }}
+          path: |
+            ${{ runner.temp }}/worker-diagnostics/*.log
+            ${{ runner.temp }}/alphalattice-public-tests/run.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Record this passing shard
+        if: success()
+        shell: bash
+        env:
+          OS: ${{ matrix.os }}
+          SHA: ${{ needs.public-tests-plan.outputs.sha }}
+          GROUP: ${{ matrix.group }}
+        run: >-
+          uv run python -c 'import json,os,pathlib; pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("passed.json").write_text(json.dumps({"os":os.environ["OS"],"sha":os.environ["SHA"],"group":int(os.environ["GROUP"])}),encoding="utf-8")'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: success()
+        with:
+          name: public-tests-pass-${{ matrix.os }}-${{ matrix.group }}
+          path: ${{ runner.temp }}/passed.json
+          if-no-files-found: error
+          retention-days: 14
+
+  public-tests:
+    name: Public tests (${{ matrix.os }})
+    needs: [public-tests-plan, public-tests-shard]
+    if: ${{ always() && needs.public-tests-plan.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.os == 'linux' }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.public-tests-plan.outputs.oses) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.public-tests-plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: always()
+        with:
+          pattern: public-tests-junit-${{ matrix.os }}-*
+          path: ${{ runner.temp }}/junit
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: always()
+        with:
+          pattern: public-tests-pass-${{ matrix.os }}-*
+          path: ${{ runner.temp }}/passes
+      - name: Total and verify this operating system's shards
+        if: always()
+        shell: bash
+        env:
+          OS: ${{ matrix.os }}
+          SHA: ${{ needs.public-tests-plan.outputs.sha }}
+        run: >-
+          python3 scripts/release/test_durations.py "$RUNNER_TEMP/.test_durations"
+          "$RUNNER_TEMP"/junit/public-tests-junit-"$OS"-*/junit.xml --expect 1 2 3 4
+          --os "$OS" --sha "$SHA" --pass-dir "$RUNNER_TEMP/passes"
+          --summary "$RUNNER_TEMP/public-tests.json" --result "$RUNNER_TEMP/result.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: public-tests-result-${{ matrix.os }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/result.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: public-tests-summary-${{ matrix.os }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/public-tests.json
+            ${{ runner.temp }}/.test_durations
+          include-hidden-files: true
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: success()
+        with:
+          name: public-tests-${{ matrix.os }}-${{ needs.public-tests-plan.outputs.sha }}
+          path: ${{ runner.temp }}/result.json
+          if-no-files-found: error
+          retention-days: 14
+
+  test-cost:
+    name: Test cost (CodSpeed instructions, pilot slice)
+    needs: public-tests-plan
+    if: ${{ needs.public-tests-plan.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      UV_NO_MANAGED_PYTHON: "1"
+    continue-on-error: true  # a cost reading, never a gate
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.public-tests-plan.outputs.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.11.28"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version-file: .python-version
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Install the locked environment with the CodSpeed plugin
+        run: uv sync --locked --all-extras --group codspeed
+      - name: Build Local Web
+        run: uv run python scripts/build_local_web_ui.py --product
+      # CodSpeed's CPU simulation counts each test's instructions; process starts, file IO and waits
+      # are not counted, so those tests keep their wall-time shares from the public tests' JUnit.
+      - name: Measure each test of the pilot slice
+        uses: CodSpeedHQ/action@821a40cd6c80e3cfe387caf55668287addd808da # v5.5.0
+        with:
+          mode: simulation
+          run: >-
+            uv run python -m pytest tests/evaluation tests/feature_engine/test_factor_arithmetic_identity.py
+            -m "not real_evidence" --codspeed -p no:cacheprovider

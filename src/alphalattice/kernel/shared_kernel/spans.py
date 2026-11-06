@@ -79,6 +79,9 @@ class SpanLedger:
         self._local = threading.local()
         self._workers = {"calls": 0, "wall_seconds": 0.0, "cpu_seconds": 0.0}
         self._worker_bytes = {"read_bytes": 0, "write_bytes": 0}
+        self._cache: dict[tuple[str, str], dict[str, Any]] = {}
+        self._cache_dropped = 0
+        self._cache_gaps: set[str] = set()
         self.overlapped = False
         self.readout_value: dict[str, Any] | None = None
 
@@ -111,6 +114,40 @@ class SpanLedger:
             row[1] += inclusive
             row[2] += exclusive
 
+    def observe_cache(self, observation: Mapping[str, Any], *, origin: str = "host") -> None:
+        """Add lookup counts; retain each instance's latest retained bytes (estimate)."""
+        key = (observation["cache_id"], observation["instance_ref"])
+        counts = ("hits", "misses", "capacity_evictions")
+        with self._lock:
+            self._cache_gaps.update(observation.get("missing", ()))
+            row = self._cache.get(key)
+            if row is None:
+                if len(self._cache) >= MAXIMUM_SPAN_KEYS:
+                    self._cache_dropped += 1
+                    self._cache_gaps.add("CACHE_OBSERVATIONS_DROPPED")
+                    return
+                row = self._cache[key] = dict(observation) | dict.fromkeys(counts, 0)
+            totals = {name: row[name] + observation.get(name, 0) for name in counts}
+            if observation["sequence"] >= row["sequence"]:
+                row.update(observation)
+            row.update(totals, origin=origin)
+
+    def cache_observation_failed(self) -> None:
+        """Retain a collector failure without changing the cache operation's result."""
+        with self._lock:
+            self._cache_gaps.add("CACHE_OBSERVATION_FAILED")
+
+    def cache_readout(self) -> dict[str, Any]:
+        """Snapshot cache observations independently of later owner-thread operations."""
+        with self._lock:
+            return {
+                "cache_observations": [
+                    dict(row, missing=list(row.get("missing", ()))) for row in self._cache.values()
+                ],
+                "dropped_cache_observations": self._cache_dropped,
+                "cache_observation_gaps": sorted(self._cache_gaps),
+            }
+
     def absorb(self, readout: Mapping[str, Any]) -> None:
         """Add a worker call's readout: its spans as the worker's, its resources as workers'."""
         for row in readout.get("spans", ()):
@@ -124,7 +161,13 @@ class SpanLedger:
             )
         process = readout.get("process", {})
         workers = readout.get("workers", {})
+        for observation in readout.get("cache_observations", ()):
+            self.observe_cache(observation, origin="worker")
         with self._lock:
+            self._cache_dropped += int(readout.get("dropped_cache_observations", 0))
+            self._cache_gaps.update(readout.get("cache_observation_gaps", ()))
+            if "cache_observations" not in readout:
+                self._cache_gaps.add("CACHE_CHANNEL_UNOBSERVED")
             self._dropped += int(readout.get("dropped_spans", 0))
             self._workers["calls"] += 1 + int(workers.get("calls", 0))
             self._workers["wall_seconds"] += float(readout.get("wall_seconds", 0.0))
@@ -277,6 +320,7 @@ def collect() -> Iterator[SpanLedger]:
             },
             "spans": ledger.rows(),
             "dropped_spans": ledger._dropped,
+            **ledger.cache_readout(),
         }
 
 

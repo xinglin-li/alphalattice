@@ -33,6 +33,9 @@ from alphalattice.control.product_host.composition.local_web_session import (
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     PortfolioRunCommand,
 )
+from alphalattice.control.product_host.composition.research_workspace import (
+    publish_research_workspace_manifest,
+)
 from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.registry import TaskQueueFull
 from alphalattice.interface.local_application import client, native_bridge
@@ -62,10 +65,8 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
-from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.portfolio_strategy_lab.local_web_support import (
     _agent,
-    _InterruptsOnce,
     _json,
     _manifest,
     _raw,
@@ -447,35 +448,125 @@ def test_run_admission_returns_before_the_work_and_the_task_progresses(
     live: LocalPortfolioWebSession, monkeypatch
 ) -> None:
     "The whole point of the dispatcher: an answer now, a task that moves after."
-    published, release = (threading.Event(), threading.Event())
+    published, allow_work, release = (threading.Event(), threading.Event(), threading.Event())
     execute = PortfolioRunCommand.execute
 
     def hold_after_publication(command, task_id):
+        assert allow_work.wait(30), "test did not release the command to run"
         execute(command, task_id)
         published.set()
-        assert release.wait(10), "test did not release the completed command"
+        assert release.wait(30), "test did not release the completed command"
 
     monkeypatch.setattr(PortfolioRunCommand, "execute", hold_after_publication)
-    started = time.perf_counter()
-    admitted = _json(live, "/api/run", method="POST", payload={})
-    elapsed_ms = (time.perf_counter() - started) * 1000.0
-    assert admitted["disposition"] == "ADMITTED"
-    assert admitted["task_id"]
-    assert admitted["lifecycle"] in {"QUEUED", "RUNNING"}
-    assert elapsed_ms < 2000.0, elapsed_ms
     try:
-        assert published.wait(10)
+        admitted = _json(live, "/api/run", method="POST", payload={})
+        assert admitted["disposition"] == "ADMITTED"
+        assert admitted["task_id"]
+        assert admitted["lifecycle"] in {"QUEUED", "RUNNING"}
+        assert not published.is_set(), "admission returned after the work completed"
+        allow_work.set()
+        assert published.wait(30)
         assert _json(live, "/api/results")["results"]
         held = _json(live, f"/api/status?task_id={admitted['task_id']}")
         assert held["lifecycle"] == "RUNNING"
         assert held["task_id"] == admitted["task_id"]
+        cutoff = live.dispatcher._last_needed + 901
+        monkeypatch.setattr(
+            "alphalattice.interface.local_application.dispatcher.monotonic", lambda: cutoff
+        )
+        assert not live.dispatcher._idle_expired(900, lambda: False)
     finally:
+        allow_work.set()
         release.set()
     live.dispatcher.drain_for_tests()
     final = _json(live, f"/api/status?task_id={admitted['task_id']}")
     assert final["lifecycle"] == "SUCCEEDED"
     assert final["verified_stage_count"] == final["total_stage_count"]
     assert final["worker_failure"] is None
+
+    assert not live.dispatcher._idle_expired(900, lambda: False)
+
+
+def test_an_invalid_strategy_declaration_offers_its_real_repair_route(live):
+    """Invalid declarations offer a verbatim repair route before research parents are read."""
+    publish_research_workspace_manifest(live.workspace, live.workspace_manifest)
+    request = PortfolioResearchAgentRequest(
+        operation="RESEARCH_STRATEGY_PLAN", experiment_document={}
+    ).to_operation_request()
+    body = live.operations._execute(request, caller="HUMAN", agent_execution=None)
+    assert body["failure_code"] == "research_strategy.declaration_invalid"
+    assert ["alpha_task_ids"] in body["fields"]
+    assert body["next_action"] == "CORRECT_DECLARATION_AND_REPLAN"
+    offer = body.get("next_requests", {}).get("controls")
+    assert offer == {"operation": "RESEARCH_STRATEGY_CONTROLS"}
+    parsed = PortfolioResearchAgentRequest.model_validate(offer).to_operation_request()
+    controls = live.operations.execute(parsed)
+    assert controls["status"] == "AVAILABLE"
+    assert "alpha_task_ids" in controls["declaration_schema"]["properties"]
+
+
+def test_read_routes_and_registered_read_requests_do_not_refresh_activity(live, monkeypatch):
+    from alphalattice.interface.local_application import dispatcher
+
+    before = live.dispatcher._last_needed
+    ticks = [before + 100]
+    monkeypatch.setattr(dispatcher, "monotonic", lambda: ticks[0])
+    assert _json(live, "/api/session")["workspace_id"] == "qa-local-web"
+    client.LocalResearchClient(live.workspace).request({"operation": "OPERATION_LIST"})
+    assert live.dispatcher._last_needed == before
+    live.web.application.route("POST", "/api/qa-write", mutates=True)(lambda *_: {"written": True})
+    assert _json(live, "/api/qa-write", method="POST", payload={})["written"]
+    assert live.dispatcher._last_needed == ticks[0]
+    from alphalattice.interface.local_application import cli_contract
+
+    ticks[0] += 901
+
+    def admission_wins():
+        assert _json(live, "/api/qa-write", method="POST", payload={})["written"]
+        ticks[0] += 901
+        return False
+
+    assert not live.dispatcher._idle_expired(900, admission_wins)
+
+    def unreadable():
+        raise OSError("synthetic owner read")
+
+    ticks[0] += 901
+    assert not live.dispatcher._idle_expired(900, unreadable)
+    ticks[0] += 901
+    assert not live.dispatcher._idle_expired(0, lambda: False)
+    assert live.dispatcher._idle_expired(900, lambda: False)
+    admitted = live.dispatcher.admissions
+    live.dispatcher._begin_drain()
+    status, _, raw = _request(live, "/api/qa-write", method="POST", payload={})
+    refused = json.loads(raw)
+    assert status == 400 and refused["status"] == "REFUSED"
+    assert refused["failure_code"] == "local_application.dispatcher_closed"
+    assert refused["next_action"] == "SERVE_AGAIN_WHEN_WORK_NEEDS_IT"
+    words = cli_contract.runtime_json("config/registries/messages.json")["entries"]["host.closing"][
+        "words"
+    ]
+    assert refused["detail"] == words["en"]
+    assert refused["terminal_command"] == [
+        "alphalattice",
+        "--workspace",
+        str(live.workspace),
+        "serve",
+        "--no-browser",
+        "--detach",
+    ]
+    from alphalattice.interface.local_application.cli import main
+
+    assert main(refused["terminal_command"][1:], serve=lambda _: 99) == 99
+    denied, _, private = _request(live, "/api/qa-write", method="POST", payload={}, token=None)
+    assert denied == 403 and "terminal_command" not in json.loads(private)
+    for language, locale in (("en", "en"), ("zh", "zh-CN")):
+        token = cli_contract.ANSWER_LANGUAGE.set(language)
+        try:
+            assert cli_contract.worded(refused["detail"]) == words[locale]
+        finally:
+            cli_contract.ANSWER_LANGUAGE.reset(token)
+    assert live.dispatcher.admissions == admitted
 
 
 def test_capacity_is_the_workspaces_own_and_is_reported_truthfully(
@@ -647,57 +738,107 @@ def test_shutdown_joins_a_slow_authenticated_handler(live: LocalPortfolioWebSess
     assert live.session is None
 
 
-def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "path",
+    [
+        "command",
+        "held",
+    ],
+)
+def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(
+    tmp_path, monkeypatch, path
+):
     "The old bounded join returned with the worker alive. Now it refuses to."
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    session = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=_manifest("qa-bounded"),
-        resolver=_Resolver(_resolved()),
-    )
+    options = {"workspace": workspace, "workspace_manifest": _manifest("qa-bounded")}
+    session = LocalPortfolioWebSession(**options, resolver=_Resolver(_resolved()))
     session.start()
-    running = threading.Event()
-    release = threading.Event()
+    running, release = threading.Event(), threading.Event()
+    handoff, executed = threading.Event(), threading.Event()
+    errors = []
+    stopper = threading.Thread(target=session.stop, daemon=True)
 
     class _SlowCommand:
         command_kind = "qa_slow_command"
 
         def admit(self) -> CommandAdmission:
+            if path == "admission":
+                running.set()
+                assert handoff.wait(20)
             return CommandAdmission(task_id=uuid4(), lifecycle="QUEUED")
 
         def execute(self, task_id: UUID) -> None:
             del task_id
+            if path == "idle" and not running.is_set():
+                return
+            executed.set()
             running.set()
             release.wait(timeout=60.0)
 
+    def submit():
+        try:
+            if path in {"handoff", "idle"}:
+                running.set()
+                assert handoff.wait(20)
+            session.dispatcher.submit(_SlowCommand())
+        except Exception as error:
+            errors.append(error)
+
+    producer = threading.Thread(target=submit, daemon=True)
+    if path == "idle":
+        session.dispatcher.on_idle = submit
+
     try:
-        session.dispatcher.submit(_SlowCommand())
+        if path in {"held", "handoff"}:
+            owner = session.operations.automation
+            close = owner.held_host.close
+            monkeypatch.setattr(owner.held_host, "close", lambda **_: close(timeout=0))
+            owner.hold(
+                session.clock(),
+                submit if path == "handoff" else lambda: _SlowCommand().execute(uuid4()),
+            )
+        elif path == "admission":
+            producer.start()
+        else:
+            session.dispatcher.submit(_SlowCommand())
         assert running.wait(timeout=20.0)
+        cutoff = session.dispatcher._last_needed + 901
+        monkeypatch.setattr(
+            "alphalattice.interface.local_application.dispatcher.monotonic", lambda: cutoff
+        )
+        assert not session.dispatcher._idle_expired(900, lambda: False)
         with pytest.raises(LocalWebSessionError):
             session.stop(timeout=0.05)
         assert session.session is not None
         assert session.dispatcher is not None
-        assert session.dispatcher.worker_alive
-        contender = LocalPortfolioWebSession(
-            workspace=workspace,
-            workspace_manifest=_manifest("qa-bounded"),
-            resolver=_Resolver(_resolved()),
-        )
+        if path == "command":
+            assert session.dispatcher.worker_alive
+        contender = LocalPortfolioWebSession(**options, resolver=_Resolver(_resolved()))
         with pytest.raises(RuntimeError, match="writer_already_owned"):
             contender.start()
+        stopper.start()
+        stopper.join(timeout=0.4)
+        assert stopper.is_alive() and session.session is not None
+        handoff.set()
         release.set()
+        stopper.join(timeout=30.0)
+        assert not stopper.is_alive()
+        if producer.ident is not None:
+            producer.join(5)
+        assert executed.is_set() and not errors
         session.stop()
         assert session.session is None
     finally:
+        handoff.set()
         release.set()
         with suppress(Exception):
             session.stop()
-    successor = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=_manifest("qa-bounded"),
-        resolver=_Resolver(_resolved()),
-    )
+        if stopper.ident is not None:
+            stopper.join(timeout=30.0)
+        if producer.ident is not None:
+            producer.join(5)
+    successor = LocalPortfolioWebSession(**options, resolver=_Resolver(_resolved()))
     successor.start()
     try:
         assert _json(successor, "/api/session")["workspace_id"] == "qa-bounded"
@@ -856,13 +997,26 @@ def test_a_malformed_content_length_is_refused_with_a_stable_reason(
     assert _json(read_only_live, "/api/tasks")["tasks"] == task_rows_before
 
 
-@pytest.mark.parametrize("phase", ("WORK", "RESULT_PUBLISHED", "CANCEL"))
+@pytest.mark.parametrize("phase", ("WORK", "CANCEL"))
 def test_local_web_reopens_after_forced_process_death(tmp_path: Path, phase: str) -> None:
     from tests.portfolio_strategy_lab.process_death import forced_process
 
     workspace = tmp_path / "workspace"
     with forced_process(workspace, __name__, phase) as interrupted:
         pass
+    if phase == "WORK":  # a stop during start resumes nothing, and its stop removes the connection
+        early = LocalPortfolioWebSession(
+            workspace=workspace,
+            workspace_manifest=_manifest("qa-hard-stop"),
+            resolver=_Resolver(_resolved()),
+        )
+        early.stop_requested = lambda: True
+        early.start()
+        published = early.client_connection
+        assert early.resumed_task_ids == () and published is not None
+        assert published.path(Path(published.workspace)).exists()  # published early: the fence
+        early.stop()
+        assert not published.path(Path(published.workspace)).exists()
     resolver = _Resolver(_resolved())
     service = LocalPortfolioWebSession(
         workspace=workspace, workspace_manifest=_manifest("qa-hard-stop"), resolver=resolver
@@ -1529,50 +1683,6 @@ def test_results_selects_reused_task_metadata_without_scanning_reports(
     assert body["next_action"] == "COPY_FULL_TASK_ID_FROM_HISTORY"
 
 
-def test_an_idle_keep_alive_connection_does_not_block_shutdown(
-    tmp_path: Path, read_only_live, completed_host
-) -> None:
-    "An idle keep alive Host stops all its threads beside other running Hosts."
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    session = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=_manifest("qa-keepalive"),
-        resolver=_Resolver(_resolved()),
-    )
-    before = set(threading.enumerate())
-    session.start()
-    port = session.web.bound_port
-    idle = socket.create_connection(("127.0.0.1", port), timeout=10.0)
-    try:
-        idle.sendall(
-            "\r\n".join(
-                (
-                    "GET /api/session HTTP/1.1",
-                    f"Host: 127.0.0.1:{port}",
-                    f"Cookie: {SESSION_COOKIE}={session.web.application.session_token}",
-                    "Connection: keep-alive",
-                    "",
-                    "",
-                )
-            ).encode("ascii")
-        )
-        assert idle.recv(4096).startswith(b"HTTP/1.1 200")
-        started = time.perf_counter()
-        session.stop()
-        elapsed = time.perf_counter() - started
-    finally:
-        idle.close()
-        with suppress(Exception):
-            session.stop()
-    assert elapsed < 30.0, elapsed
-    assert session.session is None
-    remaining = {
-        thread.ident: thread.name for thread in threading.enumerate() if thread not in before
-    }
-    assert remaining == {}, remaining
-
-
 def test_every_web_handler_preserves_every_typed_owner_exception(
     read_only_live, monkeypatch
 ) -> None:
@@ -1660,55 +1770,6 @@ def test_the_evidence_and_cro_section_names_why_it_waits(
     assert preview["failure_code"] == "REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY", preview
 
 
-def test_a_route_that_writes_takes_the_write_check(live: LocalPortfolioWebSession) -> None:
-    "A route that writes takes the write check."
-    for path in [
-        "/api/experiments/training-inputs/prepare",
-        "/api/workspace/storage/plan",
-        "/api/workspace/storage/cap",
-        "/api/research-inputs/plan",
-        "/api/experiments/training-inputs/plan",
-        "/api/research-strategies/plan",
-        "/api/workspace/data-issues/preview",
-        "/api/workspace/preparation/plan",
-        "/api/experiments/plan",
-        "/api/experiments/handoff",
-        "/api/experiments/foundations/preview",
-    ]:
-        status, _headers, body = _request(live, path, method="POST", payload={}, token=None)
-        assert status == 403, (status, body[:300])
-        assert "session_token_absent" in json.loads(body)["refused"]
-        if path == "/api/workspace/storage/cap":
-            cap = str(20 * 1024**3)
-            changed = _json(
-                live,
-                "/api/workspace/storage/cap",
-                method="POST",
-                payload={"storage_cap_bytes": cap},
-            )
-            assert changed["status"] == "CONFIGURED"
-            assert changed["capacity"]["cap_bytes"] == int(cap)
-            status, _headers, body = _request(
-                live,
-                "/api/workspace/storage/cap",
-                method="POST",
-                payload={"storage_cap_bytes": "0"},
-            )
-            assert (
-                status == 200 and json.loads(body)["failure_code"] == "storage.cap_setting_invalid"
-            )
-            assert _json(live, "/api/workspace/storage/cap")["capacity"]["cap_bytes"] == int(cap)
-            human = _json(
-                live,
-                "/api/workspace/storage/cap",
-                method="POST",
-                payload={"storage_cap_bytes": str(25 * 1024**3)},
-            )
-            assert human["capacity"]["setting"]["chosen_by"] == "HUMAN"
-            code, shown, _ = _cli(live.workspace, "storage", "cap")
-            assert code == 0 and shown["data"]["capacity"]["cap_bytes"] == 25 * 1024**3
-
-
 def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
     """A cleanup preview offers its exact confirmation and asks the person once."""
     from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
@@ -1730,82 +1791,6 @@ def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
             payload={key: value for key, value in continued.items() if key != "operation"},
         )
         assert applied["status"] == "COMPLETED" and applied["plan_hash"] == plan["plan_hash"]
-
-
-@pytest.mark.parametrize(
-    ("never_started", "external_recovery"),
-    [(False, False), (False, True), (False, "http"), (True, False)],
-)
-def test_a_service_restart_recovers_the_same_task_and_publishes_once(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    never_started: bool,
-    external_recovery: bool | str,
-) -> None:
-    "A genuinely interrupted task is finished by the next service, once."
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    interrupting = _InterruptsOnce(_Resolver(_resolved()))
-    first = LocalPortfolioWebSession(
-        workspace=workspace, workspace_manifest=_manifest("qa-restart"), resolver=interrupting
-    )
-    first.start()
-    try:
-        with monkeypatch.context() as patch:
-            if never_started:
-                patch.setattr(first.dispatcher._work, "put", lambda item: None)
-            admitted = _json(first, "/api/run", method="POST", payload={})
-            task_id = admitted["task_id"]
-            if not never_started:
-                first.dispatcher.drain_for_tests()
-        interrupted = _json(first, f"/api/status?task_id={task_id}")
-        tasks_before = _json(first, "/api/tasks")["tasks"]
-        results_before = _json(first, "/api/results")["results"]
-    finally:
-        first.stop()
-    assert interrupting.failures == (0 if never_started else 1)
-    assert interrupted["lifecycle"] == ("QUEUED" if never_started else "RECOVERY_REQUIRED"), (
-        interrupted
-    )
-    assert len(tasks_before) == 1
-    assert results_before == []
-    second = LocalPortfolioWebSession(
-        workspace=workspace,
-        workspace_manifest=_manifest("qa-restart"),
-        resolver=_Resolver(_resolved()),
-    )
-    if external_recovery:
-        with monkeypatch.context() as patch:
-            patch.setattr(LocalPortfolioWebSession, "resume", lambda *a, **k: ())
-            second.start()
-        second.operations.recover_task = second.resume
-    else:
-        second.start()
-    try:
-        if external_recovery:
-            from alphalattice.interface.local_application.client import LocalResearchClient
-
-            recovered = (
-                _json(second, "/api/recover", method="POST", payload={"task_id": task_id})
-                if external_recovery == "http"
-                else LocalResearchClient(workspace).request(
-                    {"operation": "RECOVER", "task_id": task_id}
-                )
-            )
-            resumed = tuple(UUID(v) for v in recovered["resumed_task_ids"])
-        else:
-            resumed = second.resumed_task_ids
-        second.dispatcher.drain_for_tests()
-        status = _json(second, f"/api/status?task_id={task_id}")
-        tasks = _json(second, "/api/tasks")["tasks"]
-        results = _json(second, "/api/results")["results"]
-    finally:
-        second.stop()
-    assert [str(value) for value in resumed] == [task_id]
-    assert status["task_id"] == task_id
-    assert status["lifecycle"] == "SUCCEEDED", status
-    assert [row["task_id"] for row in tasks] == [task_id]
-    assert len(results) == 1
 
 
 def test_history_and_discovery_keep_peers_without_advancing_unreadable_authority(

@@ -10,12 +10,14 @@ import itertools
 import json
 import os
 import shlex
+import shutil
 import time
-from contextlib import chdir
+from contextlib import chdir, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, ClassVar
+from unittest import mock
 from uuid import uuid4
 
 import pytest
@@ -33,12 +35,14 @@ from alphalattice.interface.local_application.cli_contract import (
     AGENT_HOST_WAITS,
     client_failure,
     client_refusal,
+    command,
     outcome_of,
 )
 from alphalattice.interface.local_application.portfolio_research import (
     LocalApplicationError,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 
 @pytest.mark.parametrize("wait", [0, -1, 20.5, True, "5"])
@@ -974,19 +978,54 @@ class _ScriptedHost:
                 subject = {k: v for k, v in document.items() if k != "operation"}
                 subject["evidence_as_of"] = f"2026-10-12T12:{self.previews:02d}:00+00:00"
                 subject["preparation_binding_hash"] = "c" * 64
+                prior = {}
+                if self.prepared_request:
+                    prior = {
+                        f"analyst_bundle_{unit}": {
+                            "operation": "AGENT_BUNDLE_PREPARE",
+                            "agent_role": "ANALYST",
+                            "evidence_unit_id": unit,
+                            "task_id": "t-evidence",
+                            "bundle_directory": None,
+                            **book,
+                        }
+                        for unit in ("u1", "u2")
+                    }
                 return {
                     "status": "EVIDENCE_PREPARATION_READY",
                     "coverage": {"unit_count": 2},
-                    "next_requests": {"prepare": {"operation": "EVIDENCE_PREPARE", **subject}},
+                    **(
+                        {
+                            "resumable_preparation": {
+                                "task_id": "t-evidence",
+                                "evidence_as_of": self.prepared_request["evidence_as_of"],
+                                "preparation_binding_hash": self.prepared_request[
+                                    "preparation_binding_hash"
+                                ],
+                            }
+                        }
+                        if self.prepared_request
+                        else {}
+                    ),
+                    "next_requests": {
+                        "prepare": {"operation": "EVIDENCE_PREPARE", **subject},
+                        **prior,
+                        **(
+                            {"resume": {"operation": "STATUS", "task_id": "t-evidence"}}
+                            if self.prepared_request
+                            else {}
+                        ),
+                    },
                 }
             case "EVIDENCE_PREPARE" if not self.prepares:
                 self.prepares += 1
                 self.prepared_request = document
                 return {"status": "ADMITTED", "task_id": "t-evidence", "lifecycle": "QUEUED"}
-            case "EVIDENCE_PREPARE":
-                assert document == self.prepared_request
+            case "EVIDENCE_PREPARE" | "EVIDENCE_CRO":
+                if document["operation"] == "EVIDENCE_PREPARE":
+                    assert document == self.prepared_request
                 # The same preparation asked again: reused, its own units offered.
-                subject = {k: v for k, v in document.items() if k != "operation"}
+                subject = {k: v for k, v in self.prepared_request.items() if k != "operation"}
                 units = {
                     f"analyst_bundle_{unit}": {
                         "operation": "AGENT_BUNDLE_PREPARE",
@@ -1073,6 +1112,24 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     assert answer["next_requests"] == {
         "review": {"operation": "EVIDENCE_CRO", "result_hash": "b" * 64}
     }
+    for _ in range(2):
+        repeated = client_module._review_steps(host, _review_args(tmp_path / "analysts"))
+        assert repeated["evidence"]["prepared_task_id"] == "t-evidence"
+        assert host.prepares == 1
+    request, seen = host.request, []
+
+    def moved(document, timeout=None):
+        result = request(document, timeout)
+        if document["operation"] == "EVIDENCE_PREVIEW":
+            seen.append(True)
+            if len(seen) == 2:
+                result["resumable_preparation"]["task_id"] = "another-task"
+        return result
+
+    host.request = moved
+    changed = client_module._review_steps(host, _review_args(tmp_path / "analysts"))
+    assert changed["book_review"]["stopped_at"] == "evidence_prepared" and host.prepares == 1
+    host.request = request
     assert {d["task_id"] for d in host.sent if d["operation"] == "STATUS"} == {
         "t-book",
         "t-evidence",
@@ -1085,7 +1142,9 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     stopped = client_module._review_steps(host, _review_args(folder.parent))
     assert stopped["book_review"]["stopped_at"] == "evidence_preview"
     host.prerequisites = True
+    before_resume = len(host.sent)
     assert client_module._review_steps(host, resume)["analyst_bundles"] == answer["analyst_bundles"]
+    assert not any(d["operation"] == "EVIDENCE_PREPARE" for d in host.sent[before_resume:])
     assert (folder / "answer.json").read_bytes() == b"{}\n"
 
 
@@ -1145,10 +1204,10 @@ def test_a_review_of_a_dates_positions_binds_their_publication(
     assert answer["status"] == "BOOK_REVIEW_READY"
     assert answer["positions"]["review_selector"]["update_publication_hash"] == "p" * 64
     previews = [d for d in host.sent if d["operation"] == "EVIDENCE_PREVIEW"]
-    assert [d["update_publication_hash"] for d in previews] == ["p" * 64]
+    assert [d["update_publication_hash"] for d in previews] == ["p" * 64] * 3
     assert not any(d["operation"] in {"CONTROLS", "RUN"} for d in host.sent)
     assert [bundle["unit"] for bundle in answer["analyst_bundles"]] == ["u1", "u2"]
-    assert host.previews == 1 and host.prepares == 1
+    assert host.previews == 3 and host.prepares == 1
     assert answer["evidence"]["prepared_task_id"] == "t-evidence"
 
 
@@ -1412,7 +1471,11 @@ class _FirstUseHost:
         raise AssertionError(document)
 
 
-def _first_use(host: _FirstUseHost, named: str = "2026-10-12") -> dict[str, Any]:
+def _first_use(
+    host: _FirstUseHost, named: str = "2026-10-12", *, setup_ready: bool = True
+) -> dict[str, Any]:
+    """Run the first use; its agent setup counts as filled unless the test reads the real gate
+    (a fresh checkout, as on GitHub's runners, has no installed command or retrieval runtime)."""
     args = SimpleNamespace(
         objective="Positions for Monday.",
         target_date=named,
@@ -1420,8 +1483,57 @@ def _first_use(host: _FirstUseHost, named: str = "2026-10-12") -> dict[str, Any]
         notify=None,
         output=None,
     )
-    with chdir(host.workspace.parent):
+    reading = native_bridge.setup_reading
+
+    def filled(*where: Any) -> dict[str, Any]:  # the gate's items present, every other item as read
+        found = reading(*where)
+        return {
+            **found,
+            **{k: {**(found.get(k) or {}), "present": True} for k in native_bridge.SETUP_GATE},
+        }
+
+    ready = mock.patch.object(native_bridge, "setup_reading", filled)
+    with chdir(host.workspace.parent), ready if setup_ready else nullcontext():
         return client_module._first_use_steps(host, args)  # type: ignore[arg-type]
+
+
+@pytest.mark.proves("local_application.first_use_offers_delegated_network")
+def test_first_use_offers_delegated_network_before_daily_consent(tmp_path, setup_done):
+    from alphalattice.control.workspace_runtime.network_access import NetworkAccess
+
+    host = _FirstUseHost(tmp_path / "workspace")
+    request = host.request
+    sent = []
+
+    def on_request(document, timeout=None):
+        operation = document["operation"]
+        if operation == "DATA_ISSUES":
+            return {"issues": [], "next_requests": {}}
+        if operation == "WORKSPACE_PREPARE_PLAN":
+            access = NetworkAccess(False, "DEFAULT").body(
+                for_refusal=True, delegation=f"first-use-goal:{host.goal}"
+            )
+            return {
+                "status": "CONFIRMATION_REQUIRED",
+                "next_action": "ADMIT_SOURCE_ACCESS_THEN_PREVIEW_AGAIN",
+                "next_requests": {},
+                "source_access": {"network_access": access},
+            }
+        if operation == "NETWORK_ACCESS_SET":
+            sent.append(document)
+            return {"status": "NETWORK_ACCESS", "network_allowed": True}
+        return request(document, timeout=timeout)
+
+    host.request = on_request
+    answer = _first_use(host)
+    assert answer["next_action"] == "SET_NETWORK_UNDER_FIRST_USE_DELEGATION"
+    offer = answer["next_requests"]["network"]
+    assert offer == {"operation": "NETWORK_ACCESS_SET", "network_enabled": True}
+    assert "network set" in answer["next_command"]
+    assert answer["first_use"]["person_questions"][0]["code"] == "network.daily_updates"
+    assert "without waiting" in answer["first_use"]["ask_now"][1].lower()
+    assert host.request(offer)["network_allowed"] is True
+    assert sent == [offer]
 
 
 def test_a_first_use_opens_its_goal_from_the_sentence_and_stops_at_its_data_issues(
@@ -1519,13 +1631,12 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
 def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (fail fast): with no `alphalattice` command and no retrieval runtime nothing
-    opens, each item named with its commands and words; uv's copy off PATH is the person's."""
+    """Setup failures retry in this session; successful off-PATH discovery is read once."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
-    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
+    monkeypatch.setenv("CODEX_THREAD_ID", "off-path-first-use")
     monkeypatch.setattr(native_bridge, "load", lambda: False)
-    host, bare, held = _FirstUseHost(tmp_path / "w", prepared=True), tmp_path / "a", tmp_path / "b"
+    host, bare, held = _FirstUseHost(tmp_path / "w"), tmp_path / "a", tmp_path / "b"
     bare.mkdir()
     venv = tmp_path / "venv"  # under `uv run`, whose own command no specialist's shell has
     (venv / "Scripts").mkdir(parents=True)
@@ -1535,24 +1646,37 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     monkeypatch.setenv("PATH", os.pathsep.join([str(venv / "Scripts"), str(bare)]))
     monkeypatch.setenv("VIRTUAL_ENV", str(venv))
     monkeypatch.setenv("UV_RUN_RECURSION_DEPTH", "1")
-    refused, code = _first_use(host), "local_client.first_use_setup_missing"
+    refused, code = _first_use(host, setup_ready=False), "local_client.first_use_setup_missing"
     words = client_refusal(code)
     assert (refused["failure_code"], refused["next_action"]) == (code, words.next_action)
     assert refused["detail"] == words.detail and host.goals.first_use() is None
     tool, runtime = refused["missing"]["installed_leg"], refused["missing"]["retrieval_runtime"]
     assert (tool["who_decides"], runtime["who_decides"]) == ("AGENT", "AGENT")
-    assert tool["commands"][-1].startswith("uv tool install") and "--bin" in tool["words"]
+    assert tool["commands"][0].endswith("install-tool") and "--bin" in tool["words"]
+    assert native_bridge.TOOL_INSTALL[-1].startswith("uv tool install")
     assert "--offline" not in runtime["commands"][0]
     assert runtime["network_commands"] and host.sent == []
     held.mkdir()  # uv holds the command where this PATH does not reach
-    for name, text in (("uv", f"#!/bin/sh\necho {held}\n"), ("uv.cmd", f"@echo {held}\n")):
+    probe = bare / ("uv.cmd" if os.name == "nt" else "uv")
+    probe.write_text("@exit /b 1\n" if os.name == "nt" else "#!/bin/sh\nexit 1\n")
+    probe.chmod(0o755)
+    assert native_bridge.tool_setup()["present"] is False
+    for name, text in (
+        ("uv", f'#!/bin/sh\necho p >>"{held}/queries"\necho {held}\n'),
+        ("uv.cmd", f'@>>"{held}/queries" echo p\n@echo {held}\n'),
+    ):
         (bare / name).write_text(text, encoding="utf-8")
         (bare / name).chmod(0o755)
         (held / name.replace("uv", "alphalattice")).write_text("", encoding="utf-8")
         (held / name.replace("uv", "alphalattice")).chmod(0o755)
-    person = _first_use(host)["missing"]["installed_leg"]
-    assert (person["who_decides"], person["commands"]) == ("PERSON", ["uv tool update-shell"])
-    assert "restart" in person["words"]
+    monkeypatch.setattr(native_bridge, "load", lambda: True)
+    continued = _first_use(host, setup_ready=False)
+    assert "installed_leg" not in continued.get("missing", {})
+    assert host.goals.first_use() is not None and continued["first_use"]["road"]
+    assert command_prefix() == (shutil.which("alphalattice", path=str(held)),)
+    posix = command({"operation": "STORAGE_CAP_SHOW"}, quoting="posix")
+    assert posix and shlex.split(posix)[0] == Path(command_prefix()[0]).as_posix()
+    assert (held / "queries").read_text().splitlines() == ["p"]
 
 
 @pytest.mark.parametrize(

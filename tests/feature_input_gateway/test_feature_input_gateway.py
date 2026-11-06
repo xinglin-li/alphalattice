@@ -1569,7 +1569,7 @@ def _publish_reader_fixture(root: Path) -> tuple[ArtifactResolver, str]:
     schema_hash: str | None = None
     for year in (2025, 2026):
         # Written as a Panel writer writes a partition: its row identity's columns and the row
-        # hashes its values give, which the reader checks (V270).
+        # hashes its values give, which the reader checks.
         table = hash_panel_rows(
             pa.Table.from_pylist([row for row in rows if row["session_date"].year == year]),
             manifest_revision="1" * 64,

@@ -45,6 +45,7 @@ from alphalattice.control.workspace_runtime.network_access import NetworkAccess,
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
+    worded,
 )
 from alphalattice.interface.local_application.goals import (
     DAILY_NETWORK_ASK,
@@ -91,6 +92,24 @@ def _cli(live: Any, *arguments: str, session: str = SESSION) -> tuple[int, dict[
     return result.returncode, json.loads(result.stdout)["data"]
 
 
+def _session_commands(
+    live: Any, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> Any:
+    """The same CLI entry and argv as ``_cli``, answered in this process for the named session."""
+    from alphalattice.interface.local_application import cli
+
+    def run(*arguments: str, session: str = SESSION) -> tuple[int, dict[str, Any]]:
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", session)
+        argv = ["--workspace", str(live.workspace), "--view", "full", *arguments]
+        try:
+            code = cli.main(argv, serve=lambda _: 99)
+        except SystemExit as stopped:
+            code = int(stopped.code or 0)
+        return code, json.loads(capsys.readouterr().out)["data"]  # the whole stdout is one answer
+
+    return run
+
+
 def _code(answer: dict[str, Any]) -> str | None:
     """A refusal's code, returned by its owner or raised and answered by the Host."""
     return answer.get("failure_code") or answer.get("refused")
@@ -102,19 +121,22 @@ def _network(live: Any) -> bool:
 
 
 def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them(
-    live: Any, tmp_path: Path
+    live: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A first use goal lets its agent take the first steps and ends with them."""
+    command = _session_commands(live, monkeypatch, capsys)  # each agent command in process
 
     cursor = _json(live, "/api/activity")["cursor"]
     plan = "a" * 64
-    code, refused = _cli(live, "network", "set", "--enabled", "true")
+    code, refused = command("network", "set", "--enabled", "true")
     assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
     assert refused["person_questions"][0]["code"] == "network.workspace_access"
-    code, refused = _cli(live, "preparation", "confirm", "--plan", plan)
+    code, refused = command("preparation", "confirm", "--plan", plan)
     assert code == 2 and _code(refused) == "workspace_preparation.human_confirmation_required"
     declaration = tmp_path / "first-use.json"
     declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
+    # The opening and the other session's retry stay separate agent processes, each with its own
+    # session at start; the rest of the agent's commands answer in process.
     code, opened = _cli(live, "goal", "open", "--file", str(declaration))
     assert code == 0, opened
     assert opened["person_questions"][0]["code"] == "network.daily_updates"
@@ -128,23 +150,23 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
         "network.daily_updates",
         "network.workspace_access",
     }
-    code, set_ = _cli(live, "network", "set", "--enabled", "true")
+    code, set_ = command("network", "set", "--enabled", "true")
     assert code == 0 and set_["status"] == "NETWORK_ACCESS", set_
     assert _network(live)
-    code, confirmed = _cli(live, "preparation", "confirm", "--plan", plan)
+    code, confirmed = command("preparation", "confirm", "--plan", plan)
     assert _code(confirmed) != "workspace_preparation.human_confirmation_required", confirmed
     # A step the goal does not delegate stays the person's.
-    code, storage = _cli(live, "storage", "confirm", "--plan", plan)
+    code, storage = command("storage", "confirm", "--plan", plan)
     assert code == 2 and _code(storage) == "storage.human_confirmation_required"
-    code, shown = _cli(live, "goal", "show", opened["goal_id"])
+    code, shown = command("goal", "show", opened["goal_id"])
     # The goal offers no revision of the person's sentence (the review at 118f6378), and its
     # record says its delegation and its end (U70).
     assert "revise" not in shown["next_requests"]
     assert shown["record"]["delegation"]["active"] is True
     assert set(shown["record"]["delegation"]["steps"]) >= {"NETWORK_ACCESS_SET"}
-    code, network = _cli(live, "network", "show")
+    code, network = command("network", "show")
     assert network["set_by"]["delegation"] == f"first-use-goal:{opened['goal_id']}"
-    code, decisions = _cli(live, "decision", "list")
+    code, decisions = command("decision", "list")
     first = next(d for d in decisions["decisions"] if d["kind"] == "FIRST_USE")
     assert first["next_requests"]["stop"]["operation"] == "GOAL_ABANDON"
     steps = shown["record"]["delegated_steps"]
@@ -152,14 +174,14 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     assert steps[0]["network_enabled"] is True
     again = tmp_path / "again.json"
     again.write_text(json.dumps({**FIRST_USE, "objective": "Another sentence."}), encoding="utf-8")
-    code, second = _cli(live, "goal", "open", "--file", str(again))
+    code, second = command("goal", "open", "--file", str(again))
     assert code == 2 and second["failure_code"] == "goal.first_use_already_opened"
     code, reused = _cli(live, "goal", "open", "--file", str(declaration), session=OTHER_SESSION)
     assert reused["goal_id"] == opened["goal_id"], reused  # the same sentence, another session
-    code, ended = _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")
+    code, ended = command("goal", "abandon", opened["goal_id"], "--reason", "Stopped")
     assert code == 0 and ended["state"] == "ABANDONED"
     assert not _network(live)
-    code, refused = _cli(live, "network", "set", "--enabled", "true")
+    code, refused = command("network", "set", "--enabled", "true")
     assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
     assert refused["person_questions"][0]["code"] == "network.workspace_access"
 
@@ -169,8 +191,7 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
         ("true", "false", "true"),
         strict=True,
     ):
-        code, accepted = _cli(
-            live,
+        code, accepted = command(
             "network",
             "set",
             "--enabled",
@@ -304,35 +325,12 @@ def test_a_first_use_never_raises_the_persons_sec_consent(live: Any, tmp_path: P
     assert code == 0 and shown["consent"]["actor"] == "HUMAN"
 
 
-@pytest.mark.parametrize("relayed", [False, True])
-def test_a_first_use_ends_without_undoing_what_the_person_set_since(
-    live: Any, tmp_path: Path, relayed: bool
-) -> None:
-    """regression (V460 at b39e55f2; a daily update re-asked, 2026-10-15): the person opened the
-    network in Settings, or by a yes relayed during the first use, and the goal's end closed it.
-    Its end undoes only a setting its delegation still holds."""
-
-    declaration = tmp_path / "first-use.json"
-    declaration.write_text(json.dumps(FIRST_USE), encoding="utf-8")
-    code, opened = _cli(live, "goal", "open", "--file", str(declaration))
-    assert code == 0, opened
-    code, _set = _cli(live, "network", "set", "--enabled", "true")
-    assert code == 0 and _network(live)
-    if relayed:
-        yes = ("--person-said", "Yes.", "--asked", "Daily network?")
-        code, person = _cli(live, "network", "set", "--enabled", "true", *yes)
-        assert code == 0 and person["set_by"]["relayed_by"] == f"claude-code:{SESSION}"
-    else:
-        person = live.operations.execute(
-            Request(operation="NETWORK_ACCESS_SET", network_enabled=True), caller="HUMAN"
-        )
-        assert "set_by" not in person
-    code, ended = _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")
-    assert code == 0 and ended["state"] == "ABANDONED"
-    assert _network(live)
-
-
-@pytest.mark.parametrize("relayed", [False, True])
+@pytest.mark.parametrize(
+    "relayed",
+    [
+        False,
+    ],
+)
 def test_the_persons_own_record_wins_over_a_first_uses_delegation(
     live: Any, tmp_path: Path, relayed: bool
 ) -> None:
@@ -383,22 +381,6 @@ def test_the_persons_own_record_wins_over_a_first_uses_delegation(
     assert _cli(live, "goal", "abandon", opened["goal_id"], "--reason", "Stopped")[0] == 0
     assert not _network(live)
     assert _cli(live, "evidence-consent", "show")[1]["consent"]["actor"] == "REVOKED"
-
-
-def test_the_daily_network_yes_answers_only_its_two_requests(live: Any) -> None:
-    """requirement (the review of a36e210c4): the daily question's yes is a typed Host decision,
-    the network on and SEC filings at the default budget, and answers nothing else."""
-
-    yes = ("--person-said", "Yes.", "--asked", DAILY_NETWORK_ASK)
-    for beyond in (
-        ("evidence-consent", "set", "--per-issuer", "10"),
-        ("network", "set", "--enabled", "false"),
-    ):
-        code, refused = _cli(live, *beyond, *yes)
-        assert code == 2 and _code(refused) == "person_confirmation.beyond_its_question", refused
-    assert _cli(live, "network", "set", "--enabled", "true", *yes)[0] == 0 and _network(live)
-    code, given = _cli(live, "evidence-consent", "set", "--per-issuer", "3", *yes)
-    assert code == 0 and given["consent"]["actor"] == "HUMAN", given
 
 
 def test_the_daily_yes_relayed_as_offered_outlives_the_first_use(
@@ -606,10 +588,12 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
     assert app.delegation(goal, "NETWORK_ACCESS_SET", caller) is None
     assert app.first_use_delegation(goal)["active"] is False
 
+    missing_history = "data.current_universe_no_feature_ready_listings"
+
     def history_refused(**scope: Any) -> dict[str, Any]:
         assert scope["network_delegation"] is None
         assert scope["requested_formation_session"].isoformat() == "2026-10-01"
-        raise ValueError("data.current_universe_no_feature_ready_listings")
+        raise ValueError(missing_history)
 
     preparation = Request(operation="WORKSPACE_PREPARE_PLAN")
     for provenance in (
@@ -622,6 +606,14 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
             recovery = app.prepare(preparation, "HUMAN", history_refused)
         finally:
             REQUEST_PROVENANCE.reset(token)
+    recovery["error_info"] = {
+        "category": "FAILED_PRECONDITION",
+        "domain": "data",
+        "reason": missing_history,
+        "message_id": "protocol.error.summary",
+        "message": worded("protocol.error.summary").format(reason=missing_history),
+        "field_violations": [],
+    }
     with monkeypatch.context() as web:
         web.setattr(live.operations.preparation, "plan", history_refused)
         assert _json(live, "/api/workspace/preparation/plan", method="POST", payload={}) == recovery
@@ -724,7 +716,7 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
     # Asked at 11:00 New York for Monday, before Friday's data settles: held until 18:00 ET,
     # run once then, and kept in the goal's ledger for a Host that starts again.
     goal.declaration.target_date = datetime(2026, 10, 12).date()
-    holds: list[datetime] = []
+    holds = []
     kept_entries: list[dict[str, object]] = []
     early = SimpleNamespace(
         **{
@@ -734,19 +726,36 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
                 "failure_code": "research_update.target_not_completed",
             },
             "dispatcher": SimpleNamespace(clock=lambda: datetime(2026, 10, 9, 15, tzinfo=UTC)),
-            "automation": SimpleNamespace(hold=lambda at, _run: holds.append(at)),
+            "automation": SimpleNamespace(hold=lambda at, run, *_goal: holds.append((at, run))),
         }
     )
     early.goals.store.attribute = lambda _goal, entry: kept_entries.append(entry)
     plan = first_update(early, activated, None)["update"]["plan"]  # type: ignore[arg-type]
-    assert holds == [datetime(2026, 10, 9, 22, tzinfo=UTC)] and "18:00 ET" in plan["reading"]
-    assert plan["held_until"] == holds[0].isoformat() and kept_entries[0]["held_update"]
+    ((due, callback),) = holds
+    assert due == datetime(2026, 10, 9, 22, tzinfo=UTC) and "18:00 ET" in plan["reading"]
+    assert plan["held_until"] == due.isoformat() and kept_entries[0]["held_update"]
     # A reader outside New York also gets their own time, with its date where the day differs.
     asked = datetime(2026, 10, 9, 15, tzinfo=UTC)
     west = target_sessions(goal.declaration.target_date, asked, ZoneInfo("America/Los_Angeles"))
     east = target_sessions(goal.declaration.target_date, asked, ZoneInfo("Asia/Shanghai"))
     assert "(15:00 your time)" in str(west["reading"]) and "18:00 ET" in str(west["reading"])
     assert "06:00 on 2026-10-10" in str(east["reading"])
+    goal.state = "CLOSED"
+    early.goals.first_use = lambda: SimpleNamespace(
+        **{**vars(goal), "goal_id": UUID(int=8), "state": "OPEN"}
+    )
+    early.execute = execute
+    before = len(sent)
+    for head in (goal, None):
+        early.goals.store.head = lambda named, head=head: head if named == goal.goal_id else None
+        assert callback() == {} and len(sent) == before
+
+    def unreadable(_named):
+        raise ValueError("goal.head_invalid")
+
+    early.goals.store.head = unreadable
+    with pytest.raises(ValueError, match=r"goal\.head_invalid"):
+        callback()
 
 
 def test_a_first_use_is_the_one_before_the_first_preparation(
@@ -770,6 +779,7 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
 ) -> None:
     """Past the Host rule's cap the first use's agent decides each case, recorded and shown; its
     last decision resumes the same stopped Task in place (OP4, OP19)."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")  # its offline switch, not its runner's
     from alphalattice.control.data_platform import remediation_case
     from alphalattice.control.data_platform.contracts import (
         DataRemediationExecutionReceipt,

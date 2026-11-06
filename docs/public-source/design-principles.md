@@ -1,5 +1,5 @@
 # Design principles
-Date: 2026-10-10
+Last checked: 2026-10-22 against 0.2.3
 
 AlphaLattice is a local quantitative research workstation operated by a person's own Claude Code or Codex agent. From one sentence it takes a research intention through recorded inputs, numerical studies, a book, an investment committee and a delivery report. Its positions are research results, never investment advice or orders.
 
@@ -9,7 +9,7 @@ These are the maintainer's choices and the reasons for them. Together they descr
 
 A person states an intention, with the date they care about, and the agent carries the work through. Every operation it needs is within reach through the command interface. An action available only as a Workbench click is a defect, because the agent cannot finish the work without the person. The [operation registry](../../src/devtools/architecture/operation_registry.py) checks that every Workbench action has a command, client or confirmation route.
 
-The person's attention goes only where the decision is theirs: activation outside the first use, a wider scope, network access, outside software, cleanup and publication. The agent asks once and sends the person's own words with the request as `person_confirmation`, bound to that one request and used once.
+The person's attention goes where the decision is theirs: activation outside the first use, a wider scope, network access, outside software, cleanup and publication. A first Host start on Claude Code can also ask them to run the offered command once in their own terminal, as [Getting started](getting-started.md) explains. The agent asks once and sends the person's own words with the request as `person_confirmation`, bound to that one request and used once.
 
 **Capability is not authority.** Giving the agent every operation is safe because the system enforces authority instead of trusting the agent:
 - **The person's decisions are checked by their owners.** A request that needs the person's word is refused without it. The confirmation records declared words; it is not an identity check.
@@ -29,7 +29,7 @@ AlphaLattice runs on the person's own host agent, today Claude Code or Codex, an
 
 Setting that layer aside does not leave little to do. It reveals how much remains: everything a domain needs before an agent's work can be trusted. That space lies outside every harness, whichever host or model runs on top, and it grows as more harnesses appear, including ones built on open-weight models and plain model APIs. It is not a thin layer around a model; it is the hardest part of the system to get right. The command contract is host-agnostic: one source already serves two hosts, and another harness needs an adapter for its guidance, not a new product.
 
-**No model inside.** The product itself calls no language model. The only models in the loop are the person's own host agent and the specialists it starts, and Evidence's retrieval models run on the machine. There is no model API key to configure and no hidden usage to pay for, the person's choice of model applies everywhere, and their research does not pass through a service they did not choose.
+**No model inside.** The product itself calls no language model. The only models in the loop are the person's own host agent and the specialists it starts, and Evidence's retrieval models run on the machine. There is no model API key to configure and no hidden usage to pay for. The person can choose the lead and specialist models in their host configuration, with the shipped cards supplying defaults. Their research does not pass through a service they did not choose.
 
 The host agent brings judgment: reasoning, reading, writing and running commands. AlphaLattice's Host brings what must be reliable:
 - recorded inputs and methods, and sealed numerical studies;
@@ -61,7 +61,7 @@ Members argue from records already kept (principle 5), so the debate is about ju
 ## 4. The research is honest about what it knows
 
 A system that makes research easy also makes it easy to fool oneself. The numerical methods are built so that the common mistakes of quantitative research are refused, not left to discipline:
-- **No look-ahead.** Every input is read as it was known at the time. Sessions before the first actionable one are a causal replay, never presented as live history.
+- **No look-ahead.** Numerical windows respect their declared information cutoff. Membership, Sector and price-basis assumptions are disclosed in the [temporal statement](temporal-statements.md); they do not promise complete point-in-time history. Sessions before the first actionable one are a causal replay, never presented as live history.
 - **Held-out evidence stays held out.** Studies validate out of sample in outer folds, and a development span is kept apart from a sealed holdout. A method whose labels would overlap the sealed boundary may be installed but may not publish into it.
 - **A comparison may end inconclusive.** Methods are compared paired, on the same sessions, and a comparison reports superior, inferior or inconclusive from its interval. An interval that spans zero is inconclusive, never a narrow win.
 - **Data enters on one declared basis.** Prices enter on the provider's split-adjusted basis, and every corporate action that can move a return, splits included, is part of that return's identity. An adjustment cannot be applied twice unnoticed, and a tampered one is visible.
@@ -174,7 +174,7 @@ The method is that of training a model: measure at the current point, take a sma
 - **The graders are classifiers too.** They are checked against planted cases and raw answers for false passes and false failures.
 - **Safety is a constraint, not a score.** It is checked on every turn, and convergence is bounded.
 
-The [scenario forms](../../src/devtools/evaluation/forms.py) and [feedback grader](../../src/devtools/evaluation/feedback.py) are public, with small synthetic examples. The larger scenario library is held out, because a public test set gets optimized against and stops measuring. Results from small proxy models are a pessimistic lower bound, not a claim about every session.
+The [scenario forms](../../src/devtools/evaluation/forms.py) and [feedback grader](../../src/devtools/evaluation/feedback.py) are public, with small synthetic examples. The larger scenario library is held out, because a public test set gets optimized against and stops measuring. Small proxy models exercise the workflow; their results are not a claim about every session or a bound on another model's performance.
 
 ## 13. The person's agent extends the framework
 

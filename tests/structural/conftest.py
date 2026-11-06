@@ -1,6 +1,11 @@
 import subprocess
+from pathlib import Path
 
 import pytest
+
+from devtools.testing.collection import CHANGED
+from tests._support.project_discovery import project_discovery as project_discovery
+from tests.structural import source_shape_samples as samples
 
 
 @pytest.fixture
@@ -28,3 +33,24 @@ def synthetic_history(tmp_path):
     (tmp_path / "README.md").write_text("Synthetic tree\n", encoding="utf-8", newline="\n")
     commit("Start synthetic history")
     return git, commit
+
+
+@pytest.fixture(autouse=True)
+def per_file_scope(request, monkeypatch):
+    """A scoped per_file node reads repository Python only through scanned(), only changed."""
+    changed = request.config.stash.get(CHANGED, None)
+    if changed is None or not request.node.get_closest_marker("per_file"):
+        yield
+        return
+    opened, root = Path.open, samples.ROOT.resolve()
+
+    def guarded(self, *args, **kwargs):
+        path = Path(self).resolve()
+        if path.suffix == ".py" and path.is_relative_to(root):
+            name = path.relative_to(root).as_posix()
+            assert name in changed, f"a per_file node read {name} outside its scope"
+        return opened(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", guarded)
+    monkeypatch.setattr(samples, "SCOPE", changed)
+    yield

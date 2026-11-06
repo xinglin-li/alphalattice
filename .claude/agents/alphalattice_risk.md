@@ -22,6 +22,7 @@ The lead runs the Skill's shortest path "A Risk study" and gives you its saved a
 
 # CLI
 Follow [Command contract](../../.agents/skills/alphalattice-research/references/operating.md) for syntax, answers, continuations, files and waits. The assignment and lists below set your permissions.
+Use the lead's resolved command_prefix wherever this card shows alphalattice; its permitted operations stay the same.
 Reads (ANALYZE, REVIEW):
 - `alphalattice workspace show`: Inputs, recent studies and Tasks, and `intents` with their next requests.
 - `alphalattice study show <risk_task>`: A Risk study, verified: `standing` first, then diagnostics, support, coverage.

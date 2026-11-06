@@ -1036,6 +1036,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const productFixture=(role='RISK',status='ACCEPTED')=>{
     const assignment=message(productSession,productSession,'research_lead','assignment','Fixture lead assigns the exact prepared bundle.',{recipient:'/root/fixture-unobserved-child',reference:P1});
     const relay=message(productSession,productSession,'research_lead','pm_response','Fixture lead records the public receipt; native author remains unobserved.',{reference:TASK});
+    for (const event of [assignment, relay]) event.payload.subject.native_host='codex';
     const receipt=op('AGENT_ANSWER_SUBMIT','RETURNED',{agent_role:role,agent_vendor:'codex',agent_session:productSession,goal_id:productGoal,answer_reference:RESULT,bundle_reference:P1,task_id:TASK},{status,task_id:TASK},{schema_version:1,source_id:productSource,task_id:TASK,run_id:'local-web:'+TASK});
     delete receipt.schema_version; // the real /api/activity ActivityItem projection is versionless
     A.absorbPage(page('RESET',[assignment,relay,receipt]));
@@ -1119,25 +1120,24 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.notEqual(productReads.at(-1),leavingProduct,'returning uses a fresh exact product selection');
   productReads.at(-1).resolve(productResponse(currentProduct.receipt,{text:productText,references:[TASK]},'product-e2'));await settleProduct();
   assert.ok(!selectProduct(currentProduct.receipt).includes('LEFT PRODUCT PAGE'));
-  // Usage health.
   const usageCode='native_bridge.lead_usage_read_failed';
   const usageCatalog=JSON.parse(fs.readFileSync(path.join(__dirname,'../../src/alphalattice/interface/local_application/refusal_words.json'),'utf8'))[usageCode];
   const stableFeed={...page('CONTINUED',[]),epoch:'product-e2',cursor:changedProduct.cursor,observer:{status:'OK',native_usage:{status:'OBSERVING',reason:null}}};
   A.absorbPage(stableFeed);TM.refresh();const beforeUsageChange=renders.length;
   A.absorbPage({...stableFeed,observer:{status:'OK',native_usage:{status:'UNAVAILABLE',reason:usageCode,detail:usageCatalog.detail,next_action:usageCatalog.next_action,body:'PRIVATE-D5-NATIVE-BODY'}}});
   TM.refresh();
-  assert.equal(renders.length,beforeUsageChange+1,'native usage health changes repaint Team even when the activity cursor is unchanged');
+  assert.equal(renders.length,beforeUsageChange+1,'usage health repaints on change');
   for(const lang of ['en','zh']) {
     productWords.I18N.set(lang);const shown=selectProduct(currentProduct.receipt),visible=shown.replace(/data-tip="[^"]*"/g,'');
-    assert.ok(shown.includes(productWords.t('Usage observation unavailable'))&&shown.includes(productWords.t(usageCatalog.detail)),lang+': usage unavailability uses the exact catalog guidance');
+    assert.ok(shown.includes(productWords.t('Usage observation unavailable'))&&shown.includes(productWords.t(usageCatalog.detail)),lang+': usage failure shows the catalog');
     if(lang==='zh')assert.match(productWords.t(usageCatalog.detail),/[\u4e00-\u9fff]/,'the catalog guidance is translated');
-    assert.ok(!visible.includes(usageCode)&&!shown.includes('PRIVATE-D5-NATIVE-BODY'),'safe guidance keeps the code on hover and ignores raw native body');
-    assert.ok(shown.includes('END OF PRODUCT ANSWER'),'optional usage failure does not block accepted research content');
+    assert.ok(!visible.includes(usageCode)&&!shown.includes('PRIVATE-D5-NATIVE-BODY'),'safe guidance omits private body');
+    assert.ok(shown.includes('END OF PRODUCT ANSWER'),'usage failure keeps the answer');
     assert.equal(TM.counts().exchanges,2);assert.equal(TM.counts().observations,1);
   }
   const usageCalls=[],usageT=c.t,catchingUp={status:'OBSERVING',reason:'native_bridge.usage_catching_up',read_through:4,total_bytes:12,bytes_read:4,rescan:false,detail:'Usage read through {read} of {total} bytes; the next read continues.'};
   c.t=(key,facts)=>{if(facts?.read!=null)usageCalls.push({key,...facts});return usageT(key,facts);};
-  const progress=()=>{A.absorbPage({...stableFeed,observer:{status:'OK',native_usage:catchingUp}});TM.refresh();};
+  const progress=()=>{A.absorbPage({...stableFeed,observer:{status:'OK',native_usage:{...catchingUp,sessions:{['codex:'+productSession]:catchingUp}}}});TM.refresh();};
   progress();const usageReading=selectProduct(currentProduct.receipt);assert.ok(usageReading.includes(usageT('Reading usage')));assert.ok(!usageReading.includes('{read}')&&!usageReading.includes('{total}'));
   assert.deepEqual(usageCalls.at(-1),{key:usageCalls[0].key,read:4,total:12});
   const usagePaints=renders.length,usageAddress=hash.value,usageNavigations=navigations.length;

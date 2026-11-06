@@ -88,6 +88,7 @@ const LiveActivity = (() => {
   function subjectLine(f, g, locators = false) {
     const s = f.payload.subject || {};
     const parts = [];
+    if (f.ops.length && f.caller === 'EXTERNAL_AUTOMATION' && !(['codex', 'claude-code'].includes(s.agent_vendor) && typeof s.agent_session === 'string' && s.agent_session)) parts.push(t('Session unknown'));
     const identity = (value) => /^[0-9a-f]{16,}$|^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(String(value));
     const named = (label, value) => locators ? html`${label} ${identity(value) ? hashCell(value, SHORT.id) : locatorCell(value)}` : label + ' ' + (identity(value) ? shortRef(value) : value);
     if (g.task_id) parts.push(locators ? html`${t('Task')} ${hashCell(g.task_id, SHORT.id)}` : t('Task') + ' ' + shortRef(g.task_id));
@@ -399,6 +400,7 @@ const LiveActivity = (() => {
   }
   function banners() {
     const out = [], o = S.observer;
+    if (o?.host?.instance && !S.error) out.push(noteLine(t('host.serving', o.host)));
     if (S.error) out.push(banner(t('Activity feed unreachable'), html`${S.error}<br>${t('A transport failure is not an execution failure: Tasks continue and their owners are re-read when the feed returns.')}`, 'warning'));
     if (o?.status === 'UNAVAILABLE') out.push(banner(t('Activity recording unavailable'), html`<span class="mono">${o.store_failure || ''}</span><br>${t('The product runs unobserved: operations, Tasks and results still work and are read through their own routes.')}${S.stale ? html`<br>${t('Entries shown are retained from before the store became unavailable; they are not current.')}` : ''}`, 'warning'));
     else if (o?.status === 'DEGRADED') out.push(banner(t('Activity recording degraded'), html`${t('{n} observations missing since {since}', {n: o.missing_observations, since: o.first_failure_at || ''})} · <span class="mono">${o.last_failure_code || o.hook_failure_type || o.entry_failure_type || ''}</span><br>${t(o.recording === 'OK' ? 'Recording works again; the gap remains a gap.' : 'Recording is still failing; operations and Tasks are unaffected.')}`, 'warning'));
@@ -547,12 +549,20 @@ const LiveActivity = (() => {
    * note speaks only for the Session it is shown on; the workspace's where none is shown. */
   function usageOf(session, host) {
     const all = S.observer?.native_usage || null;
-    return session && all?.sessions ? all.sessions[host + ':' + session] || all.sessions[session] || null : all;
+    if (!session) return all;
+    const own = ['codex', 'claude-code'].includes(host) ? all?.sessions?.[host + ':' + session] : null;
+    return own || (['OFF', 'UNAVAILABLE'].includes(all?.status) ? all : null);
   }
   function usageNote(session, host) {
-    const usage = usageOf(session, host), catching = usage?.status === 'OBSERVING' && usage?.reason === 'native_bridge.usage_catching_up';
+    // Team reads this notice separately from the exact facts it can attribute to one Session.
+    const unnamed = [...S.groups.values()].some((g) => g.items.some((item) => item.schema_kind === 'ProductOperationObserved' && item.source_kind === 'PRODUCT_OPERATION' && item.authority === 'OPERATIONAL_ASSERTION' && item.availability === 'AVAILABLE' && item.payload?.caller === 'EXTERNAL_AUTOMATION' && !(['codex', 'claude-code'].includes(item.payload?.subject?.agent_vendor) && typeof item.payload?.subject?.agent_session === 'string' && item.payload.subject.agent_session)));
+    const attribution = unnamed ? noteLine(t('Some sessions are unknown'), t('Some retained requests did not name a session; they cannot be assigned to one.'), 'neutral') : '';
+    const all = S.observer?.native_usage || null;
+    const usage = usageOf(session, host);
+    if (session && !usage && all?.status !== 'OFF') return attribution + noteLine(t('Session usage unknown'), t('No usage reading is recorded for this session.'), 'neutral');
+    const catching = usage?.status === 'OBSERVING' && usage?.reason === 'native_bridge.usage_catching_up';
     const measured = Number.isSafeInteger(usage?.read_through) && Number.isSafeInteger(usage?.total_bytes);
-    return catching ? noteLine(t('Reading usage'), html`<span data-usage-notice="CATCHING_UP">${measured ? t('Usage read through {read} of {total} bytes; the next read continues.', {read: usage.read_through, total: usage.total_bytes}) : ''}</span>${usage.detail && measured ? infoMark(t(usage.detail, {read: usage.read_through, total: usage.total_bytes})) : ''}`, 'neutral') : usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : usage?.rescan ? noteLine(t('Usage rescanned'), t('The session file changed; its usage was read again.'), 'neutral') : '';
+    return attribution + (catching ? noteLine(t('Reading usage'), html`<span data-usage-notice="CATCHING_UP">${measured ? t('Usage read through {read} of {total} bytes; the next read continues.', {read: usage.read_through, total: usage.total_bytes}) : ''}</span>${usage.detail && measured ? infoMark(t(usage.detail, {read: usage.read_through, total: usage.total_bytes})) : ''}`, 'neutral') : usage?.status === 'UNAVAILABLE' ? noteLine(t('Usage observation unavailable'), html`<span data-tip="${usage.reason || ''}">${t(usage.detail || 'The usage reading is unavailable; research can continue.')}</span>`, 'neutral') : usage?.rescan ? noteLine(t('Usage rescanned'), t('The session file changed; its usage was read again.'), 'neutral') : '');
   }
   function resume() { if (!S.stopped) return; S.stopped = false; void refresh(); }
   function bind() {

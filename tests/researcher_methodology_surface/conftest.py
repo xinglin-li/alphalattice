@@ -32,6 +32,8 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResolvedResearchAuthority,
     SealedResearchProgram,
 )
+from devtools.architecture.evidence_roots import PLAYPEN_ROOT
+from tests._support.project_discovery import project_discovery as project_discovery
 from tests.portfolio_strategy_lab.local_web_support import _json, _manifest
 from tests.researcher_methodology_surface.factor_web_support import (
     _alpha_payload,
@@ -47,12 +49,14 @@ from tests.researcher_methodology_surface.session_fixtures import (
     offline_execution_environment,
     real_risk_workspace,
 )
-from tests.researcher_methodology_surface.session_workspace import copy_workspace, session_workspace
+from tests.researcher_methodology_surface.session_workspace import (
+    copy_workspace,
+    session_workspace,
+)
 
 __all__ = ["offline_execution_environment", "real_risk_workspace"]
 
-CASE_ROOT = Path(__file__).resolve().parent
-PLAYPEN_ROOT = CASE_ROOT.parents[1]
+CASE_ROOT = PLAYPEN_ROOT / "tests" / "researcher_methodology_surface"
 
 
 @dataclass(frozen=True, slots=True)
@@ -286,8 +290,8 @@ def alpha_seed(factor_seed, tmp_path_factory):
 
 
 @pytest.fixture
-def alpha_case(alpha_seed, tmp_path_factory):
-    root = copy_workspace(alpha_seed[0], tmp_path_factory.mktemp("alpha-web") / "workspace")
+def alpha_case(alpha_seed, tmp_path):
+    root = copy_workspace(alpha_seed[0], tmp_path / "alpha-web" / "workspace")
     return root, *alpha_seed[1:4], deepcopy(alpha_seed[4])
 
 
@@ -342,7 +346,20 @@ def sampled_alpha_seed(alpha_seed, tmp_path_factory):
 
 
 @pytest.fixture
-def sampled_alpha_case(sampled_alpha_seed, tmp_path_factory):
+def sampled_alpha_case(sampled_alpha_seed, tmp_path):
     seed, metadata = sampled_alpha_seed
-    root = copy_workspace(seed[0], tmp_path_factory.mktemp("sampled-alpha") / "workspace")
+    root = copy_workspace(seed[0], tmp_path / "sampled-alpha" / "workspace")
     return (root, *seed[1:4], deepcopy(seed[4])), deepcopy(metadata)
+
+
+# They tamper with their seed's market data on purpose, so each gets a private copy.
+PRIVATE_DATA = {
+    "test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool",
+    "test_input_and_result_tamper_refuse_without_losing_historical_readback",
+}
+
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        if getattr(item, "originalname", item.name) in PRIVATE_DATA:
+            item.add_marker(pytest.mark.private_data)

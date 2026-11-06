@@ -32,7 +32,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
 from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
     CurrentUniverseOnboarding,
     CurrentUniverseOnboardingOutcome,
-    _ten_calendar_year_anniversary,
+    ten_calendar_year_anniversary,
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import CandidateDataRecheck
 from alphalattice.foundation.market_data_ops.sources.manifest import (
@@ -629,7 +629,7 @@ class WorkspaceReadinessGate:
         qualification_start = (
             max(
                 self._inherited_history_start(record),
-                _ten_calendar_year_anniversary(target_session or latest),
+                ten_calendar_year_anniversary(target_session or latest),
             )
             if record
             else None

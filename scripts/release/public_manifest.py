@@ -12,14 +12,21 @@ import ast
 import fnmatch
 import hashlib
 import json
+import os
 import posixpath
 import re
 import subprocess
+import sys
 from collections import Counter
 from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from devtools.architecture.structural import FileFacts
 
 ROOT = Path(__file__).resolve().parents[2]
 INTERNAL_ID_BASELINE = "census/public-internal-id-baseline.json"
+REVIEW_KEY = "alphalattice.release.review-key.v1"
 RULES = [
     {
         "rule": "PRIVATE_CREDENTIAL",
@@ -74,7 +81,6 @@ RULES = [
             "implemented-plans/**",
             "experience/**",
             "census/**",
-            "config/release/public-manifest.json",
         ],
         "reason": (
             "Internal design, development records and release provenance "
@@ -190,6 +196,78 @@ RULES = [
             "tests/portfolio_strategy_lab/cli_golden_capture.py",
             "tests/portfolio_strategy_lab/cli-golden-transcripts.json",
             "tests/portfolio_strategy_lab/test_cli_golden_transcripts.py",
+            "tests/e2e/evaluation/test_first_use_completion.py",
+            "tests/integration/evaluation/test_as_of.py",
+            "tests/integration/evaluation/test_assignment_coordinate_rebinding.py",
+            "tests/integration/evaluation/test_call_profile_accounting.py",
+            "tests/integration/evaluation/test_cli_invocation_count.py",
+            "tests/integration/evaluation/test_cli_launch_accounting.py",
+            "tests/integration/evaluation/test_commentary_final_separation.py",
+            "tests/integration/evaluation/test_controller_rehearsal_admission.py",
+            "tests/integration/evaluation/test_copy_bundle_ownership.py",
+            "tests/integration/evaluation/test_data_case_coverage.py",
+            "tests/integration/evaluation/test_delivered_finding_scoring.py",
+            "tests/integration/evaluation/test_event_continuation.py",
+            "tests/integration/evaluation/test_evidence_pair_usage.py",
+            "tests/integration/evaluation/test_explorer_assets.py",
+            "tests/integration/evaluation/test_factor_baseline_provenance.py",
+            "tests/integration/evaluation/test_factor_trial_completion.py",
+            "tests/integration/evaluation/test_file_read_phase_attribution.py",
+            "tests/integration/evaluation/test_first_use_and_daily_metrics.py",
+            "tests/integration/evaluation/test_first_use_harness.py",
+            "tests/integration/evaluation/test_fixture_dispatch_counts.py",
+            "tests/integration/evaluation/test_fresh_prestart.py",
+            "tests/integration/evaluation/test_historical_bundles.py",
+            "tests/integration/evaluation/test_historical_cro_usage.py",
+            "tests/integration/evaluation/test_home_read_once.py",
+            "tests/integration/evaluation/test_host_meter.py",
+            "tests/integration/evaluation/test_instruction_configs.py",
+            "tests/integration/evaluation/test_intent_eval.py",
+            "tests/integration/evaluation/test_intent_gate.py",
+            "tests/integration/evaluation/test_linked_book_completion.py",
+            "tests/integration/evaluation/test_live_runner.py",
+            "tests/integration/evaluation/test_metrics_behaviour.py",
+            "tests/integration/evaluation/test_model_run_completion.py",
+            "tests/integration/evaluation/test_native_input_mapping.py",
+            "tests/integration/evaluation/test_native_observation_fidelity.py",
+            "tests/integration/evaluation/test_native_preflight.py",
+            "tests/integration/evaluation/test_nightly_smoke.py",
+            "tests/integration/evaluation/test_owned_runner.py",
+            "tests/integration/evaluation/test_owner_fact_measurements.py",
+            "tests/integration/evaluation/test_packet_runner.py",
+            "tests/integration/evaluation/test_packet_runner_continuation.py",
+            "tests/integration/evaluation/test_path_explorer.py",
+            "tests/integration/evaluation/test_path_research_update.py",
+            "tests/integration/evaluation/test_person_intent_environment.py",
+            "tests/integration/evaluation/test_person_turn_usage_additivity.py",
+            "tests/integration/evaluation/test_read_audit.py",
+            "tests/integration/evaluation/test_refusal_route_scoring.py",
+            "tests/integration/evaluation/test_replay_clock.py",
+            "tests/integration/evaluation/test_request_attribution_arithmetic.py",
+            "tests/integration/evaluation/test_runtime_paths.py",
+            "tests/integration/evaluation/test_served_closure.py",
+            "tests/integration/evaluation/test_session_view.py",
+            "tests/integration/evaluation/test_setup_boundary_admission.py",
+            "tests/integration/evaluation/test_standing_gates.py",
+            "tests/integration/evaluation/test_trial_instruction_isolation.py",
+            "tests/integration/evaluation/test_usage_aggregation_availability.py",
+            "tests/integration/evaluation/test_workspace_fixture_isolation.py",
+            "tests/integration/evaluation/test_x8_score.py",
+            "tests/unit/evaluation/test_accepted_routing.py",
+            "tests/unit/evaluation/test_book_comparison_alignment.py",
+            "tests/unit/evaluation/test_checkpoint_measurement_fidelity.py",
+            "tests/unit/evaluation/test_client_socket_accounting.py",
+            "tests/unit/evaluation/test_comparison_measurement_fidelity.py",
+            "tests/unit/evaluation/test_conversation_budget_accounting.py",
+            "tests/unit/evaluation/test_dossier_clock_fidelity.py",
+            "tests/unit/evaluation/test_historical_cost_regressions.py",
+            "tests/unit/evaluation/test_interval_union_accounting.py",
+            "tests/unit/evaluation/test_market_input_modes.py",
+            "tests/unit/evaluation/test_person_universe.py",
+            "tests/unit/evaluation/test_phase_ledger_completeness.py",
+            "tests/unit/evaluation/test_phase_totals_audit.py",
+            "tests/unit/evaluation/test_run_comparison_fidelity.py",
+            "tests/unit/evaluation/test_verified_fakes.py",
         ],
         "reason": (
             "This test or helper reads private QA records, internal tools or development history; "
@@ -353,6 +431,7 @@ RULES = [
             ".pre-commit-config.yaml",
             ".githooks/**",
             ".github/workflows/ci.yml",
+            ".test_durations",
             "pyproject.toml",
             "uv.lock",
             "LAWS.md",
@@ -429,6 +508,8 @@ RULES = [
         "patterns": [
             "src/devtools/**",
             "scripts/check_*.py",
+            "scripts/tests_registry.py",
+            "scripts/pipeline.py",
             "scripts/run_playpen_precommit.py",
             "scripts/configure_playpen_dev.py",
             "scripts/count_ui_laws.py",
@@ -548,6 +629,17 @@ SCANS = {
     ),
 }
 
+_PUBLIC_FACT_KIND = "public-v2:"
+
+
+def _cache_safe(raw: bytes) -> bool:
+    """Never persist source-derived names from a file with a disclosure finding."""
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeError:
+        return False
+    return not any(pattern.search(text) for pattern in SCANS.values())
+
 
 def internal_id_pattern(policy: dict | None = None) -> re.Pattern:
     """Match numbered labels and internal card or line forms, never ordinary prose."""
@@ -638,6 +730,60 @@ def _product_identifier_spans(path: str, source: str, forms: list) -> set[tuple[
     return spans
 
 
+_TEST_NAMES = re.compile(r"(?m)^\s*(?:async\s+)?def\s+test_\w+(?=\s*\()")
+
+
+def _label_matches(
+    path: str, raw: bytes, forms: list[Any], pattern: re.Pattern[str], rules: str
+) -> list[tuple[int, int, str, bool]]:
+    """One PUBLIC file's development labels, as (line, column, label, inside a secret finding),
+    outside its product identifier spans and test names; kept by its path, bytes and ``rules``
+    within a `generate`."""
+
+    def matched(data: bytes) -> list[list[Any]]:
+        source = data.decode("utf-8-sig")
+        permitted = _product_identifier_spans(path, source, forms)
+        secret_spans = {
+            number: [(match.start(), match.end()) for match in SCANS["NO_SECRET"].finditer(line)]
+            for number, line in enumerate(source.splitlines(), 1)
+        }
+        source = _TEST_NAMES.sub(lambda m: m[0].replace("_", " "), source)
+        return [
+            [
+                number,
+                match.start() + 1,
+                internal_id_label(match.group()),
+                any(
+                    match.start() < end and start < match.end()
+                    for start, end in secret_spans[number]
+                ),
+            ]
+            for number, line in enumerate(source.splitlines(), 1)
+            for match in pattern.finditer(line)
+            if not any(
+                n == number and a <= match.start() and match.end() <= b for n, a, b in permitted
+            )
+        ]
+
+    def shaped(rows: Any) -> bool:
+        return isinstance(rows, list) and all(
+            isinstance(row, list)
+            and len(row) == 4
+            and type(row[0]) is int
+            and type(row[1]) is int
+            and type(row[2]) is str
+            and type(row[3]) is bool
+            for row in rows
+        )
+
+    rows = (
+        matched(raw)
+        if _FACTS is None or not _cache_safe(raw)
+        else _FACTS.of(f"{_PUBLIC_FACT_KIND}labels {rules} {path}", raw, matched, shaped)
+    )
+    return [(line, column, label, sensitive) for line, column, label, sensitive in rows]
+
+
 def internal_id_ratchet(
     blobs: dict[str, bytes], decisions: list[dict], policy: dict | None = None
 ) -> dict:
@@ -651,7 +797,6 @@ def internal_id_ratchet(
         for f in noun.get("identifier_forms", [])
     ]
     reserved = internal_id_pattern()
-    test_names = re.compile(r"(?m)^\s*(?:async\s+)?def\s+test_\w+(?=\s*\()")
     for form in forms:
         owned, producers = "src/" + form["owner"].replace(".", "/") + "/", form["producers"]
         if not producers or any(p not in blobs or not p.startswith(owned) for p in producers):
@@ -666,30 +811,30 @@ def internal_id_ratchet(
         raise ValueError("internal development label counts must be nonnegative integers")
     current = {}
     current_occurrences = {}
+    sensitive_labels = set()
     allowed = 0
     violations = []
+    rules = hashlib.sha256(  # what a file's matches depend on beside its path and bytes
+        json.dumps(
+            [pattern.pattern, [{k: v for k, v in f.items() if k != "compiled"} for f in forms]],
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()[:16]
     for row in decisions:
         if row["kind"] != "PUBLIC":
             continue
         path = row["path"]
         try:
-            source = blobs[path].decode("utf-8-sig")
+            blobs[path].decode("utf-8-sig")
         except UnicodeError:
             continue
-        permitted = _product_identifier_spans(path, source, forms)
-        source = test_names.sub(lambda m: m[0].replace("_", " "), source)
-        matches = [
-            (number, match.start() + 1, internal_id_label(match.group()))
-            for number, line in enumerate(source.splitlines(), 1)
-            for match in pattern.finditer(line)
-            if not any(
-                n == number and a <= match.start() and match.end() <= b for n, a, b in permitted
-            )
-        ]
+        matches = _label_matches(path, blobs[path], forms, pattern, rules)
         if matches:
             current[path] = len(matches)
         seen = Counter()
-        for line, column, label in matches:
+        for line, column, label, sensitive in matches:
+            if sensitive:
+                sensitive_labels.add(label)
             seen[label] += 1
             if seen[label] <= occurrences.get(path, {}).get(label, 0):
                 allowed += 1
@@ -705,7 +850,24 @@ def internal_id_ratchet(
                 }
             )
         if seen:
-            current_occurrences[path] = dict(sorted(seen.items()))
+            current_occurrences[path] = seen
+    # Baseline decisions above use the original label. Only the returned keys are redacted,
+    # including occurrences elsewhere of any label that appeared inside a secret finding.
+    occupied = {label for seen in current_occurrences.values() for label in seen}
+    aliases = {}
+    ordinal = 0
+    for label in sorted(sensitive_labels):
+        while True:
+            ordinal += 1
+            alias = f"<NO_SECRET:{ordinal}>"
+            if alias not in occupied:
+                aliases[label] = alias
+                occupied.add(alias)
+                break
+    current_occurrences = {
+        path: dict(sorted((aliases.get(label, label), count) for label, count in seen.items()))
+        for path, seen in current_occurrences.items()
+    }
     return {
         "policy_present": policy is not None,
         "count": sum(current.values()),
@@ -722,29 +884,21 @@ def validate_internal_id_history(
     """Validate the first landing against its source, then keep the policy lower-only."""
     if source.startswith("-"):
         raise ValueError("a revision cannot be an option")
+    shallow = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if shallow.returncode or shallow.stdout.strip() != "false":
+        raise ValueError(
+            "shallow or unreadable Git history; restore complete Git history and retry"
+        )
     source = subprocess.check_output(
         ["git", "rev-parse", "--verify", f"{source}^{{commit}}"], cwd=repo, text=True
     ).strip()
-    cache = {}
-    anchor_counts = {}
-
-    def policy_at(commit: str) -> dict | None:
-        if commit not in cache:
-            result = subprocess.run(
-                ["git", "-c", "core.longpaths=true", "show", f"{commit}:{INTERNAL_ID_BASELINE}"],
-                cwd=repo,
-                capture_output=True,
-                check=False,
-            )
-            cache[commit] = json.loads(result.stdout) if result.returncode == 0 else None
-        return cache[commit]
-
-    source_policy = policy_at(source)
-    if source_policy is None:
-        raise ValueError("the source has no frozen internal-label policy")
-    # a later reviewed policy (develop's) may admit an earlier commit's exact rows by name; a
-    # commit's own policy never widens its own history beyond what it names
-    admitting = source_policy
+    later = ""
     if admissions_from is not None:
         later = subprocess.run(
             ["git", "rev-parse", "--verify", "-q", f"{admissions_from}^{{commit}}"],
@@ -753,13 +907,147 @@ def validate_internal_id_history(
             text=True,
             check=False,
         ).stdout.strip()
-        admitting = (policy_at(later) if later else None) or source_policy
-    admissions = admitting.get("history_admissions", {})
+    graph = {}
+    for row in subprocess.check_output(
+        ["git", "rev-list", "--parents", source],
+        cwd=repo,
+        text=True,
+    ).splitlines():
+        fields = row.split()
+        if not fields or any(not re.fullmatch(r"[0-9a-f]{40}", oid) for oid in fields):
+            raise ValueError("unreadable internal-label history graph; restore Git history")
+        commit, *parents = fields
+        if commit in graph:
+            raise ValueError("repeated internal-label history graph entry; restore Git history")
+        graph[commit] = parents
+    if source not in graph or any(
+        parent not in graph for parents in graph.values() for parent in parents
+    ):
+        raise ValueError("incomplete internal-label history graph; restore Git history")
     commits = subprocess.check_output(
         ["git", "log", "--full-history", "--format=%H", source, "--", INTERNAL_ID_BASELINE],
         cwd=repo,
         text=True,
     ).splitlines()
+    if any(commit not in graph for commit in commits):
+        raise ValueError("incomplete internal-label history graph; restore Git history")
+    policies = set(commits) | {source} | ({later} if later else set())
+    policies.update(parent for commit in commits for parent in graph[commit])
+    resolved, contents = {}, {}
+
+    def acquire(specs: set[str]) -> None:
+        pending = sorted(specs - resolved.keys())
+        if not pending:
+            return
+        raw = subprocess.check_output(
+            ["git", "cat-file", "--batch-check", "-z"],
+            cwd=repo,
+            input="".join(spec + "\0" for spec in pending).encode(),
+        )
+        cursor = 0
+        for spec in pending:
+            missing = (spec + " missing\n").encode()
+            if raw.startswith(missing, cursor):
+                resolved[spec] = None
+                cursor += len(missing)
+                continue
+            end = raw.find(b"\n", cursor)
+            fields = raw[cursor:end].split() if end >= 0 else []
+            if (
+                len(fields) != 3
+                or not re.fullmatch(rb"[0-9a-f]{40}", fields[0])
+                or fields[1] != b"blob"
+                or not fields[2].isdigit()
+            ):
+                raise ValueError(f"unexpected git object response for {spec}; restore Git objects")
+            resolved[spec] = fields[0].decode("ascii")
+            cursor = end + 1
+        if cursor != len(raw):
+            raise ValueError("unexpected trailing git object response; restore Git objects")
+        contents.update(
+            _read_blob_batch(repo, {oid for oid in resolved.values() if oid} - contents.keys())
+        )
+
+    acquire({f"{commit}:{INTERNAL_ID_BASELINE}" for commit in policies})
+    cache = {
+        commit: json.loads(contents[oid])
+        if (oid := resolved[f"{commit}:{INTERNAL_ID_BASELINE}"])
+        else None
+        for commit in policies
+    }
+    anchor_counts = {}
+
+    def policy_at(commit: str) -> dict | None:
+        return cache[commit]
+
+    source_policy = policy_at(source)
+    if source_policy is None:
+        raise ValueError("the source has no frozen internal-label policy")
+    # a later reviewed policy (develop's) may admit an earlier commit's exact rows by name; a
+    # commit's own policy never widens its own history beyond what it names
+    admitting = source_policy
+    if later:
+        admitting = policy_at(later) or source_policy
+    admissions = admitting.get("history_admissions", {})
+    anchors = {
+        policy.get("source_sha", "")
+        for commit in commits
+        if (policy := cache[commit])
+        if policy and policy.get("schema_version", 1) == 2
+    }
+    anchors = {anchor for anchor in anchors if re.fullmatch(r"[0-9a-f]{40}", anchor)}
+    acquire({f"{anchor}:{INTERNAL_ID_BASELINE}" for anchor in anchors})
+    for anchor in anchors:
+        oid = resolved[f"{anchor}:{INTERNAL_ID_BASELINE}"]
+        cache[anchor] = json.loads(contents[oid]) if oid else None
+    owners = set()
+    for commit in commits:
+        policy = policy_at(commit)
+        if (
+            not policy
+            or policy.get("schema_version", 1) != 2
+            or policy.get("source_sha") not in anchors
+        ):
+            continue
+        for parent in graph[commit]:
+            previous = policy_at(parent) or {}
+            if previous.get("schema_version", 1) == 1:
+                for owner, labels in policy.get("occurrences", {}).items():
+                    if any(
+                        count > previous.get("occurrences", {}).get(owner, {}).get(label, 0)
+                        for label, count in labels.items()
+                    ):
+                        validate_path(owner)
+                        owners.add(f"{policy['source_sha']}:{owner}")
+    acquire(owners)
+    ancestor_sets, children = {}, {}
+    for child, parents in graph.items():
+        for parent in parents:
+            children.setdefault(parent, []).append(child)
+
+    def is_ancestor(anchor: str, commit: str) -> bool:
+        if anchor not in ancestor_sets:
+            # Descendants are shared by every policy commit with this immutable anchor.
+            descendants, todo = {anchor}, [anchor]
+            while todo:
+                for child in children.get(todo.pop(), []):
+                    if child not in descendants:
+                        descendants.add(child)
+                        todo.append(child)
+            ancestor_sets[anchor] = descendants
+        if commit in ancestor_sets[anchor]:
+            return True
+        # Git remains authoritative at shallow boundaries or for unrelated anchors.
+        return (
+            subprocess.run(
+                ["git", "merge-base", "--is-ancestor", anchor, commit],
+                cwd=repo,
+                capture_output=True,
+                check=False,
+            ).returncode
+            == 0
+        )
+
     for commit in commits:
         policy = policy_at(commit)
         if policy is None:
@@ -772,18 +1060,11 @@ def validate_internal_id_history(
         anchor = policy.get("source_sha", "")
         if version == 2 and (
             not re.fullmatch(r"[0-9a-f]{40}", anchor)
-            or subprocess.run(
-                ["git", "merge-base", "--is-ancestor", anchor, commit],
-                cwd=repo,
-                capture_output=True,
-                check=False,
-            ).returncode
+            or not is_ancestor(anchor, commit)
             or policy_at(anchor) is not None
         ):
             raise ValueError(f"the first-landing anchor must precede the policy at {commit}")
-        parents = subprocess.check_output(
-            ["git", "rev-list", "-1", "--parents", commit], cwd=repo, text=True
-        ).split()[1:]
+        parents = graph[commit]
         for parent in parents:
             previous = policy_at(parent)
             if previous is None:
@@ -808,14 +1089,9 @@ def validate_internal_id_history(
                         key = (anchor, owner)
                         if key not in anchor_counts:
                             validate_path(owner)
-                            raw = subprocess.run(
-                                ["git", "-c", "core.longpaths=true", "show", f"{anchor}:{owner}"],
-                                cwd=repo,
-                                capture_output=True,
-                                check=False,
-                            )
+                            oid = resolved[f"{anchor}:{owner}"]
                             try:
-                                text = raw.stdout.decode("utf-8-sig") if raw.returncode == 0 else ""
+                                text = contents[oid].decode("utf-8-sig") if oid else ""
                             except UnicodeError:
                                 text = ""
                             pattern = internal_id_pattern(policy)
@@ -837,8 +1113,42 @@ def validate_internal_id_history(
 def validate_path(path: str) -> None:
     """Reject paths that a file manifest cannot safely describe."""
     parsed = PurePosixPath(path)
-    if not path or "\\" in path or parsed.is_absolute() or ".." in parsed.parts or ":" in path:
+    if (
+        not path
+        or "\0" in path
+        or "\\" in path
+        or parsed.is_absolute()
+        or ".." in parsed.parts
+        or ":" in path
+    ):
         raise ValueError(f"unsafe manifest path: {path!r}")
+
+
+def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
+    """Read each immutable blob once and refuse truncated or mismatched batch output."""
+    if not objects:
+        return {}
+    ordered = sorted(objects)
+    raw = subprocess.check_output(
+        ["git", "cat-file", "--batch"],
+        cwd=repo,
+        input="".join(oid + "\n" for oid in ordered).encode(),
+    )
+    blobs, cursor = {}, 0
+    for oid in ordered:
+        end = raw.find(b"\n", cursor)
+        header = raw[cursor:end].split() if end >= 0 else []
+        if len(header) != 3 or header[:2] != [oid.encode(), b"blob"] or not header[2].isdigit():
+            raise ValueError(f"unexpected git object response for {oid}; restore Git objects")
+        size = int(header[2])
+        stop = end + 1 + size
+        if stop >= len(raw) or raw[stop : stop + 1] != b"\n":
+            raise ValueError(f"incomplete git object response for {oid}; restore Git objects")
+        blobs[oid] = raw[end + 1 : stop]
+        cursor = stop + 1
+    if cursor != len(raw):
+        raise ValueError("unexpected trailing git object response; restore Git objects")
+    return blobs
 
 
 def read_tree(repo: Path, revision: str) -> tuple[str, dict[str, bytes], dict[str, str]]:
@@ -861,22 +1171,76 @@ def read_tree(repo: Path, revision: str) -> tuple[str, dict[str, bytes], dict[st
         modes[path] = mode
         if kind == "blob":
             objects.append((path, oid))
-    raw = subprocess.check_output(
-        ["git", "cat-file", "--batch"],
-        cwd=repo,
-        input="".join(oid + "\n" for _, oid in objects).encode(),
-    )
-    blobs = {}
-    cursor = 0
-    for path, oid in objects:
-        end = raw.index(b"\n", cursor)
-        header = raw[cursor:end].decode().split()
-        if header[:2] != [oid, "blob"]:
-            raise ValueError("unexpected git object response")
-        size = int(header[2])
-        blobs[path] = raw[end + 1 : end + 1 + size]
-        cursor = end + 2 + size
+    contents = _read_blob_batch(repo, {oid for _, oid in objects})
+    blobs = {path: contents[oid] for path, oid in objects}
     return sha, blobs, modes
+
+
+_IMPORT_NAMES: dict[tuple[str, bytes], frozenset[str]] = {}
+"""Each Python file's imported names by its place and content digest, parsed once a process: both
+closures of a `generate`, and every later one, read the same answer. A
+parse error is raised every time, never kept."""
+
+
+_FACTS: FileFacts | None = None
+"""The store a `generate` holds for its files' import statements, kept by their bytes when the
+gate names one; None outside a `generate`."""
+
+
+def _statements(path: str, raw: bytes) -> list[list]:
+    """Each import statement of one file as its line, module, level, names and whether it is a
+    `from` import, read from the bytes alone; each reader resolves relative ones itself."""
+
+    def parsed(data: bytes) -> list[list]:
+        return [
+            [
+                n.lineno,
+                getattr(n, "module", None) or "",
+                getattr(n, "level", 0),
+                [a.name for a in n.names],
+                isinstance(n, ast.ImportFrom),
+            ]
+            for n in ast.walk(ast.parse(data.decode("utf-8-sig"), filename=path))
+            if isinstance(n, ast.Import | ast.ImportFrom)
+        ]
+
+    def shaped(rows: Any) -> bool:
+        return all(
+            type(line) is int
+            and type(module) is str
+            and type(level) is int
+            and all(type(a) is str for a in names)
+            and type(frm) is bool
+            for line, module, level, names, frm in rows
+        )
+
+    return (
+        parsed(raw)
+        if _FACTS is None or not _cache_safe(raw)
+        else _FACTS.of(f"{_PUBLIC_FACT_KIND}imports", raw, parsed, shaped)
+    )
+
+
+def _absolute(package: str, module: str, level: int, names: list[str], frm: bool) -> list[str]:
+    """The absolute names one import statement imports, a relative one against ``package``."""
+    if not frm:
+        return names
+    if level:
+        parts = package.split(".")
+        module = ".".join(parts[: len(parts) - level + 1] + ([module] if module else []))
+    return [module, *(module + "." + name for name in names)]
+
+
+def _import_names(path: str, raw: bytes) -> frozenset[str]:
+    """The absolute names one file imports, relative imports resolved against its package."""
+    key = (path, hashlib.sha256(raw).digest())
+    if (known := _IMPORT_NAMES.get(key)) is not None:
+        return known
+    own = path[4:-3].replace("/", ".").removesuffix(".__init__") if path.startswith("src/") else ""
+    package = own if path.endswith("/__init__.py") else own.rpartition(".")[0]
+    names = {n for row in _statements(path, raw) for n in _absolute(package, *row[1:])}
+    known = _IMPORT_NAMES[key] = frozenset(names)
+    return known
 
 
 def import_closure(blobs: dict[str, bytes], roots: set[str]) -> set[str]:
@@ -890,26 +1254,13 @@ def import_closure(blobs: dict[str, bytes], roots: set[str]) -> set[str]:
     for path, raw in blobs.items():
         if not path.endswith(".py"):
             continue
-        tree = ast.parse(raw.decode("utf-8-sig"), filename=path)
-        own = (
-            path[4:-3].replace("/", ".").removesuffix(".__init__")
-            if path.startswith("src/")
-            else ""
-        )
-        package = own if path.endswith("/__init__.py") else own.rpartition(".")[0]
-        names = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                names.update(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                base = node.module or ""
-                if node.level:
-                    parts = package.split(".")
-                    base = ".".join(parts[: len(parts) - node.level + 1] + ([base] if base else []))
-                names.add(base)
-                names.update(base + "." + alias.name for alias in node.names)
+        # A module is reached when it is a dotted prefix of an imported name (or the name itself):
+        # each prefix is looked up, not every module tested against every name.
         edges[path] = {
-            modules[n] for name in names for n in modules if n == name or name.startswith(n + ".")
+            modules[prefix]
+            for name in _import_names(path, raw)
+            for prefix in (".".join(name.split(".")[:end]) for end in range(1, name.count(".") + 2))
+            if prefix in modules
         }
     reached = set(roots)
     todo = list(roots)
@@ -920,15 +1271,63 @@ def import_closure(blobs: dict[str, bytes], roots: set[str]) -> set[str]:
     return reached
 
 
+PRIVATE_SCHEMAS = frozenset(
+    {
+        "alphalattice.release.public-manifest",
+        "alphalattice.tests-unregistered.v1",
+        "alphalattice.agent-eval.host-facts",
+    }
+)
+"""Private data by what it is: a tracked JSON document carrying one of these schemas is PRIVATE
+wherever it lives, so no public rule names its path (CHECK-PLAYPEN-PUBLIC-SAFE)."""
+
+
+def declared_private(blobs: dict[str, bytes]) -> frozenset[str]:
+    """The files private by their own content: a JSON document carrying a private schema, or a test
+    module whose docstring declares `PRIVATE_TEST:`, each read as parsed, so an escaped spelling is
+    the same declaration. A JSON document or test module that cannot be parsed cannot show it is
+    not private, so it is private too: content only ever makes a file private."""
+    found = set()
+    for path, raw in blobs.items():
+        if path.endswith(".json"):
+            try:
+                document = json.loads(raw.decode("utf-8-sig"))
+            except (UnicodeError, ValueError, RecursionError):
+                found.add(path)
+                continue
+            if isinstance(document, dict) and document.get("schema") in PRIVATE_SCHEMAS:
+                found.add(path)
+        elif path.startswith("tests/") and path.endswith(".py"):
+            try:
+                docstring = ast.get_docstring(ast.parse(raw.decode("utf-8-sig"))) or ""
+            except (UnicodeError, SyntaxError, ValueError, RecursionError):
+                found.add(path)
+                continue
+            if "PRIVATE_TEST:" in docstring:
+                found.add(path)
+    return frozenset(found)
+
+
 def classify(
     path: str,
     runtime: set[str],
     test_dependencies: set[str],
     config_dependencies: set[str],
     strict_scripts: set[str] | None = None,
+    declared: frozenset[str] = frozenset(),
 ) -> tuple[str, str | None, str]:
-    """The first applicable named rule wins; absence of evidence stays unsettled."""
+    """The first applicable named rule wins; absence of evidence stays unsettled. A file private by
+    its own content (`declared_private`) is PRIVATE before any rule."""
     validate_path(path)
+    if path in declared:
+        return (
+            "PRIVATE",
+            "PRIVATE_BY_CONTENT",
+            (
+                "Its own content declares it private (a private data schema or a PRIVATE_TEST:"
+                " test), or cannot be parsed to show it is not."
+            ),
+        )
     for rule in RULES:
         name = rule["rule"]
         if not any(fnmatch.fnmatchcase(path, p) for p in rule["patterns"]):
@@ -985,9 +1384,9 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
             continue
         if row["path"].endswith(".py"):
             try:
-                tree = ast.parse(text, filename=row["path"])
+                statements = _statements(row["path"], raw)
             except SyntaxError:
-                tree = None  # Text-pattern scans still apply to an invalid/synthetic source.
+                statements = []  # Text-pattern scans still apply to an invalid/synthetic source.
             own = row["path"].removeprefix("src/")[:-3].replace("/", ".")
             package = (
                 own.removesuffix(".__init__")
@@ -995,22 +1394,11 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
                 else own.rpartition(".")[0]
             )
             imports = {}
-            for node in ast.walk(tree) if tree is not None else ():
-                if isinstance(node, ast.Import):
-                    names = [alias.name for alias in node.names]
-                elif isinstance(node, ast.ImportFrom):
-                    base = node.module or ""
-                    if node.level:
-                        parts = package.split(".")
-                        base = ".".join(
-                            parts[: len(parts) - node.level + 1] + ([base] if base else [])
-                        )
-                    names = [base, *(base + "." + alias.name for alias in node.names)]
-                else:
-                    continue
+            for line, *statement in statements:
+                names = _absolute(package, *statement)
                 targets = {p for name in names for p in private_modules.get(name, ())}
                 if targets:
-                    imports.setdefault(node.lineno, set()).update(targets)
+                    imports.setdefault(line, set()).update(targets)
             findings.extend(
                 {
                     "kind": "FINDING",
@@ -1022,7 +1410,79 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
                 }
                 for line, targets in sorted(imports.items())
             )
-        for number, line in enumerate(text.splitlines(), 1):
+        scanned = _text_facts(raw, text)
+        for number, column, rule, assessment in scanned:
+            findings.append(
+                {
+                    "kind": "FINDING",
+                    "path": row["path"],
+                    "line": number,
+                    "column": column,
+                    "rule": rule,
+                    "assessment": (
+                        "TEST_LITERAL_REVIEW" if row["path"].startswith("tests/") else assessment
+                    ),
+                }
+            )
+        for number, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
+            refs = private_references(row["path"], line, private, blobs.keys())
+            findings.extend(
+                {
+                    "kind": "FINDING",
+                    "path": row["path"],
+                    "line": number,
+                    "rule": "NO_PRIVATE_REFERENCE",
+                    "assessment": ref,
+                }
+                for ref in sorted(refs)
+            )
+    return sorted(
+        findings, key=lambda r: (r["path"], r["line"], r["rule"], r.get("column", 0))
+    ), binary
+
+
+def private_references(reader: str, text: str, private: set[str], tracked) -> set[str]:
+    """The NO_PRIVATE_REFERENCE assessments one line of a PUBLIC file earns: a token naming a
+    tracked private file, or a reference into an internal tree. The scan and the registry
+    projection ask this one rule, so "private" means one thing."""
+    return _references(reader, *_reference_tokens(text), private, tracked)
+
+
+def _reference_tokens(text: str) -> tuple[list[str], bool]:
+    """One line's path-like tokens, and whether it names an internal tree, by its text alone."""
+    normalized = text.replace("\\\\", "/").replace("\\", "/")
+    tokens = sorted(set(re.findall(r"[A-Za-z0-9_./-]+\.[A-Za-z0-9_-]+", normalized)))
+    return tokens, any(prefix in normalized for prefix in PRIVATE_PREFIXES)
+
+
+def _references(
+    reader: str, tokens: list[str], internal: bool, private: set[str], tracked: Any
+) -> set[str]:
+    """``private_references`` from one line's tokens: the half of the rule that reads the tree."""
+    refs = set()
+    for token in tokens:
+        direct = token[2:] if token.startswith("./") else token
+        relative = posixpath.normpath(posixpath.join(posixpath.dirname(reader), token))
+        if relative in private or (relative not in tracked and direct in private):
+            refs.add("TRACKED_PRIVATE_FILE")
+    if internal:
+        refs.add("INTERNAL_TREE_REFERENCE")
+    return refs
+
+
+_TEXT_RULES = hashlib.sha256(  # SCANS and PRIVATE_PREFIXES, which a loaded code identity omits
+    json.dumps(
+        [{rule: [p.pattern, p.flags] for rule, p in SCANS.items()}, list(PRIVATE_PREFIXES)]
+    ).encode()
+).hexdigest()[:16]
+
+
+def _text_facts(raw: bytes, text: str) -> list[Any]:
+    """One PUBLIC file's location-only pattern findings, kept by its bytes within a `generate`."""
+
+    def found(_data: bytes) -> list[list[Any]]:
+        scanned: list[list[Any]] = []
+        for number, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
             for rule, pattern in SCANS.items():
                 for match in pattern.finditer(line):
                     assessment = "REVIEW_REQUIRED"
@@ -1030,40 +1490,152 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
                         r"thread|session|codex|claude|agent", line, re.I
                     ):
                         assessment = "UUID_PURPOSE_UNSETTLED"
-                    if row["path"].startswith("tests/"):
-                        assessment = "TEST_LITERAL_REVIEW"
-                    findings.append(
-                        {
-                            "kind": "FINDING",
-                            "path": row["path"],
-                            "line": number,
-                            "column": match.start() + 1,
-                            "rule": rule,
-                            "assessment": assessment,
-                        }
-                    )
-            normalized = line.replace("\\\\", "/").replace("\\", "/")
-            refs = set()
-            for token in re.findall(r"[A-Za-z0-9_./-]+\.[A-Za-z0-9_-]+", normalized):
-                direct = token[2:] if token.startswith("./") else token
-                relative = posixpath.normpath(posixpath.join(posixpath.dirname(row["path"]), token))
-                if relative in private or (relative not in blobs and direct in private):
-                    refs.add("TRACKED_PRIVATE_FILE")
-            if any(prefix in normalized for prefix in PRIVATE_PREFIXES):
-                refs.add("INTERNAL_TREE_REFERENCE")
-            for ref in sorted(refs):
-                findings.append(
-                    {
-                        "kind": "FINDING",
-                        "path": row["path"],
-                        "line": number,
-                        "rule": "NO_PRIVATE_REFERENCE",
-                        "assessment": ref,
-                    }
-                )
-    return sorted(
-        findings, key=lambda r: (r["path"], r["line"], r["rule"], r.get("column", 0))
-    ), binary
+                    scanned.append([number, match.start() + 1, rule, assessment])
+        return scanned
+
+    def shaped(value: Any) -> bool:
+        return isinstance(value, list) and all(
+            isinstance(row, list) and len(row) == 4 for row in value
+        )
+
+    return (
+        found(raw)
+        if _FACTS is None
+        else _FACTS.of(f"{_PUBLIC_FACT_KIND}text {_TEXT_RULES}", raw, found, shaped)
+    )
+
+
+NOT_PROJECTED = {
+    "config/registries/owners-map.json": (
+        "Its rows are nouns, and a noun whose consumer list names a private tool is still a public"
+        " owner: the public tree's message catalog and requirement checks need every noun. Its"
+        " private consumer paths stay scan findings for review (10-29, public build at head)."
+    ),
+}
+"""Public registries the projection leaves whole, each with the reason a public test needs it."""
+
+
+def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[bytes, list[str]]:
+    """A PUBLIC registry as it is published: each row holding a private reference dropped.
+
+    A row is an element of a top-level list or an entry of a top-level object; it is dropped when
+    any string in it, key or value, earns a private reference by the scan's own rule. Any other
+    file, an unreadable registry, or one with nothing to drop keeps its exact bytes; the private
+    registry is never changed. Returns the bytes and each dropped row's place, such as
+    `reach[3]` or `entries/<key>` (REGISTRY-PUBLIC-PROJECTION)."""
+    if not (path.startswith("config/registries/") and path.endswith(".json")):
+        return raw, []
+    if path in NOT_PROJECTED:
+        return raw, []
+    try:
+        text = raw.decode("utf-8-sig")
+        data = json.loads(text)
+    except (UnicodeError, ValueError):
+        return raw, []  # scanned as it is; the scan names what it finds
+
+    def strings(node: object):
+        if isinstance(node, str):
+            yield node
+        elif isinstance(node, dict):
+            for key, value in node.items():
+                yield key
+                yield from strings(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from strings(value)
+
+    def flagged(*nodes: object) -> bool:
+        return any(private_references(path, s, private, tracked) for n in nodes for s in strings(n))
+
+    # The test-size policy's inputs are dependencies, not the identity of their public row.
+    # Classify a wildcard as private only when it matches tracked paths and all are private.
+    tracked = frozenset(tracked)
+    sizes = (
+        path == "config/registries/test-sizes.json"
+        and isinstance(data, dict)
+        and data.get("schema") == "alphalattice.test-sizes.v1"
+    )
+
+    def private_selector(value: object) -> bool:
+        if not isinstance(value, str):
+            return False
+        if flagged(value):
+            return True
+        pattern = value.replace("\\", "/").removeprefix("./").split("::", 1)[0]
+        if not any(char in pattern for char in "*?["):
+            return False
+        matched = {name for name in tracked if fnmatch.fnmatchcase(name, pattern)}
+        return bool(matched) and matched <= private
+
+    projected: object
+    dropped: list[str] = []
+    if isinstance(data, list):
+        dropped = [f"[{i}]" for i, row in enumerate(data) if flagged(row)]
+        projected = [row for row in data if not flagged(row)]
+    elif isinstance(data, dict):
+        kept: dict[str, object] = {}
+        for key, value in data.items():
+            if isinstance(value, list):
+                rows = []
+                for i, row in enumerate(value):
+                    place = f"{key}[{i}]"
+                    if sizes and isinstance(row, dict):
+                        rest = {name: item for name, item in row.items() if name != "inputs"}
+                        if (
+                            flagged(rest)
+                            or private_selector(row.get("pattern"))
+                            or private_selector(row.get("node"))
+                        ):
+                            dropped.append(place)
+                            continue
+                        inputs = row.get("inputs")
+                        if not isinstance(inputs, list) and (
+                            flagged(inputs) or private_selector(inputs)
+                        ):
+                            dropped.append(place)
+                            continue
+                        if isinstance(inputs, list):
+                            kept_inputs = []
+                            for j, item in enumerate(inputs):
+                                if flagged(item) or private_selector(item):
+                                    dropped.append(f"{place}.inputs[{j}]")
+                                else:
+                                    kept_inputs.append(item)
+                            if len(kept_inputs) != len(inputs):
+                                row = {**row, "inputs": kept_inputs}
+                    elif flagged(row) or (sizes and private_selector(row)):
+                        dropped.append(place)
+                        continue
+                    rows.append(row)
+                kept[key] = rows
+            elif isinstance(value, dict):
+                dropped += [f"{key}/{name}" for name, row in value.items() if flagged(name, row)]
+                kept[key] = {n: row for n, row in value.items() if not flagged(n, row)}
+            else:
+                kept[key] = value
+        projected = kept
+    if not dropped:
+        return raw, []
+    return _like(projected, raw, text), dropped
+
+
+def _like(value: object, raw: bytes, text: str) -> bytes:
+    """``value`` as JSON in the form ``text`` was written in: the indent of its first indented
+    line, or one line with its own separators when it has none; its line ending, final newline,
+    byte-order mark and escaping of non-ASCII text."""
+    newline = "\r\n" if "\r\n" in text else "\n"
+    later = [line for line in text.splitlines()[1:] if line.strip()]
+    if later:
+        indent = later[0][: len(later[0]) - len(later[0].lstrip())]
+        body = json.dumps(value, indent=indent, ensure_ascii=text.isascii())
+    else:
+        separators = (
+            "," + (" " if re.search(r",\s", text) else ""),
+            ":" + (" " if re.search(r":\s", text) else ""),
+        )
+        body = json.dumps(value, separators=separators, ensure_ascii=text.isascii())
+    body = body.replace("\n", newline) + (newline if text.endswith("\n") else "")
+    return (b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b"") + body.encode("utf-8")
 
 
 def names_script(reader: str, raw: bytes, script: str) -> bool:
@@ -1089,7 +1661,24 @@ def names_script(reader: str, raw: bytes, script: str) -> bool:
 
 
 def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[dict, dict]:
-    """Produce the builder contract and complete private audit deterministically."""
+    """Produce the builder contract and complete private audit deterministically; each file's
+    import statements are kept by its bytes when the gate names a store."""
+    global _FACTS
+    if not os.environ.get("ALPHALATTICE_SCAN_CACHE_DIR"):  # structural.SCAN_CACHE_ENV
+        return _generate(sha, blobs, modes)  # the export runs this scanner alone, without it
+    from devtools.architecture.structural import kept_facts  # named only where it is importable
+
+    with kept_facts("public-manifest", sys.modules[__name__]) as _FACTS:
+        try:
+            if (purged := _FACTS.retire_predecessors(_PUBLIC_FACT_KIND)) is not None:
+                print(f"public-manifest: purged {purged} predecessor facts", file=sys.stderr)
+            return _generate(sha, blobs, modes)
+        finally:
+            _FACTS = None
+
+
+def _generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[dict, dict]:
+    declared = declared_private(blobs)  # private by content, whatever the path
     census_raw = blobs.get("census/entry_reach.json")
     if census_raw is None:
         raise ValueError("the source commit must contain the entry reachability census")
@@ -1104,10 +1693,13 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
             for p in blobs
             if p.startswith("tests/")
             and p.endswith(".py")
-            and classify(p, set(), set(), set())[0] == "PUBLIC"
+            and classify(p, set(), set(), set(), declared=declared)[0] == "PUBLIC"
         },
     )
-    initial = [dict(path=p, kind=classify(p, runtime, tests, set())[0]) for p in sorted(blobs)]
+    initial = [
+        dict(path=p, kind=classify(p, runtime, tests, set(), declared=declared)[0])
+        for p in sorted(blobs)
+    ]
     config_dependencies = set()
     for row in initial:
         if row["kind"] != "PUBLIC":
@@ -1123,7 +1715,7 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
         if p.startswith("config/requirements-") or p.startswith("config/registries/")
     )
     initial = [
-        dict(path=p, kind=classify(p, runtime, tests, config_dependencies)[0])
+        dict(path=p, kind=classify(p, runtime, tests, config_dependencies, declared=declared)[0])
         for p in sorted(blobs)
     ]
     strict_scripts = set()
@@ -1166,7 +1758,9 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
                 "A symlink or gitlink needs an explicit redistribution/safety decision.",
             )
         else:
-            kind, rule, reason = classify(path, runtime, tests, config_dependencies, strict_scripts)
+            kind, rule, reason = classify(
+                path, runtime, tests, config_dependencies, strict_scripts, declared
+            )
             if path in private_script_reasons:
                 kind, rule, reason = (
                     "PRIVATE",
@@ -1205,6 +1799,23 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
         )
         row["evidence"] = " ".join(facts) + " " + row["reason"]
         row["public_reference_sites"] = refs
+    private = {r["path"] for r in decisions if r["kind"] == "PRIVATE"}
+    blobs, projections = dict(blobs), []  # the bytes as published; the caller's private blobs stay
+    for row in decisions:
+        if row["kind"] == "PUBLIC":
+            published, dropped = project_public(
+                row["path"], blobs[row["path"]], private, blobs.keys()
+            )
+            if dropped:
+                projections.append(
+                    {
+                        "path": row["path"],
+                        "source_sha256": hashlib.sha256(blobs[row["path"]]).hexdigest(),
+                        "public_sha256": hashlib.sha256(published).hexdigest(),
+                        "dropped": dropped,
+                    }
+                )
+                blobs[row["path"]] = published
     public = [
         {
             "path": r["path"],
@@ -1236,6 +1847,7 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
         [*findings, *ratchet["violations"]],
         key=lambda row: (row["path"], row["line"], row["rule"], row.get("column", 0)),
     )
+    content_keys(findings, blobs)
     audit = {
         "source_sha": sha,
         "er3_source_sha": er3.get("base"),
@@ -1248,6 +1860,7 @@ def generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple[
         "findings": findings,
         "finding_counts": dict(sorted(Counter(r["rule"] for r in findings).items())),
         "internal_id_ratchet": ratchet,
+        "registry_projections": projections,
         "binary_public_files": binary,
         "limits": [
             (
@@ -1339,7 +1952,9 @@ def render(audit: dict) -> str:
         ]
     )
     verification = audit.get("standalone")
-    if verification:
+    if verification and (
+        verification["rounds"] or verification["corrections"] or verification["original_findings"]
+    ):
         lines.extend(["", "## RR4b standalone verification", ""])
         lines.extend(
             ["| Round | Source | Public | Private | Outcome |", "| --- | --- | ---: | ---: | --- |"]
@@ -1392,6 +2007,93 @@ def render(audit: dict) -> str:
     return "\n".join(lines)
 
 
+def content_keys(rows: list[dict], blobs: dict[str, bytes]) -> None:
+    """Bind findings to exact UTF-8 lines, normalizing CRLF only; cache each path and line."""
+    lines, hashes = {}, {}
+    for row in rows:
+        path, number = row["path"], row["line"]
+        if path not in lines:
+            lines[path] = blobs[path].decode("utf-8").replace("\r\n", "\n").split("\n")
+        if not 0 < number <= len(lines[path]):
+            raise ValueError("review key has no source line")
+        if (path, number) not in hashes:
+            hashes[path, number] = hashlib.sha256(
+                lines[path][number - 1].encode("utf-8")
+            ).hexdigest()
+        row["review_key"] = [REVIEW_KEY, path, row["rule"], hashes[path, number]]
+
+
+def _unique_review_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result = dict(pairs)
+    if len(result) != len(pairs):
+        raise ValueError("duplicate JSON key in review record")
+    return result
+
+
+def attach_reviews(
+    audit: dict,
+    verification: dict,
+    repo: Path,
+    blobs: dict[str, bytes],
+    *,
+    policy_reviewer: bool = False,
+) -> None:
+    """Admit emitted keys only; reserved example contacts retain their declared policy."""
+    held = verification["standalone"]
+    accepted = held.get("current_findings", [])
+    reopened = held.setdefault("reopened_findings", [])
+    reviews = {}
+    for row in accepted:
+        key = row.get("review_key")
+        if (
+            not isinstance(key, list)
+            or len(key) != 4
+            or key[:3] != [REVIEW_KEY, row["path"], row["rule"]]
+            or not isinstance(key[3], str)
+            or not re.fullmatch("[0-9a-f]{64}", key[3])
+        ):
+            raise ValueError("invalid review key")
+        value, key = row, tuple(key)
+        prior = reviews.setdefault(key, {"disposition": value["disposition"], "evidence": {}})
+        if prior["disposition"] != value["disposition"]:
+            raise ValueError("conflicting review key")
+        prior["evidence"][value["evidence"]] = None
+    current = {tuple(row["review_key"]) for row in audit["findings"]}
+    held["current_findings"] = []
+    for row in accepted:
+        if tuple(row["review_key"]) in current:
+            held["current_findings"].append(row)
+        else:
+            reopened.append(dict(row, reopen_reason="content_changed"))
+    lines = {}
+    for row in audit["findings"]:
+        if tuple(row["review_key"]) in reviews:
+            prior = reviews[tuple(row["review_key"])]
+            row["review"] = {**prior, "evidence": "\n".join(prior["evidence"])}
+        elif row["rule"] == "NO_PERSONAL_CONTACT":
+            path = row["path"]
+            if path not in lines:
+                lines[path] = blobs[path].decode("utf-8").replace("\r\n", "\n").split("\n")
+            text = lines[path][row["line"] - 1]
+            addresses = re.findall(r"[\w.+-]+@((?:[\w-]+\.)+[\w-]+)", text)
+            if addresses and all(
+                re.search(r"(^|\.)(example\.(com|org|net)|invalid|test|example)$", d, re.I)
+                for d in addresses
+            ):
+                row["review"] = {
+                    "disposition": "KEEP_SYNTHETIC",
+                    "evidence": (
+                        f"{path}:{row['line']} at {audit['source_sha'][:9]}: every address on the "
+                        "line uses a reserved example domain (RFC 2606/6761); a fixture, "
+                        "not anyone's contact."
+                    ),
+                }
+                if policy_reviewer:
+                    row["review"]["reviewer"] = "reserved-example-domain-policy"
+                held["current_findings"].append({**row, **row["review"]})
+    audit["standalone"] = held
+
+
 def main() -> int:
     """Rebuild manifest/audit or compare them byte for byte without writing."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1404,30 +2106,75 @@ def main() -> int:
         type=Path,
         help="Read the standalone evidence field from a retained private verification report.",
     )
+    parser.add_argument(
+        "--census-path", help="The source tree's review record path and output location."
+    )
     args = parser.parse_args()
     sha, blobs, modes = read_tree(args.repo, args.source)
     if INTERNAL_ID_BASELINE in blobs:
         validate_internal_id_history(args.repo, sha, admissions_from="develop")
     manifest, audit = generate(sha, blobs, modes)
+    # contract: CENSUS-PATH-CALLER supplies the path before the legacy default is removed.
+    if args.census_path is not None:
+        try:
+            validate_path(args.census_path)
+            if (
+                not args.check
+                and args.census_path not in blobs
+                and (args.out / args.census_path).exists()
+            ):
+                raise ValueError("source review record is absent but output exists")
+            source = (
+                args.verification_json.read_bytes()
+                if args.verification_json
+                else blobs.get(args.census_path)
+            )
+            if source is not None:
+                verification = json.loads(source, object_pairs_hook=_unique_review_object)
+                if not isinstance(verification, dict) or not isinstance(
+                    verification.get("standalone"), dict
+                ):
+                    raise ValueError("standalone review record is missing or invalid")
+                attach_reviews(audit, verification, args.repo, blobs, policy_reviewer=True)
+            else:
+                audit["standalone"] = {
+                    key: []
+                    for key in (
+                        "rounds",
+                        "corrections",
+                        "original_findings",
+                        "current_findings",
+                        "reopened_findings",
+                    )
+                }
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError, AttributeError) as error:
+            raise SystemExit(
+                f"public_release.verification_invalid: {args.census_path}: {error}; "
+                "restore the reviewed census or supply --verification-json"
+            ) from error
+    elif args.verification_json:
+        verification = json.loads(args.verification_json.read_text(encoding="utf-8"))
+        attach_reviews(audit, verification, args.repo, blobs)
     if args.verification_json:
-        audit["standalone"] = json.loads(args.verification_json.read_text(encoding="utf-8"))[
-            "standalone"
-        ]
         audit["command"] += " --verification-json census/public_release.json"
-        reviews = {
-            (row["path"], row["line"], row["rule"], row.get("column", 0)): row
-            for row in audit["standalone"].get("current_findings", [])
-        }
-        for row in audit["findings"]:
-            key = (row["path"], row["line"], row["rule"], row.get("column", 0))
-            if key in reviews:
-                row["review"] = {name: reviews[key][name] for name in ("disposition", "evidence")}
+    if args.census_path is not None:
+        audit["command"] += " --census-path=" + subprocess.list2cmdline([args.census_path])
     outputs = {
         "config/release/public-manifest.json": json.dumps(manifest, indent=2, ensure_ascii=False)
         + "\n",
         "census/public_release.json": json.dumps(audit, indent=2, ensure_ascii=False) + "\n",
         "census/public_release.md": render(audit),
     }
+    if args.census_path is not None:
+        legacy = next(name for name in outputs if name.endswith("public_release.json"))
+        target = (args.out / args.census_path).resolve()
+        if not target.is_relative_to(args.out.resolve()) or any(
+            target == (args.out / name).resolve()
+            for name in outputs
+            if name != legacy or args.census_path != legacy
+        ):
+            raise SystemExit("public_release.output_collision: choose a distinct census path")
+        outputs[args.census_path] = outputs.pop(legacy)
     for name, content in outputs.items():
         destination = args.out / name
         if args.check:

@@ -269,6 +269,7 @@ def test_host_bind_refuses_unadmitted_paths_and_session_fields(live, monkeypatch
     assert not (project / ".codex" / BINDING_NAME).exists()
 
 
+@pytest.mark.proves("composition.session_observation_attribution")
 @pytest.mark.parametrize("held", [False, True])
 @pytest.mark.parametrize("read_denied", [False, True])
 def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
@@ -328,6 +329,58 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
     read_blocked = False
     root = native_setup.autobind_root(live.workspace)
     assert NativeResearchBinding.read(root, session=("codex", "sandboxed")) is not None
+    # Compare an identified caller with a sessionless caller of the same bound workspace.
+    client = LocalResearchClient(live.workspace)
+    declaration = {
+        "title": "Session evidence",
+        "objective": "Assess attribution",
+        "kind": "FIRST_USE",
+        "target_date": "2026-11-02",
+        "criteria": [{"criterion_id": "done", "text": "Check."}],
+        "deliverables": [{"deliverable_id": "result", "kind": "RESULT", "description": "It"}],
+    }
+    _session(monkeypatch, "codex", "sandboxed")
+    named_goal = client.request({"operation": "GOAL_OPEN", "goal_declaration": declaration})
+    assert named_goal["status"] == "GOAL_SAVED"
+    assert named_goal.get("session_binding", {}).get("status") == "BOUND_IN_WORKSPACE"
+    _session(monkeypatch, "codex", None)
+    anonymous_goal = client.request(
+        {"operation": "GOAL_OPEN", "goal_declaration": {**declaration, "kind": "REVIEW"}}
+    )
+    assert anonymous_goal["status"] == "GOAL_SAVED"
+    rows = [
+        row["payload"]["subject"]
+        for row in client.activity(limit=200)["items"]
+        if row["payload"].get("operation") == "GOAL_OPEN"
+        and row["payload"].get("phase") == "RETURNED"
+    ]
+    named = next(row for row in rows if row.get("goal_id") == named_goal["goal_id"])
+    anonymous = next(row for row in rows if row.get("goal_id") == anonymous_goal["goal_id"])
+    assert named.get("agent_session") == "sandboxed" and named.get("agent_vendor") == "codex"
+    question = next(
+        question
+        for question in named["person_questions"]
+        if question["code"] == "network.daily_updates"
+    )
+    assert question["catalog_hash"] == named_goal["person_questions"][0]["catalog_hash"]
+    assert question["references"]["agent_session"] == "sandboxed"
+    assert question["references"]["goal_id"] == named_goal["goal_id"]
+    assert question["references"]["goal_hash"] == named_goal["goal_hash"]
+    assert question["references"]["workspace_id"] == live.workspace_manifest.workspace_id
+    assert question["references"]["operation_ref"]
+    assert anonymous.get("agent_session") is None and anonymous.get("agent_vendor") is None
+    recent = client.activity_recent()["groups"]
+    named_group = next(group for group in recent if group["goal_id"] == named_goal["goal_id"])
+    anonymous_group = next(
+        group for group in recent if group["goal_id"] == anonymous_goal["goal_id"]
+    )
+    assert named_group["agent"] == {"vendor": "codex", "session_id": "sandboxed"}
+    assert named_group["agent_attribution"] == "RECORDED"
+    assert anonymous_group["agent"] is None and anonymous_group["agent_attribution"] == "UNKNOWN"
+    product = client.read_external(native_session_id="sandboxed")["product_items"]
+    shown = [item["payload"]["subject"].get("goal_id") for item in product]
+    assert named_goal["goal_id"] in shown and anonymous_goal["goal_id"] not in shown
+    _session(monkeypatch, "codex", "sandboxed")
     _usage_files(tmp_path, monkeypatch, "sandboxed")
     reading = LocalResearchClient(live.workspace).publish_native_event(
         root, {"source": "native_usage_read"}
@@ -563,13 +616,19 @@ def _usage_files(tmp_path, monkeypatch, session: str) -> None:
     monkeypatch.setenv("CODEX_HOME", str(home))
 
 
-@pytest.mark.parametrize("host", ("codex", "claude-code"))
+@pytest.mark.parametrize("host", ("codex", "claude-code", "codex-protected"))
 def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_configure(
     live, tmp_path, monkeypatch, capsys, host
 ):
     """A fresh clone binds a workspace kept outside it after the documented configure."""
     from scripts import native_research
 
+    from alphalattice.interface.local_application import native_setup
+    from alphalattice.interface.local_application.native_bridge import autobind_root
+
+    protected = host == "codex-protected"
+    if protected:
+        host = "codex"
     monkeypatch.setattr(native_research, "ROOT", native_research.ROOT)
     clone = tmp_path / "fresh-clone"
     (clone / ".codex").mkdir(parents=True)
@@ -583,12 +642,41 @@ def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_co
     python.parent.mkdir(parents=True)
     python.touch()
     assert not live.workspace.resolve().is_relative_to(clone.resolve())
+    if protected:
+        marker = clone / ".codex" / PROJECT_DECLARATION_NAME
+        opening = Path.open
+
+        def denied(path, mode="r", *args, **kwargs):
+            if path == marker and "x" in mode:
+                raise PermissionError(13, "sandbox fixture", str(path))
+            return opening(path, mode, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", denied)
     monkeypatch.setattr(
         sys, "argv", ["native_research.py", "--project", str(clone), "configure", "--host", host]
     )
     assert native_research.main() == 0
-    assert json.loads(capsys.readouterr().out)["status"] == "LOCAL_DECLARATIONS_VALIDATED"
+    assert json.loads(capsys.readouterr().out)["status"] == (
+        "WORKSPACE_REQUIRED" if protected else "LOCAL_DECLARATIONS_VALIDATED"
+    )
     _session(monkeypatch, host)
+    if protected:
+        for _ in range(2):
+            native_setup._BINDING_MEMO.clear()
+            cli.main(_research(live, tmp_path), serve=lambda _: 99)
+            notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
+            assert (notice["status"], notice["next_action"]) == (
+                "BOUND_IN_WORKSPACE",
+                "NAME_THE_WORKSPACE_ON_EACH_COMMAND",
+            )
+        assert (
+            NativeResearchBinding.read(
+                autobind_root(live.workspace), session=("codex", "fixture-parent")
+            )
+            is not None
+        )
+        assert not marker.exists()
+        return
     if host == "codex":
         _usage_files(tmp_path, monkeypatch, "fixture-parent")
     else:
@@ -669,22 +757,36 @@ def test_a_session_that_opens_a_goal_here_is_bound_without_a_separate_step(
     _session(monkeypatch, host)
     assert NativeResearchBinding.read(project, session=(host, "fixture-parent")) is None
     client = LocalResearchClient(live.workspace)
-    opened = client.request({"operation": "GOAL_OPEN", "goal_declaration": declaration})
+    opening = {"operation": "GOAL_OPEN", "goal_declaration": declaration}
+    opened = client.request(opening)
     assert opened["status"] == "GOAL_SAVED", opened
     binding = NativeResearchBinding.read(project, session=(host, "fixture-parent"))
     assert binding is not None and binding.workspace == live.workspace.resolve()
     assert binding.usage == "READ"
     record = binding.record_path(project).read_bytes()
-    again = client.request(
-        {"operation": "GOAL_OPEN", "goal_declaration": {**declaration, "title": "Another"}}
-    )
+    again = client.request({**opening, "goal_declaration": {**declaration, "title": "Another"}})
     assert again["status"] == "GOAL_SAVED", again
     assert binding.record_path(project).read_bytes() == record
-    # Each Session's first answer offers the Workbench once, a link opened once; never again.
+    # Startup opens once; ordinary repeats offer none; a sealed Goal opens its own view.
     offered = opened["workbench"]
     assert offered["next_action"] == "OPEN_THE_WORKBENCH" and "workbench" not in again
     assert offered["launch_url"].startswith(live.url.rstrip("/") + "/launch?key=")
     assert [_launch_status(offered["launch_url"]) for _ in "ab"] == [303, 403]
+    done = dict(again["next_requests"]["submit"])
+    done["goal_submission"] = dict(
+        outcome="NOT_ACHIEVED",
+        summary="Fixture",
+        criteria=[dict(criterion_id="done", answer="NOT_ASSESSED", note="Fixture")],
+        deliverables=[dict(deliverable_id="result", references=["f"])],
+        files=[dict(reference_id="f", name="Record", media_type="text/plain", text="Fixture")],
+    )
+    closed = client.request(done)
+    assert closed["status"] == "COMPLETE", closed
+    assert "workbench" in closed
+    link = closed["workbench"]["launch_url"]
+    assert link.endswith("#follow=goal%3A" + closed["goal_id"])
+    assert closed["workbench"]["goal_hash"] == closed["goal_hash"]
+    assert [_launch_status(link) for _ in "ab"] == [303, 403]
     _session(monkeypatch, host, "fixture-other")
     other = client.request({"operation": "GOAL_LIST"})
     assert other["workbench"]["launch_url"] != offered["launch_url"]

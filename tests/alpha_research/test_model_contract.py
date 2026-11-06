@@ -28,8 +28,9 @@ from alphalattice.capabilities.alpha_modeling.search_axes import SearchSpace
 from alphalattice.investment.alpha_research.experiments.mandate import (
     build_installed_alpha_model_capability_mandate,
 )
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = resolve_playpen_root(Path(__file__))
 LOCKED = locked_distributions(ROOT / "uv.lock")
 
 

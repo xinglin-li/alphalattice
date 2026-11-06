@@ -16,6 +16,7 @@ import pytest
 from alphalattice.capabilities.alpha_modeling.runtime.service import AlphaModelRuntimeService
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.foundation.causal_outcomes.execution.readers import planned_local_qa_schedule
+from alphalattice.foundation.market_data_ops.sources.providers import market_provider
 from alphalattice.foundation.market_data_ops.sources.universe import (
     bootstrap_from_candidate_manifest_document,
 )
@@ -133,7 +134,8 @@ def test_prior_positions_keep_the_updates_own_next_requests(
 def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_need(
     tmp_path, evidence_roots, monkeypatch, capsys, record_property
 ):
-    """A held Friday runs offline on Saturday and a missing Monday names its need."""
+    """A held Friday runs offline on Saturday and a missing Monday names its need. Long (about
+    9-17 min): a real installation's Friday preparation rounds, activation and a weekend."""
     root = evidence_roots.require("ls1_daily_flows")
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     # Native HTTP clients do not necessarily use Python's socket.connect.
@@ -252,13 +254,17 @@ def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_n
             live, "/api/strategy/activate", method="POST", payload={"task_id": book}, timeout=300.0
         )
         assert activated["status"] == "ACTIVATED", activated
+        # Activation admits Friday's update in the same act; Friday's data is final, so it runs.
+        first = activated["update"]
+        assert first["plan"]["target_session"] == "2026-09-11", first
         # Qualification binds the reference to its child. Finish the complete
         # parent's own Friday Sector receipt too: a Saturday candidate recheck
         # must not mistake that child's receipt for the parent's publication.
         prepare_friday_sector(provider, market, universe, now, live.session.mutation_gate)
-        # Saturday sees final Friday data; source access is closed throughout.
+        # Saturday sees final Friday data; source access is closed throughout: the provider is
+        # asked nothing from here on.
         now = datetime(2026, 9, 12, 12, tzinfo=UTC)
-        live.operations.data_update.provider = None
+        calls = list(provider.calls)
         code, held_data = cli("data-update", "plan")
         assert code == 0 and held_data["data"]["source_access"] == "LOCAL_ADMITTED_INPUTS", {
             "work": held_data["data"].get("work"),
@@ -287,16 +293,11 @@ def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_n
             "feature_recheck": live.operations.data_update.last_plan.request.candidate_recheck
             is not None,
         }
+        # Friday's proposal is published; Saturday's plan has nothing new until Monday.
         code, planned = cli("research-update", "plan", "--package", package)
-        assert code == 0, planned
-        assert planned["data"]["target_session"] == "2026-09-11"
-        assert planned["data"]["source_access"] == "LOCAL_ADMITTED_INPUTS"
-        assert "no provider request" in planned["data"]["work"]
-        calls = list(provider.calls)
-        code, sent = cli("research-update", "run", "--plan", planned["data"]["update_plan_hash"])
-        assert code in {0, 3}, sent
+        assert (code, planned["data"]["status"]) == (0, "OBSERVATIONS_PENDING"), planned
         live.dispatcher.drain_for_tests()
-        code, result = cli("research-update", "show", "--task", sent["data"]["task_id"])
+        code, result = cli("research-update", "show", "--task", first["run"]["task_id"])
         assert code == 0, result
         assert result["data"]["status"] == "PROPOSAL_PUBLISHED", result
         proposal = result["data"]["publication"]["pending_proposal"]
@@ -308,7 +309,9 @@ def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_n
         record_property("formation_session", proposal["schedule"]["formation_session"])
         record_property("entry_session", proposal["schedule"]["entry_session"])
         record_property("weekend_provider_calls", len(provider.calls) - len(calls))
-        # Monday after provider finality is genuinely absent, not an equal bound.
+        # Monday after provider finality is genuinely absent, not an equal bound: only the
+        # declared network provider could fetch it.
+        live.operations.data_update.provider = market_provider(workspace, "yfinance")
         now = datetime(2026, 9, 14, 23, tzinfo=UTC)
         code, missing = cli("research-update", "plan", "--package", package)
         assert code == 0, missing

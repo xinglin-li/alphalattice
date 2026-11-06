@@ -11,6 +11,7 @@ catalog alone.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -131,8 +132,6 @@ def activated_models(workspace: Path) -> tuple[str, ...]:
 
 
 def _extension_ids() -> tuple[str, ...]:
-    import importlib.util
-
     spec = importlib.util.find_spec(EXTENSION_PACKAGE)
     if spec is None or not spec.submodule_search_locations:
         return ()

@@ -2,9 +2,10 @@
 
 Authority resolution is only worth proving against artifacts the product wrote
 itself, so this case asserts the properties that make the fixture workspace a
-real one: a Panel admitted through the Feature Input Gateway, a closure ledger
-that answers for the revision actually activated, and a return surface readable
-through the same reader production uses.
+real one: a closure ledger opened at genesis, a Panel manifest and a return
+surface resolved through the same resolver and reader production uses. The
+Gateway's admission and the ledger's sector map are held by the Feature tests,
+which kill every mutant the cases that asserted them here killed.
 
 Workspace-writing cases drive onboarding, ten years of materialization and
 maintenance fresh; those assertions share a module build. Other cases exercise
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -33,12 +35,10 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import
     FeatureClosureLedger,
 )
 from alphalattice.foundation.feature_engine.storage.repositories import (
-    FeatureStateRepository,
     PanelStateRepository,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from tests.researcher_methodology_surface.real_workspace import (
-    _GOLDEN_ROOT,
     AS_OF,
     MARKET_PROFILE_ID,
     SYMBOLS,
@@ -46,57 +46,18 @@ from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
     _golden_is_complete,
     _golden_key,
+    _golden_root,
     build_real_risk_workspace,
+    copy_fresh_workspace,
+    session_fresh_seed,
 )
 
 
-@pytest.fixture(scope="module")
-def fresh_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
-    """The build itself, driven in this process; the golden cache is bypassed."""
+@pytest.fixture
+def fresh_workspace(tmp_path_factory: pytest.TempPathFactory, tmp_path: Path) -> RealRiskWorkspace:
+    """A private copy of the product-written, session-fresh build."""
 
-    return build_real_risk_workspace(tmp_path_factory.mktemp("fresh-real-workspace"), fresh=True)
-
-
-def test_panel_is_admitted_through_the_feature_input_gateway(
-    fresh_workspace: RealRiskWorkspace,
-) -> None:
-    """Panel is admitted through the feature input gateway."""
-
-    store = MarketDataRepository(fresh_workspace.workspace)
-    panel_state = PanelStateRepository(store.database, market_data=store)
-    disclosure = panel_state.feature_input_quality_disclosure(
-        result_manifest_revision=fresh_workspace.manifest.revision_sha256
-    )
-
-    assert disclosure["gateway_qualified"] is True
-    assert disclosure["admitted_listing_count"] == len(SYMBOLS)
-    assert disclosure["quality_exclusion_count"] == 0
-    assert disclosure["quality_admission_hash"]
-
-
-def test_closure_ledger_answers_for_the_activated_sector_revision(
-    fresh_workspace: RealRiskWorkspace,
-) -> None:
-    """Closure ledger answers for the activated sector revision."""
-
-    store = MarketDataRepository(fresh_workspace.workspace)
-    feature_state = FeatureStateRepository(store.database, market_data=store)
-    ledger = FeatureClosureLedger(
-        PanelClosureArtifactStore(ArtifactResolver(fresh_workspace.artifact_root))
-    )
-    sector = feature_state.current_sector_state(fresh_workspace.manifest)
-    assert sector is not None
-
-    binding = ledger.panel_binding(fresh_workspace.panel_snapshot_hash)
-    assert binding is not None
-    head = ledger.require_head(binding.catalog_hash)
-    sector_map = ledger.sector_map_for_head(head=head, sector_revision=sector.sector_revision)
-
-    assert sector_map.sector_revision == sector.sector_revision
-    assert sector_map.manifest_revision == fresh_workspace.manifest.revision_sha256
-    assert {entry.listing_id for entry in sector_map.entries} == set(
-        fresh_workspace.sector_by_listing_id
-    )
+    return copy_fresh_workspace(tmp_path_factory, tmp_path / "fresh-real-workspace")
 
 
 def test_closure_opened_at_genesis_and_never_claimed_admission(
@@ -188,7 +149,7 @@ def _envelope(
 
 
 def test_the_host_admits_a_successor_panel_only_after_its_observation_close(
-    fresh_workspace: RealRiskWorkspace,
+    real_risk_workspace: RealRiskWorkspace,
 ) -> None:
     """The host admits a successor panel only after its observation close."""
 
@@ -197,29 +158,29 @@ def test_the_host_admits_a_successor_panel_only_after_its_observation_close(
     )
     from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
-    resolver = WorkspaceResearchAuthorityResolver(workspace=fresh_workspace.workspace)
-    at_close = resolver.resolve(_envelope(fresh_workspace))
+    resolver = WorkspaceResearchAuthorityResolver(workspace=real_risk_workspace.workspace)
+    at_close = resolver.resolve(_envelope(real_risk_workspace))
     final = at_close.sessions[-1]
 
     before_close = resolver.resolve(
-        _envelope(fresh_workspace, as_of={"session": final, "phase": "INTRADAY"})
+        _envelope(real_risk_workspace, as_of={"session": final, "phase": "INTRADAY"})
     )
     assert before_close.sessions[-1] < final
     assert final not in before_close.sessions
 
     post = resolver.resolve(
-        _envelope(fresh_workspace, as_of={"session": final, "phase": "POST_CLOSE"})
+        _envelope(real_risk_workspace, as_of={"session": final, "phase": "POST_CLOSE"})
     )
     assert post.sessions[-1] == final
 
     # A date alone cannot say which of those three it was, so it is refused
     # rather than promoted to the most permissive reading.
     with pytest.raises(AuthoringError, match="decision_cutoff_phase_ambiguous"):
-        resolver.resolve(_envelope(fresh_workspace, as_of=final))
+        resolver.resolve(_envelope(real_risk_workspace, as_of=final))
 
 
 def test_the_host_refuses_a_panel_without_feature_clock_authority(
-    fresh_workspace: RealRiskWorkspace, tmp_path
+    real_risk_workspace: RealRiskWorkspace, tmp_path
 ) -> None:
     """The host refuses a panel without feature clock authority."""
 
@@ -230,10 +191,10 @@ def test_the_host_refuses_a_panel_without_feature_clock_authority(
     from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
     private = tmp_path / "legacy-shaped"
-    shutil.copytree(fresh_workspace.artifact_root, private / "artifacts")
+    shutil.copytree(real_risk_workspace.artifact_root, private / "artifacts")
     manifests = private / "artifacts" / "feature-panel" / "manifests"
     payload = json.loads(
-        (manifests / f"{fresh_workspace.panel_snapshot_hash}.json").read_text(encoding="utf-8")
+        (manifests / f"{real_risk_workspace.panel_snapshot_hash}.json").read_text(encoding="utf-8")
     )
     payload.pop("snapshot_hash")
     for entry in payload["safe_summary"]["factor_catalog_summary"].values():
@@ -250,20 +211,21 @@ def test_the_host_refuses_a_panel_without_feature_clock_authority(
         encoding="utf-8",
     )
     resolver = WorkspaceResearchAuthorityResolver(
-        workspace=fresh_workspace.workspace, artifact_root=private / "artifacts"
+        workspace=real_risk_workspace.workspace, artifact_root=private / "artifacts"
     )
     with pytest.raises(AuthoringError, match="panel_observation_clock_absent"):
-        resolver.resolve(_envelope(fresh_workspace, snapshot_handle=forged))
+        resolver.resolve(_envelope(real_risk_workspace, snapshot_handle=forged))
 
     # The same resolver admits the untouched Panel from the same private root,
     # so the refusal is about the missing clock authority and not about the copy.
-    assert resolver.resolve(_envelope(fresh_workspace)).panel_snapshot_hash == (
-        fresh_workspace.panel_snapshot_hash
+    assert resolver.resolve(_envelope(real_risk_workspace)).panel_snapshot_hash == (
+        real_risk_workspace.panel_snapshot_hash
     )
 
 
+@pytest.mark.private_data
 def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities(
-    fresh_workspace: RealRiskWorkspace, tmp_path: Path
+    fresh_workspace: RealRiskWorkspace, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
     """A second consumer restores the golden workspace with the same identities."""
 
@@ -278,7 +240,7 @@ def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identitie
         fresh_workspace.return_reader.available_sessions(fresh_workspace.return_surface)
     )
     key = _golden_key(again.feature_catalog, again.feature_kernels, SYMBOLS)
-    golden = _GOLDEN_ROOT / key
+    golden = _golden_root() / key
     assert (golden / "golden.json").is_file()
     assert not golden.with_name(golden.name + ".building").exists()
     assert not golden.with_name(golden.name + ".lock").exists()
@@ -295,21 +257,30 @@ def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identitie
         stream.write(b"private consumer mutation")
     assert digest(seed) == original
     assert digest(sibling.workspace / "market-data.duckdb") == original
+    session_seed, _ = session_fresh_seed(tmp_path_factory)
+    session_db = session_seed / "workspace/market-data.duckdb"
+    session_original = digest(session_db)
+    fresh_sibling = copy_fresh_workspace(tmp_path_factory, tmp_path / "fresh-sibling")
+    with (fresh_workspace.workspace / "market-data.duckdb").open("ab") as stream:
+        stream.write(b"fresh consumer mutation")
+    assert digest(session_db) == session_original
+    assert digest(fresh_sibling.workspace / "market-data.duckdb") == session_original
+    assert digest(seed) == original
+    assert digest(sibling.workspace / "market-data.duckdb") == original
 
 
+@pytest.mark.private_data
 def test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired(
     fresh_workspace: RealRiskWorkspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A golden that disagrees with its sidecar is refused not repaired."""
+    """A foreign scientific sidecar identity is refused."""
 
     key = _golden_key(fresh_workspace.feature_catalog, fresh_workspace.feature_kernels, SYMBOLS)
     build_real_risk_workspace(tmp_path / "published")  # publishes the golden when absent
     private_root = tmp_path / "goldens"
     golden = private_root / key
-    shutil.copytree(_GOLDEN_ROOT / key, golden)
-    monkeypatch.setattr(
-        "tests.researcher_methodology_surface.real_workspace._GOLDEN_ROOT", private_root
-    )
+    shutil.copytree(_golden_root() / key, golden)
+    monkeypatch.setenv("ALPHALATTICE_TEST_GOLDEN_ROOT", str(private_root))
     assert _golden_is_complete(golden, key)
 
     sidecar_path = golden / "golden.json"
@@ -338,25 +309,7 @@ def test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired(
         with pytest.raises(GoldenWorkspaceError, match=field):
             build_real_risk_workspace(tmp_path / field)
 
-    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
-    database = golden / "workspace/market-data.duckdb"
-    size = database.stat().st_size
-    try:
-        with database.open("ab") as stream:
-            stream.write(b"tampered cache payload")
-        with pytest.raises(GoldenWorkspaceError, match="cached file content changed"):
-            build_real_risk_workspace(tmp_path / "tampered-file")
-    finally:
-        with database.open("r+b") as stream:
-            stream.truncate(size)
-
-    # An incomplete *published* root is corrupt, not permission to rebuild it.
-    assert not _golden_is_complete(golden, "0" * 24)
-    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
-    shutil.rmtree(golden / "workspace")
-    assert not _golden_is_complete(golden, key)
-    with pytest.raises(GoldenWorkspaceError, match="invalid published cache"):
-        build_real_risk_workspace(tmp_path / "missing-files")
+    # Payload seal mismatches and incomplete generations are covered by the small seal case below.
 
 
 def test_the_golden_key_binds_the_interpreter_and_the_installed_distributions(
@@ -384,6 +337,150 @@ def test_the_golden_key_binds_the_interpreter_and_the_installed_distributions(
 def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
     tmp_path, monkeypatch
 ):
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from tests import conftest as hooks
+    from tests.researcher_methodology_surface import session_workspace as session
+
+    # Collection warms the selected seven-listing variant, and preserves the default in mixed runs.
+    members = SYMBOLS[:7]
+    member = SimpleNamespace(
+        fixturenames=["stopped_change"], module=SimpleNamespace(MEMBERS=members)
+    )
+    ordinary = SimpleNamespace(fixturenames=[], module=SimpleNamespace())
+    external = SimpleNamespace(fixturenames=["external_factor_workspace"], module=SimpleNamespace())
+    with monkeypatch.context() as patch:
+        calls = []
+        fake = SimpleNamespace(
+            _golden_root=lambda: tmp_path / "warmup",
+            warm_real_risk_golden=lambda **kw: calls.append(kw),
+        )
+        patch.setitem(sys.modules, "tests.researcher_methodology_surface.real_workspace", fake)
+        patch.setattr(hooks.environment, "project_scope", lambda *_: nullcontext())
+        config = SimpleNamespace(option=SimpleNamespace(collectonly=False))
+        for items, expected in (
+            ([member], [{"symbols": members, "sector_size": 7}]),
+            ([member, member], [{"symbols": members, "sector_size": 7}]),
+            ([member, ordinary], [{"external": False}, {"symbols": members, "sector_size": 7}]),
+            ([member, external], [{"external": True}, {"symbols": members, "sector_size": 7}]),
+            ([ordinary], [{"external": False}]),
+            ([external], [{"external": True}]),
+        ):
+            calls.clear()
+            hooks.pytest_collection_finish(SimpleNamespace(config=config, items=items))
+            assert calls == expected
+
+    monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
+    factory, attempts, value = SimpleNamespace(getbasetemp=lambda: tmp_path), [], ["original"]
+    make, copy = session.session_workspace, session.copy_workspace
+    monkeypatch.setattr(session, "LINKED_SEEDS", set())  # this holder's seeds, not the session's
+
+    def build(root):
+        root.mkdir()
+        (root / "seed.txt").write_text(value[0], encoding="utf-8")
+        (root / "pool.duckdb").write_bytes(b"db")  # a linked input, as the product binds one
+        (root / "source.duckdb").hardlink_to(root / "pool.duckdb")
+        (root / "market-data.duckdb").write_bytes(b"market data")
+        digest = hashlib.sha256(b"sealed arrays").hexdigest()
+        for category in ("frozen-observation-arrays", "lifecycle-arrays", "unregistered-arrays"):
+            folder = root / "artifacts/alpha-research/current" / category
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / f"{digest}.bin").write_bytes(b"sealed arrays")
+        (root / "artifacts/alpha-research/current/lifecycle-arrays/not-a-digest.bin").write_bytes(
+            b"other"
+        )
+        attempts.append(value[0])
+        if len(attempts) == 1:
+            raise InterruptedError("worker stopped mid-build")
+        return {"value": value[0]}
+
+    with pytest.raises(InterruptedError, match="mid-build"):
+        make(factory, "seed", build)
+    try:
+        first, original = make(factory, "seed", build)
+    except RuntimeError as error:
+        pytest.fail(f"the next worker could not rebuild an incomplete seed: {error}")
+    assert original == {"value": "original"} and len(attempts) == 2
+    assert make(factory, "seed", build) == (first, original) and len(attempts) == 2
+    value[0] = "second"
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(make, factory, "seed", build, inputs="second")
+        second, observed = future.result(timeout=10)
+    assert (first / "seed.txt").read_text() == "original"
+    assert first != second and observed == {"value": "second"}
+    copied = copy(first, tmp_path / "first-copy")
+    assert (copied / "seed.txt").read_text() == "original"
+    # The product's link is kept inside the copy, and never reaches back to the seed.
+    pool = copied / "pool.duckdb"
+    assert pool.samefile(copied / "source.duckdb") and not pool.samefile(first / "pool.duckdb")
+    assert (second / "seed.txt").read_text() == "second"
+    # Read in place: the seed's own file, refusing a writer through any link; the copy still
+    # goes whole (on Windows too), the seed still refusing writers, and a change is named.
+    in_place = copy(second, tmp_path / "in-place", link_data=True)
+    linked = in_place / "market-data.duckdb"
+    assert linked.samefile(second / "market-data.duckdb") and session.seeds_changed() == []
+    with pytest.raises(PermissionError):
+        linked.open("r+b")
+    digest = hashlib.sha256(b"sealed arrays").hexdigest()
+    for category in ("frozen-observation-arrays", "lifecycle-arrays"):
+        relative = Path("artifacts/alpha-research/current") / category / f"{digest}.bin"
+        assert (in_place / relative).samefile(second / relative)
+        with pytest.raises(PermissionError):
+            (in_place / relative).open("r+b")
+        nested = tmp_path / (category + ".bin")
+        session.keep_seed_links(str(in_place / relative), str(nested))
+        assert nested.samefile(second / relative)
+    for relative in (
+        Path("artifacts/alpha-research/current/unregistered-arrays") / f"{digest}.bin",
+        Path("artifacts/alpha-research/current/lifecycle-arrays/not-a-digest.bin"),
+    ):
+        assert not (in_place / relative).samefile(second / relative)
+    shutil.rmtree(in_place)
+    with pytest.raises(PermissionError):
+        (second / "market-data.duckdb").open("r+b")
+    (second / "seed.txt").write_text("changed", encoding="utf-8")
+    assert session.seeds_changed() == [f"{second}: seed.txt"]
+    (second / "seed.txt").write_text("second", encoding="utf-8")  # the seed is reused below
+    session.LINKED_SEEDS.clear()
+    with pytest.raises(RuntimeError, match="private_copy_unmarked"):  # unmarked: no private copy
+        copy(second, tmp_path / "private", link_data=False)
+    with monkeypatch.context() as private_test:
+        private_test.setitem(session.RUNNING_TEST, "private", True)
+        private = copy(second, tmp_path / "private-arrays", link_data=False)
+        relative = Path("artifacts/alpha-research/current/lifecycle-arrays") / f"{digest}.bin"
+        assert not (private / relative).samefile(second / relative)
+        (private / relative).write_bytes(b"private change")
+        assert (second / relative).read_bytes() == b"sealed arrays"
+
+    value[0] = "original"
+    for field in ("name", "builder", "inputs", "", "missing"):
+        marker, prior = first.parent / "complete.json", first
+        record = json.loads(marker.read_text(encoding="utf-8"))
+        if field == "missing":
+            marker.unlink()
+        else:
+            marker.write_text(json.dumps(record | {field: "other"}) if field else "{")
+        first, _ = make(factory, "seed", build)
+        assert first != prior and (prior / "seed.txt").read_text() == "original"
+    assert len(attempts) == 8 and make(factory, "seed", build, inputs="second") == (
+        second,
+        observed,
+    )
+    (first / "seed.txt").write_text("corrupted", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="session workspace was changed"):
+        make(factory, "seed", build)
+    index = tmp_path / "research-prerequisites" / "seed.json"
+    index.write_text("{", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="session workspace index unreadable"):
+        make(factory, "seed", build)
+    assert index.read_text(encoding="utf-8") == "{"
+    with pytest.raises(ValueError):
+        make(factory, "invalid", build, inputs=float("nan"))
+    assert not (tmp_path / "research-prerequisites" / "invalid").exists()
+
     from tests.researcher_methodology_surface import real_workspace as cache
 
     def write(relative, value):
@@ -473,72 +570,199 @@ def test_cache_wait_expiry_does_not_steal_an_active_lease(tmp_path, monkeypatch)
         assert root.is_dir()
 
 
-def test_initial_universe_requires_computable_base_features_without_extra_confirmation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Raw qualification alone does not finalize the initial cohort:
-    one known-bad sector remains a candidate.
-    """
-    from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider
+@pytest.mark.parametrize("case", ["digest", "session-seed", "seal", "real-link"])
+def test_cache_environment_tracks_thread_settings_in_the_current_process(
+    monkeypatch, tmp_path, tmp_path_factory, case
+):
+    from types import SimpleNamespace
 
-    # TTT has the same seeded walk as SPY and hence undefined idiosyncratic
-    # skew. Keep this fixture focused on the five deliberately zero-volume names.
-    symbols = tuple(chr(ord("A") + index) * 3 for index in range(21) if index != 19)
-    fetch = SeededWalkProvider.fetch_daily
-
-    def with_zero_volume(self, requested, *, start, end):
-        data = fetch(self, requested, start=start, end=end)
-        return {
-            symbol: tuple(
-                {**row, "volume": 0.0}
-                if symbol in symbols[:5] and row["session_date"] == AS_OF.isoformat()
-                else row
-                for row in rows
-            )
-            for symbol, rows in data.items()
-        }
-
-    monkeypatch.setattr(SeededWalkProvider, "fetch_daily", with_zero_volume)
-    source = build_real_risk_workspace(
-        tmp_path / "initial-qualification", symbols=symbols, fresh=True
-    )
-    market = MarketDataRepository(source.workspace)
-    bootstrap = market.universe_bootstrap(MARKET_PROFILE_ID)
-    assert bootstrap is not None
-    assert tuple(item.symbol for item in source.manifest.listings) == symbols[5:]
-    assert set(bootstrap.cohort_listing_ids) == {
-        item.listing_id for item in source.manifest.listings
-    }
-    with market._connect(read_only=True) as connection:
-        assert (
-            connection.execute(
-                "SELECT count(*) FROM current_universe_onboarding_listing "
-                "WHERE state = 'FEATURE_READY'"
-            ).fetchone()[0]
-            == 20
-        )
-        admissions = [
-            json.loads(row[0])
-            for row in connection.execute(
-                "SELECT admission_json FROM feature_input_admission"
-            ).fetchall()
-        ]
-    baseline = [item for item in admissions if item.get("evidence_scope") == "BASE_FEATURES_ONLY"]
-    assert baseline and len(baseline[0]["admitted_listing_ids"]) == 15
-    assert len(baseline[0]["quarantined_listing_ids"]) == 5
-    assert baseline[0]["feature_qualification_hash"]
-    assert (
-        PanelStateRepository(market.database, market_data=market).feature_input_quality_disclosure(
-            result_manifest_revision=source.manifest.revision_sha256
-        )["gateway_qualified"]
-        is True
-    )
-
-
-def test_cache_environment_tracks_thread_settings_in_the_current_process(monkeypatch):
     from tests.researcher_methodology_surface import real_workspace as cache
+
+    if case == "real-link":
+        from tests.researcher_methodology_surface import session_workspace as session
+
+        record = cache.build_real_risk_workspace(tmp_path / "real-linked")
+        database = record.workspace / "market-data.duckdb"
+        matches = [
+            seed
+            for seed in session.LINKED_SEEDS
+            if (seed / database.name).is_file() and database.samefile(seed / database.name)
+        ]
+        golden = cache._golden_root() / cache._golden_key(
+            record.feature_catalog, record.feature_kernels, cache.SYMBOLS
+        )
+        assert len(matches) == 1 and not database.samefile(golden / "workspace" / database.name)
+        assert record.return_reader.available_sessions(record.return_surface)
+        return
+
+    if case == "seal":
+        key, builds = "a" * 24, []
+        golden = tmp_path / "golden"
+        verify = getattr(cache, "verify_golden_seal", None)
+        assert callable(verify), "a persistent golden must verify its recorded seal"
+
+        def build():
+            builds.append(1)
+            workspace = golden / "workspace"
+            workspace.mkdir(parents=True)
+            payload = b"market"
+            (workspace / "market-data.duckdb").write_bytes(payload)
+            files = {"market-data.duckdb": hashlib.sha256(payload).hexdigest()}
+            seal = hashlib.sha256(
+                json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            (golden / "golden.json").write_text(
+                json.dumps({"format": 2, "key": key, "files": files, "seal_hash": seal}),
+                encoding="utf-8",
+            )
+
+        assert verify(golden, key, build)[0] is False
+        assert verify(golden, key, build)[0] is True and len(builds) == 1
+        scan = os.scandir
+
+        def denied(path):
+            if Path(path) == golden / "workspace":
+                raise PermissionError("unreadable")
+            return scan(path)
+
+        with monkeypatch.context() as unavailable:
+            unavailable.setattr(os, "scandir", denied)
+            with pytest.raises(GoldenWorkspaceError, match="cache unreadable"):
+                verify(golden, key, build)
+        assert (
+            len(builds) == 1 and (golden / "workspace/market-data.duckdb").read_bytes() == b"market"
+        )
+        (golden / "workspace/market-data.duckdb").write_bytes(b"corrupt")
+        assert verify(golden, key, build)[0] is False and len(builds) == 2
+        shutil.rmtree(golden / "workspace")
+        assert verify(golden, key, build)[0] is False and len(builds) == 3
+        marker = golden / "golden.json"
+        saved = marker.read_bytes()
+        marker.write_text("{", encoding="utf-8")
+        with pytest.raises(GoldenWorkspaceError, match="invalid published cache"):
+            verify(golden, key, build)
+        marker.write_bytes(saved)
+        (golden / "workspace/market-data.duckdb").write_bytes(b"changed")
+
+        def stopped():
+            raise OSError("stopped")
+
+        with pytest.raises(GoldenWorkspaceError, match="rebuild failed; inspect"):
+            verify(golden, key, stopped)
+        retained = list(tmp_path.glob("golden.mismatch-*"))
+        assert (
+            len(retained) == 1
+            and (retained[0] / "workspace/market-data.duckdb").read_bytes() == b"changed"
+        )
+
+        seed = tmp_path / "seed"
+        seed.mkdir()
+        data = seed / "market-data.duckdb"
+        data.write_bytes(b"market")
+        target = tmp_path / "linked.duckdb"
+        os.link(data, target)
+        cache.track_test_seed(
+            "fixture-reader", seed, {"market-data.duckdb": hashlib.sha256(b"market").hexdigest()}
+        )
+        target.write_bytes(b"changed")
+        with pytest.raises(
+            AssertionError, match=r"test_datasets\.write_through.*market-data\.duckdb"
+        ) as failure:
+            cache.verify_test_seed("fixture-reader")
+        assert "fixture-reader" in str(failure.value)
+        return
 
     monkeypatch.setenv("OMP_NUM_THREADS", "1")
     first = cache._environment_digest()
+    if case == "session-seed":
+
+        def build(root, *, fresh):
+            assert fresh
+            root.mkdir()
+            return SimpleNamespace(
+                workspace=root,
+                feature_catalog=cache.FeatureCatalog.load(),
+                feature_kernels=cache.default_extension_kernel_registry(),
+                manifest=SimpleNamespace(revision_sha256="fixture"),
+                panel_manifest_ref="fixture",
+                panel_snapshot_hash="fixture",
+                return_surface=SimpleNamespace(surface_hash="fixture"),
+                sector_by_listing_id={},
+            )
+
+        monkeypatch.setattr(cache, "build_real_risk_workspace", build)
+        factory = SimpleNamespace(getbasetemp=lambda: tmp_path)
+        seed, metadata = cache.session_fresh_seed(factory)
+        assert metadata["environment"] == first
     monkeypatch.setenv("OMP_NUM_THREADS", "2")
     assert cache._environment_digest() != first
+    if case == "session-seed":
+        changed_seed, changed = cache.session_fresh_seed(factory)
+        assert changed_seed != seed and changed["environment"] == cache._environment_digest()
+
+
+@pytest.mark.proves("evaluation.persistent_golden_root_follows_its_setting")
+def test_the_persistent_golden_root_follows_its_shared_setting(tmp_path, monkeypatch):
+    """Checkouts share one golden root through the setting; without it each keeps its own.
+    A pipeline's warm-up builds into that shared root, confined to it as a session's build."""
+    from devtools.evaluation.golden_workspaces import GOLDEN_ROOT_VARIABLE, persistent_golden_root
+    from tests import pytest_environment as environment
+    from tests.researcher_methodology_surface import real_workspace as builder
+
+    monkeypatch.delenv(GOLDEN_ROOT_VARIABLE, raising=False)
+    assert persistent_golden_root(tmp_path / "own") == tmp_path / "own"
+    monkeypatch.setenv(GOLDEN_ROOT_VARIABLE, str(tmp_path / "shared"))
+    assert persistent_golden_root(tmp_path / "own") == tmp_path / "shared"
+    scopes = []
+    monkeypatch.setattr(
+        builder, "warm_real_risk_golden", lambda: scopes.append(environment.PROJECT_ROOT.get())
+    )
+    builder.warm_before_tests()
+    assert scopes == [(tmp_path / "shared").resolve()] and (tmp_path / "shared").is_dir()
+    # The warm-up and a pytest session (src on its path) share that golden only with one key; a
+    # separate installation of the same version is still another key.
+    import importlib.metadata
+    import sys
+    from types import SimpleNamespace
+
+    from tests.researcher_methodology_surface.real_workspace import _environment_digest
+
+    checkout, prefix = tmp_path / "checkout", tmp_path / "checkout/.venv"
+    url = '{"url": "' + checkout.resolve().as_uri() + '", "dir_info": {"editable": true}}'
+
+    def record(where, direct=None, metadata_name="alphalattice.egg-info"):
+        return SimpleNamespace(
+            metadata={"Name": "alphalattice"},
+            version="0.2.4",
+            locate_file=lambda _: where,
+            read_text=lambda _: direct,
+            _path=where / metadata_name,
+        )
+
+    installed = record(prefix / "Lib/site-packages", url)
+    with monkeypatch.context() as path:
+        path.setattr(sys, "prefix", str(prefix))
+        path.setattr(importlib.metadata, "distributions", lambda: [installed])
+        once = _environment_digest()
+        path.setattr(
+            importlib.metadata, "distributions", lambda: [installed, record(checkout / "src")]
+        )
+        aliased = _environment_digest()  # the checkout's own metadata, as a pytest session sees it
+        path.setattr(
+            importlib.metadata, "distributions", lambda: [installed, record(tmp_path / "other")]
+        )
+        separate = _environment_digest()  # another installation of the same version
+        path.setattr(
+            importlib.metadata, "distributions", lambda: [installed, record(checkout / "vendor")]
+        )
+        nested = _environment_digest()  # a separate installation inside the checkout
+        path.setattr(
+            importlib.metadata,
+            "distributions",
+            lambda: [
+                installed,
+                record(checkout / "src", metadata_name="alphalattice-0.2.4.dist-info"),
+            ],
+        )
+        source_install = _environment_digest()  # a separate wheel, not the checkout's egg-info
+    assert once == aliased and once != separate == nested == source_install

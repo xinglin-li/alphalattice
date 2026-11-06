@@ -20,6 +20,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
+from devtools.architecture.git_inputs import staged_moves
+from devtools.testing.contracts import import_violations
+from devtools.testing.layout import new_test_file_problems
+from devtools.testing.requirements import file_holders
+from devtools.testing.requirements import parse as parse_requirements
 
 ROOT = Path(__file__).resolve().parents[1]
 CAP_BYTES = 100 * 1024
@@ -132,6 +137,14 @@ def _lint(path: str, tree: ast.Module) -> set[str]:
         return ""
 
     found = set()
+    if path.startswith("tests/unit/"):
+        found.update(
+            import_violations(
+                tuple(imports.values())
+                + tuple(called(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)),
+                "unit",
+            )
+        )
     definitions = list(_definitions(tree))
     factories = {
         node.name
@@ -313,9 +326,14 @@ def clone_problems(path: str, old: str | None, new: str, corpus: dict[str, str])
 
 
 def _docstring_lines(text: str) -> dict[str, int]:
+    """A test marked `proves`, on itself, its class or its module, has its sentence in its
+    registered requirement: it counts as one."""
+    tree = _tree(text)
+    held = file_holders("", ast.unparse(tree)) if tree.body else []
+    marked = {test.node.split("::", 1)[1].replace("::", ".") for test in held if test.ids}
     return {
-        node.name: len((ast.get_docstring(node) or "").splitlines())
-        for node in ast.walk(_tree(text))
+        name: len((ast.get_docstring(node) or "").splitlines()) or int(name in marked)
+        for name, node in _definitions(tree)
         if isinstance(node, FUNCTION_TYPES) and node.name.startswith("test_")
     }
 
@@ -378,6 +396,10 @@ def problems(path: str, old: str | None, new: str) -> list[str]:
                 )
     if not path.endswith(".py"):
         return found
+    if path.startswith("tests/unit/"):
+        found.extend(
+            row for row in _lint(path, _tree(new)) if row.startswith("testing.layer_contract:")
+        )
     if not path.startswith("tests/structural/") and any("inspect.getsource(" in x for x in added):
         found.append(f"{path}: reads source text; test the behaviour at the owner's seam (rule 3)")
     for line in added:
@@ -386,6 +408,8 @@ def problems(path: str, old: str | None, new: str) -> list[str]:
             found.append(f"{path}: sleeps {match.group(1)} s; drive the clock or the step (rule 7)")
     was = _docstring_lines(old or "")
     for name, count in _docstring_lines(new).items():
+        if name not in was and count == 0:
+            found.append(f"{path}::{name}: missing requirement docstring (rule 1)")
         if count > 3 and count > was.get(name, 0):
             found.append(
                 f"{path}::{name}: a {count}-line docstring; one requirement sentence (rule 1)"
@@ -498,7 +522,13 @@ def main(argv: list[str] | None = None) -> int:
     if parser.parse_args(argv).weekly:
         print(json.dumps(weekly_report(), ensure_ascii=False))
         return 0
-    staged = _git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR").stdout.split("\0")
+    listing = _git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR")
+    if listing.returncode:
+        print(
+            "TEST-LAYOUT staged files unreadable; restore the Git index and retry", file=sys.stderr
+        )
+        return 1
+    staged = listing.stdout.split("\0")
     # A merge adds only what neither parent holds: what the merged branch brings was checked there.
     merging = _git("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0
     parents = ("HEAD", "MERGE_HEAD") if merging else ("HEAD",)
@@ -507,18 +537,62 @@ def main(argv: list[str] | None = None) -> int:
         for path in staged
         if path.startswith("src/") or (path.startswith("tests/") and path.endswith((".py", ".cjs")))
     ]
-    texts = _blobs([revision + ":" + path for revision in ("", *parents) for path in selected])
+    try:
+        moved = staged_moves(
+            ROOT
+        )  # a byte-identical move keeps its old path's grandfathered findings
+        origin = {path: moved.get(path, path) for path in selected}
+        candidates = [
+            p
+            for p in selected
+            if p.startswith("tests/")
+            and p.endswith(".py")
+            and (Path(p).name.startswith("test_") or Path(p).name.endswith("_test.py"))
+            and p not in moved
+        ]
+        texts = _blobs(
+            [":" + path for path in selected]
+            + [parent + ":" + origin[path] for parent in parents for path in selected]
+            + [parent + ":" + path for parent in parents for path in candidates]
+            + ([":config/registries/requirements.json"] if candidates else [])
+        )
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError) as error:
+        print(
+            f"TEST-LAYOUT staged snapshot unreadable: {error}; restore the Git index and retry",
+            file=sys.stderr,
+        )
+        return 1
     found, corpus = [], None
+    added = [p for p in candidates if all(parent + ":" + p not in texts for parent in parents)]
+    if added:
+        try:
+            registry = texts.get(":config/registries/requirements.json")
+            if registry is None:
+                raise ValueError("the staged requirements registry is missing")
+            rows = parse_requirements(registry)
+            sources = _git("ls-files", "-z", "--", "src", "scripts")
+            if sources.returncode:
+                raise ValueError("staged source listing is unreadable")
+            source_paths = set(sources.stdout.split("\0"))
+            for path in added:
+                if ":" + path not in texts:
+                    raise ValueError(f"staged test {path} is unreadable")
+                found += new_test_file_problems(path, texts[":" + path], rows, source_paths)
+        except (ValueError, TypeError, OSError) as error:
+            found.append(
+                f"TEST-LAYOUT placement unmeasured: {error}; "
+                "restore the staged registry and source index"
+            )
     for path in selected:
         if ":" + path in texts:
             new = texts[":" + path]
             each = []
             for parent in parents:
-                old = texts.get(parent + ":" + path)
+                old = texts.get(parent + ":" + origin[path])
                 current = problems(path, old, new)
                 if path.startswith("src/") and _added_windows(path, old, new)[1]:
                     if corpus is None:
-                        paths = _git("ls-files", "-z", "--", "src").stdout.split("\0")
+                        paths = _git("ls-files", "-z", "--", "src", "scripts").stdout.split("\0")
                         corpus = {
                             spec[1:]: text
                             for spec, text in _blobs([":" + item for item in paths if item]).items()

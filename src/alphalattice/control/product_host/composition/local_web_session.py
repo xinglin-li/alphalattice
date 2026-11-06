@@ -56,9 +56,11 @@ from alphalattice.control.product_host.composition.goal_case_routes import (
 from alphalattice.control.product_host.composition.local_web_connection import (
     publish_client_connection,
     remove_client_connection,
+    workspace_web,
 )
 from alphalattice.control.product_host.composition.native_usage_reader import (
     NativeUsageReader,
+    attach_native_usage,
     read_usage,
 )
 from alphalattice.control.product_host.composition.portfolio_application import (
@@ -184,7 +186,6 @@ from alphalattice.interface.local_application.cli_contract import (
 )
 from alphalattice.interface.local_application.client import (
     LocalResearchConnection,
-    workspace_connection_key,
 )
 from alphalattice.interface.local_application.dispatcher import (
     LocalApplicationCommand,
@@ -213,6 +214,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
 from alphalattice.interface.local_application.web import (
+    DEFAULT_IDLE_TIMEOUT_SECONDS,
     LocalWebApplication,
     LocalWebError,
     LocalWebResponse,
@@ -562,6 +564,7 @@ class LocalPortfolioWebSession:
     workspace_manifest: ResearchWorkspaceManifest
     resolver: PortfolioExecutionResolver | None
     port: int = 0
+    idle_timeout_seconds: int = field(default=DEFAULT_IDLE_TIMEOUT_SECONDS, kw_only=True)
 
     review_authority: EvidenceReviewAuthority | None = None
     data_provider: MarketDataProvider | None = None
@@ -580,6 +583,7 @@ class LocalPortfolioWebSession:
     client_connection: LocalResearchConnection | None = field(default=None, init=False, repr=False)
     review: EvidenceReviewApplication | None = field(default=None, init=False)
     resumed_task_ids: tuple[UUID, ...] = field(default=(), init=False)
+    stop_requested: Callable[[], bool] = field(default=bool, init=False)
     _workspace_review_authority: bool = field(default=False, init=False)
     _official_source: OfficialSourceAdmission | None = field(default=None, init=False)
 
@@ -753,6 +757,7 @@ class LocalPortfolioWebSession:
             operations=self.operations,
             activity=activity,
         )
+        web_application.admission = self.dispatcher._admit
         self.web = LocalWebService(application=web_application, port=self.port)
         url = self.web.start()
         connection = LocalResearchConnection(
@@ -762,7 +767,7 @@ class LocalPortfolioWebSession:
             instance=web_application.external_instance,
             token=web_application.external_token,
         )
-        publish_client_connection(connection)
+        publish_client_connection(connection, serving_host=activity.serving_host)
         self.client_connection = connection
         self.resumed_task_ids = self.resume()
         # A Codex lead's wake whose Task ended, stopped or deferred while no Host ran (WAKE).
@@ -775,27 +780,7 @@ class LocalPortfolioWebSession:
         # Guanyin's Supervisor reads the unfinished Tasks from here on (GY2).
         self.operations.supervisor.start()
         self.forward_prewarm.start()
-        # Optional reading owns no research authority and must not prevent serving it.
-        constructor_failure: str | None = None
-        try:
-            self.native_usage_reader = NativeUsageReader(self.operations)
-            self.operations.read_native_usage = self.native_usage_reader.read
-        except Exception as error:
-            self.native_usage_reader = None
-            constructor_failure = (
-                owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
-            )
-
-        def native_usage_state() -> dict[str, object]:
-            """Keep the last reading's standing visible through the activity owner's readback."""
-            if self.native_usage_reader is not None:
-                return self.native_usage_reader.state()
-            return {
-                "status": "UNAVAILABLE",
-                "reason": constructor_failure or "native_bridge.lead_usage_read_failed",
-            }
-
-        activity.native_usage_state = native_usage_state
+        attach_native_usage(self, self.operations, activity)
         return url
 
     def resume(
@@ -814,6 +799,7 @@ class LocalPortfolioWebSession:
             only_task_id=only_task_id,
             expected_task_hash=expected_task_hash,
             refusal=self.resume_refusal,
+            stopping=self.stop_requested,
         )
 
     def resume_refusal(self, task: TaskRecord) -> str | None:
@@ -1013,6 +999,8 @@ class LocalPortfolioWebSession:
         joinable -- so calling `stop()` again finishes the job rather than
         starting from a half-released state.
         """
+        if self.dispatcher is not None:
+            self.dispatcher._begin_drain()
         if not self._teardown(timeout=timeout):
             raise LocalWebSessionError("local_web_session.writer_still_live")
 
@@ -1415,15 +1403,10 @@ def build_local_web_application(
     activity: WorkspaceActivity | None = None,
 ) -> LocalWebApplication:
     """Register the routes. Every one of them is a projection or a command."""
-    workspace_key = workspace_connection_key(operations.workspace_session.workspace)
-    if activity is None:
-        web = LocalWebApplication(external_workspace_id=workspace_key)
-    else:
-        # One launch identity: the client connection's instance and the
-        # observations' source id name the same service start.
-        web = LocalWebApplication(
-            external_workspace_id=workspace_key, external_instance=activity.instance
-        )
+    web = workspace_web(
+        operations.workspace_session.workspace, activity.instance if activity else None
+    )
+    if activity is not None:
         _activity_routes(web, activity)
     _native_session_routes(web, operations)
 
@@ -1456,14 +1439,6 @@ def build_local_web_application(
         return answer
 
     serve_assets(web, ASSET_ROOT)
-
-    def _spec_document(payload: Mapping[str, Any]) -> dict[str, object]:
-        document = payload.get("spec")
-        if document is None:
-            document = {}
-        if not isinstance(document, dict):
-            raise LocalWebError("local_web.spec_not_an_object")
-        return cast(dict[str, object], document)
 
     # The token goes only to the browser holding the cookie the launch URL set (HB).
     @web.route("GET", "/api/session", session=True)
@@ -1499,6 +1474,46 @@ def build_local_web_application(
             )
         )
 
+    _maintenance_routes(web, operations)
+    _planning_routes(web, operations)
+
+    @web.route("GET", "/api/status")
+    def _status(query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
+        return _task_read_response(
+            operations.execute(
+                PortfolioResearchOperationRequest(
+                    operation="STATUS",
+                    task_id=_task_uuid(_one(query, "task_id")),
+                    wait_seconds=_wait_seconds(query.get("wait_seconds")),
+                )
+            )
+        )
+
+    _result_routes(web, operations)
+    _dispatch_routes(web, operations, service)
+
+    def case_route(operation: str):  # type: ignore[no-untyped-def]
+        """The case page's call, answered by the goal it names until the UI pass (U23)."""
+
+        def handle(query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+            fields = {**payload, **{key: _one(query, key) for key in query}}
+            fields.pop("operation", None)
+            try:
+                request = case_request(operation, fields)
+            except (TypeError, ValueError) as error:
+                raise LocalWebError(owner_failure_code(error) or str(error)) from error
+            body = operations.execute(request)
+            return case_answer(operation, body, operations.goals.store)
+
+        return handle
+
+    for method, path, operation in CASE_ROUTES:
+        web.route(method, path, mutates=method == "POST")(case_route(operation))
+
+    return web
+
+
+def _maintenance_routes(web: LocalWebApplication, operations: PortfolioResearchOperations) -> None:
     @web.route(
         "GET",
         "/api/data-update",
@@ -1611,6 +1626,16 @@ def build_local_web_application(
             )
         )
 
+
+def _planning_routes(web: LocalWebApplication, operations: PortfolioResearchOperations) -> None:
+    def _spec_document(payload: Mapping[str, Any]) -> dict[str, object]:
+        document = payload.get("spec")
+        if document is None:
+            document = {}
+        if not isinstance(document, dict):
+            raise LocalWebError("local_web.spec_not_an_object")
+        return cast(dict[str, object], document)
+
     @web.route(*_HANDLED_ROUTE["PORTFOLIO_UPDATE_PLAN"], mutates=True)
     def _portfolio_update_plan(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
         if (
@@ -1713,18 +1738,8 @@ def build_local_web_application(
             PortfolioResearchOperationRequest(operation="RUN", spec=_spec_document(payload))
         )
 
-    @web.route("GET", "/api/status")
-    def _status(query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
-        return _task_read_response(
-            operations.execute(
-                PortfolioResearchOperationRequest(
-                    operation="STATUS",
-                    task_id=_task_uuid(_one(query, "task_id")),
-                    wait_seconds=_wait_seconds(query.get("wait_seconds")),
-                )
-            )
-        )
 
+def _result_routes(web: LocalWebApplication, operations: PortfolioResearchOperations) -> None:
     @web.route("POST", "/api/cancel", mutates=True)
     def _cancel(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
         task_id = payload.get("task_id")
@@ -1839,6 +1854,12 @@ def build_local_web_application(
             )
         )
 
+
+def _dispatch_routes(
+    web: LocalWebApplication,
+    operations: PortfolioResearchOperations,
+    service: LocalPortfolioResearchService | None,
+) -> None:
     @web.route(*_HANDLED_ROUTE["EVIDENCE_CRO_EXPORT"])
     def _review_export(query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
         return operations.execute(
@@ -1954,26 +1975,6 @@ def build_local_web_application(
         web.route(method, path, mutates=method == "POST" and operation not in READ_OPERATIONS)(
             operation_route(operation)
         )
-
-    def case_route(operation: str):  # type: ignore[no-untyped-def]
-        """The case page's call, answered by the goal it names until the UI pass (U23)."""
-
-        def handle(query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
-            fields = {**payload, **{key: _one(query, key) for key in query}}
-            fields.pop("operation", None)
-            try:
-                request = case_request(operation, fields)
-            except (TypeError, ValueError) as error:
-                raise LocalWebError(owner_failure_code(error) or str(error)) from error
-            body = operations.execute(request)
-            return case_answer(operation, body, operations.goals.store)
-
-        return handle
-
-    for method, path, operation in CASE_ROUTES:
-        web.route(method, path, mutates=method == "POST")(case_route(operation))
-
-    return web
 
 
 def _native_session_refusal(code: str) -> dict[str, Any]:
@@ -2224,8 +2225,6 @@ def _task_uuid(value: str) -> UUID:
 def _task_read_response(body: dict[str, object]) -> object:
     """Legacy GET readers retain HTTP failure status; shared operations keep typed JSON."""
     if body.get("failure_code") == "task_control.task_not_found":
-        import json
-
         return LocalWebResponse(
             HTTPStatus.NOT_FOUND,
             json.dumps(body).encode("utf-8"),

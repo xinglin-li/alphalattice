@@ -22,6 +22,7 @@ GEN_AI_TEXT = (
     "gen_ai.response.model",
 )
 GEN_AI_COUNTS = ("gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens")
+REPLAY_SAMPLE_INTERVAL = "start ACK to end ACK; tail excluded"
 
 
 class GoldenAcquisition(TypedDict):
@@ -72,8 +73,71 @@ def decode_golden_acquisition(value: Any) -> GoldenAcquisition:
     return cast(GoldenAcquisition, dict(value))
 
 
+def _check_replay_window(window: Any, accounted_seconds: float) -> None:
+    """An observed window has aware bounds and accounts for every elapsed microsecond."""
+    try:
+        start, end = (datetime.fromisoformat(window[bound]) for bound in ("start", "end"))
+    except ValueError as error:
+        raise ValueError("replay.receipt_time") from error
+    if any(t.utcoffset() is None for t in (start, end)) or round(
+        (end - start).total_seconds(), 6
+    ) != round(accounted_seconds, 6):
+        raise ValueError("replay.receipt_time")
+
+
+def _check_interval_replay(value: dict[str, Any]) -> bool:
+    """Keep legacy receipts unchanged; interval-only records name every measured leg."""
+    if "measurement_interval" not in value:
+        return False
+    if value["measurement_interval"] != REPLAY_SAMPLE_INTERVAL:
+        raise ValueError("replay.receipt_interval")
+    legs = value["legs"]
+    if all("host_tree_complete" in leg["meter"] for leg in legs.values()):
+        return False
+    if not {"first_use", "daily", "second_daily"}.issubset(legs):
+        raise ValueError("replay.receipt_legs")
+    if any(leg["meter"].get("gaps") != [] for leg in legs.values()):
+        raise ValueError("replay.receipt_coverage")
+    controls = value["controls"]
+    if controls["retry_equal"] is not True:
+        raise ValueError("replay.receipt_legs")
+    retry = controls["retry"]
+    if (retry["profile"]["schema"], retry["profile"]["status"]) != (
+        "alphalattice.goal-profile.v1",
+        "GOAL_PROFILE",
+    ) or retry["profile"]["gaps"] != []:
+        raise ValueError("replay.receipt_profile")
+    meter = retry["meter"]
+    if (
+        meter.get("gaps") != []
+        or meter.get("host_tree_observed") is not True
+        or meter.get("host_tree_complete", True) is not True
+    ):
+        raise ValueError("replay.receipt_coverage")
+    peak, wall = meter["peak_host_private_commit_bytes"], retry["wall_seconds"]
+    if type(peak) is not int or peak <= 0:
+        raise ValueError("replay.receipt_peak")
+    if type(wall) not in (int, float) or not isfinite(wall) or wall < 0:
+        raise ValueError("replay.receipt_time")
+    return True
+
+
+def _check_replay_profile(profile: dict[str, Any]) -> dict[str, Any]:
+    """Check profile attribution without treating partial attribution as missing."""
+    coverage = profile["coverage"]
+    if (profile["schema"], profile["status"], profile["gaps"]) != (
+        "alphalattice.goal-profile.v1",
+        "GOAL_PROFILE",
+        [],
+    ):
+        raise ValueError("replay.receipt_profile")
+    if coverage["status"] not in {"COMPLETE", "PARTIAL"} or profile["clock_domains"] != ["UTC"]:
+        raise ValueError("replay.receipt_profile")
+    return coverage
+
+
 def admit_replay_measurement(value: Any, source: str) -> dict[str, Any]:
-    """Admit the source-bound, complete owner profiles and simultaneous Host peaks."""
+    """Admit source-bound replay profiles and sampled peaks; validate any declared interval."""
     if not isinstance(value, dict):
         raise ValueError("replay.receipt_incomplete")
     try:
@@ -87,18 +151,13 @@ def admit_replay_measurement(value: Any, source: str) -> dict[str, Any]:
             raise ValueError("replay.receipt_binding")
         if not {"first_use", "daily"}.issubset(value["legs"]):
             raise ValueError("replay.receipt_legs")
+        declared = _check_interval_replay(value)
         for leg in value["legs"].values():
             profile, meter = leg["profile"], leg["meter"]
-            if (
-                profile["schema"],
-                profile["status"],
-                profile["coverage"]["status"],
-                profile["gaps"],
-            ) != ("alphalattice.goal-profile.v1", "GOAL_PROFILE", "COMPLETE", []):
-                raise ValueError("replay.receipt_profile")
+            coverage = _check_replay_profile(profile)
             if (
                 not profile["stages"]
-                or meter["host_tree_complete"] is not True
+                or meter.get("host_tree_complete", declared and meter.get("gaps") == []) is not True
                 or meter["host_tree_observed"] is not True
             ):
                 raise ValueError("replay.receipt_coverage")
@@ -107,7 +166,8 @@ def admit_replay_measurement(value: Any, source: str) -> dict[str, Any]:
                 raise ValueError("replay.receipt_peak")
             numbers = [
                 leg["wall_seconds"],
-                profile["coverage"]["host_seconds"],
+                coverage["host_seconds"],
+                coverage["unattributed_seconds"],
                 *(
                     stage[phase]
                     for stage in profile["stages"]
@@ -116,6 +176,9 @@ def admit_replay_measurement(value: Any, source: str) -> dict[str, Any]:
             ]
             if any(type(n) not in (int, float) or not isfinite(n) or n < 0 for n in numbers):
                 raise ValueError("replay.receipt_time")
+            _check_replay_window(
+                profile["window"], coverage["host_seconds"] + coverage["unattributed_seconds"]
+            )
         return cast(dict[str, Any], value)
     except (KeyError, TypeError, AttributeError, OverflowError) as error:
         raise ValueError("replay.receipt_incomplete") from error

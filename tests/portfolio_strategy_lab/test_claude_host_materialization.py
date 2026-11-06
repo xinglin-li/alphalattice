@@ -67,6 +67,9 @@ def test_each_role_card_becomes_one_subagent_with_its_sandbox_tools(materialize)
         if name == "alphalattice_cro":  # it also sits on the committee: that route's commands
             routed |= {f"Bash(alphalattice committee {verb}:*)" for verb in ("submit", "wait")}
         assert tools == (routed if evidence else stage)
+        if evidence:
+            assert "RESEND_THE_SAME_KEYED_SUBMISSION" in body
+            assert "failure code" in body and "lead" in body
         assert (fields["model"], fields["effort"]) == ("haiku", "high")
         assert body.strip().endswith(card["developer_instructions"].strip())
         assert f"`.alphalattice/user/cards/{name}.md`" in card["developer_instructions"]
@@ -301,7 +304,7 @@ def test_every_command_form_the_skill_generator_writes_parses(materialize):
         )
         arguments = ["--workspace", "w", *shlex.split(line)]
         try:
-            cli._parser(cli._named(arguments)).parse_args(arguments)
+            cli.command_parser(cli._named(arguments)).parse_args(arguments)
         except SystemExit:
             refused.append(form)
     assert refused == []

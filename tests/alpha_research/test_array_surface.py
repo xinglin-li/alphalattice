@@ -8,10 +8,8 @@ from pathlib import Path
 import numpy as np
 import pyarrow as pa
 import pytest
+import sklearn.linear_model as linear_models
 
-from alphalattice.capabilities.alpha_modeling.adapters import (
-    regularized_linear as regularized_linear_module,
-)
 from alphalattice.capabilities.alpha_modeling.adapters.regularized_linear import (
     RegularizedLinearParameters,
     fit_regularized_linear,
@@ -58,13 +56,13 @@ def test_sparse_regularized_linear_uses_precomputed_gram(
     estimator_name: str,
 ) -> None:
     observed: dict[str, object] = {}
-    estimator = getattr(regularized_linear_module, estimator_name)
+    estimator = getattr(linear_models, estimator_name)  # the adapter imports it at its first fit
 
     def factory(**kwargs):
         observed.update(kwargs)
         return estimator(**kwargs)
 
-    monkeypatch.setattr(regularized_linear_module, estimator_name, factory)
+    monkeypatch.setattr(linear_models, estimator_name, factory)
     features = np.arange(120, dtype=np.float64).reshape(40, 3) / 100.0
     targets = np.sin(np.arange(40, dtype=np.float64))
     fit = fit_regularized_linear(

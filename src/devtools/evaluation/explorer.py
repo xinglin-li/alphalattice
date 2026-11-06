@@ -24,6 +24,7 @@ from typing import Any
 from .forms import Grade, IssuePart, Scenario, Trace, TraceEvent
 from .intent import FORBIDDEN, contains, proposes
 from .round_trip import RoundTripObserver
+from .session import session_findings
 
 Call = Callable[[list[str]], dict[str, Any]]
 """The CLI as an agent runs it: its arguments in, its printed answer (the envelope) out."""
@@ -37,6 +38,7 @@ DEPTH = 12
 _CHOICE = re.compile(r"<[^<>]+>")
 _OPERATOR_SWITCH = "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
 _ENDING = ("CANCEL", "_ABANDON", "_STOP")
+_DEFERRED = ("deferred", "warning", "Deferred")
 
 
 def data_decision_findings(
@@ -88,6 +90,46 @@ def data_decision_findings(
     ]
 
 
+def research_update_findings(
+    feed: dict[str, Any], projection: dict[str, Any]
+) -> list[dict[str, str]]:
+    """The person sees one update Task across its deferral and resume, waiting until its retry
+    time as the page's own formatter renders it (`wait`, date and time), and its publication on
+    the checkpoint its own move's ledger row names, both present."""
+    shown, task_id = projection.get("data_decision", {}), feed["task_id"]
+    rows = [r for r in shown.get("rows", []) if r.get("id") == task_id]
+    kinds = {r["id"] for r in shown.get("runs", []) if r.get("kind") == feed["task_kind"]}
+    page = shown.get("page") or {}
+    after = str(shown.get("detail") or "").partition("Waiting until ")[2]
+    waiting = after.splitlines()[0] if after else ""
+    failures = {
+        "update.task_row": len(rows) != 1 or kinds - set(feed.get("earlier", ())) != {task_id},
+        "update.deferred_state": feed.get("lifecycle") == "DEFERRED"
+        and (
+            any((r.get("status"), r.get("tone"), r.get("word")) != _DEFERRED for r in rows)
+            or not shown.get("wait")
+            or not waiting.startswith(str(shown["wait"]))
+        ),
+        "update.publication": feed.get("lifecycle") == "SUCCEEDED"
+        and (
+            page.get("task_id") != task_id
+            or not feed.get("to_checkpoint_hash")
+            or (page.get("publication") or {}).get("input_checkpoint_hash")
+            != feed["to_checkpoint_hash"]
+        ),
+    }
+    owners = {
+        "update.task_row": "assets/workbench-source/js/app/data.js",
+        "update.deferred_state": "assets/workbench-source/js/app/live-tasks.js",
+        "update.publication": "control/product_host/composition/decision_advancement.py",
+    }
+    return [
+        {"rule": rule, "loop_part": "feedback", "owner": owners[rule]}
+        for rule, failed in failures.items()
+        if failed
+    ]
+
+
 def evidence_reuse_findings(store: Path, before: frozenset[str]) -> list[dict[str, str]]:
     """A later day reads no filing an earlier analysis read, nor scores a selection over one.
 
@@ -124,7 +166,6 @@ def evidence_reuse_findings(store: Path, before: frozenset[str]) -> list[dict[st
 
 def daily_findings(feed: dict[str, Any], projection: dict[str, Any]) -> list[dict[str, str]]:
     """Today's rendered outcome, members and decisions preserve the previous sealed day."""
-    from .session import session_findings
 
     current, home = feed["current"], projection.get("home", {})
     selected, value = home.get("selection") or {}, home.get("value") or {}
@@ -246,10 +287,20 @@ def mutations(
     request: dict[str, Any], required: list[str]
 ) -> Iterator[tuple[str, dict[str, Any], str]]:
     """Single deterministic edits of a live offer; no authority is widened."""
+    inner = {
+        "FEATURE_CATALOG_PLAN": ("feature_document", "edits"),
+        "RESEARCH_STRATEGY_PLAN": ("experiment_document", "alpha_task_ids"),
+    }.get(request.get("operation"))
     for key in sorted(k for k in request if k != "operation" and request[k] is not None):
         value = request[key]
         if key in required:
             yield "drop-field", {k: v for k, v in request.items() if k != key}, key
+        if inner and key == inner[0] and isinstance(value, dict) and inner[1] in value:
+            yield (
+                "drop-field",
+                {**request, key: {k: v for k, v in value.items() if k != inner[1]}},
+                inner[1],
+            )
         if isinstance(value, str) and re.search(r"\b[HTM]\d+\b", value):
             alias = re.sub(r"\b[HTM](\d+)\b", r"\1", value, count=1)
             yield "alias-number", {**request, key: alias}, key
@@ -279,11 +330,20 @@ def mutations(
             yield kind, changed, rule
 
 
+def _worded_rule(answer: dict[str, Any], data: dict[str, Any], actual: str, words: str) -> bool:
+    """A refusal explains its typed rule in words or names that rule beside its detail."""
+    return actual.casefold() in words.casefold() or (
+        (answer.get("rule") or data.get("rule")) == actual
+        and bool(answer.get("detail") or data.get("detail"))
+    )
+
+
 def _refusal_rule(answer: dict[str, Any], expected: str) -> tuple[bool, str, bool]:
     """Name the actual typed rule separately from the words explaining it."""
     data = _data(answer)
     code = str(answer.get("failure_code") or data.get("failure_code") or "")
-    reasons = json.dumps(answer.get("reasons") or data.get("reasons") or {}, ensure_ascii=False)
+    reason_map = answer.get("reasons") or data.get("reasons") or {}
+    reasons = json.dumps(reason_map, ensure_ascii=False)
     fields = (answer.get(k) or data.get(k) for k in ("detail", "message", "reasons", "usage_error"))
     words = json.dumps(list(fields), ensure_ascii=False)
     generic = re.search(
@@ -295,11 +355,31 @@ def _refusal_rule(answer: dict[str, Any], expected: str) -> tuple[bool, str, boo
     suffix = typed.partition(":")[2]
     actual = suffix if suffix == expected or re.fullmatch(r"[A-Z_]+", suffix) else typed or expected
     named = bool(typed) or expected in (reasons if "request_invalid" in code else words)
-    stated = actual.casefold() in words.casefold() or (
-        (answer.get("rule") or data.get("rule")) == actual
-        and bool(answer.get("detail") or data.get("detail"))
+    stated = _worded_rule(answer, data, actual, words)
+    paths = answer.get("fields") or data.get("fields") or []
+    explanation = " ".join(str(b.get(k, "")) for b in (answer, data) for k in ("detail", "message"))
+    stated = stated or (
+        [expected] in paths and bool(reason_map.get(expected)) and expected in explanation
     )
     return named, actual, stated
+
+
+def _feature_controls_binding(
+    original: dict[str, Any], request: dict[str, Any], sent: dict[str, Any]
+) -> bool:
+    """Feature controls expose exactly the authored input, catalog revision, and parent."""
+    document, shown = original.get("feature_document", {}), _data(sent)
+    return (
+        original["operation"] == "FEATURE_CATALOG_PLAN"
+        and request["operation"] == "FEATURE_CATALOG_CONTROLS"
+        and request.get("input_binding_hash")
+        == document.get("input_binding_hash")
+        == shown.get("input_binding_hash")
+        and request.get("feature_plan_hash") == document.get("parent_plan_hash")
+        and shown.get("base_revision", {}).get("revision_hash")
+        == document.get("base_revision_hash")
+        and shown.get("template", {}).get("parent_plan_hash") == document.get("parent_plan_hash")
+    )
 
 
 @dataclass
@@ -469,7 +549,9 @@ class Explorer:
                 and isinstance(payload := item.get("payload"), dict)
                 and isinstance(subject := payload.get("subject"), dict)
             )
-        return request["operation"] == "TASKS" and self._listed_task_binding(original, sent)
+        return _feature_controls_binding(original, request, sent) or (
+            request["operation"] == "TASKS" and self._listed_task_binding(original, sent)
+        )
 
     def _listed_task_binding(self, original: dict[str, Any], sent: dict[str, Any]) -> bool:
         """Task discovery preserves the completed committee source or recovery identity."""

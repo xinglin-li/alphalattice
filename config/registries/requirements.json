@@ -1,0 +1,372 @@
+{
+  "schema": "alphalattice.requirements.v1",
+  "owner": "devtools.testing",
+  "note": "Each requirement a test proves, registered before its test exists. A row holds its id (<owner's last segment>.<words>), one description sentence, the owner package, its layer (unit, integration, contract, e2e or native; a layer's limit is test-sizes.json's for its size) and its seconds budget; a test names the ids it proves with @pytest.mark.proves. Holders, lifecycle (proposed, active, quarantined, retired) and the commit that added a row are derived, never stored. An id is never reused: a retired row stays. Find before writing one: python scripts/tests_registry.py find \"<words>\".",
+  "entries": {
+    "architecture.discovered_imports_kept_by_place_and_bytes": {
+      "description": "A module's discovered imports are kept in the process by its place under the source root and its bytes, so changed bytes or another place miss and a read or parse error is raised every time.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "architecture.every_src_module_imports_offline_and_its_contracts_read_from_source": {
+      "description": "Every src module imports with the network disabled, and each pydantic contract's frozen and extra settings at runtime match those read from source by the static contract test.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 15
+    },
+    "architecture.impact_graph_selection": {
+      "description": "The verification selector finds real consumer and deleted-source tests and dispatches them without repeating structural checks.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 30
+    },
+    "architecture.import_law_refuses_higher_levels_and_retired_names": {
+      "description": "The import law built from the package registry refuses a package importing a higher level or an undeclared peer, and any file importing a retired owner, direct or relative; an import downward or of a lookalike name passes.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "architecture.repository_root_is_its_tracked_public_set": {
+      "description": "The repository root is judged by the files git tracks at HEAD: its required public files, nothing unexpected, and never a checkout's ignored or untracked local files.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "architecture.scan_facts_kept_by_bytes_under_seal_and_byte_cap": {
+      "description": "A scan's kept per-file fact is served only for the bytes it came from under a valid seal and shape, and its store stays bounded and rebuildable.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "composition.keyed_analyst_submissions_keep_first_outcome": {
+      "description": "Concurrent keyed Analyst submissions receive definite outcomes, filed outcomes replay exactly, and refusals that filed nothing are retryable.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 30
+    },
+    "composition.observation_writes_do_not_wait_for_workspace_mutations": {
+      "description": "A held workspace mutation does not prevent the independent observation owner from recording request entry and a counted refusal.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "composition.sealed_review_update_verified_once": {
+      "description": "Concurrent readers of one sealed review update share one verification, each with its own copy, and a failed verification is never kept.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 30
+    },
+    "composition.session_observation_attribution": {
+      "description": "A named sandbox-bound Session keeps its request attribution while an anonymous request remains unassigned and Activity names that attribution unknown.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "e2e",
+      "seconds": 30,
+      "exception": {
+        "kinds": ["journey"],
+        "why": "The requirement follows a real request through the loopback Host in an existing holder. When TEST-LAYOUT-ALL admits loopback to integration, move the holder there and remove this exception.",
+        "decided": "2026-11-05: Lead granted the journey for this existing holder."
+      }
+    },
+    "composition.workspace_binding_usage_unknown": {
+      "description": "An unreadable workspace-owned Session binding makes usage unavailable without hiding other readable Session results or treating the binding as absent.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "contract",
+      "seconds": 5
+    },
+    "evaluation.continuation_snapshot_integrity": {
+      "description": "A native acceptance continuation admits only the exact tracked bytes written by its recorded prestart configure and refuses other tracked changes.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "evaluation.golden_consumers_queue_behind_their_builder": {
+      "description": "Under a parallel run, a session golden's first consumer keeps its place and builds it, and its other consumers are queued where the recorded work ahead passes that build, or last when it is unrecorded, never blocked on its lock.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 1
+    },
+    "evaluation.listener_boundary_samples_survive_fast_host_exit": {
+      "description": "A replay monitor samples the local Host at both declared ACK markers before acknowledging them, including when work ends before the next periodic sample.",
+      "owner": "devtools.evaluation",
+      "layer": "e2e",
+      "seconds": 45,
+      "exception": {
+        "kinds": [
+          "journey"
+        ],
+        "why": "A real Host exercises the sampled ACK markers",
+        "decided": "2026-10-29: approved; real Host sampling exercises the ACK markers"
+      }
+    },
+    "evaluation.live_read_watches_every_task": {
+      "description": "A native run's live read keeps every Task it has seen current past the Host's per-page watch cap, so a leg sees its goal end.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "evaluation.native_hosts_stop_with_their_run": {
+      "description": "A native acceptance run stops its own recorded workspace Hosts and proves each listener and process ended, or names the unproved stop.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "evaluation.persistent_golden_root_follows_its_setting": {
+      "description": "The persistent golden cache root is the operator's shared setting when present and the checkout's own folder when absent.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "evaluation.sessionless_first_use_question_identity": {
+      "description": "A sessionless first-use question is attributed only when its authenticated Host record matches the sole verified workspace and goal identity.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "local_application.configure_offers_a_workspace": {
+      "description": "A sandboxed configure offers the default new workspace when none exists and a coded choice when existing workspaces need selection.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "local_application.configure_offers_missing_setup_before_serve": {
+      "description": "Sandboxed configure offers each missing setup prerequisite in order before its serve command.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "local_application.first_use_offers_delegated_network": {
+      "description": "A first-use plan offers its delegated network action immediately without waiting for the separate coded daily-consent answer.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "local_application.native_tool_setup_uses_writable_scratch": {
+      "description": "The offered locked tool setup runs its existing steps with checkout-owned Windows scratch and removes the scratch on success or failure.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "local_application.node_invocation_preserves_runtime_environment": {
+      "description": "Node test invocation preserves availability and caller environment while resolving absolute browser directory aliases to their physical targets.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 1.313
+    },
+    "local_application.playwright_setup_refuses_unowned_installation_aliases": {
+      "description": "Playwright setup refuses linked or unverifiable installation paths before mutating them while preserving independently owned physical installations.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "local_application.retrieval_setup_uses_writable_scratch": {
+      "description": "Retrieval setup gives its Windows subprocesses a temporary directory inside the writable checkout and removes it after use.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "market_data_ops.daily_provider_conformance": {
+      "description": "Every daily market-data provider, the yfinance adapter and each shared fake, answers bars, actions and adjusted closes in the port's shape: exactly the requested symbols, every field finite, inside the window, ascending and split-sound.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "contract",
+      "seconds": 10
+    },
+    "market_data_ops.hydration_provider_conformance": {
+      "description": "Every one-response history provider returns the daily port's own rows with in-window actions, adjusted closes and repaired sessions that name only those rows.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "contract",
+      "seconds": 10
+    },
+    "market_data_ops.sector_provider_conformance": {
+      "description": "Every current-sector provider names itself and the symbol asked, gives a stripped sector and a 64-hex payload hash, answers alike twice, and refuses an unknown symbol with a typed provider failure.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "contract",
+      "seconds": 10
+    },
+    "observation_runtime.process_is_held_to_half_the_machine_or_its_narrower_allowance": {
+      "description": "A runner binds its process to at most half the machine's logical processors, or to the narrower allowance it already inherited, and reads the bound back from the operating system.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "integration",
+      "seconds": 4.0
+    },
+    "pipeline.code_health_reports_every_row": {
+      "description": "The daily code-health report reads sizes, boundaries, growers, dead code, dependencies and complexity from the tree, reuses an unchanged tree's rows, and reads a failed row as unmeasured, never zero.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "pipeline.cost_receipt_contains_required_nodes": {
+      "description": "A cost commit stage runs required named test families, including Large, and records their bounded outcomes without changing ordinary selection.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 15
+    },
+    "pipeline.definition_refuses_malformed_rows": {
+      "description": "A malformed pipeline definition is refused on load by code, naming its stage or row, and the shipped definition loads.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.flake_quarantine_candidates": {
+      "description": "The test-health owner derives quarantine candidates from distinct verified flake observations, registered owners and review dates.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.health_report_counts_the_test_metrics": {
+      "description": "The daily test-health report counts test and source lines, registered and multiply held requirements, large files, quarantines, stage verdicts, flakes and slow tests, ranks each test's seconds from healthy runs only, and leaves a rate unknown without receipts.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "pipeline.public_durations_come_from_junit": {
+      "description": "The public tests' durations file comes from JUnit records: the latest run of each node wins, skipped and out-of-tree nodes are left out, and an unreadable record refuses by name.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.receipt_classes_every_red": {
+      "description": "Each red node and non-passing stage row classes as a defect, flake, slow test, load or tooling from its own evidence, and a red with no evidence reads unclassified, never a defect.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.receipt_plugin_writes_each_node_once": {
+      "description": "The receipt plugin writes each test node once, after its last phase or a crash, with its failure's masked signature, and then disposes of itself.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.receipt_verifies_only_complete_and_as_asked": {
+      "description": "A stage receipt verifies only when every announced event arrived and it meets the requested stage, host, head, result and optional passing test and time-limit checks.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.result_cache_hits_only_on_unchanged_inputs": {
+      "description": "A result-cache entry hits only while every file, listing, probe and variable value its group read is unchanged, and its declared key is the same.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+    },
+    "pipeline.result_cache_never_trusts_a_bad_entry": {
+      "description": "A result-cache entry that is damaged, of another schema or key, or names a path outside its checkout is a miss, and a store or tree that cannot be used turns the cache off by its reason.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+    },
+    "pipeline.result_cache_refuses_undeclared_inputs": {
+      "description": "A recorder observes collection and execution inputs, storing only complete first-attempt passing results and declining opaque readers or bound native predicates without changing test outcomes.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+    },
+    "pipeline.result_cache_runner_serves_verified_groups": {
+      "description": "The runner reuses only verified passing groups, records cache provenance, and runs misses or shadow comparisons without hiding changed or opaque inputs.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 30,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+    },
+    "pipeline.result_cache_store_stays_within_its_bounds": {
+      "description": "The result-cache store drops entries idle past 14 days and then the oldest while it holds more bytes than its cap.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5,
+      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+    },
+    "pipeline.stage_runs_each_row_by_one_provider": {
+      "description": "A stage run resolves each row on its host to exactly one provider, refusing a row with none or two, and writes a receipt that verifies.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.stage_target_is_separate_from_stop": {
+      "description": "A stage enforces its declared stop while recording wall time, the reported rows and any unexplained time from which its target breach and timing gap can be derived.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "testing.codspeed_marks_every_selected_test": {
+      "description": "Under CodSpeed, which deselects unmarked tests, every selected test is marked as a benchmark so the public cost job measures each one; a run without CodSpeed marks none.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 1
+    },
+    "testing.crash_requeue_keeps_longest_first": {
+      "description": "Under load distribution, a crashed worker's prefetched cases return to their place in the longest-first collection order, never after every other case.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 1
+    },
+    "testing.find_matches_requirements_and_unregistered_tests": {
+      "description": "One search returns the registered requirements and the unregistered tests whose words match, best first, with each requirement's lifecycle and holders.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "testing.layer_contract": {
+      "description": "Registered unit layers obey resource and own-phase time boundaries, while integration layers retain their declared database and file access.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "testing.observed_test_resources": {
+      "description": "Each completed test records its own phase durations and observed resources, including subprocess counts and explicit unknowns, without changing its result.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "testing.one_holder_per_layer": {
+      "description": "A requirement has one holder file in each layer, while focused functions and parameter cases in that file preserve its place.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "testing.reuse_pin_fast_check": {
+      "description": "The fast lane runs the reviewed reuse frontier check on changed pinned source files and names how to refresh a moved pin.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "testing.row_admitted_or_refused_by_its_check": {
+      "description": "A new or edited requirement row is admitted at once when its id, owner, sentence, layer and budget pass without a near-duplicate, and is otherwise refused by its failing check or held for the test manager's decision.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "testing.session_footprint": {
+      "description": "A verified full pytest run records session-fixture build time and attributed scratch with a sampled basetemp high-water mark and explicit gaps.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "testing.unplaced_workers_warn_by_name": {
+      "description": "Inside the private workshop, an unplaced pytest run asking for more than two workers is warned once with heavy_slot's command, never refused; other runs stay silent.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 1
+    },
+    "testing.unregistered_test_refused_with_its_find": {
+      "description": "A new test that proves no registered requirement is refused by the fast guard with what tests find returns for its words and the next lawful step, and in a gate lane beyond its file's legacy count.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "testing.whole_file_relocation_restores_bytes": {
+      "description": "Whole-file test relocation restores bytes and registered references, preserves consumed fixture scope and refuses path, export and fixture-name clashes.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 6.248
+    },
+    "workspace_runtime.source_lease_failure_evidence": {
+      "description": "A failed sealed-source mutation check names the written and observed bytes, restored and observed metadata, and the unavailable lease event.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 2
+    }
+  }
+}

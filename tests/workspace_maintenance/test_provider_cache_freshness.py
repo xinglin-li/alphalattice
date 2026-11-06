@@ -16,7 +16,10 @@ from alphalattice.foundation.market_data_ops.runtime.universe_maintenance import
 from alphalattice.foundation.market_data_ops.sources.manifest import (
     build_quality_filtered_research_manifest,
 )
-from alphalattice.foundation.market_data_ops.sources.providers import YFinanceMarketDataProvider
+from alphalattice.foundation.market_data_ops.sources.providers import (
+    ProviderFetchError,
+    YFinanceMarketDataProvider,
+)
 from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
@@ -24,6 +27,7 @@ from tests.workspace_maintenance.audit_workspace import audit_one
 from tests.workspace_maintenance.local_data_provider import (
     HistoricalChartReplay,
     recording_provider,
+    reset_yfinance_cache,
 )
 
 START = date(2025, 10, 1)
@@ -44,6 +48,7 @@ def test_a_daily_catchup_sees_a_dividend_restatement_behind_a_cached_chunk(
     )
     data = YfData()
     calls = {}
+    provider_failures = []
     identity = {"listing_id": "listing-aapl", "provider_symbol": "AAPL"}
     acquisition = acquisition_manifest()
     manifest = build_quality_filtered_research_manifest(
@@ -60,7 +65,20 @@ def test_a_daily_catchup_sees_a_dividend_restatement_behind_a_cached_chunk(
             data.cache_get.cache_clear()
             market = MarketDataRepository(tmp_path / f"workspace-{fresh_control}")
             market.bootstrap(manifest)
-            provider = YFinanceMarketDataProvider(tmp_path / f"provider-cache-{fresh_control}")
+            cache_root = tmp_path / f"provider-cache-{fresh_control}"
+            reset_yfinance_cache(cache_root)
+            provider = YFinanceMarketDataProvider(cache_root)
+            read_hydration = provider.fetch_hydration
+
+            def record_hydration(_read=read_hydration, **kwargs):
+                try:
+                    return _read(**kwargs)
+                except ProviderFetchError as exc:
+                    cause = exc.__cause__ or exc
+                    provider_failures.append({"type": type(cause).__name__, "detail": str(cause)})
+                    raise
+
+            monkeypatch.setattr(provider, "fetch_hydration", record_hydration)
             initial = provider.fetch_hydration(**identity, start=START, end=held)
             market.apply_validated_batch(
                 manifest,
@@ -97,11 +115,12 @@ def test_a_daily_catchup_sees_a_dividend_restatement_behind_a_cached_chunk(
             second = runner.run(observed_at=datetime(2026, 8, 4, 23, tzinfo=UTC))
             calls[fresh_control] = len(replay.requests) - daily_start
             state = market.current_universe_maintenance_listings(runner.maintenance_id)[0]
+            record_property("provider_failures", json.dumps(provider_failures))
             assert (second.updated, second.failed, state.failure_code) == (
                 0,
                 1,
                 "data.full_history_audit_approval_required",
-            )
+            ), f"provider failures: {provider_failures}"
             assert market.raw_bars("listing-aapl")[-1].session_date == NEXT
             for method in ("daily", "hydration", "adjusted_close_history", "action_history"):
                 fields = {"symbols": ("AAPL",)} if method == "daily" else identity

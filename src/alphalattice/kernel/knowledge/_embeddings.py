@@ -147,9 +147,9 @@ def probe_semantic_pack(
             raise _semantic_error("semantic tokenizer hash differs from the index spec")
         details.extend(("model:verified", "tokenizer:verified"))
 
-        ort = importlib.import_module("onnxruntime")
-        sentencepiece = importlib.import_module("sentencepiece")
-        sqlite_vec = importlib.import_module("sqlite_vec")
+        ort = importlib.import_module("onnxruntime")  # lazy: optional.
+        sentencepiece = importlib.import_module("sentencepiece")  # lazy: optional.
+        sqlite_vec = importlib.import_module("sqlite_vec")  # lazy: optional.
         onnx_version = importlib.metadata.version("onnxruntime")
         sentencepiece_version = importlib.metadata.version("sentencepiece")
         vector_version = importlib.metadata.version("sqlite-vec")
@@ -162,7 +162,7 @@ def probe_semantic_pack(
         if "CPUExecutionProvider" not in ort.get_available_providers():
             raise _semantic_error("ONNX CPUExecutionProvider is unavailable")
         if spec.token_normalization == "BERT_WORDPIECE_TOKENIZERS_V1":
-            importlib.import_module("tokenizers")
+            importlib.import_module("tokenizers")  # lazy: optional.
         details.extend(
             (
                 "onnxruntime:verified",
@@ -771,7 +771,7 @@ def shared_embedding_adapter(
 
 
 def load_vector_extension(connection: sqlite3.Connection) -> str:
-    sqlite_vec = importlib.import_module("sqlite_vec")
+    sqlite_vec = importlib.import_module("sqlite_vec")  # lazy: optional.
     try:
         connection.enable_load_extension(True)
         sqlite_vec.load(connection)
@@ -852,11 +852,13 @@ class LocalOnnxEmbeddingAdapter:
         self._closed = False
         self._tokenizer: Any | None = None
         self._session: Any | None = None
-        self._numpy = numpy_module or importlib.import_module("numpy")
-        self._runtime = runtime_module or importlib.import_module("onnxruntime")
+        self._numpy = numpy_module or importlib.import_module("numpy")  # lazy: optional.
+        self._runtime = runtime_module or importlib.import_module("onnxruntime")  # lazy: optional.
         self._wordpiece = spec.token_normalization == "BERT_WORDPIECE_TOKENIZERS_V1"
         if processor_class is None and not self._wordpiece:
-            processor_class = importlib.import_module("sentencepiece").SentencePieceProcessor
+            processor_class = importlib.import_module(  # lazy: optional.
+                "sentencepiece"
+            ).SentencePieceProcessor
 
         root = encoder_root(model_root, spec)
         model_path = root / "onnx" / "model.onnx"
@@ -870,10 +872,10 @@ class LocalOnnxEmbeddingAdapter:
             MODEL_WORK.embedding_model_loads += 1
             if self._wordpiece:
                 # The BERT tokenizer file carries its own normaliser, the
-                # WordPiece vocabulary and the [CLS] … [SEP] post-processor;
+                # WordPiece vocabulary and the [CLS] â€¦ [SEP] post-processor;
                 # truncation is set here, to the spec, never read from a
                 # configuration file the loader would otherwise consult.
-                tokenizers = importlib.import_module("tokenizers")
+                tokenizers = importlib.import_module("tokenizers")  # lazy: optional.
                 self._tokenizer = tokenizers.Tokenizer.from_file(str(tokenizer_path))
                 self._tokenizer.no_padding()
                 self._tokenizer.enable_truncation(max_length=spec.maximum_tokens)

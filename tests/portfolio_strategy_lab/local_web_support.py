@@ -38,6 +38,7 @@ from alphalattice.control.product_host.composition.portfolio_application import 
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
 )
+from alphalattice.control.product_host.composition.web_launcher import main
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
@@ -735,14 +736,24 @@ def run_node(
         pytest.skip(missing)
     if arguments is None:
         return None
+    supplied = kwargs.get("env")
+    environment = dict(os.environ) if pinned_browser or supplied is None else {}
+    if supplied is not None:
+        environment.update(supplied)
+    environment["TZ"] = "UTC"
     if pinned_browser:
         root = Path(kwargs.get("cwd") or Path(__file__).resolve().parents[2])
-        kwargs["env"] = {
-            **os.environ,
-            **kwargs.get("env", {}),
-            "NODE_PATH": str(root / "third_party/playwright/node_modules"),
-            "PLAYWRIGHT_BROWSERS_PATH": str(root / "third_party/playwright/.browsers"),
-        }
+        environment.update(
+            NODE_PATH=str(root / "third_party/playwright/node_modules"),
+            PLAYWRIGHT_BROWSERS_PATH=str(root / "third_party/playwright/.browsers"),
+        )
+    browser = environment.get("PLAYWRIGHT_BROWSERS_PATH")
+    if isinstance(browser, str):
+        directory = Path(browser)
+        # Leave relative paths and default modes for Playwright to interpret.
+        if directory.is_absolute():
+            environment["PLAYWRIGHT_BROWSERS_PATH"] = str(directory.resolve())
+    kwargs["env"] = environment
     return subprocess.run([node, *arguments], **kwargs)
 
 
@@ -848,11 +859,23 @@ def _run_to_completion(session: LocalPortfolioWebSession) -> str:
     return str(results[0]["result_hash"])
 
 
+def serve_conflict(workspace, monkeypatch):
+    """Build an OS launch denial; descriptor, lease and HTTP authentication remain real."""
+
+    def denied(*args, **kwargs):
+        raise PermissionError("local_web.detached_breakaway_denied")
+
+    with monkeypatch.context() as build:
+        build.setattr(subprocess, "Popen", denied)
+        return main(["--workspace", str(workspace), "--no-browser", "--detach"])
+
+
 _CATALOG_READER = r"""
 const fs=require('fs'),vm=require('vm');
 const library = require(process.argv[2]);
-const [root,said]=[process.argv[1],JSON.parse(fs.readFileSync(0,'utf8'))];
+const root=process.argv[1], {said,messages}=JSON.parse(fs.readFileSync(0,'utf8'));
 const c={window:{},document:{documentElement:{}},console};library.context(c);
+vm.runInContext(messages,c);
 vm.runInContext(fs.readFileSync(root+'/data/zh.js','utf8'),c);
 vm.runInContext(fs.readFileSync(root+'/app/i18n.js','utf8')+';globalThis.I18N=I18N;',c);
 c.I18N.set('zh');
@@ -868,11 +891,20 @@ def read_in_chinese(said: list[str], *, missing: str, required: bool) -> dict[st
     root = Path(__file__).resolve().parents[2] / (
         "src/alphalattice/interface/local_application/assets/workbench-source/js"
     )
+    from scripts import build_local_web_ui
+
     answer = run_node(
-        ["-e", _CATALOG_READER, str(root), str(Path(__file__).with_name("workbench_library.cjs"))],
+        [
+            "-e",
+            _CATALOG_READER,
+            str(root),
+            str(Path(__file__).with_name("workbench_library.cjs")),
+        ],
         missing=missing,
         required=required,
-        input=json.dumps(said),
+        input=json.dumps(
+            {"said": said, "messages": getattr(build_local_web_ui, "messages_js", lambda: "")()}
+        ),
         capture_output=True,
         text=True,
         encoding="utf-8",

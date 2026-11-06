@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
+import fnmatch
 import json
 import os
 import subprocess
 import sys
+import tempfile
+import tomllib
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -305,18 +310,44 @@ def _check_identity_reach(*, staged: bool) -> bool:
     return result.returncode == 0
 
 
-def shrink_only_growth(path: str, before: dict[str, Any], after: dict[str, Any]) -> list[str]:
-    """A declared finding set only loses keys; its owners stay bound to their findings."""
+def shrink_only_growth(
+    path: str, before: dict[str, Any], after: dict[str, Any], carry: Any = None
+) -> list[str]:
+    """Finding sets shrink; new Large declarations require a dated admission for review.
+
+    ``carry`` restates an old row's values at a byte-identical move's new path."""
     keys = before.get("shrink_only_set")
     if not keys:
         return []
     if after.get("shrink_only_set") != keys:
         return [f"{path}:1: shrink-only keys changed; restore the registered finding key"]
-    old = {(*[r[k] for k in keys], r["owner"]) for r in before["entries"]}
-    new = {(*[r[k] for k in keys], r["owner"]) for r in after["entries"]}
+    collection = before.get("shrink_only_list", "entries")
+    if after.get("shrink_only_list", "entries") != collection:
+        return [f"{path}:1: shrink-only list changed; restore the declared list"]
+    old = {(*[r[k] for k in keys], r["owner"]) for r in before[collection]}
+    old |= {tuple(map(carry, row)) for row in old} if carry else set()
+    new = {(*[r[k] for k in keys], r["owner"]) for r in after[collection]}
+    admitted = set()
+    if (
+        path == "config/registries/test-sizes.json"
+        and collection == "large"
+        and keys == ["pattern"]
+    ):
+        for row in after[collection]:
+            decision = row.get("admitted")
+            if not isinstance(decision, str):
+                continue
+            when, separator, words = decision.partition(":")
+            if not separator or len(when) != 10 or not words.strip():
+                continue
+            try:
+                date.fromisoformat(when)
+            except ValueError:
+                continue
+            admitted.add((row["pattern"], row["owner"]))
     return [
         f"{path}:1: shrink-only findings grew; fix the owner or ask the Lead: {row}"
-        for row in sorted(new - old)
+        for row in sorted(new - old - admitted)
     ]
 
 
@@ -330,12 +361,29 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
     started = perf_counter()
     sys.path.insert(0, str(ROOT / "src"))
     try:
-        from devtools.architecture.registries import census_check, private_test_growth, problems
+        from devtools.architecture.git_inputs import carried, staged_moves
+        from devtools.architecture.moved_names import problems as moved_names
+        from devtools.architecture.registries import (
+            census_check,
+            census_inputs,
+            private_test_growth,
+            problems,
+        )
+        from devtools.testing.sizes import validate_policy, validate_post_merge_scopes
     finally:
         sys.path.pop(0)
-    found = problems(ROOT, changed)
+    inputs = census_inputs(ROOT, baseline) if staged else None
+    moves = staged_moves(ROOT, pairs=inputs.changes) if inputs is not None else {}
+
+    def carry(value: Any) -> Any:
+        return next(iter(carried([value], moves)), value) if isinstance(value, str) else value
+
+    # A reference left at a moved name's old place, found before the rename lands.
+    found = problems(ROOT, changed) + moved_names(ROOT, staged=staged)
     if staged:
-        found += census_check(ROOT, baseline=baseline)
+        found += census_check(
+            ROOT, baseline=baseline, moves=moves, inputs=inputs
+        )  # one pairing read
     # The tests' ratchet against the registry this change started from: registering a new
     # private import by hand passes the scan above, never this (LAWS.md TE5, V16).
     ratchet = "config/registries/test-private.json"
@@ -359,11 +407,245 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
             base = shown("HEAD", path)
             current = shown("", path) if staged else (ROOT / path).read_text(encoding="utf-8")
             if base is not None and current is not None:
-                found += shrink_only_growth(path, json.loads(base), json.loads(current))
+                previous, value = json.loads(base), json.loads(current)
+                found += shrink_only_growth(path, previous, value, carry if moves else None)
+                if path == "config/registries/test-sizes.json":
+                    try:
+                        validate_policy(value)
+                    except ValueError as error:
+                        found.append(f"{path}:1: {error}")
+    # The staged policy and its deferred declarations must come from the same index.
+    try:
+        size_path = "config/registries/test-sizes.json"
+        if inputs is not None:
+            stage_prefix = inputs.stage
+            policy_key = stage_prefix + size_path
+            policy = json.loads(inputs.view([policy_key])[policy_key])
+            names = [
+                p
+                for p in policy.get("post_merge_only", [])
+                if isinstance(p, str) and p.startswith("tests/structural/")
+            ]
+            blobs = inputs.view(stage_prefix + p for p in names)
+            validate_post_merge_scopes(policy, lambda name: blobs[stage_prefix + name])
+        else:
+            policy = json.loads((ROOT / size_path).read_text(encoding="utf-8"))
+            validate_post_merge_scopes(
+                policy, lambda name: (ROOT / name).read_text(encoding="utf-8")
+            )
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError) as error:
+        found.append(f"test_size.rule: verify deferred structural declarations: {error}")
     for line in found:
         print(f"REGISTRY {line}", flush=True)
     print(f"PLAYPEN_GATE_TIMING registries {perf_counter() - started:.3f}s", flush=True)
     return not found
+
+
+LEDGER = "refs/heads/public-export"
+"""The export's ledger branch: the private manifest is recorded there since it left develop
+(EXPORT-RECORDS-MIGRATE)."""
+MANIFEST_SCHEMA = "alphalattice.release.public-manifest"
+
+
+def ledger_records(root: Path) -> tuple[str, str, dict[str, bytes]] | None:
+    """The ledger's tip, its commit time and its config JSON records, or None where no ledger ref
+    exists (a public checkout). A ref that exists but cannot be read is refused by name: it could
+    hold the manifest. Read only."""
+
+    def run(*args: str) -> subprocess.CompletedProcess[bytes]:
+        try:
+            return subprocess.run(("git", *args), cwd=root, capture_output=True)
+        except OSError as error:
+            raise ValueError(
+                f"check_playpen.ledger_unreadable:{LEDGER}; restore Git before committing: {error}"
+            ) from error
+
+    exists = run("show-ref", "--exists", LEDGER)
+    if exists.returncode == 2:
+        return None
+    if exists.returncode:
+        raise ValueError(
+            f"check_playpen.ledger_unreadable:{LEDGER}; repair it (git fsck) before committing"
+        )
+    tip = run("rev-parse", "--verify", "--quiet", LEDGER + "^{commit}")
+    sha = tip.stdout.decode().strip()
+    when = run("log", "-1", "--format=%cI", sha) if sha else tip
+    names = run("ls-tree", "-r", "--name-only", sha) if sha else tip
+    if tip.returncode or not sha or when.returncode or names.returncode:
+        raise ValueError(
+            f"check_playpen.ledger_unreadable:{LEDGER}; repair it (git fsck) before committing"
+        )
+    files = {}
+    for name in names.stdout.decode().splitlines():
+        if name.startswith("config/") and name.endswith(".json"):
+            shown = run("cat-file", "blob", f"{sha}:{name}")
+            if shown.returncode:
+                raise ValueError(
+                    f"check_playpen.ledger_unreadable:{LEDGER}:{name}; repair it before committing"
+                )
+            files[name] = shown.stdout
+    return sha, when.stdout.decode().strip(), files
+
+
+def manifest_readers(
+    blobs: dict[str, bytes], ledger: tuple[str, str, dict[str, bytes]] | None = None
+) -> tuple[set[str], str]:
+    """The private manifest's public paths and where they were read, in this order: the tree's own,
+    found by its schema; else the ledger's at its tip, read as it is however old; else none, as in
+    the public tree. A manifest found but malformed, in either place, is refused by name, never
+    passed over for the next."""
+    from devtools.testing.requirements import schema_file
+
+    if held := schema_file(blobs, blobs.__getitem__, MANIFEST_SCHEMA):
+        where, document = f"the tree's {held}", json.loads(blobs[held])
+    elif ledger:
+        sha, when, files = ledger
+        held = schema_file(files, files.__getitem__, MANIFEST_SCHEMA)
+        if held is None:
+            raise ValueError(
+                f"check_playpen.ledger_manifest_missing:{LEDGER}@{sha[:9]}; "
+                "restore the ledger manifest before committing"
+            )
+        hours = (dt.datetime.now(dt.UTC) - dt.datetime.fromisoformat(when)).total_seconds()
+        where, document = f"ledger@{sha[:9]} ({hours / 3600:.1f} h old)", json.loads(files[held])
+    else:
+        return (
+            set(),
+            "none: no manifest in the tree and no ledger; readers come from the rules alone, "
+            "as in the public tree",
+        )
+    rows = document.get("public")
+    if not isinstance(rows, list) or not all(
+        isinstance(r, dict) and isinstance(r.get("path"), str) for r in rows
+    ):
+        raise ValueError(
+            f"check_playpen.manifest_malformed:{where}: its public rows need paths; "
+            "repair it before committing"
+        )
+    return {r["path"] for r in rows}, where
+
+
+def boundary_problems(
+    blobs: dict[str, bytes], changed: set[str], listed: set[str] | None = None
+) -> list[str]:
+    """The merge gate's public-closure and evaluation-layer checks, on the changed readers;
+    ``listed`` is the private manifest's public paths (`manifest_readers`), from the tree alone
+    when not given."""
+    from devtools.architecture.structural import evaluation_imports
+    from release.public_closure import violations  # type: ignore[import-not-found]
+    from release.public_manifest import (  # type: ignore[import-not-found]
+        INTERNAL_ID_BASELINE,
+        RULES,
+        classify,
+        declared_private,
+        internal_id_ratchet,
+    )
+
+    declared = declared_private(blobs)
+
+    def public(given: set[str]) -> set[str]:  # by the release rules, given these dependencies
+        return {
+            p for p in blobs if classify(p, given, given, given, given, declared)[0] == "PUBLIC"
+        }
+
+    # Certainly public readers, possibly public targets: a guess never refuses a correct import.
+    # The private manifest adds its readers where this checkout records it; a public tree has none.
+    if listed is None:
+        listed = manifest_readers(blobs)[0]
+    readers = public(set()) | listed
+    manifest = {"public": [{"path": p} for p in readers | public(set(blobs))], "rules": RULES}
+    refs = violations(manifest, blobs, readers & changed)
+    found = [f"{r.reader}:{r.line}: reaches non-public {r.target} ({r.kind})" for r in refs]
+    named = [{"path": p, "kind": "PUBLIC"} for p in sorted(readers & changed)]  # per file
+    labels = internal_id_ratchet(blobs, named, json.loads(blobs.get(INTERNAL_ID_BASELINE, b"{}")))
+    found += [f"{v['path']}:{v['line']}: internal label {v['rule']}" for v in labels["violations"]]
+    entry = tomllib.loads(blobs["pyproject.toml"].decode())["project"]["scripts"]["alphalattice"]
+    layer = {p: blobs[p].decode() for p in fnmatch.filter(changed, "src/devtools/evaluation/*.py")}
+    rows = evaluation_imports(layer, entry)
+    return found + [f"{p}:{n}: devtools.evaluation imports {what}" for p, n, what in rows]
+
+
+def _check_boundaries(*, staged: bool) -> bool:
+    """Refuse a changed file's import across the public release or evaluation boundary."""
+    from release.public_manifest import read_tree
+
+    def current(path: str) -> bytes | None:  # the index's bytes, or the working tree's
+        if not staged:
+            return (ROOT / path).read_bytes() if (ROOT / path).is_file() else None
+        shown = subprocess.run(["git", "show", f":{path}"], cwd=ROOT, capture_output=True)
+        return shown.stdout if shown.returncode == 0 else None
+
+    started = perf_counter()
+    diff = ("diff", "--cached" if staged else "HEAD", "--name-only", "--no-renames")
+    texts = {path: current(path) for path in _git_lines(*diff)}
+    blobs = {p: b for p, b in (read_tree(ROOT, "HEAD")[1] | texts).items() if b is not None}
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        listed, read = manifest_readers(blobs, ledger_records(ROOT))
+        found = boundary_problems(blobs, {p for p, b in texts.items() if b is not None}, listed)
+    finally:
+        sys.path.pop(0)
+    print(f"PLAYPEN_GATE_MANIFEST {read}", flush=True)
+    print("".join(f"BOUNDARY {line}\n" for line in found), end="", flush=True)
+    print(f"PLAYPEN_GATE_TIMING boundaries {perf_counter() - started:.3f}s", flush=True)
+    return not found
+
+
+def _check_import_contracts() -> bool:
+    """The package import law (levels, peers and retired owners) by import-linter and Ruff, built
+    from config/package-architecture.json; the built configs and logs stay in the temp folder,
+    which a stage points into its run."""
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from devtools.architecture import import_contracts
+        from devtools.architecture.structural import load_package_architecture_registry
+
+        started = perf_counter()
+        registry = load_package_architecture_registry(ROOT / "config/package-architecture.json")
+        out = Path(tempfile.mkdtemp(prefix="import-contracts-"))
+        found = import_contracts.check(ROOT, out, registry)
+    finally:
+        sys.path.pop(0)
+    print("".join(f"IMPORT-LAW {line}\n" for line in found), end="", flush=True)
+    if found:
+        print(f"IMPORT-LAW evidence: {out}", flush=True)
+    print(f"PLAYPEN_GATE_TIMING import-contracts {perf_counter() - started:.3f}s", flush=True)
+    return not found
+
+
+def _check_scoped_structural(*, staged: bool) -> bool:
+    """Run the per_file structural scans over this change's Python files only (the fast lane)."""
+    diff = ("diff", "--cached" if staged else "HEAD", "--name-status", "--no-renames")
+    listing = subprocess.run(("git", *diff), cwd=ROOT, capture_output=True, text=True, check=True)
+    named = {row.split("\t")[-1] for row in listing.stdout.splitlines()}
+    if not any(path.endswith(".py") for path in named):
+        return True
+    if loose := sorted(_git_lines("diff", "--name-only") & named) if staged else []:
+        print(f"STRUCTURAL the scans read the working tree; stage or stash {loose}", flush=True)
+        return False
+    policy = json.loads((ROOT / "config/registries/test-sizes.json").read_text("utf-8"))
+    tests = sorted({r["pattern"].split("::")[0] for r in policy["reach"] if r.get("per_file")})
+    started = perf_counter()
+    with tempfile.TemporaryDirectory() as folder:
+        (Path(folder) / "changed.txt").write_text(listing.stdout, encoding="utf-8")
+        env = dict(os.environ, ALPHALATTICE_TEST_LANE="fast")
+        env["ALPHALATTICE_TEST_STAGED"] = "1" if staged else "0"
+        env["ALPHALATTICE_CHANGED_PATHS"] = str(Path(folder) / "changed.txt")
+        command = (
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "--no-cov",
+            "-n",
+            "0",
+            "--basetemp",
+            str(Path(folder) / "pytest"),
+            *tests,
+        )
+        done = subprocess.run(command, cwd=ROOT, env=env, check=False)
+    print(f"PLAYPEN_GATE_TIMING scoped-structural {perf_counter() - started:.3f}s", flush=True)
+    return done.returncode in (0, 5)  # 5: no per_file node selected
 
 
 def _check_docstrings() -> bool:
@@ -395,6 +677,134 @@ def _check_test_shape(*, staged: bool) -> bool:
     return result.returncode == 0
 
 
+def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
+    """Report growth and refuse unregistered new tests or requirement rows.
+
+    Read the merge base and staged holders once; unreadable input never means zero.
+    """
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from devtools.architecture.git_inputs import read_blobs
+        from devtools.testing import requirements
+    finally:
+        sys.path.pop(0)
+
+    def git(*args: str) -> str:
+        done = subprocess.run(("git", *args), cwd=ROOT, capture_output=True, encoding="utf-8")
+        if done.returncode:
+            said = (done.stderr or done.stdout).strip().splitlines()[:1]
+            raise RuntimeError(
+                f"`git {' '.join(args)}` failed: {' '.join(said) or done.returncode}"
+            )
+        return done.stdout
+
+    try:
+        pending = ROOT / git("rev-parse", "--git-path", "MERGE_HEAD").strip()
+        parents = pending.read_text("ascii").splitlines() if staged and pending.is_file() else []
+        # Compare the named base with the hypothetical merge of these parent tips.
+        base = git("merge-base", base_ref, "HEAD", *parents).strip()
+        diff = ("diff", *["--cached"] * staged, "--numstat", "-z", "--no-renames", base, "--")
+        rows = [r.split("\t", 2) for r in git(*diff, "src", "scripts", "tests").split("\0") if r]
+        nets = [(path, int(a) - int(d)) for a, d, path in rows if a != "-"]
+        before = set(git("ls-tree", "-r", "-z", "--name-only", base, "--", "tests").split("\0"))
+        indexed = set(git("ls-files", "-z", "--", "tests").split("\0"))
+        paths = {
+            path
+            for path in indexed
+            if path.startswith("tests/")
+            and Path(path).name.startswith("test_")
+            and path.endswith(".py")
+        }
+        changed_tests = {p for p, _ in nets if p.startswith("tests/") and p.endswith(".py")}
+        specs = [
+            *(":" + path for path in changed_tests & indexed),
+            *(f"{base}:{path}" for path in changed_tests & before),
+        ]
+        blobs = (
+            read_blobs(specs, ROOT)
+            if staged
+            else read_blobs([s for s in specs if not s.startswith(":")], ROOT)
+        )
+        if staged and set(specs) - blobs.keys():
+            raise RuntimeError("test holder snapshot unavailable; repair the index")
+        projected = {
+            path: requirements.file_holders(
+                path, blobs[":" + path] if staged else (ROOT / path).read_text("utf-8")
+            )
+            for path in changed_tests & indexed
+            if staged or (ROOT / path).is_file()
+        }
+        earlier: list[requirements.Holder] = []
+        later: list[requirements.Holder] = []
+        for path in sorted(changed_tests):
+            disk = ROOT / path  # a new or deleted test file is absent on one side, not unread
+            now = blobs.get(":" + path, "") if staged and path in indexed else ""
+            now = now if staged else disk.read_text("utf-8") if disk.is_file() else ""
+            then = blobs.get(f"{base}:{path}", "") if path in before else ""
+            later += (
+                projected[path]
+                if path in projected
+                else requirements.file_holders(path, now)
+                if now
+                else []
+            )
+            earlier += requirements.file_holders(path, then) if then else []
+        fresh = requirements.fresh(earlier, later)
+        old_nodes = {test.node for test in earlier}
+        added = [test.node for test in fresh if test.node not in old_nodes]
+        registry = requirements.REGISTRY.as_posix()
+        here = git("ls-files", "--", registry).strip() if staged else (ROOT / registry).is_file()
+        declared = git("show", f":{registry}") if staged and here else None
+        declared = (ROOT / registry).read_text("utf-8") if here and not staged else declared
+        listed = git("ls-tree", "--name-only", base, "--", registry).strip()
+        declared_then = git("show", f"{base}:{registry}") if listed else None
+        if fresh or declared != declared_then:
+            missing = paths - projected.keys()
+            if staged:
+                more = read_blobs([":" + path for path in missing], ROOT)
+                if len(more) != len(missing):
+                    raise RuntimeError("test holder snapshot unavailable; repair the index")
+            for path in missing:
+                if staged or (ROOT / path).is_file():
+                    projected[path] = requirements.file_holders(
+                        path, more[":" + path] if staged else (ROOT / path).read_text("utf-8")
+                    )
+    except (
+        RuntimeError,
+        OSError,
+        UnicodeError,
+        SyntaxError,
+        subprocess.CalledProcessError,
+    ) as error:
+        print(
+            f"TEST-BUDGET unmeasured, refused: {error}. Repair the index or choose an "
+            "available base commit; an unread budget is never zero.",
+            flush=True,
+        )
+        return False
+    source = sum(net for path, net in nets if path.startswith(("src/", "scripts/")))
+    tests = sum(net for path, net in nets if path.startswith("tests/") and not path.endswith(".md"))
+    print(
+        f"TEST-GROWTH net source {source:+d}, net tests {tests:+d}, "
+        f"new test functions {len(added)}; reviewer judges proportion",
+        flush=True,
+    )
+    refused = requirements.guard(
+        ROOT,
+        fresh,
+        declared,
+        declared_then,
+        tests=[t for group in projected.values() for t in group],
+        before_tests=[
+            *earlier,
+            *(t for path, group in projected.items() if path not in changed_tests for t in group),
+        ],
+    )
+    for line in refused:
+        print(line, flush=True)
+    return not refused
+
+
 def _check_evidence_bindings() -> bool:
     """Refuse a tree whose Evidence binding tuple moved without its predecessor listed."""
 
@@ -419,6 +829,7 @@ def _check_operation_registry() -> bool:
     started = perf_counter()
     sys.path.insert(0, str(ROOT / "src"))
     try:
+        from devtools.architecture import operation_registry
         from devtools.architecture.operation_registry import problems, walk
 
         found = problems(ROOT) + walk(ROOT)
@@ -426,6 +837,7 @@ def _check_operation_registry() -> bool:
         sys.path.pop(0)
     for line in found:
         print(f"OPERATION_REGISTRY {line}", flush=True)
+    print(f"PLAYPEN_GATE_SCAN_CACHE {operation_registry.LAST_SCAN_CACHE}", flush=True)
     print(f"PLAYPEN_GATE_TIMING operation-registry {perf_counter() - started:.3f}s", flush=True)
     return not found
 
@@ -457,11 +869,16 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     ensure_environment()
     gate_started = perf_counter()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--staged", action="store_true")
+    parser.add_argument(
+        "--staged",
+        action="store_true",
+        help="Select staged paths; lint reads working files (pre-commit hides unstaged edits).",
+    )
     parser.add_argument(
         "--registry-baseline", default=os.environ.get("ALPHALATTICE_REGISTRY_BASELINE")
     )
     parser.add_argument("--all-python", action="store_true")
+    parser.add_argument("--base", default="develop", help="base commit for the test budget")
     parser.add_argument(
         "--fast",
         action="store_true",
@@ -539,6 +956,8 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
             "pyproject.toml",
             targets=python_targets,
         )
+    if args.fast and not _check_scoped_structural(staged=args.staged):
+        return 1
     # Always the full strict set, never a subset. With follow_imports = "skip",
     # a module absent from the command line types as Any, so narrowing the list
     # both invents errors and hides real ones -- it is not the same check on
@@ -562,9 +981,15 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         return 1
     if not _check_registries(staged=args.staged, baseline=args.registry_baseline):
         return 1
+    if not _check_boundaries(staged=args.staged):
+        return 1
+    if not _check_import_contracts():
+        return 1
     if not _check_docstrings():
         return 1
     if not _check_test_shape(staged=args.staged):
+        return 1
+    if not _check_test_budget(staged=args.staged, base_ref=args.base):
         return 1
     if args.fast:
         # What actually cost minutes per commit: the whole-repo structural guard

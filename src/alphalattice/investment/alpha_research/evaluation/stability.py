@@ -36,7 +36,6 @@ from typing import Literal, cast
 
 import numpy as np
 import numpy.typing as npt
-from scipy import stats  # type: ignore[import-untyped]
 
 from ..experiments.development_contracts import (
     AlphaDevelopmentEstimatorState,
@@ -99,6 +98,8 @@ def _prediction_p_value(statistic: _Statistic) -> float:
     scale = spread * math.sqrt(1.0 + 1.0 / count)
     t_statistic = (statistic.observed - center) / scale
     degrees = count - 1
+    from scipy import stats  # type: ignore[import-untyped]  # lazy: heavy; first check
+
     if statistic.direction == "two_sided":
         return float(2.0 * stats.t.sf(abs(t_statistic), degrees))
     if statistic.direction == "lower":
@@ -123,6 +124,8 @@ def _prediction_bounds(statistic: _Statistic, alpha: float) -> tuple[float | Non
         return (center, center)
     scale = spread * math.sqrt(1.0 + 1.0 / count)
     degrees = count - 1
+    from scipy import stats  # lazy: heavy; first check
+
     if statistic.direction == "two_sided":
         critical = float(stats.t.ppf(1.0 - alpha / 2.0, degrees))
         return (center - critical * scale, center + critical * scale)

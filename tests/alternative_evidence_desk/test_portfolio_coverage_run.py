@@ -644,6 +644,26 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         packets = {k: v for k, v in section["next_requests"].items() if k.startswith("packet_")}
         assert len(packets) == UNIT_COUNT - 1
         assert f"packet_{failed[0]['unit_id']}" not in packets
+        # The original review is still this Task: two reruns inspect it, never prepare again.
+        count = len(service.registry.tasks())
+        preview_again = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        assert preview_again["next_requests"]["resume"] == {
+            "operation": "STATUS",
+            "task_id": str(task_id),
+        }
+        bundles = {
+            k: v
+            for k, v in preview_again["next_requests"].items()
+            if k.startswith("analyst_bundle_")
+        }
+        assert len(bundles) == UNIT_COUNT - 1
+        assert all(v["task_id"] == str(task_id) for v in bundles.values())
+        for _ in range(2):
+            status = _run_one(service, {"operation": "STATUS", "task_id": task_id})
+            assert (
+                status["units_failed"] == 1 and status["failed_units"] == completed["failed_units"]
+            )
+            assert len(service.registry.tasks()) == count
         # The failed unit's packet does not read: the answer is a refusal naming the code, with
         # the book's coverage read as the way on (V388).
         refusal = _run_one(

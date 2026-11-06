@@ -1,9 +1,60 @@
-# AlphaLattice first release
+# AlphaLattice release notes
+Last checked: 2026-11-05 against 0.2.4
+
+Latest released version: [0.2.4](#024). Earlier measurements describe their own versions.
+
+## 0.2.4
+
+0.2.4 makes the daily research workflow smoother and its results easier to read.
+
+### Changed
+
+- Agent-facing reads offer a bounded summary and a pointer to the complete saved answer;
+  use `--output` when the complete record is needed.
+- A Goal completion template fills recorded facts and references; the agent supplies its
+  judgment before submitting the request.
+- A detached local Host can be reused by a matching session. It remains available while
+  work is owed and shuts down after the configured idle period; startup still requires
+  an authenticated ready Host. On supported desktop hosts the agent can use a terminal
+  panel before asking the person to run a startup command.
+- Invalid research plans offer their named recovery controls. A cancelled membership
+  update retains the information needed to restore its own change.
+
+### Fixed
+
+- Continuing an Evidence review can follow its existing preparation when the publication,
+  scope and resources still match, avoiding duplicate coverage work.
+- If a reply is lost after an analyst response has been recorded, the agent can resend the
+  same keyed answer and receive the recorded outcome without creating another Task.
+- Analyst submissions can proceed while a long Task runs; when admission is busy, the Host
+  can return a retryable busy response.
+- For Windows Codex evaluations, each run requests its own workspace-writing sandbox.
+- On Windows, Codex setup offers a workspace-specific Host start when its sandbox cannot
+  write the project configuration. Generated PowerShell commands pipe quoted JSON as
+  BOM-free UTF-8 so the request keeps its intended content.
+- In that sandbox recovery route, configure offers a complete command for the default
+  workspace when none exists; otherwise it offers the existing workspace paths for a choice.
+- First-use setup keeps its temporary files in the project and offers the delegated network
+  action separately from the daily network question.
+- Concurrent readers share an in-progress verification of the same saved review update.
+  If an authenticated, keyed review answer cannot enter a busy workspace within its bound,
+  the response says it was not filed and explains when to resend it.
+- On Windows, the Host avoids repeating a processor query while Tasks run. Codex guidance
+  uses an available specialist role or opens a fresh configured-project session if it is
+  unavailable; if the role is still missing, the agent stops and reports it.
+- The Workbench names a stalled review in English and Chinese and gives Chinese recovery
+  guidance when a saved Alpha record does not match its requested identity.
+
+### Deprecated
+
+- `view:full` full stdout is deprecated (`read.legacy_full_deprecated`); use `--view summary --output PATH` for bounded display and the complete saved answer. Full stdout remains available; earliest removal is 0.3.0.
+
+## 0.1.0
 Date: 2026-10-08
 
 The `0.1.0` first release is a local equity research workstation for a person and a Claude Code or Codex agent. Factor evidence and curation lead to Alpha; Risk runs on the same input. Portfolio consumes Alpha and only uses Risk when its allocation reads it. Evidence and the CRO review the exact book and retain coverage gaps. A report-only Risk association does not mean weights used a Risk model.
 
-## Included capabilities
+### Included capabilities
 
 The maintained CLI and Local Web reach the same calculation, permission, Task and publication owners. Local Web includes Chinese; `--lang zh` selects available Chinese CLI detail with English fallback. Editable declarations go through installed schemas. Answers record outcomes, refusals and continuations; saved reads retain their full selection, `--wait` follows named Task state, and Portfolio position metrics may include units. See [CLI](cli.md).
 
@@ -15,9 +66,9 @@ Data updates preserve earlier inputs; issues expose evidence and permitted choic
 
 Readbacks carry temporal statements for evaluated window, earlier input history, T0 membership backfill, survivorship, Sector treatment and price basis. A later observation does not rewrite a published session. Research publication does not establish future returns or an operating trading service. See [Temporal statements](temporal-statements.md).
 
-## Platform and terms
+### Platform and terms
 
-Windows is verified for this source-checkout release; macOS and Linux are unverified. On 2026-09-30 at checkout `c109a7bc`, an empty-workspace preparation through its data decision took 407.1 seconds and 3.99 GB peak memory, using eight logical processors on four P-cores. The machine was Windows 11 Pro, Intel Core i9-13900K (24 cores, 32 logical processors) and 128 GB memory; a comparison ran concurrently on disjoint cores. This observation is neither a hardware minimum nor a runtime guarantee. [Getting started](getting-started.md) has the measurement context.
+Windows is verified for this source-checkout release; macOS and Linux are unverified. On 2026-09-30 at checkout `c109a7bc`, an empty-workspace preparation through its data decision took 407.1 seconds and 3.99 GB peak memory, using eight logical processors on four P-cores. The machine was Windows 11 Pro, Intel Core i9-13900K (24 cores, 32 logical processors) and 128 GB memory; a comparison ran concurrently on disjoint cores. This observation is neither a hardware minimum nor a runtime guarantee. This is a historical preparation observation for this version; current workload context is in the [0.2.3 notes](#023).
 
 Xinglin Li created AlphaLattice alone and made this release. It is Apache-2.0; [NOTICE](../../NOTICE) lists included third-party material and separately installed software/model licenses. The release takes no outside contributions; see the [contributing note](../../CONTRIBUTING.md).
 

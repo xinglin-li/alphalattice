@@ -376,11 +376,10 @@ def test_direct_osqp_matches_independent_cvxpy_oracle() -> None:
 
 
 def test_score_utility_requires_units_admission_and_preserves_negative_scores() -> None:
-    """requirement: dimensionless Alpha is identity-scaled and never clipped at zero."""
+    """requirement: identity-scaled Alpha, unclipped at zero, needs an intact matching admission."""
 
-    scores = np.asarray([-10.0, -4.0, -3.0, -2.0, -1.0], dtype=np.float64)
     arguments = {
-        "scores": scores,
+        "scores": np.asarray([-10.0, -4.0, -3.0, -2.0, -1.0], dtype=np.float64),
         "covariance": np.eye(5) * 1e-4,
         "reference_weights": np.zeros(5),
         "decision_eligible": np.ones(5, dtype=np.bool_),
@@ -389,12 +388,13 @@ def test_score_utility_requires_units_admission_and_preserves_negative_scores() 
         "risk_aversion": 3.0,
         "turnover_regularization": 0.1,
     }
-    with pytest.raises(PortfolioOptimizationError, match="ALPHA_UTILITY_UNITS_NOT_ADMITTED"):
-        PortfolioOptimizer().solve_score_risk_cost(**arguments)
-    result = PortfolioOptimizer().solve_score_risk_cost(
-        **arguments,
-        alpha_utility_admission=_admission(risk=3.0, turnover=0.1),
-    )
+    solve, admitted = PortfolioOptimizer().solve_score_risk_cost, _admission(risk=3.0, turnover=0.1)
+    broken, bound = dataclasses.replace(admitted, risk_aversion=4.0), (1.0, 3.0, 0.1, 0.001)
+    assert admitted.admits(bound) and not broken.admits(bound)  # a changed field breaks its seal
+    for refused, admission in ((solve, None), (solve_with_cvxpy_oracle, broken)):
+        with pytest.raises(PortfolioOptimizationError, match="ALPHA_UTILITY_UNITS_NOT_ADMITTED"):
+            refused(**arguments, alpha_utility_admission=admission)
+    result = solve(**arguments, alpha_utility_admission=admitted)
     assert result.weights[0] == 0.0
     assert np.count_nonzero(result.weights) >= 3
     assert result.objective_audit.alpha_utility_term < 0.0

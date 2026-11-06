@@ -94,7 +94,7 @@ def _runtime_versions() -> tuple[str, str]:
     """
 
     try:
-        importlib.import_module("fastembed.rerank.cross_encoder")
+        importlib.import_module("fastembed.rerank.cross_encoder")  # lazy: reranker.
         return (
             importlib.metadata.version("fastembed"),
             importlib.metadata.version("tokenizers"),
@@ -601,7 +601,7 @@ class LocalCrossEncoderAdapter:
         self, model_root: Path, spec: HybridIndexSpec, *, threads: int | None = None
     ) -> None:
         verify_reranker_pack(model_root, spec)
-        module = importlib.import_module("fastembed.rerank.cross_encoder")
+        module = importlib.import_module("fastembed.rerank.cross_encoder")  # lazy: reranker.
         MODEL_WORK.reranker_model_loads += 1
         self.threads = threads or safe_intra_op_threads()
         self._encoder: Any = module.TextCrossEncoder(

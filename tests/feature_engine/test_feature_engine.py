@@ -437,7 +437,7 @@ def test_an_interrupted_first_load_is_discarded_and_its_column_built_again(
 
 
 def test_a_carried_availability_cell_is_recorded_as_an_upsert_records_it(tmp_path) -> None:
-    """requirement (V92): a Panel cell carried to a catalog that only adds columns is recorded
+    """requirement: a Panel cell carried to a catalog that only adds columns is recorded
     under that catalog exactly as an upsert under it records the same cell, with its values,
     binding, receipt and availability hash; a cell the catalog already holds is kept."""
 

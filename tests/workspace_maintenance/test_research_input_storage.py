@@ -244,8 +244,9 @@ def test_an_alias_removed_after_grouping_is_not_answered(
         assert digests[b] == file_digest(b) == digests[a]
     with pytest.raises(AuthoringError, match="input_file_unavailable"):
         file_digests([a, tmp_path / "absent"])
-    # The same window where the platform does let the path go: B no longer
-    # names any object by the time the read is over.
+    # Begin the injected post-open removal with an existing alias on every platform.
+    if removed == [True]:
+        os.link(a, b)
     real_stat = Path.stat
 
     def gone(path, *args, **kwargs):

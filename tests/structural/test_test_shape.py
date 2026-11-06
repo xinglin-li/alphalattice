@@ -1,5 +1,7 @@
 """The fast guard holds tests/README.md's writing rules on what a change adds."""
 
+import json
+
 import check_test_shape as shape
 from check_playpen import shrink_only_growth
 from check_test_shape import problems
@@ -17,6 +19,37 @@ def test_a_declared_finding_set_only_loses_keys_and_keeps_its_owners() -> None:
     for field in ("state", "owner"):
         added = {**row, field: "different"}
         assert shrink_only_growth("config/findings.json", before, {**before, "entries": [added]})
+    sizes = dict(before, shrink_only_list="large", large=[row], entries=[])
+    assert not shrink_only_growth("config/sizes.json", sizes, sizes)
+    assert not shrink_only_growth("config/sizes.json", sizes, {**sizes, "large": []})
+    assert shrink_only_growth(
+        "config/sizes.json", sizes, {**sizes, "large": [dict(row, state="different")]}
+    )
+    assert shrink_only_growth("config/sizes.json", sizes, {**sizes, "shrink_only_list": "entries"})
+    sizes = dict(shrink_only_set=["pattern"], shrink_only_list="large", large=[])
+    path = "config/registries/test-sizes.json"
+    added = dict(pattern="test_example", owner="tests")
+    after = dict(sizes, large=[added])
+    assert shrink_only_growth(path, sizes, after)
+    for value in (None, "", "accepted", "2026-02-30: accepted", "2026-10-22:"):
+        assert shrink_only_growth(path, sizes, dict(sizes, large=[dict(added, admitted=value)]))
+    admitted = dict(added, admitted="2026-10-22: accepted")
+    after = dict(sizes, large=[admitted])
+    assert not shrink_only_growth(path, sizes, after)
+    assert not shrink_only_growth(path, after, sizes)
+    assert shrink_only_growth("config/sizes.json", sizes, after)
+    from devtools.architecture.git_inputs import carried
+
+    moves = {"tests/b/test_x.py": "tests/a/test_x.py"}  # a byte-identical move, new to old
+    keys = ["defaults:tests/a/test_x.py*", "x/tests/a/test_x.py", "tests/a/test_x.pyc"]
+    assert carried(keys, moves) == {"defaults:tests/b/test_x.py*"}  # whole paths only
+    wildcards = ["defaults:tests/a/*", "defaults:tests/c/*", "d::large:tests/a/test_[xy].py::t*"]
+    projected = {"defaults:tests/b/test_x.py*", "d::large:tests/b/test_x.py::t*"}  # node kept
+    assert carried(wildcards, moves) == projected
+    held = dict(sizes, large=[dict(pattern="tests/a/test_x.py::t*", owner="tests")])
+    moved = dict(sizes, large=[dict(pattern="tests/b/test_x.py::t*", owner="tests")])
+    assert shrink_only_growth(path, held, moved)  # a rename without its move is growth
+    assert not shrink_only_growth(path, held, moved, lambda v: next(iter(carried([v], moves)), v))
 
 
 def _git_backend(texts, paths, state=None):
@@ -24,11 +57,14 @@ def _git_backend(texts, paths, state=None):
         action = command[1]
         output = "base" if action == "rev-list" else "1\t0\tsrc/example.py\n"
         if "-z" in command:
-            output = "\0".join(paths) + "\0"
+            output = (state or {}).get("raw", "") if "--raw" in command else "\0".join(paths) + "\0"
         if action == "cat-file":
-            rows = [texts[spec].encode() for spec in kwargs["input"].decode().splitlines()]
+            rows = [texts.get(spec) for spec in kwargs["input"].decode().splitlines()]
             output = b"".join(
-                f"{'0' * 40} blob {len(row)}\n".encode() + row + b"\n" for row in rows
+                f"{'0' * 40} blob {len(row.encode())}\n".encode() + row.encode() + b"\n"
+                if row is not None
+                else b"x missing\n"
+                for row in rows
             )
         code = int(action == "rev-parse" and not (state or {}).get("merge"))
         return shape.subprocess.CompletedProcess(command, code, output)
@@ -53,6 +89,15 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps() -
     )
     long = 'def test_a():\n    """One.\n\n    Two.\n    Three.\n    """\n'
     assert problems(PATH, None, long) and not problems(PATH, long, long)
+    missing = "def test_reason():\n    pass\n"
+    assert problems(PATH, None, missing) and not problems(PATH, missing, missing)
+    reason = 'def test_reason():\n    """Missing authority must refuse publication."""\n    pass\n'
+    assert not problems(PATH, None, reason)
+    marked = "import pytest\npytestmark = pytest.mark.proves('x.y')\n" + missing
+    held = "@pytest.mark.proves('x.y')\nclass TestA:\n    " + missing.replace("\n", "\n    ")
+    assert not problems(PATH, None, marked) and not problems(PATH, None, "import pytest\n" + held)
+    debt = "class A:\n    " + missing.replace("\n", "\n    ")
+    assert problems(PATH, debt, debt.replace("class A", "class B"))
 
 
 def test_source_caps_hold_growth_by_qualified_function_and_spare_existing_debt() -> None:
@@ -157,6 +202,73 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
     assert shape.main([]) == 0
     texts[":" + asset] += "\0"
     assert shape.main([]) == 1
+    old, new, legacy = (
+        "tests/area/test_kept.py",
+        "tests/unit/test_kept.py",
+        "def test_kept(): pass\n",
+    )
+    rows = [(f"{'a' * 40} {'0' * 40}", "D", old), (f"{'0' * 40} {'a' * 40}", "A", new)]
+    raw = "".join(f":100644 100644 {blobs} {kind}\0{path}\0" for blobs, kind, path in rows)
+    texts = {":" + new: legacy, "HEAD:" + old: legacy}  # a byte-identical move keeps its old debt
+    for blob, code in (("a", 0), ("b", 1)):  # an edited move is new: its missing docstring refuses
+        state = {"raw": raw.replace(f"{'a' * 40} A", f"{blob * 40} A")}
+        monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [new], state))
+        assert shape.main([]) == code
+
+    source = "src/devtools/testing/layout.py"
+    wrong, right = "tests/unit/testing/test_wrong.py", "tests/unit/testing/test_layout.py"
+    test = (
+        f"TEST_SOURCE = {source!r}\nimport pytest\n"
+        "@pytest.mark.proves('testing.example')\ndef test_one(): pass\n"
+    )
+    registry = json.dumps(
+        {
+            "schema": "alphalattice.requirements.v1",
+            "entries": {
+                "testing.example": {
+                    "description": "One test checks the assigned source.",
+                    "owner": "devtools.testing",
+                    "layer": "unit",
+                    "seconds": 1,
+                }
+            },
+        }
+    )
+    texts = {":" + wrong: test, ":config/registries/requirements.json": registry}
+    paths = [wrong]
+    placement_state = {"merge": False}
+
+    def staged(command, **kwargs):
+        if command[1] == "ls-files" and "src" in command:
+            return shape.subprocess.CompletedProcess(command, 0, source + "\0")
+        return _git_backend(texts, paths, placement_state)(command, **kwargs)
+
+    monkeypatch.setattr(shape.subprocess, "run", staged)
+    assert shape.main([]) == 1  # the added file must use the declared source's mapped path
+    suffix = "tests/unit/testing/layout_test.py"
+    paths[:] = [suffix]
+    texts[":" + suffix] = test
+    assert shape.main([]) == 1  # pytest also collects *_test.py
+    paths[:] = [right]
+    texts[":" + right] = test
+    assert shape.main([]) == 0
+    old_source = source
+    source = "scripts/release/check_example.py"
+    script_test = "tests/unit/testing/release/test_check_example.py"
+    paths[:] = [script_test]
+    texts[":" + script_test] = test.replace(old_source, source)
+    assert shape.main([]) == 0  # the staged source listing includes scripts
+    source = old_source
+    paths[:] = [wrong]
+    texts["HEAD:" + wrong] = test
+    assert shape.main([]) == 0  # existing files are not moved by this rule
+    del texts["HEAD:" + wrong]
+    texts["MERGE_HEAD:" + wrong] = test
+    placement_state["merge"] = True
+    assert shape.main([]) == 0  # a merge does not classify a parent-owned file as new
+    del texts["MERGE_HEAD:" + wrong]
+    del texts[":config/registries/requirements.json"]
+    assert shape.main([]) == 1  # missing staged ownership must not be treated as empty
 
 
 def test_weekly_report_lists_static_candidates_and_respects_config_string_readers(

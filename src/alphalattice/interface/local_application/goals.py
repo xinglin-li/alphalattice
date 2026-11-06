@@ -10,8 +10,10 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta, tzinfo
+from importlib import import_module
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import (
     BaseModel,
@@ -52,7 +54,8 @@ FIRST_USE_ASK_NOW: Final = (
     "downloads the retrieval model at the size its setup states; the agent also installs "
     "the locked retrieval packages under this consent without another question: "
     "say so in one line now. Then "
-    "ask the person once, in these words, and carry on. On their yes, run each command after the "
+    "ask the person once, in these words, and carry on without waiting for the answer. "
+    "On their yes, run each command after the "
     "question once, their words verbatim in place of `<their words>`; the delegation never "
     "answers it:",
     DAILY_NETWORK_ASK,
@@ -120,6 +123,25 @@ def opened_goal(answer: dict[str, Any], declaration: Mapping[str, Any] | None) -
     if answer.get("goal_id") and (declaration or {}).get("kind") == "FIRST_USE":
         answer["person_questions"] = [person_question("network.daily_updates")]
     return answer
+
+
+def delegated_network(
+    answer: dict[str, Any], goal: str | None, prefix: Sequence[str]
+) -> dict[str, Any]:
+    """Surface only the network action the first-use plan delegated to this Goal."""
+    access = (answer.get("source_access") or {}).get("network_access") or {}
+    network = (access.get("next_requests") or {}).get("set")
+    if (
+        access.get("next_action") == "SET_NETWORK_UNDER_FIRST_USE_DELEGATION"
+        and access.get("delegation") == f"first-use-goal:{goal}"
+        and network == {"operation": "NETWORK_ACCESS_SET", "network_enabled": True}
+    ):
+        return {
+            "next_action": "SET_NETWORK_UNDER_FIRST_USE_DELEGATION",
+            "next_requests": {**(answer.get("next_requests") or {}), "network": network},
+            "next_command": join([*prefix, "network", "set", "--enabled", "true"], shell()),
+        }
+    return {}
 
 
 def first_use_asks(
@@ -281,7 +303,6 @@ def target_sessions(
         ValueError: `first_use.date_outside_calendar` for a date the calendars do not plan.
     """
     # The calendars load only for a dated first use, never with every client command.
-    from zoneinfo import ZoneInfo
 
     from alphalattice.foundation.causal_outcomes.execution.readers import (
         planned_local_qa_schedule,
@@ -351,21 +372,23 @@ def target_sessions(
 def _earliest_entry(formation: date) -> str | None:
     """The first entry whose formation's ten-year history the calendars plan, when this
     formation's history would start before their first session; else nothing."""
-    from importlib import import_module
 
-    from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
-        _ten_calendar_year_anniversary as history_start,
+    from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (  # lazy: date.
+        ten_calendar_year_anniversary,
     )
     from alphalattice.kernel.data.calendar import SUPPORTED_CALENDARS
 
-    get_calendar = import_module("exchange_calendars").get_calendar  # their first sessions
+    get_calendar = import_module("exchange_calendars").get_calendar  # lazy: calendar.
     floor = max(get_calendar(c).first_session.date() for c in SUPPORTED_CALENDARS)
-    if history_start(formation) >= floor:
+    if ten_calendar_year_anniversary(formation) >= floor:
         return None
     named = date(floor.year + 10, floor.month, min(floor.day, 28))
     while True:
         reading = target_sessions(named)
-        if history_start(date.fromisoformat(str(reading["formation_session"]))) >= floor:
+        if (
+            ten_calendar_year_anniversary(date.fromisoformat(str(reading["formation_session"])))
+            >= floor
+        ):
             return str(reading["entry_session"])
         named += timedelta(days=1)
 

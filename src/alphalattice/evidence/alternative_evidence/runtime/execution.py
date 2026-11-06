@@ -24,7 +24,9 @@ left to the build's writer (`feature_engine.runtime.service`); the rows are the 
 
 from __future__ import annotations
 
+import importlib.metadata
 import os
+import platform
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -35,17 +37,18 @@ from threading import Condition, Lock
 from typing import Annotated, Literal, TypeVar, cast
 from uuid import UUID
 
+import psutil  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
 
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     busy_logical_processors,
     runtime_machine_capacity,
 )
-from alphalattice.kernel.knowledge._embeddings import VERIFIED_PACKS
 from alphalattice.kernel.knowledge.hybrid_contracts import (
     MAXIMUM_SESSION_THREADS,
     safe_intra_op_threads,
 )
+from alphalattice.kernel.knowledge.runtime import VERIFIED_PACKS
 
 EXECUTION_DIRECTORY = "execution"
 """Under the workspace's `runtime/`, beside the Host's own state and outside the managed
@@ -118,9 +121,7 @@ class PlatformIdentity(_Record):
     libraries: dict[str, str]
 
 
-def platform_identity() -> PlatformIdentity:
-    import importlib.metadata
-    import platform
+def platform_identity(*, processor: str) -> PlatformIdentity:
 
     libraries = {}
     for name in ("numpy", "pandas", "pyarrow", "duckdb", "lightgbm", "scikit-learn"):
@@ -132,7 +133,7 @@ def platform_identity() -> PlatformIdentity:
         system=platform.system(),
         release=platform.release(),
         architecture=platform.machine(),
-        processor=platform.processor() or platform.machine(),
+        processor=processor,
         python=platform.python_version(),
         libraries=libraries,
     )
@@ -530,8 +531,6 @@ def below_normal_thread() -> Iterator[bool]:
 
 def process_priority() -> str:
     """This process's scheduling priority: its Windows priority class, else its nice value."""
-    import psutil  # type: ignore[import-untyped]
-
     value = psutil.Process().nice()
     names = {
         getattr(psutil, name): name.removesuffix("_PRIORITY_CLASS").lower()

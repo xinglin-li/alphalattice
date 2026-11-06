@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import ast
+import bisect
 import fnmatch
 import json
+import os
 import posixpath
 import re
+import sys
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote, urlsplit
 
+from release.public_manifest import SCANS
 from release.public_outputs import generated_outputs
+
+if TYPE_CHECKING:
+    from devtools.architecture.structural import FileFacts
 
 
 @dataclass(frozen=True, order=True)
@@ -45,12 +53,10 @@ class _Paths:
         self,
         path: str,
         tree: ast.AST,
-        files: set[str],
         inherited: Mapping[str, set[str]] | None = None,
         arguments: Mapping[str, set[str]] | None = None,
     ) -> None:
         self.file = "/__checkout__/" + path
-        self.files = files
         self.names: dict[str, set[str]] = {
             key: set(values) for key, values in (inherited or {}).items()
         }
@@ -133,21 +139,76 @@ class _Paths:
                     return result
         return set()
 
-    def repository(self, node: ast.AST | None) -> set[str]:
-        result = set()
-        roots = {p.split("/", 1)[0] for p in self.files}
-        for value in self.values(node):
-            value = _path(value)
+
+FileIndex = tuple[dict[str, set[str]], set[str], set[str]]
+
+
+def _file_index(files: set[str]) -> FileIndex:
+    """What every Python reader asks of one file set: each module spelling's files, every folder
+    holding a file, and the top-level module names; built once per set, not once per reader."""
+    module_paths: dict[str, set[str]] = {}
+    for target in files:
+        if not target.endswith(".py"):
+            continue
+        for spelling in {target, target.removeprefix("src/"), target.removeprefix("scripts/")}:
+            module = spelling[:-3].replace("/", ".").removesuffix(".__init__")
+            module_paths.setdefault(module, set()).add(target)
+    directories = {p[:end] for p in files for end in range(len(p)) if p[end] == "/"}
+    return module_paths, directories, {name.split(".", 1)[0] for name in module_paths}
+
+
+def _resolved(
+    path: str, facts: dict[str, list], files: set[str], index: FileIndex | None = None
+) -> set[Reference]:
+    """One file's extracted imports and reads, resolved against this file set."""
+    module_paths, directories, roots = index or _file_index(files)
+    tops = {p.split("/", 1)[0] for p in files}
+    result = set()
+    for name, line, required in facts["imports"]:
+        candidates = set(module_paths.get(name, ()))
+        stem = posixpath.dirname(path) + "/" + name.replace(".", "/")
+        candidates.update(p for p in (stem + ".py", stem + "/__init__.py") if p in files)
+        folder = name.replace(".", "/")  # a namespace package: some file lies below this folder
+        namespace = (
+            folder in directories or "src/" + folder in directories
+            if folder
+            else any(p.startswith(("/", "src/")) for p in files)
+        )
+        if not candidates and not namespace and required and name.split(".", 1)[0] in roots:
+            first = name.split(".")[0]
+            prefix = (
+                "src/"
+                if (
+                    "src/" + first in directories
+                    if first
+                    else any(p.startswith("src//") for p in files)
+                )
+                else ""
+            )
+            candidates.add(prefix + name.replace(".", "/") + ".py")
+        for part in range(1, len(name.split("."))):
+            candidates.update(module_paths.get(".".join(name.split(".")[:part]), ()))
+        for target in candidates:
+            result.add(Reference(path, line, target, "PYTHON_IMPORT"))
+    for line, kind, values in facts["reads"]:
+        for value in map(_path, values):
             if value.startswith("/__checkout__/"):
-                result.add(value.removeprefix("/__checkout__/"))
-            elif value in self.files or value.split("/", 1)[0] in roots:
-                result.add(value)
-        return result
+                target = value.removeprefix("/__checkout__/")
+            elif value in files or value.split("/", 1)[0] in tops:
+                target = value
+            else:
+                continue
+            if kind != "PYTHON_EXEC" or PurePosixPath(target).suffix:  # cwd is not executable
+                result.add(Reference(path, line, target, kind))
+    return result
 
 
-def _python(path: str, text: str, files: set[str]) -> set[Reference]:
+def python_facts(path: str, text: str) -> dict[str, list]:
+    """What one Python file imports and reads, from its path and text alone: each import's
+    name, line and whether it must resolve, and each read's line, kind and candidate values,
+    before a file set resolves them (``_resolved``), so they can be kept by the file's bytes."""
     tree = ast.parse(text, filename=path)
-    global_paths = _Paths(path, tree, files)
+    global_paths = _Paths(path, tree)
     parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
     scopes = {tree: global_paths}
 
@@ -158,20 +219,12 @@ def _python(path: str, text: str, files: set[str]) -> set[Reference]:
         ):
             scope = parents[scope]
         if scope not in scopes:
-            scopes[scope] = _Paths(path, scope, files, global_paths.names)
+            scopes[scope] = _Paths(path, scope, global_paths.names)
         return scopes[scope]
 
-    result = set()
-    module_paths: dict[str, set[str]] = {}
-    for target in files:
-        if not target.endswith(".py"):
-            continue
-        for spelling in {target, target.removeprefix("src/"), target.removeprefix("scripts/")}:
-            module = spelling[:-3].replace("/", ".").removesuffix(".__init__")
-            module_paths.setdefault(module, set()).add(target)
+    found: dict[str, list] = {"imports": [], "reads": []}
     own = path.removeprefix("src/")[:-3].replace("/", ".").removesuffix(".__init__")
     package = own if path.endswith("/__init__.py") else own.rpartition(".")[0]
-    roots = {name.split(".", 1)[0] for name in module_paths}
     aliases = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -180,24 +233,7 @@ def _python(path: str, text: str, files: set[str]) -> set[Reference]:
             aliases.update({a.asname or a.name: node.module + "." + a.name for a in node.names})
 
     def imports(name: str, line: int, *, required: bool = True) -> None:
-        candidates = set(module_paths.get(name, ()))
-        stem = posixpath.dirname(path) + "/" + name.replace(".", "/")
-        candidates.update(p for p in (stem + ".py", stem + "/__init__.py") if p in files)
-        namespace = any(
-            p.startswith((name.replace(".", "/") + "/", "src/" + name.replace(".", "/") + "/"))
-            for p in files
-        )
-        if not candidates and not namespace and required and name.split(".", 1)[0] in roots:
-            prefix = (
-                "src/"
-                if any(p.startswith("src/" + name.split(".")[0] + "/") for p in files)
-                else ""
-            )
-            candidates.add(prefix + name.replace(".", "/") + ".py")
-        for part in range(1, len(name.split("."))):
-            candidates.update(module_paths.get(".".join(name.split(".")[:part]), ()))
-        for target in candidates:
-            result.add(Reference(path, line, target, "PYTHON_IMPORT"))
+        found["imports"].append([name, line, required])
 
     functions = {
         n.name: n for n in tree.body if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
@@ -319,10 +355,8 @@ def _python(path: str, text: str, files: set[str]) -> set[Reference]:
             for value in paths.values(node.args[0]):
                 imports(value, node.lineno)
         for arg in args:
-            for target in paths.repository(arg):
-                if kind == "PYTHON_EXEC" and not PurePosixPath(target).suffix:
-                    continue  # cwd and workspace arguments are not executable files.
-                result.add(Reference(path, node.lineno, target, kind))
+            if values := sorted(paths.values(arg)):
+                found["reads"].append([node.lineno, kind, values])
         if name in functions and depth < 4:
             function = functions[name]
             parameters = [*function.args.posonlyargs, *function.args.args]
@@ -338,7 +372,7 @@ def _python(path: str, text: str, files: set[str]) -> set[Reference]:
             if not any(bound.values()) or key in visited:
                 return
             visited.add(key)
-            local = _Paths(path, function, files, global_paths.names, bound)
+            local = _Paths(path, function, global_paths.names, bound)
             for child in _scope_nodes(function):
                 if isinstance(child, ast.Call):
                     calls(child, local, depth + 1)
@@ -357,7 +391,7 @@ def _python(path: str, text: str, files: set[str]) -> set[Reference]:
                 imports(base + "." + alias.name, node.lineno, required=False)
         elif isinstance(node, ast.Call):
             calls(node, context(node))
-    return result
+    return found
 
 
 _JS_TOKEN = re.compile(
@@ -370,11 +404,57 @@ _FENCE = re.compile(r"(?m)^\s*(```|~~~)[^\n]*\n(.*?)^\s*\1\s*$", re.DOTALL)
 _CODE_PATH = re.compile(r"(?<![\w/])(?:[\w.-]+/)+[\w.*-]+(?:\.[\w.-]+)?")
 
 
-def references(path: str, raw: bytes, files: set[str]) -> set[Reference]:
+def _shaped(found: Any) -> bool:
+    """Exactly ``python_facts``' shape; a kept row of any other shape is a miss, recomputed."""
+    return (
+        set(found) == {"imports", "reads"}
+        and all(
+            type(name) is str and type(line) is int and type(required) is bool
+            for name, line, required in found["imports"]
+        )
+        and all(
+            type(line) is int and type(kind) is str and all(type(v) is str for v in values)
+            for line, kind, values in found["reads"]
+        )
+    )
+
+
+def references(
+    path: str,
+    raw: bytes,
+    files: set[str],
+    index: FileIndex | None = None,
+    facts: FileFacts | None = None,
+) -> set[Reference]:
     """Source reads only: policy/synthetic string literals are not file dependencies."""
     text = raw.decode("utf-8-sig")
     if path.endswith(".py"):
-        return _python(path, text, files)
+        secret = SCANS["NO_SECRET"]
+
+        def sensitive(found):
+            values = [name for name, _, _ in found["imports"]]
+            values.extend(value for _, _, reads in found["reads"] for value in reads)
+            return any(secret.search(value) for value in values)
+
+        def safe_facts(_):
+            found = python_facts(path, text)
+            # An expression can assemble a credential-shaped value that is absent from the source.
+            return {"withheld": True} if sensitive(found) else found
+
+        if facts is None or secret.search(text) or secret.search(path):
+            found = python_facts(path, text)
+        else:
+            found = facts.of(
+                "python:" + path,
+                raw,
+                safe_facts,
+                lambda value: (
+                    value == {"withheld": True} or (_shaped(value) and not sensitive(value))
+                ),
+            )
+            if found == {"withheld": True}:
+                found = python_facts(path, text)
+        return _resolved(path, found, files, index)
     result = set()
     if path.endswith((".js", ".cjs", ".mjs")):
         tokens = [m for m in _JS_TOKEN.finditer(text) if not m.group().startswith(("//", "/*"))]
@@ -444,26 +524,51 @@ def _installed_node(target: str, blobs: dict[str, bytes], public: set[str]) -> b
     return bool(name in declared and entry.get("version") == declared[name])
 
 
-def violations(manifest: dict, blobs: dict[str, bytes]) -> list[Reference]:
+def violations(manifest: dict, blobs: dict[str, bytes], readers=None) -> list[Reference]:
     """Refuse a PUBLIC source's dependency absent from the manifest's PUBLIC set.
 
     The caller supplies its manifest. No default private inventory or workspace is read.
     Directory links require a public directory; recursive copies require every file.
     Node modules require the specifically published, exact declaration and lock.
+    Each Python file's own facts are kept by its bytes when the gate names a store.
     """
+    if not os.environ.get("ALPHALATTICE_SCAN_CACHE_DIR"):  # structural.SCAN_CACHE_ENV
+        return _violations(manifest, blobs, readers, None)
+    from devtools.architecture.structural import kept_facts  # named only where it is importable
+
+    with kept_facts(
+        "public-closure", sys.modules[__name__], sys.modules["release.public_manifest"]
+    ) as facts:
+        return _violations(manifest, blobs, readers, facts)
+
+
+def _violations(
+    manifest: dict, blobs: dict[str, bytes], readers, facts: FileFacts | None
+) -> list[Reference]:
     public = {row["path"] for row in manifest["public"]}
     files = set(blobs)
+    ordered, index = sorted(files), _file_index(files)
     produced = generated_outputs(blobs, public)
     failures = set()
-    for path in sorted(public):
+
+    def under(target: str) -> set[str]:
+        """Every file below a directory target: one sorted range, not a scan of every file."""
+        prefix = target.rstrip("/") + "/"
+        found = set()
+        for p in ordered[bisect.bisect_left(ordered, prefix) :]:
+            if not p.startswith(prefix):
+                break
+            found.add(p)
+        return found
+
+    for path in sorted(public if readers is None else public & readers):
         if path not in blobs:
             failures.add(Reference(path, 1, path, "PUBLIC_BLOB_MISSING"))
             continue
         if not path.endswith((".py", ".cjs", ".mjs", ".js", ".md")):
             continue
-        for ref in references(path, blobs[path], files):
+        for ref in references(path, blobs[path], files, index, facts):
             target = ref.target
-            children = {p for p in files if p.startswith(target.rstrip("/") + "/")}
             if target in public or _installed_node(target, blobs, public):
                 continue
             if target not in files and target in produced:
@@ -476,6 +581,7 @@ def violations(manifest: dict, blobs: dict[str, bytes]) -> list[Reference]:
                 )
                 if not private:
                     continue
+            children = under(target)  # only the directory rules below read it
             if (
                 children
                 and ref.kind in {"MARKDOWN_LINK", "MARKDOWN_CODE_PATH"}

@@ -12,7 +12,7 @@
 # product needs all of them; a narrower environment is a deliberate choice.
 [project]
 name = "alphalattice"
-version = "0.2.3"
+version = "0.2.4"
 description = "A local quantitative research workstation for Claude Code and Codex."
 authors = [{ name = "Xinglin Li", email = "xinglin789@outlook.com" }]
 readme = "README.md"
@@ -98,18 +98,39 @@ semantic = [
 
 [dependency-groups]
 dev = [
+    "deptry>=0.25,<1",
     "hypothesis>=6.140,<7",
+    "import-linter>=2.15,<3",
     # Preserve the product environment while the docs tools use mdformat's <4 range.
     "markdown-it-py==4.2.0",
     "mypy>=1.18,<2",
     "pandas-stubs>=3.0,<4",
+    "portalocker>=3.2,<4",
     "pre-commit>=4.3,<5",
     "py-spy>=0.4,<1",
+    "pyinstrument>=5.1,<6",
     "pytest>=8.4,<10",
     "pytest-cov>=6,<8",
+    "pytest-split>=0.10,<1",
     "pytest-timeout>=2.4,<3",
     "pytest-xdist==3.8.0",
     "ruff>=0.14,<1",
+    "vulture>=2.16,<3",
+]
+# Each package below registers a pytest plugin that loads itself into every pytest run in an
+# environment it is installed in, so each stays out of the default dev group and in a group of
+# its own; a run that uses one asks for it with --group.
+# Seeded random test order, for the nightly walk.
+order = [
+    "pytest-randomly>=5,<6",
+]
+# Coverage-based test selection.
+testmon = [
+    "pytest-testmon>=2.2,<3",
+]
+# Per-test CPU instruction counts on CodSpeed, for the public test-cost job.
+codspeed = [
+    "pytest-codspeed==5.0.3",
 ]
 docs = [
     "mkdocs-llmstxt>=0.5.0",
@@ -130,9 +151,25 @@ extend-exclude = ["experiments", "tmp", "workspaces"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+extend-select = ["T20", "TID251"]
+
+[tool.ruff.lint.per-file-ignores]
+# Agent answers are product output; maintainers' tools own their diagnostics.
+"!src/alphalattice/**" = ["T20", "TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"sys.stdout" = { msg = "Write through the output owner" }
+"sys.stderr" = { msg = "Write through the output owner or a named stderr exemption" }
 
 [tool.ruff.format]
 line-ending = "lf"
+
+[tool.vulture]
+# Names an interface requires but its implementer does not read; vulture's 100% findings are false positives here.
+ignore_names = [
+    "exc_type", "exc_value", "traceback",  # context-manager protocol arguments (WorkspaceLock.__exit__)
+    "chunk_published",  # progress protocol field, ignored by its one implementer (_FoldCancellation)
+]
 
 [tool.mypy]
 python_version = "3.12"
@@ -157,6 +194,8 @@ module = [
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
+tmp_path_retention_policy = "failed"
+tmp_path_retention_count = "1"
 # `-p no:cacheprovider`: the gate never uses `--lf`/`--ff`, and a `.pytest_cache`
 # written under another security context made every run print a read-only
 # cache warning that had to be read past to find the real output.
@@ -164,6 +203,12 @@ addopts = "--strict-config --strict-markers -p no:cacheprovider"
 pythonpath = ["src", "scripts"]
 testpaths = ["tests"]
 markers = [
+    "private_data: the test writes its seed's market data or Parquet, so it gets a private copy",
+    "small: registered in-memory test size; resource enforcement follows",
+    "medium: registered local integration test size",
+    "large: registered workflow or expensive test size; candidate and nightly obligation",
+    "proves: the registered requirement ids (config/registries/requirements.json) this test proves; find before writing one: python scripts/tests_registry.py find",
     "untyped_failure: the test makes an operation fail without a product code on purpose; the answer check lets it pass (V449)",
+    "per_file: a structural scan scoped to the changed files; it reads source only through scanned()",
     "real_evidence: reads a dogfood evidence root declared in the private evidence-root registry; deselected by the routed gate and run explicitly by scripts/check_playpen.py --evidence",
 ]

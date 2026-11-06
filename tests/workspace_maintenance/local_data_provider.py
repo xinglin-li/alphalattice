@@ -29,6 +29,7 @@ from tests.researcher_methodology_surface.real_workspace import (
     SYMBOLS,
     SeededWalkProvider,
     _bootstrap,
+    ordered_window,
 )
 
 NOW = datetime(2026, 8, 3, 23, tzinfo=UTC)
@@ -36,6 +37,19 @@ NOW = datetime(2026, 8, 3, 23, tzinfo=UTC)
 
 PRODUCT_QA_SYMBOLS = tuple(f"QA{index:03d}" for index in range(80))
 """The eighty-name universe of the synthetic Data/Feature product QA workspace."""
+
+
+def reset_yfinance_cache(cache_root: Path) -> None:
+    """Isolate successive test workspaces before any provider in this test starts."""
+    from yfinance import cache
+
+    # yfinance 1.5.1 moves its DB managers but retains singleton cache objects.
+    cache.set_cache_location(str(cache_root))
+    for name in ("get_tz_cache", "get_cookie_cache", "get_isin_cache"):
+        instance = getattr(cache, name)()
+        instance.db = None
+        instance.initialised = -1
+        instance.dummy = False
 
 
 class RecordingProvider(SeededWalkProvider):
@@ -192,6 +206,10 @@ class HeldDataProvider:
         self.unavailable_code = "data.fixture_unavailable"
 
     def _asked(self, call: str, symbol: str, start: date, end: date) -> None:
+        if call != "sector":
+            ordered_window(
+                start, end, {"actions": "action", "adjusted": "adjusted-close"}.get(call, call)
+            )
         self.calls.append((call, symbol, start, end))
         if self.unavailable:
             raise ProviderFetchError(

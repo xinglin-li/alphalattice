@@ -24,10 +24,14 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from devtools.architecture.git_inputs import read_blobs
+from alphalattice.interface.local_application.message_catalog import english_message_ids
+from devtools.architecture.git_inputs import CensusInputs, Moves, carried, staged_moves
 from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
+    ImportHygiene,
+    PackageArchitectureRegistry,
     discover_table_writes,
+    import_contract_violations,
     load_storage_authority_registry,
     table_writer_violations,
 )
@@ -208,13 +212,13 @@ def areas(root: Path) -> list[str]:
     """Each registered package whose product area is not the namespace it lives in."""
 
     document = json.loads((root / "config" / "package-architecture.json").read_text("utf-8"))
-    # Evaluation is engineering tooling; other namespaces keep their physical area.
+    # devtools is engineering tooling; other namespaces keep their physical area.
     return sorted(
         package["package_id"]
         for package in document["packages"]
         if (
             "engineering"
-            if package["physical_namespace_target"] == "devtools.evaluation"
+            if package["physical_namespace_target"].startswith("devtools.")
             else package["physical_namespace_target"].split(".")[1]
         )
         != package["product_area"]
@@ -246,12 +250,97 @@ def inventory(root: Path, files: Iterable[str]) -> dict[str, Counter[str]]:
     return result
 
 
-def baseline(root: Path, name: str) -> dict[str, object]:
+def baseline(
+    root: Path,
+    name: str,
+    *,
+    cached: Mapping[str, dict[str, Any]] = {},
+    errors: list[str] | None = None,
+) -> dict[str, Any]:
+    if name in cached:
+        return cached[name]
     path = root / REGISTRIES / f"{name}.json"
     if not path.is_file():
         return {}
     document = json.loads(path.read_text(encoding="utf-8"))
+    if name == "refusals":
+        try:
+            return refusal_entries(document)
+        except ValueError as error:
+            if errors is None:
+                raise
+            errors.append(str(error))
+            return {}
     return dict(document["entries"])
+
+
+def _category_row(value: Any, fields: Mapping[str, type[Any]]) -> bool:
+    return isinstance(value, dict) and all(
+        isinstance(value.get(key), kind) and bool(value[key]) for key, kind in fields.items()
+    )
+
+
+def _refusal_entry(code: str, entry: Any, declared: set[str], notices: Any) -> None:
+    if not _category_row(entry, {"owner": str}):
+        raise ValueError(f"refusals: {code} category owner missing")
+    if entry.get("kind") == "notice" or code in notices:
+        if (
+            code not in notices
+            or entry.get("kind") != "notice"
+            or "category" in entry
+            or notices[code].get("owner") != entry["owner"]
+        ):
+            raise ValueError(f"refusals: {code} category notice exemption invalid")
+        return
+    category = entry.get("category")
+    if not isinstance(category, str) or category not in declared:
+        raise ValueError(f"refusals: {code} category missing or unknown")
+
+
+def _check_word_selectors(document: Mapping[str, Any], entries: dict[str, Any]) -> None:
+    """A selector is non-emitted word metadata, disjoint from every emitted or legacy key."""
+    policy = document.get("classification", {})
+    selectors = policy.get("word_selectors", {}) if isinstance(policy, dict) else None
+    legacy = document.get("legacy_unregistered_words", [])
+    if not isinstance(selectors, dict) or any(
+        not isinstance(key, str)
+        or not key
+        or not _category_row(row, {"owner": str, "reason": str})
+        or set(row) != {"owner", "reason"}
+        or any(
+            not isinstance(group, (dict, list)) or key in group
+            for group in (entries, policy.get("notices", {}), legacy)
+        )
+        for key, row in selectors.items()
+    ):
+        raise ValueError("refusals: word selector shape or overlap invalid")
+
+
+def refusal_entries(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Check committed categories; assignment rules remain source-review provenance."""
+    entries = document.get("entries", {})
+    if not isinstance(entries, dict):
+        raise ValueError("refusals: entries must be a mapping")
+    _check_word_selectors(document, entries)
+    if not entries:
+        return {}
+    categories = document.get("categories", [])
+    policy = document.get("classification", {})
+    if not _category_row(document, {"categories": list, "classification": dict}):
+        raise ValueError("refusals: category declaration invalid")
+    if any(not isinstance(c, str) or not c for c in categories) or len(set(categories)) != len(
+        categories
+    ):
+        raise ValueError("refusals: category declaration invalid")
+    notices = policy.get("notices", {})
+    if not isinstance(notices, dict) or any(
+        not _category_row(n, {"owner": str, "reason": str}) for n in notices.values()
+    ):
+        raise ValueError("refusals: category notice declaration invalid")
+    declared = set(categories)
+    for code, entry in entries.items():
+        _refusal_entry(code, entry, declared, notices)
+    return dict(entries)
 
 
 def _count(value: object) -> int:
@@ -309,7 +398,7 @@ def problems(root: Path, files: Sequence[str]) -> list[str]:
     found = inventory(root, files)
     out: list[str] = message_problems(root, files)
     for name, entries in found.items():
-        known = baseline(root, name)
+        known = baseline(root, name, errors=out)
         for key, count in sorted(entries.items()):
             registered = known.get(key)
             if name in {"refusals", "formats"}:
@@ -411,13 +500,29 @@ def _declaring_files(root: Path, files: Sequence[str], key: str) -> list[str]:
     ]
 
 
+def _refusals_for_shrink(
+    root: Path, codes: Any, seed: bool
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    refusal_path = root / REGISTRIES / "refusals.json"
+    refusal_document = (
+        json.loads(refusal_path.read_bytes()) if refusal_path.is_file() else {"entries": {}}
+    )
+    registered_refusals = refusal_entries(refusal_document)
+    if seed and codes - registered_refusals.keys():
+        raise ValueError("refusals: register owner and category before seeding")
+    return refusal_document, registered_refusals
+
+
 def shrink(root: Path, files: Sequence[str], *, seed: bool = False) -> dict[str, int]:
     """Rewrite each baseline to what the tree holds, never growing it unless ``seed``."""
 
     found = inventory(root, files)
+    refusal_document, registered_refusals = _refusals_for_shrink(
+        root, found["refusals"].keys(), seed
+    )
     sizes: dict[str, int] = {}
     for name, entries in found.items():
-        known = baseline(root, name)
+        known = baseline(root, name, cached={"refusals": registered_refusals})
         kept: dict[str, object] = {}
         for key, count in sorted(entries.items()):
             registered = known.get(key)
@@ -447,6 +552,7 @@ def shrink(root: Path, files: Sequence[str], *, seed: bool = False) -> dict[str,
         path = root / REGISTRIES / f"{name}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         document = {
+            **{"refusals": refusal_document}.get(name, {}),
             "schema": f"alphalattice.playpen.registry.{name}",
             "note": __doc__.split("\n\n")[1].replace("\n", " ") if name == "parameters" else "",
             "entries": kept,
@@ -730,6 +836,10 @@ def message_problems(text: str | Path, files: Sequence[str] = ()) -> list[str]:
             out.append(f"messages: {code} invalid question contract")
         out.extend(_message_forms(code, row))
         out.extend(_message_aliases(code, row.get("legacy_keys", []), aliases))
+    try:
+        english_message_ids(entries)
+    except ValueError as error:
+        out.append(str(error))
     return out
 
 
@@ -912,14 +1022,24 @@ def _catalog_read_contract(
     return names
 
 
-def _catalog_census(root: Path) -> tuple[list[str], dict[str, Any]]:
+_CENSUS_INPUT_PATHS = {
+    "config/registries/messages.json",
+    TARGETS["nouns"][0],
+    TARGETS["message-kinds"][0],
+    "src/alphalattice/interface/local_application/assets/workbench-source/js/data/zh.js",
+    "src/alphalattice/interface/local_application/refusal_words.json",
+}
+
+
+def _catalog_census(inputs: CensusInputs) -> tuple[list[str], dict[str, Any]]:
     catalog, owners = "config/registries/messages.json", "config/registries/owners-map.json"
     legacy = "src/alphalattice/interface/local_application/assets/workbench-source/js/data/zh.js"
-    blobs = read_blobs([":" + catalog, "HEAD:" + catalog, ":" + owners, "HEAD:" + owners], root)
-    out = message_problems(blobs[":" + catalog]) if ":" + catalog in blobs else []
-    if "HEAD:" + catalog in blobs and ":" + catalog not in blobs:
+    stage, blobs = inputs.stage, inputs.blobs
+    seed = [stage + catalog, "HEAD:" + catalog, stage + owners, "HEAD:" + owners]
+    out = message_problems(blobs[stage + catalog]) if stage + catalog in blobs else []
+    if "HEAD:" + catalog in blobs and stage + catalog not in blobs:
         out.append("messages: missing catalog; restore config/registries/messages.json")
-    row = json.loads(blobs.get(":" + owners, "{}")).get("nouns", {}).get("message catalog", {})
+    row = json.loads(blobs.get(stage + owners, "{}")).get("nouns", {}).get("message catalog", {})
     paths = dict.fromkeys([legacy, *row.get("gate_inputs", row.get("pending_consumers", []))])
     prior = (
         json.loads(blobs.get("HEAD:" + owners, "{}")).get("nouns", {}).get("message catalog", {})
@@ -927,19 +1047,17 @@ def _catalog_census(root: Path) -> tuple[list[str], dict[str, Any]]:
     if not set(prior.get("gate_inputs", prior.get("pending_consumers", []))) <= paths.keys():
         out.append("messages: restore the registered catalog gate inputs")
     basis = "HEAD:"
-    pending = subprocess.run(
-        ["git", "rev-parse", "--verify", "MERGE_HEAD"], cwd=root, capture_output=True, text=True
-    )
-    if pending.returncode == 0 and pending.stdout.strip() == row.get("integration_base"):
-        basis = pending.stdout.strip() + ":"
-    blobs.update(read_blobs([prefix + p for p in paths for prefix in (":", basis)], root))
-    if (":" + legacy in blobs or "HEAD:" + legacy in blobs) and not row:
+    if inputs.pending and inputs.pending == row.get("integration_base"):
+        basis = inputs.pending + ":"
+    requested = [prefix + p for p in paths for prefix in (stage, basis)]
+    blobs = inputs.view([*seed, *requested])
+    if (stage + legacy in blobs or "HEAD:" + legacy in blobs) and not row:
         out.append("messages: missing message catalog owner; restore the owner registry")
     census, consumers = {}, {}
     for path in paths:
-        if ":" + path not in blobs and "HEAD:" + path not in blobs:
+        if stage + path not in blobs and "HEAD:" + path not in blobs:
             continue
-        before, after = blobs.get(basis + path, ""), blobs.get(":" + path, "")
+        before, after = blobs.get(basis + path, ""), blobs.get(stage + path, "")
         try:
             shape = row.get("gate_inputs", {}).get(path, {})
             previous = prior.get("gate_inputs", {}).get(path, {})
@@ -976,58 +1094,253 @@ def _catalog_census(root: Path) -> tuple[list[str], dict[str, Any]]:
     return out, census | ({"legacy_catalog_consumers": consumers} if consumers else {})
 
 
-def census_check(root: Path, *, baseline: str | None = None, update: bool = False) -> list[str]:
-    """Ratchet exact staged findings; unchanged source comes only from cached facts."""
-    out, catalog = _catalog_census(root)
+def _refusal_word_problems(
+    stage: str, document: Mapping[str, Any], blobs: dict[str, str]
+) -> list[str]:
+    """New refusal words require an entry; reviewed non-refusal allowances only shrink."""
+    path = TARGETS["message-kinds"][0]
+    words = "src/alphalattice/interface/local_application/refusal_words.json"
+    previous = json.loads(blobs.get("HEAD:" + path, "{}"))
+    legacy = set(document.get("legacy_unregistered_words", []))
+    selectors = document.get("classification", {}).get("word_selectors", {})
+    out = [
+        f"refusals: {key} word requires a registered owner and category"
+        for key in sorted(
+            json.loads(blobs.get(stage + words, "{}")).keys()
+            - document.get("entries", {}).keys()
+            - legacy
+            - selectors.keys()
+        )
+    ]
+    # Current-map disjointness cannot see a selector removed in this same change.
+    reviewed_selectors = previous.get("classification", {}).get("word_selectors", {})
+    out.extend(
+        f"refusals: word selector {key} cannot become an emitted reason"
+        for key in sorted(reviewed_selectors.keys() & document.get("entries", {}).keys())
+    )
+    for name, current, before, container in (
+        ("legacy_unregistered_words", legacy, previous, document),
+        (
+            "word_selectors",
+            set(selectors),
+            previous.get("classification", {}),
+            document.get("classification", {}),
+        ),
+    ):
+        if name in before:
+            out.extend(
+                f"refusals: {name} cannot widen to {key}"
+                for key in sorted(current - set(before[name]))
+            )
+            if name not in container:
+                out.append(f"refusals: {name} declaration cannot be removed")
+    return out
+
+
+def _description_rows(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Name registry declarations independently of dictionary or list ordering."""
+    rows = {}
+    for member in ("entries", "nouns", "kinds", "defaults", "large"):
+        values = document.get(member, {})
+        if isinstance(values, list):
+            # A test size's reason is its purpose sentence; it is not written twice.
+            values = {row["pattern"]: {"description": row.get("reason"), **row} for row in values}
+        rows.update({f"{member}:{key}": row for key, row in values.items()})
+    return rows
+
+
+def _has_description(row: Any) -> bool:
+    """Accept one nonempty sentence; the owner's review proves its meaning."""
+    text = row.get("description") if isinstance(row, dict) else None
+    return (
+        isinstance(text, str)
+        and bool(text.strip())
+        and "\n" not in text
+        and text.rstrip().endswith((".", "!", "?"))
+        and re.search(r"[.!?]\s+\S", text) is None
+    )
+
+
+def _description_census(
+    inputs: CensusInputs,
+    data: dict[str, Any],
+    base: dict[str, Any],
+    moves: Moves | None,
+) -> tuple[list[str], list[str]]:
+    """Read staged declarations once and ratchet their remaining explanation debt."""
+    root, stage, blobs, paths = inputs.root, inputs.stage, inputs.blobs, inputs.registries
+    missing: set[str] = set()
+    for path in paths:
+        if path not in data:
+            data[path] = json.loads(blobs[stage + path])
+        missing.update(
+            path + "::" + key
+            for key, row in _description_rows(data[path]).items()
+            if not _has_description(row)
+        )
+    if missing <= set(base.get("undescribed_registry_entries", [])):
+        return [], sorted(missing)
+    dimension = "undescribed_registry_entries"
+    bootstrap = dimension not in base
+    basis = "HEAD:"
+    if inputs.pending or len(inputs.parents) > 2:
+        ancestor = subprocess.run(
+            ["git", "merge-base", "develop", "HEAD", *([inputs.pending] if inputs.pending else [])],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if ancestor.returncode == 0:
+            # Develop owns its existing rows, even if its recorded census is stale.
+            basis, bootstrap = ancestor.stdout.strip() + ":", True
+    requested = [
+        prefix + path for path in paths for prefix in ([stage, basis] if bootstrap else [stage])
+    ]
+    blobs = inputs.view(requested)
+    previous: set[str] = set()
+    for path in paths:
+        if bootstrap:
+            previous.update(
+                path + "::" + key
+                for key, row in _description_rows(json.loads(blobs.get(basis + path, "{}"))).items()
+                if not _has_description(row)
+            )
+    allowed = set(base.get(dimension, [])) | previous
+    # A byte-identical move carries its rows; a caller that read the pairing passes it once.
+    allowed |= carried(allowed, staged_moves(root) if moves is None else moves)
+    return [
+        f"registry-description: {key} needs one purpose sentence."
+        for key in sorted(missing - allowed)
+    ], sorted(missing)
+
+
+def census_inputs(root: Path, baseline: str | None) -> CensusInputs:
+    """Acquire the one input snapshot shared by the gate and census readers."""
+    if baseline is not None:
+        anchor = Path(baseline)
+        baseline = (
+            anchor.relative_to(root.resolve()) if anchor.is_absolute() else anchor
+        ).as_posix()
+    legacy_path = "config/import-hygiene.json"
+    fixed = (
+        {
+            baseline,
+            legacy_path,
+            "config/package-architecture.json",
+            *(p for p, _ in TARGETS.values()),
+        }
+        if baseline
+        else set()
+    )
+    return CensusInputs(root, baseline, fixed, _CENSUS_INPUT_PATHS)
+
+
+def census_check(
+    root: Path,
+    *,
+    baseline: str | None = None,
+    update: bool = False,
+    moves: Moves | None = None,
+    inputs: CensusInputs | None = None,
+) -> list[str]:
+    """Project staged source facts; committed baselines only cap admission."""
+    legacy_path = "config/import-hygiene.json"
+    inputs = inputs or census_inputs(root, baseline)
+    baseline, fixed = inputs.baseline, inputs.fixed
+    stage, paths, sources, blobs = inputs.stage, inputs.paths, inputs.sources, inputs.blobs
+    out, catalog = _catalog_census(inputs)
+    refusal_key = stage + TARGETS["message-kinds"][0]
+    refusal_blob = blobs.get(refusal_key, '{"entries":{}}')
+    try:
+        refusal_document = json.loads(refusal_blob)
+        refusal_entries(refusal_document)
+        out.extend(_refusal_word_problems(stage, refusal_document, blobs))
+    except ValueError as error:
+        return [*out, str(error)]
     if baseline is None:
         print("registry ratchet not configured: set ALPHALATTICE_REGISTRY_BASELINE")
         return out
-    anchor = Path(baseline)
-    baseline = (anchor.relative_to(root.resolve()) if anchor.is_absolute() else anchor).as_posix()
-    stage = subprocess.check_output(["git", "write-tree"], cwd=root, text=True).strip() + ":"
-    command = ["git", "diff", "HEAD", stage[:-1], "--name-only", "--no-renames", "-z"]
-    paths = set(subprocess.check_output(command, cwd=root).decode().split("\0")) - {""}
-    fixed = {baseline, "config/package-architecture.json", *(p for p, _ in TARGETS.values())}
-    blobs = read_blobs(["HEAD:" + baseline, *(stage + p for p in paths | fixed)], root)
     data = {p: json.loads(blobs[stage + p]) for p in fixed}
     base = json.loads(blobs.get("HEAD:" + baseline, blobs[stage + baseline]))
-    if (
-        "HEAD:" + baseline not in blobs
-        and base["source_sha"]
-        != subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
-    ):
+    try:
+        legacy = ImportHygiene.model_validate(data[legacy_path]).legacy_lazy_imports
+    except ValueError as error:
+        return [*out, f"import-hygiene: {error}"]
+    prior = json.loads(blobs.get("HEAD:" + legacy_path, "{}")).get("legacy_lazy_imports", legacy)
+    out.extend(
+        f"import-hygiene: retained import allowance grew {key}"
+        for key, count in legacy.items()
+        if count > prior.get(key, 0)
+    )
+    if "HEAD:" + baseline not in blobs and base["source_sha"] != inputs.objects["HEAD"]:
         return [f"registry-census: {baseline} must name the reviewed bootstrap source SHA."]
-    facts = base.get("by_file", {}).copy()
-    for path in sorted(p for p in paths if p.startswith("src/") and p.endswith(".py")):
-        if stage + path in blobs:
-            facts[path] = _census_file_facts(path, blobs[stage + path])
-        else:
-            facts.pop(path, None)
+    facts: dict[str, Any] = {}
+    description_errors, undescribed = _description_census(
+        inputs, data, base, staged_moves(root, pairs=inputs.changes) if moves is None else moves
+    )
+    out.extend(description_errors)
+    for path in sorted(sources):
+        facts[path] = _census_file_facts(path, blobs[stage + path])
     gaps = _census_gaps(facts, data, blobs[stage + "config/package-architecture.json"])
-    for key in sorted(gaps.keys() - base.get("automatic_gaps", {}).keys()):
-        kind, item = key.split("|", 1)
-        registry, member = TARGETS[kind]
-        form = f"{member}[{item!r}]"
-        if kind == "nouns/no_owner":
-            form = f"packages[] with package_id and physical_namespace_target={item!r}"
-        out.append(f"Unregistered {kind} {item} {gaps[key]}; add {registry} {form}.")
+
+    def check_imports(prefix: str = stage) -> list[str]:
+        checked = {p for p in facts if p.startswith("src/") and p.endswith(".py")}
+        if prefix != stage:
+            checked = {k.split("::", 1)[0] for k in legacy}
+        elif not paths & {"config/package-architecture.json", legacy_path}:
+            checked.intersection_update(paths)
+        blobs = inputs.view(prefix + p for p in checked)
+        sources = {
+            p[4:-3].replace("/", "."): blobs[prefix + p] for p in checked if prefix + p in blobs
+        }
+        known = {p[4:-3].replace("/", ".").removesuffix(".__init__") for p in facts}
+        policy = PackageArchitectureRegistry.model_validate(
+            data["config/package-architecture.json"] | {"legacy_lazy_imports": legacy}
+        )
+        return [
+            *(f"stale-legacy-import {p}" for p in checked if prefix + p not in blobs),
+            *import_contract_violations(sources, registry=policy, modules=known),
+        ]
+
+    out.extend(check_imports())
+    if "HEAD:" + legacy_path not in blobs:
+        out.extend(p for p in check_imports("HEAD:") if p.startswith("stale-legacy-import"))
     nouns = sorted(data[TARGETS["nouns"][0]]["nouns"])
-    expected = {"by_file": facts, "automatic_gaps": gaps, "registered_nouns": nouns} | catalog
-    if not out and any(data[baseline].get(key) != value for key, value in expected.items()):
-        if update:
-            (root / baseline).write_text(
-                json.dumps(data[baseline] | expected, indent=2) + "\n", encoding="utf-8"
-            )
-        else:
-            removed = ", ".join(
-                sorted(
-                    (base.get("automatic_gaps", {}).keys() - gaps.keys())
-                    | (set(base.get("registered_nouns", [])) - set(nouns))
+    expected = {
+        "by_file": facts,
+        "automatic_gaps": gaps,
+        "registered_nouns": nouns,
+        "legacy_lazy_imports": legacy,
+        "undescribed_registry_entries": undescribed,
+    } | catalog
+
+    def sync_baseline() -> None:
+        for key in sorted(gaps.keys() - base.get("automatic_gaps", {}).keys()):
+            kind, item = key.split("|", 1)
+            registry, member = TARGETS[kind]
+            form = f"{member}[{item!r}]"
+            if kind == "nouns/no_owner":
+                form = f"packages[] with package_id and physical_namespace_target={item!r}"
+            out.append(f"Unregistered {kind} {item} {gaps[key]}; add {registry} {form}.")
+        if not out and any(data[baseline].get(key) != value for key, value in expected.items()):
+            if update:
+                (root / baseline).write_text(
+                    json.dumps(data[baseline] | expected, indent=2) + "\n", encoding="utf-8"
                 )
-            )
-            out.append(
-                f"Sync {baseline} (removed: {removed or 'none'}) with --staged --update; stage it."
-            )
+            else:
+                removed = ", ".join(
+                    sorted(
+                        (base.get("automatic_gaps", {}).keys() - gaps.keys())
+                        | (set(base.get("registered_nouns", [])) - set(nouns))
+                    )
+                )
+                out.append(
+                    f"Sync {baseline} (removed: {removed or 'none'}) "
+                    "with --staged --update; stage it."
+                )
+
+    sync_baseline()
     return out
 
 

@@ -351,6 +351,6 @@ def probe(
         )
         for r in rows
     )
-    print(f"{len(roots)} workspaces, {len(rows)} reads, {elapsed:.0f} s")
+    print(f"{len(roots)} workspaces, {len(rows)} reads, {elapsed:.0f} s")  # noqa: T201  # read probe
     for (kind, op, v), n in sorted(table.items()):
-        print(f"  {n:4}  {kind:17} {op:20} {v}")
+        print(f"  {n:4}  {kind:17} {op:20} {v}")  # noqa: T201  # read probe

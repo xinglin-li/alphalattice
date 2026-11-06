@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from alphalattice.control.workspace_runtime.core import Workspace
 from alphalattice.kernel.knowledge.hybrid import (
@@ -261,7 +261,7 @@ class AlternativeEvidenceRetrievalService:
         after embedding still shows the passages it cost, and query embeddings
         and cross-encoder pairs -- which no build count carries -- are here.
         """
-        from alphalattice.kernel.knowledge._embeddings import MODEL_WORK
+        from alphalattice.kernel.knowledge.runtime import MODEL_WORK
 
         return {
             "published_passage_embedding_passes": int(self.passage_embedding_pass_count),
@@ -476,8 +476,6 @@ class AlternativeEvidenceRetrievalService:
 
 
 def _snapshot_id(value: str) -> Any:
-    from uuid import UUID
-
     return UUID(value)
 
 

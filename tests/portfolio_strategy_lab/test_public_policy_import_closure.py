@@ -207,6 +207,32 @@ def test_the_local_application_service_reaches_no_solver_or_masked_lane() -> Non
     assert result.returncode == 0, result.stderr
 
 
+def test_the_host_starts_without_its_heavy_libraries_or_its_strategy_source_hash() -> None:
+    """The Host entry loads no heavy numerical library and computes no strategy source hash
+    while it starts; a library first loaded inside a thread limit, the Risk scope's included,
+    still runs at that limit."""
+
+    result = _probe(
+        "import sys; "
+        "import alphalattice.control.product_host.composition.local_web_session; "
+        "from alphalattice.investment.portfolio_strategy_lab.policies import installed_strategies; "
+        "heavy = {'sklearn', 'cvxpy'}; "
+        "loaded = sorted(n for n in sys.modules if n.split('.')[0] in heavy or n == 'scipy.stats');"
+        "assert not loaded, loaded; "
+        "assert not installed_strategies.installed_strategy_source_hash.cache_info().currsize\n"
+        "from alphalattice.kernel.shared_kernel import environment\n"
+        "from alphalattice.investment.risk_research.estimators import covariance\n"
+        "with covariance.risk_numerical_thread_policy():\n"  # cold: LedoitWolf's first estimate
+        "    import sklearn.covariance\n"
+        "    risk = {pool['num_threads'] for pool in environment.numerical_thread_pools()}\n"
+        "with environment.numerical_thread_limit(1):\n"
+        "    import sklearn.linear_model, lightgbm, cvxpy; from scipy import stats\n"
+        "    threads = {pool['num_threads'] for pool in environment.numerical_thread_pools()}\n"
+        "assert risk == threads == {1}, (risk, threads)"
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_the_control_catalog_alone_reaches_no_solver_or_masked_lane() -> None:
     """Control: Control catalog construction excludes solvers and masked research lanes."""
 

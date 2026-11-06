@@ -1,5 +1,5 @@
 # Read a result's temporal statement
-Date: 2026-10-08
+Last checked: 2026-10-22 against 0.2.3
 
 Read the Panel's temporal marks with evaluation and input history. Later data never improves an earlier sealed result. Missing evidence stays `NOT_RECORDED`; infer no historical statement from a result date.
 

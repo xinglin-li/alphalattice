@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
@@ -16,8 +17,14 @@ def setup_done(root: Path) -> Iterator[dict[str, str]]:
     stub = root / "setup-done"
     (stub / "fastembed").mkdir(parents=True, exist_ok=True)
     (stub / "fastembed" / "__init__.py").write_text("", encoding="utf-8")
+    launcher = shutil.which("alphalattice", path=str(Path(sys.executable).parent))
+    if launcher is None:
+        raise RuntimeError("setup_done: the active environment has no alphalattice launcher")
+    shutil.copy2(launcher, stub / Path(launcher).name)
     env = {
-        "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", ""),
+        "PATH": os.pathsep.join(
+            (str(stub), str(Path(sys.executable).parent), os.environ.get("PATH", ""))
+        ),
         "PYTHONPATH": str(stub) + os.pathsep + os.environ.get("PYTHONPATH", ""),
     }
     with ExitStack() as stack:

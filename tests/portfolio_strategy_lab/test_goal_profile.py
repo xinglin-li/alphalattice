@@ -9,6 +9,7 @@ import pytest
 
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.publication.goals import session_work_declaration
+from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.runner import TaskHeartbeatReader
 from alphalattice.control.task_control.timing import record_stage_spans, stage_spans_path
 from alphalattice.interface.local_application.cli_contract import (
@@ -19,6 +20,7 @@ from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.shared_kernel import clocks
 from alphalattice.kernel.shared_kernel.clocks import ReplayClock
 from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.workspace_task_runner.task_control_support import task_contract
@@ -86,28 +88,46 @@ def _profile_scene(live, monkeypatch, kind, namespace, stages=1, close=True, exi
     return client, goal, registry, runtime
 
 
-def _correlated_clock(anchor, system):
+def _correlated_clock(anchor, system, quantized=False):
     clock = Mock(return_value=anchor)
+    offset = [0.0]
 
     def elapsed():
         return (clock.return_value - anchor).total_seconds()
 
-    replay = ReplayClock(anchor, ticks=elapsed, wall=lambda: system + timedelta(seconds=elapsed()))
+    replay = ReplayClock(
+        anchor,
+        ticks=lambda: (elapsed() // (1 / 64)) * (1 / 64) if quantized else elapsed(),
+        wall=lambda: system + timedelta(seconds=elapsed() + offset[0]),
+    )
+    offset[0] = 1 / 1024 if quantized else 0
+    clock.wall_offset = offset
     clock.reference, clock.correlation = replay.reference, replay.correlation
     clock.phase_metadata = replay.phase_metadata
     return clock
 
 
-@pytest.mark.parametrize("fault", [None, "missing", "drift"])
+@pytest.mark.parametrize("fault", [None, "missing", "drift", "quantized", "physical_drift"])
+@pytest.mark.parametrize("terminal", ["GOAL_ABANDON", "GOAL_SUBMIT"])
 @pytest.mark.parametrize("live", [_correlated_clock(NOW, NOW + timedelta(days=30))], indirect=True)
-def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(live, monkeypatch, fault):
-    """Real served reads align active and closed windows; missing or drifting origins stay gaps."""
+def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(
+    live, monkeypatch, fault, terminal
+):
+    """Served terminal returns bound both closures despite later refused traffic or clock faults."""
     system = NOW + timedelta(days=30)
     client, goal, _, _ = _profile_scene(live, monkeypatch, "OPERATIONS", "portfolio", close=False)
     active = client.request({"operation": "GOAL_PROFILE", "goal_id": goal})
     assert active["window"]["end"] == (system + timedelta(seconds=12)).isoformat()
     live.stop()
-    clock = _correlated_clock(NOW + timedelta(days=7), system + timedelta(seconds=60))
+    if fault in {"quantized", "physical_drift"}:
+        monkeypatch.setattr(
+            clocks, "get_clock_info", lambda _: Mock(resolution=1 / 64), raising=False
+        )
+    clock = _correlated_clock(
+        NOW + timedelta(days=7), system + timedelta(seconds=60), quantized=fault == "quantized"
+    )
+    if fault == "physical_drift":
+        clock.wall_offset[0] = 1
     if fault == "missing":
         clock.reference = "missing-clock"
         clock.phase_metadata = lambda: {"clock_ref": clock.reference, "clock_drift": False}
@@ -122,22 +142,46 @@ def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(live, 
     second.start()
     try:
         client, _, _, _ = _profile_scene(
-            second, monkeypatch, "OPERATIONS", "portfolio", existing_goal=goal
+            second, monkeypatch, "OPERATIONS", "portfolio", close=False, existing_goal=goal
         )
+        closing = {"operation": terminal, "goal_id": goal}
+        if terminal == "GOAL_ABANDON":
+            closing["change_reason"] = "End fixture"
+        else:
+            closing["goal_submission"] = {
+                "outcome": "NOT_ACHIEVED",
+                "summary": "Clock fixture kept no scientific publication",
+                "criteria": [dict(criterion_id="recorded", answer="NOT_ASSESSED", note="Fixture")],
+            }
+        closed = client.request(closing)
+        assert closed["status"] == ("COMPLETE" if terminal == "GOAL_SUBMIT" else "GOAL_SAVED")
         result = client.request({"operation": "GOAL_PROFILE", "goal_id": goal})
         assert result == client.request({"operation": "GOAL_PROFILE", "goal_id": goal})
         (live.workspace.parent / "clock-profile.json").write_text(
             json.dumps(result), encoding="utf-8"
         )
-        if fault:
-            assert f"CLOCK_MAPPING_{fault.upper()}" in {g["code"] for g in result["gaps"]}
+        if fault in {"missing", "drift", "physical_drift"}:
+            code = "CLOCK_MAPPING_MISSING" if fault == "missing" else "CLOCK_MAPPING_DRIFT"
+            assert code in {g["code"] for g in result["gaps"]}
             assert result["coverage"]["status"] == "PARTIAL"
         else:
+            assert "CLOCK_MAPPING_DRIFT" not in {g["code"] for g in result["gaps"]}
             assert result["window"]["start"] == system.isoformat()
             assert result["window"]["end"] == (system + timedelta(seconds=72)).isoformat()
+            assert result["window"]["source"] == "GOAL_TERMINAL_RETURN"
+            assert "CLOCK_WINDOW_UNOBSERVED" not in {g["code"] for g in result["gaps"]}
             assert result["coverage"]["host_seconds"] == 18
             assert result["coverage"]["phase_seconds"] == 14
             assert result["clock_domains"] == ["UTC"]
+            if fault == "quantized":
+                assert clock.correlation.get("resolution_seconds") == dict(
+                    time=1 / 64, monotonic=1 / 64
+                )
+            clock.return_value += timedelta(seconds=20)
+            assert client.request(closing)["status"] == "REFUSED"
+            assert second.operations.goals.store.head(UUID(goal)).goal_hash == closed["goal_hash"]
+            later = client.request({"operation": "GOAL_PROFILE", "goal_id": goal})
+            assert later["window"] == result["window"]
     finally:
         second.stop()
 
@@ -148,6 +192,9 @@ def test_host_profile_scopes_unions_reads_once_and_writes_nothing(
     live, monkeypatch, kind, namespace
 ):
     """A served read scopes the ledger and phase owner once and preserves every stored input."""
+    write_queue_setting(
+        live.workspace / "runtime", 2, chosen_by="HUMAN", chosen_at=NOW, field="tasks_waiting"
+    )
     client, goal, registry, runtime = _profile_scene(live, monkeypatch, kind, namespace)
     _profile_scene(live, monkeypatch, "OPERATIONS", "foreign")
     monkeypatch.setattr(live.operations, "heartbeats", TaskHeartbeatReader(runtime, runtime))

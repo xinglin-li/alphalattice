@@ -27,6 +27,9 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
     read_research_workspace_manifest,
 )
+from alphalattice.control.product_host.research_authoring.execution import (
+    _sector_by_listing_id,
+)
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     confined,
     factor_input_paths,
@@ -793,10 +796,6 @@ def book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
     so the answer is kept per book source and session.
     Absent, with the owner's reason, when any hop fails; nothing is guessed.
     """
-    from alphalattice.control.product_host.research_authoring.execution import (
-        _sector_by_listing_id,
-    )
-
     source = body.get("portfolio_source") or {}
     binding, snapshot = source.get("input_binding_hash"), source.get("panel_snapshot_hash")
     revision, listings = source.get("universe_revision"), source.get("ordered_listing_ids")

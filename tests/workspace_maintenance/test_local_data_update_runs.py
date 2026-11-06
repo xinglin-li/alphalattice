@@ -93,7 +93,7 @@ def ten_sector(tmp_path_factory):
         return {}
 
     seed, _metadata = session_workspace(tmp_path_factory, "maintenance_ten_sector", build)
-    return copy_workspace(seed, tmp_path_factory.mktemp("ten-sector") / "workspace")
+    return seed  # consumers copy the immutable seed before writing
 
 
 def _bytes(root: Path):

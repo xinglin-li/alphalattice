@@ -20,16 +20,13 @@ import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Thread
 from typing import Any
 from zipfile import ZipFile
 
 import pytest
 
-from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.interface.local_application.cli_contract import refusal_words, worded
 
 
 def _blocked(tmp_path: Path) -> Path:
@@ -48,7 +45,7 @@ def _refusal(capsys: pytest.CaptureFixture[str]) -> dict[str, str]:
 
 
 def test_the_pack_installer_refuses_an_unwritable_store_by_name(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """regression (V539, RR5d's FINDING 20:06): an unwritable model store is refused by name
     before any download, `--store <directory>` the way on, outside the checkout and any
@@ -77,6 +74,37 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
     assert installer.main(["--store", str(workspace / "models"), *arguments]) == 2
     assert _refusal(capsys)["failure_code"] == "model_store.store_inside_workspace"
     assert not (workspace / "models").exists()
+    for view in (("--vie", "summary"), ("--vie=summary",)):
+        assert installer.main(["--status", "--store", str(tmp_path / "missing"), *view]) == 0
+        command = json.loads(capsys.readouterr().out)["full_answer"]["command"]
+        replay = subprocess.run(command, capture_output=True, check=False)
+        assert replay.returncode == 0 and "representation" not in json.loads(replay.stdout)
+    if (
+        sys.platform != "win32"
+    ):  # a path past macOS's and Linux's length limits is refused before the status
+        pytest.skip("Windows-only long-path status; earlier refusal checks ran")
+    store = tmp_path.joinpath(*(["中" * 48] * 120))
+    line = ["--status", "--store", str(store)]
+    assert installer.main(line) == 0
+    whole = capsys.readouterr().out.rstrip("\n").encode()
+    saved = tmp_path / "pack-status.json"
+    read = [*line, "--view", "summary", "--output", str(saved)]
+    assert installer.main(read) == 0
+    printed = capsys.readouterr().out
+    summary = json.loads(printed)
+    assert len(printed.encode()) <= 32768 and not store.exists()
+    assert summary["full_answer"] == {"file": str(saved.resolve())}
+    assert saved.read_bytes() == whole
+    assert installer.main(read) == 2
+    assert _refusal(capsys)["failure_code"] == "local_client.output_exists_choose_another_path"
+    assert saved.read_bytes() == whole
+    monkeypatch.setattr(
+        installer.model_store, "hub_fetcher", lambda **_: pytest.fail("unexpected install")
+    )
+    with pytest.raises(SystemExit):
+        installer.main([*arguments, "--store", str(tmp_path / "new-store"), "--view", "summary"])
+    capsys.readouterr()
+    assert not (tmp_path / "new-store").exists()
 
 
 def test_the_retrieval_environment_setup_answers_its_failure_in_words(
@@ -98,29 +126,19 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
             "click-8.5.0.dist-info/RECORD": "",
         }.items():
             wheel.writestr(name, content)
-    server = ThreadingHTTPServer(
-        ("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(tmp_path))
-    )
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        with monkeypatch.context() as local:
-            subprocess.run(["uv", "venv", "--python", sys.executable, str(venv)], check=True)
-            python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-            pins = tmp_path / "requirements-retrieval.lock"
-            pins.write_text("click==8.5.0\n", encoding="utf-8")
-            local.setattr(setup, "PLAYPEN", tmp_path)
-            local.setattr(setup, "ADDITIONS", pins)
-            local.setattr(sys, "executable", str(python))
-            local.setenv("UV_NO_INDEX", "1")
-            local.setenv("UV_FIND_LINKS", f"http://127.0.0.1:{server.server_port}/")
-            local.setattr(sys, "argv", setup.fill_command()[2:])
-            assert setup.main() == 0
-            subprocess.run([str(python), "-c", "import click"], check=True)
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
+    with monkeypatch.context() as local:
+        subprocess.run(["uv", "venv", "--python", sys.executable, str(venv)], check=True)
+        python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        pins = tmp_path / "requirements-retrieval.lock"
+        pins.write_text("click==8.5.0\n", encoding="utf-8")
+        local.setattr(setup, "PLAYPEN", tmp_path)
+        local.setattr(setup, "ADDITIONS", pins)
+        local.setattr(sys, "executable", str(python))
+        local.setenv("UV_NO_INDEX", "1")
+        local.setenv("UV_FIND_LINKS", str(tmp_path))
+        local.setattr(sys, "argv", setup.fill_command()[2:])
+        assert setup.main() == 0
+        subprocess.run([str(python), "-c", "import click"], check=True)
     capsys.readouterr()
 
     def exits(command: tuple[str, ...], **_options: object) -> None:
@@ -142,6 +160,66 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
     monkeypatch.setattr(setup.subprocess, "run", missing)
     assert setup.main() == 2
     assert _refusal(capsys)["failure_code"] == "retrieval_environment.uv_unavailable"
+
+
+@pytest.mark.proves("local_application.retrieval_setup_uses_writable_scratch")
+@pytest.mark.proves("local_application.native_tool_setup_uses_writable_scratch")
+@pytest.mark.skipif(os.name != "nt", reason="Windows executable temp handling")
+def test_retrieval_setup_uses_checkout_scratch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts import create_retrieval_environment as setup
+
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "pyproject.toml").touch()
+    (checkout / "uv.lock").touch()
+    seen = []
+    blocked_temp = tmp_path / "not-a-directory"
+    blocked_temp.write_text("not a temporary directory", encoding="utf-8")
+    for name in ("TEMP", "TMP", "TMPDIR"):
+        monkeypatch.setenv(name, str(blocked_temp))
+    assert setup.fill_command()[1:3] == [
+        "-m",
+        "alphalattice.interface.local_application.retrieval_environment",
+    ]
+
+    def checked(_command: tuple[str, ...], **options: Any) -> None:
+        env = options["env"]
+        temporary = Path(env["TEMP"])
+        assert temporary.is_dir() and temporary.is_relative_to(checkout)
+        assert env["TMP"] == env["TEMP"] and env["TMPDIR"] == env["TEMP"]
+        seen.append(temporary)
+
+    with monkeypatch.context() as local:
+        local.setattr(setup, "PLAYPEN", checkout)
+        local.setattr(setup, "LOCK", checkout / "uv.lock")
+        local.setattr(setup, "ENVIRONMENT", checkout / ".venv-retrieval")
+        local.setattr(setup.subprocess, "run", checked)
+        setup.create(offline=True)
+        assert len(seen) == 2 and seen[0] == seen[1] and not seen[0].exists()
+        assert os.environ["TEMP"] == str(blocked_temp)
+
+        def failed(command: tuple[str, ...], **options: Any) -> None:
+            checked(command, **options)
+            raise subprocess.CalledProcessError(2, command)
+
+        local.setattr(setup.subprocess, "run", failed)
+        with pytest.raises(subprocess.CalledProcessError):
+            setup.create(offline=True)
+    assert len(seen) == 3 and not seen[-1].exists()
+
+    from alphalattice.interface.local_application import native_setup
+
+    with monkeypatch.context() as local:
+        local.setattr(native_setup, "ROOT", checkout)
+        local.setattr(native_setup.subprocess, "run", checked)
+        assert native_setup._install_tool()["status"] == "TOOL_INSTALLED"
+        assert len(seen) == 7 and len(set(seen[3:])) == 1 and not seen[3].exists()
+        local.setattr(native_setup.subprocess, "run", failed)
+        with pytest.raises(subprocess.CalledProcessError):
+            native_setup._install_tool()
+    assert len(seen) == 8 and not seen[-1].exists()
 
 
 def test_the_local_web_build_answers_an_asset_it_cannot_write(
@@ -229,7 +307,17 @@ def test_a_backup_refuses_an_unwritable_root_by_name_and_words_it(tmp_path: Path
     with pytest.raises(WorkspaceBackupError) as refused:
         backups.create(reason="REQUEST")
     code = "workspace_backup.root_unwritable"
-    assert located_failure(refused.value, "workspace_backup.refused") == {"failure_code": code}
+    assert located_failure(refused.value, "workspace_backup.refused") == {
+        "failure_code": code,
+        "error_info": {
+            "category": "FAILED_PRECONDITION",
+            "domain": "workspace_backup",
+            "reason": code,
+            "message_id": "protocol.error.summary",
+            "message": str(worded("protocol.error.summary")).format(reason=code),
+            "field_violations": [],
+        },
+    }
     words = refusal_words(code)
     assert "ALPHALATTICE_BACKUP_ROOT" in words["detail"]
     assert words["next_action"] == "SERVE_WITH_A_WRITABLE_BACKUP_ROOT"
@@ -295,25 +383,21 @@ def test_the_evidence_setup_preserves_its_cause_and_offers_a_read_only_way_on(
 
     monkeypatch.setattr(setup, "materialize", refused)
     binding = "a" * 64
-    assert (
-        setup.main(
-            [
-                "--workspace",
-                str(tmp_path),
-                "--acquire-sec",
-                "--entities",
-                "FIXTURE",
-                "--research-input-id",
-                "fixture-input",
-                "--research-input-hash",
-                binding,
-                "--network-consent",
-                "--install",
-            ]
-        )
-        == 2
-    )
-    payload = json.loads(capsys.readouterr().out)
+    line = [
+        "--workspace",
+        str(tmp_path),
+        "--acquire-sec",
+        "--entities",
+        "FIXTURE",
+        "--research-input-id",
+        "fixture-input",
+        "--research-input-hash",
+        binding,
+        "--network-consent",
+    ]
+    assert setup.main([*line, "--install"]) == 2
+    whole = capsys.readouterr().out.rstrip("\n").encode()
+    payload = json.loads(whole)
     assert payload["failure_code"] == code
     assert payload["detail"] and payload["next_action"]
     assert payload["causes"][0]["kind"] == kind
@@ -334,6 +418,17 @@ def test_the_evidence_setup_preserves_its_cause_and_offers_a_read_only_way_on(
         assert payload["causes"][0]["code"] == code
         words = refusal_words(code) or refusal_words(f"setup.owner_refused:{code}")
         assert payload["detail"] == words["detail"]
+    saved = tmp_path / "preflight.json"
+    assert setup.main([*line, "--preflight", "--view", "summary", "--output", str(saved)]) == 2
+    printed = capsys.readouterr().out
+    summary = json.loads(printed)
+    assert len(printed.encode()) <= 32768
+    assert summary["full_answer"] == {"file": str(saved.resolve())}
+    assert summary["next_requests"] == payload["next_requests"]
+    assert saved.read_bytes() == whole
+    with pytest.raises(SystemExit):
+        setup.main([*line, "--install", "--view", "summary"])
+    capsys.readouterr()
 
 
 def test_the_evidence_setup_names_http_status_without_response_or_request_secrets(
@@ -656,3 +751,270 @@ def test_setup_validation_and_asset_check_failures_have_words(monkeypatch, capsy
     assert payload["causes"][0]["exit_code"] == 1
     assert payload["detail"] and payload["next_action"]
     assert "NEVER-PRINT-ME" not in json.dumps(payload)
+
+
+# The setup entry is exercised only against synthetic offline installations.
+_PW_VERSIONS = {
+    "@playwright/cli": "0.1.19",
+    "playwright": "1.63.0-alpha-2026-08-31",
+    "playwright-core": "1.63.0-alpha-2026-08-31",
+}
+
+
+def _pw_project(
+    tmp_path: Path, *, ancestor: bool = False
+) -> tuple[Path, Path, Path, dict[str, str]]:
+    project, target = tmp_path / "project", tmp_path / "protected"
+    scripts = project / "scripts"
+    scripts.mkdir(parents=True)
+    target.mkdir()
+    (target / "marker").write_text("untouched", encoding="utf-8")
+    if ancestor:
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(project / "third_party"))
+    tool = project / "third_party" / "playwright"
+    tool.mkdir(parents=True)
+    shutil.copyfile(
+        Path(__file__).resolve().parents[2] / "scripts/playwright.ps1", scripts / "playwright.ps1"
+    )
+    package = {"name": "offline-fixture", "version": "1.0.0", "dependencies": _PW_VERSIONS}
+    (tool / "package.json").write_text(json.dumps(package), encoding="utf-8")
+    (tool / "package-lock.json").write_text("{}", encoding="utf-8")
+    env = dict(
+        os.environ,
+        npm_config_offline="true",
+        npm_config_cache=str(tmp_path / "npm-cache"),
+        NO_UPDATE_NOTIFIER="1",
+    )
+    return project, tool, target, env
+
+
+def _pw_stub_npm(tmp_path: Path, env: dict[str, str], operation: str = "") -> Path:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    marker = tmp_path / "npm-invoked"
+    env.update(PATH=str(bin_dir) + os.pathsep + env["PATH"], PW_TEST_NPM_MARKER=str(marker))
+    (bin_dir / "npm.cmd").write_text(
+        '@echo off\nif "%1"=="--version" (echo 10.0.0& exit /b 0)\n'
+        'echo invoked>>"%PW_TEST_NPM_MARKER%"\n' + operation + "\nexit /b 0\n",
+        encoding="utf-8",
+    )
+    return marker
+
+
+def _pw_call(project: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(project / "scripts/playwright.ps1"),
+            *args,
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+
+
+def _pw_installed(tool: Path, *, installer: str = "throw Error('unexpected installer')") -> None:
+    modules = tool / "node_modules"
+    for name, version in _PW_VERSIONS.items():
+        folder = modules / name
+        folder.mkdir(parents=True)
+        (folder / "package.json").write_text(json.dumps({"version": version}), encoding="utf-8")
+    (modules / "@playwright/cli/playwright-cli.js").write_text(
+        "console.log('synthetic cli ' + process.argv.slice(2).join(' '))", encoding="utf-8"
+    )
+    (modules / "playwright/cli.js").write_text(installer, encoding="utf-8")
+    (modules / "playwright-core/browsers.json").write_text(
+        json.dumps(
+            {
+                "browsers": [
+                    {"name": "chromium-headless-shell", "revision": "123", "browserVersion": "123"}
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _pw_browser(tool: Path) -> None:
+    executable = (
+        tool
+        / ".browsers/chromium_headless_shell-123"
+        / "chrome-headless-shell-win64/chrome-headless-shell.exe"
+    )
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"synthetic browser, never executed")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell and junction boundary")
+@pytest.mark.proves("local_application.playwright_setup_refuses_unowned_installation_aliases")
+@pytest.mark.parametrize(
+    "case",
+    [
+        "node",
+        "browser",
+        "nested",
+        "ancestor",
+        "dangling",
+        "unreadable",
+        "node-file",
+        "browser-file",
+    ],
+)
+def test_playwright_setup_refuses_unsafe_installation_paths(tmp_path: Path, case: str) -> None:
+    import _winapi
+
+    project, tool, target, env = _pw_project(tmp_path, ancestor=case in {"ancestor", "dangling"})
+    npm_marker = _pw_stub_npm(tmp_path, env)
+    exclusive: int | None = None
+    if case in {"node", "browser", "nested"}:
+        link = tool / (".browsers" if case == "browser" else "node_modules")
+        if case == "nested":
+            link.mkdir()
+            link = link / "foreign"
+        _winapi.CreateJunction(str(target), str(link))
+    elif case in {"node-file", "browser-file"}:
+        (tool / ("node_modules" if case == "node-file" else ".browsers")).write_text(
+            "not a directory", encoding="utf-8"
+        )
+    elif case == "dangling":
+        moved = tmp_path / "protected-moved"
+        target.rename(moved)
+        target = moved
+    elif case == "unreadable":
+        blocked = tool / "node_modules/unreadable"
+        blocked.parent.mkdir()
+        blocked.write_text("synthetic", encoding="utf-8")
+        exclusive = _winapi.CreateFile(str(blocked), 0x80000000, 0, 0, 3, 0x80, 0)
+    try:
+        result = _pw_call(project, env, "setup")
+    finally:
+        if exclusive is not None:
+            _winapi.CloseHandle(exclusive)
+    assert not npm_marker.exists()
+    assert result.returncode == 2, result.stderr
+    assert "cannot be verified" in result.stderr
+    assert (target / "marker").read_text(encoding="utf-8") == "untouched"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell and junction boundary")
+@pytest.mark.proves("local_application.playwright_setup_refuses_unowned_installation_aliases")
+def test_playwright_setup_rechecks_after_npm_before_browser_install(tmp_path: Path) -> None:
+    project, tool, target, env = _pw_project(tmp_path)
+    marker = tmp_path / "browser-installer"
+    env.update(PW_TEST_TARGET=str(target), PW_TEST_TOOL=str(tool), PW_TEST_INSTALLER=str(marker))
+    _pw_installed(
+        tool, installer="require('fs').writeFileSync(process.env.PW_TEST_INSTALLER, 'invoked')"
+    )
+    npm = _pw_stub_npm(
+        tmp_path, env, 'mklink /J "%PW_TEST_TOOL%\\.browsers" "%PW_TEST_TARGET%" >nul'
+    )
+    result = _pw_call(project, env, "setup")
+    assert npm.exists() and not marker.exists()
+    assert result.returncode == 2, result.stderr
+    assert "cannot be verified" in result.stderr
+    assert (target / "marker").read_text(encoding="utf-8") == "untouched"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell and junction boundary")
+@pytest.mark.proves("local_application.playwright_setup_refuses_unowned_installation_aliases")
+def test_playwright_setup_installs_offline_into_a_physical_directory(tmp_path: Path) -> None:
+    import base64
+    import hashlib
+    import io
+    import tarfile
+
+    project, tool, target, env = _pw_project(tmp_path)
+    _pw_browser(tool)
+    package = json.loads((tool / "package.json").read_text(encoding="utf-8"))
+    entries: dict[str, object] = {"": package}
+    for name, version in _PW_VERSIONS.items():
+        archive = tmp_path / (name.replace("/", "-").replace("@", "") + ".tgz")
+        files = {"package.json": json.dumps({"name": name, "version": version}).encode()}
+        if name == "@playwright/cli":
+            files["playwright-cli.js"] = b"console.log('synthetic cli')"
+        elif name == "playwright":
+            files["cli.js"] = b"throw Error('unexpected download')"
+        else:
+            files["browsers.json"] = json.dumps(
+                {
+                    "browsers": [
+                        {
+                            "name": "chromium-headless-shell",
+                            "revision": "123",
+                            "browserVersion": "123",
+                        }
+                    ]
+                }
+            ).encode()
+        with tarfile.open(archive, "w:gz") as tar:
+            for name_in_archive, data in files.items():
+                info = tarfile.TarInfo("package/" + name_in_archive)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        integrity = (
+            "sha512-" + base64.b64encode(hashlib.sha512(archive.read_bytes()).digest()).decode()
+        )
+        entries["node_modules/" + name] = {
+            "version": version,
+            "resolved": "file:" + os.path.relpath(archive, tool).replace("\\", "/"),
+            "integrity": integrity,
+        }
+    lock = {
+        "name": package["name"],
+        "version": package["version"],
+        "lockfileVersion": 3,
+        "requires": True,
+        "packages": entries,
+    }
+    (tool / "package-lock.json").write_text(json.dumps(lock), encoding="utf-8")
+    for _ in range(2):
+        result = _pw_call(project, env, "setup")
+        assert result.returncode == 0, result.stderr
+        assert "synthetic cli" in result.stdout
+    assert (tool / "node_modules/playwright-core/browsers.json").is_file()
+    assert (target / "marker").read_text(encoding="utf-8") == "untouched"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell and junction boundary")
+@pytest.mark.proves("local_application.playwright_setup_refuses_unowned_installation_aliases")
+@pytest.mark.parametrize("action", ["check", "run"])
+def test_playwright_check_and_run_keep_their_physical_installation_behavior(
+    tmp_path: Path, action: str
+) -> None:
+    project, tool, _, env = _pw_project(tmp_path)
+    _pw_installed(tool)
+    _pw_browser(tool)
+    npm = _pw_stub_npm(tmp_path, env)
+    result = _pw_call(project, env, action, *(["snapshot"] if action == "run" else []))
+    assert result.returncode == 0, result.stderr
+    assert "synthetic cli" in result.stdout
+    assert not npm.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell and junction boundary")
+@pytest.mark.proves("local_application.playwright_setup_refuses_unowned_installation_aliases")
+def test_playwright_setup_accepts_an_absent_browser_directory(tmp_path: Path) -> None:
+    project, tool, target, env = _pw_project(tmp_path)
+    installer = (
+        "const fs = require('fs'), path = require('path'); "
+        "const dir = path.join(process.env.PLAYWRIGHT_BROWSERS_PATH, "
+        "'chromium_headless_shell-123', 'chrome-headless-shell-win64'); "
+        "fs.mkdirSync(dir, {recursive: true}); "
+        "fs.writeFileSync(path.join(dir, 'chrome-headless-shell.exe'), 'synthetic');"
+    )
+    _pw_installed(tool, installer=installer)
+    npm = _pw_stub_npm(tmp_path, env)
+    result = _pw_call(project, env, "setup")
+    assert result.returncode == 0, result.stderr
+    assert npm.exists() and "synthetic cli" in result.stdout
+    assert (target / "marker").read_text(encoding="utf-8") == "untouched"

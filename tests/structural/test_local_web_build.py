@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 from scripts import build_local_web_ui
 
+from tests.structural.pytest_support import child_environment
+
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUTS = (
     "workbench.html",
@@ -147,19 +149,23 @@ def _test_checkout(
         encoding="utf-8",
         newline="\n",
     )
-    env = {key: value for key, value in os.environ.items() if not key.startswith("PYTEST_")}
-    env.update(
+    env = child_environment(
         PYTHONPATH=os.pathsep.join((str(checkout), str(ROOT / "src"))),
         PYTHONIOENCODING="utf-8",
         PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
-        ALPHALATTICE_NETWORK_DISABLED="1",
     )
     return checkout, env
 
 
 @pytest.mark.parametrize("state", ("missing", "stale", "current"))
-def test_session_controller_builds_once_before_all_workers(tmp_path: Path, state: str) -> None:
+def test_session_controller_builds_once_before_all_workers(
+    tmp_path: Path, monkeypatch, state: str
+) -> None:
     """Sixteen simultaneous readers use one controller build, or none when current."""
+    if state == "current":
+        monkeypatch.setenv(
+            "ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(["tests/outer.py::test_outer"])
+        )
     checkout, environment = _test_checkout(tmp_path, state=state)
     run = subprocess.run(
         [

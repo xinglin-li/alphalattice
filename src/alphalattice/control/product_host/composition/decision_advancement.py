@@ -11,7 +11,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
+from pathlib import Path
 from typing import Any, Literal, Self, cast
 from uuid import UUID
 
@@ -140,7 +141,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.advancement_ledg
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import render_decision_update
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root, runtime_json
 from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.kernel.shared_kernel.spans import span
 
@@ -157,6 +158,7 @@ STAGES = (
 
 
 _IMPLEMENTATION_ROLE = "product_host.conditional_decision_advancement"
+RESUMED_OWN_MOVE = "research_update.resumed_own_move"
 
 
 def latest_per_recipe(
@@ -347,6 +349,24 @@ _DECISION_CANDIDATES = CommittedKind(
 )
 
 
+class OwnMoveSuccessor(_Sealed):
+    """The ledger row naming the checkpoint a stopped update resumes on, its own move's."""
+
+    purpose: Literal["OWN_MOVE_SUCCESSOR"] = "OWN_MOVE_SUCCESSOR"
+    plan_hash: str
+    from_checkpoint_hash: str
+    to_checkpoint_hash: str
+    reason: str
+    cycle_id: str
+    owner_task: str
+    added_listing_ids: tuple[str, ...]
+
+
+_OWN_MOVES = CommittedKind(
+    "decision-own-moves", "decision-own-moves", OwnMoveSuccessor, "content_hash"
+)
+
+
 class DecisionAdvancementApplication:
     """One advancement schema, composed into the existing dispatcher and ledger."""
 
@@ -378,6 +398,8 @@ class DecisionAdvancementApplication:
         self.index = CommittedIndex(self.ledger.root, self.ledger.content)
         self.scoring.additional_publications = self._completed_scores
         self.calibration.additional_input = self._completed_input
+        data.cycle_owner = self._cycle_owner
+        self._waiting: dict[str, tuple[UUID, str, datetime]] = {}
 
     def implementation(self) -> str:
         """Bind advancement rule syntax and its scoring, calibration and decision owner identities.
@@ -386,8 +408,6 @@ class DecisionAdvancementApplication:
             Exact combined implementation identity; operational task runner state is outside
             numerical meaning.
         """
-        from pathlib import Path
-
         # This file decides which publications feed scoring and calibration; Task
         # Control's runner and registry, tracked here until the binding plan's B5,
         # decide lifecycles and no number.
@@ -459,10 +479,11 @@ class DecisionAdvancementApplication:
         """
         return self._load("decision-programs", identity, DecisionAdvancementPlan)
 
-    def _require(self, plan: DecisionAdvancementPlan) -> None:
+    def _require(self, plan: DecisionAdvancementPlan, moved: str | None = None) -> None:
         captured = self._step(plan, STAGES[2]) is not None
+        moved = moved or self._input(plan)
         checkpoint = (
-            self.updates.store.load_decision_checkpoint(plan.checkpoint_hash)
+            self.updates.store.load_decision_checkpoint(moved)
             if captured
             else self.updates._checkpoint(plan.package_id)
         )
@@ -470,7 +491,7 @@ class DecisionAdvancementApplication:
         if (
             plan.workspace_manifest_hash != self.updates.manifest.manifest_hash
             or plan.catalog_hash != self.updates.application.resolver.strategy_catalog_hash
-            or plan.checkpoint_hash != checkpoint.content_hash
+            or (moved != checkpoint.content_hash and not self._waits(plan))
             or checkpoint.history_hash != root.content_hash
             or checkpoint.package != root.package
             or checkpoint.model_authority_hashes != root.model_authority_hashes
@@ -506,15 +527,19 @@ class DecisionAdvancementApplication:
                 session.
 
         Returns:
-            Plan/task reuse view, or OBSERVATIONS_PENDING when no executable change is due.
+            Plan/task reuse view, or OBSERVATIONS_PENDING when no executable change is due;
+            first, the membership a cancelled update left, restored (`restored_membership`),
+            its owner proved by its own plan (`_cycle_owner`) where its bind names none.
 
         Raises:
             ValueError: Target/session/epoch admission fails, required score authority is
-                unavailable or workspace transition is not prepared.
+                unavailable, workspace transition is not prepared, or a bind's owner is unproved
+                (`workspace_maintenance.membership_owner_unproved`).
         """
+        restored = self.data.restored(self._cycle_owner)
         held = _HELD_COMPLETED_SCORES.set([])
         try:
-            return self._plan(package_id, target)
+            return {**self._plan(package_id, target), **restored}
         finally:
             _HELD_COMPLETED_SCORES.reset(held)
 
@@ -729,7 +754,8 @@ class DecisionAdvancementApplication:
             ):
                 prior = self._plan_of(task, current=False)
                 if prior.package_id == package_id:
-                    self._require(prior)
+                    if self._own_move(prior) is None:
+                        self._require(prior)
                     owner = {"task_id": str(task.task_id), "lifecycle": task.lifecycle.value}
                     return {**self._plan_body(prior, False), "in_flight": owner}
         return None
@@ -865,6 +891,116 @@ class DecisionAdvancementApplication:
             input_envelope=envelope, goal=goal, plan=workflow, observed_at=self.clock()
         ).record
         return CommandAdmission(task_id=task.task_id, lifecycle=task.lifecycle.value)
+
+    def resuming(self, identity: str) -> DecisionAdvancementPlan:
+        """The plan a run names, resuming its stopped Task on its own move's checkpoint once due.
+
+        Borrowed from compare-and-swap admitting the writer's own version bump: the checkpoint
+        its own data stage moved to (`_own_move`) is named in the ledger. Any other mover is
+        refused.
+        """
+        self._waiting.pop(identity, None)
+        plan = self.prepare(identity)
+        moved = self.index.open(_OWN_MOVES, plan.content_hash)
+        if moved is not None and self._stopped(plan) is not None:
+            # Each stopped resume revalidates the recorded move: no writer bound after its own.
+            last = self.data._registry().working_binds()[-1]
+            if (last.cycle_id, last.owner_task) != (moved.cycle_id, moved.owner_task):
+                raise ValueError("research_update.binding_changed")
+        if (found := self._own_move(plan)) is None:
+            return plan
+        stopped, record = found
+        retry = self.data.retry_after(plan.data_plan)
+        if stopped.lifecycle is TaskLifecycle.DEFERRED and retry and retry > self.clock():
+            self._waiting[plan.content_hash] = (stopped.task_id, stopped.record_hash, retry)
+        else:
+            self.index.commit(_OWN_MOVES, plan.content_hash, record)
+        return plan
+
+    def _input(self, plan: DecisionAdvancementPlan) -> str:
+        """The checkpoint the plan's stages read: its own, or its own move's named successor."""
+        moved = self.index.open(_OWN_MOVES, plan.content_hash)
+        return plan.checkpoint_hash if moved is None else moved.to_checkpoint_hash
+
+    def _waits(self, plan: DecisionAdvancementPlan) -> bool:
+        """Whether a run before the retry time meets its deferral (`admit`), its Task unchanged."""
+        held = self._waiting.get(plan.content_hash)
+        registry = self.session.task_control_registry
+        return bool(
+            held and self.clock() < held[2] and registry.task(held[0]).record_hash == held[1]
+        )
+
+    def _stopped(self, plan: DecisionAdvancementPlan) -> TaskRecord | None:
+        """The plan's stopped Task a rerun takes up as itself, if any."""
+        envelope, tasks = task_contract(plan)[0], self.session.task_control_registry.tasks()
+        stops = {TaskLifecycle.DEFERRED, TaskLifecycle.RECOVERY_REQUIRED}
+        return next((t for t in tasks if t.input == envelope and t.lifecycle in stops), None)
+
+    def _cycle_owner(self, cycle_id: str) -> str | None:
+        """The update Task whose own plan derives a data cycle, for a bind recorded before binds
+        named their Task (0.2.3 and earlier): an unfinished or failed one first, else the last
+        cancelled; none when no update's plan derives it."""
+        found = []
+        for task in self.session.task_control_registry.tasks():
+            try:
+                plan = (
+                    self._plan_of(task, current=False).data_plan
+                    if task.task_kind == ADVANCEMENT_TASK_KIND
+                    else self.data._plan_of(task, require_current=False)
+                )
+            except (KeyError, ValueError):
+                continue
+            if self.data._cycle_id(plan) == cycle_id:
+                found.append(task)
+        held = [t for t in found if t.lifecycle is not TaskLifecycle.CANCELLED] or found
+        return str(held[-1].task_id) if held else None
+
+    def _own_move(
+        self, plan: DecisionAdvancementPlan
+    ) -> tuple[TaskRecord, OwnMoveSuccessor] | None:
+        """The stopped Task and its row when only its own cycle moved the universe: one transition
+        onto the revision it last bound, no bind after it, every other binding held."""
+        stopped = self._stopped(plan)
+        # A plan whose checkpoint is captured, or already moved, reads what it holds.
+        if (
+            stopped is None
+            or self._step(plan, STAGES[2])
+            or self._input(plan) != plan.checkpoint_hash
+        ):
+            return None
+        current = self.updates._checkpoint(plan.package_id)
+        binds, cycle = self.data._registry().working_binds(), self.data._cycle_id(plan.data_plan)
+        if (
+            current.previous_checkpoint_hash != plan.checkpoint_hash
+            or not binds
+            or (binds[-1].cycle_id, binds[-1].owner_task) != (cycle, str(stopped.task_id))
+            or binds[-1].authority != "candidate_preparation"
+            or current.source_hashes[-1] != binds[-1].manifest_revision
+        ):
+            return None
+        self._require(plan, current.content_hash)
+        before = self.updates.store.load_decision_checkpoint(plan.checkpoint_hash)
+        added = set(current.ordered_listing_ids) - set(before.ordered_listing_ids)
+        return stopped, OwnMoveSuccessor.create(
+            plan_hash=plan.content_hash,
+            from_checkpoint_hash=plan.checkpoint_hash,
+            to_checkpoint_hash=current.content_hash,
+            reason=RESUMED_OWN_MOVE,
+            cycle_id=cycle,
+            owner_task=str(stopped.task_id),
+            added_listing_ids=tuple(sorted(added)),
+        )
+
+    def resumed(self, task_id: UUID) -> dict[str, object]:
+        """A run answer's disclosure of the own move its update resumed on, in its words."""
+        task = self.session.task_control_registry.task(task_id)
+        if task.input.input_schema_id != SCHEMA:
+            return {}
+        moved = self.index.open(_OWN_MOVES, self._plan_of(task, current=False).content_hash)
+        if moved is None:
+            return {}
+        words = runtime_json("config/registries/messages.json")["entries"][moved.reason]["words"]
+        return {"resumed_on_own_move": {**moved.model_dump(mode="json"), "words": words}}
 
     def in_flight(self, plan: DecisionAdvancementPlan) -> CommandAdmission | None:
         """Find an admitted nonterminal task for this exact advancement envelope.
@@ -1165,7 +1301,7 @@ class DecisionAdvancementApplication:
         market_snapshot = self._load("market-inputs", captured.products[0], LocalQAMarketSnapshot)
         if stage == STAGES[4]:
             market_rows: PreparedLocalQASnapshotRows | None = None
-            checkpoint = self.updates.store.load_decision_checkpoint(plan.checkpoint_hash)
+            checkpoint = self.updates.store.load_decision_checkpoint(self._input(plan))
             scores = {}
             for h in (*plan.history_score_hashes, *self._need(plan, STAGES[3]).products):
                 value = self.scoring.store.load_frozen_component_score(h)
@@ -1277,7 +1413,7 @@ class DecisionAdvancementApplication:
                     products.append(step.content_hash)
             return self._commit(plan, stage, tuple(products), source)
         if stage == STAGES[5]:
-            checkpoint = self.updates.store.load_decision_checkpoint(plan.checkpoint_hash)
+            checkpoint = self.updates.store.load_decision_checkpoint(self._input(plan))
             previous = self._parent(plan)
             history = self.updates.history(plan.checkpoint_hash)
             products = []
@@ -1313,7 +1449,7 @@ class DecisionAdvancementApplication:
                         strategy_package_id=plan.package_id,
                         workspace_manifest_hash=self._owner_fields(DECISION_PLAN_FIELDS),
                         catalog_hash=plan.catalog_hash,
-                        checkpoint_hash=plan.checkpoint_hash,
+                        checkpoint_hash=checkpoint.content_hash,
                         parent_hash=None if previous is None else previous.content_hash,
                         prepared_input_hash=None if prepared is None else prepared.content_hash,
                         requested_input_hash=None if prepared is None else prepared.content_hash,
@@ -1383,7 +1519,7 @@ class DecisionAdvancementApplication:
                 publish_rolling_report_heads,
             )
 
-            checkpoint = self.updates.store.load_decision_checkpoint(plan.checkpoint_hash)
+            checkpoint = self.updates.store.load_decision_checkpoint(self._input(plan))
             with span("write", "rolling_report"):
                 publish_rolling_report_heads(
                     application=self.updates.application,
@@ -1596,18 +1732,18 @@ class DecisionAdvancementApplication:
         )
         parent = plan.parent_hash
         prior = self._parent(plan)
+        checkpoint = self.updates.store.load_decision_checkpoint(self._input(plan))
         for value in branch:
             if (
                 value.parent_hash != parent
-                or value.checkpoint_hash
-                != self.updates.store.load_decision_checkpoint(plan.checkpoint_hash).history_hash
+                or value.checkpoint_hash != checkpoint.history_hash
                 or value.html_hash is None
             ):
                 raise ValueError("research_update.branch_binding_invalid")
             dp = self.updates._load_plan(value.plan_hash)
             if (
                 dp.parent_hash != value.parent_hash
-                or dp.checkpoint_hash != plan.checkpoint_hash
+                or dp.checkpoint_hash != checkpoint.content_hash
                 or dp.market_hash != value.source_snapshot_hash
                 or (
                     dp.raw_market_hash is not None

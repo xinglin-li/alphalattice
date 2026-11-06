@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import cast
 
 import numpy as np
-from sklearn.linear_model import HuberRegressor
 
 from ..contracts import (
     AlphaEstimatorContent,
@@ -206,6 +205,8 @@ class HuberLinearAdapter:
         ):
             raise ValueError("ALPHA_HUBER_FIT_PLAN_INVALID")
         parameters = self.validate_recipe(recipe)
+        from sklearn.linear_model import HuberRegressor  # lazy: heavy, first fit
+
         estimator = HuberRegressor(
             epsilon=parameters.epsilon,
             alpha=parameters.alpha,

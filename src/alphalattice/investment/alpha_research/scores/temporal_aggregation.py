@@ -74,6 +74,7 @@ evidence; the executable selector and numerical replay runtime were retired.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import date
 from typing import Final, Literal, Self
 
@@ -326,8 +327,6 @@ class AlphaScoreAggregationSurface(_Contract):
 
 def score_value_hash(values: FloatArray) -> str:
     """Byte identity of a score vector, non-finite values included."""
-    import hashlib
-
     return hashlib.sha256(np.ascontiguousarray(values, dtype=np.float64).tobytes()).hexdigest()
 
 

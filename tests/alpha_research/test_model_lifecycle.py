@@ -41,6 +41,7 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
 )
 from alphalattice.investment.alpha_research.scores.product_replay import live_vintages
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests._support.lease_age import age_lease_file
 
 COMPONENT = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component("G6_R0_FAST_REBOUND")
 
@@ -616,6 +617,9 @@ alpha:
     # One fit plus one score; this child's fit stores no training-error prediction.
     assert evidence.numerical_call_count == 2
     assert written  # The counter observed the producer before checking replay.
+    for item in (tmp_path / "output").rglob("*"):
+        if item.is_file():
+            age_lease_file(item)
     written.clear()
     replay, _ = workflow.replay(document, **actor)
     assert not written, (

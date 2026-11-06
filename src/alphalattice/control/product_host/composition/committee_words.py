@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from typing import Final
 
+from alphalattice.interface.local_application.cli_contract import join, shell
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
-COMMAND: Final = " ".join(command_prefix())
+COMMAND: Final = join(list(command_prefix()), shell())
 RULE_WORDS: Final = {
     "ROLE": "Only its senders send this kind, each with the key in its own bundle: a STANCE or "
     "REPLY any member, a CHALLENGE or PASS a specialist, a RULING, VERDICT or PERSON_ANSWER the "
@@ -177,7 +178,7 @@ ROUTE_END: Final = (
     "This route is the bundle's only final action: there is no answer file and nothing for "
     "the lead to submit. Its steps: send your STANCE, wait, then take the turn the wait "
     "offers (TAKE_YOUR_DISCUSSION_TURN: a CHALLENGE or REPLY, or its offered pass) and wait "
-    "again until the floor settles or closes. The lead starts you as a general subagent."
+    "again until the floor settles or closes."
 )
 """A member route's last step: the route is its only final action."""
 

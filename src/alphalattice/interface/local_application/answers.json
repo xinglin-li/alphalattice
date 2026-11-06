@@ -6509,6 +6509,12 @@
     "meaning": "true when the cancel was recorded; false when it was not applied, as when the Task had already ended."
    },
    {
+    "name": "restored_membership",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when a cancelled update had left the active membership bound before its Panel published it, and this cancel returned it to the Panel's own: the `cycle_id`, the cancelled `owner_task`, `from_revision`, `restored_revision`, the `reason` and its `words` in English and Simplified Chinese. Recorded once; the next plan does not repeat it."
+   },
+   {
     "name": "attributed_goal_id",
     "kind": "string",
     "required": false,
@@ -7665,6 +7671,12 @@
     "meaning": "The Task whose completed preparation already answers this run, by its id; none when none does."
    },
    {
+    "name": "resumable_preparation",
+    "kind": "object",
+    "required": false,
+    "meaning": "A still-bound preparation of this same book, naming its task_id, original evidence_as_of and preparation_binding_hash; its offered resume reads that Task without admitting a new one."
+   },
+   {
     "name": "source_check",
     "kind": "object|null",
     "required": true,
@@ -7692,7 +7704,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": true,
-    "meaning": "The requests this preview offers, each ready to send: `prepare`, and for each prepared unit `packet_<unit>` and `analyst_bundle_<unit>`; with no Evidence installed, `install`, its issuers named by the Host's rule."
+    "meaning": "The requests this preview offers, each ready to send: `prepare` for this cutoff, `resume` to read a still-bound Task of this book, and for prepared units `packet_<unit>` and `analyst_bundle_<unit>`; with no Evidence installed, `install`, its issuers named by the Host's rule."
    },
    {
     "name": "claim",
@@ -8532,7 +8544,7 @@
     "name": "status",
     "kind": "string",
     "required": true,
-    "meaning": "What the Host did with the answer: `ACCEPTED` (admitted as written), `CORRECT` (problems named, answer again) or `DONE` (valid items kept, the rest dropped)."
+    "meaning": "What the Host did with the answer: `ACCEPTED`, `CORRECT`, `DONE`, or `REFUSED_REVIEW_STALLED` when a bounded workspace admission did not file it."
    },
    {
     "name": "agent_role",
@@ -8550,7 +8562,19 @@
     "name": "next_action",
     "kind": "string",
     "required": true,
-    "meaning": "What the agent does next: `CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN` or `RETURN_THE_RECEIPT_TO_YOUR_LEAD`; refused on a review bundle's thread, `START_THE_MEMBER` (MEMBER, KEY) or `RETURN_THE_RECEIPT_TO_YOUR_LEAD` (ENDED); the lead's earlier bundle refused as stale or ambiguous after a second preparation, on its Task's own publication whose review stands published, `CONVENE_THE_COMMITTEE` or `REPORT_THE_COMMITTEE`, its failure code kept."
+    "meaning": "What the agent does next: `CORRECT_THE_NAMED_ITEMS_AND_SUBMIT_AGAIN`, `RETURN_THE_RECEIPT_TO_YOUR_LEAD`, or `REPORT_REVIEW_STALLED`; refused on a review bundle's thread, `START_THE_MEMBER` (MEMBER, KEY) or `RETURN_THE_RECEIPT_TO_YOUR_LEAD` (ENDED); the lead's earlier bundle refused as stale or ambiguous after a second preparation, on its Task's own publication whose review stands published, `CONVENE_THE_COMMITTEE` or `REPORT_THE_COMMITTEE`, its failure code kept."
+   },
+   {
+    "name": "blocker",
+    "kind": "object",
+    "required": false,
+    "meaning": "The blocking workspace gate and its holder, or UNMEASURED until its owner proves the holder."
+   },
+   {
+    "name": "waited_seconds",
+    "kind": "number",
+    "required": false,
+    "meaning": "The measured seconds spent waiting for the workspace gate before the review stalled."
    },
    {
     "name": "accepted_items",
@@ -8598,7 +8622,7 @@
     "name": "next_requests",
     "kind": "object",
     "required": false,
-    "meaning": "For the lead, each ready to send: `task` reads the Task the answer started and `book` reads the book it answered for. On that refusal to the lead: the published review's `committee`, or `committee_report` once its floor has closed."
+    "meaning": "For the lead, each ready to send: `task` reads the Task the answer started and `book` reads the book it answered for. On that refusal to the lead: the published review's `committee`, or `committee_report` once its floor has closed. A stalled review offers `activity` and `tasks` to inspect the blocking work."
    },
    {
     "name": "recorded_agent",
@@ -8711,6 +8735,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "restored_membership",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when this plan first returned the active membership a cancelled update had left bound, before its Panel published it, to the Panel's own: the `cycle_id`, the cancelled `owner_task`, `from_revision`, `restored_revision`, the `reason` and its `words` in English and Simplified Chinese. Recorded once; a later plan does not repeat it."
    }
   ]
  },
@@ -9917,6 +9947,12 @@
     "kind": "string",
     "required": false,
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   },
+   {
+    "name": "restored_membership",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when this plan first returned the active membership a cancelled update had left bound, before its Panel published it, to the Panel's own: the `cycle_id`, the cancelled `owner_task`, `from_revision`, `restored_revision`, the `reason` and its `words` in English and Simplified Chinese. Recorded once; a later plan does not repeat it."
    }
   ]
  },
@@ -9975,6 +10011,12 @@
     "kind": "array",
     "required": false,
     "meaning": "Present with `network_use`: its `words`, the one line to say to the person now, as returned."
+   },
+   {
+    "name": "resumed_on_own_move",
+    "kind": "object",
+    "required": false,
+    "meaning": "Present when the stopped update resumed on the checkpoint its own data stage moved its universe to: the ledger row, with `from_checkpoint_hash`, `to_checkpoint_hash`, the `reason`, the bind's `cycle_id` and `owner_task` and the `added_listing_ids`, and its `words` in English and Simplified Chinese. Any other move is refused `research_update.binding_changed`."
    }
   ]
  },
@@ -10452,7 +10494,7 @@
     "name": "groups",
     "kind": "array",
     "required": true,
-    "meaning": "The newest requests grouped by agent session and goal, newest group first; each holds its latest time and up to five requests with the read that opens each."
+    "meaning": "The newest requests grouped by agent session and goal, newest group first; each holds its latest time and up to five requests with the read that opens each. Each group names agent_attribution as RECORDED when a supported vendor and session were recorded, otherwise UNKNOWN."
    },
    {
     "name": "claim",
@@ -10764,7 +10806,7 @@
     "name": "status",
     "kind": "string",
     "required": true,
-    "meaning": "`READ` when the bound Sessions were read now; `OFF` when reading is off and nothing was read; `NOT_BOUND` when no Session is bound to this workspace; `BUSY` while another read runs; `UNAVAILABLE` when the reader is not running."
+    "meaning": "`READ` when the bound Sessions were read now; `OFF` when reading is off and nothing was read; `NOT_BOUND` when no Session is bound to this workspace; `BUSY` while another read runs; `UNAVAILABLE` when the reader or a binding is unavailable; any sessions returned are the readable subset."
    },
    {
     "name": "sessions",
@@ -11581,5 +11623,13 @@
     "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
    }
   ]
+ },
+ "$defs": {
+  "error_info": {
+   "name": "error_info",
+   "kind": "error_info|null",
+   "required": false,
+   "meaning": "Optional structured error: registry category and owner domain, exact safe failure reason, catalog message_id/message and field_violations with safe typed field paths. This adds no retry or admission authority."
+  }
  }
 }

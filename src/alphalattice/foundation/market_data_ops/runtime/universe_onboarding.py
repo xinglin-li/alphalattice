@@ -160,7 +160,8 @@ class ListingUnitObservation:
 ListingObserver = Callable[[ListingUnitObservation], None]
 
 
-def _ten_calendar_year_anniversary(value: date) -> date:
+def ten_calendar_year_anniversary(value: date) -> date:
+    """Return the date ten calendar years earlier, clipping leap days to February 28."""
     try:
         return value.replace(year=value.year - 10)
     except ValueError:
@@ -286,7 +287,7 @@ class CurrentUniverseOnboarding:
         if self.hydration_workers < 1 or self.hydration_workers > 8:
             raise ValueError("hydration_workers must be between 1 and 8")
         if self.history_start is None:
-            self.history_start = _ten_calendar_year_anniversary(self.as_of_session)
+            self.history_start = ten_calendar_year_anniversary(self.as_of_session)
         if self.history_start > self.as_of_session:
             raise ValueError("onboarding history start is after as_of session")
         self.acquisition_manifest = build_current_index_acquisition_manifest(

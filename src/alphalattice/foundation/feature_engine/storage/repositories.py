@@ -4830,8 +4830,7 @@ class PanelStateRepository(WorkspaceRepository):
         after_token: str | None = None,
     ) -> tuple[str, ...]:
         """Exact stored catalogs; legacy summary-only cases require a fresh assessment."""
-        connection = self._connect(read_only=True)
-        try:
+        with self._catalog_read("feature_input.case_store_unavailable") as connection:
             columns = {
                 row[1]
                 for row in connection.execute(
@@ -4860,8 +4859,6 @@ class PanelStateRepository(WorkspaceRepository):
                 query += " LIMIT ?"
                 values.append(limit)
             rows = connection.execute(query, values).fetchall()
-        finally:
-            connection.close()
         documents = []
         for document, record_hash, case_token in rows:
             payload = json.loads(document)
@@ -4879,8 +4876,7 @@ class PanelStateRepository(WorkspaceRepository):
         this is the way back from the row to the decision, verified by the
         same record hashes every other reader checks.
         """
-        connection = self._connect(read_only=True)
-        try:
+        with self._catalog_read("feature_input.case_store_unavailable") as connection:
             columns = {
                 row[1]
                 for row in connection.execute(
@@ -4897,8 +4893,6 @@ class PanelStateRepository(WorkspaceRepository):
                    ORDER BY created_at, case_token LIMIT 1""",
                 [execution_receipt_hash],
             ).fetchone()
-        finally:
-            connection.close()
         if row is None:
             return None
         return self._verified_feature_input_decision(row)
@@ -4922,8 +4916,7 @@ class PanelStateRepository(WorkspaceRepository):
         # stores still cross the normal strict read and verification boundary.
         if not self.path.exists():
             return ()
-        connection = self._connect(read_only=True)
-        try:
+        with self._catalog_read("feature_input.case_store_unavailable") as connection:
             rows = connection.execute(
                 """SELECT case_json, case_record_hash, case_token, resolution_json, resolution_hash
                    FROM feature_input_agent_case
@@ -4932,8 +4925,6 @@ class PanelStateRepository(WorkspaceRepository):
                    ORDER BY created_at, case_token""",
                 [effect_status, effect_status],
             ).fetchall()
-        finally:
-            connection.close()
         return tuple(self._verified_feature_input_decision(row) for row in rows)
 
     def feature_input_resolution(self, case_token: str) -> dict[str, object] | None:

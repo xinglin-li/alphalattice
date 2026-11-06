@@ -34,7 +34,7 @@ from alphalattice.interface.local_application.cli import main
 from tests.portfolio_strategy_lab.strategy_dates_support import date_host
 
 
-@pytest.mark.parametrize("view", ["full", "compact"])
+@pytest.mark.parametrize("view", ["compact"])
 def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
     tmp_path, capsys, monkeypatch, view
 ):

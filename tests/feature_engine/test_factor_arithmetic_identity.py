@@ -432,12 +432,13 @@ def test_installed_capability_identity_binds_measured_family_content(
 
     installed = default_extension_kernel_registry()
     before = installed.installed_capability_hash
-    monkeypatch.setattr(
-        registry_module,
-        "method_family_content_hash",
-        lambda _family, _owners: "f" * 64,
-    )
-    assert installed.installed_capability_hash != before
+    with monkeypatch.context() as patched:  # a harness may run this body twice under one fixture
+        patched.setattr(
+            registry_module,
+            "method_family_content_hash",
+            lambda _family, _owners: "f" * 64,
+        )
+        assert installed.installed_capability_hash != before
 
 
 def test_previous_close_excursion_formulas_are_named_for_the_arithmetic_they_run() -> None:

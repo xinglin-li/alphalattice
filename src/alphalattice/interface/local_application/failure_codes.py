@@ -12,6 +12,7 @@ and where to look, never the Host's internals.
 
 from __future__ import annotations
 
+import logging  # only a withheld failure is logged; a call's imports are its cost (W12)
 import os
 import re
 import subprocess
@@ -21,9 +22,12 @@ from hashlib import sha256
 from typing import Any, Final
 from uuid import UUID
 
-from alphalattice.interface.local_application.cli_contract import schema_request
+from pydantic import ValidationError
 
-from .cli_contract import refusal_words
+from alphalattice.interface.local_application.cli_contract import schema_request
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+
+from .cli_contract import error_projection, refusal_words
 
 FAILURE_DETAIL_WITHHELD = "activity.failure_detail_withheld"
 """Served or persisted in place of any failure text that is not a typed product code."""
@@ -33,6 +37,20 @@ _FAILURE_CODE = re.compile(
 )
 _FIELD = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 _FAILURE_FIELDS = frozenset({"failure_code", "refused", "latest_failure_code"})
+
+
+class LocalResearchClientError(ValueError):
+    """A bounded client failure, never an exception containing connection secrets."""
+
+    document_location: dict[str, int | str] | None = None
+    document_size: dict[str, int | None] | None = None
+    """Oversized document bytes (None for stdin) and limit_bytes."""
+    short_reference: dict[str, object] | None = None
+    """Ambiguous short reference: field, value and candidates."""
+    sections: list[str] | None = None
+    """The available sibling paths when a saved answer lacks the requested section."""
+    binding_context: dict[str, Any] | None = None
+    next_commands: list[str] | None = None
 
 
 def safe_failure_code(value: object) -> str | None:
@@ -150,11 +168,18 @@ def public_failure(error: BaseException, fallback: str) -> str:
     of the failure, with the detail logged under it.
     """
     # The owners' models' failure; imported here, so the client's transport never loads them.
-    from pydantic import ValidationError
 
     code = owner_failure_code(error)
     if code is not None:
         return code
+    # The Alpha readback owner predates typed refusals; preserve its implementation identity.
+    if (
+        type(error).__name__ == "AlphaDevelopmentArtifactReadbackError"
+        and type(error).__module__
+        == "alphalattice.investment.alpha_research.experiments.development_artifacts"
+        and error.args == ("Alpha JSON requested identity is invalid",)
+    ):
+        return "alpha_research.development_artifact_identity_invalid"
     if isinstance(error, ValueError):
         code = safe_failure_code(str(error))
         if code is not None:
@@ -215,8 +240,6 @@ def within(error: BaseException, *place: str) -> BaseException:
     Returns:
         The same refusal with each item's location prefixed by `place`.
     """
-    from pydantic import ValidationError
-
     if not isinstance(error, ValidationError):
         return error
     lines: list[Any] = [{**item, "loc": (*place, *item["loc"])} for item in error.errors()]
@@ -225,7 +248,11 @@ def within(error: BaseException, *place: str) -> BaseException:
 
 
 def located_failure(
-    error: BaseException, fallback: str, *, request: Mapping[str, object] | None = None
+    error: BaseException,
+    fallback: str,
+    *,
+    request: Mapping[str, object] | None = None,
+    schema: Mapping[str, Any] | None = None,
 ) -> dict[str, object]:
     """The code an answer gives for `error`, and each field a contract refused.
 
@@ -235,12 +262,12 @@ def located_failure(
     contract's error type) and the contract's words (`message`), never a value. Any other
     failure answers the code `public_failure` gives.
     """
-    from pydantic import ValidationError
-
     if not isinstance(error, ValidationError):
-        return {"failure_code": public_failure(error, fallback)}
+        failure = {"failure_code": public_failure(error, fallback)}
+        return {**failure, **error_projection(failure)}
 
     fields: list[list[str]] = []
+    paths: list[tuple[Any, ...]] = []
     reasons: dict[str, str] = {}
     allowed: dict[str, list[str]] = {}
     words: list[str] = []
@@ -269,8 +296,10 @@ def located_failure(
             r"portfolio_research\.operation_field_(required|not_allowed):(.+)", reason
         )
         if named:
+            paths.extend((*item["loc"], name) for name in named[2].split(","))
             words.append(_contract_fields(named, location, cause, (fields, reasons, allowed)))
             continue
+        paths.append(item["loc"])
         fields.append(location)
         reasons[".".join(location)] = reason
         said = reason if kind == "value_error" else str(item.get("msg", kind))
@@ -287,7 +316,10 @@ def located_failure(
     if request is not None:
         answer["next_action"] = "READ_CAPABILITIES_SCHEMA"
         answer.update(_way_back(fields, reasons, request, fallback))
-    return answer
+    return {
+        **answer,
+        **error_projection(answer, locations=paths, schema=schema),
+    }
 
 
 def _contract_fields(
@@ -328,7 +360,7 @@ def _way_back(
             **({"valid_values": read} if corrected is None else {"corrected": corrected}),
             "schema": schema_request(str(request["operation"])),
         },
-        "schema_command": ["alphalattice", "schema", "show", request["operation"]],
+        "schema_command": [*command_prefix(), "schema", "show", request["operation"]],
     }
 
 
@@ -441,7 +473,6 @@ def typed_failures(body: dict[str, object]) -> dict[str, object]:
 
 def _withheld(text: str, *, prefix: str = FAILURE_DETAIL_WITHHELD, incident: bool = True) -> str:
     """`prefix:<incident>`, the incident a digest of the text, which the Host's log keeps."""
-    import logging  # only a withheld failure is logged; a call's imports are its cost (W12)
 
     digest = sha256(text.encode("utf-8", "replace")).hexdigest()[:8]
     logging.getLogger("alphalattice.local_web").error("%s:%s %s", prefix, digest, text[:2000])

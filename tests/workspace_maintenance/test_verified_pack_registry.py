@@ -92,6 +92,18 @@ def test_shared_adapters_lease_one_session_and_count_reuses(
 ) -> None:
     """Control: Shared adapters lease one session and count reuses."""
 
+    from alphalattice.kernel.knowledge import runtime
+
+    names = {
+        "MODEL_WORK",
+        "VERIFIED_PACKS",
+        "before_first_inference",
+        "observing_passages",
+        "withhold_inference_yield",
+        "yielding_during_inference",
+    }
+    assert set(runtime.__all__) == names | {"build_chunks"}
+    assert all(getattr(runtime, name) is getattr(embeddings, name) for name in names)
     spec, model_root, _pack = _model_pack(tmp_path)
     loaded: list[str] = []
 

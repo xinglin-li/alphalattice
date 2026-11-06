@@ -21,8 +21,24 @@ from uuid import UUID
 
 from pydantic import Field, TypeAdapter, ValidationError, model_validator
 
+from alphalattice.control.product_host.composition.answer_turns import ANSWER_FILING
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
+)
+from alphalattice.control.product_host.composition.evidence_analysis_submit import (
+    answer_refusal_action,
+    submit_analyst_analysis,
+)
+from alphalattice.control.product_host.composition.evidence_review_resume import (
+    CURRENT_WITHIN,
+    answered_units,
+    current_answers,
+    preview_binding,
+    preview_units,
+    resumable_preparation,
+    resume_offers,
+    resumed,
+    unanswered,
 )
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     EVIDENCE_INSTALL_TASK_KIND,
@@ -44,6 +60,7 @@ from alphalattice.control.product_host.composition.evidence_source_ways import (
     offered_installs as source_offered_installs,
 )
 from alphalattice.control.product_host.composition.plain_refusals import refused
+from alphalattice.control.product_host.composition.retrieval_recipe import retrieval_recipe_view
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -71,9 +88,7 @@ from alphalattice.evidence.alternative_evidence.analysis.packet import (
     routed_pending_work,
 )
 from alphalattice.evidence.alternative_evidence.analysis.submissions import (
-    accepted_analyst_answer,
     left_out_words,
-    screened_analysis,
 )
 from alphalattice.evidence.alternative_evidence.contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
@@ -159,12 +174,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    ENCODER_RUNTIME_TORCH_CUDA,
-    RERANKER_RUNTIME_TORCH_CUDA,
-    HybridIndexSpec,
-)
-from alphalattice.kernel.knowledge.model_store import runtime_availability
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.sealing import validate_hash_compatible
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
@@ -231,7 +240,7 @@ from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task imp
     SubmittedPortfolioReviewActor,
     portfolio_review_task_contract,
 )
-from alphalattice.protocols.actor_execution import ActorKind, seal_actor_submission
+from alphalattice.protocols.actor_execution import ActorKind
 from alphalattice.protocols.actor_execution.answers import (
     AgentAnswerRecord,
     AgentRun,
@@ -403,6 +412,7 @@ class ResolvedCoverage:
     resolved: ResolvedBookScope
     run: AlternativeEvidenceCoverageRun
     prepare_only: bool
+    answered: frozenset[str] = frozenset()
 
 
 _QuestionRecord = tuple[ResolvedEvidenceQuestion, AlternativeEvidenceAnalysisPublication]
@@ -546,39 +556,6 @@ class ReviewOutcome:
         return self.disposition == "REUSED_EXACT"
 
 
-def retrieval_recipe_view(spec: HybridIndexSpec) -> dict[str, object]:
-    """Project the bound retrieval recipe and its resolved device requirements.
-
-    The retrieval recipe a workspace is bound to, as a reader sees it: the
-    encoder and reranker by name and revision, the device the recipe needs,
-    and -- for a GPU recipe -- what this host resolves for it. Never a
-    quality claim; a pack's presence is proven by the capability hash the
-    manifest binds, not restated here.
-    """
-    gpu = (
-        spec.encoder_runtime == ENCODER_RUNTIME_TORCH_CUDA
-        or spec.reranker_runtime == RERANKER_RUNTIME_TORCH_CUDA
-    )
-    view: dict[str, object] = {
-        "recipe": spec.policy_id,
-        "encoder": {
-            "model_id": spec.model_id,
-            "revision": spec.model_revision,
-            "runtime": spec.encoder_runtime,
-            "dimension": spec.embedding_dimension,
-        },
-        "reranker": {
-            "model_id": spec.reranker_model_id,
-            "revision": spec.reranker_model_revision,
-            "runtime": spec.reranker_runtime,
-        },
-        "device": "gpu" if gpu else "cpu",
-    }
-    if gpu:
-        view["host_runtime"] = runtime_availability()
-    return view
-
-
 ANSWER_CATEGORY = "agent-answers"
 BUNDLE_CATEGORY = "agent-bundles"
 
@@ -688,7 +665,7 @@ def agent_answer_result(
         "message": str(
             body.get("detail") or "The Host admitted nothing for this answer; tell your lead."
         ),
-        "next_action": "TELL_YOUR_LEAD",
+        "next_action": answer_refusal_action(body),
     }
 
 
@@ -739,6 +716,9 @@ class AlternativeEvidenceRefreshCommand:
     subject_book: SealedBook | None = None
     subject_explicit: bool = True
     _task_id: UUID | None = field(default=None, init=False, repr=False)
+    _admission_contract: tuple[TaskInputEnvelope, ResearchGoal, ResearchPlan] | None = field(
+        default=None, init=False, repr=False
+    )
 
     @property
     def command_kind(self) -> str:
@@ -787,6 +767,10 @@ class AlternativeEvidenceRefreshCommand:
             PortfolioEvidenceReviewError: Adapter or required request/obligation/admission fields
                 are absent.
         """
+        # A submitted Analyst answer compiles this before entering the mutation gate.
+        # Its caller rechecks the Task and immutable authority identities under that gate.
+        if self._admission_contract is not None:
+            return self._admission_contract
         adapter = self.application.evidence_task_adapter
         if adapter is None:
             raise PortfolioEvidenceReviewError("product_host.evidence_task_adapter_absent")
@@ -915,12 +899,6 @@ class PortfolioReviewCommand:
 
 _CHECKS_ITEM = "checks:"
 """The delivery item of one issuer's reported checks in a dossier read."""
-
-
-CURRENT_WITHIN = timedelta(seconds=604_800)
-"""The longest analysis TTL a request admits (`AlternativeEvidenceRequest.ttl_seconds`):
-an analysis is published at or after its cutoff, so one published before now less this
-has expired, and a reader of current analyses reads no older record (Z2)."""
 
 
 class EvidenceTaskContext(AlternativeEvidenceContract):
@@ -1365,6 +1343,7 @@ class EvidenceReviewApplication:
         evidence_as_of: datetime,
         prepare_only: bool = True,
         read_inventory: bool = False,
+        resume: bool = False,
     ) -> ResolvedCoverage:
         """Open the book and seal every unit it is owed at this cutoff.
 
@@ -1376,6 +1355,8 @@ class EvidenceReviewApplication:
         if adapter is None:
             raise PortfolioEvidenceReviewError("product_host.evidence_task_adapter_absent")
         resolved = self.resolve_book(selector)
+        if resume and (kept := resumed(self, resolved.scope)):
+            return ResolvedCoverage(resolved, kept[0], prepare_only, kept[1])
         policy = (
             replace(self.evidence_policy, admit_model_review=False)
             if prepare_only
@@ -1400,7 +1381,7 @@ class EvidenceReviewApplication:
                 == (policy.network_consent, policy.admit_live_official, policy.admit_model_review)
                 and all(self.evidence_policy.matches(unit.request) for unit in sealed.units)
             ):
-                return ResolvedCoverage(resolved=resolved, run=sealed, prepare_only=prepare_only)
+                return ResolvedCoverage(resolved, sealed, prepare_only)
         if (
             read_inventory
             and policy.mode is not AlternativeEvidenceMode.RECORDED
@@ -1435,7 +1416,7 @@ class EvidenceReviewApplication:
             carried=counted.carried,
             read_filings=counted.read_filings,
         )
-        return ResolvedCoverage(resolved=resolved, run=run, prepare_only=prepare_only)
+        return ResolvedCoverage(resolved, run, prepare_only)
 
     def _source_acquisition_refusal(
         self, *, evidence_as_of: datetime | None = None, caller: str = "HUMAN"
@@ -1775,30 +1756,15 @@ class EvidenceReviewApplication:
         self, *, question: ResolvedEvidenceQuestion
     ) -> AlternativeEvidenceAnalysisPublicationView | None:
         """The one current publication answering this exact obligation, or nothing."""
-        service = self.evidence_publications
-        if service is None:
-            return None
         now = self.clock()
-        matches = []
-        for publication in analysis_records(
-            self.artifacts, self._publication_days(), now - CURRENT_WITHIN
-        ):
-            if (
-                publication.obligation_hash != question.obligation.obligation_hash
-                or service.standing(publication, now=now) != "CURRENT"
-            ):
-                continue
-            request = self.artifacts.load(
-                "requests", publication.request_hash, AlternativeEvidenceRequest
-            )
-            if self.evidence_policy.matches(request):
-                matches.append(publication)
+        matches = current_answers(self, {question.obligation.obligation_hash}, now=now)
         if len(matches) > 1:
             raise EvidenceSelectionAmbiguous(
                 "product_host.evidence_review_evidence_ambiguous:"
                 + ",".join(sorted(value.publication_hash[:12] for value in matches))
             )
-        return service.replay(matches[0].publication_hash, now=now) if matches else None
+        service = self.evidence_publications
+        return service.replay(matches[0].publication_hash, now=now) if service and matches else None
 
     def _obligation_matches_scope(
         self,
@@ -1993,6 +1959,18 @@ class EvidenceReviewApplication:
             return None if book is None else self._open_book(self.inputs(), book)
         return None
 
+    def _resumable_preparation(
+        self, selector: BookSelector, scope: PortfolioIssuerScope, *, now: datetime
+    ) -> tuple[TaskRecord, AlternativeEvidenceCoverageRun] | None:
+        return resumable_preparation(
+            self,
+            scope,
+            now=now,
+            matches=lambda subject: (
+                EvidenceTaskAdmission.model_validate(subject).selector == selector.request_fields()
+            ),
+        )
+
     def preview_evidence(
         self, selector: BookSelector | None = None, *, caller: str = "HUMAN"
     ) -> dict[str, object]:
@@ -2027,7 +2005,7 @@ class EvidenceReviewApplication:
                 "claim": "No Task, acquisition or model work performed.",
             }
         now = self.clock()
-        coverage = self.resolve_coverage(chosen, evidence_as_of=now, prepare_only=True)
+        coverage = self.resolve_coverage(chosen, evidence_as_of=now, prepare_only=True, resume=True)
         resolved, run = coverage.resolved, coverage.run
         scope = resolved.scope
         resources = adapter.resources
@@ -2040,49 +2018,19 @@ class EvidenceReviewApplication:
         request = self.evidence_policy.run_request(run)
         selector_fields = chosen.request_fields()
         next_requests: dict[str, dict[str, str]] = {}
+        resumable = self._resumable_preparation(chosen, scope, now=now)
+        if resumable is not None:
+            next_requests["resume"] = {"operation": "STATUS", "task_id": str(resumable[0].task_id)}
         prepared_task_id: str | None = None
         intent = coverage_intent_hash(run, policy=request)
-        units_body: list[dict[str, object]] = []
-        units_prepared = 0
-        for unit in run.units:
-            found = adapter.completed_unit(
-                unit.preparation_intent_hash, now=now, evidence_as_of=unit.request.evidence_as_of
-            )
-            if found is not None:
-                units_prepared += 1
-                next_requests[f"packet_{unit.unit_id}"] = {
-                    "operation": "EVIDENCE_PACKET",
-                    **selector_fields,
-                    "task_id": str(found[0]),
-                    **({} if found[1] is None else {"evidence_unit_id": found[1]}),
-                }
-            units_body.append(
-                {
-                    "unit_id": unit.unit_id,
-                    "ordered_entity_ids": list(unit.ordered_entity_ids),
-                    "request_hash": unit.request.request_hash,
-                    "obligation_hash": unit.obligation.obligation_hash,
-                    "preparation_intent_hash": unit.preparation_intent_hash,
-                    "prepared_task_id": None if found is None else str(found[0]),
-                    "prepared_unit_id": None if found is None else found[1],
-                    "source_check": (
-                        None
-                        if found is None
-                        else adapter.prepared_source_check(str(found[0]), found[1])
-                    ),
-                }
-            )
+        units_body, units_prepared = preview_units(
+            adapter, run, selector_fields, next_requests, now=now
+        )
+        next_requests.update(resume_offers(self, chosen, resumable))
         completed = adapter.completed_run(run, now=now)
         if completed is not None:
             prepared_task_id = str(completed.task_id)
-        binding: dict[str, object] = {
-            "run_hash": run.run_hash,
-            "issuer_scope_hash": scope.scope_hash,
-            "resource_binding_hash": run.resource_binding_hash,
-            "unit_count": len(run.units),
-            "unit_limit": run.unit_limit,
-            "packing_rules_id": run.packing_rules_id,
-        }
+        binding = preview_binding(run, scope)
         inventory = adapter.source_inventory(
             run, recorded, mode=self.evidence_policy.mode, ciks=self._issuer_ciks()
         )
@@ -2199,6 +2147,19 @@ class EvidenceReviewApplication:
             "preparation_binding_hash": intent,
             "preparation_binding": binding,
             "prepared_task_id": prepared_task_id,
+            **(
+                {
+                    "resumable_preparation": {
+                        "task_id": str(resumable[0].task_id),
+                        "evidence_as_of": resumable[1].evidence_as_of.isoformat(),
+                        "preparation_binding_hash": coverage_intent_hash(
+                            resumable[1], policy=self.evidence_policy.run_request(resumable[1])
+                        ),
+                    }
+                }
+                if resumable is not None
+                else {}
+            ),
             # A one-unit book's check is the book's; a wider book's are per unit (`coverage.units`).
             "source_check": units_body[0]["source_check"] if len(units_body) == 1 else None,
             "admission": self._admission_view(),
@@ -2210,7 +2171,7 @@ class EvidenceReviewApplication:
                     if unit["prepared_task_id"] is not None
                 ]
             ),
-            "next_requests": with_analyst_bundles(next_requests),
+            "next_requests": with_analyst_bundles(unanswered(next_requests, coverage.answered)),
             "claim": (
                 "Preview performs no acquisition and grants no source/network permission. "
                 "Preparation revalidates current authority and dates at submission; the "
@@ -2696,7 +2657,7 @@ class EvidenceReviewApplication:
         """Read the exact packet requests answered by a preparation task or its coverage units.
 
         The packet request(s) a preparation Task answers: one for a single
-        preparation, one per unit for a coverage run.
+        preparation, one per unit for a coverage run that no current analysis answers yet.
         """
         chosen = self.default_selector(selector)
         if chosen is None:
@@ -2711,6 +2672,7 @@ class EvidenceReviewApplication:
         if run is None:
             packet = {"operation": "EVIDENCE_PACKET", **fields, "task_id": str(task_id)}
             return with_analyst_bundles({"packet": packet})
+        answered = answered_units(self, run)
         return with_analyst_bundles(
             {
                 f"packet_{unit.unit_id}": {
@@ -2720,6 +2682,7 @@ class EvidenceReviewApplication:
                     "evidence_unit_id": unit.unit_id,
                 }
                 for unit in run.units
+                if unit.unit_id not in answered
             }
         )
 
@@ -2768,143 +2731,36 @@ class EvidenceReviewApplication:
         unit_id: str | None = None,
         read_files: tuple[str, ...] | None = None,
         agent_run: AgentRun | None = None,
+        admit: Callable[
+            [Callable[[], ReviewOutcome | dict[str, object]]], ReviewOutcome | dict[str, object]
+        ]
+        | None = None,
     ) -> ReviewOutcome | dict[str, object]:
         """Screen and bind one explicit Analyst answer to its exact prepared packet.
 
         Admit one answer to one prepared packet: screened item by item,
         refused with every problem in plain words, or its findings bound.
         """
-        if caller not in {"HUMAN", "EXTERNAL_AUTOMATION"}:
-            raise PortfolioEvidenceReviewError(
-                "alternative_evidence.external_submission_entry_required"
-            )
-        chosen = self._review_selector(selector)
-        if isinstance(chosen, ReviewOutcome):
-            return chosen
-        if self.evidence_task_adapter is None:
-            raise PortfolioEvidenceReviewError("product_host.evidence_task_adapter_absent")
-        # The packet this request verified serves the screening and the admission's check;
-        # the Task verifies it again at execution, since the materials may change between.
-        packet, context, resolved, *_ = self._book_packet(chosen, task_id=task_id, unit_id=unit_id)
-        if context["analysis_context_hash"] != context_hash:
-            raise PortfolioEvidenceReviewError(
-                "alternative_evidence.external_analysis_binding_changed"
-            )
-        adapter = self.evidence_task_adapter
-        assert adapter is not None
-        entity_ids = packet.request.ordered_entity_ids
-        screened, unread, left = screened_analysis(answer, packet)
-        view_of = partial(answer_view, left_out=left)
-        binding: dict[str, object] = {
-            "role": "alternative_evidence.analyst",
-            "task_id": str(task_id),
-            "unit_id": unit_id,
-            "analysis_context_hash": context_hash,
-        }
-        with self._answer_turn(binding):
-            record = self._next_answer(
-                binding,
+        return cast(
+            ReviewOutcome | dict[str, object],
+            submit_analyst_analysis(
+                self,
+                dispatcher,
+                selector,
+                task_id,
+                context_hash,
                 answer,
-                screened,
-                read_files=read_files,
-                agent_run=agent_run,
-            )
-            if record.verdict is AnswerVerdict.CORRECT:
-                self._file_answer(record)
-                return _answer_correction("alternative_evidence.answer_problems", record)
-            accepted = accepted_analyst_answer(screened, entity_ids=entity_ids)
-            dropped = (screened.problems if record.verdict is AnswerVerdict.DONE else ()) + unread
-            submitted = SubmittedEvidenceAnalysis(
-                prepared_task_id=task_id,
-                prepared_unit_id=unit_id,
-                packet_hash=cast(str, context["packet_hash"]),
-                analysis_policy_hash=cast(str, context["analysis_policy_hash"]),
-                decision_policy_hash=cast(str, context["decision_policy_hash"]),
-                answer=accepted,
-                dropped=dropped,
-                actor_submission=seal_actor_submission(
-                    actor_kind=ActorKind(caller),
-                    actor_id="local-research-external"
-                    if caller == "EXTERNAL_AUTOMATION"
-                    else "local-web-human",
-                    submission_hash=canonical_hash(accepted.model_dump(mode="json")),
-                ),
-            )
-            adapter.validate_submission(submitted, now=self.clock(), packet=packet)
-            prepared = self.session.task_control_registry.task(task_id)
-            if unit_id is None:
-                # The packet may be a continuation's: the answer is admitted under
-                # its request, obligation and admission, never as another session.
-                command = AlternativeEvidenceRefreshCommand.recover(application=self, task=prepared)
-                command.prepare_only = False
-                command.continuation = None
-                command.submitted_analysis = submitted
-                command.subject = chosen
-                command.subject_explicit = selector is not None
-                command.subject_book = resolved.book
-            else:
-                # One unit's answer is admitted as the request, question and
-                # admission that unit was prepared under, so the same answer to
-                # the same packet is the same Task input wherever it is submitted.
-                authority = adapter.unit_authority(prepared, unit_id)
-                command = AlternativeEvidenceRefreshCommand(
-                    application=self,
-                    obligation=authority.obligation,
-                    request=authority.request,
-                    admission=authority.admission,
-                    prepare_only=False,
-                    submitted_analysis=submitted,
-                    subject=chosen,
-                    subject_explicit=selector is not None,
-                    subject_book=resolved.book,
-                )
-            envelope, _, plan = command.contract()
-            published = self._completed_task(envelope.input_hash, plan.plan_hash)
-            if published is not None:
-                self.record_task_admission(
-                    published.task_id,
-                    chosen,
-                    now=self.clock(),
-                    explicit=selector is not None,
-                    book=resolved.book,
-                )
-                publication = adapter.published_analysis(published.task_id, now=self.clock())
-                return {
-                    "disposition": "REUSED_EXACT",
-                    "task_id": None,
-                    "publication_task_id": str(published.task_id),
-                    "analysis_publication_hash": publication.publication.publication_hash,
-                    **({} if unit_id is None else {"evidence_unit_id": unit_id}),
-                    "external_host_usage": "UNAVAILABLE",
-                    "answer": view_of(
-                        record,
-                        self.accepted_answer_delivery(
-                            record, accepted.model_dump(mode="json"), task_id=published.task_id
-                        ),
-                        record_filed=False,
-                    ),
-                }
-            submission = dispatcher.submit(command)
-            newly_filed = False
-            if submission.admitted:
-                newly_filed = self._file_answer(record)
-            delivery = (
-                self.accepted_answer_delivery(
-                    record,
-                    accepted.model_dump(mode="json"),
-                    task_id=submission.task_id,
-                    newly_filed=newly_filed,
-                )
-                if submission.admitted and submission.task_id is not None
-                else None
-            )
-            outcome = replace(
-                _submitted(submission),
-                answer=view_of(record, delivery, record_filed=submission.admitted),
-            )
-            # The unit is the answer's own field, as a published answer says; a next request
-            # is one the Host accepts (V449).
-            return replace(outcome, evidence_unit_id=unit_id)
+                caller,
+                unit_id,
+                read_files,
+                agent_run,
+                admit,
+                ReviewOutcome,
+                AlternativeEvidenceRefreshCommand,
+                _answer_correction,
+                _submitted,
+            ),
+        )
 
     def drive_evidence_task(
         self, *, task_id: UUID | None = None, expected_task_hash: str | None = None
@@ -4134,6 +3990,8 @@ class EvidenceReviewApplication:
         sent again (V417), however old its record -- and another in a slot already taken is
         refused, never skipped (V557)."""
         if not self.artifacts.exists(ANSWER_CATEGORY, record.record_hash):
+            if record.verdict is AnswerVerdict.CORRECT and (intent := ANSWER_FILING.get()):
+                intent(record)  # named on its thread before it exists
             self.artifacts.publish(ANSWER_CATEGORY, record.record_hash, record)
             return True
         filed = self.artifacts.load(ANSWER_CATEGORY, record.record_hash, AgentAnswerRecord)

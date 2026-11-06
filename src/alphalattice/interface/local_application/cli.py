@@ -43,7 +43,10 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import suppress
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, Literal
+
+import yaml  # type: ignore[import-untyped]
+from pydantic import ValidationError
 
 from alphalattice.foundation.factor_research.experiments.authoring import (
     FACTOR_EXPERIMENT_KIND,
@@ -57,11 +60,13 @@ from alphalattice.interface.local_application.cli_contract import (
     BUNDLE_WORKSPACE,
     EXIT_CODES,
     MAXIMUM_REQUEST_BODY_BYTES,
+    READ_VIEW,
     SESSION_LAUNCHES,
     SURFACE_USE,
     WORKSPACE_FROM,
     Outcome,
     agent_session,
+    agent_surface_manifest,
     answer_json,
     client_refusal,
     command_table,
@@ -87,7 +92,9 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
     decision_hash,
 )
+from alphalattice.interface.local_application.read_views import summary_display
 from alphalattice.investment.portfolio_strategy_lab.application.availability import NOT_AVAILABLE
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     (
@@ -226,14 +233,14 @@ class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> Any:
         if (line := _PARSER_LINE.get()) is not None and line[2]:
             raise ValueError(message)
-        self.print_usage(sys.stderr)
-        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        self.print_usage(sys.stderr)  # noqa: TID251  # argparse usage
+        print(f"{self.prog}: error: {message}", file=sys.stderr)  # noqa: T201, TID251  # CLI stderr
         code = "local_client.usage_invalid"
         refusal = client_refusal(code)
         repair = _repair(self, message)
         # What the parser found, its usage and the help that answers it, in the envelope where
         # an agent reads (the review's F5); stderr keeps argparse's own lines.
-        print(
+        print(  # noqa: T201  # serializer
             answer_json(
                 envelope(
                     operation=None,
@@ -296,7 +303,7 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                 raise ValueError
             corrected = list(arguments)
             corrected[corrected.index(bad)] = nearest[0] + bad[len(wrong) :]
-            repaired = _parser(_named(corrected))
+            repaired = command_parser(_named(corrected))
             args = repaired.parse_args(corrected)
             if args.noun == "request":
                 args.primary_file = args.file if args.from_response is not None else None
@@ -312,7 +319,7 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                 "repair": worded(
                     f"Replace {wrong} with {nearest[0]} and send the corrected request."
                 ),
-                "corrected_command": ["alphalattice", *corrected],
+                "corrected_command": [*command_prefix(), *corrected],
                 "help": help_line,
                 "next_requests": {"correct": request},
             }
@@ -625,8 +632,35 @@ def _named(arguments: Sequence[str]) -> frozenset[str]:
     return frozenset(arguments) & {noun for noun, _verb in _commands()}
 
 
+def _operation_fields(
+    operations: tuple[str, ...], table: dict[str, Any]
+) -> tuple[set[str], str | None, list[str], list[str], str]:
+    """Read an operation's field contract and render its usage in declared order."""
+    allowed = sorted(set().union(*(_fields(op)[1] for op in operations)))
+    required = set.intersection(*(set(_fields(op)[0]) for op in operations))
+    positional = next(
+        (table["positional"][op] for op in operations if op in table["positional"]), None
+    )
+    documents = [name for name in table["primary"] if name in allowed]
+    others = [name for name in allowed if name != positional and name not in documents]
+    line = " ".join(
+        [
+            *(["<id>"] if positional else []),
+            *(["--file <path>"] if set(documents) & required else []),
+            *(flag(name) for name in sorted(required & set(others))),
+            *(["[--file <path>]"] if documents and not set(documents) & required else []),
+            *(
+                [f"[{' '.join(flag(name) for name in sorted(set(others) - required))}]"]
+                if set(others) - required
+                else []
+            ),
+        ]
+    )
+    return required, positional, documents, others, line
+
+
 @functools.cache
-def _parser(named: frozenset[str] | None = None) -> _Parser:
+def command_parser(named: frozenset[str] | None = None) -> _Parser:
     """Build the command-line parser for the selected nouns.
 
     With ``named``, only the operations named by the command line receive flags;
@@ -682,26 +716,7 @@ def _parser(named: frozenset[str] | None = None) -> _Parser:
             continue
         purpose = " Or: ".join(dict.fromkeys(table["purposes"][op] for op in operations))
         person = any(op in table["person_only"] for op in operations)
-        allowed = sorted(set().union(*(_fields(op)[1] for op in operations)))
-        required = set.intersection(*(set(_fields(op)[0]) for op in operations))
-        positional = next(
-            (table["positional"][op] for op in operations if op in table["positional"]), None
-        )
-        documents = [name for name in table["primary"] if name in allowed]
-        others = [name for name in allowed if name != positional and name not in documents]
-        line = " ".join(
-            [
-                *(["<id>"] if positional else []),
-                *(["--file <path>"] if set(documents) & required else []),
-                *(flag(name) for name in sorted(required & set(others))),
-                *(["[--file <path>]"] if documents and not set(documents) & required else []),
-                *(
-                    [f"[{' '.join(flag(name) for name in sorted(set(others) - required))}]"]
-                    if set(others) - required
-                    else []
-                ),
-            ]
-        )
+        required, positional, documents, others, line = _operation_fields(operations, table)
         # One line per action, what it does then its contract: help shows each use (V377, F3).
         child = by_noun[noun].add_parser(
             verb,
@@ -815,9 +830,8 @@ def _global_options(parser: argparse.ArgumentParser, *, anywhere: bool) -> None:
     )
     add(
         "--view",
-        choices=("compact", "full"),
-        help="compact, the default, shows an answer within one read; full prints it whole, "
-        "as a script reads it (--output saves it whole either way).",
+        choices=("compact", "full", "summary"),
+        help=worded("cli.read.view"),
     )
     add("--request-timeout", type=float, default=client.DEFAULT_HTTP_WAIT_SECONDS)
     add(
@@ -1079,7 +1093,7 @@ def _restore(
             code = public_failure(error, "workspace_backup.restore_failed")
     elapsed = time.perf_counter() - started
     if answer is not None:
-        print(
+        print(  # noqa: T201  # serializer
             answer_json(
                 envelope(
                     operation="WORKSPACE_RESTORE",
@@ -1098,7 +1112,7 @@ def _restore(
         "detail": refusal.detail,
         "next_action": refusal.next_action,
     }
-    print(
+    print(  # noqa: T201  # serializer
         answer_json(
             envelope(
                 operation="WORKSPACE_RESTORE",
@@ -1158,7 +1172,7 @@ def _sandbox(
             code = public_failure(error, "model_sandbox.failed")
     elapsed = time.perf_counter() - started
     if answer is not None:
-        print(
+        print(  # noqa: T201  # serializer
             answer_json(
                 envelope(
                     operation="MODEL_SANDBOX",
@@ -1177,7 +1191,7 @@ def _sandbox(
         "detail": refusal.detail,
         "next_action": refusal.next_action,
     }
-    print(
+    print(  # noqa: T201  # serializer
         answer_json(
             envelope(
                 operation="MODEL_SANDBOX",
@@ -1204,7 +1218,7 @@ def _model_refused(args: argparse.Namespace, operation: str, started: float, cod
         "detail": refusal.detail,
         "next_action": refusal.next_action,
     }
-    print(
+    print(  # noqa: T201  # serializer
         answer_json(
             envelope(
                 operation=operation,
@@ -1248,7 +1262,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
             "declaration_file": str(written.resolve()),
             "next": f'model scaffold --file "{written}"',
         }
-        print(
+        print(  # noqa: T201  # serializer
             answer_json(
                 envelope(
                     operation=operation,
@@ -1275,7 +1289,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
     found = client_refusal(failed) if failed else None
     outcome: Outcome = found.outcome if found else "OK"
     extra: dict[str, Any] = {"next_action": found.next_action} if found else {}
-    print(
+    print(  # noqa: T201  # serializer
         answer_json(
             envelope(
                 operation=operation,
@@ -1298,8 +1312,6 @@ def _declaration_fields(path: Path) -> str:
     Read here, in the CLI, so the declaration's module, which number-deciding closures hold,
     keeps its bytes.
     """
-    import yaml  # type: ignore[import-untyped]
-    from pydantic import ValidationError
 
     from alphalattice.capabilities.alpha_modeling.declaration import AlphaModelDeclaration
 
@@ -1322,7 +1334,7 @@ def _offline(args: argparse.Namespace, started: float) -> int:
     if args.operation_name not in known:
         # The registry's nearest names, where argparse answered only READ_HELP (V111).
         refusal = client_refusal("local_client.operation_unknown")
-        print(
+        print(  # noqa: T201  # serializer
             answer_json(
                 envelope(
                     operation="SCHEMA",
@@ -1355,7 +1367,7 @@ def _offline(args: argparse.Namespace, started: float) -> int:
                 "detail": refusal.detail,
                 "next_action": refusal.next_action,
             }
-    print(
+    print(  # noqa: T201  # serializer
         answer_json(
             envelope(
                 operation="SCHEMA",
@@ -1394,12 +1406,14 @@ def main(
     # Counted before the arguments are read, so a help launch counts too (V364).
     launches = SESSION_LAUNCHES.set(count_launch())
     # Read before the line parses, so the parser's own refusal reads in it too (V582).
-    language = ANSWER_LANGUAGE.set(_line_language(arguments))
+    reading = READ_VIEW.set(("compact", (), summary_display))
+    language = ANSWER_LANGUAGE.set(_line_context(arguments))
     surface_token = SURFACE_USE.set(())
     try:
-        parser = _parser(_named(arguments))
+        parser = command_parser(_named(arguments))
         args = parser.parse_args(arguments)
         args.command_line = tuple(arguments)
+        READ_VIEW.set((args.view or "compact", _summary_source(parser, args), summary_display))
         form = " ".join(filter(None, (args.noun, getattr(args, "verb", ""))))
         tags = tuple(f"option:{form}/{a.split('=')[0]}" for a in arguments if a.startswith("-"))
         SURFACE_USE.set((f"command:{form}", *tags))
@@ -1425,10 +1439,13 @@ def main(
         chosen_token = WORKSPACE_FROM.set(chosen_by)
         try:
             return _command(parser, args, started, serve=serve, restore=restore, sandbox=sandbox)
+        except client.LocalResearchClientError as error:
+            return _refused(error, started, line=arguments)
         finally:
             WORKSPACE_FROM.reset(chosen_token)
             BOUND_WORKSPACE.reset(bound_token)
     finally:
+        READ_VIEW.reset(reading)
         SURFACE_USE.reset(surface_token)
         ANSWER_LANGUAGE.reset(language)
         SESSION_LAUNCHES.reset(launches)
@@ -1662,7 +1679,7 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
             **diagnostics,
         )
         exit_code = EXIT_CODES[refusal.outcome]
-    print(answer_json(result, default=client._json_value))
+    print(answer_json(result, default=client._json_value))  # noqa: T201  # serializer
     return exit_code
 
 
@@ -1684,7 +1701,7 @@ def _refused(
     if workspace is not None and refusal.outcome == "NO_HOST":
         detail = host_checked(detail, workspace)
     if line and code == "local_client.workspace_unbound":
-        again = join(["alphalattice", "--workspace", "<dir>", *line], shell())
+        again = join([*command_prefix(), "--workspace", "<dir>", *line], shell())
         detail += " " + str(worded("This line with its workspace named: {subject}.")).replace(
             "{subject}", f"`{again}`"
         )
@@ -1695,7 +1712,7 @@ def _refused(
         detail = detail.replace("{subject}", context["selected_workspace"], 1).replace(
             "{subject}", context["requested_workspace"], 1
         )
-    print(
+    print(  # noqa: T201  # serializer
         answer_json(
             envelope(
                 operation=None,
@@ -1753,7 +1770,7 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
     except OSError as error:
         code = f"native_bridge.files_unavailable:{type(error).__name__}"
         return _refused(f"local_client.session_unbind_refused:{code}", started)
-    print(
+    print(  # noqa: T201  # serializer
         answer_json(
             envelope(
                 operation="SESSION_UNBIND",
@@ -1781,7 +1798,7 @@ def _problem(args: argparse.Namespace, started: float) -> int:
         )
     except NativeBridgeError as error:
         return _refused(str(error), started)
-    print(
+    print(  # noqa: T201  # serializer
         answer_json(
             envelope(
                 operation="PROBLEM_REPORT",
@@ -1851,7 +1868,7 @@ def _bind(args: argparse.Namespace, started: float) -> int:
             or client_refusal("local_client.session_bind_refused:" + code).detail,
         }
     answer = bound
-    print(
+    print(  # noqa: T201  # serializer
         answer_json(
             envelope(
                 operation="SESSION_BIND",
@@ -1866,12 +1883,12 @@ def _bind(args: argparse.Namespace, started: float) -> int:
 
 
 _LINE_LANGUAGE = argparse.ArgumentParser(add_help=False, exit_on_error=False)
-_LINE_LANGUAGE.add_argument("--lang", choices=("en", "zh"), default="en")
+_LINE_LANGUAGE.add_argument("--lang", nargs="?", default="en")
+_LINE_LANGUAGE.add_argument("--view")
 
 
-def _line_language(arguments: Sequence[str]) -> Literal["en", "zh"]:
-    """The language a command line names, read as its parser reads ``--lang``, anywhere on the
-    line (V412), before the rest of the line is read (V582).
+def _line_context(arguments: Sequence[str]) -> Literal["en", "zh"]:
+    """Set the read view and return the language before the main parser can refuse.
 
     Args:
         arguments: The command line without the program name.
@@ -1883,7 +1900,25 @@ def _line_language(arguments: Sequence[str]) -> Literal["en", "zh"]:
         known, _rest = _LINE_LANGUAGE.parse_known_args(list(arguments))
     except argparse.ArgumentError:
         return "en"
-    return cast(Literal["en", "zh"], known.lang)
+    READ_VIEW.set((known.view or "compact", (), summary_display))
+    return "zh" if known.lang == "zh" else "en"
+
+
+def _summary_source(parser: _Parser, args: argparse.Namespace) -> tuple[str, ...]:
+    if args.view != "summary" or args.noun == "serve":
+        return ()
+    operations = getattr(args, "operations", ())
+    local = " ".join(getattr(args, "client_command", ()))
+    forms = agent_surface_manifest()["read_views"]["summary"]["local_reads"]
+    pure = local in forms or (bool(operations) and set(operations) <= set(command_table()["reads"]))
+    stdin = any(
+        getattr(args, field, None) == Path("-")
+        for field in ("file", "saved_answer", "from_answer", "from_response", "choices")
+    )
+    if getattr(args, "output", None) is None and (stdin or not pure):
+        READ_VIEW.set(("summary", (), summary_display))
+        parser.error(str(worded("read.summary")).format(pointer="--output PATH"))
+    return (*command_prefix(), *args.command_line) if pure and not stdin else ()
 
 
 def _command(
@@ -1993,7 +2028,7 @@ def request_of(argv: Sequence[str]) -> dict[str, Any]:
         ValueError: `cli.not_an_operation_command` for a client command or `request`.
     """
     arguments = list(argv)
-    parser = _parser(_named(arguments))
+    parser = command_parser(_named(arguments))
     args = parser.parse_args(arguments)
     if args.noun in {"serve", "request"} or hasattr(args, "client_command"):
         raise ValueError("cli.not_an_operation_command")
@@ -2252,7 +2287,7 @@ def _read_lead(
 
         reason = safe_failure_code(receipt.get("reason")) or "native_bridge.lead_usage_read_failed"
         words = refusal_words(reason) or refusal_words("native_bridge.lead_usage_read_failed")
-        print(
+        print(  # noqa: T201  # CLI stderr
             json.dumps(
                 {
                     "native_observation": {
@@ -2264,7 +2299,7 @@ def _read_lead(
                     }
                 }
             ),
-            file=sys.stderr,
+            file=sys.stderr,  # noqa: TID251
         )
 
 

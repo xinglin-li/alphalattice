@@ -1,7 +1,7 @@
 # Evidence preparation and the Analyst
 Date: 2026-10-08
 
-`alphalattice strategy-book review --package <package> --dir "<out>/review"` prepares a book's Evidence and writes one Analyst bundle per prepared unit; `alphalattice review continue --dir "<out>/review"` submits the answers. Never write source sets, issuer mappings or analysis publications by hand. Give each unit to its own Analyst with only the bundle path, file list and answer file, never your conclusion; its exposure is the one the goal declared or a first use delegated. On Claude, use `alphalattice_evidence_analyst` with its shipped model and effort; pass no model override.
+`alphalattice strategy-book review --package <package> --dir "<out>/review"` prepares a book's Evidence and writes one Analyst bundle per prepared unit; `alphalattice review continue --dir "<out>/review"` submits the answers. Never write source sets, issuer mappings or analysis publications by hand. Give each unit to its own Analyst with only the bundle path, file list and answer file, never your conclusion; its exposure is the one the goal declared or a first use delegated. On Codex, pass `fork_turns="none"` to `spawn_agent`. On Claude, use `alphalattice_evidence_analyst` with its shipped model and effort; pass no model override.
 
 The Host rechecks Task, sources, scope, expiry and policy, and maps the answer's aliases back. On `CORRECT`, the same Analyst fixes only the named problems, at most twice. `ACCEPTED` admits the answer; `DONE` admits acceptable findings and records the rest as dropped. Do not bundle a `FAILED` unit; report its code. Source-exact citations prove traceability, not truth or investment significance.
 

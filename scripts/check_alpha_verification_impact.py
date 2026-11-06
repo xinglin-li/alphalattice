@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
+import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import types
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import cache
 from pathlib import Path
@@ -50,6 +53,8 @@ from devtools.architecture.structural import (  # noqa: E402
     discover_module_dependencies,
     discover_python_imports,
     discover_python_modules,
+    kept_fact,
+    kept_facts,
 )
 
 _PARENT_REVISION = "HEAD"
@@ -318,6 +323,9 @@ def _run_group(
                 *group,
             ),
             cwd=PLAYPEN_ROOT,
+            env=dict(os.environ),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0),
             check=False,
             capture_output=capture,
             text=True,
@@ -335,7 +343,12 @@ def _run_group(
     )
 
 
-def _run_admitted_tests(test_paths: tuple[str, ...]) -> None:
+def _run_admitted_tests(
+    test_paths: tuple[str, ...],
+    *,
+    workers: int | None = None,
+    arguments: tuple[str, ...] = (),
+) -> None:
     """Run Agent-bearing cases in isolation and batch audited deterministic cases.
 
     The old runner applied Agent process isolation to every test file. That made
@@ -362,11 +375,16 @@ def _run_admitted_tests(test_paths: tuple[str, ...]) -> None:
     evidence_files = _files_with_real_evidence(test_paths)
 
     def _one(group: tuple[str, ...]) -> TestGroupRun:
-        return _run_group(group, "-m", _ROUTED_LANE_MARKER_EXPRESSION)
+        return _run_group(
+            group,
+            "-m",
+            _ROUTED_LANE_MARKER_EXPRESSION,
+            *arguments,
+        )
 
     results = []
     costs: dict[str, float] = {}
-    workers = min(8, len(groups), max(1, (os.cpu_count() or 1) // 4))
+    workers = min(workers or 8, len(groups), max(1, (os.cpu_count() or 1) // 4))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for future in as_completed([pool.submit(_one, group) for group in groups]):
             result = future.result()
@@ -497,20 +515,48 @@ def _case_file_facts_for(root: Path) -> dict[str, tuple[frozenset[str] | None, f
                 continue
             key = path.relative_to(root).as_posix()
             try:
-                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
                 imports: frozenset[str] | None = frozenset(
                     discover_python_imports(path, source_root=root)
                 )
+                quoted = _quoted_names(path)
             except (OSError, SyntaxError, UnicodeError, ValueError):
                 facts[key] = (None, frozenset())
                 continue
-            quoted = frozenset(
-                node.value
-                for node in ast.walk(tree)
-                if isinstance(node, ast.Constant) and isinstance(node.value, str)
-            )
             facts[key] = (imports, quoted)
     return facts
+
+
+_QUOTED: dict[bytes, frozenset[str]] = {}  # this process's, by content digest; errors never kept;
+# it answers ahead of kept_fact's version, for a process whose loaded code a run never replaces
+
+
+def _quoted_names(path: Path) -> frozenset[str]:
+    """The string constants one case file quotes, parsed once per content in a process
+    (STRUCTURAL-SCAN-CACHE)."""
+    data = path.read_bytes()
+    digest = hashlib.sha256(data).digest()
+    if (known := _QUOTED.get(digest)) is None:
+        known = _QUOTED[digest] = frozenset(
+            kept_fact(
+                _this(),
+                "quoted",
+                data,
+                lambda bytes_: sorted(_quoted_of(bytes_, path)),
+                lambda value: (
+                    isinstance(value, list) and all(isinstance(item, str) for item in value)
+                ),
+            )
+        )
+    return known
+
+
+def _quoted_of(data: bytes, path: Path) -> set[str]:
+    text = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")  # as read_text does
+    return {
+        node.value
+        for node in ast.walk(ast.parse(text, filename=str(path)))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
 
 
 def _subtree_tests(directory: str, root: Path | None = None) -> frozenset[str]:
@@ -525,6 +571,195 @@ def _subtree_tests(directory: str, root: Path | None = None) -> frozenset[str]:
     )
 
 
+def _depends(imports: frozenset[str], quoted: frozenset[str], directory: str, target: str) -> bool:
+    """A parsable case file depends on `target`: it imports it by dotted package name (or a
+    name below it), by bare stem from the same directory, or quotes its file name."""
+    dotted = _dotted_module(target)
+    local = {name.split(".")[0] for name in imports} | {name.rsplit(".", 1)[-1] for name in imports}
+    return (
+        any(name == dotted or name.startswith(f"{dotted}.") for name in imports)
+        or (target.rsplit("/", 1)[0] == directory and Path(target).stem in local)
+        or Path(target).name in quoted
+    )
+
+
+def _scan_dependents(
+    facts: dict[str, tuple[frozenset[str] | None, frozenset[str]]], target: str
+) -> set[str]:
+    """The case files that depend on `target`, by one pass of `_depends` (a target outside
+    the facts)."""
+    return {
+        key
+        for key, (imports, quoted) in facts.items()
+        if imports is not None and _depends(imports, quoted, key.rsplit("/", 1)[0], target)
+    }
+
+
+def _case_dependents(
+    facts: dict[str, tuple[frozenset[str] | None, frozenset[str]]],
+) -> dict[str, set[str]]:
+    """Per case file, the case files that depend on it by `_depends`'s three rules, built in one
+    pass: each import name's dotted prefixes, its same-directory stems and its quoted file names
+    are looked up rather than every file being tested against every impacted file per round
+    (the rescan took about 3 s of every product selection)."""
+    by_dotted: dict[str, set[str]] = {}
+    by_stem: dict[tuple[str, str], set[str]] = {}
+    by_name: dict[str, set[str]] = {}
+    for target in facts:
+        by_dotted.setdefault(_dotted_module(target), set()).add(target)
+        by_stem.setdefault((target.rsplit("/", 1)[0], Path(target).stem), set()).add(target)
+        by_name.setdefault(Path(target).name, set()).add(target)
+    dependents: dict[str, set[str]] = {target: set() for target in facts}
+    for key, (imports, quoted) in facts.items():
+        if imports is None:
+            continue
+        directory = key.rsplit("/", 1)[0]
+        local = {name.split(".")[0] for name in imports} | {
+            name.rsplit(".", 1)[-1] for name in imports
+        }
+        targets: set[str] = set()
+        for name in imports:
+            parts = name.split(".")
+            for end in range(1, len(parts) + 1):
+                targets |= by_dotted.get(".".join(parts[:end]), set())
+        for stem in local:
+            targets |= by_stem.get((directory, stem), set())
+        for value in quoted:
+            targets |= by_name.get(value, set())
+        for target in targets:
+            dependents[target].add(key)
+    return dependents
+
+
+def _registered_fixtures(conftest: str, root: Path | None) -> dict[str, set[str]] | None:
+    """The fixtures a conftest only registers, by provider file; None when it does anything else."""
+    found: dict[str, set[str]] = {}
+    for node in ast.parse(((root or PLAYPEN_ROOT) / conftest).read_text("utf-8")).body:
+        if not isinstance(node, ast.ImportFrom) or not (node.module or "").startswith("tests."):
+            return None
+        if any(item.asname not in (None, item.name) or item.name == "*" for item in node.names):
+            return None
+        names = found.setdefault((node.module or "").replace(".", "/") + ".py", set())
+        names.update(item.name for item in node.names)
+    return found
+
+
+@cache
+def _names_in(path: Path) -> frozenset[str]:
+    """Each parameter and string a test file holds: what can name a fixture."""
+    nodes = tuple(ast.walk(ast.parse(path.read_text("utf-8"))))
+    named = {node.arg for node in nodes if isinstance(node, ast.arg)}
+    named |= {
+        node.value
+        for node in nodes
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    return frozenset(named)
+
+
+def _fixture_users(
+    conftest: str, impacted: set[str], seeds: frozenset[str], root: Path | None
+) -> tuple[str, ...] | None:
+    """The tests a conftest carries when it is impacted only as a registry of fixture providers:
+    those naming a reached provider's fixture or an indirect dependent.
+    None when it must carry every test below it."""
+    registered = None if conftest in seeds else _registered_fixtures(conftest, root)
+    reached = {path for path in (registered or {}) if path in impacted}
+    if not reached or any(
+        not path.startswith("tests/_support/") or not path.endswith("_fixtures.py")
+        for path in reached
+    ):
+        return None
+    assert registered is not None
+    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    automatic: set[str] = set()
+    try:
+        for path, names in registered.items():
+            body = ast.parse(((root or PLAYPEN_ROOT) / path).read_text("utf-8")).body
+            definitions = {
+                node.name: node
+                for node in body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            if path in reached:
+                if any(name.startswith("pytest_") for name in definitions.keys() | names):
+                    return None
+                for function in definitions.values():
+                    for decorator in function.decorator_list:
+                        if isinstance(decorator, ast.Call) and any(
+                            keyword.arg in {None, "name"}
+                            or (
+                                keyword.arg == "autouse"
+                                and not (
+                                    isinstance(keyword.value, ast.Constant)
+                                    and keyword.value.value is False
+                                )
+                            )
+                            for keyword in decorator.keywords
+                        ):
+                            return None
+            for name in names:
+                if name.startswith("pytest_"):
+                    continue
+                if name not in definitions:
+                    return None  # re-exported or dynamic fixture: its dependencies are unknown
+                functions[name] = definitions[name]
+                if any(
+                    isinstance(decorator, ast.Call)
+                    and any(
+                        keyword.arg in {None, "autouse", "name"} for keyword in decorator.keywords
+                    )
+                    for decorator in definitions[name].decorator_list
+                ):
+                    automatic.add(name)
+    except (OSError, SyntaxError, UnicodeError):
+        return None
+    names = {name for path in reached for name in registered[path]}
+    while True:
+        expanded = names | {
+            name
+            for name, function in functions.items()
+            if names
+            & {
+                arg.arg
+                for arg in (
+                    *function.args.posonlyargs,
+                    *function.args.args,
+                    *function.args.kwonlyargs,
+                )
+            }
+        }
+        if expanded == names:
+            break
+        names = expanded
+    if names & automatic:
+        return None
+    directory = conftest.rsplit("/", 1)[0]
+    facts = _case_file_facts() if root is None else _case_file_facts_for(root)
+    try:
+        for child in facts:
+            if (
+                child != conftest
+                and child.startswith(directory + "/")
+                and child.endswith("/conftest.py")
+            ):
+                body = ast.parse(((root or PLAYPEN_ROOT) / child).read_text("utf-8")).body
+                if any(
+                    names
+                    & {
+                        arg.arg
+                        for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+                    }
+                    for node in body
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                ):
+                    return None
+    except (OSError, SyntaxError, UnicodeError):
+        return None
+    below = _subtree_tests(directory, root)
+    return tuple(test for test in below if names & _names_in((root or PLAYPEN_ROOT) / test))
+
+
 def _tests_depending_on(seeds: frozenset[str], root: Path | None = None) -> tuple[str, ...]:
     """Every test that reaches a seed file, transitively through case files.
 
@@ -532,49 +767,38 @@ def _tests_depending_on(seeds: frozenset[str], root: Path | None = None) -> tupl
     name (`tests.pkg.helper`, or a name below it), imports it by bare stem from
     the same directory (the pre-package spelling the routing cases still use),
     or quotes its file name as a string constant. An impacted `conftest.py` or
-    `__init__.py` impacts every test below it; an unparsable file impacts its
-    whole directory.
+    `__init__.py` impacts every test below it, except a conftest that only registers
+    fixture providers, which impacts the tests naming their fixtures; an unparsable
+    file impacts its whole directory.
     """
 
     facts = _case_file_facts() if root is None else _case_file_facts_for(root)
     unparsable_directories = {
         key.rsplit("/", 1)[0] for key, (imports, _quoted) in facts.items() if imports is None
     }
-    impacted = set(seeds)
+    dependents = _case_dependents(facts)
+    impacted, frontier = set(seeds), set(seeds)
+    while frontier:  # the closure of `dependents`, from one index, not a rescan per round
+        frontier = {
+            key
+            for target in frontier
+            for key in (dependents[target] if target in facts else _scan_dependents(facts, target))
+            if key not in impacted
+        }
+        impacted |= frontier
     selected: set[str] = set()
-    while True:
-        grown = set(impacted)
-        for key in impacted:
-            directory = key.rsplit("/", 1)[0]
-            if Path(key).name in {"conftest.py", "__init__.py"}:
-                selected |= _subtree_tests(directory, root)
-            imports, _quoted = facts.get(key, (frozenset(), frozenset()))
-            if imports is None or directory in unparsable_directories:
-                # An unreadable file beside an impacted one is an unknown
-                # dependency set; no test in that directory can be shown safe.
-                selected |= _subtree_tests(directory, root)
-        for key, (imports, quoted) in facts.items():
-            if key in grown:
-                continue
-            if imports is None:
-                continue
-            directory = key.rsplit("/", 1)[0]
-            local = {name.split(".")[0] for name in imports} | {
-                name.rsplit(".", 1)[-1] for name in imports
-            }
-            for target in impacted:
-                dotted = _dotted_module(target)
-                same_directory = target.rsplit("/", 1)[0] == directory
-                if (
-                    any(name == dotted or name.startswith(f"{dotted}.") for name in imports)
-                    or (same_directory and Path(target).stem in local)
-                    or Path(target).name in quoted
-                ):
-                    grown.add(key)
-                    break
-        if grown == impacted:
-            break
-        impacted = grown
+    for key in impacted:
+        directory = key.rsplit("/", 1)[0]
+        if Path(key).name in {"conftest.py", "__init__.py"}:
+            users = (
+                _fixture_users(key, impacted, seeds, root) if key.endswith("conftest.py") else None
+            )
+            selected |= _subtree_tests(directory, root) if users is None else set(users)
+        imports, _quoted = facts.get(key, (frozenset(), frozenset()))
+        if imports is None or directory in unparsable_directories:
+            # An unreadable file beside an impacted one is an unknown
+            # dependency set; no test in that directory can be shown safe.
+            selected |= _subtree_tests(directory, root)
     selected |= {
         key for key in impacted if key.startswith("tests/") and Path(key).name.startswith("test_")
     }
@@ -886,6 +1110,21 @@ def _changed_paths(*, base: str | None, staged: bool) -> tuple[str, ...]:
 
 
 def main() -> int:
+    """Select, with every per-file fact this run derives kept in the line's scan store, versioned
+    by this runner and the structural owner as loaded (structural.kept_facts)."""
+    this = _this()
+    with kept_facts("impact-selection", this) if this is not None else contextlib.nullcontext():
+        return _select()
+
+
+def _this() -> types.ModuleType | None:
+    """This runner as loaded, or None when it was loaded under a name it is not registered by
+    (a test's own copy), which then keeps no fact."""
+    module = sys.modules.get(__name__)
+    return module if module is not None and vars(module) is globals() else None
+
+
+def _select() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base")
     parser.add_argument("--staged", action="store_true")

@@ -21,17 +21,18 @@ from tests.portfolio_strategy_lab.cli_support import _assert_commands_parse
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 
 
-@pytest.mark.parametrize("change", ["remove", "type", "required", "enum", "baseline"])
+@pytest.mark.parametrize(
+    "change",
+    ["remove", "type", "required", "enum", "baseline", "definition_remove", "definition_type"],
+)
 def test_the_userspace_ratchet_refuses_silent_interface_changes(change: str) -> None:
-    """Frozen names and typed contracts survive edits to code or the baseline."""
+    """New schema definitions keep old fields, definitions, types and retirements intact."""
     entry = {"required": False, "schema": {"type": "string", "enum": ["A", "B"]}}
+    entry["schema"]["$defs"] = {"Old": {"type": "string"}}
     frozen = {"release": "0.2.0", "entries": {"answer:STATUS.state": entry}, "retirements": {}}
-    live = {
-        "answer:STATUS.state": {
-            "required": False,
-            "schema": {"type": "string", "enum": ["A", "B", "C"]},
-        }
-    }
+    live = json.loads(json.dumps(frozen["entries"]))
+    live["answer:STATUS.state"]["schema"]["enum"].append("C")
+    live["answer:STATUS.state"]["schema"]["$defs"]["Info"] = {"type": "object"}
     assert surface_problems(frozen, live) == []
     previous = json.loads(json.dumps(frozen))
     if change == "remove":
@@ -40,6 +41,10 @@ def test_the_userspace_ratchet_refuses_silent_interface_changes(change: str) -> 
         frozen["entries"].clear()
     elif change == "required":
         live["answer:STATUS.state"]["required"] = True
+    elif change == "definition_remove":
+        live["answer:STATUS.state"]["schema"]["$defs"].pop("Old")
+    elif change == "definition_type":
+        live["answer:STATUS.state"]["schema"]["$defs"]["Old"]["type"] = "integer"
     else:
         live["answer:STATUS.state"]["schema"][change] = "integer" if change == "type" else ["A"]
     assert any(
@@ -77,9 +82,16 @@ def test_the_frozen_surface_and_release_retirements_match_the_owners() -> None:
     root = SCRIPT.parents[1]
     assert userspace_problems(root) == []
     entries = agent_surface(root)
+    assert entries["view:full"] == {"const": "full"}
+    assert entries["view:summary"] == {"const": "summary"}
     assert "command:committee show" in entries and "option:committee show/--update" in entries
     assert "law:product/PR1" in entries and "law:workbench/PR1" in entries
     assert "message:RULES/STANCE" in entries and "exchange:CORRECTION" in entries
+    assert {"exchange:ANSWER", "exchange:CORRECTION", "exchange:ACCEPTANCE"} <= entries.keys()
+    manifest = json.loads((root / "config/registries/agent-surface.json").read_text("utf-8"))
+    missing = dict(entries)
+    del missing["exchange:CORRECTION"]
+    assert any("exchange:CORRECTION" in problem for problem in surface_problems(manifest, missing))
 
 
 def test_a_command_a_text_names_is_one_the_cli_has(tmp_path: Path) -> None:
@@ -115,6 +127,48 @@ def test_every_documented_command_line_parses(
 ) -> None:
     """Every documented invocation parses through the CLI command grammar."""
     repository = SCRIPT.parents[1]
+    guide = (repository / "AGENTS.md").read_text(encoding="utf-8")
+    handoff = (
+        repository / ".agents/skills/alphalattice-research/references/specialist-handoff.md"
+    ).read_text(encoding="utf-8")
+    catalog = json.loads(
+        (repository / "config/registries/messages.json").read_text(encoding="utf-8")
+    )
+    route = catalog["entries"]["native_setup.specialist_route"]["words"]
+    assert "{command}" in route["en"] and "{command}" in route["zh-CN"]
+    assert "新会话" in route["zh-CN"]
+    for text in (guide, handoff, route["en"]):
+        assert "if the tool lists the role" in text.lower()
+        assert "if the tool does not list the role" in text.lower()
+        assert "open a fresh session" in text.lower()
+        assert "general subagent" not in text.lower()
+    codex_start = 'On Codex, pass `fork_turns="none"` to `spawn_agent`.'
+    assert codex_start in guide and codex_start in handoff
+    assert (
+        repository / ".claude/skills/alphalattice-research/references/specialist-handoff.md"
+    ).read_text(encoding="utf-8") == handoff
+    analyst = (
+        repository / ".agents/skills/alphalattice-research/references/evidence-analysis-handoff.md"
+    ).read_text(encoding="utf-8")
+    assert codex_start in analyst
+    assert (
+        repository / ".claude/skills/alphalattice-research/references/evidence-analysis-handoff.md"
+    ).read_text(encoding="utf-8") == analyst
+    operating = (
+        repository / ".agents/skills/alphalattice-research/references/operating.md"
+    ).read_text(encoding="utf-8")
+    assert "if it is not listed, open a fresh session" in operating.lower()
+    assert (repository / ".claude/skills/alphalattice-research/references/operating.md").read_text(
+        encoding="utf-8"
+    ) == operating
+    from alphalattice.control.product_host.composition.committee_words import ROUTE_END
+
+    assert "general subagent" not in ROUTE_END.lower()
+    for card in (
+        repository / ".codex/agents/alphalattice_cro.toml",
+        repository / ".claude/agents/alphalattice_cro.md",
+    ):
+        assert "lead starts you as a general subagent" not in card.read_text(encoding="utf-8")
     roots = [repository / name for name in ("AGENTS.md", "README.md", "README.zh-CN.md")]
     roots.extend(
         repository / name
@@ -243,6 +297,8 @@ def test_every_documented_command_line_parses(
     commands, covered = ([], set())
     for path in paths:
         text = path.read_text(encoding="utf-8")
+        if path.name in {"AGENTS.md", "operating.md", "SKILL.md"}:
+            assert re.search(r"run_in_terminal.*terminal_routes.*Only without", text, re.S), path
         # Every OS's command: `uv run python` for the checkout, `bin/python` beside `Scripts`.
         assert ".venv/Scripts" not in text, path
         assert "Scripts/python.exe" not in text or "bin/python" in text, path
@@ -299,3 +355,178 @@ def test_goal_record_operations_are_validated_without_request_selectors(tmp_path
         owner.read_text(encoding="utf-8").replace("GoalStore", "OtherStore"), encoding="utf-8"
     )
     assert len(incomplete_offers(tmp_path)) == 5
+
+
+@pytest.mark.proves("architecture.scan_facts_kept_by_bytes_under_seal_and_byte_cap")
+def test_kept_facts_follow_the_bytes_read_and_serve_only_sealed_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A kept fact answers only for the bytes it came from, its seal and shape detecting a
+    damaged row; a raised scan keeps nothing, a damaged store is rebuilt, and the store is one
+    file that a write never takes past its byte cap."""
+    import hashlib
+    import sqlite3
+
+    from devtools.architecture import operation_registry as registry
+    from devtools.architecture import structural
+
+    store = tmp_path / "store"
+    monkeypatch.setenv(structural.SCAN_CACHE_ENV, str(store))
+    owner = tmp_path / "src/alphalattice/offer.py"
+    owner.parent.mkdir(parents=True)
+    offer = 'def offer():\n    return {"operation": "EXPERIMENT_PORTFOLIO_DRAFT", "task_id": "t"}\n'
+    owner.write_text(offer, encoding="utf-8")
+    scan = registry._keeps_facts(incomplete_offers)
+    found = scan(tmp_path)
+    assert found and "hits 0 misses 1 persistent" in registry.LAST_SCAN_CACHE
+    assert scan(tmp_path) == found and "hits 1 misses 0" in registry.LAST_SCAN_CACHE
+    owner.write_text(offer.replace('"t"}', '"t", "candidate_id": None}'), encoding="utf-8")
+    assert scan(tmp_path) == [] and "hits 0 misses 1" in registry.LAST_SCAN_CACHE
+    owner.write_text(offer, encoding="utf-8")
+    kept = store / "operation-registry.sqlite"
+    version = structural.loaded_identity(registry, structural)  # the checker as loaded
+    facts = structural.FileFacts(tmp_path, "operation-registry", version)
+    db = sqlite3.connect(kept)
+    for value, seal in (("[]", "old"), (None, "old"), ('"x"', "new")):
+        with db:
+            key = hashlib.sha256(owner.read_bytes()).hexdigest()
+            (old,) = db.execute("SELECT seal FROM facts WHERE key = ?", (key,)).fetchone()
+            new = facts._seal("offers", key, str(value))
+            db.execute(
+                "UPDATE facts SET value = ?, seal = ? WHERE key = ?",
+                (value, new if seal == "new" else old, key),
+            )
+        assert scan(tmp_path) == found and "hits 0 misses 1" in registry.LAST_SCAN_CACHE
+    db.close()
+    facts.close(returned=False)
+
+    def raises(root: Path) -> list[str]:
+        incomplete_offers(root)
+        raise RuntimeError("a scan that stops")
+
+    owner.write_text(offer + "# edited\n", encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        registry._keeps_facts(raises)(tmp_path)
+    scan(tmp_path)
+    assert "hits 0 misses 1" in registry.LAST_SCAN_CACHE
+    kept.write_bytes(b"not a database")
+    assert scan(tmp_path) == found and "rebuilt" in registry.LAST_SCAN_CACHE
+    assert [entry.name for entry in store.iterdir()] == [kept.name]  # no journal or temp beside it
+    cap = kept.stat().st_size + 100  # under one more row: the write rewrites, never grows past it
+    monkeypatch.setattr(structural, "SCAN_CACHE_BYTES", cap)
+    owner.write_text(offer + "# edited again\n", encoding="utf-8")
+    assert scan(tmp_path) == found and "rewritten (bounded)" in registry.LAST_SCAN_CACHE
+    assert kept.stat().st_size <= cap
+    monkeypatch.setattr(structural, "SCAN_CACHE_BYTES", 0)
+    owner.write_text(offer, encoding="utf-8")
+    assert scan(tmp_path) == found and "dropped" in registry.LAST_SCAN_CACHE and not kept.exists()
+    monkeypatch.setattr(structural, "SCAN_CACHE_BYTES", 1 << 20)
+    older = structural.FileFacts(tmp_path, "operation-registry", "0" * 16)  # another code version
+    older.get("offers", owner, lambda data: [], registry._SHAPES["offers"])  # its own answer
+    held = sqlite3.connect(kept)  # a process holding the one file open
+    assert "persistent" in older.close(returned=True)
+    assert scan(tmp_path) == found and "misses 1" in registry.LAST_SCAN_CACHE  # fails this seal
+    assert [entry.name for entry in store.iterdir()] == [kept.name]  # one file for every version
+    held.close()
+    # a whole tree's facts survive a small run and a patched scan's other version; only the
+    # byte cap rewrites the store
+    shape = lambda value: value == [1]  # noqa: E731
+    stale = structural.FileFacts(tmp_path, "tree", "v0")  # an earlier code version's row
+    stale.of("p", b"old", lambda data: [1], shape)
+    assert "persistent" in stale.close(returned=True)
+    tree = structural.FileFacts(tmp_path, "tree", "v1")
+    for name in range(9):
+        tree.of("p", str(name).encode(), lambda data: [1], shape)
+    assert "persistent" in tree.close(returned=True)
+    small = structural.FileFacts(tmp_path, "tree", "v1")
+    small.of("p", b"synthetic", lambda data: [1], shape)
+    assert "persistent" in small.close(returned=True)
+    patched = structural.FileFacts(tmp_path, "tree", "v2")  # its code patched by a test
+    patched.of("p", b"patched", lambda data: [1], shape)
+    assert "persistent" in patched.close(returned=True)
+    whole = structural.FileFacts(tmp_path, "tree", "v1")
+    for name in (*range(9), "synthetic"):
+        whole.of("p", str(name).encode(), lambda data: pytest.fail("evicted"), shape)
+    assert whole.hits == 10 and whole.close(returned=True)
+    rows = sqlite3.connect(store / "tree.sqlite")
+    assert rows.execute("SELECT count(*) FROM facts").fetchone() == (12,)  # every version's row
+    rows.close()
+    # a source-defined pattern is identity, though its class says "re": a pattern-only change,
+    # reloaded in place, is a new version, while a value the module rebinds at run time is state
+    import importlib
+    import sys
+
+    monkeypatch.setattr(sys, "dont_write_bytecode", True)  # a same-size rewrite must recompile
+    monkeypatch.syspath_prepend(tmp_path)
+    patterned = tmp_path / "patterned_offers.py"
+    patterned.write_text(
+        'import re\nNAMED = re.compile("a")\nLAST = ""\n\n\n'
+        "def named(text):\n    return NAMED.findall(text)\n",
+        encoding="utf-8",
+    )
+    module = importlib.import_module("patterned_offers")
+    monkeypatch.setitem(sys.modules, "patterned_offers", module)
+    before = structural.loaded_identity(module)
+    module.LAST = "a last result"
+    assert structural.loaded_identity(module) == before
+    patterned.write_text(patterned.read_text("utf-8").replace('"a"', '"b"'), encoding="utf-8")
+    assert structural.loaded_identity(importlib.reload(module)) != before
+    # a running scan's store serves a per-file fact only when its version covers the code that
+    # computes it: that code changed misses, and an uncovered module always computes.
+    import types
+
+    owner, other = types.ModuleType("owner_facts"), types.ModuleType("other_facts")
+    exec("def fact(data):\n    return [data.decode()]\n", owner.__dict__)
+    calls: list[bytes] = []
+
+    def kept(module: types.ModuleType) -> list[str]:
+        with structural.kept_facts("covered", owner):
+            compute = lambda data: calls.append(data) or owner.fact(data)  # noqa: E731
+            return structural.kept_fact(
+                module, "p", b"x", compute, lambda value: isinstance(value, list)
+            )
+
+    assert kept(owner) == kept(owner) == ["x"] and len(calls) == 1  # computed, then served
+    assert kept(other) == kept(other) == ["x"] and len(calls) == 3  # not covered: never kept
+    exec("def fact(data):\n    return [data.decode().upper()]\n", owner.__dict__)
+    assert (
+        kept(owner) == ["X"] and len(calls) == 4
+    )  # the code changed: a miss, never the old answer
+    # a whole-tree answer is kept only as derived from the very bytes its key hashed: an entry
+    # changed and restored while its rule closure runs leaves the kept answer the tree's own.
+    import json
+
+    from devtools.architecture import identity_closures
+
+    tree = tmp_path / "closures"
+    entry = tree / "src/alphalattice/foundation/feature_engine/entry.py"
+    entry.parent.mkdir(parents=True)
+    (entry.parent / "extra.py").write_text("X = 1\n", encoding="utf-8")
+    entry.write_text("import alphalattice.foundation.feature_engine.extra\n", encoding="utf-8")
+    (tree / "config").mkdir()
+    (tree / "config/identity-roles.json").write_text(
+        json.dumps({"number_deciding_packages": ["feature_engine"], "platform_segments": []}),
+        encoding="utf-8",
+    )
+    (tree / "scripts").mkdir()
+    (tree / "scripts/owner.py").write_text(
+        'x = source_rule_closure_hash(tracked_paths=("src/alphalattice/foundation/feature_engine/'
+        'entry.py",), semantic_owner="x", numerical_role="x")\n',
+        encoding="utf-8",
+    )
+    closure, original = identity_closures.number_deciding_closure, entry.read_text("utf-8")
+
+    def concurrent(*args: object, **kwargs: object) -> object:
+        entry.write_text("X = 0\n", encoding="utf-8")  # a concurrent edit while the rule reads
+        try:
+            return closure(*args, **kwargs)
+        finally:
+            entry.write_text(original, encoding="utf-8")  # and its revert, before any second look
+
+    monkeypatch.setattr(identity_closures, "number_deciding_closure", concurrent)
+    kept = identity_closures.closure_sites(tree)
+    monkeypatch.setattr(identity_closures, "number_deciding_closure", closure)
+    assert kept == identity_closures.closure_sites(tree)  # served
+    monkeypatch.delenv(structural.SCAN_CACHE_ENV)
+    assert kept == identity_closures.closure_sites(tree)  # the tree's own answer, with extra.py
+    assert "src/alphalattice/foundation/feature_engine/extra.py" in kept[0].tracked_paths

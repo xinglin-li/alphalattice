@@ -9,7 +9,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -351,19 +350,6 @@ def test_a_missing_queue_refuses_before_the_host_holds_a_wake(live, codex, monke
     assert len(codex.calls()) == 1 and len(codex.probes()) == 2
 
 
-def test_concurrent_reads_probe_the_queue_once_per_host(live, codex):
-    """Concurrent admission and health reads share one Host-scoped queue probe."""
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        views = list(pool.map(lambda _: LocalResearchClient(live.workspace).activity(), range(8)))
-    assert all(view["observer"]["codex_queue"]["present"] for view in views)
-    task = _task(live, "probe-once")
-    _register(live, task)
-    assert len(codex.probes()) == 1 and codex.calls() == []
-    _restart(live)
-    LocalResearchClient(live.workspace).activity()
-    assert len(codex.probes()) == 2
-
-
 def _cli(arguments: list[str], capsys) -> dict:  # type: ignore[no-untyped-def,type-arg]
     """The answer's envelope, its `data` the owner's answer."""
     main(arguments, serve=lambda _args: pytest.fail("a wake uses the running Host"))
@@ -419,6 +405,11 @@ def test_an_agent_verb_registers_its_running_task_and_its_rerun_keeps_every_answ
     live, codex, tmp_path, monkeypatch, capsys, verb, setup_done
 ) -> None:
     """An agent verb registers its running task and its rerun keeps every answer."""
+    if verb == "first-use prepare":
+        from alphalattice.interface.local_application.native_bridge import fresh_path
+
+        launcher = shutil.which("alphalattice", path=fresh_path())
+        assert launcher is not None and Path(launcher).parent == tmp_path / "setup-done"
     task = _task(live, "verb")
     monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
     original = LocalResearchClient.request

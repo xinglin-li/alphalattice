@@ -44,7 +44,21 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
   assert.ok(!reads[0].includes('after='),'first read has no cursor');
   assert.ok(A.section().includes('Agent · API'),'the entry class, not a host identity (round 63: the class in words)');
   assert.ok(!A.section().includes('Codex'));
+  assert.ok(A.usageNote('not-recorded','codex').includes('Session usage unknown'),'missing session usage is not silently omitted');
+  assert.ok(A.section().includes('Session unknown'),'a sessionless API request stays visible as unknown');
+  assert.ok(A.usageNote().includes('Some sessions are unknown'), 'workspace notice does not assign a session');
   const planned=A.groups()[0];assert.equal(A.facts(planned).state,'PLANNED');assert.ok(A.section().includes('spec abcdef01'));
+  Object.assign(planned.items.at(-1).payload.subject,{agent_vendor:'codex',agent_session:'fixture'});
+  assert.ok(!A.section().includes('Session unknown'),'a named request is not relabelled unknown');
+  delete planned.items.at(-1).payload.subject.agent_vendor;delete planned.items.at(-1).payload.subject.agent_session;
+  const usagePage={...page('CONTINUED','e1',[],{},false,{status:'OK',native_usage:{status:'OFF',sessions:{}}}),cursor:'e1:2',head:2};
+  A.absorbPage(usagePage);assert.ok(!A.usageNote('not-recorded','codex').includes('Session usage unknown'),'a switched-off reading is not unknown');
+  A.absorbPage({...usagePage,observer:{status:'OK',native_usage:{status:'OBSERVING',sessions:{'shared':{status:'UNAVAILABLE'},'claude-code:shared':{status:'UNAVAILABLE'}}}}});
+  assert.ok(A.usageNote('shared','codex').includes('Session usage unknown'),'an unqualified or foreign-host reading cannot identify this session');
+  A.absorbPage({...usagePage,observer:{status:'OK',native_usage:{status:'OBSERVING',reason:'native_bridge.usage_catching_up'}}});
+  assert.ok(A.usageNote('shared','codex').includes('Session usage unknown'),'workspace progress is not a session reading');
+  A.absorbPage({...usagePage,observer:{status:'OK'}});
+
   // The row reads the API's projection in both locales, retaining its code and state.
   const question=JSON.parse(fs.readFileSync(path.resolve(root,'../../../../../../../../config/registries/messages.json'),'utf8')).entries['network.daily_updates'];
   planned.items.at(-1).person_questions=[{code:'network.daily_updates',state:'ASKED',words:question.words.en,words_zh:question.words['zh-CN']}];
@@ -168,6 +182,10 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
   await A.refresh();
   assert.equal(A.unseen(),unseenBeforeReset+1,'what arrives after the baseline counts as unseen');
   // 12. Observer degradation and unavailability are shown as such, never as execution state.
+  const serving={instance:'host-instance-123456',pid:123,started_at:'2026-09-14T12:00:00+00:00'}, hostWords=[],translate=c.t;
+  c.t=(key,vars)=>{if(key==='host.serving')hostWords.push(vars);return translate(key,vars);};
+  for(const status of ['OK','DEGRADED','UNAVAILABLE']){pages=[page(status==='UNAVAILABLE'?'UNAVAILABLE':'CONTINUED',status==='UNAVAILABLE'?null:'e1',[],{},false,{status,host:serving})];await A.refresh();A.section();assert.deepEqual(hostWords.pop(),serving);}
+  pages=[new Error('transport lost')];await A.refresh();A.section();assert.equal(hostWords.length,0,'retained provenance is not a live Host claim after transport loss');
   pages=[page('CONTINUED','e1',[],{},false,{status:'DEGRADED',recording:'OK',missing_observations:3,first_failure_at:'2026-09-14T12:00:00Z',last_failure_code:'observation.storage_busy'})];
   await A.refresh();assert.ok(A.section().includes('Activity recording degraded'));assert.ok(A.section().includes('gap remains a gap'));
   pages=[{workspace_id:'qa',disposition:'UNAVAILABLE',epoch:null,cursor:null,head:0,more:false,items:[],unavailable:0,tasks:{},observer:{status:'UNAVAILABLE',store_failure:'observation.storage_open_failed'},read_cost:{observations:0,elapsed_ms:0}}];

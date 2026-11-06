@@ -1,5 +1,5 @@
 # AlphaLattice research workstation
-Date: 2026-10-08
+Last checked: 2026-10-22 against 0.2.3
 
 Give your Claude Code or Codex agent one research intent and the repository link.
 It installs AlphaLattice and continues in the same session. You can follow Tasks,

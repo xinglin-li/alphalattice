@@ -1,5 +1,5 @@
 # AlphaLattice: guide for your research agent
-Date: 2026-10-08
+Last checked: 2026-11-04 against 0.2.4
 
 **Your first step in every session, before any answer:** run `Get-Content
 .alphalattice/user/memory/MEMORY.md, .alphalattice/user/guide.md` (or `cat` them),
@@ -41,14 +41,33 @@ A changed computation gets a new method identity and new result evidence; earlie
 results keep their recorded method and inputs. Fix an identity or evidence-binding
 refusal at its cause; never bypass the check or edit a stored record to make it pass.
 
+For an invalid Feature document or strategy declaration, send its offered controls or
+inputs request, repair the invalid fields and plan again with the same research choices.
+
 ## Open the workspace
 
 At first use and any refusal naming a missing dependency, run the doctor from the checkout's root, after `uv sync --locked --all-extras`: `uv run python -m alphalattice.interface.local_application.native_setup doctor` (on the wheel leg, with the tool environment's interpreter beneath `uv tool dir`). Fill each missing `host_readiness` item by its `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
 
+Off PATH, use the binding block in the shared guides and pass the matching absolute prefix to every specialist; no shell update or restart is needed. Portable examples use alphalattice as a placeholder. When serving from another shell, set ALPHALATTICE_SHELL to your specialists' shell: posix or powershell.
+
 If you installed AlphaLattice in this session, continue here: read this guide and
-the research Skill by the paths `configure` printed under `continue_here`, start
-each specialist as a general subagent whose prompt is its card's text, and tell the
-person its `disclosure` in one line ([setup](.agents/skills/alphalattice-research/references/operating.md)).
+the research Skill by the paths `configure` printed under `continue_here`, and tell
+the person its `disclosure` in one line ([setup](.agents/skills/alphalattice-research/references/operating.md)).
+Before each specialist, check your host's subagent tool: if the tool lists the role
+(for example, `alphalattice_alpha`), start that shipped role with its assignment.
+On Codex, pass `fork_turns="none"` to `spawn_agent`. If the tool does not list the role,
+open a fresh session in the configured project using `continue_here.open_session` so the host can load it,
+then resume the same research. If the role is still missing, stop and report it.
+A Claude Code startup step is separate from the network-permission question.
+For a new Host on Claude Code desktop, use its available `run_in_terminal` tool to
+probe the Terminal panel shell as the operating guide describes; only after a successful outside-every-Job result, declare
+`ALPHALATTICE_TERMINAL_PANEL_HOST=claude-code` for this serve invocation, then remove it.
+Codex's panel capability is undeclared; never assume a panel from a host's name alone.
+<!-- message: host.start.terminal.guide -->
+On Claude Code desktop, use the available Terminal panel through `run_in_terminal`; on Codex, use an available agent-driven Terminal panel in the same way. If detached start is refused, choose the first applicable `terminal_routes` offer and run `terminal_command` yourself there. Only without such a panel, give the person the same command for a terminal they own, then wait for their word. The Host cannot inspect your tools; its escape and authenticated readiness checks still decide STARTED.
+
+The app may ask the person to approve that one line.
+
 Use a new workspace for new research:
 
 ```powershell
@@ -57,13 +76,19 @@ alphalattice --workspace "workspaces/my-research" serve --no-browser --detach
 
 Use `--detach` on both Claude Code and Codex. Never keep a long-lived serve in a background
 Bash task: its time limit can stop the Host and running Tasks. STARTED requires a ready,
-authenticated Host proved outside its parent Job; otherwise the launch refuses by name and
-leaves no detached child. Give the person one copyable command from `terminal_command`, to run
-in a terminal they own outside the agent's shell (Claude Code desktop: its Terminal panel).
-Alternatively keep the Host attached for this session with `--stop-on-stdin`; say that a held
-update then waits for the next session. Never bypass Job containment through a broker, service
-or scheduler. `alphalattice host stop` joins running work and stops your Host. Once it
-serves, its ready lines end with the next action, OPEN_THE_WORKBENCH. The rule: the
+authenticated Host proved outside its parent Job. A readiness timeout can leave the named
+process starting: follow its offered log or stop recovery before another launch.
+An explicitly session-only Host still accepts `--stop-on-stdin`; a held update then waits
+for the next session. Never bypass Job containment through a broker, service
+or scheduler. `alphalattice host stop` joins running work and stops your Host.
+A detached Host stays while a held update, Task, request or enabled automation needs it;
+otherwise it stops after 900 idle seconds (0 disables idle shutdown).
+
+<!-- message: host.reuse.guide -->
+A matching serving Host can be reused even when this shell cannot detach a new process. ALREADY_SERVING reuses only an authenticated Host for this workspace and instance, preserving its authority and idle policy. Activity's observer names its instance, process and start time; the Workbench shows the same Host. On an unverified or stale descriptor, read the named Host log and identify its owning process before retrying the original serve command; leave the descriptor and writer lease unchanged.
+
+Once it serves, its
+ready lines end with the next action, OPEN_THE_WORKBENCH. The rule: the
 Workbench opens in the coding app's built-in browser, visibly, once, never in a separate
 system browser, so keep `--no-browser` on every serve you start. In Claude Code's desktop
 app, load the browser pane's tools and open the printed link with `preview_start` (url),
@@ -87,9 +112,26 @@ on each command, with nothing to approve. Use the **alphalattice-research** Skil
 
 ## Run the first use from the person's sentence
 
+Reads accept `summary`, `compact` and `full`. Save the complete owner
+answer with `--output` when you will continue from it, cite it or hand it on.
+Goal-profile displays remain compact; their `--output` contains the full profile.
+
+On Claude Code and Codex, use `--view summary` for reads: the complete envelope stays
+within 32 KiB and gives whole offers and a `full_answer` pointer. Use `--output "<out>/answer.json"`
+when you need the complete owner answer; it saves the exact owner bytes, independently of
+the summary. Give `--output` before reading stdin or sending a write in summary mode.
+Follow the pointer for omitted data; an omission is not an empty value. Legacy `--view full`
+stdout remains available with a deprecation notice; prefer the summary and saved answer.
+
+Where a refusal carries `error_info`, its category and owner domain come from the registry,
+and `reason` keeps its exact failure code. Read its catalog message and safe field paths;
+unknown supplied keys appear as `<unrecognized>`. A category grants no retry or authority:
+follow the unchanged offered request or ask the person where required.
+
 A project has one first use. A new session reads the project binding and `workspace show`
 first: once the first use is complete with its strategy running forward, a date's sentence is
-the daily road in that same workspace. `serve` on a new workspace refuses before it starts,
+the daily road in that same workspace. In a project whose first use is already
+complete, `serve` on another new workspace refuses before it starts,
 and `first-use prepare` refuses a second first use, by name (`local_client.first_use_completed`):
 each names the workspace and offers its `research-update plan`. Only when the person asks for
 separate new research, asked in one line, run it again with `--new-research`.
@@ -102,8 +144,9 @@ alphalattice --workspace "workspaces/my-research" first-use prepare --sentence "
 ```
 
 It first checks the setup a first use cannot run without, and opens nothing while
-it is missing: the bare `alphalattice` command your specialists' routes run in their
-own fresh shells, and the retrieval environment. Run each `missing` item's `commands`,
+it is missing: the resolved command your specialists' routes run in their own fresh
+shells, including its absolute uv launcher off PATH, and the retrieval environment.
+Run each `missing` item's `commands`,
 disclosing them (a person's item is asked once, in one line). Download and install
 `config/requirements-retrieval.lock` packages as your act, without repeating first-use
 network consent, even with an empty cache; say `disclosure` in one line and ask no
@@ -188,7 +231,7 @@ Bundle outputs accept new/empty directories or matching output from the same rev
 rerun with that directory after a stop. Unrelated files are refused and never overwritten.
 The first reads that update's published positions, bound by their publication,
 prepares their Evidence and writes every Analyst bundle; start one Evidence Analyst
-per bundle. Where no Evidence is installed it stops with the install offered ready (`install`),
+per bundle using the role-selection rule above. Where no Evidence is installed it stops with the install offered ready (`install`),
 its issuers named by the Host's rule: send it as it stands, once, then run the same command
 again; the review acquires the rest. An install whose issuers all filed nothing offers the next
 eight as `install`. Where none is offered, the answer says why and the way on.
@@ -211,9 +254,9 @@ alphalattice bundle prepare --role ALPHA --task <task> --dir "<out>/committee/al
 On a date's published positions, you, the PM, convene the investment committee
 with Alpha, Risk and the CRO. `alphalattice committee open` offers each specialist's bundle: its
 view of the date's positions and its `submit` and `wait` on the floor. Prepare the
-three (ALPHA, RISK, CRO), then in one turn start them as general subagents (each
-bundle's route runs two commands, which the registered CRO type's allowlist also covers), each
-prompt its card's text and its bundle's path, and in that same turn submit your own stance,
+three (ALPHA, RISK, CRO), then in one turn start them using the role-selection rule above
+(each bundle's route runs two commands, which the registered CRO type's allowlist also covers),
+each with its bundle's path, and in that same turn submit your own stance,
 argued from `alphalattice committee show --update <task>`, which lists each member's questions with the
 floor's facts by their S alias: the reveal waits for your stance, and nothing of theirs shows before it. As PM you judge whether the book adds
 up: what changed and what it cost, its research envelope, whether it can be carried out,
@@ -234,7 +277,7 @@ not an approval or advice: PROCEED_WITH_NOTES by default, members' reservations 
 a problem with particular holdings is a note and a suggestion to avoid or reduce them, never a
 DECLINE. DECLINE endorsement of action on the positions only for a book-level hard defect (a data
 error affecting the book, a breached book Risk bound, or key evidence missing for the book as a
-whole), naming it, and it preserves the research record and positions; FOR_THE_PERSON only for a named decision of the person; PROCEED when nothing needs noting. The stances are blind until all four are in; after the reveal each
+whole), naming it, and it preserves the research record and positions; FOR_THE_PERSON only for a named decision of the person; PROCEED when nothing needs noting. Stances remain blind until all four arrive or the stance window ends, and never reveal before the PM's stance; after the reveal each
 specialist takes one discussion turn, a CHALLENGE or REPLY or a PASS that yields it, with three
 challenges or replies in all, and the floor closes at its time box
 whoever is silent. Messages name holdings, points, components, messages and facts by their
@@ -347,8 +390,9 @@ Load the shipped Data, Factor, Alpha, Risk or Portfolio card for its professiona
 question, the Evidence Analyst and CRO cards for their bundles
 ([specialists](.agents/skills/alphalattice-research/references/specialist-handoff.md)).
 Give an executor the exact workspace, permitted operations, references, goal and
-budget. You submit every answer with the preparation's `submit_command`; the
-Host checks shape and bindings, never scientific correctness. A wait is one call,
+budget. For a stage role, submit its answer with the preparation's `submit_command`.
+Evidence Analysts, CROs and committee members submit through their own keyed routes.
+The Host checks shape and bindings, never scientific correctness. A wait is one call,
 never a poll.
 
 ## Interrupt and report
@@ -361,9 +405,12 @@ Before following a Task, the client prints its id and executable `read`; if the
 tool window ends, send that read. With structured `--output`, it also saves the
 admission and names `output_file` before stage progress; without it, no file is saved.
 
-Complete a goal by its [procedure](.agents/skills/alphalattice-research/references/goals.md)
-with actual criterion answers, references, findings and unresolved work. Report
-from the sealed `goal show`, copying its ids and hashes, and link its
+Complete a goal by the versioned [procedure](.agents/skills/alphalattice-research/references/goals.md)
+with actual criterion answers, references, findings and unresolved work. Its
+completion offer binds inline references and returns the `report`, sealed ids/hashes
+and `workbench.launch_url` together: fill it and submit once; use its returned artifacts without repeating
+Goal reads or exports. Repair a returned `report_error` with its offered export,
+without resubmission. Keep the experience-recording action and link the
 **Timeline**, **Conversation**, **Results** and each result's `local_web_url`.
 State supported claims, time, coverage and open issues; promise no profit,
 independent validation or trades.

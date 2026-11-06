@@ -21,6 +21,7 @@ cross-sectional dispersion forecast, which are separate owners.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -155,8 +156,6 @@ class AlphaSelectedRowAxis:
 
 def predicted_z_values_hash(values: FloatArray) -> str:
     """Byte identity of the predicted-Z matrix, NaNs included."""
-
-    import hashlib
 
     contiguous = np.ascontiguousarray(values, dtype=np.float64)
     return hashlib.sha256(contiguous.tobytes()).hexdigest()

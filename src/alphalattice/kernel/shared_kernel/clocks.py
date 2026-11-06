@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from time import monotonic
+from time import get_clock_info, monotonic
 from typing import Any
 from uuid import uuid4
 
@@ -22,9 +22,11 @@ class ReplayClock:
             raise ValueError("clock.anchor_naive")
         self.anchor, self.reference = anchor.astimezone(UTC), uuid4().hex
         self._ticks, self._wall = ticks, wall
+        self._resolution = {name: get_clock_info(name).resolution for name in ("time", "monotonic")}
+        self._precision = sum(self._resolution.values()) + datetime.resolution.total_seconds()
         lo, self._origin, hi = self._sample()
         self._tick = (lo + hi) / 2
-        self._uncertainty = (hi - lo) / 2 + datetime.resolution.total_seconds()
+        self._uncertainty = (hi - lo) / 2 + self._precision
         self.correlation = dict(
             schema="alphalattice.clock-correlation.v1",
             clock_ref=self.reference,
@@ -32,6 +34,7 @@ class ReplayClock:
             system_anchor=self._origin.isoformat(),
             monotonic_anchor=self._tick,
             uncertainty_seconds=self._uncertainty,
+            resolution_seconds=self._resolution,
         )
 
     def _sample(self) -> tuple[float, datetime, float]:
@@ -45,7 +48,7 @@ class ReplayClock:
         """Bind a phase or RPC and report drift beyond measured sampling uncertainty."""
         lo, wall, hi = self._sample()
         drift = (wall - self._origin).total_seconds() - ((lo + hi) / 2 - self._tick)
-        bound = self._uncertainty + (hi - lo) / 2 + datetime.resolution.total_seconds()
+        bound = self._uncertainty + (hi - lo) / 2 + self._precision
         return dict(clock_ref=self.reference, clock_drift=abs(drift) > bound)
 
 

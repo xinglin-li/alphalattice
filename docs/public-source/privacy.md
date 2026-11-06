@@ -1,5 +1,5 @@
 # Privacy and native usage reading
-Date: 2026-10-08
+Last checked: 2026-10-22 against 0.2.3
 
 The workspace Host reads usage facts from this machine's Claude Code or Codex files for Sessions bound to the workspace. It keeps response IDs, models, recorded effort, token counts and timestamps, including first and last times. From a Claude Code subagent's own commands that name a member key, it also keeps bounded attribution facts: the key's SHA-256, the committee thread or a hash of the bundle directory, the role named, whether the command submits, hashed claim and tool-use identifiers, and the floor message IDs or answer references its accepted submits made (at most 64 commands, 8 references each). Conversation text, prompts, tool bodies, raw keys, private reasoning and file paths are discarded.
 

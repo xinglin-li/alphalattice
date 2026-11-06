@@ -1471,7 +1471,7 @@ def test_empty_start_and_actor_boundary_without_strategy_or_data_authority(
     with LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT) as reopened:
         assert _json(reopened, "/api/session")["workspace_id"] == projection["workspace_id"]
     assert (tmp_path / "research-workspace.json").read_bytes() == manifest_bytes
-    # Unknown existing contents must not be silently adopted as an empty workspace.
+    # Unknown contents cannot be adopted as empty.
     unknown = tmp_path / "unknown"
     (unknown / "out").mkdir(parents=True)
     (unknown / ("out/.alphalattice-writer.lock" if injected else "market-data.duckdb")).write_bytes(
@@ -1481,6 +1481,7 @@ def test_empty_start_and_actor_boundary_without_strategy_or_data_authority(
         LocalPortfolioWebSession.from_workspace(unknown)
 
 
+@pytest.mark.private_data
 def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_json(tmp_path):
     from alphalattice.control.product_host.maintenance.data_update import (
         bind_existing_data_workspace,

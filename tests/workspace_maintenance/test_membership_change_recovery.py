@@ -3,23 +3,33 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
+from alphalattice.control.data_platform.maintenance.contracts import WorkspaceMaintenanceRequest
+from alphalattice.control.data_platform.maintenance.orphaned_bind import (
+    restore_orphaned_membership,
+)
 from alphalattice.control.data_platform.maintenance.registry import (
     DuckDbWorkspaceMaintenanceRegistry,
 )
 from alphalattice.control.data_platform.readiness import build_workspace_readiness
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
+from alphalattice.control.product_host.composition.research_workspace import (
+    ResearchWorkspaceManifest,
+)
 from alphalattice.control.product_host.maintenance.data_update import bind_existing_data_workspace
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as Request,
 )
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from devtools.evaluation.golden_workspaces import refuse_writers
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
     _json,
@@ -27,7 +37,11 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _Resolver,
 )
 from tests.researcher_methodology_surface.real_workspace import SYMBOLS
-from tests.researcher_methodology_surface.session_workspace import copy_workspace
+from tests.researcher_methodology_surface.session_workspace import (
+    LINKED_SEEDS,
+    copy_workspace,
+    session_workspace,
+)
 from tests.workspace_maintenance.data_update_support import one_sector_seed
 from tests.workspace_maintenance.local_data_provider import (
     NOW,
@@ -35,11 +49,19 @@ from tests.workspace_maintenance.local_data_provider import (
     unchanged_membership_source,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
+# Each case writes its own database, while the immutable Parquet seed is shared.
+pytestmark = pytest.mark.private_data
+
+ROOT = resolve_playpen_root(Path(__file__))
 PROFILE = "us-current-index-research"
 MEMBERS = SYMBOLS[:7]
 """One Sector of seven: after a leaver and a sectorless joiner it keeps the five-member floor."""
 CHANGED_AT = NOW + timedelta(days=1)
+_REQUEST = ("market_profile_id", "target_market_session", "knowledge_cutoff_at", "trigger")
+_REQUEST += ("data_policy_hash", "feature_policy_hash")
+_READINESS = ("market_profile_id", "status", "active_membership_fingerprint", "failure_code")
+_READINESS += ("active_candidate_manifest_document", "pending_membership_fingerprint")
+_READINESS += ("pending_candidate_manifest_document", "last_checked_at", "last_changed_at")
 
 
 def _host(workspace: Path, binding, provider, source) -> LocalPortfolioWebSession:  # type: ignore[no-untyped-def]
@@ -63,29 +85,13 @@ def _registry(live: LocalPortfolioWebSession) -> DuckDbWorkspaceMaintenanceRegis
     )
 
 
-@pytest.fixture(scope="module")
-def stopped_change(tmp_path_factory) -> SimpleNamespace:  # type: ignore[no-untyped-def]
-    """A stock-list change with two short-tailed leavers, a sectorless joiner and an owed audit,
-    stopped on the Panel's coverage floor after its cycle made its own Sector-reduced membership
-    active, with every step's answer kept."""
-    seed = one_sector_seed(tmp_path_factory, "transition", MEMBERS)
-    workspace = copy_workspace(seed, tmp_path_factory.mktemp("stopped") / "workspace")
-    binding = bind_existing_data_workspace(workspace)
-    market = MarketDataRepository(workspace)
-    prior = market.current_quality_filtered_research_manifest(market_profile_id=PROFILE)
+def _change_source(market: MarketDataRepository, prior, restated: date):  # type: ignore[no-untyped-def]
+    """The change's provider and stock-list source: a restated bar on the audited member, and once
+    the membership moved, a leaver whose last bar breaks its range and a member a session short."""
     leaver, audited = prior.listing_for_symbol(MEMBERS[0]), prior.listing_for_symbol(MEMBERS[1])
     short = prior.listing_for_symbol(MEMBERS[2])
     provider = recording_provider(symbols=(*MEMBERS, "NEW"), sector_size=7, now=CHANGED_AT)
     del provider.sectors["NEW"]
-    raw = market.raw_bars(audited.listing_id)
-    # A restated bar inside the rolling audit's reach owes a full-history audit.
-    restated = next(
-        bar.session_date
-        for bar in raw
-        if raw[-1].session_date - timedelta(days=45)
-        <= bar.session_date
-        < CHANGED_AT.date() - timedelta(days=45)
-    )
     fetch = provider.fetch_daily
 
     def source_rows(asked, **kwargs):  # type: ignore[no-untyped-def]
@@ -102,7 +108,26 @@ def stopped_change(tmp_path_factory) -> SimpleNamespace:  # type: ignore[no-unty
         return rows
 
     provider.fetch_daily = source_rows  # type: ignore[method-assign]
-    source = unchanged_membership_source(tuple(sorted((MEMBERS[1], *MEMBERS[3:], "NEW"))))
+    return provider, unchanged_membership_source(tuple(sorted((MEMBERS[1], *MEMBERS[3:], "NEW"))))
+
+
+def _stop_change(tmp_path_factory, workspace: Path) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    """Run the change through a real Host until it stops on the coverage floor; its ids and
+    every step's answer, for the workers that copy this workspace."""
+    copy_workspace(one_sector_seed(tmp_path_factory, "transition", MEMBERS), workspace)
+    binding = bind_existing_data_workspace(workspace)
+    market = MarketDataRepository(workspace)
+    prior = market.current_quality_filtered_research_manifest(market_profile_id=PROFILE)
+    raw = market.raw_bars(prior.listing_for_symbol(MEMBERS[1]).listing_id)
+    # A restated bar inside the rolling audit's reach owes a full-history audit.
+    restated = next(
+        bar.session_date
+        for bar in raw
+        if raw[-1].session_date - timedelta(days=45)
+        <= bar.session_date
+        < CHANGED_AT.date() - timedelta(days=45)
+    )
+    provider, source = _change_source(market, prior, restated)
     build_workspace_readiness(
         market,
         profile_path=ROOT / "config/market-profiles/us-current-index-research.yaml",
@@ -126,18 +151,50 @@ def stopped_change(tmp_path_factory) -> SimpleNamespace:  # type: ignore[no-unty
         seen["readback"] = _agent(live, {"operation": "DATA_UPDATE_READBACK", "task_id": task_id})
         cycle = _registry(live).latest_cycle(PROFILE).cycle_id  # type: ignore[union-attr]
         seen["working"] = _registry(live).working_manifest(cycle)
-    return SimpleNamespace(
-        workspace=workspace,
-        binding=binding,
-        provider=provider,
-        source=source,
+    return dict(
+        binding=binding.model_dump(
+            mode="json"
+        ),  # bound before the change; the moved Panel refuses a new bind
         task_id=task_id,
         cycle_id=cycle,
-        journal=market.manifest_transition(plan["change"]["transition_id"]),
-        prior=prior,
-        audited=audited,
+        transition_id=plan["change"]["transition_id"],
+        prior=prior.revision_sha256,
+        restated=restated.isoformat(),
         active=market.readiness.load(PROFILE).active_manifest_revision,
         seen=seen,
+    )
+
+
+@pytest.fixture(scope="module")
+def stopped_change(tmp_path_factory) -> SimpleNamespace:  # type: ignore[no-untyped-def]
+    """A stock-list change with two short-tailed leavers, a sectorless joiner and an owed audit,
+    stopped on the Panel's coverage floor after its cycle made its own Sector-reduced membership
+    active, with every step's answer kept. The Host run (about 40 s) happens once per session
+    across workers; each worker gets its own copy, the same binding, provider and source."""
+    seed, built = session_workspace(
+        tmp_path_factory,
+        "membership_stopped_change",
+        lambda workspace: _stop_change(tmp_path_factory, workspace),
+    )
+    for path in seed.rglob("*.parquet"):
+        refuse_writers(str(path))
+    LINKED_SEEDS.add(seed)
+    workspace = seed
+    market = MarketDataRepository(workspace)
+    prior = market.load_universe_manifest_revision(str(built["prior"]))
+    provider, source = _change_source(market, prior, date.fromisoformat(str(built["restated"])))
+    return SimpleNamespace(
+        workspace=workspace,
+        binding=ResearchWorkspaceManifest.model_validate(built["binding"]),
+        provider=provider,
+        source=source,
+        task_id=built["task_id"],
+        cycle_id=built["cycle_id"],
+        journal=market.manifest_transition(str(built["transition_id"])),
+        prior=prior,
+        audited=prior.listing_for_symbol(MEMBERS[1]),
+        active=built["active"],
+        seen=built["seen"],
     )
 
 
@@ -175,7 +232,7 @@ def test_a_stopped_membership_change_resumes_through_the_membership_its_cycle_ma
     assert stopped_change.active != journal.next_manifest_revision
     assert seen["working"] == stopped_change.active
 
-    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace")
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace", link_parquet=True)
     with _host(
         workspace, stopped_change.binding, stopped_change.provider, stopped_change.source
     ) as live:
@@ -190,10 +247,96 @@ def test_a_stopped_membership_change_resumes_through_the_membership_its_cycle_ma
     assert [t.task_id for t in tasks if t.task_kind == "workspace_data_update"] == [UUID(task_id)]
 
 
+def test_a_working_membership_names_the_task_whose_cycle_bound_it(stopped_change, tmp_path):
+    """A cycle's working membership names the Task whose stage bound it; another writer's bind of
+    the same membership on that cycle is recorded after it, never folded into the first."""
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace", link_parquet=True)
+    sample = next(stopped_change.workspace.rglob("*.parquet"))
+    assert os.path.samefile(sample, workspace / sample.relative_to(stopped_change.workspace))
+    assert not os.path.samefile(
+        stopped_change.workspace / "market-data.duckdb", workspace / "market-data.duckdb"
+    )
+    with _host(
+        workspace, stopped_change.binding, stopped_change.provider, stopped_change.source
+    ) as live:
+        registry = _registry(live)
+        own = registry.working_binds(stopped_change.cycle_id)[-1]
+        registry.owned_by("another-task").record_working_manifest(
+            stopped_change.cycle_id,
+            manifest_revision=own.manifest_revision,
+            authority="tamper",
+            observed_at=CHANGED_AT,
+        )
+        binds = [b for b in registry.working_binds() if b.cycle_id == stopped_change.cycle_id]
+    assert own.manifest_revision == stopped_change.active
+    assert own.owner_task == stopped_change.task_id
+    assert [b.owner_task for b in binds[-2:]] == [stopped_change.task_id, "another-task"]
+
+
+@pytest.mark.parametrize("owner", ["CANCELLED", "DEFERRED", "UNPROVED", "AMBIGUOUS"])
+def test_a_cancelled_tasks_orphaned_candidate_list_returns_to_its_panels_own(
+    stopped_change, tmp_path, owner
+):
+    """A candidate list a cancelled Task's cycle left active returns to its Panel's own, once;
+    a live owner's stays, so does a journaled change, and a plan refuses an owner nothing proves
+    while a cancel skips it. Its 40 s are the module's stopped change, shared with the file."""
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace", link_parquet=True)
+    task = SimpleNamespace(lifecycle=SimpleNamespace(value=owner))
+    tasks, later = SimpleNamespace(task=lambda _task_id: task), CHANGED_AT + timedelta(hours=1)
+    with _host(
+        workspace, stopped_change.binding, stopped_change.provider, stopped_change.source
+    ) as live:
+        registry, market = _registry(live), MarketDataRepository(workspace)
+        assert restore_orphaned_membership(registry, tasks, CHANGED_AT) == {}
+        held, record = (
+            registry.cycle(stopped_change.cycle_id).request,
+            market.readiness.load(PROFILE),
+        )
+        panel = registry.working_binds()[1].manifest_revision  # the Panel's own, before the change
+        candidate = registry.working_binds()[0].manifest_revision  # bound, never journaled
+        cycle = registry.admit(
+            WorkspaceMaintenanceRequest.create(
+                **{k: getattr(held, k) for k in _REQUEST},
+                membership_revision=panel,
+                requested_at=later,
+            ),
+            observed_at=later,
+        ).cycle_id
+        unnamed = owner == "UNPROVED"  # recorded as 0.2.3 recorded it, naming no Task
+        writers = [registry if unnamed else registry.owned_by(str(stopped_change.task_id))]
+        if owner == "AMBIGUOUS":  # a second Task named on the same cycle
+            writers.append(registry.owned_by(str(uuid4())))
+        for writer in writers:
+            writer.record_working_manifest(
+                cycle,
+                manifest_revision=candidate,
+                authority="candidate_preparation",
+                observed_at=later,
+            )
+        market.readiness.save(
+            **{k: getattr(record, k) for k in _READINESS},
+            active_manifest_id=market.load_universe_manifest_revision(candidate).manifest_id,
+            active_manifest_revision=candidate,
+            observed_at=later,
+        )
+        if owner in {"UNPROVED", "AMBIGUOUS"}:  # the data door's plan proves no owner
+            with pytest.raises(ValueError, match=f"membership_owner_unproved:{cycle}"):
+                live.operations.data_update.plan()
+        restored = restore_orphaned_membership(registry, tasks, later)
+        again = restore_orphaned_membership(registry, tasks, later)
+        active = market.readiness.load(PROFILE)
+    expected = (panel, "RESEARCH_READY") if owner == "CANCELLED" else (candidate, record.status)
+    assert (active.active_manifest_revision, active.status) == expected
+    assert bool(restored) is (owner == "CANCELLED") and again == {}, restored
+    if restored:
+        moved = restored["restored_membership"]
+        assert (moved["cycle_id"], moved["from_revision"]) == (cycle, candidate), moved
+
+
 def test_a_cycle_record_naming_another_membership_is_refused_by_name(stopped_change, tmp_path):
     """tamper: recovery accepts exactly the membership the stopped change's own cycle made
     active. A cycle record naming any other is refused by name, and nothing runs."""
-    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace")
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace", link_parquet=True)
     with _host(
         workspace, stopped_change.binding, stopped_change.provider, stopped_change.source
     ) as live:
@@ -219,7 +362,7 @@ def test_a_change_stopped_before_the_cycle_record_is_adopted_through_its_admissi
     through the gateway's admission."""
     import duckdb
 
-    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace")
+    workspace = copy_workspace(stopped_change.workspace, tmp_path / "workspace", link_parquet=True)
     events = "SELECT kind, details_json FROM workspace_maintenance_event WHERE cycle_id = ?"
     connection = duckdb.connect(str(workspace / "market-data.duckdb"))
     try:

@@ -49,11 +49,11 @@ from alphalattice.control.task_control.contracts import (
 )
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
-from alphalattice.kernel.knowledge._embeddings import (
+from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
+from alphalattice.kernel.knowledge.runtime import (
     VERIFIED_PACKS,
     before_first_inference,
 )
-from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.protocols.actor_execution import ActorKind, ActorSubmissionBinding

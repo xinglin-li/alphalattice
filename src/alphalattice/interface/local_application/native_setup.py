@@ -8,7 +8,10 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
+import stat
+import subprocess
 import sys
 import tomllib
 from collections import Counter
@@ -23,15 +26,22 @@ from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from alphalattice.interface.local_application import workbench_assets
+from alphalattice.interface.local_application import client, workbench_assets
 from alphalattice.interface.local_application.cli_contract import (
     BINDING_NOTICE,
     REQUEST_PROVENANCE,
     agent_session,
     command,
     command_table,
+    join,
     refusal_words,
+    shell,
+    terminal_serve_command,
     worded,
+)
+from alphalattice.interface.local_application.client import (
+    LocalResearchClient,
+    LocalResearchClientError,
 )
 from alphalattice.interface.local_application.failure_codes import safe_failure_code, setup_failure
 from alphalattice.interface.local_application.native_bridge import (
@@ -42,6 +52,7 @@ from alphalattice.interface.local_application.native_bridge import (
     PROJECT_DECLARATION_NAME,
     PROJECT_DECLARATION_SCHEMA,
     SPAWN_HOPS,
+    TOOL_INSTALL,
     USAGE_READINGS,
     WORKBENCH_BUILD,
     NativeBridgeError,
@@ -59,14 +70,23 @@ from alphalattice.interface.local_application.native_bridge import (
     session_project,
 )
 from alphalattice.interface.local_application.native_usage import codex_thread_spawn
-from alphalattice.interface.local_application.retrieval_environment import LOCKED_SETUP_WORDS
+from alphalattice.interface.local_application.questions import person_question
+from alphalattice.interface.local_application.read_views import emit_owner
+from alphalattice.interface.local_application.retrieval_environment import (
+    LOCKED_SETUP_WORDS,
+    setup_environment,
+)
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import (
     offline,
     package_versions,
     recorded_environment,
 )
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.project_layout import (
+    command_prefix,
+    resolve_playpen_root,
+    runtime_json,
+)
 
 PRODUCT_HOOK_MATCHER = "^alphalattice_.*$"
 """The matcher of the product's retired lifecycle hooks; configure removes groups with it."""
@@ -78,7 +98,7 @@ ROOT = Path.cwd() if INSTALLED else RESOURCE_ROOT
 
 def _installed_leg() -> dict[str, Any]:
     """Compare the active distribution with this checkout, naming unproved PATH ownership."""
-    command = shutil.which("alphalattice", path=fresh_path())
+    command = shutil.which(command_prefix()[0], path=fresh_path())
     expected = None
     if (RESOURCE_ROOT / "pyproject.toml").is_file():
         expected = tomllib.loads((RESOURCE_ROOT / "pyproject.toml").read_text("utf-8"))["project"][
@@ -111,10 +131,6 @@ def _installed_leg() -> dict[str, Any]:
 
 def _host_facts(binding: NativeResearchBinding | None) -> dict[str, Any]:
     """Read existing Host facts when bound; an absent Host supplies no made-up measurements."""
-    from alphalattice.interface.local_application.client import (
-        LocalResearchClient,
-        LocalResearchClientError,
-    )
 
     if binding is None:
         return {"scope": "LOCAL_PROCESS", "reason": "SESSION_NOT_BOUND"}
@@ -143,16 +159,12 @@ HOST_DEPENDENCIES = {
     ),
     "installed_leg": (
         "Resolve the clean alphalattice command",
-        "Run uv sync --locked and the documented tool install; disclose it. "
-        "Check an unproved PATH owner first. A first use opens nothing until a fresh shell "
-        "runs `alphalattice storage cap --help`; off PATH, "
-        "`uv tool update-shell` and a restart are the person's.",
+        str(worded("setup.tool.readiness")),
         "AGENT",
     ),
     "workbench_build": (
         "Serve the Workbench",
-        f"Run the documented Workbench build (`{WORKBENCH_BUILD}`) from the checkout root, "
-        "disclosing it; serve refuses until the built files match the sources.",
+        str(worded("native_setup.workbench_build")),
         "AGENT",
     ),
     "retrieval_runtime": (
@@ -365,7 +377,6 @@ def record_offer(answer: dict[str, Any], workspace: Path) -> None:
 
 def _client(workspace: Path | None) -> Any:
     """The workspace's Host client; None with no Host serving it."""
-    from alphalattice.interface.local_application import client
 
     with suppress(client.LocalResearchClientError, OSError):
         return client.LocalResearchClient(workspace) if workspace else None
@@ -374,7 +385,6 @@ def _client(workspace: Path | None) -> Any:
 
 def _open_ids(host: Any) -> frozenset[str] | None:
     """The Goals and Tasks the Host shows open; None with no Host to ask."""
-    from alphalattice.interface.local_application.client import LocalResearchClientError
 
     with suppress(LocalResearchClientError, OSError, KeyError, TypeError, AttributeError):
         goals = host.request({"operation": "GOAL_LIST", "history_limit": 50})["goals"]
@@ -386,7 +396,6 @@ def _open_ids(host: Any) -> frozenset[str] | None:
 
 def _package_hash(host: Any, package: str) -> str | None:
     """An installed package's hash, as its controls read it; None when none is installed."""
-    from alphalattice.interface.local_application.client import LocalResearchClientError
 
     with suppress(LocalResearchClientError, OSError, KeyError, TypeError):
         return str(
@@ -423,6 +432,13 @@ def _stale(front: _Fields, version: str, package: Callable[[str], str | None] | 
         return "verified_at_another_version"
     old = kind == "method" and (datetime.now(UTC).date() - day).days > REVIEW_DAYS
     return "verified_over_30_days" if old else None
+
+
+def _workbench_build() -> str:
+    """Offer the existing builder through the interpreter already running the doctor."""
+    return join(
+        [sys.executable, str(RESOURCE_ROOT / "scripts/build_local_web_ui.py"), "--product"], shell()
+    )
 
 
 def host_readiness(
@@ -472,7 +488,7 @@ def host_readiness(
             (tool := fillable["installed_leg"]).pop("present"),
             {**{k: v for k, v in _installed_leg().items() if k != "present"}, **tool},
         ),
-        ("workbench_build", workbench_assets.workbench_current(), {"command": WORKBENCH_BUILD}),
+        ("workbench_build", workbench_assets.workbench_current(), {"command": _workbench_build()}),
         (
             "retrieval_runtime",
             (retrieval := fillable["retrieval_runtime"]).pop("present"),
@@ -586,11 +602,6 @@ def problem_report(
     expected_route: tuple[str, ...] | list[str] = (),
 ) -> dict[str, Any]:
     """Project existing readiness and activity into a local, reviewable public report."""
-    from alphalattice.interface.local_application.client import (
-        LocalResearchClient,
-        LocalResearchClientError,
-    )
-
     operations = {op for group in command_table()["commands"].values() for op in group}
     if any(op not in operations for op in expected_route):
         raise NativeBridgeError("local_client.report_route_not_admitted")
@@ -817,8 +828,86 @@ def _declarations() -> Path:
     )
 
 
+def _guidance_renderer(prefix: tuple[str, ...], host: str) -> Callable[[bytes, str], bytes]:
+    """Compile this project's command projection once, preserving permissions and other prose."""
+    portable = command_prefix(portable=True)
+    if prefix == portable:
+        return lambda data, _relative: data
+    nouns = "|".join(sorted({re.escape(k.split()[0]) for k in command_table()["commands"]}))
+    pattern = re.compile(
+        rf"(?<![\w./\\-]){re.escape(portable[0])}(?=\s+(?:--|(?:{nouns})(?:\s|[`\"]|$)))"
+    )
+    prefixes = {kind: join(list(prefix), kind) for kind in ("powershell", "posix")}
+    marker = "alphalattice-command-prefix"
+    binding = runtime_json("config/registries/messages.json")["entries"]["setup.tool.prefixes"][
+        "words"
+    ]["en"]
+    block = f"<!-- {marker} -->\n{binding.format(**prefixes)}\n<!-- /{marker} -->\n\n"
+    kept_block = re.compile(rf"(?s)<!-- {marker} -->.*?<!-- /{marker} -->\n\n")
+    default = "posix" if host == "claude-code" else "powershell"
+
+    def render(data: bytes, relative: str) -> bytes:
+        suffix = Path(relative).suffix
+        if suffix not in {".md", ".toml"}:
+            return data
+        text = data.decode("utf-8")
+        if suffix == ".md" and (relative == "AGENTS.md" or relative.startswith(".agents/")):
+            text = kept_block.sub("", text, count=1)
+            if not pattern.search(text):
+                return data
+            start = text.find("\n---\n", 4) + 5 if text.startswith("---\n") else 0
+            return (text[:start] + block + text[start:]).encode("utf-8")
+        if suffix == ".toml":
+            document = tomllib.loads(text)
+            value = document.get("developer_instructions")
+            if not isinstance(value, str):
+                return data
+            rendered = pattern.sub(lambda _: prefixes[default], value)
+            return re.sub(
+                r'(?s)(developer_instructions\s*=\s*)""".*?"""',
+                lambda match: match[1] + json.dumps(rendered, ensure_ascii=False),
+                text,
+                count=1,
+            ).encode("utf-8")
+        lines, quoting = [], default
+        for line in text.splitlines(keepends=True):
+            if line.startswith("```"):
+                quoting = {
+                    "powershell": "powershell",
+                    "ps1": "powershell",
+                    "bash": "posix",
+                    "sh": "posix",
+                }.get(line.strip()[3:], default)
+            lines.append(pattern.sub(prefixes[quoting].replace("\\", "\\\\"), line))
+        return "".join(lines).encode("utf-8")
+
+    return render
+
+
+def _guidance_document(
+    relative: str, host: str, render: Callable[[bytes, str], bytes]
+) -> tuple[Path, bytes, bytes | None]:
+    """Plan one guidance write after checking its project path and existing owner bytes."""
+    path = ROOT / relative
+    if path.is_symlink() or not path.resolve().is_relative_to(ROOT):
+        raise NativeBridgeError("native_bridge.configuration_path_invalid")
+    original = (RESOURCE_ROOT / relative).read_bytes()
+    data = render(original, relative)
+    previous = original if ROOT == RESOURCE_ROOT else path.read_bytes() if path.exists() else None
+    declaration = ".claude/settings.json" if host == "claude-code" else ".codex/config.toml"
+    if relative == declaration and previous is not None:
+        data = _merge_installed_declaration(data, previous, host)
+    elif previous is not None and previous != data and ROOT != RESOURCE_ROOT:
+        raise NativeBridgeError("native_bridge.existing_configuration_differs")
+    return path, data, previous
+
+
 def _install_declarations(host: str) -> None:
-    """Copy shipped guidance unchanged; default host declarations register no product hooks."""
+    """Project shipped commands into guidance; default host declarations add no product hooks."""
+    prefix = command_prefix()
+    if not INSTALLED and (ROOT != RESOURCE_ROOT or prefix == command_prefix(portable=True)):
+        return
+    render = _guidance_renderer(prefix, host)
     manifest = json.loads(
         (RESOURCE_ROOT / "config/release/runtime-resources.json").read_text(encoding="utf-8")
     )
@@ -835,23 +924,16 @@ def _install_declarations(host: str) -> None:
             )
     declaration = ".claude/settings.json" if host == "claude-code" else ".codex/config.toml"
     inputs.append(declaration)
-    documents: dict[Path, bytes] = {}
+    documents: dict[Path, tuple[bytes, bytes | None]] = {}
     for relative in sorted(set(inputs)):
-        data = (RESOURCE_ROOT / relative).read_bytes()
-        path = ROOT / relative
-        if path.is_symlink() or not path.resolve().is_relative_to(ROOT):
-            raise NativeBridgeError("native_bridge.configuration_path_invalid")
-        if relative == declaration and path.exists():
-            data = _merge_installed_declaration(data, path.read_bytes(), host)
-        elif path.exists() and path.read_bytes() != data:
-            raise NativeBridgeError("native_bridge.existing_configuration_differs")
-        documents[path] = data
-    for path, data in documents.items():
+        path, data, previous = _guidance_document(relative, host, render)
+        documents[path] = data, previous
+    for path, (data, previous) in documents.items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        if not path.exists():
+        if previous is None:
             with path.open("xb") as stream:
                 stream.write(data)
-        elif path == ROOT / declaration and path.read_bytes() != data:
+        elif previous != data:
             path.write_bytes(data)
 
 
@@ -974,11 +1056,9 @@ def _roles(host: str = "codex", root: Path | None = None) -> list[str]:
 def continue_here(project: Path, host: str) -> dict[str, Any]:
     """How the session that installed AlphaLattice continues the research (STOPS-1).
 
-    A host loads AGENTS.md, the research Skill and the specialist cards on its own only in a
-    session started in the configured folder. The installing session reads the first two by
-    path and starts each specialist as a general subagent from its card, so a card's tool
-    limits hold there by instruction; `open_session` is the command for a session where the
-    host enforces them, offered as an option and never a step.
+    The installing session reads the guide and Skill by path. The agent checks its own
+    subagent tool before each specialist; only a session advertising the role can start it.
+    `open_session` names the configured project where a fresh host session can load the role.
     """
     folder = project.resolve()
     claude = host == "claude-code"
@@ -988,11 +1068,7 @@ def continue_here(project: Path, host: str) -> dict[str, Any]:
         "read": [str(folder / "AGENTS.md"), str(skill / "SKILL.md")],
         "specialists": str(folder / (".claude/agents" if claude else ".codex/agents")),
         "open_session": command,
-        "disclosure": (
-            "AlphaLattice is set up and the research continues in this session. Its specialists "
-            "start here from their cards as general subagents, so their tool limits hold by "
-            f"instruction; for limits the host enforces, open a session with `{command}`."
-        ),
+        "disclosure": str(worded("native_setup.specialist_route")).replace("{command}", command),
     }
 
 
@@ -1162,9 +1238,8 @@ def autobind_session(
                 raise
     root = autobind_root(workspace)
     bind_session(root, host=host, session_id=lead, workspace=workspace, roles=tuple(_roles(host)))
-    if project is not None:  # kept here because the agent's sandbox refused the project
-        _BINDING_MEMO[(host, session_id, workspace.resolve())] = True
-        BINDING_NOTICE.set(binding_notice("BOUND_IN_WORKSPACE"))
+    _BINDING_MEMO[(host, session_id, workspace.resolve())] = True
+    BINDING_NOTICE.set(binding_notice("BOUND_IN_WORKSPACE"))
     return root, lead
 
 
@@ -1216,7 +1291,7 @@ def unbound(error: Exception) -> None:
 def remind_binding(host: str, session_id: str, workspace: Path) -> None:
     """Repeat, on this answer, the notice of a Session bound in the workspace's own folder.
 
-    Only beside a configured project; a forgotten memo entry rereads the durable binding.
+    A forgotten memo entry rereads the durable binding.
     """
     key = (host, session_id, workspace.resolve())
     held = _BINDING_MEMO.get(key)
@@ -1226,7 +1301,10 @@ def remind_binding(host: str, session_id: str, workspace: Path) -> None:
                 project = session_project(key[2], host)
                 needs_workspace = session_binding(project, None, (host, session_id)) is None
             except NativeBridgeError as error:
-                if str(error) != "native_bridge.binding_unreadable":
+                if str(error) not in {
+                    "native_bridge.binding_unreadable",
+                    "native_bridge.project_declaration_missing",
+                }:
                     raise
                 needs_workspace = True
             held = needs_workspace and bool(session_binding(None, key[2], (host, session_id)))
@@ -1377,6 +1455,133 @@ def _create_or_match(
             raise NativeBridgeError("native_bridge.existing_configuration_differs") from None
 
 
+def _missing_setup(host: str) -> list[dict[str, Any]]:
+    """Keep the doctor's missing prerequisite commands once, in their reported order."""
+    required = {
+        "python",
+        "uv",
+        "installed_leg",
+        "workbench_build",
+        "retrieval_runtime",
+        "system_libraries",
+    }
+    steps, seen = [], set()
+    readiness = host_readiness(ROOT, host, None)
+    build = next(
+        (item["facts"]["command"] for item in readiness if item["key"] == "workbench_build"),
+        WORKBENCH_BUILD,
+    )
+    for item in readiness:
+        if item["key"] not in required or item["present"] is not False:
+            continue
+        facts = item.get("facts") or {}
+        commands = facts.get("commands") or ([facts["command"]] if facts.get("command") else [])
+        commands = [build if command == WORKBENCH_BUILD else command for command in commands]
+        unique = [command for command in commands if command not in seen]
+        seen.update(unique)
+        if item["key"] == "installed_leg" and facts.get("includes_workbench_build"):
+            seen.add(build)
+        steps.append(
+            {
+                "key": item["key"],
+                "who_decides": item["who_decides"],
+                "how_to_fill": item.get("how_to_fill"),
+                "commands": unique,
+                **({"covered_by_prior_step": True} if commands and not unique else {}),
+            }
+        )
+    return steps
+
+
+def _configure(host: str, workspace: Path | None) -> dict[str, Any]:
+    """Configure this project or offer the sandbox-safe workspace route."""
+    result: dict[str, Any]
+    try:
+        declare_project(ROOT, host)
+    except PermissionError as error:
+        marker = ROOT / ".codex" / PROJECT_DECLARATION_NAME
+        if (
+            host != "codex"
+            or not error.filename
+            or Path(error.filename).absolute() != marker.absolute()
+        ):
+            raise
+        detail = (
+            "The sandbox protects the project's .codex; "
+            "serve a named workspace, then begin first use."
+        )
+        result = {
+            "status": "WORKSPACE_REQUIRED",
+            "host": host,
+            "detail": detail,
+            "next_action": "SERVE_WORKSPACE_THEN_FIRST_USE",
+            "session_binding": {"status": "WORKSPACE_REQUIRED", "detail": detail},
+        }
+        if workspace is None:
+            try:
+                with os.scandir(ROOT / "workspaces") as entries:
+                    candidates = [Path(entry.path) for entry in entries if entry.is_dir()]
+            except FileNotFoundError:
+                candidates = []
+            existing = []
+            for candidate in candidates:
+                try:
+                    mode = (candidate / "research-workspace.json").stat().st_mode
+                except FileNotFoundError:
+                    continue
+                if stat.S_ISREG(mode):
+                    existing.append(str(candidate.resolve()))
+            if existing:
+                result.update(
+                    next_action="CHOOSE_WORKSPACE_THEN_CONFIGURE",
+                    person_questions=[person_question("workspace.select_existing")],
+                    workspaces=sorted(existing),
+                )
+                return result
+            workspace = ROOT / "workspaces" / "my-research"
+        result.update(
+            detail=worded("native_setup.serve_agent"),
+            serve_who_decides="AGENT",
+            next_commands={"serve": terminal_serve_command(workspace)},
+        )
+        steps = _missing_setup(host)
+        if steps:
+            result.update(
+                detail=worded("native_setup.complete_prerequisites"),
+                next_action="COMPLETE_SETUP_THEN_SERVE",
+                setup_steps=steps,
+            )
+            if steps[0]["who_decides"] == "AGENT" and steps[0]["commands"]:
+                result["next_command"] = steps[0]["commands"][0]
+    else:
+        _install_declarations(host)
+        removed = strip_product_hooks(ROOT, host)
+        _configuration(host)
+        result = {
+            "status": "LOCAL_DECLARATIONS_VALIDATED",
+            "host": host,
+            "retired_hook_groups_removed": removed,
+            "trust_changed": False,
+            "next": worded("native_setup.specialist_next"),
+            "continue_here": continue_here(ROOT, host),
+        }
+    return result
+
+
+def _install_tool() -> dict[str, Any]:
+    """Run the existing locked tool-install steps with subprocess-owned scratch."""
+    with setup_environment(ROOT) as environment:
+        for command in TOOL_INSTALL:
+            subprocess.run(
+                shlex.split(command),
+                cwd=ROOT,
+                env=environment,
+                check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+    return {"status": "TOOL_INSTALLED", "next_action": "CONFIGURE_THE_AGENT_PROJECT"}
+
+
 def main() -> int:
     """Configure, bind or inspect the project: zero on success, two on refusal."""
     global ROOT
@@ -1389,6 +1594,8 @@ def main() -> int:
         "configure", help="Install role guidance and declare a project without product hooks."
     )
     configure.add_argument("--host", choices=HOSTS, default="codex")
+    configure.add_argument("--workspace", type=Path, help="A workspace to serve for first use.")
+    commands.add_parser("install-tool", help="Install the locked checkout tool and its Workbench.")
     bind = commands.add_parser("bind", help="Bind this bridge to an explicit session/workspace.")
     bind.add_argument("--session-id", required=True)
     bind.add_argument("--workspace", required=True, type=Path)
@@ -1405,33 +1612,30 @@ def main() -> int:
     unbind.add_argument("--session-id", required=True)
     unbind.add_argument("--host", choices=HOSTS, help="The exact native host of this Session.")
     doctor = commands.add_parser("doctor", help="Read this Session's binding and readiness.")
+    doctor.set_defaults(view="compact")
+    doctor.add_argument(
+        "--view", choices=("compact", "full", "summary"), help=worded("cli.read.view")
+    )
+    doctor.add_argument("--output", type=Path)
     doctor.add_argument(
         "--host", choices=HOSTS, help="The host to inspect; by default the bound one, else codex."
     )
     args = parser.parse_args()
     if args.project is not None:
         ROOT = args.project.resolve()
-    result: dict[str, Any]
+    result: dict[str, Any] = {}
     doctor_command = _doctor_command()
+    prefix = (sys.executable, "-m", "alphalattice.interface.local_application.native_setup")
+    args.command_line = (*prefix, *sys.argv[1:])
+    output = getattr(args, "output", None)
+    output_error: client.LocalResearchClientError | None = None
+    replace = False
     try:
+        replace = client.output_replacement(output, line=args.command_line, prefix=())
         if args.command == "configure":
-            if INSTALLED:
-                _install_declarations(args.host)
-            removed = strip_product_hooks(ROOT, args.host)
-            _configuration(args.host)
-            declare_project(ROOT, args.host)
-            result = {
-                "status": "LOCAL_DECLARATIONS_VALIDATED",
-                "host": args.host,
-                "retired_hook_groups_removed": removed,
-                "trust_changed": False,
-                "next": (
-                    "Continue the research in this session: read the files in `read` by path, "
-                    "start each specialist from its card in `specialists`, and tell the person "
-                    "`disclosure` in one line."
-                ),
-                "continue_here": continue_here(ROOT, args.host),
-            }
+            result = _configure(args.host, args.workspace)
+        elif args.command == "install-tool":
+            result = _install_tool()
         elif args.command == "bind":
             result = bind_session(
                 ROOT,
@@ -1462,29 +1666,25 @@ def main() -> int:
                 "attachment_preflight": preflight,
                 "host_readiness": host_readiness(ROOT, host, binding),
             }
-        print(json.dumps(result))
-        return 2 if result["status"] == "REFUSED" else 0
+    except client.LocalResearchClientError as error:
+        if str(error).startswith("local_client.output_"):
+            output_error = error
+        else:
+            result = {**setup_failure(error), "next_commands": doctor_command}
     except NativeBridgeError as error:
-        print(
-            json.dumps(
-                {**setup_failure(error), "reason": str(error), "next_commands": doctor_command}
-            )
-        )
-        return 2
+        result = {**setup_failure(error), "reason": str(error), "next_commands": doctor_command}
     except OSError as error:
         # Its files are the checkout's host directories and the workspace's; one it cannot read
         # or write is said with its way on, never a bare code (V539), and the check its words
         # name is offered (V590).
-        refusal = {
+        result = {
             **setup_failure(error),
             **files_unavailable(error, project=ROOT, workspace=getattr(args, "workspace", None)),
             "next_commands": doctor_command,
         }
-        print(json.dumps(refusal))
-        return 2
     except Exception as error:
-        print(json.dumps({**setup_failure(error), "next_commands": doctor_command}))
-        return 2
+        result = {**setup_failure(error), "next_commands": doctor_command}
+    return emit_owner(args, result, output_error=output_error, replace=replace)
 
 
 def _doctor_command() -> dict[str, list[str]]:

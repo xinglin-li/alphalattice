@@ -77,7 +77,7 @@ def materialize_calendar_schedule(
             "unknown or empty calendar mapping", code="data.provider_schema_drift"
         )
 
-    module = vars(import_module("exchange_calendars"))
+    module = vars(import_module("exchange_calendars"))  # lazy: calendar.
     get_calendar = cast(Any, module["get_calendar"])
     rows: list[dict[str, object]] = []
     as_of_utc = as_of_timestamp.astimezone(UTC)

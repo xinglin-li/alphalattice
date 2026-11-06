@@ -705,7 +705,8 @@ def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_
             "self.data.plan(fresh=True)",
         ),
         "data update": (
-            inspect.getsource(data_update.WorkspaceDataUpdateApplication.plan),
+            # The plan's body; `plan` first restores a cancelled update's orphaned membership.
+            inspect.getsource(data_update.WorkspaceDataUpdateApplication._planned),
             "self._waiting()",
             "read_workspace_inputs(",
         ),

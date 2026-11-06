@@ -8,12 +8,16 @@ The registry checks request, route, activity and offer owners; the CLI walk need
 
 from __future__ import annotations
 
+import argparse
 import ast
 import contextlib
+import functools
+import hashlib
 import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,8 +26,20 @@ from collections.abc import Iterable
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
 from typing import Any, Final, cast, get_args
+from unittest import mock
 
+from packaging.version import Version
+
+from alphalattice.interface.local_application import cli
+from alphalattice.interface.local_application.answers import ANSWERS
+from alphalattice.interface.local_application.cli_contract import (
+    AGENT_SESSION_VARIABLES,
+    SCHEMA_VERSION,
+    Outcome,
+)
+from devtools.architecture import structural
 from devtools.architecture.neutral_changes import source_syntax_tree
+from devtools.architecture.registries import refusal_entries
 
 _OFFERED = re.compile(r'"operation":\s*"([A-Z][A-Z0-9_]*[A-Z0-9])"')
 _ENVELOPE = {
@@ -59,10 +75,6 @@ def _schema_surface(name: str, schema: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parser_surface() -> dict[str, Any]:
-    import argparse
-
-    from alphalattice.interface.local_application.cli import _parser
-
     found: dict[str, Any] = {}
 
     def visit(parser: argparse.ArgumentParser, name: str, inherited: dict[str, Any]) -> None:
@@ -84,20 +96,30 @@ def _parser_surface() -> dict[str, Any]:
                 for child, nested in action.choices.items():
                     visit(nested, f"{name} {child}".strip(), options)
 
-    visit(_parser(), "", {})
+    visit(cli.command_parser(), "", {})
     return found
 
 
 def agent_surface(root: Path) -> dict[str, Any]:
     """Inventory the typed agent interface from its current owners."""
-    from alphalattice.interface.local_application.answers import ANSWERS
-    from alphalattice.interface.local_application.cli_contract import SCHEMA_VERSION, Outcome
     from alphalattice.interface.local_application.operations import table
     from alphalattice.interface.local_application.portfolio_research import (
         PortfolioResearchRequestDocument,
     )
 
     entries = _parser_surface()
+    entries.update(
+        {f"view:{value}": {"const": value} for value in entries["option:/--view"]["choices"]}
+    )
+    formats = json.loads((root / "config/registries/formats.json").read_bytes())["entries"]
+    entries.update(
+        {
+            f"representation:{version}": {"schema": row["schema"]}
+            for row in formats.values()
+            if row.get("kind") == "READ_REPRESENTATION"
+            for version in row["version"]
+        }
+    )
     registry = table()
     local = root / "src/alphalattice/interface/local_application"
     entries.update(
@@ -108,7 +130,7 @@ def agent_surface(root: Path) -> dict[str, Any]:
     entries.update(_schema_surface("request:Request", document))
     for operation, model in ANSWERS.items():
         entries.update(_schema_surface(f"answer:{operation}", model.model_json_schema()))
-    refusals = json.loads((root / "config/registries/refusals.json").read_bytes())["entries"]
+    refusals = refusal_entries(json.loads((root / "config/registries/refusals.json").read_bytes()))
     words = json.loads((local / "refusal_words.json").read_bytes())
     entries.update({f"refusal:{code}": {} for code in refusals.keys() | words.keys()})
     catalog = json.loads((root / "config/registries/messages.json").read_bytes())["entries"]
@@ -122,7 +144,7 @@ def agent_surface(root: Path) -> dict[str, Any]:
             if row["kind"] == "PERSON_QUESTION"
         }
     )
-    entries.update({f"envelope:{key}": {} for key in _ENVELOPE})
+    entries.update({f"envelope:{key}": {} for key in _ENVELOPE | {"error_info"}})
     entries["envelope:outcome"] = {"enum": list(get_args(Outcome))}
     entries["envelope:schema_version"] = {"const": SCHEMA_VERSION}
     for book, scope in (
@@ -152,7 +174,11 @@ def agent_surface(root: Path) -> dict[str, Any]:
                     )
             case ast.AnnAssign(target=ast.Name(id="ROLES"), value=value):
                 entries["message:roles"] = {"enum": list(ast.literal_eval(value))}
-    for source in [committee, local / "native_bridge.py"]:
+    for source in [
+        committee,
+        committee.with_name("committee_answer.py"),
+        local / "native_bridge.py",
+    ]:
         text = source.read_text(encoding="utf-8")
         for kind in re.findall(r'(?:kind=|"(?:message_)?kind":\s*)"([A-Za-z_]+)"', text):
             entries[f"exchange:{kind}"] = {}
@@ -161,7 +187,7 @@ def agent_surface(root: Path) -> dict[str, Any]:
 
 def _compatible(before: Any, after: Any, key: str = "") -> bool:
     if isinstance(before, dict) and isinstance(after, dict):
-        if key != "properties" and before.keys() != after.keys():
+        if key not in {"properties", "$defs"} and before.keys() != after.keys():
             return False
         return all(k in after and _compatible(v, after[k], k) for k, v in before.items())
     if key in {"enum", "allowed", "choices"} and isinstance(before, list):
@@ -179,7 +205,6 @@ def surface_problems(
     manifest: dict[str, Any], live: dict[str, Any], *, previous: dict[str, Any] | None = None
 ) -> list[str]:
     """Refuse silent interface loss, including edits that erase frozen obligations."""
-    from packaging.version import Version
 
     out, retirements = [], manifest.get("retirements", {})
     prefix = f"USERSPACE {SURFACE}:1"
@@ -654,12 +679,66 @@ def _goal_set_operations(root: Path) -> dict[str, set[str]]:
     return found
 
 
+_FACTS: structural.FileFacts | None = None
+"""The running ``problems`` call's per-file facts; scans called alone compute every file."""
+LAST_SCAN_CACHE = ""
+"""How the last ``problems`` call's per-file facts were served, for the gate to print."""
+
+
+def _fact(root: Path, part: str, path: Path, compute: Any) -> Any:
+    """One file's fact for ``part``, ``compute`` of its bytes: served by the running store when
+    it holds one of the part's shape (``_SHAPES``), else computed."""
+    if _FACTS is not None and _FACTS.root == root:
+        return _FACTS.get(part, path, compute, _SHAPES[part])
+    return compute(path.read_bytes())
+
+
+def _strings(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+_SHAPES: dict[str, Any] = {
+    "offered": _strings,
+    "names": _strings,
+    "named": lambda v: (
+        v is None
+        or (
+            isinstance(v, list)
+            and len(v) == 2
+            and _strings(v[0])
+            and isinstance(v[1], list)
+            and all(
+                isinstance(p, list)
+                and len(p) == 4
+                and all(x is None or isinstance(x, str) for x in p)
+                for p in v[1]
+            )
+        )
+    ),
+    "offers": lambda v: (
+        isinstance(v, list)
+        and all(
+            isinstance(r, list)
+            and len(r) == 3
+            and type(r[0]) is int
+            and isinstance(r[1], str)
+            and _strings(r[2])
+            for r in v
+        )
+    ),
+    "text-as-code": lambda v: isinstance(v, list) and all(type(n) is int for n in v),
+}
+"""Each kept fact's JSON shape; a stored value of another shape is recomputed."""
+
+
 def _offered(root: Path) -> dict[str, set[str]]:
     """Every operation an owner offers as a next request, by the file that offers it."""
 
     offered: dict[str, set[str]] = {}
     for path in (root / "src/alphalattice").rglob("*.py"):
-        for name in _OFFERED.findall(path.read_text(encoding="utf-8")):
+        for name in _fact(
+            root, "offered", path, lambda data: _OFFERED.findall(structural.file_text(data))
+        ):
             offered.setdefault(name, set()).add(path.relative_to(root).as_posix())
     return offered
 
@@ -727,17 +806,18 @@ def named_commands(root: Path) -> list[str]:
         for path in paths:
             if path.suffix not in {".py", ".md", ".toml"} or "__pycache__" in path.parts:
                 continue
-            text = path.read_text(encoding="utf-8", errors="replace")
-            if "`" not in text:
+            named = _fact(root, "named", path, _named_phrases)
+            if named is None:
                 continue
+            candidates, phrases = named
             relative = path.relative_to(root).as_posix()
             guide = path.suffix != ".py"
-            out.extend(_retired_names(relative, text, names) if guide else ())
-            for match in _NAMED.finditer(text):
-                _prefix, noun, verb, rest = match.groups()
+            out.extend(_retired_names(relative, candidates, names) if guide else ())
+            for phrase in phrases:
+                _prefix, noun, verb, rest = phrase
                 flags = [token.split("=", 1)[0] for token in rest.split() if token.startswith("--")]
                 if noun not in nouns:
-                    if _a_command(match.groups(), guide=guide, verbs=verbs):
+                    if _a_command(tuple(phrase), guide=guide, verbs=verbs):
                         out.append(f"{relative} names `{noun}`, a command the CLI does not have")
                     continue
                 command = (noun, verb or "")
@@ -751,6 +831,17 @@ def named_commands(root: Path) -> list[str]:
     return out
 
 
+def _named_phrases(data: bytes) -> list[Any] | None:
+    """One text's backticked capitalised names and command phrases; None when it has no backtick."""
+    text = structural.file_text(data, errors="replace")
+    if "`" not in text:
+        return None
+    return [
+        sorted(set(re.findall(r"`([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)`", text))),
+        [list(match.groups()) for match in _NAMED.finditer(text)],
+    ]
+
+
 def _code_names(root: Path) -> set[str]:
     """Every capitalised name the code has; a guide naming another names a retired one."""
     return {
@@ -758,15 +849,20 @@ def _code_names(root: Path) -> set[str]:
         for code in (root / "src", root / "scripts")
         for path in (code.rglob("*") if code.is_dir() else ())
         if path.suffix in {".py", ".json", ".js", ".cjs"} and "__pycache__" not in path.parts
-        for name in _NAME.findall(path.read_text(encoding="utf-8", errors="replace"))
+        for name in _fact(
+            root,
+            "names",
+            path,
+            lambda data: sorted(set(_NAME.findall(structural.file_text(data, errors="replace")))),
+        )
     }
 
 
-def _retired_names(relative: str, text: str, names: set[str]) -> list[str]:
+def _retired_names(relative: str, candidates: list[str], names: set[str]) -> list[str]:
     """Each capitalised name a guide gives in backticks that the code no longer has."""
     return [
         f"{relative} names `{name}`, a name the product does not have"
-        for name in sorted(set(re.findall(r"`([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)`", text)))
+        for name in candidates
         if name not in names and not name.startswith(_OUTSIDE_NAMES)
     ]
 
@@ -845,30 +941,40 @@ def incomplete_offers(root: Path) -> list[str]:
 
     out: list[str] = []
     for path in sorted((root / "src/alphalattice").rglob("*.py")):
-        text = path.read_text(encoding="utf-8")
-        if '"operation"' not in text:
-            continue
-        tree = ast.parse(text)
-        records = _goal_records(tree)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Dict) or None in node.keys or id(node) in records:
-                continue
-            written = {
-                key.value: value
-                for key, value in zip(node.keys, node.values, strict=True)
-                if isinstance(key, ast.Constant) and isinstance(key.value, str)
-            }
-            value = written.get("operation")
-            operation = value.value if isinstance(value, ast.Constant) else None
-            if not isinstance(operation, str) or operation not in OPERATIONS:
+        for lineno, operation, written in _fact(root, "offers", path, _offered_requests):
+            if operation not in OPERATIONS:
                 continue
             for name in sorted(fields(operation)[0] - set(written)):
                 relative = path.relative_to(root).as_posix()
                 out.append(
-                    f"{relative}:{node.lineno} offers {operation} without its required "
+                    f"{relative}:{lineno} offers {operation} without its required "
                     f"{name}; write it, or None for the reader's choice"
                 )
     return out
+
+
+def _offered_requests(data: bytes) -> list[list[Any]]:
+    """One file's offered requests: each dictionary naming an operation, outside a Goal record,
+    as its line, operation and the field names it writes."""
+    text = structural.file_text(data)
+    if '"operation"' not in text:
+        return []
+    tree = ast.parse(text)
+    records = _goal_records(tree)
+    found: list[list[Any]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict) or None in node.keys or id(node) in records:
+            continue
+        written = {
+            key.value: value
+            for key, value in zip(node.keys, node.values, strict=True)
+            if isinstance(key, ast.Constant) and isinstance(key.value, str)
+        }
+        value = written.get("operation")
+        operation = value.value if isinstance(value, ast.Constant) else None
+        if isinstance(operation, str):
+            found.append([node.lineno, operation, sorted(written)])
+    return found
 
 
 _TEXT_AS_CODE_ROOTS = (
@@ -886,52 +992,80 @@ def text_served_as_code(root: Path) -> list[str]:
     found: list[str] = []
     for base in _TEXT_AS_CODE_ROOTS:
         for path in sorted((root / base).rglob("*.py")):
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            caught = {
-                node.name
-                for node in ast.walk(tree)
-                if isinstance(node, ast.ExceptHandler) and node.name
-            }
-
-            def text_of(value: ast.expr | None, caught: set[str] = caught) -> bool:
-                if isinstance(value, ast.Subscript):
-                    value = value.value
-                return (
-                    isinstance(value, ast.Call)
-                    and isinstance(value.func, ast.Name)
-                    and value.func.id == "str"
-                    and len(value.args) == 1
-                    and isinstance(value.args[0], ast.Name)
-                    and value.args[0].id in caught
+            for lineno in _fact(root, "text-as-code", path, _texts_served):
+                relative = path.relative_to(root).as_posix()
+                found.append(
+                    f"{relative}:{lineno} serves an exception's text as a failure "
+                    "code; answer public_failure(error, fallback)"
                 )
-
-            for node in ast.walk(tree):
-                served: list[ast.expr | None] = []
-                if isinstance(node, ast.Dict):
-                    served = [
-                        value
-                        for key, value in zip(node.keys, node.values, strict=True)
-                        if isinstance(key, ast.Constant) and key.value == "failure_code"
-                    ]
-                elif isinstance(node, ast.Call):
-                    served = [k.value for k in node.keywords if k.arg == "failure_code"]
-                    if isinstance(node.func, ast.Name) and node.func.id == "refused" and node.args:
-                        served.append(node.args[0])
-                for value in served:
-                    if value is not None and text_of(value):
-                        relative = path.relative_to(root).as_posix()
-                        found.append(
-                            f"{relative}:{value.lineno} serves an exception's text as a failure "
-                            "code; answer public_failure(error, fallback)"
-                        )
     return found
 
 
+def _texts_served(data: bytes) -> list[int]:
+    """The lines in one file where a caught exception's text is served as a failure code."""
+    tree = ast.parse(structural.file_text(data))
+    caught = {
+        node.name for node in ast.walk(tree) if isinstance(node, ast.ExceptHandler) and node.name
+    }
+
+    def text_of(value: ast.expr | None) -> bool:
+        if isinstance(value, ast.Subscript):
+            value = value.value
+        return (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == "str"
+            and len(value.args) == 1
+            and isinstance(value.args[0], ast.Name)
+            and value.args[0].id in caught
+        )
+
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        served: list[ast.expr | None] = []
+        if isinstance(node, ast.Dict):
+            served = [
+                value
+                for key, value in zip(node.keys, node.values, strict=True)
+                if isinstance(key, ast.Constant) and key.value == "failure_code"
+            ]
+        elif isinstance(node, ast.Call):
+            served = [k.value for k in node.keywords if k.arg == "failure_code"]
+            if isinstance(node.func, ast.Name) and node.func.id == "refused" and node.args:
+                served.append(node.args[0])
+        lines.extend(value.lineno for value in served if value is not None and text_of(value))
+    return lines
+
+
+def _keeps_facts(scan: Any) -> Any:
+    """Run ``scan(root)`` with its per-file facts kept across runs when the gate names a store
+    (``structural.FileFacts``), keyed by this module's own code, so any change to how a fact is
+    derived is a miss; ``LAST_SCAN_CACHE`` then says how they were served and the result's
+    digest, so a cached and an uncached run can be compared byte for byte."""
+
+    @functools.wraps(scan)
+    def kept(root: Path) -> list[str]:
+        global _FACTS, LAST_SCAN_CACHE
+        version = structural.loaded_identity(sys.modules[__name__], structural)
+        _FACTS = facts = structural.FileFacts(root, "operation-registry", version)
+        result: list[str] | None = None
+        try:
+            result = cast(list[str], scan(root))
+            return result
+        finally:
+            _FACTS = None
+            served = facts.close(returned=result is not None)
+            digest = hashlib.sha256(json.dumps(result).encode()).hexdigest()[:16]
+            LAST_SCAN_CACHE = f"{served} result {digest}"
+
+    return kept
+
+
+@_keeps_facts
 def problems(root: Path) -> list[str]:
     """What disagrees with the registry at ``root``; empty when every name agrees."""
 
-    from alphalattice.interface.local_application import activity
-    from alphalattice.interface.local_application.cli import CLIENT_COMMANDS
+    from alphalattice.interface.local_application import activity  # lazy: contract checks.
     from alphalattice.interface.local_application.operations import (
         ALTERNATIVES,
         COMMANDS,
@@ -968,12 +1102,12 @@ def problems(root: Path) -> list[str]:
             out.append(f"{operation}'s alternatives name {name}, which it does not take")
     # The help lists each object the CLI has once, and its common path only commands (V401).
     grouped = sorted(noun for _group, nouns in HELP_GROUPS for noun, _purpose in nouns)
-    objects = {noun for noun, _verb in (*COMMANDS, *CLIENT_COMMANDS)} | {"serve", "request"}
+    objects = {noun for noun, _verb in (*COMMANDS, *cli.CLIENT_COMMANDS)} | {"serve", "request"}
     if grouped != sorted(objects):
         out.append(f"the help's groups list objects other than each once: {grouped}")
     for command in COMMON_PATH:
         noun, _space, verb = command.partition(" ")
-        if (noun, verb) not in COMMANDS and (noun, verb) not in CLIENT_COMMANDS:
+        if (noun, verb) not in COMMANDS and (noun, verb) not in cli.CLIENT_COMMANDS:
             out.append(f"the help's common path names {command}, which the CLI does not have")
     for operation in OPERATIONS:
         try:
@@ -1013,16 +1147,12 @@ def problems(root: Path) -> list[str]:
 def _client_required(noun: str, verb: str) -> list[str]:
     """The required options of one of the client's own commands, as its parser declares them."""
 
-    import argparse
-
-    from alphalattice.interface.local_application import cli
-
     def child(parser: argparse.ArgumentParser, name: str) -> argparse.ArgumentParser:
         found = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
         chosen: argparse.ArgumentParser = found.choices[name]
         return chosen
 
-    command = child(child(cli._parser(), noun), verb)
+    command = child(child(cli.command_parser(), noun), verb)
     required = [a.option_strings[0] for a in command._actions if a.required and a.option_strings]
     # A required choice of one option among several: its first option stands for it.
     required += [
@@ -1091,14 +1221,14 @@ def walk(root: Path) -> list[str]:
     remove (V586).
     """
 
-    from alphalattice.interface.local_application import cli
-    from alphalattice.interface.local_application.cli_contract import AGENT_SESSION_VARIABLES
-
     with contextlib.ExitStack() as outside:
         for _vendor, variable in AGENT_SESSION_VARIABLES:
             if variable in os.environ:
                 value = os.environ.pop(variable)
                 outside.callback(os.environ.__setitem__, variable, value)
+        # Each answer prints its command prefix, found on PATH: one lookup per name for the
+        # walk's whole run, not one PATH scan per answer (179 scans, 1.3 s of the guard).
+        outside.enter_context(mock.patch("shutil.which", functools.cache(shutil.which)))
         return _walk(root, cli)
 
 

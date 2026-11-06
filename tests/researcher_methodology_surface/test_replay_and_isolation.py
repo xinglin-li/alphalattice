@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -67,7 +68,20 @@ def test_output_workspace_cannot_escape_the_authorized_root(tmp_path: Path, decl
         workflow._output_workspace(declared)
 
 
-@pytest.mark.parametrize("alias", ["ws", "WS"], ids=["same_path", "case_alias"])
+@pytest.mark.parametrize(
+    "alias",
+    [
+        pytest.param("ws", id="same_path"),
+        pytest.param(
+            "WS",
+            id="case_alias",
+            marks=pytest.mark.skipif(
+                sys.platform != "win32",
+                reason="NTFS is case-insensitive; a case-sensitive volume holds WS and ws apart",
+            ),
+        ),
+    ],
+)
 def test_output_workspace_cannot_be_the_source_workspace(tmp_path: Path, alias: str) -> None:
     """Under either spelling: NTFS is case-insensitive, so `WS` and `ws` are one directory."""
 

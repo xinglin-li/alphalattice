@@ -76,7 +76,7 @@ from tests.alternative_evidence_desk.sec_scenario_transport import (
 from tests.portfolio_strategy_lab.local_web_support import _harness, _run
 
 ONE_UNIT = "u01"
-"""The book's only unit: every book is prepared as a coverage run (C2)."""
+"""The book's only unit: every book is prepared as a coverage run."""
 
 LEAVES_WINDOW = datetime(2026, 7, 20, 21, tzinfo=UTC) + timedelta(days=30)
 """The day the scenario's earliest filing, each issuer's 10-K, leaves the 30-day window."""
@@ -531,7 +531,7 @@ def test_a_parser_only_change_prepares_again_from_retained_bytes(tmp_path: Path)
 
 
 def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A denied source reads the live preparation back and fetches nothing."""
 
@@ -561,6 +561,7 @@ def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
     finally:
         service.session.stop()
 
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     denied = admit_official_source(
         network_consent=True, environment={"ALPHALATTICE_NETWORK_DISABLED": "1"}
     )
@@ -591,6 +592,7 @@ def test_a_denied_source_reads_the_live_preparation_back_and_fetches_nothing(
         access = later["network_access"]
         assert access["network_allowed"] is False
         assert access["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
+        assert later["source_network_access"]["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
         assert access["next_action"] == "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
         assert later["next_requests"]["network"] == {"operation": "NETWORK_ACCESS"}
         assert "prepare" not in later["next_requests"]
@@ -664,7 +666,7 @@ def test_the_running_host_admits_the_source_once_the_consent_and_the_network_all
 def test_a_real_source_reads_the_closed_control_before_any_new_acquisition(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (P4): a real client admitted while open cannot acquire after
+    """A real client admitted while open cannot acquire after
     the workspace closes; its controlled HTTP transport is never called."""
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
     workspace, report = build_workspace(tmp_path)
@@ -739,7 +741,7 @@ def test_a_real_source_reads_the_closed_control_before_any_new_acquisition(
 
 
 def test_a_failed_live_run_is_not_retried_with_a_denied_source(tmp_path: Path) -> None:
-    """requirement (P4): an already sealed failed run does not bypass the network
+    """An already sealed failed run does not bypass the network
     refusal when its exact preparation is retried after a Host restart."""
     workspace, report = build_workspace(tmp_path)
     scenario = _scenario()
@@ -1932,7 +1934,7 @@ def test_a_bundle_on_a_book_with_no_run_is_answered_as_it_was_read(tmp_path: Pat
         assert review._sealed_run(review.resolve_book(other).scope, evidence_as_of=None) is None
         directory = tmp_path / "cro"
         # A position basis beside a result's book is refused by its name, and the same
-        # request without it is offered (V290).
+        # request without it is offered.
         request = {
             "operation": "AGENT_BUNDLE_PREPARE",
             "agent_role": "CRO",

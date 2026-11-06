@@ -5,6 +5,7 @@ import importlib.metadata
 import importlib.util
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -338,7 +339,22 @@ def test_configure_removes_only_the_products_retired_hook_groups(tmp_path, monke
     }
 
 
-@pytest.mark.parametrize("git_checkout", (False, True))
+@pytest.mark.proves("local_application.configure_offers_a_workspace")
+@pytest.mark.proves("local_application.configure_offers_missing_setup_before_serve")
+@pytest.mark.parametrize(
+    "git_checkout",
+    (
+        False,
+        True,
+        "protected",
+        "protected-existing",
+        "protected-needs-build",
+        "protected-needs-many",
+        "protected-named",
+        "protected-off-path",
+        "other",
+    ),
+)
 def test_ordinary_project_setup_validates_local_declarations_without_trust(
     tmp_path, monkeypatch, capsys, git_checkout
 ):
@@ -352,6 +368,16 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
     if git_checkout:
         (project / ".git").mkdir()
         (project / ".git/HEAD").write_text("ref: refs/heads/main\n", newline="\n")
+    if git_checkout == "protected-existing":
+        existing = project / "workspaces" / "existing"
+        existing.mkdir(parents=True)
+        from alphalattice.control.product_host.composition.research_workspace import (
+            ResearchWorkspaceManifest,
+        )
+
+        (existing / "research-workspace.json").write_text(
+            ResearchWorkspaceManifest.research_only("existing").model_dump_json(), encoding="utf-8"
+        )
     entry = _entry()
     monkeypatch.setattr(entry.sys, "argv", ["native", "--project", str(project), "doctor"])
     assert entry.main() == 2  # not yet configured: both steps offered, ready to run
@@ -360,6 +386,104 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
     configure, bind = preflight["commands"]
     assert configure.endswith("configure --host codex") and str(project.resolve()) in configure
     assert bind.endswith("session bind")
+    if isinstance(git_checkout, str):
+        marker = project / ".codex" / native_bridge.PROJECT_DECLARATION_NAME
+        opening = Path.open
+
+        def denied(path, mode="r", *args, **kwargs):
+            if path == marker and "x" in mode:
+                refused = project / ".codex" / "other.json" if git_checkout == "other" else path
+                raise PermissionError(13, "sandbox fixture", str(refused))
+            return opening(path, mode, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", denied)
+        ready = [
+            {
+                "key": "workbench_build",
+                "present": git_checkout != "protected-needs-build",
+                "who_decides": "AGENT",
+                "facts": {"command": "uv run python scripts/build_local_web_ui.py --product"},
+            }
+        ]
+        if git_checkout == "protected-needs-many":
+            build = ready[0]["facts"]["command"]
+            ready = [
+                {
+                    "key": "installed_leg",
+                    "present": False,
+                    "who_decides": "AGENT",
+                    "facts": {"commands": ["install", build]},
+                },
+                {
+                    "key": "workbench_build",
+                    "present": False,
+                    "who_decides": "AGENT",
+                    "facts": {"command": build},
+                },
+                {
+                    "key": "retrieval_runtime",
+                    "present": False,
+                    "who_decides": "AGENT",
+                    "facts": {"commands": ["retrieval"]},
+                },
+            ]
+        monkeypatch.setattr(entry, "host_readiness", lambda *_args: ready)
+        workspace = tmp_path / "workspace"
+        argv = ["native", "--project", str(project), "configure", "--host", "codex"]
+        if git_checkout in {"protected-named", "protected-off-path"}:
+            argv += ["--workspace", str(workspace)]
+        if git_checkout == "protected-off-path":
+            launcher = python.parent / ("alphalattice.exe" if os.name == "nt" else "alphalattice")
+            launcher.touch()
+            monkeypatch.setenv("PATH", "")
+            monkeypatch.setattr(entry.sys, "executable", str(python))
+        monkeypatch.setattr(entry.sys, "argv", argv)
+        before = {p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()}
+        assert entry.main() == (2 if git_checkout == "other" else 0)
+        result = json.loads(capsys.readouterr().out)
+        if git_checkout == "other":
+            assert result["failure_code"] == "native_bridge.files_unavailable:PermissionError"
+        else:
+            assert result["session_binding"]["status"] == "WORKSPACE_REQUIRED"
+            if git_checkout == "protected-existing":
+                assert result["next_action"] == "CHOOSE_WORKSPACE_THEN_CONFIGURE"
+                assert result["person_questions"][0]["code"] == "workspace.select_existing"
+                assert result["workspaces"] == [str(existing.resolve())]
+                assert "serve" not in result.get("next_commands", {})
+            else:
+                assert result["serve_who_decides"] == "AGENT"
+                assert "yourself" in result["detail"].lower()
+                assert "refus" in result["detail"].lower()
+                if git_checkout in {"protected-needs-build", "protected-needs-many"}:
+                    assert result["next_action"] == "COMPLETE_SETUP_THEN_SERVE"
+                    if git_checkout == "protected-needs-build":
+                        assert result["next_command"] == ready[0]["facts"]["command"]
+                        assert result["setup_steps"][0]["key"] == "workbench_build"
+                    else:
+                        assert result["next_command"] == "install"
+                        assert [step["key"] for step in result["setup_steps"]] == [
+                            "installed_leg",
+                            "workbench_build",
+                            "retrieval_runtime",
+                        ]
+                        assert result["setup_steps"][1]["covered_by_prior_step"]
+                        assert result["setup_steps"][2]["commands"] == ["retrieval"]
+                else:
+                    assert result["next_action"] == "SERVE_WORKSPACE_THEN_FIRST_USE"
+                serve = result["next_commands"]["serve"]
+                if git_checkout == "protected-off-path":
+                    assert serve[0] == str(launcher.absolute())
+                assert serve[serve.index("--workspace") + 1] == str(
+                    project / "workspaces" / "my-research"
+                    if git_checkout
+                    in {"protected", "protected-needs-build", "protected-needs-many"}
+                    else workspace
+                )
+            assert not marker.exists() and not workspace.exists()
+            assert {
+                p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()
+            } == before
+        return
     for command, status, code in (
         ("configure", "LOCAL_DECLARATIONS_VALIDATED", 0),
         ("doctor", "REFUSED", 2),
@@ -370,9 +494,10 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
         result = json.loads(capsys.readouterr().out)
         assert result["status"] == status
         if command == "configure":
-            # The installing session continues: it reads the guide and Skill by path, and a
-            # session the host enforces the cards in is an option it discloses (STOPS-1).
+            # The installing session reads the guide and Skill; before each specialist it
+            # checks the host's role list and opens a fresh session if the role is missing.
             here = result["continue_here"]
+            assert result["next"] == setup.worded("native_setup.specialist_next")
             assert here["read"] == [
                 str(project.resolve() / "AGENTS.md"),
                 str(project.resolve() / ".agents/skills/alphalattice-research/SKILL.md"),
@@ -380,6 +505,9 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
             assert here["specialists"] == str(project.resolve() / ".codex/agents")
             assert here["open_session"] == f'codex -C "{project.resolve()}"'
             assert here["open_session"] in here["disclosure"]
+            assert here["disclosure"] == str(setup.worded("native_setup.specialist_route")).replace(
+                "{command}", here["open_session"]
+            )
         if command == "doctor":
             assert result["failure_code"] == "native_bridge.not_bound"
             assert {"alphalattice_evidence_analyst", "alphalattice_cro"} <= set(result["roles"])
@@ -431,7 +559,15 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
         "alphalattice_cro",
         "alphalattice_maintainer",
     }
-    assert run("configure", "--host", "claude-code")[1]["status"] == "LOCAL_DECLARATIONS_VALIDATED"
+    configured = run("configure", "--host", "claude-code")[1]
+    assert configured["status"] == "LOCAL_DECLARATIONS_VALIDATED"
+    here = configured["continue_here"]
+    assert configured["next"] == setup.worded("native_setup.specialist_next")
+    assert here["open_session"] == f'cd "{project.resolve()}"; claude'
+    assert here["open_session"] in here["disclosure"]
+    assert here["disclosure"] == str(setup.worded("native_setup.specialist_route")).replace(
+        "{command}", here["open_session"]
+    )
     assert (project / ".claude/settings.json").read_bytes() == settings
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "parent")
@@ -459,6 +595,30 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     assert notices["present"] is True and "who_decides" not in notices  # only a missing item's
     assert (project / ".codex" / BINDING_NAME).read_bytes() == binding_before_doctor
     assert not (project / ".codex/config.toml").exists()
+    monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
+    report["host_readiness"].append({"key": "中" * 8000, "detail": "中" * 12000})
+    monkeypatch.setattr(entry, "host_readiness", lambda *_: report["host_readiness"])
+    saved = tmp_path / "doctor.json"
+    line = ("--project", str(project), "doctor", "--view", "summary", "--output")
+    code, summary = run(*line, str(saved))
+    assert code == 0 and len(json.dumps(summary).encode()) < 32768
+    assert summary["full_answer"] == {"file": str(saved.resolve())}
+    expected = json.dumps({**report["attachment_preflight"], **report}).encode()
+    assert saved.read_bytes() == expected
+    for held in (b"{}", b'{"status":"REFUSED","task_id":"held"}'):
+        saved.write_bytes(held)
+        code, refusal = run(*line, str(saved))
+        assert code == 2
+        assert refusal["failure_code"] == "local_client.output_exists_choose_another_path"
+        assert refusal["path"] == str(saved) and refusal["detail"] and saved.read_bytes() == held
+    retry = shlex.split(refusal["next_commands"][0])
+    assert retry[1:3] == ["-m", "alphalattice.interface.local_application.native_setup"]
+    code, retried = run(*retry[3:])
+    assert code == 0 and Path(retried["output_file"]).read_bytes() == expected
+    code, failed = run(*line, str(saved / "answer.json"))
+    failed = failed["local_failure"]
+    assert code == 0 and failed["failure_code"] == "local_client.output_write_refused"
+    assert failed["path"] == str(saved / "answer.json") and failed["detail"]
     # The Codex host still reads its own file, and refuses without it.
     assert run("configure")[1]["status"] == "REFUSED"
 
@@ -564,6 +724,18 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
         assert all(item["present"] is True for item in items.values())
     else:
         assert items[missing]["present"] is (None if missing == "network" else False)
+    if missing == "installed_leg":
+        commands = items[missing]["facts"]["commands"]
+        assert (
+            len(commands) == 1
+            and "alphalattice.interface.local_application.native_setup" in commands[0]
+        )
+        assert commands[0].endswith("install-tool")
+    if missing == "workbench_build":
+        offered = items[missing]["facts"]["command"]
+        written = offered.replace("\\", "/")  # the shell's own spelling of a Windows path
+        assert python.as_posix() in written and "scripts/build_local_web_ui.py" in written
+        assert "uv run" not in offered
     if missing == "user_layer":
         facts = items[missing]["facts"]
         assert (facts["over"], facts["next_action"]) == (["index_lines"], "REVIEW_THE_USER_LAYER")
@@ -749,7 +921,7 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
     # The widest binding `session bind` writes, as it writes it (`_create_or_match`).
     document = {
         "session_id": "s" * bridge.CORRELATION_CHARACTERS,
-        "workspace": "D:\\" + "\u00e9" * (bridge.TEXT_CHARACTERS - 3),
+        "workspace": tmp_path.anchor + "\u00e9" * (bridge.TEXT_CHARACTERS - len(tmp_path.anchor)),
         "roles": [f"r{index:02d}" + "x" * 61 for index in range(bridge.BINDING_ROLES)],
         "host": "claude-code",
         "usage": "OFF",
@@ -1069,11 +1241,19 @@ def test_an_unrelated_read_binding_cannot_discover_an_off_parents_child(tmp_path
         assert not path.is_relative_to(home), "OFF must not open a child or parent native file"
         return opening(path, mode, *args, **kwargs)
 
-    monkeypatch.setattr(os, "scandir", no_discovery)
-    monkeypatch.setattr(Path, "open", no_native_open)
-    assert NativeResearchBinding.find(project, session=("codex", "fixture-unbound-child")) is None
-    exact = NativeResearchBinding.find(project, session=("codex", "fixture-unrelated-read"))
-    assert exact[1].session_id == "fixture-unrelated-read"
-    assert (
-        NativeResearchBinding.read(project, session=("codex", "fixture-off-parent")).usage == "OFF"
-    )
+    with monkeypatch.context() as native_guard:
+        native_guard.setattr(os, "scandir", no_discovery)
+        native_guard.setattr(Path, "open", no_native_open)
+        with pytest.raises(AssertionError, match="OFF must not discover native files"):
+            os.scandir(home)
+        with pytest.raises(AssertionError, match="OFF must not open a child or parent native file"):
+            (home / "child.jsonl").open()
+        assert (
+            NativeResearchBinding.find(project, session=("codex", "fixture-unbound-child")) is None
+        )
+        exact = NativeResearchBinding.find(project, session=("codex", "fixture-unrelated-read"))
+        assert exact[1].session_id == "fixture-unrelated-read"
+        assert (
+            NativeResearchBinding.read(project, session=("codex", "fixture-off-parent")).usage
+            == "OFF"
+        )

@@ -142,7 +142,7 @@ def one_sector_seed(tmp_path_factory, name: str, members: tuple[str, ...]) -> Pa
         copy_workspace(built.workspace, root)
         return {}
 
-    return session_workspace(tmp_path_factory, f"maintenance_{name}", build)[0]
+    return session_workspace(tmp_path_factory, f"maintenance_{name}", build, inputs=members)[0]
 
 
 def maintenance_workspace(

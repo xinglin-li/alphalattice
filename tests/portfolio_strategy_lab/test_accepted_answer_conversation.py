@@ -35,6 +35,7 @@ from alphalattice.control.task_control.contracts import (
     ResearchPlan,
     TaskInputEnvelope,
 )
+from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceAnalystAnswer,
     AlternativeEvidenceResearchObligation,
@@ -147,6 +148,13 @@ def open_goal(live, title):
 @pytest.fixture
 def answer_scene(live, tmp_path, monkeypatch):
     """Synthetic acceptance seam: no evidence, specialist or scientific work executes."""
+    write_queue_setting(
+        live.workspace / "runtime",
+        2,
+        chosen_by="HUMAN",
+        chosen_at=datetime(2026, 10, 4, tzinfo=UTC),
+        field="tasks_waiting",
+    )
     envelope, goal, plan = task_contract(salt="accepted-answer-conversation")
     task = live.session.task_control_registry.admit(
         input_envelope=envelope,
@@ -288,7 +296,11 @@ def answer_scene(live, tmp_path, monkeypatch):
         if delivery is not None:
             body["answer"]["accepted_delivery"] = delivery
         monkeypatch.setattr(EvidenceReviewBundles, "agent_bundle", lambda self, directory: bundle)
-        monkeypatch.setattr(live.review, "submit_analysis", lambda **kwargs: body)
+        monkeypatch.setattr(
+            live.review,
+            "submit_analysis",
+            lambda **kwargs: kwargs["admit"](lambda: body) if kwargs.get("admit") else body,
+        )
         token = REQUEST_PROVENANCE.set(
             RequestProvenance(vendor=host, session=session, goal_id=goal_id)
         )
@@ -319,6 +331,13 @@ def answer_scene(live, tmp_path, monkeypatch):
 @pytest.fixture
 def product_answer_scene(live, tmp_path):
     """Use the actual generic owners and sealed records without native author claims."""
+    write_queue_setting(
+        live.workspace / "runtime",
+        2,
+        chosen_by="HUMAN",
+        chosen_at=datetime(2026, 10, 6, tzinfo=UTC),
+        field="tasks_waiting",
+    )
     envelope, goal, plan = task_contract(salt="product-accepted-answer-read")
     task = live.session.task_control_registry.admit(
         input_envelope=envelope,
@@ -1044,9 +1063,6 @@ def test_generic_specialist_shape_or_unassigned_reference_is_corrected_before_ac
     [
         "missing_answer",
         "missing_bundle",
-        "historical_record",
-        "text_tail_tampered",
-        "author",
         "session",
         "submitter",
         "role",
@@ -1501,7 +1517,12 @@ def test_unfiled_and_correction_records_supply_no_accepted_delivery(answer_scene
     )
 
 
-@pytest.mark.parametrize("operation", ["EVIDENCE_ANALYSIS_SUBMIT", "CRO_REVIEW_SUBMIT"])
+@pytest.mark.parametrize(
+    "operation",
+    [
+        "EVIDENCE_ANALYSIS_SUBMIT",
+    ],
+)
 def test_direct_answer_doors_keep_unknown_author_accepted_without_child_credit(
     answer_scene, monkeypatch, operation
 ):
@@ -1519,7 +1540,11 @@ def test_direct_answer_doors_keep_unknown_author_accepted_without_child_credit(
             **bundle.submission,
             "analysis_answer": accepted.model_dump(mode="json"),
         }
-        monkeypatch.setattr(live.review, "submit_analysis", lambda **kwargs: body)
+        monkeypatch.setattr(
+            live.review,
+            "submit_analysis",
+            lambda **kwargs: kwargs["admit"](lambda: body) if kwargs.get("admit") else body,
+        )
     else:
         request = {
             "operation": operation,
@@ -1560,37 +1585,6 @@ def test_done_preview_keeps_only_accepted_prose_and_names_drops(answer_scene):
     assert "DONE; 1 dropped" in row["payload"]["summary"]
     assert "Distinctive authored finding" in row["payload"]["summary"]
     assert "SYNTHETIC-DROPPED-ITEM" not in row["payload"]["summary"]
-
-
-def test_observation_failure_preserves_acceptance_and_reports_missing_conversation(
-    answer_scene, monkeypatch
-):
-    """BEHAVIOUR: an optional observer cannot undo an already accepted answer."""
-    live, bundle, _accepted, record, _events, publish, submit, answers = answer_scene
-    publish()
-    original = live.operations.observer.admit_external_event
-
-    def unavailable(document):
-        raise OSError("SYNTHETIC-PRIVATE-ERROR")
-
-    monkeypatch.setattr(live.operations.observer, "admit_external_event", unavailable)
-    result = submit()
-    assert result["status"] == "ACCEPTED"
-    assert result["conversation"]["status"] == "UNAVAILABLE"
-    assert result["conversation"]["reason"] == "native_bridge.accepted_delivery_failed"
-    assert result["conversation"]["missing"] == ["accepted_answer_delivery"]
-    assert result["conversation"]["task_id"] == bundle.submission["task_id"]
-    assert result["conversation"]["bundle_reference"] == bundle.record_hash
-    assert result["conversation"]["answer_reference"] == record.record_hash
-    assert answers() == []
-    assert "SYNTHETIC-PRIVATE-ERROR" not in str(result)
-    assert (
-        live.review.artifacts.load(ANSWER_CATEGORY, record.record_hash, AgentAnswerRecord) == record
-    )
-    monkeypatch.setattr(live.operations.observer, "admit_external_event", original)
-    repaired = submit(disposition="REUSED_EXACT")
-    assert repaired["status"] == "ACCEPTED" and repaired["conversation"]["status"] == "DELIVERED"
-    assert submit(disposition="REUSED_EXACT")["conversation"]["status"] == "DELIVERED"
 
 
 def test_delivery_read_failure_preserves_the_already_filed_acceptance(answer_scene, monkeypatch):

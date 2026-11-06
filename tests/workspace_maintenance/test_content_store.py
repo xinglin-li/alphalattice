@@ -258,7 +258,7 @@ def test_a_lane_is_parquet_named_by_its_packed_bytes_and_reads_back_bit_for_bit(
 def test_a_store_written_before_v210_is_read_from_its_bin_files(tmp_path: Path) -> None:
     store = _store(tmp_path)
     packed = np.arange(4.0).tobytes()
-    page = b"<p>sealed before V210</p>"
+    page = b"<p>sealed legacy content</p>"
     for category, payload in (("lanes/old", packed), ("html", page)):
         folder = tmp_path / "store" / category
         folder.mkdir(parents=True)

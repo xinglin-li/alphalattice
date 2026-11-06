@@ -146,7 +146,7 @@ def test_every_refusal_and_answer_template_command_parses(
         prose = prose.replace("model check command shown here", "")
         for match in raw.finditer(prose):
             head = match["full"] or match["plain"]
-            parser = cli._parser(cli._named(head.split()))
+            parser = cli.command_parser(cli._named(head.split()))
             terminal = next(
                 part for part in cli._commands_of(parser) if part.prog == f"alphalattice {head}"
             )
@@ -425,7 +425,10 @@ def test_every_printed_command_reads_back_as_the_request_it_came_from(
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell is a Windows shell")
-def test_a_command_printed_for_powershell_sends_the_request_it_came_from(tmp_path: Path) -> None:
+@pytest.mark.parametrize("emit_bom", [False, True])
+def test_a_command_printed_for_powershell_sends_the_request_it_came_from(
+    tmp_path: Path, emit_bom: bool
+) -> None:
     """A command printed for PowerShell sends the request it came from."""
 
     from alphalattice.interface.local_application.cli import request_of
@@ -452,7 +455,14 @@ def test_a_command_printed_for_powershell_sends_the_request_it_came_from(tmp_pat
     assert all(line is not None for line in lines)
     assert sum(" | " in str(line) for line in lines) == 2
     script = tmp_path / "lines.ps1"
-    script.write_text("\n".join(str(line) for line in lines) + "\n", encoding="utf-8-sig")
+    encoding = "$true" if emit_bom else "$false"
+    script.write_text(
+        f"$OutputEncoding = New-Object System.Text.UTF8Encoding({encoding})\n"
+        + "\n".join(str(line) for line in lines)
+        + f"\nif ($OutputEncoding.GetPreamble().Length -ne {3 if emit_bom else 0}) "
+        + "{ throw 'The output encoding changed' }\n",
+        encoding="utf-8-sig",
+    )
     ran = subprocess.run(
         ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
         capture_output=True,
@@ -461,6 +471,7 @@ def test_a_command_printed_for_powershell_sends_the_request_it_came_from(tmp_pat
         stdin=subprocess.DEVNULL,
         timeout=120,
         check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     received = [json.loads(row) for row in ran.stdout.splitlines() if row.startswith("{")]
     assert len(received) == len(requests)

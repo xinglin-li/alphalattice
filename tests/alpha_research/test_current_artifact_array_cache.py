@@ -28,6 +28,7 @@ from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests._support.lease_age import age_lease_file
 
 
 def _source() -> FrozenPriceVolumeInputs:
@@ -157,6 +158,8 @@ def test_immutable_artifacts_reuse_across_opted_in_scopes_with_unbroken_os_lease
             / f"{preparation.preparation_hash}.json"
         ).resolve(): "json",
     }
+    for path in watched_paths:
+        age_lease_file(path)
     read_counts = Counter()
     open_file = Path.open
 
@@ -214,6 +217,9 @@ def test_complete_immutable_alpha_models_reuse_validation_only_with_an_opted_in_
     current_artifacts, monkeypatch, reuse_verified
 ):
     store, _, preparation = current_artifacts
+    for item in store.root.rglob("*"):
+        if item.is_file():
+            age_lease_file(item)
     validate = FrozenFeaturePreparation.model_validate
     validations = []
 
@@ -231,13 +237,10 @@ def test_complete_immutable_alpha_models_reuse_validation_only_with_an_opted_in_
             preparation.preparation_hash
         )
     assert first == second == preparation
-    if os.name == "nt" and reuse_verified:
-        assert len(validations) == first_count
-        assert first is second
-        assert first_surfaces is second_surfaces
-    else:
-        assert len(validations) == first_count + 1
-        assert first is not second
+    # Reuse follows the opt-in alone, on every OS: each reuse is keyed by the exact bytes read and
+    # hashed this time. An OS read lease, which only Windows grants, only spares that re-read.
+    assert len(validations) == first_count + (not reuse_verified)
+    assert (first is second) == (first_surfaces is second_surfaces) == reuse_verified
     assert tuple(surface.feature_values_hash for surface in first_surfaces) == tuple(
         surface.feature_values_hash for surface in second_surfaces
     )
@@ -273,15 +276,74 @@ def test_a_valid_content_seal_cannot_replace_the_alpha_models_structure(current_
             with pytest.raises(ValueError, match="frozen_feature_preparation_invalid"):
                 store.load_frozen_feature_preparation(identity)
 
+    from alphalattice.interface.local_application.failure_codes import public_failure
+
+    path.write_text(json.dumps({**payload, "preparation_hash": "0" * 64}), encoding="utf-8")
+    with pytest.raises(development_artifacts.AlphaDevelopmentArtifactReadbackError) as rejected:
+        store.load_frozen_feature_preparation(identity)
+    code = public_failure(rejected.value, "research_update.refused")
+    assert code == "alpha_research.development_artifact_identity_invalid"
+    from alphalattice.interface.local_application.failure_codes import untyped_failure
+
+    assert untyped_failure(
+        public_failure(ValueError(str(rejected.value)), "research_update.refused")
+    )
+    assert untyped_failure(
+        public_failure(
+            development_artifacts.AlphaDevelopmentArtifactReadbackError("another readback error"),
+            "research_update.refused",
+        )
+    )
+    from alphalattice.interface.local_application.cli_contract import refusal_words
+
+    words = refusal_words(code)
+    assert words["next_action"] == "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+    assert "verified workspace backup" in words["detail"]
+
 
 def test_observation_admission_proof_refuses_current_bytes_tampered_after_verification(
     current_artifacts,
+    monkeypatch,
 ):
     store, observation, _ = current_artifacts
+    for path in (
+        store._path("current/frozen-observation-snapshots", observation.snapshot_hash, "json"),
+        *(
+            store._path("current/frozen-observation-arrays", item, "bin")
+            for item in observation.array_files
+        ),
+    ):
+        age_lease_file(path)
+    if os.name == "nt":
+        from alphalattice.control.workspace_runtime import content_store
+
+        lease = content_store._WindowsReadLease(path)
+        changed = lease.identity[-1]
+        lease.close()
+        with monkeypatch.context() as clock:
+            for age in (-1, 0, 999_999):  # future, now and just under 100 ms
+                clock.setattr(
+                    content_store,
+                    "time_ns",
+                    lambda age=age: (changed - 116444736000000000 + age) * 100,
+                )
+                with pytest.raises(OSError, match="ChangeTime is too recent"):
+                    content_store._WindowsReadLease(path)
     with verified_model_read_scope(reuse_verified=True):
         store.verify_frozen_observations(observation.snapshot_hash)
 
     path = store._path("current/frozen-observation-arrays", observation.array_files[-1], "bin")
+    if os.name == "nt":
+        from alphalattice.control.workspace_runtime import content_store
+
+        lease = next(
+            lease
+            for held in content_store._VERIFIED_SOURCE_LEASES.values()
+            for lease in held
+            if lease.path == path
+        )
+        # Model the observed delayed OS event: file identity must refuse independently.
+        monkeypatch.setattr(lease.kernel, "WaitForSingleObject", lambda *_args: 258)
     before = path.stat()
     damaged = bytearray(path.read_bytes())
     damaged[len(damaged) // 2] ^= 1
@@ -302,6 +364,14 @@ def test_observation_admission_proof_skips_unchanged_packed_bytes_in_a_new_scope
     """Control: Unchanged packed observation bytes reuse verification across independent
     scopes."""
     store, observation, _ = current_artifacts
+    for path in (
+        store._path("current/frozen-observation-snapshots", observation.snapshot_hash, "json"),
+        *(
+            store._path("current/frozen-observation-arrays", item, "bin")
+            for item in observation.array_files
+        ),
+    ):
+        age_lease_file(path)
     path = store._path("current/frozen-observation-arrays", observation.array_files[-1], "bin")
     open_file = Path.open
     reads = 0
@@ -322,6 +392,9 @@ def test_observation_admission_proof_skips_unchanged_packed_bytes_in_a_new_scope
 @pytest.mark.parametrize("kind", ("observation", "feature"))
 def test_cached_payload_read_still_refuses_tampering_with_restored_mtime(kind, current_artifacts):
     store, observation, preparation = current_artifacts
+    for item in store.root.rglob("*"):
+        if item.is_file():
+            age_lease_file(item)
     category, identity = (
         ("current/frozen-observation-arrays", observation.array_files[-1])
         if kind == "observation"
@@ -364,6 +437,9 @@ def test_cached_payload_read_still_refuses_tampering_with_restored_mtime(kind, c
 @pytest.mark.parametrize("kind", ("observation", "feature"))
 def test_json_commitment_is_rechecked_after_a_cached_reconstruction(kind, current_artifacts):
     store, observation, preparation = current_artifacts
+    for item in store.root.rglob("*"):
+        if item.is_file():
+            age_lease_file(item)
     assert not hasattr(store, "publish_current_score_chunk")
     if kind == "observation":
         path = store._path(

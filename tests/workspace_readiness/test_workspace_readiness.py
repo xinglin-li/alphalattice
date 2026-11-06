@@ -44,12 +44,13 @@ from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.workspace_maintenance.local_data_provider import flat_adjusted_close_history
 
 _SIMPLE_NAMESPACE = SimpleNamespace
 
 PROFILE = (
-    Path(__file__).resolve().parents[2]
+    resolve_playpen_root(Path(__file__))
     / "config"
     / "market-profiles"
     / "us-current-index-research.yaml"

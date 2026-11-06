@@ -86,6 +86,12 @@ REGISTER: dict[tuple[str, str, str], str] = {
     "deferred one too, whose run resumes it once due (V601, V604); a cancelling one is not pending",
     (
         "control/product_host/composition/decision_advancement.py",
+        "DecisionAdvancementApplication._stopped.stops",
+        "DEFERRED,RECOVERY_REQUIRED",
+    ): "the stopped updates a rerun takes up as themselves, a deferral once due or one owed its "
+    "recovery; only theirs can be an own move, and a blocked update keeps its own stop's way on",
+    (
+        "control/product_host/composition/decision_advancement.py",
         "DecisionAdvancementApplication.in_flight",
         "CANCEL_REQUESTED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "every state the Task leaves by itself answers the admitted Task; a deferral is not in "
@@ -95,6 +101,13 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "EvidenceReviewApplication._active_refresh_task.active",
         "QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "an evidence refresh still owed; evidence Tasks never defer, and a cancelling one is not",
+    (
+        "control/product_host/composition/evidence_review_resume.py",
+        "_matching_task.active",
+        "QUEUED,RECOVERY_REQUIRED,RUNNING,SUCCEEDED",
+    ): "a same-publication preparation may be read while queued, running or needing recovery, "
+    "or after success with its packets rechecked; cancelling, cancelled, blocked, deferred and "
+    "review-pending Tasks are not selected",
     (
         "control/product_host/composition/evidence_review_application.py",
         "EvidenceReviewApplication.recovery_commands",
@@ -148,7 +161,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
     "holding the running place too, which they would only queue behind (V604)",
     (
         "control/product_host/composition/portfolio_research_operations.py",
-        "PortfolioResearchOperations._workspace_operation",
+        "PortfolioResearchOperations._recover",
         "QUEUED,RECOVERY_REQUIRED",
     ): RESUMABLE,
     (
@@ -400,6 +413,11 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "ACTION_STATES",
         "RECOVERY_REQUIRED,REVIEW_PENDING",
     ): "waiting on a request: a review to decide (an answer's status), a Task to recover",
+    (
+        "interface/local_application/dispatcher.py",
+        "LocalBackgroundDispatcher._idle_expired",
+        "DEFERRED,QUEUED,RECOVERY_REQUIRED,RUNNING",
+    ): "owned admitted work keeps the Host; cancelled work still draining is held by _idle_busy",
     (
         "interface/local_application/dispatcher.py",
         "_SETTLED_LIFECYCLES",

@@ -1,13 +1,20 @@
 {
 "entries": {
+"schema:alphalattice.import-hygiene": {
+"owner": "schema:alphalattice",
+"description": "Records the non-growing count of retained function imports in config/import-hygiene.json by source path, scope and normalized import for the structural guard.",
+"readers": ["src/devtools/architecture/structural.py", "src/devtools/architecture/registries.py"],
+"upgraders": [],
+"version": ["alphalattice.import-hygiene"]
+},
 "schema:alphalattice.message-catalog": {
 "owner": "schema:alphalattice",
 "readers": [
 "src/alphalattice/interface/local_application/questions.py",
 "tests/portfolio_strategy_lab/workbench_activity.cjs",
 "src/devtools/architecture/registries.py",
-"src/alphalattice/control/product_host/composition/workspace_activity.py",
-"src/alphalattice/interface/local_application/cli_contract.py"
+"src/alphalattice/interface/local_application/cli_contract.py",
+"src/alphalattice/control/product_host/composition/workspace_activity.py"
 ],
 "upgraders": [],
 "version": [
@@ -272,6 +279,45 @@
 "workspace-preparation-input"
 ]
 },
+"schema:alphalattice.read-summary.v1": {
+"owner": "alphalattice.interface.local_application",
+"readers": [
+"src/alphalattice/interface/local_application/cli_contract.py",
+"src/alphalattice/interface/local_application/cli.py",
+"src/alphalattice/interface/local_application/client.py",
+"src/alphalattice/interface/local_application/native_setup.py",
+"src/devtools/architecture/operation_registry.py",
+"src/alphalattice/interface/local_application/read_views.py",
+"src/alphalattice/control/product_host/composition/retrieval_pack_setup.py",
+"src/alphalattice/control/product_host/composition/evidence_authority_setup.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.read-summary.v1"
+],
+"kind": "READ_REPRESENTATION",
+"schema": {
+"type": "object",
+"required": [
+"representation",
+"full_answer"
+],
+"properties": {
+"representation": {
+"const": "alphalattice.read-summary.v1"
+},
+"message_id": {
+"const": "read.summary"
+},
+"full_answer": {
+"type": "object"
+},
+"next_page": {
+"type": "object"
+}
+}
+}
+},
 "schema:alphalattice.goal-profile.v1": {
 "owner": "schema:alphalattice",
 "readers": [
@@ -288,6 +334,7 @@
 "schema:alphalattice.stage-spans.v1": {
 "owner": "schema:alphalattice",
 "readers": [
+"src/alphalattice/kernel/shared_kernel/spans.py",
 "src/alphalattice/control/task_control/timing.py",
 "src/alphalattice/control/observation_runtime/profile.py"
 ],
@@ -300,6 +347,7 @@
 "owner": "schema:alphalattice",
 "readers": [
 "src/alphalattice/kernel/shared_kernel/clocks.py",
+"src/alphalattice/control/observation_runtime/policy.py",
 "src/alphalattice/control/observation_runtime/profile.py",
 "src/alphalattice/control/product_host/composition/workspace_activity.py"
 ],
@@ -337,6 +385,119 @@
 "version": [
 "alphalattice.golden-acquisition.v1"
 ]
+},
+"schema:alphalattice.release.review-key.v1": {
+"owner": "schema:alphalattice",
+"readers": [
+"scripts/release/public_manifest.py"
+],
+"upgraders": [
+"scripts/release/public_manifest.py"
+],
+"version": [
+"alphalattice.release.review-key.v1"
+],
+"note": "Scanner-owned UTF-8/LF line-content key; differing dispositions conflict, corroborating evidence and immutable conversion sources are retained; changed content reopens. The maintainer harness tools/public_export.py and tools/lead_merge.py consume emitted keys only. Location-based review conversion is retired; reserved example-domain decisions belong to this review owner."
+},
+"schema:alphalattice.requirements.v1": {
+"description": "The requirements registry records the owned requirements that test holders prove.",
+"owner": "devtools.testing",
+"readers": [
+"src/devtools/testing/requirements.py",
+"src/devtools/testing/collection.py",
+"scripts/check_playpen.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.requirements.v1"
+]
+},
+"schema:alphalattice.tests-unregistered.v1": {
+"description": "The private legacy count registry bounds unregistered tests per file until each holder registers or retires.",
+"owner": "devtools.testing",
+"readers": [
+"src/devtools/testing/requirements.py",
+"src/devtools/testing/collection.py",
+"src/devtools/testing/layout.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.tests-unregistered.v1"
+]
+},
+"schema:alphalattice.release.public-manifest": {
+"description": "The private release manifest lists each public path and its rule; readers find it by this schema, never by its path.",
+"owner": "schema:alphalattice",
+"readers": [
+"scripts/release/public_manifest.py",
+"scripts/release/public_snapshot.py",
+"scripts/check_playpen.py",
+"src/devtools/testing/requirements.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.release.public-manifest"
+]
+},
+"schema:alphalattice.agent-eval.host-facts": {
+"description": "The private host facts record what the agent hosts were observed to do, so host-seam fakes match them; readers find them by this schema.",
+"owner": "schema:alphalattice",
+"readers": [
+"scripts/release/public_manifest.py",
+"src/devtools/testing/layout.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.agent-eval.host-facts"
+]
+},
+"schema:alphalattice.session-footprint.v1": {
+"owner": "devtools.testing",
+"description": "Partial session fixture and sampled basetemp footprint evidence for a suite attempt.",
+"readers": [
+"src/devtools/testing/sizes.py",
+"tests/integration/testing/test_collection.py"
+],
+"upgraders": [],
+"version": ["alphalattice.session-footprint.v1"]
+},
+"schema:alphalattice.test-sizes.v1": {
+"owner": "devtools.testing",
+"readers": [
+"src/devtools/testing/sizes.py",
+"tests/conftest.py",
+"src/devtools/testing/collection.py",
+"scripts/check_playpen.py",
+"src/devtools/testing/layout.py"
+],
+"upgraders": [],
+"version": [
+"alphalattice.test-sizes.v1"
+]
+},
+"schema:alphalattice.playpen.registry-census-baseline/v1": {
+"owner": "devtools.architecture",
+"readers": [
+"src/devtools/architecture/registries.py"
+],
+"upgraders": [
+"src/devtools/architecture/registries.py"
+],
+"version": [
+"alphalattice.playpen.registry-census-baseline/v1"
+],
+"description": "Record reviewed source gaps and remaining undescribed registry entries so the staged census rejects new debt."
+},
+"schema:alphalattice.test-layout.v1": {
+  "description": "Binds reviewed whole-file test placements and reversible file images to one Git source revision.",
+  "owner": "devtools.testing",
+  "readers": [
+    "src/devtools/testing/layout.py"
+  ],
+  "upgraders": [],
+  "version": [
+    "alphalattice.test-layout.v1"
+  ]
 }
 },
 "note": "",

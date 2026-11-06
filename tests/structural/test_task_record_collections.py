@@ -17,21 +17,23 @@ PREPARATION = "control/product_host/data_preparation/"
 STRICT_READERS = {
     COMPOSITION + "decision_advancement.py": (
         "DecisionAdvancementApplication",
-        "_plan admit in_flight _completed_scores _completed_input "
-        "reusable publication_task readback",
+        "_plan admit in_flight _stopped _completed_scores _completed_input "
+        "reusable publication_task readback _cycle_owner",
     ),
     COMPOSITION + "evidence_review_application.py": (
         "EvidenceReviewApplication",
         "_run_tasks _active_refresh_task offered_installs _completed_task "
         "_accepted_answer_delivery recovery_commands",
     ),
+    # Continuation chooses a retained preparation only from complete canonical authority.
+    COMPOSITION + "evidence_review_resume.py": ("", "resumable_preparation"),
     # The same install sent again records itself as each blocked install's successor.
     COMPOSITION + "evidence_authority_setup.py": ("EvidenceInstall", "_continue_blocked"),
     COMPOSITION + "feature_trials.py": ("FeatureTrials", "way_on"),
     COMPOSITION + "local_web_session.py": ("LocalPortfolioWebSession", "_recovery_commands"),
     COMPOSITION + "portfolio_research_operations.py": (
         "PortfolioResearchOperations",
-        "_tasks_wait __post_init__ _workspace_operation _strategy_task "
+        "_tasks_wait __post_init__ _prepare_confirm _strategy_task "
         "_automation_answer upgrade cpu_budget _install",
     ),
     COMPOSITION + "portfolio_updates.py": (
@@ -78,7 +80,7 @@ STRICT_READERS = {
         "WorkspaceDataUpdateApplication",
         # DUPD: select the exact retained Human approval/journal only from complete authority.
         "_approved_plans _waiting confirm.approve receipt_task "
-        "readback reusable prepare admit _step plan _audit_parent _supplemented",
+        "readback reusable prepare admit _step _planned _audit_parent _supplemented",
     ),
     "control/product_host/storage/input_references.py": ("ResearchInputStorage", "_references"),
     "control/task_control/registry.py": (
@@ -96,7 +98,8 @@ STRICT_READERS = {
     ),
     "interface/local_application/dispatcher.py": (
         "LocalBackgroundDispatcher",
-        "resume _waits_its_turn drive_waiting",
+        # Idle expiry must prove no owned Task still needs the Host from complete authority.
+        "resume _waits_its_turn drive_waiting _idle_expired",
     ),
 }
 
@@ -148,7 +151,7 @@ def _expected_readers():
     # One public operation dispatch, not a canonical-record reader.
     expected[
         COMPOSITION + "portfolio_research_operations.py",
-        "PortfolioResearchOperations._workspace_operation",
+        "PortfolioResearchOperations._task_routes",
         "public-TASKS",
     ] = 1
     return expected
@@ -184,7 +187,7 @@ def _record_reader_calls(sources, *, canonical=False):
             action = node.func.attr
             if (
                 path == COMPOSITION + "portfolio_research_operations.py"
-                and scope == "PortfolioResearchOperations._workspace_operation"
+                and scope == "PortfolioResearchOperations._task_routes"
                 and action == "tasks"
                 and isinstance(node.func.value, ast.Name)
                 and node.func.value.id == "self"

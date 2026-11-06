@@ -27,6 +27,7 @@ import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -117,6 +118,7 @@ from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
     publish_causal_outcomes,
 )
+from tests.researcher_methodology_surface.session_fixtures import build_external_factor_workspace
 
 CASE_ROOT = Path(__file__).resolve().parent
 PLAYPEN_ROOT = CASE_ROOT.parents[1]
@@ -259,11 +261,16 @@ def _inventory_entries(context_factors: tuple[Any, ...]) -> tuple[FactorInventor
 
 
 def test_an_external_method_reaches_a_published_panel_with_a_measured_identity(
-    external_run: ExternalFactorRun,
-    external_factor_workspace: RealRiskWorkspace,
+    tmp_path: Path,
 ) -> None:
     """An external method reaches a published panel with a measured identity."""
 
+    external_factor_workspace = build_external_factor_workspace(tmp_path, fresh=True)
+    external_run = SimpleNamespace(  # the build is the claim: this Panel is written, not copied
+        inventory=host_resolved_factor_inventory(
+            workspace=external_factor_workspace.workspace, market_profile_id=MARKET_PROFILE_ID
+        )
+    )
     by_factor = {entry.factor_id: entry for entry in external_run.inventory}
     # The whole installed axis and nothing else: the shipped catalog plus this
     # one external Factor. The shipped catalog's own size is the feature-engine

@@ -30,12 +30,13 @@ from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioCostPolicy,
     PortfolioWalkForwardError,
 )
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from alphalattice.protocols.research_authoring.selection import (
     require_selection_only_document,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = resolve_playpen_root(Path(__file__))
 
 
 # --------------------------------------------------------------- selection only

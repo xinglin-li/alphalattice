@@ -4,11 +4,18 @@ description: Conduct quantitative research in an AlphaLattice workspace through 
 ---
 
 # AlphaLattice Research
-Date: 2026-10-08
+Last checked: 2026-11-04 against 0.2.4
 
 You lead the research. AlphaLattice's owners calculate, validate, record and publish; you choose the question, follow each answer's `next_action` and `next_requests`, seek judgment and explain what the evidence supports. The [research-agent guide](../../../AGENTS.md) covers setup, the first use and what only a person decides; a specialist gives judgment, never product authority. If `.alphalattice/user/skills/alphalattice-research.md` exists, read it too: the person's additions to this Skill.
 
 At first use and any refusal naming a missing dependency, run the doctor from the checkout's root, `uv run python -m alphalattice.interface.local_application.native_setup doctor` (the guide's Open the workspace names the wheel leg's); fill each missing item by its `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
+
+Off PATH, use the binding block in the shared guides and pass the matching absolute prefix to every specialist; no shell update or restart is needed. Portable examples use alphalattice as a placeholder. When serving from another shell, set ALPHALATTICE_SHELL to your specialists' shell: posix or powershell.
+
+<!-- message: host.start.terminal.guide -->
+On Claude Code desktop, use the available Terminal panel through `run_in_terminal`; on Codex, use an available agent-driven Terminal panel in the same way. If detached start is refused, choose the first applicable `terminal_routes` offer and run `terminal_command` yourself there. Only without such a panel, give the person the same command for a terminal they own, then wait for their word. The Host cannot inspect your tools; its escape and authenticated readiness checks still decide STARTED.
+
+The app may ask the person to approve that one line.
 
 ## Shortest paths
 
@@ -26,6 +33,9 @@ Begin at the person's own target (a date's positions, a named request), else at 
 - **A formula factor**: `alphalattice feature controls` → its offered plan, trial and review.
 - **A data issue**: `alphalattice issue list` → its offered `request` ([pipeline issues](references/pipeline-issues.md)).
 - **Report a problem**: `problem report --output "<out>/report.json"` → show the report → ask before sending (the “Report a problem” section of the [operating contract](references/operating.md)).
+
+For an invalid Feature document or strategy declaration, send its offered controls or
+inputs request, repair the invalid fields and plan again with the same research choices.
 
 Before activating, read `strategy_dates.information_cutoff` and the conditional `strategy_dates.first_actionable_session`.
 Activation admits the first update in the same act: follow it at once, then review its published positions on their own publication.
@@ -63,6 +73,7 @@ Each command's exact form; the [Command contract](references/operating.md) cover
 
 - The guide lists what only a person decides; everything else is a default you take and state in one line ([goals](references/goals.md)).
 - Product answers and sealed artifacts are the evidence: never invent an id, hash, model, field or number.
+- Where a refusal adds `error_info`, read its registered category, exact reason and safe field paths; follow the original offered request. The category grants no retry or authority.
 - If an Evidence install loses `evidence_setup`, read its offered form and restore
   the exact setup from the original offer; that read grants no permission to
   change issuers or scope.

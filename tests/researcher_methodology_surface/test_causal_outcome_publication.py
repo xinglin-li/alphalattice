@@ -168,6 +168,7 @@ def _publish(workspace: RealRiskWorkspace, *, hours: int) -> PublishedCausalExec
         )
 
 
+@pytest.mark.private_data
 def test_a_re_derived_snapshot_keeps_its_one_seal_and_reuses_exactly_afterwards(
     tmp_path: Path,
 ) -> None:
@@ -233,6 +234,7 @@ def test_a_re_derived_snapshot_keeps_its_one_seal_and_reuses_exactly_afterwards(
     assert third.method_binding == first.method_binding
 
 
+@pytest.mark.private_data
 def test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read(
     tmp_path: Path,
 ) -> None:
@@ -405,6 +407,14 @@ def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(tmp_path
         assert there.tables[key].equals(table)
 
 
+def _new_children_after_wait(parent, previous):
+    """Allow exiting children to finish, but keep any still alive after the bound."""
+    import psutil
+
+    children = [child for child in parent.children(recursive=True) if child.pid not in previous]
+    return psutil.wait_procs(children, timeout=3)[1]
+
+
 def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path: Path) -> None:
     """Control: Worker failure publishes nothing and leaves no worker behind."""
 
@@ -454,14 +464,14 @@ def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path
     assert sorted(path for path in Path(workspace.artifact_root).rglob("*") if path.is_file()) == (
         files
     )
-    assert [c for c in me.children(recursive=True) if c.pid not in children_before] == []
+    assert _new_children_after_wait(me, children_before) == []
     assert {thread.name for thread in threading.enumerate()} <= threads_before
     live = live_workspace_connections(store.database.path)
     assert live is None or live.handles == 0
     with patch.object(owner, "PARALLEL_DERIVATION_ROW_THRESHOLD", 1):
         published = publish()
     assert published.receipt.action == "PUBLISHED"
-    assert [c for c in me.children(recursive=True) if c.pid not in children_before] == []
+    assert _new_children_after_wait(me, children_before) == []
 
 
 def test_executor_creation_and_process_start_refusals_publish_nothing(tmp_path: Path) -> None:
@@ -470,21 +480,25 @@ def test_executor_creation_and_process_start_refusals_publish_nothing(tmp_path: 
     import psutil
 
     from alphalattice.control.task_control.child import ChildStartFailed
+    from alphalattice.foundation.causal_outcomes.execution import publication as owner
 
-    workspace = build_real_risk_workspace(
-        tmp_path / "workspace", symbols=tuple(f"QA{index:03d}" for index in range(80))
-    )
+    # The shipped workspace takes the parallel path once the row threshold is 1, as in the
+    # parallel test above; a universe big enough to cross it would only add a cold build.
+    workspace = build_real_risk_workspace(tmp_path / "workspace")
     store = MarketDataRepository(workspace.workspace)
     resolver = ArtifactResolver(workspace.artifact_root)
 
     def publish() -> PublishedCausalExecutionOutcome:
-        return CausalExecutionOutcomePublisher(
-            store=store,  # type: ignore[arg-type]
-            resolver=resolver,
-            artifact_root=workspace.artifact_root,
-            mutation_gate=WorkspaceMutationGate(),
-            derivation_workers=2,
-        ).publish_daily(panel_manifest_ref=workspace.panel_manifest_ref, completed_at=OBSERVED_AT)
+        with patch.object(owner, "PARALLEL_DERIVATION_ROW_THRESHOLD", 1):
+            return CausalExecutionOutcomePublisher(
+                store=store,  # type: ignore[arg-type]
+                resolver=resolver,
+                artifact_root=workspace.artifact_root,
+                mutation_gate=WorkspaceMutationGate(),
+                derivation_workers=2,
+            ).publish_daily(
+                panel_manifest_ref=workspace.panel_manifest_ref, completed_at=OBSERVED_AT
+            )
 
     def artifact_files() -> tuple[Path, ...]:
         return tuple(
@@ -576,6 +590,7 @@ def test_existing_seal_reuse_ignores_only_the_source_revision_counter() -> None:
     assert _method_authority(first) != _method_authority(changed_actions)
 
 
+@pytest.mark.private_data
 def test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel(tmp_path: Path) -> None:
     """Outcomes and risk keep the historical members of a ragged panel."""
     from alphalattice.control.data_platform.maintenance.contracts import (

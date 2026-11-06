@@ -17,7 +17,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from datetime import date, timedelta
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 import duckdb
@@ -363,10 +363,11 @@ def test_the_panel_driver_never_deletes_a_development_workspace(
         with pytest.raises(driver.DevelopmentWorkspaceRefused, match=code):
             admit(output)
 
-    # A drive that does not contain the source still cannot be an output root.
-    other_root = Path("C:/") if source.anchor != "C:\\" else Path("D:/")
+    # A separate Windows drive root is a root even when this test runs on POSIX.
     with pytest.raises(driver.DevelopmentWorkspaceRefused, match="filesystem_root"):
-        admit(other_root)
+        driver._admit_output_workspace(
+            source=PureWindowsPath("C:/source"), output=PureWindowsPath("D:/")
+        )
 
     assert admit(tmp_path / "not-yet-created") == "CREATED"
     empty = tmp_path / "empty"
@@ -724,6 +725,9 @@ def test_the_panel_driver_never_deletes_a_development_workspace(
     assert opened == []
 
 
+@pytest.mark.proves(
+    "observation_runtime.process_is_held_to_half_the_machine_or_its_narrower_allowance"
+)
 def test_the_runner_is_capacity_bounded_before_any_stage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -757,7 +761,12 @@ def test_the_runner_is_capacity_bounded_before_any_stage(
         )
     }
     try:
-        _assert_capacity_ceiling_holds(detected, monkeypatch, runner=path)
+        _assert_capacity_ceiling_holds(
+            detected,
+            monkeypatch,
+            runner=path,
+            half=min(default_logical_processor_budget(), len(restore_processors)),
+        )
     finally:
         if os.name == "nt":
             process_metrics._windows_affinity(sum(1 << i for i in restore_processors))
@@ -953,7 +962,9 @@ def test_runtime_plan_is_workload_aware_across_desktop_and_throughput_profiles()
         ResearchRuntimeRequest.model_validate({"parallelism": {"lightgbm_threads_per_fit": 2}})
 
 
-def test_process_resource_monitor_reports_a_time_aligned_live_child_tree() -> None:
+def test_process_resource_monitor_reports_a_time_aligned_live_child_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """requirement: receipts sample parent and live descendants, not lifetime sums."""
 
     monitor = ProcessResourceMonitor(
@@ -977,22 +988,60 @@ def test_process_resource_monitor_reports_a_time_aligned_live_child_tree() -> No
         usage = monitor.finish()
 
     assert usage.measurement_scope == "PARENT_AND_LIVE_DESCENDANTS"
-    assert usage.process_tree_peak_live_descendant_count >= 1
     assert usage.process_tree_peak_rss_bytes >= usage.peak_rss_bytes
     assert usage.sample_interval_seconds == 0.02
-    assert usage.instrumentation_limitation is None
+    if os.name == "nt" or usage.instrumentation_limitation is None:
+        assert usage.process_tree_peak_live_descendant_count >= 1
+        assert usage.instrumentation_limitation is None
+    else:
+        assert usage.instrumentation_limitation in {
+            "PROCESS_TREE_ENUMERATION_UNAVAILABLE",
+            "PROCESS_TREE_DESCENDANT_ACCESS_PARTIAL",
+        }
+        if not Path("/proc").is_dir():
+            assert usage.instrumentation_limitation == "PROCESS_TREE_ENUMERATION_UNAVAILABLE"
+            assert usage.process_tree_peak_live_descendant_count == 0
     # A reused parent id or PID 0 as its own parent is a cycle; the walk ends, each pid once.
     assert process_metrics._descendants(7, {0: [0, 7], 7: [8], 8: [7, 9]}) == (7, 8, 9)
 
+    # A vanished /proc entry is not an unavailable tree; a possibly live one is.
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    proc = tmp_path / "proc"
+    for pid, parent in ((101, 0), (102, 101)):
+        entry = proc / str(pid)
+        entry.mkdir(parents=True)
+        (entry / "stat").write_text(f"{pid} (test) S {parent}", encoding="ascii")
+    (proc / "103").mkdir()
+    with monkeypatch.context() as patched:
+        patched.setattr(process_metrics, "Path", lambda _: proc)
+        patched.setattr(
+            process_metrics, "os", SimpleNamespace(kill=Mock(side_effect=ProcessLookupError))
+        )
+        assert process_metrics._linux_descendant_process_ids(101) == ((101, 102), None)
+        patched.setattr(process_metrics, "os", SimpleNamespace(kill=Mock(return_value=None)))
+        assert process_metrics._linux_descendant_process_ids(101) == (
+            (101,),
+            "PROCESS_TREE_ENUMERATION_UNAVAILABLE",
+        )
+        patched.setattr(
+            process_metrics, "os", SimpleNamespace(kill=Mock(side_effect=PermissionError))
+        )
+        assert process_metrics._linux_descendant_process_ids(101) == (
+            (101,),
+            "PROCESS_TREE_ENUMERATION_UNAVAILABLE",
+        )
+
 
 def _assert_capacity_ceiling_holds(
-    detected: int, monkeypatch: pytest.MonkeyPatch, *, runner: Path
+    detected: int, monkeypatch: pytest.MonkeyPatch, *, runner: Path, half: int
 ) -> None:
     """The ceiling body, split out so the caller can restore process state."""
 
     receipt = bind_process_logical_processors()
     assert receipt["enforcement"] == "PROCESS_AFFINITY"
-    assert receipt["configured_logical_processors"] == default_logical_processor_budget()
+    assert receipt["configured_logical_processors"] == half
     # Read back from the operating system, not echoed from the request: a bound
     # that was asked for and silently ignored is worse than no bound, because
     # the run would then report a ceiling it is not under.
@@ -1011,7 +1060,6 @@ def _assert_capacity_ceiling_holds(
     # `--logical-processors 32` was accepted and returned the whole machine while
     # the help text promised it could not. Every value above the half-machine
     # budget is refused now, including ones comfortably below `cpu_count`.
-    half = default_logical_processor_budget()
     for refused in (detected + 1, detected, half + 1, 0, -1):
         with pytest.raises(ProcessCapacityError, match="logical_processor_budget_invalid"):
             bind_process_logical_processors(refused)

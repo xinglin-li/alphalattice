@@ -19,6 +19,9 @@ src/alphalattice/kernel/shared_kernel/domain/errors.py
 src/alphalattice/kernel/shared_kernel/domain/models.py
 src/alphalattice/kernel/shared_kernel/domain/serialization.py
 src/devtools/architecture
+src/devtools/testing
+src/devtools/pipeline
+scripts/pipeline.py
 src/alphalattice/foundation/feature_engine/panels/identity.py
 src/alphalattice/foundation/feature_engine/panels/artifacts.py
 src/alphalattice/foundation/feature_engine/panels/availability.py
@@ -140,6 +143,7 @@ src/alphalattice/control/product_host/composition/workspace_activity.py
 scripts/run_local_portfolio_web.py
 src/alphalattice/oversight/chief_risk_officer
 src/alphalattice/control/product_host/composition/evidence_review_application.py
+src/alphalattice/control/product_host/composition/evidence_review_resume.py
 src/alphalattice/control/product_host/composition/evidence_review_delivery.py
 src/alphalattice/control/product_host/composition/evidence_review_projection.py
 src/alphalattice/control/product_host/composition/evidence_review_bundles.py
@@ -238,6 +242,7 @@ scripts/release/public_snapshot.py
 src/alphalattice/control/product_host/composition/strategy_activation.py
 src/alphalattice/control/product_host/composition/entry.py
 src/alphalattice/control/product_host/composition/web_launcher.py
+src/alphalattice/control/product_host/composition/process_job.py
 src/alphalattice/control/product_host/composition/model_sandbox.py
 src/alphalattice/control/product_host/composition/saved_object_readback.py
 src/alphalattice/control/product_host/composition/retrieval_pack_setup.py

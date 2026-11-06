@@ -23,16 +23,28 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
 import sys
+import tempfile
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, replace
+from dataclasses import fields as dataclass_fields
 from pathlib import Path
+from typing import Any
 
+from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
+    control_arithmetic_rule_identity,
+    installed_method_family_owners,
+    method_family_rule_identity,
+)
+from alphalattice.kernel.shared_kernel import source_identity
 from alphalattice.kernel.shared_kernel.source_identity import (
+    IDENTITY_ROLES_PATH,
     number_deciding_closure,
     number_deciding_rule,
 )
+from devtools.architecture import structural
 
 PRIMITIVES = frozenset({"source_rule_closure_hash"})
 _LISTED = frozenset({"source_rule_closure_hash"})
@@ -76,19 +88,83 @@ def path_class(tracked: str) -> str:
 
 
 def closure_sites(root: Path) -> tuple[ClosureSite, ...]:
-    """Every call of the three primitives under ``src`` and ``scripts``."""
+    """Every call of the three primitives under ``src`` and ``scripts``.
 
+    The answer is kept whole in the line's scan store (``structural.FileFacts``) by the bytes of
+    every file it reads, the Python under ``src`` and ``scripts`` and the identity-roles table,
+    and by its code as loaded (this module and ``source_identity``): any of them changed is a
+    miss, and an unreadable input raises every time, never kept. A kept answer is derived from a
+    written copy of exactly the bytes its key hashed, so no read of the derivation, the rule
+    closure's own included, can see another tree; with no store named nothing is kept, and it is
+    derived from the tree itself."""
+
+    snapshot = _snapshot(root)
+
+    def derived(_: bytes) -> list[dict[str, Any]]:
+        with tempfile.TemporaryDirectory(prefix="closure-sites-") as folder:
+            frozen = Path(folder)
+            for relative, data in snapshot.items():
+                if data is not None:
+                    (frozen / relative).parent.mkdir(parents=True, exist_ok=True)
+                    (frozen / relative).write_bytes(data)
+            return [asdict(site) for site in _sites(frozen, snapshot)]
+
+    with structural.kept_facts("closure-sites", sys.modules[__name__], source_identity) as facts:
+        if facts.state.startswith("off"):  # nothing is kept: the tree itself, as before
+            rows = [asdict(site) for site in _sites(root, snapshot)]
+        else:
+            rows = facts.of("closure-sites", _manifest(snapshot), derived, _sites_shape)
+    return tuple(
+        ClosureSite(
+            **{
+                **row,
+                "tracked_paths": None
+                if row["tracked_paths"] is None
+                else tuple(row["tracked_paths"]),
+            }
+        )
+        for row in rows
+    )
+
+
+def _snapshot(root: Path) -> dict[str, bytes | None]:
+    """Every input's bytes: the Python under ``src`` and ``scripts``, then the roles table (None
+    when absent), by checkout-relative path."""
+    files = sorted(f for base in ("src", "scripts") for f in (root / base).rglob("*.py"))
+    snapshot: dict[str, bytes | None] = {
+        f.relative_to(root).as_posix(): f.read_bytes() for f in files
+    }
+    roles = root / IDENTITY_ROLES_PATH
+    snapshot[IDENTITY_ROLES_PATH.as_posix()] = roles.read_bytes() if roles.is_file() else None
+    return snapshot
+
+
+def _manifest(snapshot: dict[str, bytes | None]) -> bytes:
+    return json.dumps(
+        [
+            (path, "absent" if data is None else hashlib.sha256(data).hexdigest())
+            for path, data in snapshot.items()
+        ]
+    ).encode()
+
+
+def _sites_shape(value: object) -> bool:
+    fields = {field.name for field in dataclass_fields(ClosureSite)}
+    return isinstance(value, list) and all(
+        isinstance(row, dict) and set(row) == fields for row in value
+    )
+
+
+def _sites(root: Path, snapshot: dict[str, bytes | None]) -> list[ClosureSite]:
     sites: list[ClosureSite] = []
-    for base in ("src", "scripts"):
-        for file in sorted((root / base).rglob("*.py")):
-            relative = file.relative_to(root).as_posix()
-            if relative == _DEFINITIONS:
-                continue
-            text = file.read_text(encoding="utf-8")
-            if not any(name in text for name in PRIMITIVES):
-                continue
-            sites.extend(_sites_in(relative, ast.parse(text)))
-    return tuple(_by_rule(root, site) for site in sites)
+    for relative, data in snapshot.items():
+        if relative == _DEFINITIONS or data is None or not relative.endswith(".py"):
+            continue
+        text = structural.file_text(data)  # the bytes the key hashed, as read_text decodes them
+        if not any(name in text for name in PRIMITIVES):
+            continue
+        sites.extend(_sites_in(relative, ast.parse(text)))
+    return [_by_rule(root, site) for site in sites]
 
 
 def _by_rule(root: Path, site: ClosureSite) -> ClosureSite:
@@ -273,11 +349,6 @@ def installed_family_value_identity(method_family: str) -> str:
     edit to this file rotates none.
     """
 
-    from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
-        installed_method_family_owners,
-        method_family_rule_identity,
-    )
-
     owners = installed_method_family_owners(method_family)
     return str(method_family_rule_identity(method_family, owners))
 
@@ -289,10 +360,6 @@ def installed_control_value_identity() -> str:
     edit to a module the shared materializer imports (the availability catalog's among them)
     names it here.
     """
-
-    from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
-        control_arithmetic_rule_identity,
-    )
 
     return str(control_arithmetic_rule_identity())
 

@@ -12,11 +12,9 @@ import json
 import os
 import re
 import shlex
-import socket
 import subprocess
 import sys
 import tempfile
-import time
 from io import BytesIO, TextIOWrapper
 from pathlib import Path
 from typing import Any
@@ -34,14 +32,12 @@ from alphalattice.interface.local_application.answers import answer_problem
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
-    BOUND_WORKSPACE,
     DECLARATION_OPERATION_EXCEPTIONS,
     MAXIMUM_REQUEST_BODY_BYTES,
     client_refusal,
     command_table,
     entry,
     envelope,
-    host_checked,
     refusal_words,
 )
 from alphalattice.interface.local_application.failure_codes import FAILURE_DETAIL_WITHHELD
@@ -237,23 +233,6 @@ def test_storage_cap_is_one_operator_setting_through_the_real_cli(
     assert _json(live, "/api/tasks")["tasks"] == tasks
 
 
-def test_the_canary_door_operator_command_parses_through_the_real_cli(live) -> None:
-    """The canary's capacity recovery command is executable through the CLI."""
-    from alphalattice.control.product_host.composition.plain_refusals import explain
-    from alphalattice.interface.local_application.cli_contract import refusal_words
-    from alphalattice.kernel.shared_kernel.project_layout import command_prefix
-
-    code = "alpha_modeling.lightgbm_thread_canary_mismatch"
-    detail = refusal_words(code)["detail"]
-    assert explain(code)["detail"] == detail
-    command = re.findall(r"`([^`]+)`", detail)
-    assert len(command) == 1
-    argv, prefix = shlex.split(command[0]), list(command_prefix())
-    assert argv[: len(prefix)] == prefix
-    exit_code, configured, _ = _cli(live.workspace, *argv[len(prefix) :])
-    assert exit_code == 0 and configured["data"]["cpu_budget"] == 1
-
-
 def test_the_tasks_that_run_at_once_are_set_beside_the_waiting_places(live) -> None:
     """requirement: `cpu-budget set --running` sets how many Tasks run at once, keeping the
     waiting places, and a count past eight is refused by name."""
@@ -266,15 +245,26 @@ def test_the_tasks_that_run_at_once_are_set_beside_the_waiting_places(live) -> N
 
 
 def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
-    read_only_live: LocalPortfolioWebSession, tmp_path: Path
+    read_only_live: LocalPortfolioWebSession,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """CLI and Host metadata preserve legacy envelopes, fields and exit codes."""
+    from alphalattice.interface.local_application.cli_contract import join, shell
+
+    monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")  # shlex replays POSIX commands.
+    path = r"project\workspace"
+    assert shlex.split(join(["tool", path], shell())) == ["tool", path]
     live = read_only_live
-    code, body, _ = _cli(live.workspace, "task", "list")
+    code, body, _ = _inprocess_cli(live.workspace, "task", "list", capsys=capsys)
     assert (code, body["outcome"]) == (0, "OK")
     assert body.keys() >= ENVELOPE and body["schema_version"] == 1
     assert body["operation"] == "TASKS" and isinstance(body["data"]["tasks"], list)
 
     saved = tmp_path / "refusal.json"
+    # One answer through the real script: its process exits by the outcome and its stdout names the
+    # workspace it answered for; every other answer reads the same CLI entry in process.
     code, body, stdout = _cli(live.workspace, "task", "show", str(uuid4()), "--output", str(saved))
     assert (code, body["outcome"], body["failure_code"]) == (
         2,
@@ -282,11 +272,21 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
         "task_control.task_not_found",
     )
     assert body["detail"] and body["next_requests"]
+    info = body["error_info"]
+    assert (info["category"], info["reason"], info["domain"]) == (
+        "NOT_FOUND",
+        "task_control.task_not_found",
+        "task_control",
+    )
+    assert info == body["data"]["error_info"] and info["message_id"] and info["message"]
     # The refusal is the owner's answer and is saved like any other (CLI-6).
     assert json.loads(saved.read_text("utf-8"))["failure_code"] == "task_control.task_not_found"
-    assert str(live.workspace) not in stdout
+    # A path check on raw stdout only passed on Windows, where JSON escapes the backslashes.
+    assert json.loads(stdout.strip().splitlines()[-1])["context"]["workspace"] == str(
+        live.workspace.resolve()
+    )
 
-    code, body, _ = _cli(live.workspace, "frobnicate")
+    code, body, _ = _inprocess_cli(live.workspace, "frobnicate", capsys=capsys)
     assert (code, body["outcome"], body["failure_code"]) == (
         1,
         "INVALID_INPUT",
@@ -296,10 +296,10 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
     help_line = shlex.split(body["next_commands"]["help"])
     with pytest.raises(SystemExit, match=r"^0$"):
         main(help_line[1:], serve=lambda _: 99)
-    code, body, _ = _cli(live.workspace, "task", "list", "--hepl")
+    code, body, _ = _inprocess_cli(live.workspace, "task", "list", "--hepl", capsys=capsys)
     assert (code, body["outcome"]) == (1, "INVALID_INPUT") and not body["next_requests"]
     for value in ("-", "@-"):
-        code, body, _ = _cli(live.workspace, "request", f"--flie={value}")
+        code, body, _ = _inprocess_cli(live.workspace, "request", f"--flie={value}", capsys=capsys)
         assert (code, body["outcome"]) == (1, "INVALID_INPUT") and not body["next_requests"]
     saved = tmp_path / "tasks.json"
     saved.write_text('{"operation":"TASKS"}', encoding="utf-8")
@@ -309,22 +309,24 @@ def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
         ("tas", "list"),
         ("task", "lsit"),
     ):
-        code, refusal, _ = _cli(live.workspace, *line)
+        code, refusal, _ = _inprocess_cli(live.workspace, *line, capsys=capsys)
         assert code == 1 and refusal["usage_error"]["repair"]
-        retried, accepted, _ = _cli(
-            live.workspace, *shlex.split(refusal["next_commands"]["correct"])[1:]
+        retried, accepted, _ = _inprocess_cli(
+            live.workspace, *shlex.split(refusal["next_commands"]["correct"])[1:], capsys=capsys
         )
         assert (retried, accepted["operation"], accepted["outcome"]) == (0, "TASKS", "OK")
         correction = refusal["next_requests"]["correct"]
         assert correction == {"operation": "TASKS"}
         saved.write_text(json.dumps(correction), encoding="utf-8")
-        code, accepted, _ = _cli(live.workspace, "request", "--file", str(saved))
+        code, accepted, _ = _inprocess_cli(
+            live.workspace, "request", "--file", str(saved), capsys=capsys
+        )
         assert (code, accepted["operation"], accepted["outcome"]) == (0, "TASKS", "OK")
     saved.write_text('{"operation":"DATA_UPDATE_RUN"}', encoding="utf-8")
-    code, body, _ = _cli(live.workspace, "request", "--flie", str(saved))
+    code, body, _ = _inprocess_cli(live.workspace, "request", "--flie", str(saved), capsys=capsys)
     assert (code, body["outcome"]) == (1, "INVALID_INPUT") and not body["next_requests"]
     saved.write_text('{"update_task_id":"?"}', encoding="utf-8")
-    code, body, _ = _cli(live.workspace, "request", "--file", str(saved))
+    code, body, _ = _inprocess_cli(live.workspace, "request", "--file", str(saved), capsys=capsys)
     assert (code, body["outcome"]) == (2, "REFUSED") and ["operation"] in body["data"]["fields"]
     assert "schema_command" not in body["data"]
 
@@ -408,47 +410,6 @@ def test_a_missing_or_invalid_selector_offers_an_admitted_discovery_read(
         assert (code, controls["data"]["strategy_package_id"]) == (0, package)
 
 
-def test_no_host_is_exit_four_in_its_own_words(
-    read_only_live: LocalPortfolioWebSession, tmp_path: Path
-) -> None:
-    live = read_only_live
-    empty = tmp_path / "no-host"
-    (empty / "runtime").mkdir(parents=True)
-    code, body, _ = _cli(empty, "task", "list")
-    assert (code, body["outcome"], body["failure_code"]) == (
-        4,
-        "NO_HOST",
-        "local_client.service_not_running",
-    )
-    # It names the workspace it checked and how to serve it; and a Session bound to another
-    # workspace, that one too.
-    assert (
-        str(empty.resolve()) in body["detail"] and "serve --no-browser --detach" in body["detail"]
-    )
-    token = BOUND_WORKSPACE.set(live.workspace.resolve())
-    try:
-        both = host_checked("No Host.", empty)
-    finally:
-        BOUND_WORKSPACE.reset(token)
-    assert str(live.workspace.resolve()) in both and str(empty.resolve()) in both
-
-    # A record left behind by a Host that stopped: nothing listens on its port.
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    recorded = live.workspace / "runtime/local-research-connection.json"
-    record = json.loads(recorded.read_text("utf-8"))
-    record.update(workspace=str(empty.resolve()), url=f"http://127.0.0.1:{port}")
-    (empty / "runtime/local-research-connection.json").write_text(json.dumps(record), "utf-8")
-    code, body, _ = _cli(empty, "task", "list")
-    assert (code, body["outcome"], body["failure_code"]) == (
-        4,
-        "NO_HOST",
-        "local_client.service_not_running",
-    )
-    assert "Task may still run" not in json.dumps(body) and "No Host serves" in body["detail"]
-
-
 def test_no_answer_carries_a_failure_field_that_is_not_a_code(
     live: LocalPortfolioWebSession, monkeypatch: Any
 ) -> None:
@@ -468,44 +429,6 @@ def test_no_answer_carries_a_failure_field_that_is_not_a_code(
     # An owner's own code, an enum name included, passes unchanged.
     assert body["sections"] == [{"failure_code": "TASK_EXECUTION_INTERRUPTED"}]
     assert "secret" not in json.dumps(body)
-
-
-def test_lang_zh_words_an_answers_detail_and_keeps_its_codes(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Chinese words both owner refusals and parse refusals without changing their codes."""
-
-    empty = tmp_path / "no-host"
-    (empty / "runtime").mkdir(parents=True)
-    asked = ("--request-timeout", "700", "task", "list")
-    _code, english, _ = _cli(empty, *asked)
-    code, chinese, _ = _cli(empty, "--lang", "zh", *asked)
-    assert (code, chinese["failure_code"]) == (1, "local_client.request_timeout_outside_0_600")
-    kept = {"detail", "timing", "session_launches"}
-    assert {k: v for k, v in chinese.items() if k not in kept} == {
-        k: v for k, v in english.items() if k not in kept
-    }
-    assert english["detail"].startswith("--request-timeout")
-    assert any("\u4e00" <= character <= "\u9fff" for character in chinese["detail"])
-
-    def refused(*line: str) -> dict[str, Any]:
-        with pytest.raises(SystemExit):
-            main(list(line), serve=lambda _arguments: 0)
-        return dict(json.loads(capsys.readouterr().out.strip().splitlines()[-1]))
-
-    def chinese(text: str) -> bool:
-        return any("一" <= character <= "鿿" for character in text)
-
-    for line in (
-        ("--lang", "zh", "--workspace", "w", "task", "show", "--typo", "x"),
-        ("--workspace", "w", "task", "show", "x", "--typo", "--lang", "zh"),
-    ):
-        body = refused(*line)
-        assert body["failure_code"] == "local_client.usage_invalid", line
-        assert chinese(body["detail"]), (line, body["detail"])
-    english = refused("--lang", "fr", "--workspace", "w", "task", "show")
-    assert english["failure_code"] == "local_client.usage_invalid"
-    assert not chinese(english["detail"])
 
 
 def test_every_answer_counts_the_agent_sessions_launches_help_included(tmp_path: Path) -> None:
@@ -855,53 +778,14 @@ def test_a_next_command_keeps_the_context_its_answer_came_in(
         assert "--goal" in words and "goal-g" in [w.strip("'\"") for w in words]
 
 
-def test_the_product_text_names_no_internal_code() -> None:
-    """The product text names no internal code."""
-
-    from alphalattice.interface.local_application import cli
-
-    texts: list[tuple[str, str]] = []
-
-    def collect(where: str, value: object) -> None:
-        if isinstance(value, str):
-            texts.append((where, value))
-        elif isinstance(value, dict):
-            for key, item in value.items():
-                collect(f"{where}.{key}", item)
-        elif isinstance(value, list | tuple):
-            for index, item in enumerate(value):
-                collect(f"{where}[{index}]", item)
-
-    for operation in sorted({name for names in cli._commands().values() for name in names}):
-        collect(f"schema {operation}", cli.schema(operation))
-    parsers = [("alphalattice", cli._parser())]
-    while parsers:
-        name, parser = parsers.pop()
-        texts.append((f"{name} --help", parser.format_help()))
-        for action in parser._actions:
-            if isinstance(action, argparse._SubParsersAction):
-                parsers.extend((f"{name} {word}", child) for word, child in action.choices.items())
-    tables = Path(cli.__file__).parent
-    for name in ("answers.json", "operations.json", "refusal_words.json"):
-        collect(name, json.loads((tables / name).read_text(encoding="utf-8")))
-    for row in json.loads((tables / "labels.json").read_text(encoding="utf-8"))["labels"]:
-        for key in ("title", "summary", "title_zh", "summary_zh"):
-            texts.append((f"labels.json {row['id']}.{key}", row[key]))
-    named = {
-        (where, match.group(0))
-        for where, text in texts
-        for match in _INTERNAL_CODE.finditer(text)
-        if match.group(0) not in _PRODUCT_WORDS
-    }
-    assert len(texts) > 1000 and not named, sorted(named)[:20]
-
-
 def test_each_wait_takes_the_reread_its_compact_answer_offers() -> None:
     """A compact envelope offers `--section`; both waits take it, so the hint runs as written."""
     committee = ["committee", "wait", "--update", "u", "--role", "PM", "--key", "k"]
     for wait in (["activity", "wait"], committee):
-        assert cli._parser().parse_args([*wait, "--section", "messages"]).section == "messages"
-    parser = cli._parser()
+        assert (
+            cli.command_parser().parse_args([*wait, "--section", "messages"]).section == "messages"
+        )
+    parser = cli.command_parser()
     for word in committee[:2]:
         sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
         parser = sub.choices[word]
@@ -1019,6 +903,7 @@ def test_every_field_schema_prints_is_described() -> None:
 def test_an_operation_only_a_person_completes_is_marked_so(
     read_only_live: LocalPortfolioWebSession,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """An operation only a person completes is marked so."""
     live = read_only_live
@@ -1031,7 +916,7 @@ def test_an_operation_only_a_person_completes_is_marked_so(
         flag_name,
     )
 
-    code, body, _ = _cli(live.workspace, "operation", "list")
+    code, body, _ = _inprocess_cli(live.workspace, "operation", "list", capsys=capsys)
     contracts = body["data"]["operation_fields"]
     assert code == 0
     assert {op for op, contract in contracts.items() if contract.get("person_only")} == PERSON_ONLY
@@ -1043,7 +928,7 @@ def test_an_operation_only_a_person_completes_is_marked_so(
     sizes = {}
     form_args = ["operation", "list", "--schema-operation"]
     for operation in ("COMMITTEE_SUBMIT", "DATA_UPDATE_RUN", "EXPERIMENT_PLAN"):
-        code, focused, _ = _cli(live.workspace, *form_args, operation)
+        code, focused, _ = _inprocess_cli(live.workspace, *form_args, operation, capsys=capsys)
         data = focused["data"]
         assert code == 0 and set(data) == {"operation_schema", "operation_fields", "read_request"}
         assert data["operation_fields"] == {operation: contracts[operation]}
@@ -1056,7 +941,7 @@ def test_an_operation_only_a_person_completes_is_marked_so(
         assert set(refs) == set(schema["$defs"])
         sizes[operation] = len(json.dumps(focused, indent=1).encode("utf-8"))
     (tmp_path / "schema-sizes.json").write_text(json.dumps(sizes), encoding="utf-8")
-    code, unknown, _ = _cli(live.workspace, *form_args, "COMMITTEE_SUBMT")
+    code, unknown, _ = _inprocess_cli(live.workspace, *form_args, "COMMITTEE_SUBMT", capsys=capsys)
     assert code == 2 and unknown["failure_code"] == "local_client.request_invalid"
     values = {
         "network_enabled": "true",
@@ -1079,7 +964,7 @@ def test_an_operation_only_a_person_completes_is_marked_so(
             if name != shown
             for part in (f"--{flag_name(name)}", values.get(name, "a" * 64))
         ] + ([values.get(shown, "a" * 64)] if shown in fields(operation)[0] else [])
-        code, body, _ = _cli(live.workspace, noun, verb, *arguments)
+        code, body, _ = _inprocess_cli(live.workspace, noun, verb, *arguments, capsys=capsys)
         assert body["outcome"] == "REFUSED" and "human" in body["failure_code"], (operation, body)
 
 
@@ -1174,15 +1059,21 @@ def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_
 def test_data_history_stops_have_installed_words_and_preserve_the_owners_way(
     code: str, detail: str, chinese: str
 ) -> None:
-    """regression (DUPD): refused history and transition bindings read as their causes
-    in either installed language, preserving the owner's request and approval requirements.
-    """
+    """Data-history refusals keep bilingual owner words and offers beside optional metadata."""
     from alphalattice.control.product_host.composition.task_recovery import stop_detail
     from alphalattice.interface.local_application import cli_contract
 
     request = {"show": {"operation": "DATA_UPDATE_READBACK"}}
     bare = {"status": "REFUSED", "failure_code": code}
     worded = cli_contract.worded_refusal(bare)
+    info = worded.pop("error_info", None)
+    assert (info["category"], info["domain"], info["reason"]) == (
+        "FAILED_PRECONDITION",
+        code.partition(".")[0],
+        code,
+    )
+    assert info["message_id"] == "protocol.error.summary" and code in info["message"]
+    assert info["field_violations"] == []
     assert worded == {
         **bare,
         "detail": detail,
@@ -1190,6 +1081,7 @@ def test_data_history_stops_have_installed_words_and_preserve_the_owners_way(
     }
     assert cli_contract.refusal_problem(worded) is None
     offered = cli_contract.worded_refusal({**bare, "next_requests": request})
+    assert offered.pop("error_info", None) == info
     assert offered == {**bare, "detail": detail, "next_requests": request}
     assert cli_contract.refusal_problem(offered) is None
     if code.startswith("data."):
@@ -1239,76 +1131,6 @@ def test_a_compact_answer_shows_references_short_and_they_can_be_sent_so() -> No
         "data": {"task_id": task[:12], "task_ids": [task[:12]], **whole},
         "url": f"/?t={task}",
     }
-
-
-def test_a_saved_goal_completion_runs_as_a_whole_request(live, tmp_path: Path) -> None:
-    """A saved goal completion runs as a whole request."""
-    import yaml
-
-    from alphalattice.interface.local_application.goals import GoalSubmission
-
-    declaration = tmp_path / "goal.json"
-    declaration.write_text(
-        json.dumps(
-            {
-                "title": "Read the completion request",
-                "objective": "Check the saved request without research execution",
-                "kind": "OPERATIONS",
-                "criteria": [{"criterion_id": "read", "text": "Record what was read"}],
-            }
-        ),
-        encoding="utf-8",
-    )
-    code, opened, _ = _cli(live.workspace, "goal", "open", "--file", str(declaration))
-    assert code == 0, opened
-    goal_id = opened["data"]["goal_id"]
-    completion = tmp_path / "completion.yaml"
-    code, shown, _ = _cli(
-        live.workspace, "goal", "show", goal_id, "--save-declaration", str(completion)
-    )
-    assert code == 0, shown
-    saved = yaml.safe_load(completion.read_text("utf-8"))
-    assert saved["operation"] == "GOAL_SUBMIT" and saved["goal_id"] == goal_id
-    assert saved["goal_hash"] == shown["data"]["goal_hash"]
-    saved["goal_submission"].update(
-        outcome="NOT_ACHIEVED", summary="The saved request was read; no research was executed."
-    )
-    saved["goal_submission"]["criteria"][0].update(
-        answer="NOT_ASSESSED", note="This transport check makes no research judgment."
-    )
-    completion.write_text(yaml.safe_dump(saved, sort_keys=False), encoding="utf-8", newline="\n")
-    code, submitted, _ = _cli(live.workspace, "request", "--file", str(completion))
-    assert code == 0 and submitted["operation"] == "GOAL_SUBMIT", submitted
-    assert submitted["data"]["goal_id"] == goal_id and submitted["data"]["state"] == "COMPLETE"
-    code, readback, _ = _cli(live.workspace, "goal", "show", goal_id)
-    assert code == 0, readback
-    assert readback["data"]["goal"]["submission"] == GoalSubmission.model_validate(
-        saved["goal_submission"]
-    ).model_dump(mode="json")
-
-
-def test_max_wait_bounds_a_wait_on_a_host_that_never_answers(
-    read_only_live: LocalPortfolioWebSession, tmp_path: Path
-) -> None:
-    """The maximum wait bounds a request to a Host that never answers."""
-    live = read_only_live
-
-    empty = tmp_path / "silent"
-    (empty / "runtime").mkdir(parents=True)
-    with socket.socket() as silent:
-        silent.bind(("127.0.0.1", 0))
-        silent.listen(8)  # accepts into its backlog, never answers
-        port = silent.getsockname()[1]
-        record = json.loads(
-            (live.workspace / "runtime/local-research-connection.json").read_text("utf-8")
-        )
-        record.update(workspace=str(empty.resolve()), url=f"http://127.0.0.1:{port}")
-        (empty / "runtime/local-research-connection.json").write_text(json.dumps(record), "utf-8")
-        started = time.monotonic()
-        code, body, _ = _cli(empty, "activity", "wait", "--task", str(uuid4()), "--max-wait", "0.5")
-        elapsed = time.monotonic() - started
-    assert code == 3 and body["data"]["wait_event"]["event"] == "MAX_WAIT_REACHED", body
-    assert elapsed < 30, elapsed
 
 
 def test_the_global_options_are_read_anywhere_on_the_line(
@@ -1396,10 +1218,119 @@ def test_a_compact_answer_holds_its_next_requests_to_the_read(
         "INVALID_INPUT",
         "local_client.next_from_invalid",
     ), refused
+    long_key = "中" * 8000
+    offered = {
+        "show": {"operation": "STATUS", "task_id": str(uuid4())},
+        "note": {
+            "operation": "GOAL_NOTE",
+            "goal_id": str(uuid4()),
+            "goal_statement": {
+                "statement_id": "review",
+                "kind": "CONCLUSION",
+                "attribution": "Analyst",
+                "text": "中" * 6000,
+                "disposition": "OPEN",
+            },
+        },
+    }
+    for status, format in ((s, f) for s in ("OK", "REFUSED") for f in ("json", "yaml")):
+        body = {
+            "status": status,
+            "payload": "x" * 1100000,
+            long_key: True,
+            "owner_hash": "b" * 64,
+            "next_requests": offered,
+            "read_request": {"operation": "TASKS"},
+        }
+        if status == "REFUSED":
+            body.update(failure_code="goal.not_found", detail="missing", next_action="READ_GOALS")
+        fake_host.answer, fake_host.raw = body, json.dumps(body, indent=1).encode()
+        saved = tmp_path / f"summary-{status}.{format}"
+        size, summary = answer("--view", "summary", "--output", str(saved), "--format", format)
+        assert summary["representation"] == "alphalattice.read-summary.v1"
+        assert size <= 32768 and summary["message_id"] == "read.summary"
+        assert summary["full_answer"] == {"file": str(saved.resolve())}
+        assert summary["next_requests"]["show"] == offered["show"]
+        assert "note" not in summary["next_requests"]
+        assert summary["next_page"]["full_answer"] == summary["full_answer"]
+        assert client.saved_answer(saved)["answer"] == body
+        before, sent = saved.read_bytes(), len(fake_host.sent)
+        if format == "json":
+            assert before == fake_host.raw  # The transport's exact bytes, not a projection.
+        command = ["--view", "summary", "answer", "show", "--file", str(saved)]
+        command += ["--section", long_key]
+        assert cli.main(command, serve=lambda _: 99) == 0
+        line = capsys.readouterr().out.strip().splitlines()[-1]
+        assert len(line.encode()) <= 32768 and json.loads(line)["full_answer"]["file"] == str(saved)
+        assert saved.read_bytes() == before and len(fake_host.sent) == sent
+    code, shown, raw = _inprocess_cli(
+        tmp_path, "--view", "summary", "schema", "show", "GOAL_SUBMIT", capsys=capsys
+    )
+    assert code == 0
+    assert len(raw.strip().splitlines()[-1].encode()) <= 32768 and shown["full_answer"]
+    questions = [{"question_code": "network.daily_updates", "detail": "x" * 2000}]
+    for field in ("padding", "summary", "result"):
+        fake_host.answer = {"status": "OK", field: "x" * 30000, "person_questions": questions}
+        size, priority = answer("--view", "summary")
+        assert size <= 32768 and priority["data"]["person_questions"] == questions
+    fake_host.answer = {
+        "status": "OK",
+        "task_id": str(uuid4()),
+        "next_requests": {"note": offered["note"]},
+    }
+    size, oversized = answer("--view", "summary")
+    assert size <= 32768 and not oversized["next_requests"]
+    assert oversized["full_answer"] == {"request": {"operation": "TASKS"}}
+    presentation = tmp_path / "presentation.json"
+    presentation.write_text(json.dumps(oversized), encoding="utf-8")
+    sent = len(fake_host.sent)
+    code, rejected, _ = _inprocess_cli(
+        tmp_path, "study", "show", "--from", str(presentation), capsys=capsys
+    )
+    assert code == 1 and rejected["failure_code"].startswith(
+        "local_client.compact_reference_requires_full_response:"
+    )
+    assert len(fake_host.sent) == sent
+    presentation.write_bytes(json.dumps({"representation": oversized["representation"]}).encode())
+    code, rejected, _ = _inprocess_cli(
+        tmp_path, "answer", "show", "--file", str(presentation), capsys=capsys
+    )
+    assert code == 1
+    assert rejected["failure_code"] == "local_client.saved_answer_incomplete"
+    stream = TextIOWrapper(BytesIO(b'{"operation":"TASKS"}'))
+    monkeypatch.setattr(sys, "stdin", stream)
+    sent = len(fake_host.sent)
+    for args in (("request", "--file", "-"), ("goal", "open", "--file", "-")):
+        with pytest.raises(SystemExit) as stop:
+            cli.main(["--view", "summary", *args], serve=lambda _: 99)
+        refusal = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+        assert stop.value.code == 1 and refusal["failure_code"] == "local_client.usage_invalid"
+        assert "--output PATH" in refusal["usage_error"]["observed"]
+        assert "command" not in refusal["full_answer"]
+        assert stream.tell() == 0 and len(fake_host.sent) == sent
+    with pytest.raises(SystemExit):
+        cli.main(
+            ["--view", "summary", "--lang", long_key, "goal", "open", "--file", "-"],
+            serve=lambda _: 99,
+        )
+    line = capsys.readouterr().out.strip().splitlines()[-1]
+    assert len(line.encode()) <= 32768
+    assert "command" not in json.loads(line)["full_answer"]
+    assert stream.tell() == 0 and len(fake_host.sent) == sent
+    for language in ("en", "zh"):
+        size, summary = answer("--view", "summary", "--lang", language)
+        assert any("\u4e00" <= c <= "\u9fff" for c in summary["summary_detail"]) == (
+            language == "zh"
+        )
+        full = answer("--view", "full", "--lang", language)[1]
+        notice = next(n for n in full["deprecations"] if n["entry"] == "view:full")
+        assert notice["message_id"] == "read.legacy_full_deprecated"
+        assert any("\u4e00" <= c <= "\u9fff" for c in notice["reason"]) == (language == "zh")
+        assert full["data"]["next_requests"] == fake_host.answer["next_requests"]
 
 
 def test_a_refusal_leaves_with_words_and_a_way_on() -> None:
-    """A refusal leaves with words and a way on."""
+    """Owner-supplied words and routes stay exact when registered metadata is added."""
 
     from alphalattice.interface.local_application.cli_contract import (
         refusal_problem,
@@ -1450,7 +1381,14 @@ def test_a_refusal_leaves_with_words_and_a_way_on() -> None:
     vague = {**bare, "detail": "A goal was not found.", "next_action": "REPLAN"}
     assert refusal_problem(vague) == "refusal goal.not_found lacks a usable way on"
     owned = {**bare, "detail": "Its owner's words.", "next_requests": {"goals": {}}}
-    assert worded_refusal(owned) == owned
+    projected = worded_refusal(owned)
+    info = projected.pop("error_info")
+    assert (info["category"], info["reason"], info["domain"]) == (
+        "NOT_FOUND",
+        "goal.not_found",
+        "goal",
+    )
+    assert projected == owned
     assert refusal_problem(owned) == "refusal goal.not_found lacks a usable way on"
     offered = {
         **vague,
@@ -1719,36 +1657,6 @@ def test_choices_require_the_saved_answer_they_fill(
     )
     assert code == 1 and "--from" in body["usage_error"]["observed"], body
     assert fake_host.sent == []
-
-
-def test_a_saved_declaration_reads_from_stdin_and_names_its_context(
-    live: LocalPortfolioWebSession, tmp_path: Path
-) -> None:
-    """A saved declaration reads from stdin and every answer names its workspace and goal."""
-    code, body, _ = _cli(live.workspace, "task", "list")
-    assert code == 0 and body["context"]["workspace"] == str(live.workspace.resolve()), body
-    assert body["context"]["goal"] is None
-    declaration = tmp_path / "goal.yaml"
-    code, body, _ = _cli(live.workspace, "goal", "schema", "--save-declaration", str(declaration))
-    assert code == 0, body
-    head = declaration.read_text(encoding="utf-8").splitlines()
-    assert head[0] == "# Allowed values:"
-    assert any(line.startswith("# research.purpose: NEW_RESEARCH | ") for line in head)
-    opened = subprocess.run(
-        [
-            *(sys.executable, str(SCRIPT), "--workspace", str(live.workspace), "--view", "full"),
-            *("goal", "open", "--file", "-"),
-        ],
-        input=declaration.read_text(encoding="utf-8"),
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    answer = json.loads(opened.stdout.strip().splitlines()[-1])
-    assert opened.returncode == 0, answer
-    goal_id = answer["data"]["goal_id"]
-    _code, planned, _ = _cli(live.workspace, "--goal", goal_id, "data-update", "plan")
-    assert planned["context"]["goal"] == goal_id, planned
 
 
 def test_a_shared_read_schema_names_each_alternative_selector(

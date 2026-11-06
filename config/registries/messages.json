@@ -2,6 +2,235 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "workbench.session_unknown": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Session unknown",
+        "zh-CN": "会话未知"
+      }
+    },
+    "workbench.session_usage_unknown": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Session usage unknown",
+        "zh-CN": "会话用量未知"
+      }
+    },
+    "workbench.session_usage_unrecorded": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "No usage reading is recorded for this session.",
+        "zh-CN": "此会话没有记录用量读数。"
+      }
+    },
+    "workbench.sessions_unknown": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Some sessions are unknown",
+        "zh-CN": "部分会话未知"
+      }
+    },
+    "workbench.sessionless_requests_unassigned": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Some retained requests did not name a session; they cannot be assigned to one.",
+        "zh-CN": "部分保留的请求未指明会话，无法将其归属于某个会话。"
+      }
+    },
+    "workbench.review_stalled_status": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Refused: review stalled; answer not filed",
+        "zh-CN": "已拒绝：审阅受阻，答复未记录"
+      }
+    },
+    "alpha_research.development_artifact_identity_invalid_detail": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "A stored Alpha record does not match its requested identity, so it was not read. Restore a verified workspace backup into a new folder and work there.",
+        "zh-CN": "已存储的 Alpha 记录与所请求的身份不符，因此未予读取。请将经过验证的工作区备份恢复到新文件夹，并在那里继续工作。"
+      }
+    },
+    "agent_bundle.review_stalled_message": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The review stalled while the workspace mutation gate was busy. This answer was not filed. Tell your lead, read the workspace activity and Tasks, and resend this same answer only after the blocking change ends.",
+        "zh-CN": "工作区更改锁繁忙，审核因此停滞。此回答尚未存档。请告知负责人，读取工作区活动和任务，并仅在阻塞的更改结束后重发同一回答。"
+      }
+    },
+    "agent_bundle.admission_busy_detail": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Host is busy admitting another workspace change. This answer was not filed; resend the same answer.",
+        "zh-CN": "主机正在接收另一项工作区更改。此回答尚未存档；请重新发送相同的回答。"
+      }
+    },
+    "agent_bundle.answer_replay_inconsistent_detail": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The stored answer does not match its recorded reply. Nothing was replayed; inspect the retained answer and its thread before retrying.",
+        "zh-CN": "已存储的回答与记录的回复不一致。系统没有重放任何内容；请先检查保留的回答和对应线程，再重试。"
+      }
+    },
+    "agent_bundle.admission_busy_message": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Host is busy admitting another workspace change; resend the same answer.",
+        "zh-CN": "主机正在接收另一项工作区更改；请重新发送相同的回答。"
+      }
+    },
+    "agent_bundle.legacy_task_state_unknown": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The original Task state was not recorded; read the Task for its current state.",
+        "zh-CN": "原始任务状态未被记录；请读取任务以查看当前状态。"
+      }
+    },
+    "native_bridge.bound_in_workspace": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This Session is bound in the workspace's own folder, so name `--workspace` on each command; its Sessions row, usage and deliveries are recorded as usual.",
+        "zh-CN": "此会话绑定在工作区自己的文件夹中，请在每条命令上指定 `--workspace`；会话行、用量和交付照常记录。"
+      }
+    },
+    "test_size.required_selection_invalid": {
+      "owner": "devtools.testing",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Supply complete relative test node selectors for the required cost checks.",
+        "zh-CN": "请为必需的耗时检查提供完整的相对测试节点选择器。"
+      }
+    },
+    "feature.input.case_store_unavailable": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The data decision catalog cannot be read. Read the offered workspace view and retained backups; restore an intact workspace before retrying. Nothing was changed.",
+        "zh-CN": "无法读取数据决策目录。请读取提供的工作区视图并检查保留的备份，恢复完整的工作区后重试。本次读取未作任何更改。"
+      }
+    },
+    "feature.plan.document_invalid": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The feature document is invalid. Read the offered controls or inputs, correct the invalid fields and plan again; keep your research choices.",
+        "zh-CN": "特征文档无效。读取提供的控制项或输入，修正无效字段后重新规划；保留你的研究选择。"
+      }
+    },
+    "strategy.plan.declaration_invalid": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The strategy declaration is invalid. Read the offered strategy controls, correct the invalid fields and plan again; keep your research choices.",
+        "zh-CN": "策略声明无效。读取提供的策略控制项，修正无效字段后重新规划；保留你的研究选择。"
+      }
+    },
+    "workspace.select_existing": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "PERSON_QUESTION",
+      "reason": {
+        "en": "Existing research workspaces require the person's choice.",
+        "zh-CN": "已有研究工作区需要由本人选择。"
+      },
+      "scope": {
+        "en": "The research workspace for this project and session.",
+        "zh-CN": "此项目和会话使用的研究工作区。"
+      },
+      "way_on": {
+        "en": "Choose a listed workspace and configure again with --workspace.",
+        "zh-CN": "选择列出的工作区，并使用 --workspace 重新配置。"
+      },
+      "operations": ["NATIVE_CONFIGURE"],
+      "ask_operations": ["NATIVE_CONFIGURE"],
+      "words": {
+        "en": "Which existing research workspace should this session use?",
+        "zh-CN": "此会话应使用哪个已有研究工作区？"
+      }
+    },
+    "first_use.daily_question_instructions": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Unless this workspace's Evidence is set up already, the review of the date's positions acquires recent SEC filings within the default budget under the first use's delegation, and downloads the retrieval model at the size its setup states; the agent also installs the locked retrieval packages under this consent without another question: say so in one line now. Then ask the person once, in these words, and carry on without waiting for the answer. On their yes, run each command after the question once, their words verbatim in place of `<their words>`; the delegation never answers it:",
+        "zh-CN": "除非此工作区的证据已经设置好，否则对该日期持仓的复核会在首次使用的委托下按默认额度获取近期的 SEC 文件，并按设置所述的大小下载检索模型；智能体还会在此次同意范围内安装已锁定的检索依赖包，无需再次询问。现在用一句话告知用户。随后按以下原话询问用户一次，无需等待回答即可继续执行。用户同意后，将问题之后的每条命令各运行一次，用用户原话逐字替换 `<their words>`；委托本身不回答这个问题："
+      }
+    },
+    "native_setup.complete_prerequisites": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Complete the listed setup steps in order, then run the offered serve command yourself in this shell. If it is refused, follow its terminal route.",
+        "zh-CN": "请按顺序完成列出的缺失设置步骤，然后自己在当前终端运行提供的启动命令；只有遭到拒绝时才按其终端方案操作。"
+      }
+    },
+    "native_setup.workbench_build": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Run the offered Workbench build from the checkout root, disclosing it; serve refuses until the built files match the sources.",
+        "zh-CN": "从代码目录运行提供的工作台构建命令并告知用户；构建文件与源文件不匹配时无法启动。"
+      }
+    },
+    "native_setup.specialist_next": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Read the files in `read` by path and tell the person `disclosure` in one line. Before each specialist, check the tool's role list and follow `disclosure`.",
+        "zh-CN": "按路径读取 `read` 中的文件，并向本人用一句话说明 `disclosure`。启动每位专家前，检查工具的角色列表并遵循 `disclosure`。"
+      }
+    },
+    "native_setup.specialist_route": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["command"],
+      "words": {
+        "en": "AlphaLattice is set up; if the tool lists the role, start that specialist here; if the tool does not list the role, open a fresh session with `{command}` so the host can load it, then resume the research; if the role is still missing, stop and report it.",
+        "zh-CN": "AlphaLattice 已设置完成；如果工具列出了该角色，就在此启动该专家；如果工具没有列出该角色，请用 `{command}` 打开新会话，让宿主加载角色后继续研究；如果角色仍然缺失，请停止并报告。"
+      }
+    },
+    "native_setup.serve_agent": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The sandbox protects the project configuration. Run the offered serve command yourself in this shell; if it is refused, follow its terminal route.",
+        "zh-CN": "沙箱保护项目的配置目录；请自己先在当前终端运行提供的启动命令，只有被拒绝时才按其终端方案操作。"
+      }
+    },
     "network.daily_updates": {
       "owner": "alphalattice.interface.local_application",
       "kind": "PERSON_QUESTION",
@@ -55,6 +284,35 @@
         "zh-CN": "首次使用之外的网络访问由本人决定：用一句话询问本人，得到明确同意后，携带 --person-said 和 --asked 再次发送同一请求；`network show` 可查看决定网络状态的依据。"
       }
     },
+    "read.summary": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [
+        "pointer"
+      ],
+      "words": {
+        "en": "Summary only. Read the complete answer at {pointer}.",
+        "zh-CN": "这里只显示摘要。完整答复请读取 {pointer}。"
+      }
+    },
+    "read.legacy_full_deprecated": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Full stdout is deprecated; use the summary view and --output for the complete answer.",
+        "zh-CN": "标准输出中的完整答复已弃用；请使用摘要视图，并通过 --output 保存完整答复。"
+      }
+    },
+    "cli.read.view": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Read a bounded summary with pointers to the complete answer.",
+        "zh-CN": "读取有大小限制的摘要，其中提供完整答复的读取位置。"
+      }
+    },
     "goal.profile.time": {
       "owner": "alphalattice.control.observation_runtime",
       "kind": "MESSAGE",
@@ -105,9 +363,10 @@
       "kind": "MESSAGE",
       "arguments": [],
       "words": {
-        "en": "This launch could not prove escape from Windows Job containment, so it left no detached Host running. Run terminal_command in a terminal you own outside the agent's shell (Claude Code desktop: its Terminal panel). Or keep it attached for this session with --stop-on-stdin; a held update then waits for the next session.",
-        "zh-CN": "本次启动无法证明已脱离 Windows Job 的约束，因此没有留下独立运行的 Host。请在你自己持有、位于代理 shell 之外的终端运行 terminal_command（Claude Code 桌面端可使用其 Terminal 面板）。也可以通过 --stop-on-stdin 仅为本次会话保持连接；此时暂存的更新须等到下次会话。"
-      }
+        "en": "This launch could not prove escape from Windows Job containment, so it left no detached Host running. On Claude Code desktop, first run terminal_command yourself in an available agent-driven Terminal panel; Codex uses the same route when its panel is available. Only without such a panel, give the person that command for a terminal they own and wait for their word. Both routes keep the same escape and readiness checks; the app may ask approval for the line.",
+        "zh-CN": "本次启动无法证明已脱离 Windows Job 的约束，因此没有留下独立运行的 宿主。在 Claude Code 桌面应用中，优先自行通过可用的代理工具在 Terminal 面板运行 terminal_command；Codex 的面板可用时也走同一路径。只有没有这种面板时，才把同一命令交给本人在其持有的终端运行，并等待本人的话。两条路径都保留相同的脱离约束和就绪检查；应用可能要求批准这一行命令。"
+      },
+      "description": "Explains the ordered agent-panel and person-terminal recovery routes without claiming the Host can inspect agent tools."
     },
     "cli.confirmation.question_code": {
       "owner": "alphalattice.interface.local_application",
@@ -118,6 +377,103 @@
         "zh-CN": "与 --person-said 同用：问题旁的已注册代码。"
       }
     },
+    "research_update.resumed_own_move": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The update resumed on the checkpoint its own data stage moved its universe to; the update's ledger names both checkpoints and the names the move added.",
+        "zh-CN": "本次更新在其自身数据阶段推进股票池后的检查点上继续运行；更新账本记录了前后两个检查点及新增的名称。"
+      }
+    },
+    "workspace_maintenance.membership_restored": {
+      "owner": "alphalattice.control.data_platform",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "A cancelled update had left its candidate list active before its Panel published it; the active membership was returned to the Panel's own, and the step recorded once.",
+        "zh-CN": "一次已取消的更新在其 Panel 发布前留下了处于生效状态的候选名单；生效成员已恢复为 Panel 自身的成员，这一步只记录一次。"
+      }
+    },
+    "workspace_maintenance.membership_owner_unproved": {
+      "owner": "alphalattice.control.data_platform",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The active stock list is bound by the maintenance cycle this refusal names, which never finished, and no update's own plan proves which Task bound it, so it stays bound and nothing ran. Read the data update's record; the research and history already recorded stay readable. To keep updating, prepare a new workspace from the current source.",
+        "zh-CN": "当前生效的股票清单由本次拒绝所指明的维护周期绑定，该周期从未完成，且没有任何更新自身的计划能证明是哪个任务绑定了它，因此它保持绑定，没有执行任何操作。请读取数据更新的记录；已记录的研究和历史仍可读取。要继续更新，请从当前来源准备一个新的工作区。"
+      }
+    },
+    "goal.closure.ready": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Fill the remaining judgments and send this one request; its references are selected.",
+        "zh-CN": "填写余下的判断并发送这一条请求；引用已选好。"
+      }
+    },
+    "host.closing": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This Host is stopping and did not admit this request. Once it has stopped, serve this workspace again and retry the refused request.",
+        "zh-CN": "此主机正在停止，未接纳本次请求。主机停止后，请重新启动此工作区的主机，再重试被拒绝的请求。"
+      }
+    },
+    "host.idle": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [
+        "seconds"
+      ],
+      "words": {
+        "en": "A detached Host stays while a held update, Task, request or enabled automation needs it; otherwise it stops after {seconds} idle seconds (0 disables idle shutdown).",
+        "zh-CN": "分离运行的主机在待执行的更新、任务、请求或已启用的自动更新仍需要它时会继续运行；否则，空闲 {seconds} 秒后会自动停止（0 表示禁用空闲自动停止）。"
+      }
+    },
+    "host.start.breakaway_denied.panel": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The declared Terminal panel is the first offered route after this launch could not prove escape from Windows Job containment and left no detached Host running. On Claude Code desktop, run terminal_command yourself through the available panel tool; Codex follows the same route when available. Only without an agent-driven panel, give the person the same command for their terminal and wait for their word. The escape and readiness checks still apply; the app may ask approval for the line.",
+        "zh-CN": "本次启动无法证明已脱离 Windows Job 的约束，未留下独立运行的 宿主；已声明的 Terminal 面板是优先提供的路径。在 Claude Code 桌面应用中，自行通过可用的面板工具运行 terminal_command；Codex 可用时也走同一路径。只有没有可由代理操作的面板时，才将同一命令交给本人在其终端运行，并等待本人的话。脱离约束和就绪检查仍然适用；应用可能要求批准这一行命令。"
+      },
+      "description": "Explains the ordered agent-panel and person-terminal recovery routes without claiming the Host can inspect agent tools."
+    },
+    "host.serving": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [
+        "instance",
+        "pid",
+        "started_at"
+      ],
+      "words": {
+        "en": "Host {instance} (process {pid}) has served this workspace since {started_at}.",
+        "zh-CN": "宿主 {instance}（进程 {pid}）自 {started_at} 起为此工作区提供服务。"
+      }
+    },
+    "host.reuse.unverified": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The recorded Host could not be authenticated. Read host_log and identify this workspace's owning Host before retrying the original serve command; leave the descriptor and writer lease unchanged.",
+        "zh-CN": "无法验证所记录的 宿主。请先读取 host_log 并确认此工作区由哪个 宿主 持有，再重试原来的 serve 命令；不要改动连接描述或写入租约。"
+      }
+    },
+    "host.reuse.guide": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "A matching serving Host can be reused even when this shell cannot detach a new process. ALREADY_SERVING reuses only an authenticated Host for this workspace and instance, preserving its authority and idle policy. Activity's observer names its instance, process and start time; the Workbench shows the same Host. On an unverified or stale descriptor, read the named Host log and identify its owning process before retrying the original serve command; leave the descriptor and writer lease unchanged.",
+        "zh-CN": "即使当前命令环境无法另起独立进程，仍可复用经过验证、匹配的已有宿主。ALREADY_SERVING 只复用经过验证、属于此工作区及实例的 宿主，并保留其权限和空闲策略。工作区活动的观察信息会列出其实例、进程和启动时间；工作台显示同一个 宿主。若连接描述过期或无法验证，请先读取所指出的 宿主 日志并确认持有它的进程，再重试原来的 serve 命令；不要改动连接描述或写入租约。"
+      }
+    },
     "goal.profile.operation": {
       "owner": "alphalattice.control.observation_runtime",
       "kind": "MESSAGE",
@@ -125,6 +481,136 @@
       "words": {
         "en": "Goal time profile",
         "zh-CN": "目标用时分析"
+      }
+    },
+    "goal.closure.complete": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The record is complete; read its outcome, limitations and report here.",
+        "zh-CN": "记录已完整；请在这里查看结果、限制和报告。"
+      }
+    },
+    "goal.closure.report_unavailable": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Goal is sealed; the report is unavailable. Use its offered repair request.",
+        "zh-CN": "目标已封存；报告暂不可用。请使用提供的修复请求。"
+      }
+    },
+    "host.child_ownership.unavailable": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This launch could not own its attached child and left no Host running. Run terminal_command in another terminal.",
+        "zh-CN": "本次启动无法持有附属子进程，因此未留下运行中的宿主。请在另一个终端执行 terminal_command。"
+      }
+    },
+    "protocol.error.summary": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [
+        "reason"
+      ],
+      "words": {
+        "en": "The operation could not be completed ({reason}).",
+        "zh-CN": "操作未能完成（{reason}）。"
+      }
+    },
+    "protocol.error.field": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [
+        "field"
+      ],
+      "words": {
+        "en": "The request field {field} is invalid.",
+        "zh-CN": "请求字段 {field} 无效。"
+      }
+    },
+    "setup.tool.command": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The installed command may be off PATH. Use its absolute launcher from `uv tool dir --bin` in this session; no shell update or restart is needed.",
+        "zh-CN": "已安装的命令可能不在搜索路径中。在本次会话使用 `uv tool dir --bin` 下启动程序的绝对路径，无需更新终端设置或重启。"
+      },
+      "description": "Explains the canonical command binding used by first-use setup and configured guidance."
+    },
+    "setup.tool.readiness": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Run the documented locked install and disclose it. Use the absolute launcher from `uv tool dir --bin` when it is off PATH; specialists use the same command in fresh shells. Check any unproved command owner first.",
+        "zh-CN": "按文档进行锁定安装并说明所做操作。若命令不在搜索路径中，使用 `uv tool dir --bin` 下启动程序的绝对路径；专家在新终端中使用同一个命令。若命令归属尚未证实，先核实。"
+      },
+      "description": "Explains the canonical command binding used by first-use setup and configured guidance."
+    },
+    "setup.tool.guide": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Off PATH, use the binding block in the shared guides and pass the matching absolute prefix to every specialist; no shell update or restart is needed. Portable examples use alphalattice as a placeholder. When serving from another shell, set ALPHALATTICE_SHELL to your specialists' shell: posix or powershell.",
+        "zh-CN": "命令不在搜索路径中时，请用共享指南中的前缀绑定说明，并把对应的绝对命令前缀交给每位专家；无需更新终端设置或重启。可移植示例中的 alphalattice 是占位写法。从另一种终端启动服务时，将 ALPHALATTICE_SHELL 设为专家所用终端的格式：posix 或 powershell。"
+      },
+      "description": "Explains the canonical command binding used by first-use setup and configured guidance."
+    },
+    "setup.tool.specialists": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Use the lead's resolved command_prefix wherever this card shows alphalattice; its permitted operations stay the same.",
+        "zh-CN": "本卡中出现 alphalattice 时，使用负责人提供的已解析 command_prefix；允许执行的操作不变。"
+      },
+      "description": "Explains the canonical command binding used by first-use setup and configured guidance."
+    },
+    "setup.tool.prefixes": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [
+        "powershell",
+        "posix"
+      ],
+      "words": {
+        "en": "Use these prefixes in place of `alphalattice`: PowerShell `{powershell}`; Bash `{posix}`.",
+        "zh-CN": "用以下命令前缀替换示例中的 `alphalattice`：PowerShell `{powershell}`；Bash `{posix}`。"
+      },
+      "description": "Explains the canonical command binding used by first-use setup and configured guidance."
+    },
+    "host.start.terminal.guide": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "On Claude Code desktop, use the available Terminal panel through `run_in_terminal`; on Codex, use an available agent-driven Terminal panel in the same way. If detached start is refused, choose the first applicable `terminal_routes` offer and run `terminal_command` yourself there. Only without such a panel, give the person the same command for a terminal they own, then wait for their word. The Host cannot inspect your tools; its escape and authenticated readiness checks still decide STARTED.",
+        "zh-CN": "在 Claude Code 桌面应用中，通过 `run_in_terminal` 使用可用的 Terminal 面板；在 Codex 中，同样使用可由代理操作的面板。独立启动遭拒时，选择 `terminal_routes` 中首条适用路径，并自行在那里运行 `terminal_command`。只有没有这种面板时，才把同一命令交给本人在其持有的终端运行，然后等待本人的话。宿主 无法查看你的工具；能否返回 STARTED 仍由脱离约束和身份验证后的就绪检查决定。"
+      },
+      "description": "Explains the ordered agent-panel and person-terminal recovery routes without claiming the Host can inspect agent tools."
+    },
+    "result_cache.not_passing": {
+      "owner": "devtools.pipeline",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This node is not a passing first attempt. Run it without reuse.",
+        "zh-CN": "此测试节点并非首次运行即通过。请直接运行，不复用结果。"
+      }
+    },
+    "result_cache.request_invalid": {
+      "owner": "devtools.pipeline",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The result cache options are invalid. Supply a mode of off, record, shadow or on and a positive byte cap.",
+        "zh-CN": "结果缓存选项无效。请提供 off、record、shadow 或 on 模式，以及正整数字节上限。"
       }
     }
   }

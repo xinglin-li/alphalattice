@@ -147,7 +147,8 @@ def evidence_setup(
         python = join([sys.executable], shell())
         retrieval = python
     # The running Host installs a package as a Task (its setup script is the path with no Host).
-    host = f'{" ".join(command_prefix())} --workspace "{workspace}" evidence install --setup='
+    prefix = join(list(command_prefix()), shell())
+    host = f'{prefix} --workspace "{workspace}" evidence install --setup='
     if rebind:
         return {
             "authority": {
@@ -164,14 +165,14 @@ def evidence_setup(
         "store": str(store),
         "present": all(model_store.pack_directory(store, value).is_dir() for value in packs),
         "download_bytes": sum(value.approximate_bytes for value in packs),
-        "check": f"{retrieval} scripts/install_retrieval_pack.py --status",
+        "check": f"{retrieval} scripts/install_retrieval_pack.py --status --view summary",
         "install": f"{retrieval} scripts/install_retrieval_pack.py --install "
         f"{RECIPE_MINILM_CPU} --network",
     }
     if installed:
         from alphalattice.control.product_host.composition.retrieval_pack_setup import pack_command
 
-        pack["check"] = join(pack_command("--status"), shell())
+        pack["check"] = join(pack_command("--status", "--view", "summary"), shell())
         pack["install"] = join(pack_command("--install", RECIPE_MINILM_CPU, "--network"), shell())
     if installed or not (resolve_playpen_root(Path(__file__)) / retrieval).is_file():
         pack["environment"] = join(fill_command(), shell())  # the one command, on either leg
@@ -470,9 +471,10 @@ def source_ways(
     # After the person's own stop the way on is their yes, never a delegated set.
     delegation = None if persons_stop(workspace, now) else delegation
     # The person's own consent, in their shell: it names the workspace on either leg.
+    prefix = join(list(command_prefix()), shell())
     ways: dict[str, object] = {
         "official": {
-            "command": f'{" ".join(command_prefix())} --workspace "{workspace}" evidence-consent '
+            "command": f'{prefix} --workspace "{workspace}" evidence-consent '
             f"set --per-issuer {DEFAULT_SOURCE_CONSENT.documents_per_issuer}",
             "before": str(
                 network_access(workspace, now=now).body(

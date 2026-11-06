@@ -12,7 +12,7 @@ from alphalattice.control.workspace_runtime.storage.readiness import WorkspaceRe
 from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
     CurrentUniverseOnboarding,
     CurrentUniverseOnboardingOutcome,
-    _ten_calendar_year_anniversary,
+    ten_calendar_year_anniversary,
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import CandidateDataRecheck
 from alphalattice.foundation.market_data_ops.sources.manifest import (
@@ -136,7 +136,7 @@ class CandidateDataRequalification:
             requested,
             max(
                 self.research_history_start(record),
-                _ten_calendar_year_anniversary(target_session),
+                ten_calendar_year_anniversary(target_session),
             ),
         )
         self._context(scope, target_session=target_session)
@@ -203,7 +203,7 @@ class CandidateDataRequalification:
     ) -> CurrentUniverseOnboarding:
         record, bootstrap, _parent = self._context(scope, target_session=target_session)
         if scope.history_start != max(
-            self.research_history_start(record), _ten_calendar_year_anniversary(target_session)
+            self.research_history_start(record), ten_calendar_year_anniversary(target_session)
         ):
             raise ValueError("workspace_maintenance.candidate_data_recheck_history_invalid")
         cached = self._runner

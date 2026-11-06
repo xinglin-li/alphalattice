@@ -211,6 +211,7 @@ class WorkspaceActivity:
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
     storage_cap_reader: Callable[[], int] | None = None
     native_usage_state: Callable[[], dict[str, object]] | None = None
+    serving_host: dict[str, object] = field(default_factory=dict, init=False)
     """Optional Host-owned usage health read; only its safe status and reason are exposed."""
     store_failure: str | None = field(default=None, init=False)
     """The typed code of the storage failure that left this observer UNAVAILABLE."""
@@ -239,9 +240,11 @@ class WorkspaceActivity:
         and operation execution remains separate.
         """
         try:
+            # Observations have their own SQLite writer; recording an entry or refusal must
+            # not wait behind the workspace mutation whose admission it describes.
             ledger = ObservationLedger(
                 self.workspace / "runtime" / OBSERVATION_LEDGER_NAME,
-                gate=self.gate,
+                gate=WorkspaceMutationGate(),
                 storage_cap_reader=self.storage_cap_reader,
             )
         except ObservationStorageError as error:
@@ -972,7 +975,10 @@ class WorkspaceActivity:
                 at
                 for at, row in zip(times, rows, strict=True)
                 if row.get("phase") == "RETURNED"
-                and row.get("status") == "GOAL_SAVED"
+                and (
+                    row.get("status") == "GOAL_SAVED"
+                    or (row.get("operation"), row.get("status")) == ("GOAL_SUBMIT", "COMPLETE")
+                )
                 and row.get("operation") in {"GOAL_SUBMIT", "GOAL_ABANDON"}
                 and row.get("subject", {}).get("goal_hash") == goal.goal_hash
             ]
@@ -1054,7 +1060,8 @@ class WorkspaceActivity:
 
         One read finds what just happened, whichever session asks: the newest returned
         operations with the agent session and goal their rows recorded, and the read that
-        opens each. The feed is transient; a goal keeps its own record.
+        opens each. A missing or unsupported session identity is UNKNOWN, never inferred
+        from workspace bindings. The feed is transient; a goal keeps its own record.
 
         Args:
             limit: How many groups, from 1 to 50.
@@ -1085,6 +1092,9 @@ class WorkspaceActivity:
                     continue
                 groups[key] = {
                     "agent": {"vendor": key[0], "session_id": key[1]} if key[1] else None,
+                    "agent_attribution": "RECORDED"
+                    if key[0] in {"codex", "claude-code"} and key[1]
+                    else "UNKNOWN",
                     "goal_id": key[2] or None,
                     "latest_at": row["occurred_at"],
                     "items": [],
@@ -1422,6 +1432,7 @@ class WorkspaceActivity:
         else:
             status, recording = "OK", "OK"
         state: dict[str, object] = {
+            "host": dict(self.serving_host),
             "status": status,
             "recording": recording,
             "appends": appends,

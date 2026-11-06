@@ -20,6 +20,8 @@ from threading import Timer
 from typing import Any, Final, Literal, NamedTuple, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
+import yaml  # type: ignore[import-untyped]
+
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_HEADER,
     AGENT_VENDOR_HEADER,
@@ -63,10 +65,19 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.cli_contract import (
     with_read_commands as _with_read_commands,
 )
+from alphalattice.interface.local_application.failure_codes import (
+    LocalResearchClientError as LocalResearchClientError,
+)
 from alphalattice.interface.local_application.goals import (
     NEW_RESEARCH_SCOPE,
+    delegated_network,
     first_use_asks,
     target_sessions,
+)
+from alphalattice.interface.local_application.review_evidence import (
+    read_resumed,
+    review_evidence_view,
+    select_preparation,
 )
 from alphalattice.protocols.research_authoring.selection import (
     dump_declaration,
@@ -92,20 +103,6 @@ def request_body(document: dict[str, Any]) -> bytes:
 def workspace_connection_key(workspace: Path) -> str:
     """Bind local transport to the requested location, not a supplied descriptor id."""
     return sha256(os.fsencode(os.path.normcase(str(workspace.resolve())))).hexdigest()
-
-
-class LocalResearchClientError(ValueError):
-    """A bounded client failure, never an exception containing connection secrets."""
-
-    document_location: dict[str, int | str] | None = None
-    document_size: dict[str, int | None] | None = None
-    """Oversized document bytes (None for stdin) and limit_bytes (V372)."""
-    short_reference: dict[str, object] | None = None
-    """Ambiguous short reference: field, value and candidates (V393)."""
-    sections: list[str] | None = None
-    """The available sibling paths when a saved answer lacks the requested section."""
-    binding_context: dict[str, Any] | None = None
-    next_commands: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -403,7 +400,7 @@ class LocalResearchClient:
                 )
                 progress = Timer(
                     5.0,
-                    lambda: print(
+                    lambda: print(  # noqa: T201  # CLI stderr
                         json.dumps(
                             {
                                 "operation": operation,
@@ -413,7 +410,7 @@ class LocalResearchClient:
                                 "elapsed_seconds": round(time.perf_counter() - started, 3),
                             }
                         ),
-                        file=sys.stderr,
+                        file=sys.stderr,  # noqa: TID251
                         flush=True,
                     ),
                 )
@@ -647,20 +644,20 @@ def lead_readings(
     workspace: Path | None = None,
     goal: str | None = None,
 ) -> list[dict[str, object]]:
-    """Ask the Host to read the bound Session's usage at a milestone.
+    """Read bound-session usage at take/submit milestones.
 
-    A goal's take and submission and an answer's submission are the milestones a command
-    names; the Host reads there, for the bound Session and the children its own files record,
-    never where the binding turned reading off, and never in the request's way.
+    Read the bound session and its recorded children.
+    Disabled bindings stay off; only their lead reads.
+    Commands never wait for a reading.
 
     Args:
-        project: The project whose binding names the session.
-        environ: The command's environment, naming the session it runs in.
-        workspace: The command's workspace; another workspace receives no reading.
-        goal: The command's named Goal; the Host resolves it using normal provenance.
+        project: Session-binding project.
+        environ: Calling session's environment.
+        workspace: Must match the binding.
+        goal: Resolved by Host provenance.
 
     Returns:
-        The Host's aggregate receipt; none when reading is off or this is not its lead.
+        Aggregate receipt; none if disabled or not the lead.
     """
     from alphalattice.interface.local_application.native_bridge import session_binding
 
@@ -730,8 +727,6 @@ def _text(path: Path, *, limit: int = MAXIMUM_REQUEST_BODY_BYTES) -> str:
 def _yaml_value(path: Path, expected: str, *, text: str | None = None) -> Any:
     """A file read by the one declaration loader, its syntax errors located."""
 
-    import yaml  # type: ignore[import-untyped]
-
     try:
         return load_safe_yaml_document(_text(path) if text is None else text)
     except LocalResearchClientError:
@@ -774,11 +769,7 @@ def _listed(path: Path) -> list[Any]:
 
 
 def _response_document(path: Path) -> dict[str, Any]:
-    """Read saved JSON/YAML, full or compact.
-    Only continued parts must be whole; refusals retain offers.
-    """
-
-    import yaml
+    """Read saved JSON/YAML; continuation parts must be whole, with refusal offers retained."""
 
     text = _text(path, limit=4 * 1024 * 1024)
     try:
@@ -793,6 +784,10 @@ def _response_document(path: Path) -> dict[str, Any]:
             raise ValueError("not an operation response")
     except (ValueError, AttributeError, yaml.YAMLError) as error:
         raise LocalResearchClientError("local_client.response_reference_invalid") from error
+    if result.get("representation") == "alphalattice.read-summary.v1":
+        raise LocalResearchClientError(
+            "local_client.compact_reference_requires_full_response:answer"
+        )
     return value
 
 
@@ -1161,7 +1156,7 @@ def continued(
     Thus saved reads keep their selection.
     Missing references, open choices and truncated parts refuse.
     """
-    offered = offered_requests(bundle)
+    offered = offered_requests(bundle, operation)
     kept = bundle.get("read_request")
     # A saved read reads again as itself, its whole selection, before any next request the
     # answer offers for the same operation (V460: a revision read again as the latest);
@@ -1300,7 +1295,9 @@ def continued(
     return request
 
 
-def output_replacement(path: Path | None, *, line: tuple[str, ...] = ()) -> bool:
+def output_replacement(
+    path: Path | None, *, line: tuple[str, ...] = (), prefix: tuple[str, ...] | None = None
+) -> bool:
     """Only a complete refusal can be replaced; protect admitted Tasks."""
     if path is None or not path.exists():
         return False
@@ -1311,16 +1308,14 @@ def output_replacement(path: Path | None, *, line: tuple[str, ...] = ()) -> bool
             if refused(previous) and not (task_state(previous) or held):
                 return True
     error = LocalResearchClientError("local_client.output_exists_choose_another_path")
-    error.next_commands = output_retry(line, _next_output(path))
+    error.next_commands = output_retry(line, _next_output(path), prefix=prefix)
     raise error
 
 
 def _save_output(
     path: Path, body: dict[str, Any], raw: bytes, format: str, *, replace: bool = False
 ) -> None:
-    """Save full JSON/YAML for --from, or HTML; declarations use --save-declaration.
-    Replacement is a refusal retry or the successor to this command's saved admission.
-    """
+    """Save full JSON/YAML or HTML; replace only refusal retries or this admission's successor."""
     if format == "json":
         payload = body["json"].encode("utf-8") if isinstance(body.get("json"), str) else raw
     elif format == "yaml":
@@ -1591,12 +1586,8 @@ together: the owner's first, in its order, while they fit; `next_left` counts th
 _NEXT_KEYS = ("next_requests", "next_commands", "next_templates")
 
 
-def _hold_next(answer: dict[str, Any], budget: int) -> None:
-    """Hold an envelope's next requests to ``budget`` bytes, counting the rest (V411).
-
-    The three views of one offered request (the request, its command and its template) stay
-    together, and the owner's first requests are kept, in its order, while they fit.
-    """
+def _hold_next(answer: dict[str, Any], budget: int, *, strict: bool = False) -> None:
+    """Keep request/command/template whole; strict budgets may omit an oversized first (V411)."""
     views = [value if isinstance(value, dict) else {} for value in map(answer.get, _NEXT_KEYS)]
     if _size(views) <= budget:
         return
@@ -1605,7 +1596,7 @@ def _hold_next(answer: dict[str, Any], budget: int) -> None:
     size = 0
     for name in names:
         size += _size(name) + _size([view.get(name) for view in views])
-        if size > budget and kept:
+        if size > budget and (kept or strict):
             break
         kept.add(name)
     for key, view in zip(_NEXT_KEYS, views, strict=True):
@@ -1938,25 +1929,21 @@ def answer_part(body: dict[str, Any], path: str) -> dict[str, Any]:
 def saved_answer(
     path: Path, *, section: str | None = None, list_sections: bool = False
 ) -> dict[str, Any]:
-    """Read a saved full owner answer locally, without reopening or reverifying its object.
+    """Read a full owner snapshot without a Host or reverification.
 
-    The CLI's saved JSON/YAML keeps owner fields at the root, unlike its printed envelope.
-    The original answer is always retained for the output writer; a selected part is only a
-    presentation of that snapshot. Saved requests remain data and no reference is shortened.
+    Selections retain the full owner answer. Requests stay data; references stay whole.
 
     Args:
-        path: The full answer file, or standard input as ``-``.
-        section: An existing ``answer_part`` path, index or list slice.
-        list_sections: List the answer's root paths instead of selecting a part.
+        path: Full JSON/YAML, or ``-`` for stdin.
+        section: Owner path, index or slice.
+        list_sections: Select root paths.
 
     Returns:
-        The historical snapshot, original answer and optional selected part or root paths.
+        Snapshot, full answer and selected part or paths.
 
     Raises:
-        LocalResearchClientError: A file failure, unsupported representation or absent part.
+        LocalResearchClientError: Invalid file, representation or path.
     """
-    import yaml
-
     text = _text(path, limit=4 * 1024 * 1024)
     if text.lstrip().startswith("<"):
         raise LocalResearchClientError("local_client.saved_answer_format_unavailable:html")
@@ -1997,7 +1984,11 @@ def saved_answer(
         if mark is not None:
             failure.document_location.update({"line": mark.line + 1, "column": mark.column + 1})
         raise failure from error
-    if _cut(body) or body.get("representation") == _REPRESENTATION or "omitted_sections" in body:
+    if (
+        _cut(body)
+        or body.get("representation") in (_REPRESENTATION, "alphalattice.read-summary.v1")
+        or "omitted_sections" in body
+    ):
         raise LocalResearchClientError("local_client.saved_answer_incomplete")
     if {"schema_version", "operation", "outcome", "data", "timing"} <= body.keys():
         raise LocalResearchClientError("local_client.saved_answer_invalid")
@@ -2186,7 +2177,7 @@ def _follow_receipt(
                     saved[:] = [output]
             recovery = {**read, "format": format, "output": str(_next_output(output))}
     finally:
-        print(
+        print(  # noqa: T201  # CLI stderr
             json.dumps(
                 {
                     "task_id": read.get("task_id"),
@@ -2196,7 +2187,7 @@ def _follow_receipt(
                     "returns": _follow_returns(),
                 }
             ),
-            file=sys.stderr,
+            file=sys.stderr,  # noqa: TID251
             flush=True,
         )
 
@@ -2292,9 +2283,9 @@ def _follow(
         )
         stage = current.get("current_stage")
         if (state, stage) != last:
-            print(
+            print(  # noqa: T201  # CLI stderr
                 json.dumps({"follow": document, "state": state, "current_stage": stage}),
-                file=sys.stderr,
+                file=sys.stderr,  # noqa: TID251
                 flush=True,
             )
             last = (state, stage)
@@ -2476,7 +2467,7 @@ class _Chain:
     def send(self, step: str, document: dict[str, Any]) -> dict[str, Any]:
         if document.get("task_id"):
             self.receipt(self.client, None, {"operation": "STATUS", "task_id": document["task_id"]})
-        print(
+        print(  # noqa: T201  # CLI stderr
             json.dumps(
                 {
                     "flow": self.name,
@@ -2485,7 +2476,7 @@ class _Chain:
                     "task_id": document.get("task_id"),
                 }
             ),
-            file=sys.stderr,
+            file=sys.stderr,  # noqa: TID251
             flush=True,
         )
         body = self.client.request(document)
@@ -2673,20 +2664,11 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         field: getattr(args, field, None)
         for field in ("evidence_as_of", "preparation_binding_hash")
     }
-    preview: dict[str, Any] = {}
-    prepare: dict[str, Any] | None
-    if any(captured.values()):
-        if not all(captured.values()):
-            raise LocalResearchClientError("local_client.request_invalid")
-        # Resume only the named preparation. Its owner rechecks this publication,
-        # cutoff and binding; a new preview would declare a different run.
-        prepare = {**preview_request, "operation": "EVIDENCE_PREPARE", **captured}
-    else:
-        preview = chain.send("evidence_preview", preview_request)
-        prepare = chain.offered(preview, "prepare")
-        if preview.get("status") != "EVIDENCE_PREPARATION_READY" or prepare is None:
-            return chain.stop("evidence_preview", preview)
-    if chain.wake is not None:
+    preview, prepare = select_preparation(chain, captured, preview_request)
+    if prepare is None:
+        return chain.stop("evidence_preview", preview)
+    resuming = prepare.get("operation") == "STATUS"
+    if chain.wake is not None and not resuming:
         continuation = {field: prepare.get(field) for field in captured}
         if not all(continuation.values()):
             raise LocalResearchClientError("local_client.request_invalid")
@@ -2698,8 +2680,14 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
     pending = outcome_of(prepared) == "PENDING"
     if (ended := chain.followed("evidence", prepared)) is not None:
         return ended
-    # The run's own bundles at its cutoff: the same preparation asked again reuses it.
-    current = chain.send("evidence_prepared", prepare) if pending else prepared
+    if resuming:
+        prepared, current, stopped = read_resumed(
+            chain, prepared, prepare, preview_request, pending
+        )
+        if stopped is not None:
+            return stopped
+    else:
+        current = chain.send("evidence_prepared", prepare) if pending else prepared
     bundles = chain.bundles(current, root)
     if isinstance(bundles, dict):
         return bundles
@@ -2708,12 +2696,7 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         "status": "BOOK_REVIEW_READY" if bundles else "EVIDENCE_PREPARED",
         "strategy_package_id": package,
         ("positions" if update else "book"): subject,
-        "evidence": {
-            "status": current.get("status") or current.get("disposition"),
-            "evidence_as_of": current.get("evidence_as_of") or prepared.get("evidence_as_of"),
-            "coverage": current.get("coverage") or preview.get("coverage"),
-            "prepared_task_id": prepared.get("task_id"),
-        },
+        "evidence": review_evidence_view(preview, current, prepared, resuming=resuming),
         "analyst_bundles": bundles,
         "steps": chain.steps,
         "next_action": "DISPATCH_ANALYSTS" if bundles else "READ_EVIDENCE",
@@ -2942,7 +2925,7 @@ _NOT_RECORDED: Final = (
 
 
 def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
-    """Prepare the person's first use under its Goal, with its stops and whole road."""
+    """Run first use."""
     chain = _chain(client, args, "first_use")
     try:
         named = target_sessions(date.fromisoformat(str(args.target_date)))
@@ -2983,8 +2966,8 @@ def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> d
         **asks,
         **({"sentence": note} if note else {}),
     }
+    answer.update(delegated_network(answer, client.goal, prefix))
     if answer.get("status") == "ALREADY_PREPARED":
-        # The road goes on.
         intents = chain.send("workspace", {"operation": "WORKSPACE_SHOW"}).get("intents") or ()
         forward: dict[str, Any] = next((i for i in intents if i["flow"] == "RUN_FORWARD"), {})
         package = forward.get("strategy_package_id")
@@ -3432,7 +3415,7 @@ def run(
                 cut = compact_display(selected["value"], budget=room, section=selected["section"])
                 answer.update({**cut, "data": {**selected, "value": cut["data"]}})
         _profile_hint(answer, body)
-        print(
+        print(  # noqa: T201  # serializer
             answer_json(
                 (short_references if compact else _same)(answer),
                 default=_json_value,
@@ -3557,7 +3540,7 @@ def run(
                     ),
                 },
             )
-        print(
+        print(  # noqa: T201  # serializer
             answer_json(
                 envelope(
                     operation=document.get("operation") or args.command,
@@ -3587,7 +3570,7 @@ def run(
         # Pydantic errors may contain the document; never echo it.
         code = "local_client.request_invalid"
         refusal = client_refusal(code)
-        print(
+        print(  # noqa: T201  # serializer
             answer_json(
                 envelope(
                     operation=None,

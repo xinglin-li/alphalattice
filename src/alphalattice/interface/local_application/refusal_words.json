@@ -1,4 +1,29 @@
 {
+ "alpha_research.development_artifact_identity_invalid": {
+  "detail": "A stored Alpha record does not match its requested identity, so it was not read. Restore a verified workspace backup into a new folder and work there.",
+  "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
+ },
+ "feature_input.case_store_unavailable": {
+  "message_id": "feature.input.case_store_unavailable",
+  "detail": "feature.input.case_store_unavailable",
+  "next_action": "READ_WORKSPACE_AND_RETAINED_BACKUPS",
+  "next_requests": {"workspace": {"operation": "WORKSPACE_SHOW"}}
+ },
+ "feature_research.document_invalid": {
+  "message_id": "feature.plan.document_invalid",
+  "detail": "feature.plan.document_invalid",
+  "next_action": "READ_FEATURE_CATALOG_CONTROLS_AND_CORRECT_DOCUMENT"
+ },
+ "research_strategy.declaration_invalid": {
+  "message_id": "strategy.plan.declaration_invalid",
+  "detail": "strategy.plan.declaration_invalid",
+  "next_action": "CORRECT_DECLARATION_AND_REPLAN"
+ },
+ "local_application.dispatcher_closed": {
+  "message_id": "host.closing",
+  "detail": "host.closing",
+  "next_action": "SERVE_AGAIN_WHEN_WORK_NEEDS_IT"
+ },
  "person_confirmation.question_unknown": {
   "detail": "The question code is not registered. Read the offered question and relay its code with the person's words.",
   "next_action": "READ_THE_OFFERED_QUESTION"
@@ -1071,6 +1096,11 @@
   "detail": "The approved stock-list change could not be verified: the active membership is neither the one it approved nor one its own run recorded or the gateway's admission derives from it, or its prior Panel or approved candidate document changed. Nothing ran. The research and history already recorded stay readable; to keep updating, prepare a new workspace from the current source. Never edit a stored approval.",
   "next_action": "DATA_UPDATE_READBACK"
  },
+ "workspace_maintenance.membership_owner_unproved": {
+  "message_id": "workspace_maintenance.membership_owner_unproved",
+  "detail": "workspace_maintenance.membership_owner_unproved",
+  "next_action": "DATA_UPDATE_READBACK"
+ },
  "workspace_preparation.preview_required": {
   "detail": "A preparation starts from the exact preview it was planned from, and this plan has none the Host holds; plan it (`preparation plan`) and confirm the plan hash that preview names.",
   "next_action": "PLAN_THE_PREPARATION_AGAIN"
@@ -1138,6 +1168,14 @@
  "model_store.download_interrupted": {
   "detail": "The model download was interrupted. Run the same installation command again with its admitted network permission; it resumes the kept partial download.",
   "next_action": "RETRY_THE_ADMITTED_MODEL_INSTALLATION"
+ },
+ "agent_bundle.answer_replay_inconsistent": {
+  "detail": "The stored answer does not match its recorded reply. Nothing was replayed; inspect the retained answer and its thread before retrying.",
+  "next_action": "INSPECT_THE_RECORDED_ANSWER"
+ },
+ "agent_bundle.admission_busy": {
+  "detail": "The Host is busy admitting another workspace change. This answer was not filed; resend the same answer.",
+  "next_action": "RETRY_THE_SAME_ANSWER"
  },
  "task_control.queue_full": {
   "detail": "Every waiting Task place is occupied. Read `alphalattice task list` and `alphalattice cpu-budget show`; the agent may change `tasks_waiting` with `alphalattice cpu-budget set --queue <tasks_waiting>` before submitting another Task, or wait for a queued Task to finish or cancel it.",
@@ -1240,7 +1278,7 @@
   "next_action": "USE_THE_WORKSPACE_HOST_OR_CHECK_THE_NAMED_LOCAL_PATH"
  },
  "native_bridge.bound_in_workspace": {
-  "detail": "This Session is bound in the workspace's own folder, because the Host could not write the project's `.codex` folder (an agent sandbox protects it). Its Sessions row, usage and deliveries are recorded as usual; name `--workspace` on each command, since the project holds no binding to find it from.",
+  "detail": "This Session is bound in the workspace's own folder, so name `--workspace` on each command; its Sessions row, usage and deliveries are recorded as usual.",
   "next_action": "NAME_THE_WORKSPACE_ON_EACH_COMMAND"
  },
  "native_bridge.session_not_bound": {

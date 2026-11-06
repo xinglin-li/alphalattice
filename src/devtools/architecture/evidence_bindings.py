@@ -23,20 +23,20 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from alphalattice.evidence.alternative_evidence.publication.contracts import (
+    bindings_current,
+)
+from alphalattice.evidence.alternative_evidence.runtime.identity import (
+    SUPPORTED_HISTORICAL_BINDINGS,
+    current_evidence_binding_tuple,
+)
+
 RECORD_PATH = Path("config") / "evidence-binding-tuples.json"
 _SCHEMA = "evidence-binding-tuples"
 
 
 def problems(root: Path) -> list[str]:
     """What is wrong with the recorded tuples at ``root``; empty when all holds."""
-
-    from alphalattice.evidence.alternative_evidence.publication.contracts import (
-        bindings_current,
-    )
-    from alphalattice.evidence.alternative_evidence.runtime.identity import (
-        SUPPORTED_HISTORICAL_BINDINGS,
-        current_evidence_binding_tuple,
-    )
 
     record = json.loads((root / RECORD_PATH).read_text(encoding="utf-8"))
     if record.get("schema") != _SCHEMA or record.get("version") != 1:
@@ -63,13 +63,6 @@ def problems(root: Path) -> list[str]:
 def record_current(root: Path) -> None:
     """Record the computed tuple as current; the one it replaces goes to 'previous' unless
     recorded moves lead from it to the computed one (then its analyses stay current)."""
-
-    from alphalattice.evidence.alternative_evidence.publication.contracts import (
-        bindings_current,
-    )
-    from alphalattice.evidence.alternative_evidence.runtime.identity import (
-        current_evidence_binding_tuple,
-    )
 
     path = root / RECORD_PATH
     record: dict[str, Any] = (

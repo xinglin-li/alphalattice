@@ -8,6 +8,7 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, TypeVar, cast
+from uuid import UUID
 
 import duckdb
 
@@ -22,6 +23,7 @@ from alphalattice.control.data_platform.maintenance.contracts import (
     MaintenanceStatus,
     MaintenanceTrigger,
     MarketDataChangeSet,
+    WorkingManifestBind,
     WorkspaceDataUpdateReceipt,
     WorkspaceMaintenanceCycle,
     WorkspaceMaintenanceRequest,
@@ -54,7 +56,12 @@ class DuckDbWorkspaceMaintenanceRegistry:
     """One writer-gated registry in the existing workspace DuckDB."""
 
     def __init__(
-        self, database_path: Path, *, gate: WorkspaceMutationGate, initialize: bool = True
+        self,
+        database_path: Path,
+        *,
+        gate: WorkspaceMutationGate,
+        initialize: bool = True,
+        owner_task: str | None = None,
     ) -> None:
         """Resolve the gated DuckDB maintenance registry and optionally initialize tables.
 
@@ -62,9 +69,11 @@ class DuckDbWorkspaceMaintenanceRegistry:
             database_path: Workspace DuckDB path for maintenance records.
             gate: Workspace mutation owner governing registry writes.
             initialize: Whether to bootstrap maintenance tables during construction.
+            owner_task: The Task whose stage writes through this handle; its binds name it.
         """
         self.database_path = database_path.resolve()
         self.gate = gate
+        self.owner_task = owner_task
         if initialize:
             self._bootstrap()
 
@@ -374,6 +383,14 @@ class DuckDbWorkspaceMaintenanceRegistry:
         return {key: str(details[key]) for key in keys}
 
     WORKING_MANIFEST_EVENT = "workspace_maintenance.working_manifest"
+    MEMBERSHIP_RESTORED_EVENT = "workspace_maintenance.membership_restored"
+
+    def owned_by(self, owner_task: UUID | str | None) -> DuckDbWorkspaceMaintenanceRegistry:
+        """This registry as a writer's handle: its working-membership binds name ``owner_task``."""
+        owner = None if owner_task is None else str(owner_task)
+        return DuckDbWorkspaceMaintenanceRegistry(
+            self.database_path, gate=self.gate, initialize=False, owner_task=owner
+        )
 
     def record_working_manifest(
         self, cycle_id: str, *, manifest_revision: str, authority: str, observed_at: datetime
@@ -383,15 +400,22 @@ class DuckDbWorkspaceMaintenanceRegistry:
         A cycle that moves the active membership -- a transition's qualified root or a child
         it derives (Sector exclusion, gateway quarantine, baseline qualification) -- owns that
         working membership until its Panel publishes. Recovery reads it here instead of
-        deriving it again from the journal; the same membership is recorded once, and only
-        on an existing cycle that has not finished.
+        deriving it again from the journal; the same membership is recorded once per writer,
+        and only on an existing cycle that has not finished. A writer's handle (`owned_by`) names
+        the Task whose stage ran the cycle, so its bind is told from another's (`working_binds`).
 
         Raises:
             ValueError: The cycle does not exist or has finished.
         """
-        if self.working_manifest(cycle_id) == manifest_revision:
-            return
         details = {"manifest_revision": manifest_revision, "authority": authority}
+        if self.owner_task is not None:
+            details["owner_task"] = self.owner_task
+        latest = self._latest_event(cycle_id, self.WORKING_MANIFEST_EVENT) or {}
+        if (latest.get("manifest_revision"), latest.get("owner_task")) == (
+            manifest_revision,
+            self.owner_task,
+        ):
+            return
         now = observed_at.astimezone(UTC).replace(tzinfo=None)
 
         def operation(connection: duckdb.DuckDBPyConnection) -> None:
@@ -416,10 +440,55 @@ class DuckDbWorkspaceMaintenanceRegistry:
 
         self._write(operation)
 
+    def record_membership_restored(
+        self, cycle_id: str, *, details: Mapping[str, object], observed_at: datetime
+    ) -> None:
+        """Record, once, that a cancelled Task's working membership returned to its Panel's.
+
+        The compensating step of `restore_orphaned_membership`.
+        """
+        if self._latest_event(cycle_id, self.MEMBERSHIP_RESTORED_EVENT) == dict(details):
+            return
+        now = observed_at.astimezone(UTC).replace(tzinfo=None)
+        kind = self.MEMBERSHIP_RESTORED_EVENT
+        self._write(
+            lambda connection: self._append_event(
+                connection, cycle_id=cycle_id, kind=kind, details=details, observed_at=now
+            )
+        )
+
     def working_manifest(self, cycle_id: str) -> str | None:
         """The membership this cycle last made active, or None when it moved none."""
         details = self._latest_event(cycle_id, self.WORKING_MANIFEST_EVENT)
         return None if details is None else str(details["manifest_revision"])
+
+    def working_binds(self, cycle_id: str | None = None) -> tuple[WorkingManifestBind, ...]:
+        """Every membership one cycle (or every cycle) made active, in the order recorded."""
+
+        def operation(connection: duckdb.DuckDBPyConnection) -> Any:
+            return connection.execute(
+                """
+                SELECT cycle_id, sequence, details_json, recorded_at
+                FROM workspace_maintenance_event WHERE kind = ? AND (? IS NULL OR cycle_id = ?)
+                ORDER BY recorded_at, cycle_id, sequence
+                """,
+                [self.WORKING_MANIFEST_EVENT, cycle_id, cycle_id],
+            ).fetchall()
+
+        binds = []
+        for cycle, sequence, details_json, recorded_at in self._read(operation):
+            details = json.loads(str(details_json))
+            binds.append(
+                WorkingManifestBind(
+                    cycle_id=str(cycle),
+                    sequence=int(sequence),
+                    manifest_revision=str(details["manifest_revision"]),
+                    authority=str(details["authority"]),
+                    owner_task=details.get("owner_task"),
+                    recorded_at=recorded_at,
+                )
+            )
+        return tuple(binds)
 
     AUDIT_SUPPLEMENT_EVENT = "workspace_maintenance.audit_supplement"
 

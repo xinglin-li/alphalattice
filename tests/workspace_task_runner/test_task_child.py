@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.control.task_control import child
 from alphalattice.control.task_control.child import (
     ONE_THREAD_VARIABLES,
     ChildInterrupted,
@@ -20,7 +21,20 @@ from alphalattice.control.task_control.child import (
     run_in_child,
 )
 
-HERE = "tests.workspace_task_runner.test_task_child"
+HERE = __spec__.name if __spec__ else __name__
+
+
+@pytest.fixture(autouse=True)
+def _no_kept_workers():
+    """No test inherits a kept worker another left, whose idle wait its own never reaches."""
+
+    def retire() -> None:
+        for worker, pool in list(child._WORKERS.items()):
+            child._retire_worker(worker, pool)
+
+    retire()
+    yield
+    retire()
 
 
 @pytest.mark.parametrize("spread", [False, True])
@@ -77,6 +91,13 @@ def numerical_product(*, cancelled) -> dict[str, object]:  # type: ignore[no-unt
     before = numerical_thread_counts()
     product = values @ values.T
     return {"counts": before, "after": numerical_thread_counts(), "product": product.tolist()}
+
+
+def limited_once(*, cancelled) -> None:  # type: ignore[no-untyped-def]
+    from alphalattice.kernel.shared_kernel.environment import numerical_thread_limit
+
+    with numerical_thread_limit(1):  # loads the libraries a limit holds, as a fit's first does
+        pass
 
 
 def refused(*, cancelled) -> None:  # type: ignore[no-untyped-def]
@@ -255,20 +276,14 @@ def test_a_spread_worker_loads_its_numerical_libraries_on_one_thread(monkeypatch
 
     for name in ONE_THREAD_VARIABLES:
         monkeypatch.setenv(name, "2")
-    with pytest.raises(ChildInterrupted):
-        run_in_child(f"{HERE}:ended", {})
-    try:
-        parent = {name: os.environ.get(name) for name in ONE_THREAD_VARIABLES}
-        assert run_in_child(f"{HERE}:thread_variables", {}) == parent
-        with child_calls(f"{HERE}:thread_variables", workers=2) as calls:
-            for _ in range(2):
-                calls.make({})
-            answers = [calls.answer() for _ in range(2)]
-        spread = [a for a in answers if a != parent]
-        assert spread and all(set(a.values()) == {"1"} for a in spread)
-    finally:
-        with pytest.raises(ChildInterrupted):
-            run_in_child(f"{HERE}:ended", {})
+    parent = {name: os.environ.get(name) for name in ONE_THREAD_VARIABLES}
+    assert run_in_child(f"{HERE}:thread_variables", {}) == parent
+    with child_calls(f"{HERE}:thread_variables", workers=2) as calls:
+        for _ in range(2):
+            calls.make({})
+        answers = [calls.answer() for _ in range(2)]
+    spread = [a for a in answers if a != parent]
+    assert spread and all(set(a.values()) == {"1"} for a in spread)
 
 
 def test_spread_numerical_calls_hold_one_thread_and_leave_normal_calls_unchanged() -> None:
@@ -277,6 +292,7 @@ def test_spread_numerical_calls_hold_one_thread_and_leave_normal_calls_unchanged
 
     values = np.arange(64, dtype=np.float64).reshape(8, 8)
     expected = (values @ values.T).tolist()
+    run_in_child(f"{HERE}:limited_once", {})  # the kept worker's first limited call came first
     ordinary = run_in_child(f"{HERE}:numerical_product", {})
     with child_calls(f"{HERE}:numerical_product", workers=2) as calls:
         for _ in range(2):
@@ -302,13 +318,6 @@ def observe_cancellation(*, started: str, stopped: str, cancelled):
 
 def test_a_later_start_refusal_cancels_an_already_running_child(monkeypatch, tmp_path):
     """V610: a second worker start refusal drains a real first call through its cancel flag."""
-    # Retire all workers prior child tests may have kept, through their public call boundary.
-    with child_calls(f"{HERE}:ended", workers=3) as calls:
-        for _ in range(3):
-            calls.make({})
-        for _ in range(3):
-            with pytest.raises(ChildInterrupted):
-                calls.answer()
     start = multiprocessing.get_context("spawn").Process.start
     processes = []
 
@@ -322,6 +331,9 @@ def test_a_later_start_refusal_cancels_an_already_running_child(monkeypatch, tmp
     stopped = tmp_path / "stopped"
     with monkeypatch.context() as patch:
         patch.setattr(multiprocessing.get_context("spawn").Process, "start", fail_second)
+        with child_calls(f"{HERE}:thread_variables", workers=2) as preparation:
+            preparation.make({})
+            preparation.answer()
         with (
             pytest.raises(ChildStartFailed, match=r"^task_control\.child_start_failed$"),
             child_calls(f"{HERE}:observe_cancellation", workers=2) as calls,
@@ -367,7 +379,6 @@ def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(monkeypat
         RuntimeCapacityRequest,
         worker_processes,
     )
-    from alphalattice.control.task_control import child
 
     assert worker_processes(64) <= RuntimeCapacityRequest().maximum_kept_workers
     monkeypatch.setattr(child, "KEPT_WORKER_IDLE_SECONDS", 0.5)

@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from threading import Lock
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from alphalattice.control.product_host.composition import committee
 from alphalattice.interface.local_application.cli_contract import (
@@ -156,8 +156,7 @@ class NativeUsageReader:
             try:
                 project = admitted_session_project(self.workspace, candidate, host)
                 bindings, diagnostics = NativeResearchBinding.binding_entries(project)
-                for diagnostic in diagnostics:
-                    self._reason = self._reason or safe_failure_code(diagnostic["failure_code"])
+                self._binding_diagnostics(diagnostics)
                 found.extend(
                     (project, binding)
                     for binding in bindings
@@ -173,7 +172,8 @@ class NativeUsageReader:
         # The bindings the Host made itself, kept in the workspace.
         root = autobind_root(self.workspace)
         try:
-            held, _diagnostics = NativeResearchBinding.binding_entries(root)
+            held, diagnostics = NativeResearchBinding.binding_entries(root)
+            self._binding_diagnostics(diagnostics)
             found.extend(
                 (root, binding) for binding in held if binding.workspace.resolve() == self.workspace
             )
@@ -183,6 +183,19 @@ class NativeUsageReader:
             )
         # Admission and the Host's root may name the same binding; differing authority stays.
         return tuple(dict.fromkeys(found))
+
+    def _binding_diagnostics(self, diagnostics: tuple[dict[str, str], ...]) -> None:
+        """Keep unreadable binding reasons without dropping readable peers."""
+        for diagnostic in diagnostics:
+            self._remember_failure(safe_failure_code(diagnostic["failure_code"]))
+
+    @staticmethod
+    def _binding_answer(
+        status: str, sessions: list[dict[str, object]], reason: str | None
+    ) -> dict[str, object]:
+        if reason is not None:
+            return {"status": "UNAVAILABLE", "reason": reason, "sessions": sessions}
+        return {"status": status, "sessions": sessions}
 
     def _remember_failure(self, reason: str | None) -> None:
         self._reason = self._reason or reason
@@ -249,7 +262,8 @@ class NativeUsageReader:
 
         Returns:
             ``READ`` with one receipt per Session, ``RECENT`` for one read moments ago,
-            ``OFF`` or ``NOT_BOUND``; ``BUSY`` while another read runs.
+            ``OFF`` or ``NOT_BOUND``; ``BUSY`` while another read runs. ``UNAVAILABLE``
+            names an unreadable binding and keeps any readable Session receipts.
         """
         if not self._reading.acquire(blocking=False):
             return {"status": "BUSY", "sessions": []}
@@ -264,12 +278,13 @@ class NativeUsageReader:
                 self._read_at.clear()
                 return {"status": "OFF", "sessions": []}
             found = self._bindings()
+            binding_reason = self._reason
             active = tuple(item for item in found if item[1].usage != "OFF")
             self._retain(active)
             if not active:
                 self._status = "NOT_BOUND" if not found else "OFF"
                 self._progress = {}
-                return {"status": self._status, "sessions": []}
+                return self._binding_answer(self._status, [], binding_reason)
             self._status = "OBSERVING"
             pending_reason, pending_progress = self._reason, {}
             now = monotonic()
@@ -305,6 +320,41 @@ class NativeUsageReader:
             )
             if pending_reason is not None:
                 self._reason, self._progress = pending_reason, pending_progress
-            return {"status": "READ", "sessions": sessions}
+            return self._binding_answer("READ", sessions, binding_reason)
         finally:
             self._reading.release()
+
+
+class _UsageHost(Protocol):
+    native_usage_reader: NativeUsageReader | None
+
+
+class _UsageObserver(Protocol):
+    native_usage_state: Callable[[], dict[str, object]] | None
+
+
+def attach_native_usage(
+    self: _UsageHost,
+    operations: PortfolioResearchOperations,
+    activity: _UsageObserver,
+) -> None:
+    """Attach optional native usage and its unchanged Activity standing."""
+    # Optional reading owns no research authority and must not prevent serving it.
+    constructor_failure: str | None = None
+    try:
+        self.native_usage_reader = NativeUsageReader(operations)
+        operations.read_native_usage = self.native_usage_reader.read
+    except Exception as error:
+        self.native_usage_reader = None
+        constructor_failure = owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
+
+    def native_usage_state() -> dict[str, object]:
+        """Keep the last reading's standing visible through the activity owner's readback."""
+        if self.native_usage_reader is not None:
+            return self.native_usage_reader.state()
+        return {
+            "status": "UNAVAILABLE",
+            "reason": constructor_failure or "native_bridge.lead_usage_read_failed",
+        }
+
+    activity.native_usage_state = native_usage_state

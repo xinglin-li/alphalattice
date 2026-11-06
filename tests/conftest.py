@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterator
+from contextlib import nullcontext, suppress
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ from typing import Any
 import pytest
 
 from alphalattice.interface.local_application.cli_contract import AGENT_SESSION_VARIABLES
+from devtools import evaluation
 from devtools.architecture.evidence_roots import EvidenceRoots
 from devtools.evaluation.round_trip import (
     AdmissionPolicy,
@@ -32,14 +34,65 @@ from devtools.evaluation.round_trip import (
 from devtools.evaluation.round_trip import (
     plan_admission_problem as observed_plan_admission_problem,
 )
-from tests.pytest_environment import configure_temporary_roots, project_scope
+from tests import pytest_environment as environment
+
+pytest_plugins = ["devtools.testing.collection"]
+
+
+def _unit_contract(request: pytest.FixtureRequest) -> bool:
+    """Old-source counterfactuals keep their adapters until the unit producer exists."""
+    from devtools.testing import collection
+
+    key = getattr(collection, "CONTRACT", None)
+    return key is not None and key in request.node.stash and request.node.stash[key].layer == "unit"
 
 
 @pytest.fixture(autouse=True)
-def project_discovery(tmp_path, tmp_path_factory):
-    """Every test scopes project discovery and rejects outside reads without changing cwd."""
-    with project_scope(tmp_path, tmp_path_factory.getbasetemp()):
+def _seeds_read_in_place(request: pytest.FixtureRequest) -> Iterator[None]:
+    """A test's copies of a session seed read its market data and Parquet in place, linked and
+    read-only; one marked private_data writes them, so it gets a private copy."""
+    private = request.node.get_closest_marker("private_data") is not None
+    environment.RUNNING_TEST.update(
+        id=request.node.nodeid, private=private, factory=request.getfixturevalue("tmp_path_factory")
+    )
+    try:
         yield
+    finally:
+        try:
+            if verify := environment.RUNNING_TEST.get("verify"):
+                verify(request.node.nodeid)
+        finally:
+            environment.RUNNING_TEST.update(id=None, private=False, factory=None, verify=None)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _seeds_read_in_place_stay_unchanged() -> Iterator[None]:
+    """A write through a seed file read in place is named by seed and file at session end."""
+    yield
+    # Found among the loaded modules, never imported here: only a run that copied a seed pays.
+    if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
+        assert seeds.seeds_changed() == []
+
+
+@pytest.fixture(autouse=True)
+def project_isolation(tmp_path, tmp_path_factory, request):
+    """Every test confines discovery and reads to its invocation's temporary roots."""
+    base = tmp_path_factory.getbasetemp()
+    allowed = base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base
+    with environment.project_scope(tmp_path, allowed, host_reads=not _unit_contract(request)):
+        yield
+
+
+@pytest.fixture(scope="session")
+def golden_cache(tmp_path_factory):
+    """Workers bind acquisition and discovery to the same invocation, never another run."""
+    # Old-source counterfactuals retain their original per-worker discovery scope.
+    kwargs = {}
+    if hasattr(evaluation, "GoldenRuntime"):
+        kwargs.update(runtime=environment.golden_runtime(), controller=False)
+    base = tmp_path_factory.getbasetemp()
+    with getattr(evaluation, "golden_run", nullcontext)(base, **kwargs) as root:
+        yield root
 
 
 @pytest.fixture
@@ -254,13 +307,17 @@ def _host_plan_admission(host, owner, operation, body):
 
 
 @pytest.fixture(autouse=True)
-def _memory_checks_read_no_host(monkeypatch: pytest.MonkeyPatch) -> None:
+def _memory_checks_read_no_host(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
     """The early memory refusal reads unknown memory, and skips, unless a test sets it.
 
     The refusal compares a plan's estimate with the machine's free memory. A fixture's work
     passes or fails by its own code, never by what else the host runs (PERF-1 item 3: a
     preparation fixture was refused while another heavy set held commit).
     """
+    if _unit_contract(request):
+        return
     # Found by its class among the loaded modules, as below: any test that can reach the gate
     # loaded it at collection through the Host's composition.
     for module in list(sys.modules.values()):
@@ -278,6 +335,9 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
     SC3), at the one door every caller's request passes, `PortfolioResearchOperations.execute`;
     a test that never loaded the Host's operations pays nothing.
     """
+    if _unit_contract(request):
+        yield
+        return
     # Found by its class among the loaded modules, never by a quoted module path, which the
     # impact walk reads as every test's dependency: the wrapper reaches only the tests that run
     # an operation, and they select themselves by their own imports.
@@ -377,6 +437,7 @@ _DURATIONS = Path(__file__).resolve().parents[1] / "tmp" / "test-durations.json"
 costs only the order of the next parallel run."""
 _WORKER = "PYTEST_XDIST_WORKER"
 _measured: dict[str, float] = {}
+_failed: set[str] = set()
 
 
 def _recorded_durations() -> dict[str, float]:
@@ -394,13 +455,27 @@ def pytest_configure(config: pytest.Config) -> None:
     """Refuse checkout temp before collection; keep the workers' longest-first queue."""
     checkout = Path(__file__).resolve().parents[1]
     try:
-        configure_temporary_roots(checkout, config.getoption("basetemp"))
+        environment.configure_temporary_roots(checkout, config.getoption("basetemp"))
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error
+    if not hasattr(config, "workerinput"):  # the controller alone: one warning per run
+        environment.warn_unplaced(config, checkout.parents, sys.stderr)
+        recorded = _recorded_durations() if config.getoption("dist", "no") != "no" else {}
+        if (
+            os.environ.get("ALPHALATTICE_TEST_LANE") == "nightly"
+            and config.getoption("dist", "no") == "load"
+            and recorded
+            and 0 in recorded.values()
+        ):
+            from devtools.testing.collection import load_policy, scheduling_hints
+
+            with suppress(OSError, ValueError):  # the cache cannot stop a test suite
+                recorded = scheduling_hints(recorded, load_policy(checkout))
+        config._recorded_scheduling_hints = recorded
     if (
         config.getoption("dist", "no") == "load"
         and config.getoption("maxschedchunk", None) is None
-        and _recorded_durations()
+        and getattr(config, "_recorded_scheduling_hints", {})
     ):
         # xdist otherwise reserves a large consecutive batch on each worker.
         # Two is its minimum prefetch; explicit operator settings stay intact.
@@ -411,7 +486,7 @@ def pytest_configure(config: pytest.Config) -> None:
 def pytest_configure_node(node: object) -> None:
     """xdist, in the main process: every worker sorts by the one reading taken here, so their
     collections agree even when another run rewrites the file meanwhile."""
-    node.workerinput["recorded_durations"] = _recorded_durations()  # type: ignore[attr-defined]
+    node.workerinput["recorded_durations"] = node.config._recorded_scheduling_hints  # type: ignore[attr-defined]
     node.workerinput["maintainer_thread"] = _MAINTAINER_THREAD  # type: ignore[attr-defined]
     # xdist sets config.option.dist to "no" inside a worker. Preserve the
     # controller's mode alongside the snapshot its collection uses.
@@ -431,6 +506,11 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     """
     if hasattr(session.config, "workerinput") or session.config.option.collectonly:
         return
+    if factory := getattr(evaluation, "golden_controller", None):
+        session.config._golden_controller = factory(
+            session.config._tmp_path_factory.getbasetemp(), runtime=environment.golden_runtime()
+        )
+        session.config._golden_controller.__enter__()
     checkout = Path(__file__).resolve().parents[1]
     command = [sys.executable, str(checkout / "scripts/build_local_web_ui.py"), "--product"]
 
@@ -458,6 +538,28 @@ def pytest_sessionstart(session: pytest.Session) -> None:
                 + checked.stdout
                 + checked.stderr
             )
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    """A collected module that may build the shared risk golden finds it published first."""
+    builder = sys.modules.get("tests.researcher_methodology_surface.real_workspace")
+    if builder is not None and not session.config.option.collectonly:
+        (root := builder._golden_root()).mkdir(parents=True, exist_ok=True)
+        with environment.project_scope(root, root):  # confined like any test's build
+            external = any("external_factor_workspace" in i.fixturenames for i in session.items)
+            # This fixture builds a different, smaller universe than the default Risk workspace.
+            membership = [i for i in session.items if "stopped_change" in i.fixturenames]
+            if not membership or len(membership) != len(session.items) or external:
+                builder.warm_real_risk_golden(external=external)
+            for symbols in dict.fromkeys(tuple(i.module.MEMBERS) for i in membership):
+                builder.warm_real_risk_golden(symbols=symbols, sector_size=len(symbols))
+        if any("fresh_workspace" in item.fixturenames for item in session.items):
+            factory = session.config._tmp_path_factory
+            base = factory.getbasetemp()
+            if os.environ.get("PYTEST_XDIST_WORKER"):
+                base = base.parent
+            with environment.project_scope(base, base):
+                builder.session_fresh_seed(factory)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -501,18 +603,58 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     items[:] = [item for name in sorted(modules, key=lambda n: -cost[n]) for item in modules[name]]
 
 
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> Iterator[None]:
+    """A passed test's scratch goes with it, as tmp_path_retention_policy "failed" asks.
+
+    pytest's own removal ignores errors, and on Windows a sealed golden's read-only links defeat
+    it, so a passed journey's whole scratch stayed to the run's end. What still cannot go is named
+    in the test's JUnit properties, never swallowed.
+    """
+    from _pytest.tmpdir import tmppath_result_key
+
+    path = getattr(item, "funcargs", {}).get("tmp_path")
+    passed = item.stash.get(tmppath_result_key, {}).get(
+        "call", False
+    )  # tmp_path's teardown drops it
+    try:
+        yield
+    except BaseException:
+        raise  # a fixture teardown failure keeps the test's diagnostics
+    else:
+        factory = item.config._tmp_path_factory  # type: ignore[attr-defined]
+        if (
+            isinstance(path, Path)
+            and passed
+            and factory._retention_policy == "failed"
+            and path.exists()
+        ):
+            left = evaluation.golden_workspaces.remove_tree(path, factory.getbasetemp())
+            if left:
+                item.user_properties.append(("scratch_left", "; ".join(left)[:2000]))
+
+
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     """The main process adds each phase's seconds; a worker's reports reach it too."""
     if not os.environ.get(_WORKER):
         _measured[report.nodeid] = _measured.get(report.nodeid, 0.0) + report.duration
+        if report.failed:
+            _failed.add(report.nodeid)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """The main process merges what this run measured into the recorded seconds."""
+    if controller := getattr(session.config, "_golden_controller", None):
+        controller.__exit__(None, None, None)
     if os.environ.get(_WORKER) or not _measured:
         return
-    merged = _recorded_durations()
-    merged.update({name: round(seconds, 3) for name, seconds in _measured.items()})
+    from devtools.testing.collection import merge_timing_hints
+
+    lines: list[str] = []
+    if log := session.config.getini("log_file"):
+        with suppress(OSError, UnicodeError):  # the existing cache is only a scheduling hint
+            lines = Path(log).read_text(encoding="utf-8").splitlines()
+    merged = merge_timing_hints(_recorded_durations(), _measured, _failed, lines)
     staged = _DURATIONS.with_name(f"{_DURATIONS.name}.{os.getpid()}")
     try:
         _DURATIONS.parent.mkdir(parents=True, exist_ok=True)

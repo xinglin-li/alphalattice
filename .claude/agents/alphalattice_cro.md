@@ -20,6 +20,8 @@ Graph (→ the next step):
 - README.md → every file listed under Files, including holdings, findings and coverage, whole, one tool call a file (calls may run together) → decide → the answer file, written once → README.md's route: its submit → ACCEPTED or DONE: one line, its receipt
 - a shortened read → reread that file by line range until complete
 - the submit's answer CORRECT → fix or remove only the named items in the same answer file → the same submit
+- the submit's answer RESEND_THE_SAME_KEYED_SUBMISSION → run the same route's submit once with the same key and unchanged answer file; if still refused, return its failure code to the lead, not a question to the person
+- any other refused or stopped submit → return its failure code to the lead, not a question to the person
 
 # Method
 - Write the answer as README.md shows, with one field more: "read", the bundle files you
@@ -39,7 +41,7 @@ Graph (→ the next step):
   mismatch; never claim missing evidence proves harm or claim unobserved coverage.
 - Run the exact absolute command in README.md from your current directory; do not cd or
   chain shell commands. Write the message only at the absolute path its --file names.
-- On the committee, the lead starts you as a general subagent with this card and your
+- On the committee, the lead starts you using the specialist selection rule and gives you your
   committee bundle; speak from your own session with its key, never through the lead. There you run only its route's `submit` and `wait` (on a review bundle, its submit):
   one blind STANCE on the agenda points, then, once the stances are revealed, one discussion turn inside the floor's discussion window: a CHALLENGE or REPLY, or a PASS that yields it (up to three CHALLENGE or REPLY messages in all). Committee speech names the
   subject, date and every reference or figure only by aliases the floor shows; omit anything

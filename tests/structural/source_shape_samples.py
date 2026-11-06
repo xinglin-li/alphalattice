@@ -6,6 +6,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from devtools.architecture.structural import file_text
+
 _OPTION_CASES = {
     "accessions": ("--acquire-sec", "--entities", "AAPL", "--accessions", "bad", "--preflight"),
     "entities": ("--acquire-sec", "--entities", *(f"QE{index}" for index in range(9))),
@@ -77,6 +79,7 @@ def evidence_review_refusal_samples():
     root = Path(__file__).resolve().parents[2] / "src/alphalattice"
     owners = (
         "control/product_host/composition/evidence_review_application.py",
+        "control/product_host/composition/evidence_analysis_submit.py",
         "control/product_host/composition/evidence_review_delivery.py",
         "control/product_host/composition/evidence_review_bundles.py",
         # The book a request's selector names, opened.
@@ -356,3 +359,205 @@ def tracked_python_files(root: Path) -> tuple[Path, ...]:
         ).stdout.splitlines()
         if value and (root / value).is_file()
     )
+
+
+SCOPE: frozenset[str] | None = None  # set by the conftest for a scoped per_file node
+
+
+def in_scope(paths):
+    """All of these files, or in a scoped per_file node only the changed ones."""
+    return tuple(
+        paths if SCOPE is None else (p for p in paths if p.relative_to(ROOT).as_posix() in SCOPE)
+    )
+
+
+def scanned(root: Path, pattern: str = "*.py", *, recursive: bool = True) -> tuple[Path, ...]:
+    """The files a per_file scan reads: root's, or when scoped only the changed ones."""
+    return in_scope(sorted(root.rglob(pattern) if recursive else root.glob(pattern)))
+
+
+# Per-file facts the structural guards keep by each file's bytes (structural.kept_fact).
+
+
+def chat_model_imports(data: bytes) -> list[int]:
+    """How often one file imports langchain's chat-model initializer, and a Provider client."""
+    forbidden_modules = {"langchain_deepseek", "langchain_ollama", "langchain_openai", "openai"}
+    init = direct = 0
+    for node in ast.walk(ast.parse(file_text(data))):
+        if isinstance(node, ast.ImportFrom):
+            init += node.module == "langchain.chat_models"
+            direct += node.module in forbidden_modules
+        elif isinstance(node, ast.Import) and any(
+            alias.name in forbidden_modules for alias in node.names
+        ):
+            direct += 1
+    return [init, direct]
+
+
+def counts(value: object) -> bool:
+    """A kept fact's shape: a list of counts."""
+    return isinstance(value, list) and all(type(item) is int for item in value)
+
+
+def agent_facts(data: bytes) -> list[int]:
+    """Whether one file names an agent invocation, imports a framework tool binding, and
+    imports the Alpha agent package: three flags from its bytes."""
+    text = file_text(data)
+    invocation_tokens = (
+        "create_deep_agent",
+        "load_agent_profile",
+        "TypedActionMiddleware",
+        "build_chat_model(",
+    )
+    framework_binding_imports = {
+        ("langchain_core.tools", "StructuredTool"),
+        ("langchain_core.tools", "tool"),
+        ("langchain.tools", "tool"),
+        ("langgraph.prebuilt.tool_node", "ToolRuntime"),
+    }
+    alpha_agent_prefix = "alphalattice.investment.alpha_research.agent"
+    tree = ast.parse(text)
+    binds = any(
+        isinstance(node, ast.ImportFrom)
+        and any((node.module, alias.name) in framework_binding_imports for alias in node.names)
+        for node in ast.walk(tree)
+    )
+    imported_modules = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+    imported_modules.update(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    imports_agent = any(
+        imported == alpha_agent_prefix or imported.startswith(f"{alpha_agent_prefix}.")
+        for imported in imported_modules
+    )
+    invokes = any(token in text for token in invocation_tokens)
+    return [int(invokes), int(binds), int(imports_agent)]
+
+
+def declared_imports_of(data: bytes, package: str) -> list[str]:
+    """One file's ``alphalattice`` imports from its bytes, relative ones resolved in ``package``."""
+    tree = ast.parse(data.decode("utf-8"))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if node.level == 0:
+                if node.module and node.module.startswith("alphalattice"):
+                    found.add(node.module)
+                continue
+            base = package.split(".") if package else []
+            climb = node.level - 1
+            if climb:
+                base = base[: len(base) - climb]
+            resolved = ".".join([*base, node.module] if node.module else base)
+            if resolved.startswith("alphalattice"):
+                found.add(resolved)
+        elif isinstance(node, ast.Import):
+            found |= {a.name for a in node.names if a.name.startswith("alphalattice")}
+        elif isinstance(node, ast.Call):
+            target = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+            if target in {"import_module", "__import__"}:
+                for argument in node.args:
+                    if (
+                        isinstance(argument, ast.Constant)
+                        and isinstance(argument.value, str)
+                        and argument.value.startswith("alphalattice")
+                    ):
+                        found.add(argument.value)
+    return sorted(found)
+
+
+def names(value: object) -> bool:
+    """A kept fact's shape: a list of names."""
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def cutover_imports(data: bytes, package: list[str] | None) -> list[list[object]]:
+    """[line, module] for each module one file imports; a relative import resolved within its
+    ``package`` under src, and each name imported from a module counted as a module too."""
+    found: list[list[object]] = []
+    for node in ast.walk(ast.parse(file_text(data))):
+        modules: tuple[str, ...] = ()
+        if isinstance(node, ast.Import):
+            modules = tuple(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.level and package is not None:
+                parent = package[: len(package) - (node.level - 1)]
+                module = ".".join((*parent, *module.split(".")))
+            modules = (module, *(f"{module}.{alias.name}" for alias in node.names if module))
+        found += [[node.lineno, module] for module in modules]
+    return found
+
+
+def sites(value: object) -> bool:
+    """A kept fact's shape: a list of [line, text] rows."""
+    return isinstance(value, list) and all(
+        isinstance(row, list) and len(row) == 2 and type(row[0]) is int and isinstance(row[1], str)
+        for row in value
+    )
+
+
+def function_list(data: bytes) -> list[ast.FunctionDef]:
+    """One module's top-level functions, then its classes' methods, in source order."""
+    tree = ast.parse(file_text(data))
+    functions = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
+    functions.extend(
+        method
+        for owner in tree.body
+        if isinstance(owner, ast.ClassDef)
+        for method in owner.body
+        if isinstance(method, ast.FunctionDef)
+    )
+    return functions
+
+
+def module_functions(data: bytes) -> dict[str, ast.FunctionDef]:
+    """``function_list`` by name; a later one of the same name wins."""
+    return {node.name: node for node in function_list(data)}
+
+
+def review_clock_sites(data: bytes) -> list[list[str]]:
+    """[writers, callers]: one module's functions that write a review read clock, and those that
+    call ``_review_submission``; an inline delivery closure counts for its owning method."""
+    writers: set[str] = set()
+    callers: set[str] = set()
+    for node in function_list(data):  # every one, a repeated name too
+        name = node.name
+        for part in ast.walk(node):
+            if isinstance(part, ast.Dict) and any(
+                isinstance(k, ast.Constant) and k.value == "review_read_at" for k in part.keys
+            ):
+                writers.add(name)
+            if (
+                isinstance(part, ast.keyword)
+                and part.arg == "review_read_at"
+                and isinstance(part.value, ast.Call)
+                and isinstance(part.value.func, ast.Attribute)
+                and part.value.func.attr == "isoformat"
+            ):
+                writers.add(name)
+            if (
+                isinstance(part, ast.Call)
+                and isinstance(part.func, ast.Attribute)
+                and part.func.attr == "_review_submission"
+            ):
+                callers.add(name)
+    return [sorted(writers), sorted(callers)]
+
+
+def name_lists(value: object) -> bool:
+    """A kept fact's shape: a list of lists of names."""
+    return isinstance(value, list) and all(
+        isinstance(row, list) and all(isinstance(item, str) for item in row) for row in value
+    )
+
+
+AGENT_FACTS = (agent_facts, counts)
+REVIEW_CLOCK_FACTS = (review_clock_sites, name_lists)

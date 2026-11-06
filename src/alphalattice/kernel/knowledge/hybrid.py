@@ -104,7 +104,7 @@ _SEMANTIC_MODULE = "alphalattice.kernel.knowledge._embeddings"
 
 def _semantic_module() -> Any:
     try:
-        return importlib.import_module(_SEMANTIC_MODULE)
+        return importlib.import_module(_SEMANTIC_MODULE)  # lazy: optional.
     except (ImportError, OSError) as exc:
         raise _retrieval_error(
             "semantic runtime is unavailable",
@@ -115,10 +115,8 @@ def _semantic_module() -> Any:
 
 
 def _torch_module() -> Any:
-    """The one GPU runtime's loader, imported only for a recipe that names it."""
-
     try:
-        return importlib.import_module("alphalattice.kernel.knowledge._torch")
+        return importlib.import_module("alphalattice.kernel.knowledge._torch")  # lazy: GPU recipe.
     except (ImportError, OSError) as exc:
         raise _retrieval_error(
             "GPU retrieval runtime is unavailable",
@@ -195,7 +193,7 @@ def _default_adapter_factory(model_root: Path, spec: HybridIndexSpec) -> Any:
 
 
 def _reranking_module() -> Any:
-    return importlib.import_module("alphalattice.kernel.knowledge._reranking")
+    return importlib.import_module("alphalattice.kernel.knowledge._reranking")  # lazy: reranker.
 
 
 def _default_reranker_factory(model_root: Path, spec: HybridIndexSpec) -> Any:
