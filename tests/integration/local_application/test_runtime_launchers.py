@@ -27,6 +27,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
     publish_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.web_launcher import OPEN_THE_WORKBENCH
+from alphalattice.interface.local_application import client as local_client
 from alphalattice.kernel.shared_kernel.clocks import ReplayClock
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root, runtime_json
 
@@ -475,7 +476,7 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
         manifest = ResearchWorkspaceManifest.research_only("turn")
         publish_research_workspace_manifest(workspace, manifest)
 
-    connection = client.LocalResearchConnection.path(workspace)
+    connection = local_client.LocalResearchConnection.path(workspace)
 
     def stop_owned():
         if not connection.exists():
@@ -607,6 +608,19 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
         refused = json.loads(capsys.readouterr().out)
         assert refused["failure_code"] == "local_web.service_not_started"
         assert refused["next_action"] == "RESTORE_WORKSPACE_ACCESS" and not flags
+    # A folder with a Host's connection record is the launch's to read: that Host may serve it.
+    record = local_client.LocalResearchConnection.path(taken)
+    record.parent.mkdir()
+    record.write_text("{}", encoding="utf-8")
+    assert web_launcher._workspace_refusal(taken) is None
+    shutil.rmtree(record.parent)
+    with monkeypatch.context() as escaping:
+        escaping.setattr(
+            local_client.LocalResearchConnection,
+            "path",
+            lambda _: (_ for _ in ()).throw(local_client.LocalResearchClientError("escapes")),
+        )
+        assert web_launcher._workspace_refusal(taken) is None
     # A folder no Host can serve is named before any launch, with no command that could not work.
     assert main(launch, serve=web_launcher.main) == 2
     refused = json.loads(capsys.readouterr().out)

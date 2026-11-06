@@ -311,11 +311,21 @@ def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[
     return child
 
 
+def _names_a_host(workspace: Path) -> bool:
+    """Whether a Host left its connection here: whether that Host serves is the launch's to read."""
+    from alphalattice.interface.local_application import client  # lazy: only a refusal's path.
+
+    try:
+        return client.LocalResearchConnection.path(workspace).exists()
+    except client.LocalResearchClientError:
+        return True  # a record that leaves the workspace is refused by name at that read
+
+
 def _workspace_refusal(workspace: Path) -> int | None:
     """Refuse an unusable workspace before a detached Host is launched."""
     # Checked before any launch: a containment refusal would hand on a command that cannot serve.
     try:
-        if holds_foreign_files(workspace):
+        if holds_foreign_files(workspace) and not _names_a_host(workspace):
             message_id = "host.start.not_a_workspace"
             inside = workspace.resolve()
             found = inside.glob(f"workspaces/*/{RESEARCH_WORKSPACE_MANIFEST_NAME}")
