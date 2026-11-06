@@ -2748,5 +2748,6 @@
       "node": "tests/conftest.py::_seeds_read_in_place_stay_unchanged",
       "reason": "Finds the session-seed module among loaded modules, only to hash seeds a test read in place; a unit copies none."
     }
-  ]
+  ],
+  "data_files": []
 }

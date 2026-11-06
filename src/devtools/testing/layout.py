@@ -151,6 +151,18 @@ def new_test_file_problems(
     return []
 
 
+def new_data_file_problems(paths: Iterable[str], policy: Mapping[str, Any]) -> list[str]:
+    """Refuse each new data file a test brings until the size policy names it with its reason."""
+    registered = {row["path"] for row in policy.get("data_files", [])}
+    return [
+        f"TEST-DATA {path}: a test's new data file needs a reason; add "
+        f'{{"path": "{path}", "reason": "why a test needs these bytes"}} to '
+        f"data_files in {REGISTRIES[0]}, or build the data inside the test"
+        for path in paths
+        if path not in registered
+    ]
+
+
 def rule_patterns(pattern: str, files: Iterable[str], moves: dict[str, str]) -> list[str]:
     """Split a path rule without changing the remaining files or its node suffix."""
     path, separator, suffix = pattern.partition("::")

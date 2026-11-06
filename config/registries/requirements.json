@@ -27,6 +27,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "architecture.an_unresolved_change_stops_the_runner": {
+      "description": "A change no consumer map resolves stops the verification runner at its exit code; it never plans nothing and passes.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 5
+    },
     "architecture.discovered_imports_kept_by_place_and_bytes": {
       "description": "A module's discovered imports are kept in the process by its place under the source root and its bytes, so changed bytes or another place miss and a read or parse error is raised every time.",
       "owner": "devtools.architecture",

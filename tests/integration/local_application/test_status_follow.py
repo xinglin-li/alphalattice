@@ -84,6 +84,7 @@ def test_a_waiting_status_answers_when_the_task_moves_on_or_its_wait_ends() -> N
 
 
 def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")  # shlex replays the printed line
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "session-1")
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     output = tmp_path / "answer.json"

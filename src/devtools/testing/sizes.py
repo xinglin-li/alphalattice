@@ -86,6 +86,7 @@ def validate_policy(value: Any) -> dict[str, Any]:
     _quarantine(value)
     _framework_fixtures(value)
     _unit_backends(value)
+    _data_files(value)
     return value
 
 
@@ -135,6 +136,30 @@ def _framework_fixtures(policy: dict[str, Any]) -> None:
                 "with its own reason; modules and patterns are not entries"
             )
         seen.add(node)
+
+
+def _data_files(policy: dict[str, Any]) -> None:
+    """A data file under tests/ is registered once, by its exact path, with its own reason."""
+    rows = policy.get("data_files", [])
+    seen: set[str] = set()
+    if not isinstance(rows, list):
+        raise ValueError("test_size.data_files_invalid: use path and reason entries")
+    for row in rows:
+        path = row.get("path") if isinstance(row, dict) else None
+        reason = row.get("reason") if isinstance(row, dict) else None
+        if not (
+            isinstance(path, str)
+            and path.startswith("tests/")
+            and not set(path) & set("*?[\\")
+            and isinstance(reason, str)
+            and reason.strip()
+            and path not in seen
+        ):
+            raise ValueError(
+                "test_size.data_files_invalid: name each exact tests/ path once "
+                "with its own reason; patterns are not entries"
+            )
+        seen.add(path)
 
 
 def _structural_file(pattern: str, policy: dict[str, Any]) -> bool:

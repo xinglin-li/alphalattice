@@ -267,6 +267,35 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
         assert shape.main([]) == code
     texts[":" + new] = legacy
 
+    data, sizes = "tests/integration/testing/panel.csv", "config/registries/test-sizes.json"
+    policy = json.loads((shape.ROOT / sizes).read_text("utf-8"))
+    trees, moves = {"HEAD": ""}, {}
+    texts = {":" + sizes: json.dumps(policy)}
+
+    def holding(command, **kwargs):
+        if command[1] == "ls-tree":
+            return shape.subprocess.CompletedProcess(command, 0, trees[command[5]] + "\0")
+        return _git_backend(texts, [data, "tests/unit/testing/notes.md"], moves)(command, **kwargs)
+
+    monkeypatch.setattr(shape.subprocess, "run", holding)
+    assert shape.main([]) == 1  # a new data file names no reason
+    trees["HEAD"] = data
+    assert shape.main([]) == 0  # the tree is the baseline
+    trees["HEAD"] = ""
+    row = {"path": data, "reason": "One small panel a test reads in place."}
+    texts[":" + sizes] = json.dumps({**policy, "data_files": [row]})
+    assert shape.main([]) == 0  # registered with its reason
+    for bad in ({**row, "reason": " "}, {**row, "path": "tests/*.csv"}, {**row, "path": "x"}):
+        texts[":" + sizes] = json.dumps({**policy, "data_files": [bad]})
+        assert shape.main([]) == 1
+    texts[":" + sizes] = json.dumps({**policy, "data_files": [row, row]})
+    assert shape.main([]) == 1  # a row names one file once
+    texts[":" + sizes] = json.dumps(policy)
+    moved = raw.replace(old, "tests/integration/testing/old.csv").replace(new, data)
+    for blob, code in (("a", 0), ("b", 1)):  # a byte-identical move keeps its standing
+        moves["raw"] = moved.replace(f"{'a' * 40} A", f"{blob * 40} A")
+        assert shape.main([]) == code
+
     source = "src/devtools/testing/layout.py"
     wrong, right = "tests/unit/testing/test_wrong.py", "tests/unit/testing/test_layout.py"
     test = (
