@@ -56,6 +56,7 @@ from alphalattice.interface.local_application.web import (
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 
 from .process_job import ChildJob
+from .workspace_folder import RESEARCH_WORKSPACE_MANIFEST_NAME, holds_foreign_files
 
 # The Host's session (and the numerical libraries it brings) is imported in `main`, never here:
 # a Host run as `-m` this module has each spawned worker re-import it first, before the worker
@@ -171,6 +172,7 @@ def _refusal(
     launch_context: dict[str, int | None] | None = None,
     cause: str | None = None,
     host_log: str | None = None,
+    workspaces: list[str] | None = None,
 ) -> int:
     """Print a launch's refusal as an answer: its code, its words and its way on."""
     answer: dict[str, object] = {
@@ -191,6 +193,8 @@ def _refusal(
         answer["cause"] = cause
     if host_log is not None:
         answer["host_log"] = host_log
+    if workspaces is not None:
+        answer["workspaces"] = workspaces
     print(json.dumps(answer), flush=True)  # noqa: T201  # bootstrap/lifecycle
     return 2
 
@@ -307,6 +311,31 @@ def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[
     return child
 
 
+def _workspace_refusal(workspace: Path) -> int | None:
+    """Refuse an unusable workspace before a detached Host is launched."""
+    # Checked before any launch: a containment refusal would hand on a command that cannot serve.
+    try:
+        if holds_foreign_files(workspace):
+            message_id = "host.start.not_a_workspace"
+            inside = workspace.resolve()
+            found = inside.glob(f"workspaces/*/{RESEARCH_WORKSPACE_MANIFEST_NAME}")
+            return _refusal(
+                "research_workspace.nonempty_manifest_absent",
+                str(worded(message_id)),
+                "SERVE_A_RESEARCH_WORKSPACE",
+                message_id=message_id,
+                workspaces=sorted(str(manifest.parent) for manifest in found),
+            )
+    except OSError as error:
+        return _refusal(
+            "local_web.service_not_started",
+            f"Cannot inspect workspace {workspace}: {error}. "
+            "Restore access to the folder and retry; nothing was started.",
+            "RESTORE_WORKSPACE_ACCESS",
+        )
+    return None
+
+
 def _detach(
     arguments: argparse.Namespace, host_interpreter: Path | None = None, new_research: bool = False
 ) -> int:
@@ -325,6 +354,8 @@ def _detach(
             "it. Drop --stop-on-stdin, or --detach for an attached Host.",
             "DROP_ONE_OF_DETACH_AND_STOP_ON_STDIN",
         )
+    if (workspace_refusal := _workspace_refusal(arguments.workspace)) is not None:
+        return workspace_refusal
     descriptor, name = tempfile.mkstemp(prefix="alphalattice-host-", suffix=".log")
     os.close(descriptor)
     log_path, key = Path(name), secrets.token_urlsafe(32)

@@ -15648,6 +15648,9 @@
 },
 "research_workspace.nonempty_manifest_absent": {
 "owner": "research_workspace",
+"message_id": "host.start.not_a_workspace",
+"next_action": "SERVE_A_RESEARCH_WORKSPACE",
+"recovery": "workspaces lists the research workspaces inside the refused folder; serve one, or a new empty folder.",
 "category": "FAILED_PRECONDITION"
 },
 "research_workspace.publication_readback_failed": {

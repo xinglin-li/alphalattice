@@ -442,6 +442,16 @@
         "zh-CN": "分离运行的主机在待执行的更新、任务、请求或已启用的自动更新仍需要它时会继续运行；否则，空闲 {seconds} 秒后会自动停止（0 表示禁用空闲自动停止）。"
       }
     },
+    "host.start.not_a_workspace": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This folder holds files and is not a research workspace, so no Host can serve it and nothing was started. Serve one of the listed workspaces, or a new empty folder for new research, such as workspaces/my-research.",
+        "zh-CN": "此文件夹含有文件且不是研究工作区，因此 宿主 无法为其提供服务，本次未启动任何进程。请改用所列的工作区之一，或为新研究使用一个新的空文件夹，例如 workspaces/my-research。"
+      },
+      "description": "Names why serve refused a folder before any launch, with the workspaces that recover it."
+    },
     "host.start.breakaway_denied.panel": {
       "owner": "alphalattice.control.product_host.composition",
       "kind": "MESSAGE",

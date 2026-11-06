@@ -569,13 +569,45 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
     taken = tmp_path / "taken"
     taken.mkdir()
     (taken / "stray.txt").write_text("not a workspace", encoding="utf-8")
+    beside = taken / "workspaces" / "my-research"
+    beside.mkdir(parents=True)
+    (beside / "research-workspace.json").write_text("{}", encoding="utf-8")
     launch = ["--lang", lang, "--workspace", str(taken), "serve"]
     launch.extend(["--port", "0", "--no-browser", "--detach"])
+    # An unreadable preflight refuses before launch and names how to recover.
+    with monkeypatch.context() as unreadable:
+        unreadable.setattr(
+            web_launcher,
+            "holds_foreign_files",
+            lambda _: (_ for _ in ()).throw(PermissionError("denied")),
+        )
+        assert main(launch, serve=web_launcher.main) == 2
+        refused = json.loads(capsys.readouterr().out)
+        assert refused["failure_code"] == "local_web.service_not_started"
+        assert refused["next_action"] == "RESTORE_WORKSPACE_ACCESS"
+        assert str(taken) in refused["detail"] and not flags
+    # A folder can become unreadable after the foreign-file check, before discovery.
+    with monkeypatch.context() as unreadable:
+        unreadable.setattr(web_launcher, "holds_foreign_files", lambda _: True)
+        unreadable.setattr(
+            Path, "resolve", lambda *_a, **_k: (_ for _ in ()).throw(PermissionError("denied"))
+        )
+        assert web_launcher._workspace_refusal(taken) == 2
+        refused = json.loads(capsys.readouterr().out)
+        assert refused["failure_code"] == "local_web.service_not_started"
+        assert refused["next_action"] == "RESTORE_WORKSPACE_ACCESS" and not flags
+    # A folder no Host can serve is named before any launch, with no command that could not work.
+    assert main(launch, serve=web_launcher.main) == 2
+    refused = json.loads(capsys.readouterr().out)
+    assert refused["failure_code"] == "research_workspace.nonempty_manifest_absent"
+    assert refused["workspaces"] == [str(beside.resolve())]
+    assert "terminal_command" not in refused and not flags
+    (taken / "research-workspace.json").write_text("not a manifest", encoding="utf-8")
     assert main(launch, serve=web_launcher.main) == 2
     exited = json.loads(capsys.readouterr().out)
     if escape == "escaped" or os.name != "nt":
         assert exited["failure_code"] == "local_web.detached_host_exited"
-        assert "nonempty_manifest_absent" in Path(exited["detail"].rsplit(": ", 1)[1]).read_text()
+        assert "research_workspace." in Path(exited["detail"].rsplit(": ", 1)[1]).read_text()
         if os.name == "nt":
             probe = "import ctypes; print(bool(ctypes.windll.kernel32.GetConsoleWindow()))"
             host = f"import subprocess, sys; subprocess.run([sys.executable, '-c', {probe!r}])"
