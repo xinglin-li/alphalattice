@@ -16,6 +16,7 @@ import pytest
 
 from alphalattice.control.data_platform.preflight import (
     evaluate_universe_spy_divergence_preflight,
+    resolve_trading_session_authority,
 )
 from alphalattice.control.data_platform.readiness import (
     WorkspaceConsentAction,
@@ -1075,3 +1076,25 @@ def test_daily_source_finality_keeps_an_aware_close(zone):
     """aware UTC and exchange-local instants retain the same two-hour finality rule."""
     close = datetime(2026, 10, 2, 16, tzinfo=zone)
     assert daily_source_ready_at(close) == close + timedelta(hours=2)
+
+
+@pytest.mark.proves("data_platform.session_authority_is_content_addressed")
+def test_resolved_session_authority_excludes_weekends_and_is_content_addressed() -> None:
+    """The Host resolves one calendar, and the same range always seals the same axis."""
+
+    stamp = datetime(2026, 2, 1, tzinfo=UTC)
+    first = resolve_trading_session_authority(
+        start=date(2026, 1, 2), end=date(2026, 1, 20), as_of_timestamp=stamp
+    )
+    again = resolve_trading_session_authority(
+        start=date(2026, 1, 2), end=date(2026, 1, 20), as_of_timestamp=stamp
+    )
+    assert first.authority_hash == again.authority_hash
+    assert all(session.weekday() < 5 for session in first.sessions)
+    assert date(2026, 1, 3) not in first.session_set  # a Saturday
+    assert first.covers(date(2026, 1, 3)) is True  # covered, and not a session
+
+    narrower = resolve_trading_session_authority(
+        start=date(2026, 1, 2), end=date(2026, 1, 16), as_of_timestamp=stamp
+    )
+    assert narrower.authority_hash != first.authority_hash

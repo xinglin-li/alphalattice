@@ -93,6 +93,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_platform.session_authority_is_content_addressed": {
+      "description": "The Host resolves one trading calendar: weekends are covered but are not sessions, and one range always seals the same axis while a narrower range seals another.",
+      "owner": "alphalattice.control.data_platform",
+      "layer": "integration",
+      "seconds": 2
+    },
     "evaluation.continuation_snapshot_integrity": {
       "description": "A native acceptance continuation admits only the exact tracked bytes written by its recorded prestart configure and refuses other tracked changes.",
       "owner": "devtools.evaluation",

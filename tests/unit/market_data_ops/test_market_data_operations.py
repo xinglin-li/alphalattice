@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date
 
 import pytest
 
@@ -243,28 +243,3 @@ def test_session_authority_judges_only_the_range_it_covers() -> None:
         "data.sentinel.bar_session_not_trading",
         "data.sentinel.action_session_not_trading",
     }
-
-
-def test_resolved_session_authority_excludes_weekends_and_is_content_addressed() -> None:
-    """The Host resolves one calendar, and the same range always seals the same axis."""
-
-    from alphalattice.control.data_platform.preflight import (
-        resolve_trading_session_authority,
-    )
-
-    stamp = datetime(2026, 2, 1, tzinfo=UTC)
-    first = resolve_trading_session_authority(
-        start=date(2026, 1, 2), end=date(2026, 1, 20), as_of_timestamp=stamp
-    )
-    again = resolve_trading_session_authority(
-        start=date(2026, 1, 2), end=date(2026, 1, 20), as_of_timestamp=stamp
-    )
-    assert first.authority_hash == again.authority_hash
-    assert all(session.weekday() < 5 for session in first.sessions)
-    assert date(2026, 1, 3) not in first.session_set  # a Saturday
-    assert first.covers(date(2026, 1, 3)) is True  # covered, and not a session
-
-    narrower = resolve_trading_session_authority(
-        start=date(2026, 1, 2), end=date(2026, 1, 16), as_of_timestamp=stamp
-    )
-    assert narrower.authority_hash != first.authority_hash
