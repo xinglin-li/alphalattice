@@ -166,15 +166,33 @@ def _stop_change(tmp_path_factory, workspace: Path) -> dict[str, object]:  # typ
 
 
 @pytest.fixture(scope="module")
-def stopped_change(tmp_path_factory) -> SimpleNamespace:  # type: ignore[no-untyped-def]
+def stopped_change(tmp_path_factory, golden_cache) -> SimpleNamespace:  # type: ignore[no-untyped-def]
     """A stock-list change with two short-tailed leavers, a sectorless joiner and an owed audit,
     stopped on the Panel's coverage floor after its cycle made its own Sector-reduced membership
     active, with every step's answer kept. The Host run (about 40 s) happens once per session
     across workers; each worker gets its own copy, the same binding, provider and source."""
+    from devtools.evaluation.golden_workspaces import golden_inputs
+    from tests.researcher_methodology_surface.real_workspace import _environment_digest
+
+    snapshot = golden_inputs(
+        ROOT, ("src", "tests", "scripts", "config", "pyproject.toml", "uv.lock")
+    )
+    if snapshot is None:
+        raise RuntimeError("session workspace golden controller is unavailable")
+    environment = _environment_digest()
+
+    def build(workspace):  # type: ignore[no-untyped-def]
+        metadata = _stop_change(tmp_path_factory, workspace)
+        if _environment_digest() != environment:
+            raise RuntimeError("session workspace environment changed during build")
+        return metadata
+
     seed, built = session_workspace(
         tmp_path_factory,
         "membership_stopped_change",
-        lambda workspace: _stop_change(tmp_path_factory, workspace),
+        build,
+        inputs={"environment": environment, "members": MEMBERS},
+        persistent=snapshot,
     )
     for path in seed.rglob("*.parquet"):
         refuse_writers(str(path))

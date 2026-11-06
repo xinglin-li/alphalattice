@@ -6,10 +6,12 @@ import ctypes
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import shutil
 import stat
+import threading
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
@@ -86,6 +88,42 @@ class GoldenRun:
 
     root: Path
     runtime: GoldenRuntime
+    readers: ExitStack = field(default_factory=ExitStack, compare=False, repr=False)
+    generations: set[Path] = field(default_factory=set, compare=False, repr=False)
+    releases: list[Callable[[], None]] = field(default_factory=list, compare=False, repr=False)
+    state: dict[str, bool] = field(
+        default_factory=lambda: {"closed": False}, compare=False, repr=False
+    )
+    mutex: Any = field(default_factory=threading.RLock, compare=False, repr=False)
+
+    def hold(self, generation: Path, release: Callable[[], None]) -> bool:
+        """Keep an OS reader lease until this invocation releases its linked files."""
+        generation = payload_path(generation)
+        with self.mutex:
+            if self.state["closed"]:
+                raise RuntimeError("golden reader invocation is closed")
+            if generation in self.generations:
+                return False
+            lock = generation.parent / f".{generation.name}.readers.lock"
+            self.readers.enter_context(self.runtime.lock(lock, shared=True))
+            self.generations.add(generation)
+            self.releases.append(release)
+            return True
+
+    def close_readers(self) -> None:
+        """Record each last use while still leased; retain a marker if recording fails."""
+        with self.mutex:
+            if self.state["closed"]:
+                return
+            self.state["closed"] = True
+            try:
+                for release in self.releases:
+                    try:
+                        release()
+                    except (OSError, RuntimeError, ValueError) as error:
+                        logging.getLogger(__name__).warning("golden release unmeasured: %s", error)
+            finally:
+                self.readers.close()
 
     def pin(self, key: str) -> None:
         with self.runtime.lock(self.root / "index.lock"):
@@ -171,7 +209,27 @@ def golden_run(root: Path, *, runtime: GoldenRuntime, controller: bool = True) -
         try:
             yield run.root
         finally:
-            _RUN.reset(token)
+            try:
+                run.close_readers()
+            finally:
+                _RUN.reset(token)
+
+
+def hold_generation(generation: Path, release: Callable[[], None]) -> bool:
+    """Pin a shared payload for the bound invocation, recording its last use on release."""
+    run = _RUN.get()
+    if run is None:
+        raise RuntimeError("golden reader has no invocation; start a managed run")
+    return run.hold(generation, release)
+
+
+def generation_held(generation: Path) -> bool:
+    """Whether this invocation has already pinned the generation it will link."""
+    run = _RUN.get()
+    if run is None:
+        return False
+    with run.mutex:
+        return not run.state["closed"] and payload_path(generation) in run.generations
 
 
 def golden_root(fallback: Path) -> Path:
@@ -273,13 +331,48 @@ def seal_payload(
             if any(info.st_nlink > counts[info.st_dev, info.st_ino] for _, info in files):
                 raise RuntimeError("payload has a hard link outside its root")
             for path, info in files:
-                path.chmod(info.st_mode & ~stat.S_IWRITE)
-            (workspace.parent / "payload.json").write_text(
-                json.dumps(contents, sort_keys=True), encoding="utf-8"
-            )
+                path.chmod(info.st_mode & ~0o222)
+            manifest = workspace.parent / "payload.json"
+            manifest.write_text(json.dumps(contents, sort_keys=True), encoding="utf-8")
+            manifest.chmod(stat.S_IREAD)
     except (OSError, RuntimeError) as error:
         raise RuntimeError(
             f"golden payload cannot be sealed; close its writer and use a fresh run: {workspace}"
+        ) from error
+
+
+class GoldenPayloadCorrupt(RuntimeError):
+    """A readable payload differs from the sealed evidence recorded for it."""
+
+
+def verified_payload(workspace: Path) -> dict[str, str]:
+    """Read a sealed golden through its no-follow manifest and refuse changed or writable files."""
+    workspace = payload_path(workspace)
+    try:
+        manifest = workspace.parent / "payload.json"
+        if manifest.is_symlink() or manifest.is_junction():
+            raise ValueError("payload manifest is a link")
+        if manifest.stat().st_mode & 0o222:
+            raise ValueError("payload manifest is writable")
+        expected = json.loads(manifest.read_bytes())
+        actual = _manifest(workspace, (".",), filtered=False)
+        if not isinstance(expected, dict) or actual != expected:
+            raise ValueError("payload differs from its manifest")
+        files = {
+            name.removeprefix("./"): digest
+            for name, digest in actual.items()
+            if not name.endswith("/")
+        }
+        if any((workspace / name).stat().st_mode & 0o222 for name in files):
+            raise ValueError("payload contains a writable file")
+        return cast(dict[str, str], files)
+    except (FileNotFoundError, ValueError, TypeError, UnicodeError) as error:
+        raise GoldenPayloadCorrupt(
+            f"golden payload verification refused: {workspace}: {error}"
+        ) from error
+    except (OSError, RuntimeError) as error:
+        raise RuntimeError(
+            f"golden payload verification unmeasured: {workspace}: {error}"
         ) from error
 
 
@@ -474,13 +567,31 @@ def _remove_windows(path: Path, root: Path) -> list[str]:
     return left
 
 
-def in_invocation(path: Path) -> bool:
-    """Whether a golden lies inside this process's own bound invocation (golden_run): only then may
-    a test's acquisition link it, so every reader of a linked golden is that invocation's, and
-    every cleanup that can clear its seal runs after the invocation ends. A subprocess binds no
-    run, and a fallback or shared root lies outside one: both acquire independent copies."""
+def remove_idle_reader_lock(path: Path) -> None:
+    """Under the key lock and after reader exclusion, remove only its plain lock name."""
+    path = payload_path(path)
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_nlink != 1
+        or (getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+    ):
+        raise RuntimeError("golden reader lock is not an owned regular file")
+    path.unlink()
+
+
+def in_invocation(path: Path, *, shared: Path | None = None) -> bool:
+    """A managed test may read its own golden or an explicitly owned shared root in place."""
     run = _RUN.get()
-    return run is not None and payload_path(path).is_relative_to(payload_path(run.root))
+    if run is None:
+        return False
+    source = payload_path(path)
+    return source.is_relative_to(payload_path(run.root)) or (
+        shared is not None and source.is_relative_to(payload_path(shared))
+    )
 
 
 def read_in_place(relative: str, size: int) -> bool:
@@ -514,7 +625,15 @@ def copy_payload(
     try:
         if target.exists():
             raise RuntimeError("payload destination already exists")
-        expected = json.loads((workspace.parent / "payload.json").read_bytes())
+        try:
+            manifest = workspace.parent / "payload.json"
+            if manifest.is_symlink() or manifest.is_junction():
+                raise RuntimeError("payload manifest is a link")
+            if manifest.stat().st_mode & 0o222:
+                raise GoldenPayloadCorrupt("payload manifest is writable")
+            expected = json.loads(manifest.read_bytes())
+        except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError) as error:
+            raise GoldenPayloadCorrupt("golden payload manifest is missing or malformed") from error
         # A derived variant's own folder, under a parent that exists, never through a link.
         staged.parent.mkdir(exist_ok=True)
         if staged.parent.is_symlink() or staged.parent.is_junction():
@@ -523,8 +642,8 @@ def copy_payload(
 
         def copy_one(path: Path) -> str:
             info = path.stat()
-            if info.st_mode & stat.S_IWRITE:
-                raise RuntimeError("payload is not read-only")
+            if info.st_mode & 0o222:
+                raise GoldenPayloadCorrupt("payload is not read-only")
             relative = path.relative_to(workspace).as_posix()
             destination = staged / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -544,11 +663,15 @@ def copy_payload(
         with closed(workspace):
             actual = _manifest(workspace, (".",), filtered=False, read=copy_one)
             if actual != expected:
-                raise RuntimeError("payload disagrees with its manifest")
+                raise GoldenPayloadCorrupt("payload disagrees with its manifest")
         for name in actual:
             if name.endswith("/"):
                 (staged / name).mkdir(parents=True, exist_ok=True)
         staged.rename(target)
+    except GoldenPayloadCorrupt as error:
+        raise GoldenPayloadCorrupt(
+            f"golden payload restore refused: {workspace}: {error}"
+        ) from error
     except (OSError, ValueError, RuntimeError) as error:
         raise RuntimeError(
             f"golden payload restore refused; use a fresh run: {workspace}"

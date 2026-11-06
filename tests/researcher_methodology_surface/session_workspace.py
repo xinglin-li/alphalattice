@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -16,13 +17,26 @@ import stat
 import tempfile
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import portalocker
 import pytest
 
-from devtools.evaluation.golden_workspaces import refuse_writers
+from devtools.evaluation.golden_workspaces import (
+    GoldenInputs,
+    GoldenPayloadCorrupt,
+    hold_generation,
+    payload_path,
+    persistent_golden_root,
+    refuse_writers,
+    remove_idle_reader_lock,
+    remove_tree,
+    seal_payload,
+    verified_payload,
+)
 from tests.pytest_environment import RUNNING_TEST, golden_runtime
 
 
@@ -36,12 +50,27 @@ def _files(root: Path) -> dict[str, str]:
     return result
 
 
+@contextmanager
+def _closed_seed(workspace: Path) -> Iterator[None]:
+    """The golden owner seals only after its Host and writer have stopped."""
+    from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
+
+    if (workspace / "runtime/local-research-connection.json").exists():
+        raise RuntimeError("session workspace still names a Host")
+    lease = WorkspaceWriterLease.acquire(workspace)
+    try:
+        yield
+    finally:
+        lease.close()
+
+
 def session_workspace(
     factory: pytest.TempPathFactory,
     name: str,
     build: Callable[[Path], dict[str, Any]],
     *,
     inputs: Any = None,
+    persistent: GoldenInputs | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     """Publish immutable session generations; rebuild incomplete seeds and refuse corruption.
 
@@ -55,16 +84,29 @@ def session_workspace(
     ).hexdigest()
     builder = f"{build.__module__}:{build.__qualname__}"
     key = hashlib.sha256(f"{builder}\0{input_hash}".encode()).hexdigest()
-    base = factory.getbasetemp()
-    if os.environ.get("PYTEST_XDIST_WORKER"):
-        base = base.parent
-    cache = base / "research-prerequisites"
+    if persistent is not None:
+        key = persistent.key(
+            {"name": name, "builder": builder, "inputs": input_hash, "format": 1}, []
+        )
+        root = Path(__file__).resolve().parents[2]
+        shared = persistent_golden_root(root / "tmp/golden-workspaces")
+        if not shared.is_absolute():
+            raise ValueError("session workspace persistent root must be absolute")
+        cache = payload_path(shared / "session-prerequisites")
+    else:
+        base = factory.getbasetemp()
+        if os.environ.get("PYTEST_XDIST_WORKER"):
+            base = base.parent
+        cache = base / "research-prerequisites"
     if cache.is_symlink() or cache.is_junction():
         raise RuntimeError("session workspace cache is a link")
-    cache.mkdir(exist_ok=True)
+    cache.mkdir(parents=True, exist_ok=True)
     index_path = cache / f"{name}.json"
     started = time.perf_counter()
-    with golden_runtime().lock(cache / f"{name}.lock"):
+    runtime = golden_runtime()
+    with runtime.lock(cache / f"{name}.lock"):
+        if persistent is not None:
+            persistent.verify()
         if index_path.is_symlink() or index_path.is_junction():
             raise RuntimeError(f"session workspace index is a link: {name}")
         try:
@@ -81,7 +123,122 @@ def session_workspace(
             for k, v in index.items()
         ):
             raise RuntimeError(f"session workspace index malformed: {name}")
+
+        def save(path: Path, value: dict[str, Any]) -> None:
+            pending = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    newline="\n",
+                    dir=cache,
+                    prefix="index-",
+                    delete=False,
+                ) as stream:
+                    pending = Path(stream.name)
+                    json.dump(value, stream, sort_keys=True)
+                pending.replace(path)
+            finally:
+                if pending is not None:
+                    pending.unlink(missing_ok=True)
+
+        last_use_path = cache / f"{name}.last-use.json"
+
+        def read_usage() -> dict[str, float]:
+            if last_use_path.is_symlink() or last_use_path.is_junction():
+                raise RuntimeError(f"session workspace usage record is a link: {name}")
+            try:
+                usage = json.loads(last_use_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                return {}
+            except (OSError, UnicodeError, json.JSONDecodeError) as error:
+                raise RuntimeError(f"session workspace usage unreadable: {name}") from error
+            if not isinstance(usage, dict) or any(
+                not isinstance(generation, str)
+                or re.fullmatch(r"g-[0-9a-f]{32}", generation) is None
+                or type(used) not in (int, float)
+                or not math.isfinite(used)
+                or used < 0
+                for generation, used in usage.items()
+            ):
+                raise RuntimeError(f"session workspace usage malformed: {name}")
+            return usage
+
+        last_use: dict[str, float] = {}
+        if persistent is not None:
+            last_use = read_usage()
+            now = time.time()
+            # An older record has unknown last-use; start its retention clock now.
+            for generation in index.values():
+                last_use.setdefault(generation, now)
+            keep = index.get(key)
+            for generation, used in list(last_use.items()):
+                if generation == keep or used >= now - 3 * 86400:
+                    continue
+                candidate = cache / generation
+                lock = cache / f".{generation}.readers.lock"
+                try:
+                    with runtime.lock(lock, blocking=False):
+                        markers = list(cache.glob(f".{generation}.reader-*"))
+                        if markers:
+                            if any(
+                                marker.is_symlink() or marker.is_junction() for marker in markers
+                            ):
+                                raise RuntimeError("golden reader record is a link")
+                            # A crashed reader has no recorded end; start retention now.
+                            last_use[generation] = now
+                            save(last_use_path, last_use)
+                            for marker in markers:
+                                marker.unlink()
+                            continue
+                        # Drop the selection before the file names: interruption cannot point at
+                        # a half-removed generation. Its bytes stay while any reader holds a lease.
+                        for old_key, old_generation in list(index.items()):
+                            if old_generation == generation:
+                                del index[old_key]
+                        save(index_path, index)
+                        if candidate.exists() and (left := remove_tree(candidate, cache)):
+                            logging.getLogger(__name__).warning(
+                                "golden retention refused: %s", left
+                            )
+                            continue
+                    remove_idle_reader_lock(lock)
+                    del last_use[generation]
+                except portalocker.AlreadyLocked:
+                    logging.getLogger(__name__).info("golden retention busy: %s", generation)
+                except Exception as error:
+                    # Unreadable ownership is not proof that a reader has released it.
+                    logging.getLogger(__name__).warning("golden retention unmeasured: %s", error)
+            save(last_use_path, last_use)
+
+        def used(generation: Path) -> None:
+            if persistent is not None:
+                marker = cache / f".{generation.name}.reader-{uuid.uuid4().hex}"
+
+                def released() -> None:
+                    with runtime.lock(cache / f"{name}.lock"):
+                        if marker.is_symlink() or marker.is_junction():
+                            raise RuntimeError("golden reader record is a link")
+                        usage = read_usage()
+                        usage[generation.name] = max(usage.get(generation.name, 0), time.time())
+                        save(last_use_path, usage)
+                        marker.unlink()
+
+                # Record ownership before creating a generation so an interrupted build is
+                # discoverable by the retention owner, even if it never publishes an index.
+                last_use[generation.name] = max(last_use.get(generation.name, 0), time.time())
+                save(last_use_path, last_use)
+                if hold_generation(generation, released):
+                    marker.touch(exist_ok=False)
+
+        def reject_corrupt(message: str) -> None:
+            index.pop(key, None)  # supersede; never mutate a generation linked by another run
+            save(index_path, index)
+            raise GoldenPayloadCorrupt(message)
+
         target = cache / index[key] if key in index else None
+        if target is not None:
+            used(target)
         result = None
         if target is not None:
             record = target / "complete.json"
@@ -93,9 +250,12 @@ def session_workspace(
             ):
                 raise RuntimeError(f"session workspace is a link: {name}")
             try:
+                if persistent is not None and record.stat().st_mode & 0o222:
+                    reject_corrupt(f"session workspace published marker writable: {name}")
                 result = json.loads(record.read_text(encoding="utf-8"))
-            except (FileNotFoundError, json.JSONDecodeError):
-                pass
+            except (FileNotFoundError, json.JSONDecodeError) as error:
+                if persistent is not None:
+                    reject_corrupt(f"session workspace published marker invalid: {name}: {error}")
             except (OSError, UnicodeError) as error:
                 raise RuntimeError(f"session workspace marker unreadable: {name}") from error
         built = (
@@ -105,9 +265,13 @@ def session_workspace(
             or result.get("inputs") != input_hash
             or not isinstance(result.get("metadata"), dict)
             or not isinstance(result.get("files"), dict)
+            or (persistent is not None and result.get("persistent") is not True)
         )
         if built:
+            if persistent is not None and target is not None:
+                reject_corrupt(f"session workspace published marker invalid: {name}")
             target = cache / f"g-{uuid.uuid4().hex}"
+            used(target)
             target.mkdir()
             running = dict(RUNNING_TEST)
             RUNNING_TEST.update(id=None, private=False)  # a builder writes what it copies
@@ -119,12 +283,21 @@ def session_workspace(
                 raise RuntimeError(
                     f"session workspace builder produced no workspace or metadata: {name}"
                 )
+            if persistent is not None:
+                persistent.verify()
+                seal_payload(target / "workspace", closed=_closed_seed)
+                (target / "payload.json").chmod(stat.S_IREAD)
             result = {
                 "name": name,
                 "builder": builder,
                 "inputs": input_hash,
                 "metadata": metadata,
-                "files": _files(target / "workspace"),
+                "persistent": persistent is not None,
+                "files": (
+                    verified_payload(target / "workspace")
+                    if persistent is not None
+                    else _files(target / "workspace")
+                ),
             }
             pending = target / "complete.pending"
             pending.write_text(
@@ -133,25 +306,34 @@ def session_workspace(
                 newline="\n",
             )
             pending.replace(target / "complete.json")
+            if persistent is not None:
+                (target / "complete.json").chmod(stat.S_IREAD)
             index[key] = target.name
-            pending_index = None
-            try:
-                with tempfile.NamedTemporaryFile(
-                    mode="w",
-                    encoding="utf-8",
-                    newline="\n",
-                    dir=cache,
-                    prefix="index-",
-                    delete=False,
-                ) as file:
-                    pending_index = Path(file.name)
-                    json.dump(index, file, sort_keys=True)
-                pending_index.replace(index_path)
-            finally:
-                if pending_index is not None:
-                    pending_index.unlink(missing_ok=True)
+            save(index_path, index)
         assert target is not None
-        if not (target / "workspace").is_dir() or _files(target / "workspace") != result["files"]:
+        try:
+            workspace_stat = (target / "workspace").lstat()
+        except FileNotFoundError:
+            if persistent is not None:
+                reject_corrupt(f"session workspace was changed: {name}")
+            raise RuntimeError(f"session workspace was changed: {name}") from None
+        except OSError as error:
+            raise RuntimeError(f"session workspace is unreadable: {name}") from error
+        if not stat.S_ISDIR(workspace_stat.st_mode) or (
+            getattr(workspace_stat, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+        ):
+            raise RuntimeError(f"session workspace is not a plain directory: {name}")
+        try:
+            actual = (
+                verified_payload(target / "workspace")
+                if persistent is not None
+                else _files(target / "workspace")
+            )
+        except GoldenPayloadCorrupt as error:
+            reject_corrupt(str(error))
+        if actual != result["files"]:
+            if persistent is not None:
+                reject_corrupt(f"session workspace was changed: {name}")
             raise RuntimeError(f"session workspace was changed: {name}")
     line = (
         f"PLAYPEN_SESSION_WORKSPACE {'BUILD' if built else 'REUSE'} "
@@ -170,8 +352,9 @@ def seeds_changed() -> list[str]:
     """Each file of a seed read in place that no longer matches the hash its build recorded."""
     changed = []
     for seed in sorted(LINKED_SEEDS):
-        record = json.loads((seed.parent / "complete.json").read_text(encoding="utf-8"))["files"]
-        now = _files(seed)
+        marker = json.loads((seed.parent / "complete.json").read_text(encoding="utf-8"))
+        record = marker["files"]
+        now = verified_payload(seed) if marker.get("persistent") is True else _files(seed)
         changed += [
             f"{seed}: {name}"
             for name in sorted(set(record) | set(now))
@@ -210,6 +393,7 @@ def copy_workspace(
     asking for a copy is refused by name. A seed builder copies (RUNNING_TEST is clear).
     """
     copied: dict[tuple[int, int], str] = {}  # a seed file the product linked -> its copy here
+    sealed = (Path(source).parent / "payload.json").is_file()
     test = RUNNING_TEST["id"] if (Path(source).parent / "complete.json").is_file() else None
     if test is not None and not RUNNING_TEST["private"]:
         if link_data is False:
@@ -239,7 +423,7 @@ def copy_workspace(
             os.link(copied[key], dst)
             return dst
         shutil.copy2(src, dst)
-        if data:  # a private copy stays writable after its seed's file refused writers
+        if data or sealed:  # a private copy is writable without changing its sealed source
             os.chmod(dst, os.stat(dst).st_mode | stat.S_IWRITE)
         if seen.st_nlink > 1:
             copied[(seen.st_dev, seen.st_ino)] = dst

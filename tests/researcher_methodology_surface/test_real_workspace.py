@@ -481,6 +481,104 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
         make(factory, "invalid", build, inputs=float("nan"))
     assert not (tmp_path / "research-prerequisites" / "invalid").exists()
 
+    # A durable seed is built once for a source snapshot, then verified across sessions.
+    import inspect
+
+    assert "persistent" in inspect.signature(make).parameters, (
+        "session seed has no persistent golden owner"
+    )
+    from devtools.evaluation.golden_workspaces import GoldenInputs
+
+    shared = tmp_path / "persistent-golden"
+    monkeypatch.setenv("ALPHALATTICE_TEST_GOLDEN_ROOT", str(shared))
+    source = tmp_path / "seed-input.txt"
+    source.write_bytes(b"recipe-one")
+    snapshot = GoldenInputs(
+        tmp_path, (source.name,), {source.name: hashlib.sha256(source.read_bytes()).hexdigest()}
+    )
+    built_count = []
+
+    def build_persistent(root):
+        root.mkdir()
+        (root / "value.txt").write_bytes(b"immutable")
+        (root / "market-data.duckdb").write_bytes(b"data")
+        built_count.append(1)
+        return {"value": "verified"}
+
+    first_base, second_base = tmp_path / "session-one", tmp_path / "session-two"
+    first_base.mkdir()
+    second_base.mkdir()
+    a = SimpleNamespace(getbasetemp=lambda: first_base)
+    b = SimpleNamespace(getbasetemp=lambda: second_base)
+    from devtools.evaluation.golden_workspaces import golden_run
+    from tests.pytest_environment import golden_runtime
+
+    with golden_run(first_base / "owned-run", runtime=golden_runtime()):
+        durable, metadata = make(a, "durable_seed", build_persistent, persistent=snapshot)
+        again, same = make(b, "durable_seed", build_persistent, persistent=snapshot)
+        assert durable == again and metadata == same == {"value": "verified"} and built_count == [1]
+        assert not (durable / "value.txt").stat().st_mode & 0o200
+        with pytest.raises(PermissionError):
+            (durable / "value.txt").open("r+b")
+        with monkeypatch.context() as private_test:
+            private_test.setitem(session.RUNNING_TEST, "private", True)
+            private = copy(durable, tmp_path / "durable-private", link_data=False)
+        (private / "value.txt").write_text("private")
+        assert (durable / "value.txt").read_bytes() == b"immutable"
+        payload = durable.parent / "payload.json"
+        payload.chmod(0o600)
+        payload.write_text("{}")
+        with pytest.raises(RuntimeError, match="payload verification refused"):
+            make(b, "durable_seed", build_persistent, persistent=snapshot)
+        try:
+            rebuilt, rebuilt_metadata = make(
+                b, "durable_seed", build_persistent, persistent=snapshot
+            )
+        except RuntimeError as error:
+            pytest.fail(f"a refused persistent seed was not rebuilt: {error}")
+        assert rebuilt != durable and rebuilt_metadata == metadata and built_count == [1, 1]
+        assert payload.read_bytes() == b"{}"  # the refused generation was not mutated
+        durable = rebuilt
+        payload = durable.parent / "payload.json"
+        read_bytes = Path.read_bytes
+
+        def unreadable(path):
+            if path == payload:
+                raise PermissionError("unreadable")
+            return read_bytes(path)
+
+        with monkeypatch.context() as denied:
+            denied.setattr(Path, "read_bytes", unreadable)
+            with pytest.raises(RuntimeError, match="verification unmeasured"):
+                make(b, "durable_seed", build_persistent, persistent=snapshot)
+        assert make(b, "durable_seed", build_persistent, persistent=snapshot)[0] == durable
+        assert built_count == [1, 1]  # unknown never causes replacement
+        marker = durable.parent / "complete.json"
+        marker.chmod(0o600)
+        with pytest.raises(RuntimeError, match="published marker writable"):
+            make(b, "durable_seed", build_persistent, persistent=snapshot)
+        recovered, _ = make(b, "durable_seed", build_persistent, persistent=snapshot)
+        assert recovered != durable and marker.stat().st_mode & 0o200
+        usage = shared / "session-prerequisites/durable_seed.last-use.json"
+        last_use = json.loads(usage.read_bytes())
+        last_use[durable.parent.name] = 0
+        usage.write_text(json.dumps(last_use), encoding="utf-8")
+        make(b, "durable_seed", build_persistent, inputs="other", persistent=snapshot)
+        assert durable.exists()  # the live invocation still leases the refused generation
+        source.write_bytes(b"changed")
+        with pytest.raises(RuntimeError, match="inputs changed"):
+            make(b, "durable_seed", build_persistent, persistent=snapshot)
+        source.write_bytes(b"recipe-one")
+
+    last_use = json.loads(usage.read_bytes())
+    assert last_use[durable.parent.name] > 0  # release recorded its actual last use
+    last_use[durable.parent.name] = 0  # drive the three-day boundary, never sleep
+    usage.write_text(json.dumps(last_use), encoding="utf-8")
+    with golden_run(second_base / "owned-run", runtime=golden_runtime()):
+        make(b, "durable_seed", build_persistent, inputs="later", persistent=snapshot)
+        assert not durable.exists()  # the last reader released its operating-system lease
+        assert (private / "value.txt").read_text() == "private"
+
     from tests.researcher_methodology_surface import real_workspace as cache
 
     def write(relative, value):

@@ -92,7 +92,15 @@ def golden_cache(tmp_path_factory):
         kwargs.update(runtime=environment.golden_runtime(), controller=False)
     base = tmp_path_factory.getbasetemp()
     with getattr(evaluation, "golden_run", nullcontext)(base, **kwargs) as root:
-        yield root
+        try:
+            yield root
+        finally:
+            # Verify linked seeds before their invocation releases its reader leases.
+            if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
+                changed = seeds.seeds_changed()
+                if not changed:
+                    seeds.LINKED_SEEDS.clear()
+                assert changed == []
 
 
 @pytest.fixture
