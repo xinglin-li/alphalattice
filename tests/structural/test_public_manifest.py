@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+import textwrap
 from collections import Counter
 from pathlib import Path
 from unittest.mock import Mock
@@ -784,6 +785,88 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public():
     assert files and all(type(seconds) is float and seconds >= 0 for seconds in durations.values())
     split = {path: classify(path, set(), set(), set())[0] for path in files}
     assert {path: kind for path, kind in split.items() if kind != "PUBLIC"} == {}
+
+
+@pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")
+@pytest.mark.parametrize("failure", ("timeout", "crash", "prior-timeout", "malformed"))
+def test_public_worker_timeout_is_visible_without_relabeling_a_crash(tmp_path, failure):
+    """The workflow's real worker plugin reports a timed-out worker but not an ordinary crash."""
+    from tests.structural.pytest_support import child_environment
+
+    workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text("utf-8")
+    plugin = workflow.split("<<'PY'\n", 1)[1].split("\n          PY\n", 1)[0]
+    plugin = textwrap.dedent(plugin).replace("HANG_SECONDS = 900", "HANG_SECONDS = 2", 1)
+    (tmp_path / "ci_worker_diagnostics.py").write_text(plugin, encoding="utf-8")
+    body = "Event().wait()" if failure == "timeout" else "os._exit(5)"
+    if failure == "prior-timeout":
+        body = (
+            "log = Path(os.environ['PYTEST_WORKER_DIAGNOSTICS']) / "
+            "(os.environ['PYTEST_XDIST_WORKER'] + '-' + str(os.getpid()) + '.log')\n"
+            "    with log.open('a', encoding='utf-8') as stream:\n"
+            "        for event in [{'event': 'start', 'node': 'previous'}, "
+            "{'event': 'timeout', 'node': 'previous', 'seconds': 2.0}, "
+            "{'event': 'end', 'node': 'previous'}, "
+            "{'event': 'start', 'node': 'test_probe.py::test_probe'}]:\n"
+            "            stream.write(json.dumps(event) + '\\n')\n"
+            "    os._exit(5)"
+        )
+    if failure == "malformed":
+        body = (
+            "log = Path(os.environ['PYTEST_WORKER_DIAGNOSTICS']) / "
+            "(os.environ['PYTEST_XDIST_WORKER'] + '-' + str(os.getpid()) + '.log')\n"
+            "    with log.open('a', encoding='utf-8') as stream:\n"
+            "        stream.write('{\\n')\n"
+            "    os._exit(5)"
+        )
+    (tmp_path / "test_probe.py").write_text(
+        (
+            "import json, os\nfrom pathlib import Path\n"
+            "from threading import Event\ndef test_probe():\n    "
+        )
+        + body
+        + "\n",
+        encoding="utf-8",
+    )
+    diagnostics = tmp_path / "diagnostics"
+    diagnostics.mkdir()
+    env = child_environment(
+        PYTHONPATH=str(tmp_path),
+        PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+        PYTEST_WORKER_DIAGNOSTICS=str(diagnostics),
+    )
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "xdist",
+            "-p",
+            "pytest_timeout",
+            "-p",
+            "ci_worker_diagnostics",
+            "-n",
+            "1",
+            "--max-worker-restart=0",
+            "--timeout-method=thread",
+            "-q",
+            "test_probe.py",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    visible = run.stdout + run.stderr
+    assert run.returncode != 0 and "crashed while running" in visible
+    assert ('"event": "timeout"' in visible) == (failure == "timeout")
+    if failure == "timeout":
+        assert "test_probe.py::test_probe" in visible and '"seconds": 2.0' in visible
+        assert visible.index('"event": "timeout"') < visible.index("crashed while running")
+    if failure == "malformed":
+        assert "timeout diagnostic unavailable" in visible and "INTERNALERROR" not in visible
 
 
 @pytest.mark.proves("pipeline.public_durations_come_from_junit")

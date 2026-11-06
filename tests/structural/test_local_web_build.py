@@ -101,9 +101,7 @@ def test_check_leaves_current_output_bytes_and_write_times_alone(copied_assets: 
     } == before
 
 
-def _test_checkout(
-    tmp_path: Path, *, state: str, failing: bool = False
-) -> tuple[Path, dict[str, str]]:
+def _test_checkout(tmp_path: Path, *, state: str, failing: str = "") -> tuple[Path, dict[str, str]]:
     """The real shared conftest and a synthetic command expose controller/worker effects."""
     checkout = tmp_path / "checkout"
     tests = checkout / "tests"
@@ -131,9 +129,12 @@ def _test_checkout(
         "if check:\n"
         "    current = (root / 'output').is_file() and "
         "(root / 'output').read_text() == (root / 'source').read_text()\n"
+        "    if not current: print('synthetic freshness detail')\n"
         "    raise SystemExit(0 if current else 1)\n"
         f"if {failing!r}:\n"
-        "    print('synthetic build owner error')\n"
+        f"    if {failing!r} == 'details':\n"
+        "        print('synthetic build owner error')\n"
+        "        print('synthetic build stderr', file=sys.stderr)\n"
         "    raise SystemExit(2)\n"
         "(root / 'output').write_text((root / 'source').read_text(), encoding='utf-8')\n",
         encoding="utf-8",
@@ -197,9 +198,10 @@ def test_session_controller_builds_once_before_all_workers(
     assert sum(call["check"] for call in calls) == (1 if state == "current" else 2)
 
 
-def test_session_propagates_the_build_owners_error(tmp_path: Path) -> None:
+@pytest.mark.parametrize("failure", ("details", "silent"))
+def test_session_propagates_the_build_owners_error(tmp_path: Path, failure: str) -> None:
     """The owner error fails the session before any reader, never a skip or passing fallback."""
-    checkout, environment = _test_checkout(tmp_path, state="missing", failing=True)
+    checkout, environment = _test_checkout(tmp_path, state="missing", failing=failure)
     run = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "--basetemp", str(tmp_path / "pytest")],
         cwd=checkout,
@@ -210,5 +212,12 @@ def test_session_propagates_the_build_owners_error(tmp_path: Path) -> None:
         timeout=30,
     )
     assert run.returncode == pytest.ExitCode.USAGE_ERROR, run.stdout + run.stderr
-    assert "synthetic build owner error" in run.stderr
+    assert "synthetic freshness detail" in run.stderr
+    assert "exit 2" in run.stderr
+    if failure == "details":
+        assert (
+            "synthetic build owner error" in run.stderr and "synthetic build stderr" in run.stderr
+        )
+    else:
+        assert "no output" in run.stderr
     assert not (checkout / "output").exists()

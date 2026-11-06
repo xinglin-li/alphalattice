@@ -231,6 +231,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "pipeline.public_worker_timeout_diagnostic": {
+      "description": "A public worker crash prints its matching active timeout event while a crash without a timeout stays distinct.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 15
+    },
     "pipeline.receipt_classes_every_red": {
       "description": "Each red node and non-passing stage row classes as a defect, flake, slow test, load or tooling from its own evidence, and a red with no evidence reads unclassified, never a defect.",
       "owner": "devtools.pipeline",
