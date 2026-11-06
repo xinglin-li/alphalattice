@@ -106,7 +106,7 @@ def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
         private,
         manifest,
         out,
-        author="Xinglin Li <xinglin@example.com>",
+        author="Example Author <author@example.com>",
         message="AlphaLattice: first public release",
     )
     monkeypatch.setattr(subprocess, "run", run)
@@ -115,7 +115,7 @@ def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
     assert [row["path"] for row in provenance["files"]] == ["LICENSE", "src/tool.py"]
     assert provenance["manifest_sha256"] == hashlib.sha256(manifest.read_bytes()).hexdigest()
     assert _git(out, "log", "--format=%an <%ae>|%cn <%ce>") == (
-        "Xinglin Li <xinglin@example.com>|Xinglin Li <xinglin@example.com>"
+        "Example Author <author@example.com>|Example Author <author@example.com>"
     )
     assert _git(out, "rev-list", "--count", "HEAD") == "1"
     assert _git(out, "ls-files").split() == ["LICENSE", "src/tool.py"]
@@ -123,7 +123,7 @@ def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
     assert not (out / "board.md").exists()
     assert provenance["snapshot_commit"] == _git(out, "rev-parse", "HEAD")
     # A public registry publishes without its rows naming a private file, as the manifest hashed
-    # it; the private registry stays as committed (REGISTRY-PUBLIC-PROJECTION).
+    # it; the private registry stays as committed.
     document = json.loads(manifest.read_text(encoding="utf-8"))
     published = hashlib.sha256(REGISTRY_PUBLIC.encode()).hexdigest()
     document["public"] = [
@@ -249,7 +249,7 @@ def test_the_builder_refuses_what_it_cannot_prove(private: Path, tmp_path: Path)
             )
     manifest.write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(SnapshotRefused, match="author_not_name_and_email"):
-        build(private, manifest, tmp_path / "refused", author="Xinglin Li", message="m")
+        build(private, manifest, tmp_path / "refused", author="Example Author", message="m")
     occupied = tmp_path / "occupied"
     occupied.mkdir()
     (occupied / "x").write_text("x", encoding="utf-8")

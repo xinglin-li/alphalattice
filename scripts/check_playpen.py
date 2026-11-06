@@ -442,8 +442,7 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
 
 
 LEDGER = "refs/heads/public-export"
-"""The export's ledger branch: the private manifest is recorded there since it left develop
-(EXPORT-RECORDS-MIGRATE)."""
+"""The export's ledger branch: the private manifest is recorded there since it left develop."""
 MANIFEST_SCHEMA = "alphalattice.release.public-manifest"
 
 
@@ -649,7 +648,7 @@ def _check_scoped_structural(*, staged: bool) -> bool:
 
 
 def _check_docstrings() -> bool:
-    """Refuse a source file whose public docstring findings grew (C2's ratchet, lower only).
+    """Refuse a source file whose public docstring findings grew (a ratchet, lower only).
 
     Ruff's Google-convention docstring rules over the public API of ``src/alphalattice``,
     counted per file against ``config/docstring-baseline.json``; a new public file starts at
@@ -825,7 +824,7 @@ def _check_evidence_bindings() -> bool:
 
 def _check_operation_registry() -> bool:
     """Refuse a tree whose operations disagree with the registry, or whose CLI answers any
-    command outside its contract without a Host (C1 rule 3 and the CLI walk)."""
+    command outside its contract without a Host (the CLI walk)."""
 
     started = perf_counter()
     sys.path.insert(0, str(ROOT / "src"))

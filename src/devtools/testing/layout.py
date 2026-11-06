@@ -36,7 +36,7 @@ REGISTRIES = ("config/registries/test-sizes.json", "config/registries/test-priva
 def placed_tests(root: Path) -> dict[str, str]:
     """Where each moved test is now, by its old path. A source inside an identity closure keeps
     naming the path it froze, since rewriting it would rotate that identity for a test move."""
-    table = schema_path(root, LAYOUT_SCHEMA)  # private: a public tree has none, and no old names
+    table = schema_path(root, LAYOUT_SCHEMA)  # a published tree has none
     rows = json.loads(table.read_text("utf-8"))["files"] if table else {}
     return {row["old"]: path for path, row in rows.items()}
 

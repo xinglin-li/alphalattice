@@ -538,8 +538,7 @@ _QUOTED: dict[bytes, frozenset[str]] = {}  # this process's, by content digest; 
 
 
 def _quoted_names(path: Path) -> frozenset[str]:
-    """The string constants one case file quotes, parsed once per content in a process
-    (STRUCTURAL-SCAN-CACHE)."""
+    """The string constants one case file quotes, parsed once per content in a process."""
     data = path.read_bytes()
     digest = hashlib.sha256(data).digest()
     if (known := _QUOTED.get(digest)) is None:

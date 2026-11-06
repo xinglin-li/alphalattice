@@ -30,8 +30,8 @@ from typing import Any, NamedTuple
 from devtools.testing.sizes import load_policy
 
 REGISTRY = Path("config/registries/requirements.json")
-LEGACY_SCHEMA = "alphalattice.tests-unregistered.v1"  # private: it names private tests
-LAYOUT_SCHEMA = "alphalattice.test-layout.v1"  # private: it names private tests too
+LEGACY_SCHEMA = "alphalattice.tests-unregistered.v1"
+LAYOUT_SCHEMA = "alphalattice.test-layout.v1"  # development data; a published tree has none
 FACTS_SCHEMA = "alphalattice.agent-eval.host-facts"  # private, never exported: marks a private tree
 LAYERS = ("unit", "integration", "contract", "e2e", "native")
 SIZES = dict(unit="small", integration="medium", contract="medium", e2e="large", native="large")

@@ -1319,7 +1319,7 @@ PRIVATE_SCHEMAS = frozenset(
     }
 )
 """Private data by what it is: a tracked JSON document carrying one of these schemas is PRIVATE
-wherever it lives, so no public rule names its path (CHECK-PLAYPEN-PUBLIC-SAFE)."""
+wherever it lives, so no public rule names its path."""
 
 
 def declared_private(blobs: dict[str, bytes]) -> frozenset[str]:
@@ -1562,7 +1562,7 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
     any string in it, key or value, earns a private reference by the scan's own rule. Any other
     file, an unreadable registry, or one with nothing to drop keeps its exact bytes; the private
     registry is never changed. Returns the bytes and each dropped row's place, such as
-    `reach[3]` or `entries/<key>` (REGISTRY-PUBLIC-PROJECTION)."""
+    `reach[3]` or `entries/<key>`."""
     if not (path.startswith("config/registries/") and path.endswith(".json")):
         return raw, []
     if path in NOT_PROJECTED:
@@ -2154,7 +2154,7 @@ def main() -> int:
     if INTERNAL_ID_BASELINE in blobs:
         validate_internal_id_history(args.repo, sha, admissions_from="develop")
     manifest, audit = generate(sha, blobs, modes)
-    # contract: CENSUS-PATH-CALLER supplies the path before the legacy default is removed.
+    # contract: the caller supplies the path before the legacy default is removed.
     if args.census_path is not None:
         try:
             validate_path(args.census_path)

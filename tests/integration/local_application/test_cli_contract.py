@@ -1,4 +1,4 @@
-"""The CLI's one answer shape and its exit codes (binding plan, C1 rules 1 and 2).
+"""The CLI's one answer shape and its exit codes.
 
 Every command prints one envelope and exits by its outcome: 0 OK, 1 INVALID_INPUT, 2 REFUSED,
 3 PENDING, 4 NO_HOST. `--output` holds the owner's answer whatever its status, and no answer

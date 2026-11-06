@@ -457,7 +457,7 @@ class Finished(_Strict):
     exit: int
     finished_at: Text
     red_nodes: list[str] = []
-    # a non-passing stage's causes by class and its one class (RED-CLASS-RECEIPT); absent before it
+    # a non-passing stage's causes by class and its one class; older receipts omit it
     red_classes: dict[
         Literal["defect", "flake", "slow", "load", "tooling", "unclassified"],
         Annotated[int, Field(ge=1)],

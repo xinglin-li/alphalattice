@@ -1189,7 +1189,7 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
     invalid["findings"][0]["cite"] = ["S999"]
     request, _made = bundle("busy", invalid)
     client._test_session = "specialist-session"
-    # First-bind under a held gate is HOST-GATE-LONG-HOLDER; this case starts bound.
+    # A first bind under a held gate is another case's; this case starts bound.
     client.request(
         {"operation": "EVIDENCE_PREVIEW", "result_hash": service.review.latest_result_hash()}
     )

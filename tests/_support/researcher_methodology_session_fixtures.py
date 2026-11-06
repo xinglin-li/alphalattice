@@ -2,10 +2,7 @@
 
 Fixture functions, imported by name into each package's `conftest.py`, so that
 one builder produces the same workspace wherever a package needs it while each
-package still pays only for the workspaces its own cases resolve against. The
-split exists for the gate's wall clock: the extension and external catalog
-workspaces were built in the same process as the twenty-seven cases that need
-only the shipped one, and that single group set the routed lane's makespan.
+package still pays only for the workspaces its own cases resolve against.
 """
 
 from __future__ import annotations

@@ -1816,7 +1816,7 @@
     {
       "pattern": "tests/integration/product_host/test_daily_input_history.py::test_an_old_value_correction_rebuilds_what_it_touched_even_without_a_revision*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "Rebuilds a corrected sector's kept history across the real daily input owner; its other six cases were deleted by AREA-PORTFOLIO-LAB-1's evidence.",
+      "reason": "Rebuilds a corrected sector's kept history across the real daily input owner; its other six cases were deleted on coverage and mutation evidence.",
       "size_contract": "nightly_only",
       "timeout_seconds": 900,
       "admitted": "2026-11-03: 50.6 s and 220 MB at teardown in a commit stage, over the 30 s Medium limit."

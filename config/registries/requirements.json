@@ -423,35 +423,35 @@
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+      "retired": "2026-10-28: a tree-keyed stage cache replaced the per-file input recorder; its holders were deleted with it."
     },
     "pipeline.result_cache_never_trusts_a_bad_entry": {
       "description": "A result-cache entry that is damaged, of another schema or key, or names a path outside its checkout is a miss, and a store or tree that cannot be used turns the cache off by its reason.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+      "retired": "2026-10-28: a tree-keyed stage cache replaced the per-file input recorder; its holders were deleted with it."
     },
     "pipeline.result_cache_refuses_undeclared_inputs": {
       "description": "A recorder observes collection and execution inputs, storing only complete first-attempt passing results and declining opaque readers or bound native predicates without changing test outcomes.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+      "retired": "2026-10-28: a tree-keyed stage cache replaced the per-file input recorder; its holders were deleted with it."
     },
     "pipeline.result_cache_runner_serves_verified_groups": {
       "description": "The runner reuses only verified passing groups, records cache provenance, and runs misses or shadow comparisons without hiding changed or opaque inputs.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 30,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+      "retired": "2026-10-28: a tree-keyed stage cache replaced the per-file input recorder; its holders were deleted with it."
     },
     "pipeline.result_cache_store_stays_within_its_bounds": {
       "description": "The result-cache store drops entries idle past 14 days and then the oldest while it holds more bytes than its cap.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+      "retired": "2026-10-28: a tree-keyed stage cache replaced the per-file input recorder; its holders were deleted with it."
     },
     "pipeline.shipped_instruction_links_reach_their_targets": {
       "description": "If a shipped instruction linked outside the checkout, an installed agent would follow a dead path during its first use.",

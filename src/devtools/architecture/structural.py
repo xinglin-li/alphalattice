@@ -807,7 +807,7 @@ def assess_performance_measurement(
 
 _DISCOVERED_IMPORTS: dict[tuple[tuple[str, ...], bytes], tuple[str, ...]] = {}
 """This process's answers by module place and content digest: the structural tests ask for the
-same unchanged tree in test after test (STRUCTURAL-SCAN-CACHE, 10-29: about 185 s a stage).
+same unchanged tree in test after test.
 Never shared across processes or written to disk. It answers ahead of ``kept_fact``'s version
 check, for this process's lifetime, whose loaded code a run never replaces; a test that swaps
 ``_imports_of`` in place clears it first."""

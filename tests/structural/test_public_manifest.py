@@ -122,7 +122,7 @@ def test_the_full_release_closure_check_names_its_private_inventory_input():
     )
     # Private by what it is, wherever it lives: a private data schema, or a test declaring
     # PRIVATE_TEST:, each read as parsed; what cannot be parsed cannot show it is public, so it is
-    # private too. Content only ever makes a file private (CHECK-PLAYPEN-PUBLIC-SAFE).
+    # private too. Content only ever makes a file private.
     blobs = {
         "config/anywhere/listing.json": b'{"schema": "alphalattice.release.public-manifest"}',
         "config/anywhere/escaped.json": b'{"schema": "alphalattice.tests\\u002dunregistered.v1"}',
@@ -470,7 +470,9 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
     moved, table = "src/moved.py", tmp_path / "config/registries/test-layout.json"
     table.parent.mkdir(parents=True)
     base = _git("rev-parse", "HEAD")
-    extra = "V" + "902"
+    extra = (
+        "V" + "902"
+    )  # assembled, as `label` is: a whole label here would be a finding in this file
     for named, occurrences, refusal in (
         ({moved: owner}, {moved: {label: 1}}, None),
         ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),
