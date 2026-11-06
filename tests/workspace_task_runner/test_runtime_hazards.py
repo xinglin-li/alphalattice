@@ -119,7 +119,7 @@ def test_a_status_read_beside_a_starting_task_takes_no_pair_in_both_orders(
 
 
 def test_a_session_read_defers_while_a_writer_holds_the_gate(
-    tmp_path: Path, lock_order: LockOrder
+    tmp_path: Path, lock_order: LockOrder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A session's context read defers while a writer holds the gate instead of holding the page."""
 
@@ -138,8 +138,43 @@ def test_a_session_read_defers_while_a_writer_holds_the_gate(
             with session.reads(timeout_seconds=0.2) as acquired:
                 assert acquired is False
             assert monotonic() - started < 5
-            release.set()
+            from alphalattice.control.task_control.contracts import failure_code_from
+            from alphalattice.control.workspace_runtime import mutation_gate
+            from alphalattice.interface.local_application.cli_contract import refusal_words
+            from alphalattice.interface.local_application.failure_codes import owner_failure_code
+
+            monkeypatch.setattr(mutation_gate, "DEFAULT_WAIT_SECONDS", 0.05, raising=False)
+            safety = Timer(5, release.set)
+            safety.start()
+            try:
+                with pytest.raises(mutation_gate.GateBusy) as background:
+                    session.mutation_gate.run(lambda: pytest.fail("gate was stolen"))
+                assert (
+                    owner_failure_code(background.value)
+                    == failure_code_from(background.value)
+                    == "workspace_context.writer_busy"
+                )
+                assert refusal_words(str(background.value))["next_requests"]["activity"] == {
+                    "operation": "ACTIVITY_RECENT"
+                }
+                with (
+                    pytest.raises(mutation_gate.GateBusy),
+                    session.mutation_gate.try_hold(timeout_seconds=0.05),
+                ):
+                    pytest.fail("bounded gate was stolen")
+                with (
+                    mutation_gate.request_deadline(monotonic() + 0.01),
+                    pytest.raises(mutation_gate.GateBusy),
+                    session.mutation_gate.hold(),
+                ):
+                    pytest.fail("deadline gate was stolen")
+                assert not release.is_set() and not writer.done()
+            finally:
+                safety.cancel()
+                release.set()
             writer.result(timeout=10)
+            with session.mutation_gate.hold(), session.mutation_gate.hold():
+                assert session.mutation_gate.holder() is not None
 
 
 def test_the_workbench_build_replaces_an_asset_a_reader_holds(
@@ -190,3 +225,128 @@ def test_an_index_a_session_reads_is_not_evicted_from_under_it(tmp_path: Path) -
     runtime.retrieval.evict_generation(relative, plan_hash="a" * 64, evicted_at=_NOW)
     assert not database.is_file()
     runtime.close()
+
+
+@pytest.mark.proves("workspace_runtime.background_task_gate_wait_and_cancel")
+@pytest.mark.parametrize("cancel_while_returning", [False, True])
+def test_dispatcher_finishes_deferred_cancel_only_after_command_returns(
+    tmp_path: Path, cancel_while_returning: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Background Tasks wait through gate contention and cancellation remains once-only."""
+    from alphalattice.control.task_control.contracts import WorkItemLifecycle
+    from alphalattice.control.task_control.registry import TaskTransitionRejected
+    from alphalattice.control.task_control.runner import TaskControlRunner
+    from alphalattice.control.workspace_runtime import mutation_gate
+    from alphalattice.interface.local_application.dispatcher import (
+        CommandAdmission,
+        LocalBackgroundDispatcher,
+    )
+    from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter
+
+    now = datetime.now(UTC)
+    deferred, release = Event(), Event()
+    entered, permit, stage_entered, stage_permit = Event(), Event(), Event(), Event()
+    stage_holding, stage_release = Event(), Event()
+    monkeypatch.setattr(mutation_gate, "DEFAULT_WAIT_SECONDS", 0.05)
+    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        registry = session.task_control_registry
+        envelope, goal, plan = task_contract()
+
+        class BackgroundAdapter(FixtureTaskAdapter):
+            def concurrent_work_items(self, task):
+                return 2
+
+            def execute_stage(self, *, task, execution, work_item):
+                stage_entered.set()
+                assert stage_permit.wait(10)
+                with session.mutation_gate.hold():
+                    holder = session.mutation_gate.holder()
+                    assert holder is not None and holder["operation"] == "factor_research"
+                    assert holder["task_id"] == str(task.task_id)
+                    stage_holding.set()
+                    assert stage_release.wait(10)
+                    return super().execute_stage(
+                        task=task, execution=execution, work_item=work_item
+                    )
+
+        adapter = BackgroundAdapter(defer_once=True)
+
+        class Command:
+            command_kind = "factor_research"
+
+            def admit(self):
+                task = registry.admit(
+                    input_envelope=envelope, goal=goal, plan=plan, observed_at=now
+                ).record
+                return CommandAdmission(task.task_id, task.lifecycle)
+
+            def execute(self, task_id):
+                entered.set()
+                assert permit.wait(10)
+                runner = TaskControlRunner(
+                    registry=registry,
+                    adapters={adapter.task_kind: adapter},
+                    runtime_path=str(tmp_path / "task-runtime.sqlite"),
+                    clock=lambda: now,
+                )
+                try:
+                    assert runner.run_next().lifecycle is TaskLifecycle.DEFERRED
+                finally:
+                    runner.close()
+                deferred.set()
+                assert release.wait(10)
+
+        dispatcher = LocalBackgroundDispatcher(registry, version_moved_error=TaskTransitionRejected)
+        try:
+            task_id = dispatcher.submit(Command()).task_id
+            assert entered.wait(10)
+            with (
+                mutation_gate.gate_subject("FIXTURE_WRITER", "holder"),
+                session.mutation_gate.hold(),
+            ):
+                permit.set()
+                assert not stage_entered.wait(0.2)
+                assert dispatcher.failure(task_id) is None
+                holder = session.mutation_gate.holder()
+                assert holder is not None and holder["operation"] == "FIXTURE_WRITER"
+            assert stage_entered.wait(10), dispatcher.failure(task_id)
+            with (
+                mutation_gate.gate_subject("FIXTURE_WRITER", "holder"),
+                session.mutation_gate.hold(),
+            ):
+                stage_permit.set()
+                assert not deferred.wait(0.2)
+                assert dispatcher.failure(task_id) is None
+            assert stage_holding.wait(10), dispatcher.failure(task_id)
+            with pytest.raises(mutation_gate.GateBusy) as busy, session.mutation_gate.hold():
+                pytest.fail("foreground caller stole the background writer")
+            assert busy.value.holder is not None
+            assert (busy.value.holder["operation"], busy.value.holder["task_id"]) == (
+                "factor_research",
+                str(task_id),
+            )
+            stage_release.set()
+            assert deferred.wait(10), dispatcher.failure(task_id)
+            if cancel_while_returning:
+                assert dispatcher.request_cancel(task_id)
+                assert registry.task(task_id).lifecycle is TaskLifecycle.CANCEL_REQUESTED
+            release.set()
+            dispatcher.drain_for_tests()
+            if not cancel_while_returning:
+                assert dispatcher.request_cancel(task_id)
+            task = registry.task(task_id)
+            assert task.lifecycle is TaskLifecycle.CANCELLED
+            assert task.failure_code == "TASK_CANCELLED_AFTER_WRITER_STOPPED"
+            assert task.input == envelope
+            assert all(
+                item.lifecycle is WorkItemLifecycle.CANCELLED
+                for item in registry.work_items(task_id)
+            )
+            assert dispatcher.executions == 1 and dispatcher.failure(task_id) is None
+            assert dispatcher.request_cancel(task_id)  # exact repeat, no second execution
+        finally:
+            permit.set()
+            stage_permit.set()
+            stage_release.set()
+            release.set()
+            dispatcher.close()

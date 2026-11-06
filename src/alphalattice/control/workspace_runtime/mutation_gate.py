@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from threading import RLock, current_thread
+from functools import partial
+from threading import RLock, Thread, current_thread
 from time import monotonic
 from typing import ParamSpec, TypeVar
 
@@ -15,10 +16,14 @@ _SUBJECT: ContextVar[tuple[str, str | None] | None] = ContextVar(
     "workspace_gate_subject", default=None
 )
 _DEADLINE: ContextVar[float | None] = ContextVar("workspace_gate_deadline", default=None)
+_BACKGROUND: ContextVar[bool] = ContextVar("workspace_gate_background", default=False)
+DEFAULT_WAIT_SECONDS = 30.0
 
 
 class GateBusy(TimeoutError):
-    """A request's wait for the gate reached its deadline; the wait changed nothing."""
+    """The gate remained occupied through the caller's bounded wait."""
+
+    code = "workspace_context.writer_busy"
 
     def __init__(self, holder: dict[str, object] | None = None) -> None:
         """Name the holder the request waited behind.
@@ -26,7 +31,7 @@ class GateBusy(TimeoutError):
         Args:
             holder: The gate's holder when the wait ended, or None if it had just freed.
         """
-        super().__init__("workspace mutation gate remained busy")
+        super().__init__(self.code)
         self.holder = holder
 
 
@@ -34,7 +39,7 @@ class GateBusy(TimeoutError):
 def request_deadline(deadline: float) -> Iterator[None]:
     """Bound every gate wait of this request, on this thread, by its monotonic `deadline`.
 
-    Background work runs outside any request and keeps waiting as before.
+    Background Tasks wait for the current writer without a request deadline.
 
     Args:
         deadline: The request's own deadline, on `time.monotonic`'s clock.
@@ -76,6 +81,31 @@ def gate_subject(operation: str, task_id: object | None = None) -> Iterator[None
         _SUBJECT.reset(scope)
 
 
+@contextmanager
+def background_task(operation: str, task_id: object | None = None) -> Iterator[None]:
+    """Mark a background Task and its identity for its own gate waits."""
+    scope = _BACKGROUND.set(True)
+    try:
+        with gate_subject(operation, task_id):
+            yield
+    finally:
+        _BACKGROUND.reset(scope)
+
+
+def run_background[T](call: Callable[[], T], operation: str, task_id: object | None = None) -> T:
+    """Run a background worker with its operation and Task named."""
+    with background_task(operation, task_id):
+        return call()
+
+
+def carry_background[T](call: Callable[[], T]) -> Callable[[], T]:
+    """Carry only background Task identity to a concurrent work-item thread."""
+    if not _BACKGROUND.get():
+        return call
+    operation, task_id = _SUBJECT.get() or ("BACKGROUND_TASK", None)
+    return partial(run_background, call, operation, task_id)
+
+
 class WorkspaceMutationGate:
     """Serialize local database mutations made by a single desktop host process.
 
@@ -89,6 +119,8 @@ class WorkspaceMutationGate:
         self._lock = RLock()
         self._depth = 0
         self._holder: tuple[str | None, str | None, str, float] | None = None
+        self._observation = RLock()
+        self._waiters: dict[Thread, tuple[str | None, str | None, str, float]] = {}
 
     def holder(self) -> dict[str, object] | None:
         """Who holds the gate now, read without taking it.
@@ -99,7 +131,8 @@ class WorkspaceMutationGate:
             The holder's operation and Task as its thread named them, the thread, and the
             seconds held; None when the gate is free.
         """
-        held = self._holder
+        with self._observation:
+            held = self._holder
         if held is None:
             return None
         operation, task_id, thread, since = held
@@ -110,19 +143,46 @@ class WorkspaceMutationGate:
             "held_seconds": round(monotonic() - since, 3),
         }
 
+    def waiting(self) -> dict[str, object] | None:
+        """Return live waiters and the writer without taking the gate.
+
+        A waiter's held_seconds is its elapsed wait. The gate and its records are process-local.
+        """
+        with self._observation:
+            self._waiters = {
+                thread: row for thread, row in self._waiters.items() if thread.is_alive()
+            }
+            if not self._waiters:
+                return None
+            now = monotonic()
+            return {
+                "holder": self.holder(),
+                "waiters": [
+                    {
+                        "operation": operation,
+                        "task_id": task_id,
+                        "thread": name,
+                        "held_seconds": round(now - since, 3),
+                    }
+                    for operation, task_id, name, since in self._waiters.values()
+                ],
+            }
+
     @contextmanager
     def _held(self) -> Iterator[None]:
         # Runs with the lock held, so the depth and holder are this owner's alone.
         self._depth += 1
         if self._depth == 1:
             operation, task_id = _SUBJECT.get() or (None, None)
-            self._holder = (operation, task_id, current_thread().name, monotonic())
+            with self._observation:
+                self._holder = (operation, task_id, current_thread().name, monotonic())
         try:
             yield
         finally:
             self._depth -= 1
             if self._depth == 0:
-                self._holder = None
+                with self._observation:
+                    self._holder = None
 
     def run(
         self,
@@ -144,21 +204,30 @@ class WorkspaceMutationGate:
 
     @contextmanager
     def hold(self) -> Iterator[None]:
-        """Hold the single-writer boundary across a bounded mutation session.
+        """Hold the single-writer boundary across a mutation session.
 
-        Inside a request's deadline, the wait ends there with GateBusy, naming the holder.
+        Foreground callers use their request deadline or the default bound; background Tasks wait.
 
         Yields:
             Nothing; the gate is held until the block ends.
 
         Raises:
-            GateBusy: A request's deadline passed while another thread held the gate.
+            GateBusy: Another thread held the gate throughout the bounded wait.
         """
-        deadline = _DEADLINE.get()
-        if deadline is None:
-            self._lock.acquire()
+        if _BACKGROUND.get():
+            if not self._lock.acquire(blocking=False):
+                thread = current_thread()
+                operation, task_id = _SUBJECT.get() or (None, None)
+                with self._observation:
+                    self._waiters[thread] = (operation, task_id, thread.name, monotonic())
+                try:
+                    self._lock.acquire()
+                finally:
+                    with self._observation:
+                        self._waiters.pop(thread, None)
         else:
-            remaining = deadline - monotonic()
+            deadline = _DEADLINE.get()
+            remaining = DEFAULT_WAIT_SECONDS if deadline is None else deadline - monotonic()
             got = self._lock.acquire(timeout=remaining) if remaining > 0 else False
             if not got and not self._lock.acquire(blocking=False):
                 raise GateBusy(self.holder())
@@ -175,7 +244,7 @@ class WorkspaceMutationGate:
             raise ValueError("workspace mutation timeout must be positive")
         acquired = self._lock.acquire(timeout=timeout_seconds)
         if not acquired:
-            raise TimeoutError("workspace mutation gate remained busy")
+            raise GateBusy(self.holder())
         try:
             with self._held():
                 yield

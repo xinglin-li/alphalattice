@@ -873,6 +873,7 @@ class WorkspaceActivity:
             "unavailable": 0 if page is None else page.unavailable_count,
             "tasks": tasks,
             "observer": self.observer_state(),
+            **({"workspace_writer": writer} if (writer := self.gate.waiting()) else {}),
             "read_cost": {
                 "observations": len(items),
                 "projections": sum(
@@ -1072,8 +1073,14 @@ class WorkspaceActivity:
         if not 1 <= limit <= 50:
             raise ValueError("activity.recent_limit_invalid")
         ledger = self._ledger
+        writer = self.gate.waiting()
         if ledger is None:
-            return {"status": "UNAVAILABLE", "groups": [], "observer": self.observer_state()}
+            return {
+                "status": "UNAVAILABLE",
+                "groups": [],
+                "observer": self.observer_state(),
+                **({"workspace_writer": writer} if writer else {}),
+            }
         page = ledger.observations_of_kind(PRODUCT_OPERATION_SCHEMA, limit=500)
         groups: dict[tuple[str, str, str], dict[str, object]] = {}
         for item in reversed(page.items):
@@ -1122,6 +1129,7 @@ class WorkspaceActivity:
         return {
             "status": "AVAILABLE",
             "groups": list(groups.values()),
+            **({"workspace_writer": writer} if writer else {}),
             "claim": "The newest recorded requests by agent session and goal; each read opens "
             "the result. A goal's own record keeps what the transient feed may drop.",
         }

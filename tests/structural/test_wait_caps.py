@@ -110,7 +110,7 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
             ("control/workspace_runtime/database.py", "wait"),
             # Sets and restores the request's deadline; it does not wait itself.
             ("control/workspace_runtime/mutation_gate.py", "request_deadline"),
-            # Keyed waits are bounded; pre-0.2.4 unbounded others: GATE-NO-DEADLINE-BOUND.
+            # Foreground waits are bounded; background Tasks wait because no person awaits them.
             ("control/workspace_runtime/mutation_gate.py", "hold"),
             ("interface/local_application/dispatcher.py", "close"),
             ("interface/local_application/web.py", "join_request_threads"),

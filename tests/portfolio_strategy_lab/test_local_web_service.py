@@ -571,6 +571,7 @@ def test_read_routes_and_registered_read_requests_do_not_refresh_activity(live, 
 
 def test_capacity_is_the_workspaces_own_and_is_reported_truthfully(
     live: LocalPortfolioWebSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     "Capacity is the workspace's own and is reported truthfully."
     application = live.application
@@ -579,26 +580,44 @@ def test_capacity_is_the_workspaces_own_and_is_reported_truthfully(
     write_queue_setting(
         live.workspace / "runtime", 1, chosen_by="HUMAN", chosen_at=datetime.now(UTC)
     )
-    submissions = [
-        dispatcher.submit(
+    entered, release = threading.Event(), threading.Event()
+    execute = PortfolioRunCommand.execute
+
+    def hold_first(command, task_id):
+        entered.set()
+        assert release.wait(30), "test did not release the queued command"
+        return execute(command, task_id)
+
+    monkeypatch.setattr(PortfolioRunCommand, "execute", hold_first)
+    try:
+        first = dispatcher.submit(
             PortfolioRunCommand(
-                application=application, spec=PortfolioResearchSpec.create(top_k=20 + index)
+                application=application, spec=PortfolioResearchSpec.create(top_k=20)
             )
         )
-        for index in range(4)
-    ]
-    dispositions = [value.disposition for value in submissions]
-    assert dispositions[0] == "ADMITTED"
-    assert "REFUSED_QUEUE_FULL" in dispositions, dispositions
-    assert dispositions.index("REFUSED_QUEUE_FULL") <= 2, dispositions
-    for value in submissions:
-        if value.disposition == "REFUSED_QUEUE_FULL":
-            assert value.task_id is None
-            assert value.refusal_detail
-        else:
-            assert value.task_id is not None
-            assert value.lifecycle in {"QUEUED", "RUNNING"}
-    assert dispatcher.admissions == dispositions.count("ADMITTED")
+        assert entered.wait(30), "first command did not reach the worker"
+        submissions = [first] + [
+            dispatcher.submit(
+                PortfolioRunCommand(
+                    application=application, spec=PortfolioResearchSpec.create(top_k=20 + index)
+                )
+            )
+            for index in range(1, 4)
+        ]
+        dispositions = [value.disposition for value in submissions]
+        assert dispositions[0] == "ADMITTED"
+        assert "REFUSED_QUEUE_FULL" in dispositions, dispositions
+        assert dispositions.index("REFUSED_QUEUE_FULL") <= 2, dispositions
+        for value in submissions:
+            if value.disposition == "REFUSED_QUEUE_FULL":
+                assert value.task_id is None
+                assert value.refusal_detail
+            else:
+                assert value.task_id is not None
+                assert value.lifecycle in {"QUEUED", "RUNNING"}
+        assert dispatcher.admissions == dispositions.count("ADMITTED")
+    finally:
+        release.set()
     dispatcher.drain_for_tests()
 
 

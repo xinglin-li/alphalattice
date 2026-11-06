@@ -1184,8 +1184,6 @@ def _a_correction_cut_short_is_completed_once(host, monkeypatch, *, filed: bool)
 
 
 def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch):
-    from alphalattice.control.workspace_runtime.mutation_gate import gate_subject
-
     service, client, _workspace, _goal, answer, bundle = host
     invalid = {**answer, "findings": [dict(item) for item in answer["findings"]]}
     invalid["findings"][0]["cite"] = ["S999"]
@@ -1204,8 +1202,44 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
             yield
 
     monkeypatch.setattr(gate, "try_hold", short_wait)
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        with gate_subject("AGENT_BUNDLE_PREPARE", "held-task"), gate.hold():
+    from alphalattice.control.workspace_runtime import mutation_gate
+
+    monkeypatch.setattr(mutation_gate, "DEFAULT_WAIT_SECONDS", 0.05, raising=False)
+    application = service.session.web.application
+    body = json.dumps({"operation": "FEATURE_CATALOG_PLAN", "feature_document": {}}).encode()
+    admitted = AdmittedRequest(
+        route=application.routes[("POST", "/api/client/operations")],
+        asset=None,
+        query={},
+        content_length=len(body),
+        issues_session=False,
+        provenance=RequestProvenance(),
+    )
+    entered, release = threading.Event(), threading.Event()
+
+    def hold_background():
+        with gate.hold():
+            entered.set()
+            assert release.wait(15)
+
+    holder = threading.Thread(
+        target=lambda: mutation_gate.run_background(
+            hold_background, "AGENT_BUNDLE_PREPARE", "held-task"
+        )
+    )
+    holder.start()
+    try:
+        assert entered.wait(5)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            ordinary = pool.submit(application.dispatch, admitted, body)
+            response = ordinary.result(timeout=6)
+            assert response.status == 200  # the operation returns its coded refusal
+            blocked = json.loads(response.body)
+            assert (
+                blocked["status"] == "REFUSED"
+                and blocked["failure_code"] == "workspace_context.writer_busy"
+            )
+            assert blocked["next_requests"]["activity"] == {"operation": "ACTIVITY_RECENT"}
             pending = pool.submit(client.request, request)
             completed, _waiting = wait({pending}, timeout=6)
             # The wait can name whom it waited behind, read without the gate.
@@ -1214,7 +1248,11 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
                 "AGENT_BUNDLE_PREPARE",
                 "held-task",
             )
-        refused = pending.result(timeout=10)
+            refused = pending.result(timeout=10)
+    finally:
+        release.set()
+        holder.join(timeout=10)
+    assert not holder.is_alive()
     assert gate.holder() is None
     assert completed, "the busy request did not finish while the workspace gate was held"
     assert refused["status"] == "REFUSED_REVIEW_STALLED"

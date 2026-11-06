@@ -40,7 +40,11 @@ from alphalattice.control.product_host.composition.local_web_session import (
     NativeUsageReader,
 )
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
-from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.control.workspace_runtime.mutation_gate import (
+    WorkspaceMutationGate,
+    background_task,
+    gate_subject,
+)
 from alphalattice.interface.local_application.activity import (
     OBSERVED_OPERATIONS,
     READ_OPERATIONS,
@@ -101,6 +105,40 @@ def test_observation_entry_and_refusal_do_not_wait_for_workspace_mutations(tmp_p
         assert activity._ledger is not None
         counts = activity._ledger.refusal_counts(since_day="2000-01-01")
         assert counts[0]["failure_code"] == "workspace.mutation_busy"
+        entered = threading.Event()
+        acquired = threading.Event()
+        release = threading.Event()
+
+        def wait_for_writer() -> None:
+            with background_task("WAITING_TASK", "waiting-task"):
+                entered.set()
+                with gate.hold():
+                    acquired.set()
+                    release.wait(5)
+
+        with gate_subject("REAL_WRITER", "holder-task"), gate.hold():
+            waiter = threading.Thread(target=wait_for_writer, name="waiting-thread")
+            waiter.start()
+            assert entered.wait(2)
+            writer = None
+            for _ in range(100):
+                writer = activity.recent().get("workspace_writer")
+                if writer and writer["waiters"]:
+                    break
+                threading.Event().wait(0.01)
+            assert writer is not None
+            assert writer["holder"]["operation"] == "REAL_WRITER"
+            assert writer["holder"]["task_id"] == "holder-task"
+            assert writer["waiters"][0]["operation"] == "WAITING_TASK"
+            assert writer["waiters"][0]["task_id"] == "waiting-task"
+            assert activity.read(ActivityReadQuery())["workspace_writer"]["waiters"]
+        try:
+            assert acquired.wait(3)
+            assert "workspace_writer" not in activity.recent()
+        finally:
+            release.set()
+            waiter.join(timeout=5)
+        assert not waiter.is_alive()
         closed = threading.Event()
 
         def close() -> None:

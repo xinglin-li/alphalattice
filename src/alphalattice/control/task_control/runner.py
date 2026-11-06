@@ -22,6 +22,7 @@ from threading import Event, Thread
 from typing import Final, Protocol
 from uuid import UUID, uuid4
 
+from alphalattice.control.workspace_runtime.mutation_gate import carry_background
 from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
 
 from .child import ChildStartFailed
@@ -232,7 +233,7 @@ class _WorkPool:
         if self._executor is None:
             self._finished.append((definition, call()))
         else:
-            self._running[self._executor.submit(call)] = definition
+            self._running[self._executor.submit(carry_background(call))] = definition
 
     def next_done(self) -> tuple[WorkItemDefinition, StageExecutionResult]:
         """The next finished item, the earliest in the plan among those that

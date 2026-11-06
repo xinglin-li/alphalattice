@@ -1545,66 +1545,6 @@ def test_deferred_stage_can_recover_without_leaving_a_blocked_work_item(
     )
 
 
-@pytest.mark.parametrize("cancel_while_returning", [False, True])
-def test_dispatcher_finishes_deferred_cancel_only_after_command_returns(
-    tmp_path: Path, cancel_while_returning: bool
-) -> None:
-    now = datetime.now(UTC)
-    deferred, release = Event(), Event()
-    with WorkspaceApplicationSession.acquire(tmp_path) as session:
-        registry = session.task_control_registry
-        envelope, goal, plan = task_contract()
-        adapter = _FixtureTaskAdapter(defer_once=True)
-
-        class Command:
-            command_kind = "factor_research"
-
-            def admit(self):
-                task = registry.admit(
-                    input_envelope=envelope, goal=goal, plan=plan, observed_at=now
-                ).record
-                return CommandAdmission(task.task_id, task.lifecycle)
-
-            def execute(self, task_id):
-                runner = TaskControlRunner(
-                    registry=registry,
-                    adapters={adapter.task_kind: adapter},
-                    runtime_path=str(tmp_path / "task-runtime.sqlite"),
-                    clock=lambda: now,
-                )
-                try:
-                    assert runner.run_next().lifecycle is TaskLifecycle.DEFERRED
-                finally:
-                    runner.close()
-                deferred.set()
-                assert release.wait(10)
-
-        dispatcher = LocalBackgroundDispatcher(registry, version_moved_error=TaskTransitionRejected)
-        try:
-            task_id = dispatcher.submit(Command()).task_id
-            assert deferred.wait(10)
-            if cancel_while_returning:
-                assert dispatcher.request_cancel(task_id)
-                assert registry.task(task_id).lifecycle is TaskLifecycle.CANCEL_REQUESTED
-            release.set()
-            dispatcher.drain_for_tests()
-            if not cancel_while_returning:
-                assert dispatcher.request_cancel(task_id)
-            task = registry.task(task_id)
-            assert task.lifecycle is TaskLifecycle.CANCELLED
-            assert task.failure_code == "TASK_CANCELLED_AFTER_WRITER_STOPPED"
-            assert task.input == envelope
-            assert all(
-                item.lifecycle is WorkItemLifecycle.CANCELLED
-                for item in registry.work_items(task_id)
-            )
-            assert dispatcher.executions == 1 and dispatcher.failure(task_id) is None
-            assert dispatcher.request_cancel(task_id)  # exact repeat, no second execution
-        finally:
-            release.set()
-            dispatcher.close()
-
-
 def test_a_held_recovery_reads_as_queued_and_a_stopped_admission_never_as_running(
     tmp_path: Path,
 ) -> None:

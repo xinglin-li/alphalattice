@@ -592,6 +592,12 @@
       "layer": "integration",
       "seconds": 6.248
     },
+    "workspace_runtime.background_task_gate_wait_and_cancel": {
+      "description": "A background Task waits for a workspace mutation holder, names the holder and preserves its deferred cancellation without duplicating execution.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 10
+    },
     "workspace_runtime.source_lease_failure_evidence": {
       "description": "A failed sealed-source mutation check names the written and observed bytes, restored and observed metadata, and the unavailable lease event.",
       "owner": "alphalattice.control.workspace_runtime",
