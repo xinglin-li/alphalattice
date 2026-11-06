@@ -197,7 +197,17 @@ def test_attached_retrieval_host_ends_when_its_cli_parent_is_terminated(tmp_path
     import psutil
 
     from alphalattice.interface.local_application.client import LocalResearchClient
+    from alphalattice.interface.local_application.native_bridge import (
+        PROJECT_DECLARATION_NAME,
+        PROJECT_DECLARATION_SCHEMA,
+    )
 
+    workspace = tmp_path / "workspace"
+    project = tmp_path / ".codex"
+    project.mkdir()
+    (project / PROJECT_DECLARATION_NAME).write_text(
+        json.dumps({"schema": PROJECT_DECLARATION_SCHEMA, "host": "codex"}), encoding="utf-8"
+    )
     root = resolve_playpen_root(Path(__file__))
     script = """
 import importlib.util, sys
@@ -214,7 +224,7 @@ raise SystemExit(entry.main(sys.argv[1:]))
 """.replace("__SELF_TEST_MODULE__", __spec__.name if __spec__ else __name__)
     sources = (str(root), str(root / "src"), str(Path(sys.prefix) / "Lib/site-packages"))
     environment = dict(os.environ, PYTHONPATH=os.pathsep.join(sources))
-    arguments = ["--workspace", str(tmp_path), "serve", "--no-browser", "--stop-on-stdin"]
+    arguments = ["--workspace", str(workspace), "serve", "--no-browser", "--stop-on-stdin"]
     parent = subprocess.Popen(
         [_PYTHON, "-c", script, *arguments],
         stdin=subprocess.PIPE,
@@ -222,6 +232,7 @@ raise SystemExit(entry.main(sys.argv[1:]))
         stderr=subprocess.STDOUT,
         text=True,
         env=environment,
+        cwd=tmp_path,
         creationflags=_FLAGS,
     )
     assert parent.stdout is not None and parent.stdin is not None
@@ -247,7 +258,7 @@ raise SystemExit(entry.main(sys.argv[1:]))
 
     try:
         assert ready.wait(45), "".join(lines)
-        host = LocalResearchClient(tmp_path).activity(limit=1)["observer"]["host"]
+        host = LocalResearchClient(workspace).activity(limit=1)["observer"]["host"]
         capture()
         assert host["pid"] in {pid for pid, _ in owned}
         parent.terminate()

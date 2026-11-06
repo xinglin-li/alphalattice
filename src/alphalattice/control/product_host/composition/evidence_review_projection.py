@@ -115,6 +115,7 @@ class _FailedUnit(NamedTuple):
     failure_code: str
     detail: str
     issuers_without_source: tuple[str, ...] | None
+    next_action: str
 
     @property
     def sources_short(self) -> bool:
@@ -847,6 +848,7 @@ class EvidenceCroProjector:
                     row.failure_code or "",
                     row.detail or "",
                     row.issuers_without_source,
+                    row.next_action or "READ_THE_COVERAGE",
                 )
                 for row in progress.units
                 if row.state == "FAILED"
@@ -875,6 +877,7 @@ class EvidenceCroProjector:
                     str(value["failure_code"]),
                     way.detail,
                     way.issuers_without_source,
+                    way.next_action,
                 )
             )
         return failed
@@ -889,9 +892,27 @@ class EvidenceCroProjector:
             code, recorded=self.app.evidence_policy.mode is AlternativeEvidenceMode.RECORDED
         )
         uncovered = tuple(cast(tuple[str, ...], state.get("uncovered_entity_ids") or ()))
+        kind, message = state.get("exception_type"), state.get("exception_message")
+        detail, action = words["detail"], words["next_action"]
+        unchanged = code in {
+            "alternative_evidence.task_failed",
+            "alternative_evidence.evidence_need_invalid",
+        }
+        if unchanged:
+            detail = f"This unit stopped with `{code}`."
+        if isinstance(kind, str) and kind and code.partition(":")[0] not in SOURCE_SHORT_CODES:
+            detail += f" Recorded cause: {kind}" + (f": {message}" if message else "") + "."
+        elif unchanged:
+            detail += " The cause was not recorded."
+        if unchanged:
+            detail += (
+                " Report the recorded cause and read coverage for any prepared units;"
+                " do not repeat an unchanged failure."
+            )
+            action = "REPORT_THE_CAUSE_AND_READ_COVERAGE"
         return _UnitWay(
-            detail=words["detail"],
-            next_action=words["next_action"],
+            detail=detail,
+            next_action=action,
             issuers_without_source=uncovered
             if uncovered
             else entities
@@ -1186,16 +1207,18 @@ class EvidenceCroProjector:
         recorded = self.app.evidence_policy.mode is AlternativeEvidenceMode.RECORDED
         units_failed = self._task_failed_units(task)
         sources_short = recorded and any(unit.sources_short for unit in units_failed)
-        retry = any(not unit.sources_short or not recorded for unit in units_failed)
+        retry = any(
+            unit.next_action != "REPORT_THE_CAUSE_AND_READ_COVERAGE"
+            and (not unit.sources_short or not recorded)
+            for unit in units_failed
+        )
         failed = [
             {
                 "unit_id": unit.unit_id,
                 "issuer_count": len(unit.entity_ids),
                 "failure_code": unit.failure_code,
                 "detail": unit.detail,
-                "next_action": unit_failure_words(unit.failure_code, recorded=recorded)[
-                    "next_action"
-                ],
+                "next_action": unit.next_action,
             }
             for unit in units_failed
         ]

@@ -527,8 +527,9 @@ def test_a_tampered_workspace_document_is_a_named_packet_refusal(tmp_path: Path)
     runtime.close()
 
 
+@pytest.mark.parametrize("untyped", [False, True, "citation", "need"])
 def test_a_stage_failure_names_the_owners_own_code(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, untyped: bool | str
 ) -> None:
     """An owner's failure keeps its code, fits its diagnostics and offers the real retry preview."""
 
@@ -608,15 +609,49 @@ def test_a_stage_failure_names_the_owners_own_code(
 
     workspace, report = build_workspace(tmp_path)
     authority = build_authority(tmp_path=tmp_path, report=report)
-    long_error = type("KnowledgeRetrievalError" + "Long" * 40, (KnowledgeRetrievalError,), {})
+    from dataclasses import replace
+
+    if untyped in {"citation", "need"}:
+        resources = authority.evidence_resources
+        assert resources is not None
+        first = resources.recorded_documents[0]
+        bad = (
+            first.model_copy(update={"text": "# Good\nbody\n## \u00a0\nBroken excerpt.\n"})
+            if untyped == "citation"
+            else first
+        )
+        authority = replace(
+            authority,
+            evidence_resources=replace(
+                resources, recorded_documents=(bad, *resources.recorded_documents[1:])
+            ),
+        )
+        monkeypatch.setattr(authority.evidence_runtime, "whole_delivery", lambda *_: False)
+        if untyped == "need":
+            from alphalattice.evidence.alternative_evidence.analysis.contracts import (
+                EvidenceNeedRecord,
+            )
+
+            def invalid_need(**kwargs: object) -> object:
+                reference = kwargs["document_set"].documents[0]
+                return EvidenceNeedRecord(
+                    document_handle=reference.semantic_handle,
+                    kind="REGION_STATEMENT",
+                    status="PROVIDED",
+                )
+
+            monkeypatch.setattr(authority.evidence_runtime, "select_evidence", invalid_need)
+    base_error = RuntimeError if untyped else KnowledgeRetrievalError
+    long_error = type("KnowledgeRetrievalError" + "Long" * 40, (base_error,), {})
     message = "   index    mismatch\tfor\nsource  " * 40
-    raised = long_error(message, code="retrieval.index_corrupt")
+    raised = long_error(message) if untyped else long_error(message, code="retrieval.index_corrupt")
 
     def fail_canonicalization(*_args: object, **_kwargs: object) -> object:
         raise raised
 
     canonicalize = authority.evidence_runtime.canonicalize
-    monkeypatch.setattr(authority.evidence_runtime, "canonicalize", fail_canonicalization)
+    if untyped not in {"citation", "need"}:
+        monkeypatch.setattr(authority.evidence_runtime, "canonicalize", fail_canonicalization)
     service = start_service(workspace, authority, tmp_path)
     try:
         preview = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
@@ -627,8 +662,34 @@ def test_a_stage_failure_names_the_owners_own_code(
         adapter = service.review.evidence_task_adapter
         (state,) = adapter.unit_states(task).values()
         assert state["state"] == "FAILED"
+        if untyped in {"citation", "need"}:
+            assert state["failed_stage"] == (
+                "build_retrieval_generation" if untyped == "citation" else "select_evidence_spans"
+            )
+            assert state.get("exception_type") == "ValidationError"
+            assert bad.entity_id in state["exception_message"]
+            assert bad.revision in state["exception_message"]
+            field = "heading_path" if untyped == "citation" else "EvidenceNeedRecord"
+            assert field in state["exception_message"]
+            if untyped == "need":
+                assert "status=PROVIDED" in state["exception_message"]
+                assert "span_handle=None" in state["exception_message"]
+            completed = run_one(service, {"operation": "STATUS", "task_id": task.task_id})
+            failure = completed["failed_units"][0]
+            assert bad.entity_id in failure["detail"] and bad.revision in failure["detail"]
+            assert field in failure["detail"]
+            from alphalattice.interface.local_application.review_evidence import (
+                review_evidence_view,
+            )
+
+            answer = review_evidence_view({}, {}, completed, resuming=False)
+            assert answer["failed_units"] == completed["failed_units"]
+            assert failure["next_action"] == "REPORT_THE_CAUSE_AND_READ_COVERAGE"
+            return
         assert state["failure_code"] == _failure_code(raised)
         assert state["failed_stage"] == "canonicalize_documents"
+        assert state["exception_type"] == long_error.__name__[:120]
+        assert state["exception_message"] == " ".join(message.split())[:400]
         (failure,) = service.review.artifacts.values(
             UNIT_FAILURE_CATEGORY, AlternativeEvidenceUnitFailure
         )
@@ -641,7 +702,16 @@ def test_a_stage_failure_names_the_owners_own_code(
         completed = run_one(service, {"operation": "STATUS", "task_id": task.task_id})
         assert completed["lifecycle"] == "SUCCEEDED" and completed["units_failed"] == 1
         assert completed["failed_units"][0]["failure_code"] == _failure_code(raised)
-        assert completed["next_requests"]["preview"] == {"operation": "EVIDENCE_PREVIEW"}
+        assert "index mismatch for source" in completed["failed_units"][0]["detail"]
+        if untyped:
+            assert (
+                completed["failed_units"][0]["next_action"] == "REPORT_THE_CAUSE_AND_READ_COVERAGE"
+            )
+            assert "preview" not in completed["next_requests"]
+            assert "do not repeat" in completed["failed_units"][0]["detail"]
+            assert completed["next_requests"]["coverage"] == {"operation": "EVIDENCE_CRO"}
+        else:
+            assert completed["next_requests"]["preview"] == {"operation": "EVIDENCE_PREVIEW"}
         monkeypatch.setattr(authority.evidence_runtime, "canonicalize", canonicalize)
         monkeypatch.setattr(authority.evidence_runtime, "analyze", fail_canonicalization)
         admitted = service.review.refresh_evidence(dispatcher=service.session.dispatcher)

@@ -921,6 +921,8 @@ class _ScriptedHost:
         self.previews = 0
         self.prepares = 0
         self.prepared_request: dict[str, Any] | None = None
+        self.failure: dict[str, Any] | None = None
+        self.empty = False
 
     def activity(self) -> dict[str, Any]:
         return {"observer": {"codex_queue": {"present": True}}}
@@ -939,7 +941,20 @@ class _ScriptedHost:
                 assert document["spec"] == {"strategy_package_id": "pkg", "lookback": 20}
                 return {"status": "ADMITTED", "disposition": "ADMITTED", "task_id": "t-book"}
             case "STATUS":
-                return {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", **document}
+                return {
+                    "status": "SUCCEEDED",
+                    "lifecycle": "SUCCEEDED",
+                    **document,
+                    **(
+                        {
+                            "units_failed": 1,
+                            "failed_units": [self.failure],
+                            "next_requests": {"coverage": {"operation": "EVIDENCE_CRO"}},
+                        }
+                        if document.get("task_id") == "t-evidence" and self.failure
+                        else {}
+                    ),
+                }
             case "RESULTS":
                 # The book's Task names no result; the saved results do, by their Task.
                 return {
@@ -1036,7 +1051,7 @@ class _ScriptedHost:
                         "bundle_directory": None,
                         **subject,
                     }
-                    for unit in ("u1", "u2")
+                    for unit in (() if self.empty else ("u1", "u2"))
                 }
                 return {"status": "REUSED_EXACT", "task_id": "t-evidence", "next_requests": units}
             case "WAKE_REGISTER":
@@ -1079,7 +1094,13 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     assert not any(d["operation"] == "AGENT_BUNDLE_PREPARE" for d in host.sent)
     marker.unlink()
     host = _ScriptedHost(tmp_path / "workspace")
+    host.failure = {
+        "unit_id": "u2",
+        "detail": "AAPL filing rejected heading_path",
+        "next_action": "REPORT_THE_CAUSE_AND_READ_COVERAGE",
+    }
     answer = client_module._review_steps(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
+    assert answer["evidence"].get("failed_units") == [host.failure]
 
     assert answer["status"] == "BOOK_REVIEW_READY" and answer["next_action"] == "DISPATCH_ANALYSTS"
     assert [step["step"] for step in answer["steps"]] == [
@@ -1147,6 +1168,17 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     assert client_module._review_steps(host, resume)["analyst_bundles"] == answer["analyst_bundles"]
     assert not any(d["operation"] == "EVIDENCE_PREPARE" for d in host.sent[before_resume:])
     assert (folder / "answer.json").read_bytes() == b"{}\n"
+    empty = _ScriptedHost(tmp_path / "workspace")
+    empty.empty = True
+    empty.failure = {
+        "unit_id": "u1",
+        "detail": "AAPL filing rejected heading_path",
+        "next_action": "REPORT_THE_CAUSE_AND_READ_COVERAGE",
+    }
+    stopped = client_module._review_steps(empty, _review_args(tmp_path / "empty-analysts"))
+    assert stopped["book_review"]["stopped_at"] == "evidence"
+    assert stopped["failed_units"] == [empty.failure]
+    assert stopped["next_requests"]["coverage"]["operation"] == "EVIDENCE_CRO"
 
 
 def test_a_book_review_stops_at_the_first_answer_that_needs_another_step(tmp_path: Path) -> None:

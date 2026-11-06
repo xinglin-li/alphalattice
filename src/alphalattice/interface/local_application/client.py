@@ -76,7 +76,7 @@ from alphalattice.interface.local_application.goals import (
 )
 from alphalattice.interface.local_application.review_evidence import (
     read_resumed,
-    review_evidence_view,
+    review_prepared,
     select_preparation,
 )
 from alphalattice.protocols.research_authoring.selection import (
@@ -2463,6 +2463,7 @@ class _Chain:
     wake: tuple[str, str] | None = None
     """The Codex thread and this verb's rerun, sent when its first running Task ends."""
     receipt: _FollowReceipt = _follow_receipt
+    followed_answer: dict[str, Any] | None = None
 
     def send(self, step: str, document: dict[str, Any]) -> dict[str, Any]:
         if document.get("task_id"):
@@ -2510,6 +2511,7 @@ class _Chain:
         remaining = None if deadline is None else max(0.1, deadline - time.monotonic())
         ended = _follow(self.client, body, remaining, deadline=deadline, receipt=self.receipt)
         self.steps.append({"step": step + "_task", "sent": "STATUS", "outcome": outcome_of(ended)})
+        self.followed_answer = ended
         return None if outcome_of(ended) == "OK" else self.stop(step, ended)
 
     @staticmethod
@@ -2680,34 +2682,26 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
     pending = outcome_of(prepared) == "PENDING"
     if (ended := chain.followed("evidence", prepared)) is not None:
         return ended
+    if pending and chain.followed_answer is not None:
+        prepared = chain.followed_answer
     if resuming:
-        prepared, current, stopped = read_resumed(
-            chain, prepared, prepare, preview_request, pending
-        )
+        prepared, current, stopped = read_resumed(chain, prepared, prepare, preview_request, False)
         if stopped is not None:
             return stopped
     else:
         current = chain.send("evidence_prepared", prepare) if pending else prepared
-    bundles = chain.bundles(current, root)
-    if isinstance(bundles, dict):
-        return bundles
-    review = chain.offered(readback, "review")
-    return {
-        "status": "BOOK_REVIEW_READY" if bundles else "EVIDENCE_PREPARED",
-        "strategy_package_id": package,
-        ("positions" if update else "book"): subject,
-        "evidence": review_evidence_view(preview, current, prepared, resuming=resuming),
-        "analyst_bundles": bundles,
-        "steps": chain.steps,
-        "next_action": "DISPATCH_ANALYSTS" if bundles else "READ_EVIDENCE",
-        "detail": (
-            "Start each Analyst with its bundle: each submits its answer by its route. With their "
-            "receipts back, `review continue --dir` reads them, prepares the CRO's bundle."
-            if bundles
-            else "Evidence is prepared with no Analyst bundle to answer; read its review state."
-        ),
-        "next_requests": {} if review is None else {"review": review},
-    }
+    return review_prepared(
+        chain,
+        root=root,
+        readback=readback,
+        package=package,
+        update=update,
+        subject=subject,
+        preview=preview,
+        current=current,
+        prepared=prepared,
+        resuming=resuming,
+    )
 
 
 def _answer_folders(root: Path, package: str | None) -> list[Path]:
