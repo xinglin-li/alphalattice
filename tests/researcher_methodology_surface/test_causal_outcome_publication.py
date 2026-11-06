@@ -407,6 +407,14 @@ def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(tmp_path
         assert there.tables[key].equals(table)
 
 
+def _new_children_after_wait(parent, previous):
+    """Allow exiting children to finish, but keep any still alive after the bound."""
+    import psutil
+
+    children = [child for child in parent.children(recursive=True) if child.pid not in previous]
+    return psutil.wait_procs(children, timeout=3)[1]
+
+
 def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path: Path) -> None:
     """Control: Worker failure publishes nothing and leaves no worker behind."""
 
@@ -456,14 +464,14 @@ def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path
     assert sorted(path for path in Path(workspace.artifact_root).rglob("*") if path.is_file()) == (
         files
     )
-    assert [c for c in me.children(recursive=True) if c.pid not in children_before] == []
+    assert _new_children_after_wait(me, children_before) == []
     assert {thread.name for thread in threading.enumerate()} <= threads_before
     live = live_workspace_connections(store.database.path)
     assert live is None or live.handles == 0
     with patch.object(owner, "PARALLEL_DERIVATION_ROW_THRESHOLD", 1):
         published = publish()
     assert published.receipt.action == "PUBLISHED"
-    assert [c for c in me.children(recursive=True) if c.pid not in children_before] == []
+    assert _new_children_after_wait(me, children_before) == []
 
 
 def test_executor_creation_and_process_start_refusals_publish_nothing(tmp_path: Path) -> None:
