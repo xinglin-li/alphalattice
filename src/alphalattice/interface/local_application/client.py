@@ -12,7 +12,7 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from functools import partial
 from hashlib import sha256
 from pathlib import Path
@@ -39,7 +39,6 @@ from alphalattice.interface.local_application.cli_contract import (
     agent_session,
     answer_json,
     choices,
-    client_failure,
     client_refusal,
     command,
     command_table,
@@ -74,11 +73,14 @@ from alphalattice.interface.local_application.goals import (
     first_use_asks,
     target_sessions,
 )
+from alphalattice.interface.local_application.host_lookup import failure_with_hosts
 from alphalattice.interface.local_application.review_evidence import (
     read_resumed,
     review_prepared,
     select_preparation,
 )
+from alphalattice.interface.local_application.wire import _json_value as _json_value
+from alphalattice.interface.local_application.wire import request_body as request_body
 from alphalattice.protocols.research_authoring.selection import (
     dump_declaration,
     load_safe_yaml_document,
@@ -93,11 +95,6 @@ WHOLE_REFERENCE = re.compile(
 """SHA-256 or UUID."""
 DEFAULT_HTTP_WAIT_SECONDS = 120.0
 """Transport waiting, not a Task budget; verified historical PLAN/readback may exceed 30 s."""
-
-
-def request_body(document: dict[str, Any]) -> bytes:
-    """Use UTF-8 JSON: escapes could make admitted Unicode fields exceed the body limit."""
-    return json.dumps(document, default=_json_value, ensure_ascii=False).encode("utf-8")
 
 
 def workspace_connection_key(workspace: Path) -> str:
@@ -215,12 +212,6 @@ class LocalResearchConnection:
         if Path(value.workspace).resolve() != workspace.resolve():
             raise LocalResearchClientError("local_client.workspace_mismatch")
         return value
-
-
-def _json_value(value: object) -> str:
-    if isinstance(value, (date, datetime)):
-        return value.isoformat()
-    raise LocalResearchClientError("local_client.document_not_json_compatible")
 
 
 class LocalResearchClient:
@@ -3505,7 +3496,7 @@ def run(
     except LocalResearchClientError as error:
         code = str(error)
         failed = (code, document, error.__cause__, args.request_timeout, body is not None)
-        refusal, transport = client_failure(*failed, workspace=Path(args.workspace))
+        refusal, transport = failure_with_hosts(*failed, Path(args.workspace), LocalResearchClient)
         if body is not None:
             # A local failure preserves the owner's outcome (V129) and admitted Task's receipt
             # (V139), so the agent inspects it without resending admitted work.

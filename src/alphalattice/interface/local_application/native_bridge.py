@@ -66,67 +66,6 @@ from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, An
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
 CHILD_USAGE_BINDING_UNVERIFIED = "native_bridge.child_usage_binding_unverified"
-WORKSPACE_SCAN_LIMIT: Final = 64
-"""Maximum direct project workspaces checked; overflow is reported as partial."""
-
-
-def serving_workspaces(project: Path) -> dict[str, Any]:
-    """Find authenticated Hosts under this project's immediate workspaces, without switching."""
-    from alphalattice.interface.local_application.client import (  # lazy: client cycle.
-        LocalResearchClient,
-        LocalResearchClientError,
-    )
-
-    folder = project.resolve() / "workspaces"
-    try:
-        with os.scandir(folder) as entries:
-            candidates = list(islice(entries, WORKSPACE_SCAN_LIMIT + 1))
-    except FileNotFoundError:
-        return {"status": "ABSENT", "workspaces": [], "unverified": 0}
-    except OSError as error:
-        return {"status": "UNREADABLE", "workspaces": [], "reason": type(error).__name__}
-    found, unverified = [], 0
-    for entry in candidates[:WORKSPACE_SCAN_LIMIT]:
-        try:
-            workspace = Path(entry.path)
-            if not entry.is_dir(follow_symlinks=False) or workspace.is_junction():
-                continue
-            if not (workspace / "research-workspace.json").is_file():
-                continue
-            host = LocalResearchClient(workspace, timeout=1)
-            response = host.request(
-                {"operation": "OPERATION_LIST", "schema_operation": "WORKSPACE_SHOW"}
-            )
-            if response.get("status") == "REFUSED" or response.get("refused"):
-                unverified += 1
-            else:
-                found.append(str(workspace.resolve()))
-        except (OSError, LocalResearchClientError):
-            unverified += 1
-    return {
-        "status": "PARTIAL" if len(candidates) > WORKSPACE_SCAN_LIMIT else "CHECKED",
-        "workspaces": sorted(found),
-        "unverified": unverified,
-    }
-
-
-def serving_workspace_notice(project: Path) -> str:
-    """Disclose discovered Hosts and any incomplete workspace scan."""
-    result = serving_workspaces(project)
-    notices = []
-    if result["workspaces"]:
-        notices.append(
-            str(worded("cli.serving_workspaces")).replace(
-                "{subject}", ", ".join(result["workspaces"])
-            )
-        )
-    if result["status"] in {"PARTIAL", "UNREADABLE"}:
-        notices.append(
-            str(worded("cli.serving_workspaces_incomplete")).replace(
-                "{subject}", str(result.get("reason") or result["status"])
-            )
-        )
-    return "" if not notices else " " + " ".join(notices)
 
 
 def command_readiness(command: list[str], *, timeout: int = 30) -> dict[str, Any]:

@@ -44,6 +44,7 @@ from alphalattice.interface.local_application.client import (
     LocalResearchClientError,
 )
 from alphalattice.interface.local_application.failure_codes import safe_failure_code, setup_failure
+from alphalattice.interface.local_application.host_lookup import serving_workspaces
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_DIRECTORY,
     BINDING_NAME,
@@ -66,7 +67,6 @@ from alphalattice.interface.local_application.native_bridge import (
     command_readiness,
     declares_product,
     fresh_path,
-    serving_workspaces,
     session_binding,
     session_project,
 )
@@ -500,7 +500,7 @@ def _windows_environment_facts() -> dict[str, Any]:
 def _environment_specs(project: Path, store_root: Path) -> tuple[Any, ...]:
     """Describe authenticated Hosts and Windows environment facts for doctor."""
     windows = _windows_environment_facts()
-    serving = serving_workspaces(project)
+    serving = serving_workspaces(project, client.LocalResearchClient)
     return (
         ("serving_workspaces", None if serving["status"] == "UNREADABLE" else True, serving),
         (

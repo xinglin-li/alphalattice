@@ -88,6 +88,7 @@ from alphalattice.interface.local_application.failure_codes import (
     public_failure,
     safe_failure_code,
 )
+from alphalattice.interface.local_application.host_lookup import serving_workspace_notice
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
     decision_hash,
@@ -1699,9 +1700,9 @@ def _refused(
     context = getattr(error, "binding_context", None)
     detail = str(worded(refusal.detail))
     if workspace is not None and refusal.outcome == "NO_HOST":
-        detail = host_checked(
-            detail, workspace, discover=code == "local_client.service_not_running"
-        )
+        detail = host_checked(detail, workspace)
+        if code == "local_client.service_not_running":
+            detail += serving_workspace_notice(Path.cwd(), client.LocalResearchClient)
     if line and code == "local_client.workspace_unbound":
         again = join([*command_prefix(), "--workspace", "<dir>", *line], shell())
         detail += " " + str(worded("This line with its workspace named: {subject}.")).replace(

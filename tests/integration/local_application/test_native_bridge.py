@@ -628,7 +628,7 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
 
 
 @pytest.mark.proves("local_application.doctor_names_windows_long_path_setting")
-def test_doctor_reports_windows_path_and_packaged_shell(tmp_path, monkeypatch):
+def test_doctor_reports_windows_path_and_packaged_shell(tmp_path, monkeypatch, capsys):
     if sys.platform == "win32":
         import ctypes
         import winreg
@@ -654,7 +654,7 @@ def test_doctor_reports_windows_path_and_packaged_shell(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(setup, "codex_queue_readiness", lambda: {"present": True})
     monkeypatch.setattr(model_store, "recipe_readiness", lambda *_: {"ready": True})
-    from alphalattice.interface.local_application import cli_contract, client
+    from alphalattice.interface.local_application import cli, client, host_lookup
 
     good, stale = tmp_path / "workspaces" / "served", tmp_path / "workspaces" / "stale"
     for directory in (good, stale):
@@ -674,15 +674,18 @@ def test_doctor_reports_windows_path_and_packaged_shell(tmp_path, monkeypatch):
     assert "windows_long_paths" in items and "model_store_scope" in items
     assert "serving_workspaces" in items
     assert items["serving_workspaces"]["facts"]["workspaces"] == [str(good)]
-    assert str(good) in cli_contract.host_checked("No Host", tmp_path, discover=True)
-    assert str(stale) not in cli_contract.host_checked("No Host", tmp_path, discover=True)
+    cli._refused("local_client.service_not_running", 0, workspace=tmp_path)
+    refusal = json.loads(capsys.readouterr().out)
+    assert str(good) in refusal["detail"]
+    assert str(stale) not in refusal["detail"]
     with monkeypatch.context() as patch:
         patch.setattr(
-            native_bridge,
+            host_lookup,
             "serving_workspaces",
-            lambda _: {"status": "UNREADABLE", "workspaces": [], "reason": "PermissionError"},
+            lambda *args: {"status": "UNREADABLE", "workspaces": [], "reason": "PermissionError"},
         )
-        assert "PermissionError" in cli_contract.host_checked("No Host", tmp_path, discover=True)
+        cli._refused("local_client.service_not_running", 0, workspace=tmp_path)
+        assert "PermissionError" in json.loads(capsys.readouterr().out)["detail"]
     long_paths, store = items["windows_long_paths"], items["model_store_scope"]
     if sys.platform == "win32":
         assert long_paths["present"] is False and "LongPathsEnabled" in long_paths["how_to_fill"]
@@ -938,6 +941,7 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
 
     from pydantic import ValidationError
 
+    from alphalattice.interface.local_application import host_lookup
     from alphalattice.interface.local_application import native_bridge as bridge
     from alphalattice.interface.local_application.activity import (
         SUMMARY_RETAINED_CHARACTERS,
@@ -1013,7 +1017,7 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
     # name: (the bridge's bound, how it stands to its contract, the contract's, what it bounds)
     table = {
         "WORKSPACE_SCAN_LIMIT": (
-            bridge.WORKSPACE_SCAN_LIMIT,
+            host_lookup.WORKSPACE_SCAN_LIMIT,
             "==",
             64,
             "project workspaces checked before reporting a partial discovery",
