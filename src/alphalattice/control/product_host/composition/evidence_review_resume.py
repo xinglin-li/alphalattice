@@ -7,14 +7,20 @@ that cutoff and offers an Analyst only an unanswered unit: no second analysis fo
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Iterator, Mapping
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from uuid import UUID
 
 from alphalattice.control.task_control.contracts import TaskLifecycle
-from alphalattice.evidence.alternative_evidence.contracts import AlternativeEvidenceRequest
-from alphalattice.evidence.alternative_evidence.runtime.coverage import COVERAGE_RUN_PURPOSE
+from alphalattice.evidence.alternative_evidence.contracts import (
+    AlternativeEvidenceMode,
+    AlternativeEvidenceRequest,
+)
+from alphalattice.evidence.alternative_evidence.runtime.coverage import (
+    COVERAGE_RUN_PURPOSE,
+    sources_short,
+)
 from alphalattice.evidence.alternative_evidence.runtime.reuse import analysis_records
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     PortfolioEvidenceReviewError,
@@ -74,6 +80,12 @@ class _Review(Protocol):
         self, scope: PortfolioIssuerScope, *, evidence_as_of: datetime | None
     ) -> AlternativeEvidenceCoverageRun | None: ...
 
+    def _run_tasks(
+        self, scope: PortfolioIssuerScope, *, evidence_as_of: datetime | None = None
+    ) -> Iterator[TaskRecord]: ...
+
+    def _active_refresh_task(self, *, scope: PortfolioIssuerScope) -> TaskRecord | None: ...
+
 
 def current_answers(
     app: _Review, obligation_hashes: Collection[str], *, now: datetime
@@ -103,6 +115,88 @@ def answered_units(app: _Review, run: AlternativeEvidenceCoverageRun) -> frozens
     )
 
 
+def same_preparation(
+    run: AlternativeEvidenceCoverageRun, *, prepare_only: bool
+) -> Callable[[TaskRecord], bool]:
+    """The rule Task Control asks at admission: one book's preparation under one package."""
+
+    def same(task: TaskRecord) -> bool:
+        payload = task.input.payload
+        return (
+            payload.get("purpose") == COVERAGE_RUN_PURPOSE
+            and payload.get("prepare_only") is prepare_only
+            and payload.get("scope_hash") == run.scope_hash
+            and payload.get("resource_binding_hash") == run.resource_binding_hash
+        )
+
+    return same
+
+
+def preparation_in_flight(
+    app: _Review, scope: PortfolioIssuerScope, *, prepare_only: bool
+) -> tuple[TaskRecord, AlternativeEvidenceCoverageRun] | None:
+    """Find the one preparation in flight for this book's review, if any.
+
+    A book has one preparation in flight, whatever cutoff a later request names: a second run
+    beside it re-reads the same filing indices and packs the same positions into other units, so a
+    repeated review loses the coverage the first was gathering. The caller joins the Task queued,
+    running or owed its recovery, at that Task's cutoff. Another package, another purpose, or a
+    single preparation queued before every book was a run is another question, and the existing
+    queue admits it or refuses it as busy. A completed preparation for the exact run stays
+    `REUSED_EXACT`: each caller asks this after that reuse.
+    """
+    active, adapter = app._active_refresh_task(scope=scope), app.evidence_task_adapter
+    if active is None or adapter is None:
+        return None
+    run = adapter.run_of(active)
+    if (
+        run is None
+        or active.input.payload.get("prepare_only") is not prepare_only
+        or run.resource_binding_hash != adapter.run_binding_hash(prepare_only=prepare_only)
+    ):
+        return None
+    return active, run
+
+
+def review_run(
+    app: _Review, scope: PortfolioIssuerScope, newest: AlternativeEvidenceCoverageRun
+) -> AlternativeEvidenceCoverageRun:
+    """Choose the run a book's review stands on.
+
+    The newest, whenever it accounts for any issuer: a run that carried or answered some says
+    what the new filings left unread. Only a newest run that accounts for none gives way, to the
+    run of this same scope and package from the last analysis TTL that accounts for most. Analyses
+    answer a run's units, so a later run that packed the same positions otherwise and was never
+    answered, or that failed, would otherwise leave every analyzed unit out of the review.
+    """
+    adapter = app.evidence_task_adapter
+    if adapter is None or newest.carried or newest.nothing_filed:
+        return newest
+    runs = [newest]
+    for task in app._run_tasks(scope):
+        run = adapter.run_of(task)
+        if (
+            run is not None
+            and run.run_hash not in {value.run_hash for value in runs}
+            and run.resource_binding_hash == newest.resource_binding_hash
+            and run.evidence_as_of >= app.clock() - CURRENT_WITHIN
+        ):
+            runs.append(run)
+    if len(runs) == 1:
+        return newest
+    owed = {unit.obligation.obligation_hash for run in runs for unit in run.units}
+    answered = {value.obligation_hash for value in current_answers(app, owed, now=app.clock())}
+
+    def covered(run: AlternativeEvidenceCoverageRun) -> int:
+        held = {*run.carried, *run.nothing_filed}
+        for unit in run.units:
+            if unit.obligation.obligation_hash in answered:
+                held.update(unit.ordered_entity_ids)
+        return len(held)
+
+    return newest if covered(newest) else max(runs, key=covered)
+
+
 def resumed(
     app: _Review, scope: PortfolioIssuerScope
 ) -> tuple[AlternativeEvidenceCoverageRun, frozenset[str]] | None:
@@ -114,6 +208,51 @@ def resumed(
         return None
     answered = answered_units(app, run)
     return (run, answered) if answered else None
+
+
+def units_short_of_sources(
+    inventory: Mapping[str, object], mode: AlternativeEvidenceMode, *, floor: float
+) -> list[dict[str, object]]:
+    """The units RECORDED mode cannot prepare, each with the code it would fail.
+
+    A packet reads only the documents the workspace holds. A unit whose issuers holding one fall
+    short of the installed floor fails `alternative_evidence.minimum_entity_coverage_not_met`
+    at its acquisition, the same rule its refusal applies (`sources_short`); one whose issuers
+    hold none under a floor that admits that fails `alternative_evidence.document_set_empty`.
+    Under official acquisition the filing index is read at the run, so none is named.
+
+    Args:
+        inventory: The preview's source inventory: each issuer, its unit and its documents.
+        mode: The Host's evidence mode.
+        floor: The installed package's minimum issuer coverage.
+
+    Returns:
+        Each such unit in the run's order, heaviest first: its id, its code and its issuers
+        without a source; empty outside RECORDED mode.
+    """
+    if mode is not AlternativeEvidenceMode.RECORDED:
+        return []
+    units: dict[str, list[tuple[str, int]]] = {}
+    for issuer in cast(list[dict[str, object]], inventory.get("issuers") or []):
+        units.setdefault(str(issuer.get("unit_id")), []).append(
+            (str(issuer.get("entity_id")), int(cast(int, issuer.get("documents") or 0)))
+        )
+    named: list[dict[str, object]] = []
+    for unit_id, issuers in units.items():
+        entities = tuple(entity for entity, _documents in issuers)
+        sourced = {entity for entity, documents in issuers if documents}
+        short = sources_short(entities, sourced, floor=floor)
+        if short is not None or not sourced:
+            named.append(
+                {
+                    "unit_id": unit_id,
+                    "failure_code": "alternative_evidence.document_set_empty"
+                    if short is None
+                    else str(short),
+                    "issuers_without_source": list(entities if short is None else short.uncovered),
+                }
+            )
+    return named
 
 
 def unanswered(

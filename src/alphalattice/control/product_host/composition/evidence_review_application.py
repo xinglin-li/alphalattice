@@ -33,12 +33,16 @@ from alphalattice.control.product_host.composition.evidence_review_resume import
     CURRENT_WITHIN,
     answered_units,
     current_answers,
+    preparation_in_flight,
     preview_binding,
     preview_units,
     resumable_preparation,
     resume_offers,
     resumed,
+    review_run,
+    same_preparation,
     unanswered,
+    units_short_of_sources,
 )
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     EVIDENCE_INSTALL_TASK_KIND,
@@ -119,7 +123,6 @@ from alphalattice.evidence.alternative_evidence.runtime.coverage import (
     coverage_intent_hash,
     coverage_unit_ids,
     coverage_units,
-    sources_short,
 )
 from alphalattice.evidence.alternative_evidence.runtime.policy import (
     RETIRED_SELECTION_EXPLANATION,
@@ -481,51 +484,6 @@ def with_analyst_bundles(requests: dict[str, dict[str, str]]) -> dict[str, dict[
     return found
 
 
-def units_short_of_sources(
-    inventory: Mapping[str, object], mode: AlternativeEvidenceMode, *, floor: float
-) -> list[dict[str, object]]:
-    """The units RECORDED mode cannot prepare, each with the code it would fail (V445, V541).
-
-    A packet reads only the documents the workspace holds. A unit whose issuers holding one fall
-    short of the installed floor fails `alternative_evidence.minimum_entity_coverage_not_met`
-    at its acquisition, the same rule its refusal applies (`sources_short`); one whose issuers
-    hold none under a floor that admits that fails `alternative_evidence.document_set_empty`.
-    Under official acquisition the filing index is read at the run, so none is named.
-
-    Args:
-        inventory: The preview's source inventory: each issuer, its unit and its documents.
-        mode: The Host's evidence mode.
-        floor: The installed package's minimum issuer coverage.
-
-    Returns:
-        Each such unit in the run's order, heaviest first: its id, its code and its issuers
-        without a source; empty outside RECORDED mode.
-    """
-    if mode is not AlternativeEvidenceMode.RECORDED:
-        return []
-    units: dict[str, list[tuple[str, int]]] = {}
-    for issuer in cast(list[dict[str, object]], inventory.get("issuers") or []):
-        units.setdefault(str(issuer.get("unit_id")), []).append(
-            (str(issuer.get("entity_id")), int(cast(int, issuer.get("documents") or 0)))
-        )
-    named: list[dict[str, object]] = []
-    for unit_id, issuers in units.items():
-        entities = tuple(entity for entity, _documents in issuers)
-        sourced = {entity for entity, documents in issuers if documents}
-        short = sources_short(entities, sourced, floor=floor)
-        if short is not None or not sourced:
-            named.append(
-                {
-                    "unit_id": unit_id,
-                    "failure_code": "alternative_evidence.document_set_empty"
-                    if short is None
-                    else str(short),
-                    "issuers_without_source": list(entities if short is None else short.uncovered),
-                }
-            )
-    return named
-
-
 @dataclass(frozen=True, slots=True)
 class ReviewOutcome:
     """What asking for a refresh or a review produced, without waiting for any of it."""
@@ -740,12 +698,18 @@ class AlternativeEvidenceRefreshCommand:
         """
         envelope, goal, plan = self.contract()
         now = self.application.clock()
-        record = self.application.session.task_control_registry.admit(
+        admission = self.application.session.task_control_registry.admit(
             input_envelope=envelope,
             goal=goal,
             plan=plan,
             observed_at=now,
-        ).record
+            same_work=(
+                None
+                if self.run is None
+                else same_preparation(self.run, prepare_only=self.prepare_only)
+            ),
+        )
+        record = admission.record
         if self.subject is not None:
             self.application.record_task_admission(
                 record.task_id,
@@ -755,7 +719,11 @@ class AlternativeEvidenceRefreshCommand:
                 book=self.subject_book,
             )
         self._task_id = record.task_id
-        return CommandAdmission(task_id=record.task_id, lifecycle=record.lifecycle.value)
+        return CommandAdmission(
+            task_id=record.task_id,
+            lifecycle=record.lifecycle.value,
+            joined=admission.duplicate_active and self.run is not None,  # another request won
+        )
 
     def contract(self) -> tuple[TaskInputEnvelope, ResearchGoal, ResearchPlan]:
         """Compile exact coverage-run or document-refresh task input and resource authority.
@@ -2084,10 +2052,9 @@ class EvidenceReviewApplication:
             evidence_as_of=run.evidence_as_of, caller=caller
         )
         if network_refusal is not None:
-            envelope, _goal, _plan = coverage_run_task_contract(run=run, prepare_only=True)
             reusable = (
                 completed is not None
-                or self._refresh_in_flight(coverage, identity=envelope.input_hash) is not None
+                or self._refresh_in_flight(scope, prepare_only=True) is not None
             )
             if not reusable:
                 source_ready = False
@@ -2282,6 +2249,29 @@ class EvidenceReviewApplication:
                 failure_code="alternative_evidence.matter_selection_policy_retired",
             )
         now = self.clock()
+        scope = self.resolve_book(chosen).scope
+        if (
+            evidence_as_of is None
+            or next(self._run_tasks(scope, evidence_as_of=evidence_as_of), None) is None
+        ) and self._refresh_in_flight(scope, prepare_only=prepare_only):
+            # Before the index is read again; a captured intent still has to hold.
+            if preparation_binding_hash is not None:
+                held = self.resolve_coverage(
+                    chosen, evidence_as_of=evidence_as_of or now, prepare_only=prepare_only
+                ).run
+                if preparation_binding_hash != coverage_intent_hash(
+                    held, policy=self.evidence_policy.run_request(held)
+                ):
+                    return self._run_binding_refusal(
+                        preparation_binding_hash,
+                        run=held,
+                        preview={"operation": "EVIDENCE_PREVIEW", **chosen.request_fields()},
+                    )
+            joined = self._join_in_flight(
+                scope, prepare_only=prepare_only, selector=chosen, explicit=selector is not None
+            )
+            if joined is not None:
+                return joined
         try:
             coverage = self.resolve_coverage(
                 chosen,
@@ -2312,40 +2302,46 @@ class EvidenceReviewApplication:
         )
 
     def _refresh_in_flight(
-        self, coverage: ResolvedCoverage, *, identity: str
+        self, scope: PortfolioIssuerScope, *, prepare_only: bool
     ) -> ReviewOutcome | None:
-        """The refresh already in flight for this exact run, when one is.
+        """The book's preparation in flight (`preparation_in_flight`), as a request's answer."""
 
-        Two callers asking the same question -- a second click, a second session submitting the same
-        captured intent -- get the one Task that is queued or running for it, not a second
-        acquisition of the same bodies behind it. The same question means the same Task input (run,
-        cutoff, resource binding, purpose). A request for another cutoff, another package or another
-        purpose -- or a single preparation queued before every book was a run -- is another
-        question: it is not answered by the active Task, and the existing queue admits or refuses it
-        as busy. Decided last, after every reuse and refusal of the request itself, so a completed
-        preparation for the exact run is still `REUSED_EXACT`.
-        """
+        held = preparation_in_flight(self, scope, prepare_only=prepare_only)
+        return None if held is None else self._joined(*held)
 
-        active = self._active_refresh_task(scope=coverage.resolved.scope)
-        if active is None:
-            return None
-        adapter = self.evidence_task_adapter
-        if adapter is None or adapter.run_of(active) is None:
-            return None
-        if active.input.input_hash != identity:
-            return None
+    def _joined(self, active: TaskRecord, run: AlternativeEvidenceCoverageRun) -> ReviewOutcome:
         projection = self.session.task_control_registry.safe_projection(active.task_id)
         return ReviewOutcome(
             disposition="REUSED_IN_FLIGHT",
             detail=(
-                "This exact preparation is already "
+                "This book's preparation is already "
                 f"{projection.lifecycle.value.lower().replace('_', ' ')}; this request "
                 "joins it instead of acquiring the same sources twice."
             ),
             task_id=active.task_id,
             lifecycle=projection.lifecycle.value,
-            evidence_as_of=coverage.run.evidence_as_of,
+            evidence_as_of=run.evidence_as_of,
         )
+
+    def _join_in_flight(
+        self,
+        scope: PortfolioIssuerScope,
+        *,
+        prepare_only: bool,
+        selector: BookSelector,
+        explicit: bool,
+    ) -> ReviewOutcome | None:
+        """Join the preparation in flight, recording this book as a subject of its Task."""
+        joined = self._refresh_in_flight(scope, prepare_only=prepare_only)
+        if joined is not None and joined.task_id is not None:
+            self.record_task_admission(
+                joined.task_id,
+                selector,
+                now=self.clock(),
+                explicit=explicit,
+                book=self.resolve_book(selector).book,
+            )
+        return joined
 
     def _refresh_coverage(
         self,
@@ -2425,19 +2421,13 @@ class EvidenceReviewApplication:
                     failure_code="alternative_evidence.acquisition_deadline_exceeded",
                     next_requests={"preview": preview},
                 )
-        envelope, _goal, _plan = coverage_run_task_contract(
-            run=run, prepare_only=coverage.prepare_only
+        in_flight = self._join_in_flight(
+            coverage.resolved.scope,
+            prepare_only=coverage.prepare_only,
+            selector=selector,
+            explicit=explicit,
         )
-        in_flight = self._refresh_in_flight(coverage, identity=envelope.input_hash)
         if in_flight is not None:
-            if in_flight.task_id is not None:
-                self.record_task_admission(
-                    in_flight.task_id,
-                    selector,
-                    now=now,
-                    explicit=explicit,
-                    book=coverage.resolved.book,
-                )
             return in_flight
         network_refusal = self._source_acquisition_refusal(
             evidence_as_of=run.evidence_as_of, caller=caller
@@ -2453,8 +2443,14 @@ class EvidenceReviewApplication:
             subject_explicit=explicit,
             subject_book=coverage.resolved.book,
         )
-        submitted = _submitted(dispatcher.submit(command))
-        return replace(submitted, evidence_as_of=run.evidence_as_of)
+        submission = dispatcher.submit(command)
+        if submission.disposition == "JOINED":
+            assert submission.task_id is not None
+            task = self.session.task_control_registry.task(submission.task_id)
+            held = adapter.run_of(task)
+            assert held is not None
+            return self._joined(task, held)
+        return replace(_submitted(submission), evidence_as_of=run.evidence_as_of)
 
     def continue_evidence(
         self,
@@ -3200,10 +3196,9 @@ class EvidenceReviewApplication:
     def _sealed_run(
         self, scope: PortfolioIssuerScope, *, evidence_as_of: datetime | None
     ) -> AlternativeEvidenceCoverageRun | None:
-        """The run this scope sealed at this cutoff -- without one, its newest --
-        which `_units` and the review both read: a coverage Task's run, or a run
-        with nothing left to read, sealed and never a Task. The latter is the
-        newest only by a later cutoff."""
+        """The run this scope sealed at this cutoff -- without one, `review_run`'s -- which
+        `_units` and the review both read: a coverage Task's run, or a run with nothing left to
+        read, sealed and never a Task. The latter is the newest only by a later cutoff."""
 
         adapter = self.evidence_task_adapter
         if adapter is None:
@@ -3224,6 +3219,8 @@ class EvidenceReviewApplication:
             if found is None or run.evidence_as_of > found.evidence_as_of:
                 found = run
             break
+        if evidence_as_of is None and found is not None:
+            return review_run(self, scope, found)
         return found
 
     def _carried_readings(

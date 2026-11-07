@@ -21,6 +21,18 @@
       "layer": "integration",
       "seconds": 30
     },
+    "alternative_evidence.review_rerun_joins_its_preparation": {
+      "description": "A repeated book review joins the preparation in flight at any cutoff, reads no filing index beside it, and a parked one is handed back without a person.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 30
+    },
+    "alternative_evidence.review_stands_on_its_answers": {
+      "description": "A later run of the same positions that no analysis answers does not take a book's review from the run its analyses answer, and a run that carried them keeps it.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 1
+    },
     "alternative_evidence.runtime_identity_binds_what_decides_selection": {
       "description": "If the Evidence runtime's identity left out an owner of selection or a capability, reviews could reuse retrieval from a different runtime.",
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -561,6 +573,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "task_control.dead_worker_reads_failed": {
+      "description": "A Task whose command raised and whose failure write died with it stops reading RUNNING at the Supervisor's next pass.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 20
+    },
     "task_control.host_stop_preserves_recovery": {
       "description": "A Host stop finishes the current safe work, retains verified stages and resumes the same Task without treating the stop as a failed attempt.",
       "owner": "alphalattice.control.task_control",
@@ -659,6 +677,12 @@
     },
     "workspace_runtime.host_stop_reaches_parallel_work_items": {
       "description": "A Host stop reaches each concurrent work-item thread and leaves the admitted Task recoverable after its workers return.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "workspace_runtime.seal_record_survives_a_held_file": {
+      "description": "A file another process holds neither stops a store's open while the hold is brief nor kills a worker at its close.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "integration",
       "seconds": 10

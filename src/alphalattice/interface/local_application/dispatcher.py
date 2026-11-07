@@ -68,6 +68,7 @@ def _admitted[Function: Callable[..., object]](method: Function) -> Function:
 
 CommandDisposition = Literal[
     "ADMITTED",
+    "JOINED",
     "REFUSED_QUEUE_FULL",
     "REFUSED_INVALID_COMMAND",
 ]
@@ -92,6 +93,8 @@ class CommandAdmission:
 
     task_id: UUID
     lifecycle: str
+    joined: bool = False
+    """The owner found this work running: the request joins that Task, with no second command."""
 
 
 class LocalApplicationCommand(Protocol):
@@ -477,6 +480,14 @@ class LocalBackgroundDispatcher:
                 disposition="REFUSED_INVALID_COMMAND",
                 submitted_at=submitted_at,
                 refusal_detail=str(error)[:200],
+            )
+        if admission.joined:  # that Task has its command: there is no second one to drive
+            return CommandSubmission(
+                command_kind=command.command_kind,
+                disposition="JOINED",
+                submitted_at=submitted_at,
+                task_id=admission.task_id,
+                lifecycle=admission.lifecycle,
             )
         self.admissions += 1
         # A Task found stopped or cancelled has nothing for its command to run: it is answered as

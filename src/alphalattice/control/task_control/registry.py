@@ -41,7 +41,7 @@ from .contracts import (
     WorkItemState,
 )
 from .ledger import SubmittingAgent, TaskAdmissionRequest, read_requests, write_request
-from .queue import read_queue_setting, running_places, waiting_places
+from .queue import active_same_work, read_queue_setting, running_places, waiting_places
 
 TASK_CONTROL_DATABASE_FILENAME = "research-task-control.duckdb"
 """The sole durable Task Control store name inside a workspace."""
@@ -755,6 +755,7 @@ class DuckDbTaskControlRegistry:
         goal: ResearchGoal,
         plan: ResearchPlan,
         observed_at: datetime,
+        same_work: Callable[[TaskRecord], bool] | None = None,
     ) -> TaskAdmission:
         """Admit sealed work or reuse a matching nonterminal task before consuming a place.
 
@@ -763,6 +764,9 @@ class DuckDbTaskControlRegistry:
             goal: Sealed goal bound to the input.
             plan: Sealed workflow/verifier plan bound to the goal.
             observed_at: Aware operational clock supplied by the caller.
+            same_work: The owner's rule for other input that is the same work, asked of each
+                unfinished Task of this kind inside this transaction, so two admissions in two
+                processes can't both pass it.
 
         Returns:
             The task record and duplicate-admission disposition.
@@ -774,20 +778,11 @@ class DuckDbTaskControlRegistry:
         self._db_time(observed_at)
 
         def operation(connection):
-            rows = connection.execute(
-                """
-                SELECT task_id, record_json FROM workspace_task
-                WHERE input_hash = ? AND plan_hash = ?
-                  AND lifecycle NOT IN ('SUCCEEDED', 'BLOCKED', 'CANCELLED')
-                ORDER BY admitted_at DESC
-                """,
-                [input_envelope.input_hash, plan.plan_hash],
-            ).fetchall()
-            if rows:
-                return TaskAdmission(
-                    record=self._verified_record(str(rows[0][0]), rows[0][1]),
-                    duplicate_active=True,
-                )
+            active = active_same_work(
+                connection, self._verified_record, input_envelope, plan, same_work
+            )
+            if active is not None:
+                return TaskAdmission(record=active, duplicate_active=True)
             queued_count = connection.execute(
                 "SELECT COUNT(*) FROM workspace_task WHERE lifecycle = 'QUEUED'"
             ).fetchone()[0]

@@ -142,7 +142,7 @@ class RecoveryAttempt(_Record):
 
     ordinal: int = Field(ge=1)
     action: Literal["CANCEL", "RECOVER", "REPLAN"]
-    selected_by: Literal["USER_COMMAND", "AGENT_PROPOSAL"]
+    selected_by: Literal["USER_COMMAND", "AGENT_PROPOSAL", "HOST_SUPERVISOR"]
     expected_task_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     requested_at: datetime
     disposition: str = Field(min_length=1, max_length=120)

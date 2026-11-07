@@ -9,12 +9,20 @@ the machine. Task Control reads it each time it admits a Task.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Literal, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from alphalattice.control.task_control.contracts import (
+        ResearchPlan,
+        TaskInputEnvelope,
+        TaskRecord,
+    )
 
 QUEUE_SETTING_DIRECTORY = "execution"
 """Under the workspace's `runtime/`, with the CPU budget: a setting, not evidence."""
@@ -43,6 +51,39 @@ class TaskQueueSetting(BaseModel):  # type: ignore[misc]
     tasks_running: TasksRunning = "auto"
     chosen_by: Chooser = "DEFAULT"
     chosen_at: datetime | None = None
+
+
+def active_same_work(  # type: ignore[no-untyped-def]
+    connection,
+    verified: Callable[[str, str], TaskRecord],
+    input_envelope: TaskInputEnvelope,
+    plan: ResearchPlan,
+    same_work: Callable[[TaskRecord], bool] | None,
+) -> TaskRecord | None:
+    """The unfinished Task an admission would repeat, read inside its transaction."""
+    rows = connection.execute(
+        """
+        SELECT task_id, record_json FROM workspace_task
+        WHERE input_hash = ? AND plan_hash = ?
+          AND lifecycle NOT IN ('SUCCEEDED', 'BLOCKED', 'CANCELLED')
+        ORDER BY admitted_at DESC
+        """,
+        [input_envelope.input_hash, plan.plan_hash],
+    ).fetchall()
+    if rows:
+        return verified(str(rows[0][0]), rows[0][1])
+    if same_work is None:
+        return None
+    rows = connection.execute(
+        """
+        SELECT task_id, record_json FROM workspace_task
+        WHERE task_kind = ? AND lifecycle NOT IN ('SUCCEEDED', 'BLOCKED', 'CANCELLED')
+        ORDER BY admitted_at DESC
+        """,
+        [input_envelope.task_kind],
+    ).fetchall()
+    active = (verified(str(row[0]), row[1]) for row in rows)
+    return next((task for task in active if same_work(task)), None)
 
 
 def queue_setting_path(runtime_root: Path) -> Path:

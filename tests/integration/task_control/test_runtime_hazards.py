@@ -12,6 +12,7 @@ The market store's read units, suspect 2, are W0's checks
 
 from __future__ import annotations
 
+import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -31,8 +32,10 @@ from alphalattice.control.task_control.registry import (
     DuckDbTaskControlRegistry,
     resolve_task_control_database,
 )
+from alphalattice.control.workspace_runtime import database
 from alphalattice.control.workspace_runtime.database import retain_workspace_database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _built,
     _counted_runtime,
@@ -414,6 +417,32 @@ def test_host_stop_reaches_a_concurrent_task_and_keeps_it_recoverable(tmp_path: 
             release.set()
             dispatcher.close()
             runner.close()
+
+
+@pytest.mark.proves("workspace_runtime.seal_record_survives_a_held_file")
+def test_a_held_seal_record_stops_no_worker(tmp_path: Path, monkeypatch) -> None:
+    """A reader holding the seal record is waited out; a close that outlasts it reads as a crash."""
+
+    store = tmp_path / "research-task-control.duckdb"
+    real, refusals = os.replace, [PermissionError(13, "Access is denied")] * 2
+
+    def held(source: object, target: object) -> None:
+        if refusals:
+            raise refusals.pop()
+        real(source, target)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "replace", held)
+    database._write_seal_record(store, epoch="first", fingerprint=None)
+    assert database._seal_record(store)["epoch"] == "first"
+    refusals.extend([PermissionError(13, "Access is denied")] * 99)
+    with pytest.raises(WorkspaceConflictError):
+        database._write_seal_record(store, epoch="second", fingerprint=None)
+    assert database._seal_record(store)["epoch"] == "first"  # an open that can't clear it refuses
+    database._EPOCHS[store], database._CLOSING[store] = ("second", False), 1
+    database._closed(store)
+    assert store not in database._EPOCHS and [p.name for p in tmp_path.iterdir()] == [
+        f"{store.name}.seal.json"
+    ]
 
 
 @pytest.mark.proves("task_control.host_stop_preserves_recovery")

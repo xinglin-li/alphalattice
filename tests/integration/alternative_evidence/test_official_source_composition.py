@@ -296,28 +296,35 @@ def test_the_public_operation_prepares_live_reuses_bodies_and_joins_a_refresh_in
         assert joined["lifecycle"] in {"QUEUED", "RUNNING"}
         assert joined["evidence_as_of"] == captured["evidence_as_of"]
         assert "already" in joined["detail"] and "twice" in joined["detail"]
-        # A request for another cutoff is another question (R2): the active
-        # Task does not answer it. The existing queue admits it behind the
-        # running one, and it is prepared with a fresh source check that
-        # reuses every body the first Task committed.
+        # A review has one preparation in flight: a request naming another cutoff joins the
+        # running Task at that Task's cutoff and reads no filing index beside it.
         other_cutoff = (_NOW + timedelta(minutes=1)).isoformat()
-        other = service.post(
-            "/api/evidence/prepare",
-            {
-                **{
-                    k: v
-                    for k, v in _submission(captured).items()
-                    if k != "preparation_binding_hash"
-                },
-                "evidence_as_of": other_cutoff,
-            },
+        at_other_cutoff = {
+            **{k: v for k, v in _submission(captured).items() if k != "preparation_binding_hash"},
+            "evidence_as_of": other_cutoff,
+        }
+        indices = transport.inventory_calls
+        beside = service.post("/api/evidence/prepare", at_other_cutoff)
+        assert (beside["disposition"], beside["task_id"]) == (
+            "REUSED_IN_FLIGHT",
+            prepared["task_id"],
         )
+        assert beside["evidence_as_of"] == captured["evidence_as_of"]
+        stale = service.post(
+            "/api/evidence/prepare", {**at_other_cutoff, "preparation_binding_hash": "a" * 64}
+        )  # a captured intent is checked before it joins, and still reads no index
+        assert stale["disposition"] == "REFUSED_PREPARATION_BINDING_CHANGED", stale
+        assert transport.inventory_calls == indices
         second_answered.set()
+        service.drain()
+        transport.before_get = None
+        # Once it has ended, another cutoff is a new preparation, with a fresh source check that
+        # reuses every body the first Task committed.
+        other = service.post("/api/evidence/prepare", at_other_cutoff)
         assert other["disposition"] == "ADMITTED", other
         assert other["task_id"] != prepared["task_id"]
         assert other["evidence_as_of"] == other_cutoff
         service.drain()
-        transport.before_get = None
         task_id = prepared["task_id"]
         assert service.get(f"/api/status?task_id={task_id}")["lifecycle"] == "SUCCEEDED"
         assert service.get(f"/api/status?task_id={other['task_id']}")["lifecycle"] == "SUCCEEDED"
