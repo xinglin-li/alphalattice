@@ -2541,18 +2541,6 @@
       "seen_on": [
         "pc1"
       ]
-    },
-    {
-      "node": "tests/integration/alternative_evidence/test_integrated_public_operations.py::test_the_first_release_reads_are_projections_of_the_sealed_evidence",
-      "owner": "tests.alternative_evidence_desk",
-      "until": "2026-11-07",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
-    },
-    {
-      "node": "tests/structural/test_owner_source_shape.py::test_every_coverage_floor_is_judged_by_one_rule_that_leaves_quiet_holdings_out_shape",
-      "owner": "tests.structural",
-      "until": "2026-11-07",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
     }
   ],
   "mandatory": [

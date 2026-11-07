@@ -631,6 +631,8 @@ jobs:
       # are not counted, so those tests keep their wall-time shares from the public tests' JUnit.
       - name: Measure each test of the pilot slice
         timeout-minutes: ${{ fromJSON(steps.budget.outputs.minutes) }}
+        env:
+          ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS: "1"  # instruction simulation is not wall time
         uses: CodSpeedHQ/action@821a40cd6c80e3cfe387caf55668287addd808da # v5.5.0
         with:
           mode: simulation

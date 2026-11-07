@@ -7514,6 +7514,28 @@
       },
       "reader_basis": "Typed Host-lifetime field; detached default900, attached/debug0, zero disables. Operator setter is deferred; no scientific identity reads it."
     },
+    "env:ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS": {
+      "key": "env:ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS",
+      "description": "Disables per-test wall-time bounds only for the advisory CodSpeed instruction simulation; gating lanes remain bounded.",
+      "owner": "devtools.testing",
+      "type": "str | absent",
+      "default": {
+        "value": "",
+        "resolution": "Absent keeps every test wall-time bound active.",
+        "source": "src/devtools/testing/collection.py::_instruction_cost"
+      },
+      "defined_by": [
+        "src/devtools/testing/collection.py::_instruction_cost"
+      ],
+      "identity_bearing": false,
+      "identity_scope": "advisory test-cost measurement only",
+      "identity_basis": "This execution setting changes no research computation or scientific identity; the job deadline remains in force.",
+      "readers": {
+        "literal": [
+          "src/devtools/testing/collection.py"
+        ]
+      }
+    },
     "env:ALPHALATTICE_TEST_LANE": {
       "key": "env:ALPHALATTICE_TEST_LANE",
       "description": "Selects which test sizes a gate runs, so merge gates skip large tests and the nightly lane runs them.",

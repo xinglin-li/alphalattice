@@ -248,10 +248,13 @@ def _memory_checks_read_no_host():
             encoding="utf-8",
         )
         phase_args[:0] = ["-p", "disabled_audit"]
-    if case.startswith("own-"):
-        call_seconds = {"own-bad": "float('nan')", "own-over": "0.7", "own-boundary": "0.6"}.get(
-            case, "0.4"
-        )
+    if case.startswith("own-") or case == "instruction-over":
+        call_seconds = {
+            "own-bad": "float('nan')",
+            "own-over": "0.7",
+            "instruction-over": "0.7",
+            "own-boundary": "0.6",
+        }.get(case, "0.4")
         (tmp_path / "phase_probe.py").write_text(
             "import pytest\n"
             "@pytest.hookimpl(wrapper=True, tryfirst=True)\n"
@@ -262,6 +265,18 @@ def _memory_checks_read_no_host():
             encoding="utf-8",
         )
         phase_args = ["-p", "phase_probe", "--log-file", str(tmp_path / "events.log")]
+    if case.startswith("instruction-"):
+        mode = "walltime" if case == "instruction-walltime" else "simulation"
+        (tmp_path / "codspeed_probe.py").write_text(
+            "from types import SimpleNamespace\n"
+            "def pytest_addoption(parser): parser.addoption('--codspeed', action='store_true')\n"
+            "def pytest_configure(config):\n"
+            " config.addinivalue_line('markers', 'benchmark: simulated CodSpeed')\n"
+            " config.pluginmanager.register(SimpleNamespace(is_codspeed_enabled=True, "
+            f"mode=SimpleNamespace(value={mode!r})), 'codspeed_plugin')\n",
+            encoding="utf-8",
+        )
+        phase_args += ["-p", "codspeed_probe", "--codspeed"]
     result = subprocess.run(
         [
             sys.executable,
@@ -293,7 +308,7 @@ def _memory_checks_read_no_host():
         env=child_environment(
             PYTHONPATH=os.pathsep.join([str(tmp_path), str(root / "src")]),
             ALPHALATTICE_TEST_LANE="merge"
-            if case in {"size-live-large-merge", "size-live-large-missing"}
+            if case in {"size-live-large-merge", "size-live-large-missing", "instruction-gate"}
             else "nightly"
             if case == "size-live-large-nightly"
             else "",
@@ -315,6 +330,7 @@ def _memory_checks_read_no_host():
                 else ""
             ),
             PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+            ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS="1" if case.startswith("instruction-") else "",
             PYTEST_PLUGINS="",
         ),
         capture_output=True,
@@ -414,7 +430,9 @@ def _memory_checks_read_no_host():
             else "test_size.admission_unmeasured"
             if case == "size-live-skip"
             else "Timeout"
-            if case == "slow"
+            if case in {"slow", "instruction-gate", "instruction-walltime"}
+            else "assert False"
+            if case == "instruction-failure"
             else "testing.layer_contract"
         )
         assert result.returncode == 1 and expected in output, output
@@ -429,6 +447,13 @@ def _memory_checks_read_no_host():
             assert "10000001" in output and "medium" in output
     else:
         assert result.returncode == 0, output
+    if case in {"instruction-slow", "instruction-over"}:
+        from xml.etree import ElementTree as ET
+
+        case_xml = next(ET.parse(tmp_path / "child.xml").iter("testcase"))
+        properties = {row.get("name"): row.get("value") for row in case_xml.iter("property")}
+        assert float(properties["test_timeout_seconds"]) == 1
+        assert properties["test_timeout_mode"] == "off:codspeed-instruction-simulation"
     if case in {
         "size-live-over",
         "size-live-factory",
@@ -1988,6 +2013,24 @@ def test_codspeed_measures_every_selected_test_and_a_plain_run_marks_none(
     pytestconfig.addinivalue_line("markers", "benchmark: registered by pytest-codspeed when on")
     collection.pytest_itemcollected(item)
     assert [mark.name for mark in marks] == ["benchmark"]
+
+    import yaml
+
+    workflow = yaml.safe_load(
+        (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text()
+    )
+    switch = "ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS"
+    assert switch not in workflow.get("env", {})
+    for name, job in workflow["jobs"].items():
+        assert switch not in job.get("env", {})
+        for step in job.get("steps", []):
+            value = step.get("env", {}).get(switch)
+            if name == "test-cost" and step.get("name") == "Measure each test of the pilot slice":
+                assert value == "1" and step["with"]["mode"] == "simulation"
+                assert job["continue-on-error"] is True and job["timeout-minutes"] == 90
+                assert step["timeout-minutes"] == "${{ fromJSON(steps.budget.outputs.minutes) }}"
+            else:
+                assert value is None
 
 
 @pytest.mark.proves("testing.fast_whole_tree_guard_runs_when_its_tree_changed")
