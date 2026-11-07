@@ -457,6 +457,30 @@ def _golden_times(item: Any) -> None:
         )
 
 
+def pytest_terminal_summary(terminalreporter: Any) -> None:
+    """Report measured golden fills in Large tests from their existing teardown records."""
+    fills: list[str] = []
+    for reports in terminalreporter.stats.values():
+        for report in reports:
+            if getattr(report, "when", None) != "teardown":
+                continue
+            properties = dict(getattr(report, "user_properties", ()))
+            value = properties.get("golden_fill_seconds")
+            if (
+                properties.get("test_size") == "large"
+                and isinstance(value, int | float)
+                and isfinite(value)
+                and value > 0
+            ):
+                fills.append(
+                    f"{report.nodeid}: golden fill {value:.3f} s ({properties.get('goldens', '')})"
+                )
+    if fills:
+        terminalreporter.write_sep("=", "Golden fills in Large tests")
+        for line in sorted(fills):
+            terminalreporter.write_line(line)
+
+
 def _timeline(item: Any, report: Any) -> None:
     """The run's timeline in its JUnit: which worker ran each case, from when to when."""
     if report.when == "call":
