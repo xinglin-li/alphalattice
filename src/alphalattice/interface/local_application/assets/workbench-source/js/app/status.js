@@ -9,6 +9,7 @@ const STATES = {
   running: {word: 'Running', tone: TONE.active, line: 'Executing; submission is not completion.', moving: true},
   cancel_requested: {word: 'Cancelling', tone: TONE.attention, line: 'Cancellation requested; the worker stops at its next safe checkpoint.', moving: true},
   in_progress: {word: 'In progress', tone: TONE.active, moving: true},
+  joined: {word: 'Already in flight', tone: TONE.active, moving: true},
   reused_in_flight: {word: 'Reused · in flight', tone: TONE.rest, moving: true},
   preparing: {word: 'Preparing the workspace', tone: TONE.active, line: 'The first preparation runs while the local service runs; closing the page stops nothing.', moving: true},
   settling: {word: 'Settling', tone: TONE.active, line: 'The choice was sent; the owner\'s next readback says where the Task stands.', moving: true},

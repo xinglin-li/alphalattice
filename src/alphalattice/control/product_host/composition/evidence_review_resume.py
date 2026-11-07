@@ -164,20 +164,26 @@ def review_run(
     """Choose the run a book's review stands on.
 
     The newest, whenever it accounts for any issuer: a run that carried or answered some says
-    what the new filings left unread. Only a newest run that accounts for none gives way, to the
-    run of this same scope and package from the last analysis TTL that accounts for most. Analyses
-    answer a run's units, so a later run that packed the same positions otherwise and was never
-    answered, or that failed, would otherwise leave every analyzed unit out of the review.
+    what the new filings left unread. Only a newest run that accounts for none gives way, to a
+    run of this same scope and package from the last analysis TTL, packed otherwise, that accounts
+    for most. Analyses answer a run's units, so a later run that packed the same positions
+    otherwise and was never answered would leave every analyzed unit out of the review. A later
+    run packed the same is that review's next preparation: it stands, and reuses what it can.
     """
     adapter = app.evidence_task_adapter
     if adapter is None or newest.carried or newest.nothing_filed:
         return newest
     runs = [newest]
+
+    def packing(run: AlternativeEvidenceCoverageRun) -> set[tuple[str, ...]]:
+        return {tuple(unit.ordered_entity_ids) for unit in run.units}
+
     for task in app._run_tasks(scope):
         run = adapter.run_of(task)
         if (
             run is not None
             and run.run_hash not in {value.run_hash for value in runs}
+            and packing(run) != packing(newest)
             and run.resource_binding_hash == newest.resource_binding_hash
             and run.evidence_as_of >= app.clock() - CURRENT_WITHIN
         ):
