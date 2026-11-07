@@ -433,6 +433,7 @@ def test_a_command_printed_for_powershell_sends_the_request_it_came_from(
 
     from alphalattice.interface.local_application.cli import request_of
     from alphalattice.interface.local_application.cli_contract import command
+    from alphalattice.interface.local_application.request_offers import join
 
     echo = tmp_path / "echo.py"
     echo.write_text(
@@ -481,6 +482,22 @@ def test_a_command_printed_for_powershell_sends_the_request_it_came_from(
             assert json.loads(got["stdin"]) == request
         else:
             assert request_of(got["argv"]) == request
+    # A wake's read_command is this join over its rerun: its output path keeps every backslash.
+    output = str(tmp_path / "answer.wake1.json")
+    script.write_text(
+        join([sys.executable, str(echo), "--output", output], "powershell"), encoding="utf-8-sig"
+    )
+    read = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        stdin=subprocess.DEVNULL,
+        timeout=120,
+        check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    assert json.loads(read.stdout.splitlines()[-1])["argv"] == ["--output", output]
 
 
 def _limited(limits: dict[str, str], name: str) -> object | None:

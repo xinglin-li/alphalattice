@@ -101,6 +101,10 @@ def configure_temporary_roots(checkout: Path, basetemp: str | None) -> None:
         backup_parent = (
             Path(basetemp).resolve().parent if basetemp is not None else temproot.resolve()
         )
+    # Printed commands are quoted for the shell a run started in, and a test replays one by POSIX
+    # rules: under PowerShell quoting that loses a path's backslashes, and the file lands at the
+    # drive root. The run's own shell must not decide that; a test of another shell sets its own.
+    os.environ.setdefault("ALPHALATTICE_SHELL", "posix")
     os.environ["ALPHALATTICE_BACKUP_ROOT"] = tempfile.mkdtemp(
         prefix="alphalattice-test-backups-", dir=backup_parent
     )
