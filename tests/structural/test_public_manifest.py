@@ -854,6 +854,9 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     jobs = yaml.safe_load(workflow)["jobs"]
     cost = jobs["test-cost"]
     assert cost["timeout-minutes"] == 90 and cost["continue-on-error"] is True
+    assert cost.get("strategy", {}).get("matrix", {}).get("shard") == [1, 2, 3, 4]
+    assert cost["strategy"]["fail-fast"] is False
+    assert cost["env"]["PYTHONUNBUFFERED"] == "1"
     assert not jobs["checkout"].get("continue-on-error", False)
     steps = cost["steps"]
     collect = next(step for step in steps if step.get("name") == "Check the pilot slice")
@@ -866,6 +869,10 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
         "tests/integration/feature_engine/test_factor_arithmetic_identity.py",
     ]
     assert all(path in measure["with"]["run"] for path in paths)
+    assert "--test-group=${{ matrix.shard }} --test-group-count=4" in measure["with"]["run"]
+    assert "-vv" in measure["with"]["run"]
+    warm = next(step for step in steps if step.get("name") == "Prepare the pilot fixtures")
+    assert "--setup-only" in warm["run"] and "--codspeed" not in warm["run"]
     assert measure["timeout-minutes"] == "${{ fromJSON(steps.budget.outputs.minutes) }}"
     assert all("timeout-minutes" in step for step in steps)
     code = collect["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
@@ -918,7 +925,7 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
         if sys.platform == "win32"
         else str(output)
     )
-    for elapsed, success in ((60, True), (87 * 60, False)):
+    for elapsed, success in ((60, True), (12 * 60, False)):
         script = budget.replace(
             "${{ steps.clock.outputs.started }}", str(int(time.time()) - elapsed)
         )

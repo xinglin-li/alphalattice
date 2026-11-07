@@ -131,6 +131,7 @@ testmon = [
 # Per-test CPU instruction counts on CodSpeed, for the public test-cost job.
 codspeed = [
     "pytest-codspeed==5.0.3",
+    "pytest-test-groups==1.2.1",
 ]
 docs = [
     "mkdocs-llmstxt>=0.5.0",
