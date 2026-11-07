@@ -132,6 +132,34 @@ def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
     ]
     document["public"].sort(key=lambda row: row["path"])
     manifest.write_text(json.dumps(document), encoding="utf-8")
+    # A projected registry loads through its declared owner in the public tree, or is refused.
+    from scripts.release import public_snapshot
+
+    for loader, refused_as in ((None, "unloaded"), ("raise ValueError('rule')", "unloadable")):
+        with monkeypatch.context() as declared:
+            declared.setattr(
+                public_snapshot, "PROJECTION_LOADERS", {REGISTRY: loader} if loader else {}
+            )
+            with pytest.raises(
+                SnapshotRefused, match=f"release.projection_{refused_as}:{REGISTRY}"
+            ):
+                build(
+                    private,
+                    manifest,
+                    tmp_path / refused_as,
+                    author="X Y <x@example.com>",
+                    message="m",
+                )
+    # A private checkout on PYTHONPATH cannot supply a missing public owner.
+    with monkeypatch.context() as declared:
+        declared.setenv("PYTHONPATH", str(Path(__file__).resolve().parents[3] / "src"))
+        declared.setitem(
+            public_snapshot.PROJECTION_LOADERS, REGISTRY, "import devtools.testing.sizes"
+        )
+        with pytest.raises(SnapshotRefused, match=r"release\.projection_unloadable"):
+            public_snapshot._load_projected(tmp_path / "unloaded", REGISTRY)
+    loads = "import json\njson.loads((root / 'config/registries/sample.json').read_text())"
+    monkeypatch.setitem(public_snapshot.PROJECTION_LOADERS, REGISTRY, loads)
     try:
         projected = build(
             private, manifest, tmp_path / "projected", author="X Y <x@example.com>", message="m"

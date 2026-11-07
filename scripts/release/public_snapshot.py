@@ -24,6 +24,28 @@ from typing import Any
 
 MANIFEST_SCHEMA = "alphalattice.release.public-manifest"
 PROVENANCE_SCHEMA = "alphalattice.release.snapshot-provenance"
+PROJECTION_LOADERS = {
+    "config/registries/test-sizes.json": (
+        "from devtools.testing.sizes import load_policy\nload_policy(root)"
+    ),
+    "config/registries/test-private.json": (
+        "from devtools.architecture.registries import baseline\nbaseline(root, 'test-private')"
+    ),
+}
+"""How each registry a projection may change is loaded by its owner, as public code reads it."""
+
+_LOAD = """import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / "src"))
+exec(sys.argv[2])
+for name, module in tuple(sys.modules.items()):
+    if name.split(".")[0] in {"devtools", "alphalattice"}:
+        origin = getattr(module, "__file__", None)
+        if origin and not Path(origin).resolve().is_relative_to((root / "src").resolve()):
+            raise ImportError(f"snapshot owner imported outside public tree: {name}")
+"""
+
 _IDENTITY = re.compile(r"^(?P<name>[^<>]+?) <(?P<email>[^<>@\s]+@[^<>\s]+)>$")
 
 
@@ -210,6 +232,8 @@ def build(
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(blob)
         files.append({"path": path, "sha256": digest, "bytes": len(blob), "mode": mode})
+    for row in projections:  # loaded by the public tree's own owner before anything is committed
+        _load_projected(out, row["path"])
     _git(out, "init", "-q")
     for key, value in (
         ("user.name", name),
@@ -245,6 +269,23 @@ def build(
         "files": files,
         "registry_projections": projections,
     }
+
+
+def _load_projected(out: Path, path: str) -> None:
+    """A projected registry loads through its owner in the snapshot's own tree, or the snapshot is
+    refused by name: a public run that cannot load it fails in every job (11-07, public next)."""
+    loader = PROJECTION_LOADERS.get(path)
+    if loader is None:
+        raise SnapshotRefused(f"release.projection_unloaded:{path}; declare its owner's loader")
+    done = subprocess.run(
+        [sys.executable, "-I", "-c", _LOAD, str(out), loader],
+        capture_output=True,
+        text=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if done.returncode:
+        tail = (done.stderr or done.stdout).strip().splitlines()[-1:] or ["no output"]
+        raise SnapshotRefused(f"release.projection_unloadable:{path}:{tail[0][:300]}")
 
 
 def main(argv: list[str] | None = None) -> int:
