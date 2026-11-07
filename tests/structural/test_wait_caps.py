@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from devtools.pipeline.stage import deadline_names
+from devtools.pipeline.facets import deadline_names
 
 
 def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:

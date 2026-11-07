@@ -17,25 +17,12 @@ Who can reach a state is pinned too:
 
 from __future__ import annotations
 
-import ast
 import inspect
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2] / "src" / "alphalattice"
-STATES = frozenset(
-    {
-        "QUEUED",
-        "RUNNING",
-        "DEFERRED",
-        "REVIEW_PENDING",
-        "CANCEL_REQUESTED",
-        "CANCELLED",
-        "SUCCEEDED",
-        "BLOCKED",
-        "RECOVERY_REQUIRED",
-    }
-)
+from devtools.pipeline.facets import lifecycle_sets
 
+ROOT = Path(__file__).resolve().parents[2] / "src" / "alphalattice"
 RESUMABLE = "resumable: a queued or interrupted Task is (re)driven; every other state is not"
 FINISHED = "finished: its readback answers for it; every other state is not done"
 ENDED = "ended: nothing more happens to it; a waiting state may still move"
@@ -456,56 +443,14 @@ REGISTER: dict[tuple[str, str, str], str] = {
 }
 
 
-def _members(node: ast.AST) -> frozenset[str]:
-    found: set[str] = set()
-    for sub in ast.walk(node):
-        if isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name):
-            if sub.value.id == "TaskLifecycle" and sub.attr in STATES:
-                found.add(sub.attr)
-        elif isinstance(sub, ast.Constant) and isinstance(sub.value, str) and sub.value in STATES:
-            found.add(sub.value)
-    return frozenset(found)
-
-
-def _literal(node: ast.AST) -> bool:
-    return isinstance(node, (ast.Set, ast.Tuple, ast.List)) or (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in {"frozenset", "set"}
-    )
-
-
 def _sets() -> set[tuple[str, str, str]]:
-    """Each set of two or more lifecycle states in src: its module, scope and members."""
-    found: set[tuple[str, str, str]] = set()
-    for path in sorted(ROOT.rglob("*.py")):
-        module = path.relative_to(ROOT).as_posix()
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-
-        def visit(node: ast.AST, scope: str, module: str = module) -> None:
-            for child in ast.iter_child_nodes(node):
-                inner = scope
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    inner = f"{scope}.{child.name}" if scope else child.name
-                if isinstance(child, (ast.Assign, ast.AnnAssign)) and child.value is not None:
-                    held = _members(child.value)
-                    if _literal(child.value) and len(held) >= 2:
-                        targets = child.targets if isinstance(child, ast.Assign) else [child.target]
-                        name = ",".join(ast.unparse(target) for target in targets)
-                        where = f"{scope}.{name}" if scope else name
-                        found.add((module, where, ",".join(sorted(held))))
-                        continue
-                if isinstance(child, ast.Compare) and any(
-                    isinstance(op, (ast.In, ast.NotIn)) for op in child.ops
-                ):
-                    for compared in child.comparators:
-                        held = _members(compared)
-                        if _literal(compared) and len(held) >= 2:
-                            found.add((module, scope or "<module>", ",".join(sorted(held))))
-                visit(child, inner)
-
-        visit(tree, "")
-    return found
+    """Each set of two or more lifecycle states in src: its module, scope and members, by the
+    facet the commit stage selects this census by (devtools.pipeline.facets)."""
+    return {
+        (path.relative_to(ROOT).as_posix(), where, members)
+        for path in sorted(ROOT.rglob("*.py"))
+        for where, members in lifecycle_sets(path.read_text(encoding="utf-8"))
+    }
 
 
 def test_every_lifecycle_set_is_registered_with_its_reason() -> None:

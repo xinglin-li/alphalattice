@@ -17,6 +17,7 @@ Use the existing policy and generators; this document grants no guard waiver.
 | A new test file names its one source module and goes at its mapped owner path. | `TEST-LAYOUT` in `scripts/check_test_shape.py` checks added files against `devtools.testing.layout`. |
 | Keep the median to one new test function per card. | `TEST-GROWTH` reports the count in the fast guard; review judges the median, not a per-card refusal. |
 | Whole-tree structural checks under about a second run in the commit stage when the tree they read changed; slower ones run post-merge. | `whole_tree_guards` in `config/registries/test-sizes.json` names what they read and which are slow; `devtools.testing.sizes.moved` defers the rest, and a changed holder or registered fence may still run in the commit stage. |
+| A census that reads every file runs in the commit stage when the change alters what it reads, whatever its cost. | A `selection_readers` facet row names its facet in `devtools.pipeline.facets` and the files it reads (`within`); the stage requires the census when a changed file's facet differs between base and head. A census that builds its answer from its facet is exact. |
 
 For a new non-structural file, put `TEST_SOURCE = "src/<owner package>/<module>.py"` or its
 `scripts/<subpath>/<module>.py` path at module level and mark each test with its registered requirement. The target is

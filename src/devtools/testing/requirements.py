@@ -13,6 +13,7 @@ in the private legacy count list, which only shrinks.
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import json
 import math
@@ -184,13 +185,12 @@ def node_matches(node: str, selector: str) -> bool:
 def _size_contents(
     lines: list[str], node: ast.FunctionDef | ast.AsyncFunctionDef, start: int
 ) -> str:
-    """Exclude only actual single-line requirement decorators, never text in the test body."""
-    markers = {
-        d.lineno - 1 for d in node.decorator_list if PROVES_LINE.fullmatch(lines[d.lineno - 1])
-    }
-    return "".join(
-        line for i, line in enumerate(lines[start : node.end_lineno], start) if i not in markers
-    )
+    """Keep executable syntax and marks while excluding comments and requirement decorators."""
+    image = copy.copy(node)
+    image.decorator_list = [
+        d for d in node.decorator_list if not PROVES_LINE.fullmatch(lines[d.lineno - 1])
+    ]
+    return ast.dump(image, include_attributes=False)
 
 
 def file_holders(relative: str, text: str, *, size_scope: bool = False) -> list[Holder]:

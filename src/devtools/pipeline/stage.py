@@ -36,6 +36,7 @@ from devtools.architecture.git_inputs import (
     unique_moves,
 )
 from devtools.pipeline.definition import PATH, Definition, DefinitionError, Row, Stage, load
+from devtools.pipeline.facets import FACETS, facet_changed
 from devtools.pipeline.receipt import Writer, _now, verify
 from devtools.testing.requirements import edited_families, file_holders, layer, selection
 from devtools.testing.sizes import classify
@@ -85,15 +86,6 @@ DERIVED_OWNERS = (
         "tests/structural/test_wait_caps.py::"
         "test_every_capped_client_waiter_has_its_cap_rule_reviewed",
     ),
-)
-DEADLINE_ROOTS = (
-    "src/alphalattice/interface/local_application/",
-    "src/alphalattice/control/product_host/",
-    "src/alphalattice/control/workspace_runtime/",
-)
-DEADLINE_HOLDER = (
-    "tests/structural/test_wait_caps.py::"
-    "test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed"
 )
 
 
@@ -151,6 +143,15 @@ def _reader_path(value: object) -> bool:
     )
 
 
+def _facet_row(row: dict[str, Any]) -> None:
+    """A facet row names a known facet and the files its census reads."""
+    within = row["within"]
+    if row["facet"] not in FACETS or not isinstance(within, list) or not within:
+        raise ValueError("test_size.required_selection_invalid")
+    if not all(_reader_path(path) for path in within):
+        raise ValueError("test_size.required_selection_invalid")
+
+
 def selection_readers(policy: object) -> dict[str, dict[str, Any]]:
     """Read declared reader edges from the same projected registry as the lane policy."""
     if not isinstance(policy, dict) or not isinstance(policy.get("selection_readers", {}), dict):
@@ -162,8 +163,12 @@ def selection_readers(policy: object) -> dict[str, dict[str, Any]]:
             {"inputs"},
             {"inputs", "literal_root"},
             {"inputs", "census", "sample", "conditional_inputs"},
+            {"facet", "within"},
         ):
             raise ValueError("test_size.required_selection_invalid")
+        if "facet" in row:
+            _facet_row(row)
+            continue
         lists = [row["inputs"], *([row["conditional_inputs"]] if "census" in row else [])]
         paths = [*lists, *([row["census"], row["sample"]] if "census" in row else [])]
         paths += [row["literal_root"]] if "literal_root" in row else []
@@ -191,7 +196,7 @@ def registered_holders(
     each declared producer census without private path literals."""
     found = set()
     for node, row in rows.items():
-        if paths.intersection(row["inputs"]):
+        if paths.intersection(row.get("inputs", ())):
             found.add(node)
         if sources and "literal_root" in row:
             own = node.split("::", 1)[0]
@@ -368,53 +373,45 @@ def helper_holders(
     return _helper_selected(functions, edges, seeds)
 
 
-def deadline_names(source: str) -> set[str]:
-    """The deadline holder's exact function discovery, reused for changed-file selection."""
+def derived_holders(pairs: list[tuple[list[str], str]]) -> tuple[str, ...]:
+    """Select the declared file owners of the changed paths."""
+    return tuple(
+        sorted(
+            {
+                holder
+                for _meta, path in pairs
+                for patterns, holder in DERIVED_OWNERS
+                if any(fnmatchcase(path, pattern) for pattern in patterns)
+            }
+        )
+    )
+
+
+def facet_holders(
+    pairs: list[tuple[list[str], str]],
+    blobs: Mapping[str, str],
+    rows: Mapping[str, dict[str, Any]],
+) -> tuple[str, ...]:
+    """Each census whose facet a changed file under its ``within`` holds differently at base
+    and head (``facets``); ``blobs`` holds both sides of each changed Python file by object id."""
     found = set()
-    for function in ast.walk(ast.parse(source)):
-        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        args = {
-            arg.arg
-            for arg in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
-        }
-        assigned = {
-            target.id
-            for node in ast.walk(function)
-            if isinstance(node, (ast.Assign, ast.AnnAssign))
-            for target in ([node.target] if isinstance(node, ast.AnnAssign) else node.targets)
-            if isinstance(target, ast.Name)
-        }
-        if "deadline" in args | assigned or "max_wait" in args:
-            found.add(function.name)
-    return found
-
-
-def derived_holders(pairs: list[tuple[list[str], str]], blobs: dict[str, str]) -> tuple[str, ...]:
-    """Select only declared file owners and changed old/new deadline owners."""
-    selected = {
-        holder
-        for _meta, path in pairs
-        for patterns, holder in DERIVED_OWNERS
-        if any(fnmatchcase(path, pattern) for pattern in patterns)
-    }
-    for meta, path in pairs:
-        if not path.endswith(".py") or not path.startswith(DEADLINE_ROOTS):
-            continue
-        if (
-            len(meta) != 5
-            or meta[0][1:] not in {"000000", "100644", "100755"}
-            or meta[1] not in {"000000", "100644", "100755"}
-        ):
-            raise ValueError(f"changed deadline source is not a regular file: {path}")
-        for oid in meta[2:4]:
-            if set(oid) == {"0"}:
+    for node, row in rows.items():
+        for meta, path in pairs if "facet" in row else ():
+            if not any(fnmatchcase(path, glob) for glob in row["within"]):
                 continue
-            if oid not in blobs:
-                raise ValueError(f"changed deadline source is unavailable: {path}")
-            if deadline_names(blobs[oid]):
-                selected.add(DEADLINE_HOLDER)
-    return tuple(sorted(selected))
+            if (
+                len(meta) != 5
+                or meta[0][1:] not in {"000000", "100644", "100755"}
+                or meta[1] not in {"000000", "100644", "100755"}
+            ):
+                raise ValueError(f"a changed census source is not a regular file: {path}")
+            sides = ["" if set(oid) == {"0"} else blobs.get(oid) for oid in meta[2:4]]
+            if None in sides:
+                raise ValueError(f"a changed census source is unavailable: {path}")
+            if facet_changed(row["facet"], *cast(list[str], sides)):
+                found.add(node)
+                break
+    return tuple(sorted(found))
 
 
 def _carried_moves(root: Path, pairs: list[tuple[list[str], str]]) -> dict[str, str]:
@@ -669,7 +666,7 @@ def _size_selection(
             {
                 oid
                 for meta, path in pairs
-                if path.startswith(DEADLINE_ROOTS) and path.endswith(".py")
+                if path.endswith(".py")
                 for oid in meta[2:4]
                 if set(oid) != {"0"}
             }
@@ -677,7 +674,7 @@ def _size_selection(
         policy_spec = f"{head}:config/registries/test-sizes.json"
         blobs = read_blobs([*ids, policy_spec], root, timeout=60)
         if set(blobs) != {*ids, policy_spec}:
-            raise ValueError("a changed deadline-source blob is missing")
+            raise ValueError("a changed Python blob is missing")
         policy = json.loads(blobs.pop(policy_spec))
         rows = selection_readers(policy)
         paths = {path for _meta, path in pairs}
@@ -692,7 +689,11 @@ def _size_selection(
             sources = _helper_sources(root, head)
             helpers = selection(helper_holders(root, paths, sources=sources))
         derived = selection(
-            (*derived_holders(pairs, blobs), *registered_holders(paths, sources, rows))
+            (
+                *derived_holders(pairs),
+                *registered_holders(paths, sources, rows),
+                *facet_holders(pairs, blobs, rows),
+            )
         )
 
     except (OSError, ValueError, SyntaxError, UnicodeError, subprocess.SubprocessError) as error:

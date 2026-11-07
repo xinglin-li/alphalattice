@@ -39,6 +39,26 @@
         "src/alphalattice/evidence/alternative_evidence/runtime/coverage.py",
         "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py"
       ]
+    },
+    "tests/structural/test_wait_caps.py::test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed": {
+      "facet": "deadline_owners",
+      "within": [
+        "src/alphalattice/interface/local_application/*.py",
+        "src/alphalattice/control/product_host/*.py",
+        "src/alphalattice/control/workspace_runtime/*.py"
+      ]
+    },
+    "tests/structural/test_lifecycle_tables.py::test_every_lifecycle_set_is_registered_with_its_reason": {
+      "facet": "lifecycle_sets",
+      "within": [
+        "src/alphalattice/*.py"
+      ]
+    },
+    "tests/integration/product_host/test_local_web_service.py::test_every_web_handler_preserves_every_typed_owner_exception": {
+      "facet": "class_declarations",
+      "within": [
+        "src/alphalattice/*.py"
+      ]
     }
   },
   "defaults": [
@@ -2375,6 +2395,27 @@
       "reason": "It builds and checks the Local Web assets from copies in tmp_path, so only the builder, its assets, labels or registries can change it; the post-merge tier runs it whole.",
       "escape_class": "web asset build or child check fails",
       "review_date": "2026-12-03"
+    },
+    {
+      "pattern": "tests/structural/test_documented_commands.py::test_every_documented_command_line_parses*",
+      "owner": "tests.structural",
+      "inputs": [
+        "AGENTS.md",
+        "README.md",
+        "README.zh-CN.md",
+        ".agents/skills/alphalattice-research/*",
+        ".claude/skills/alphalattice-research/*",
+        ".codex/agents/*",
+        ".claude/agents/*",
+        "docs/public-source/*",
+        "config/registries/messages.json",
+        "scripts/run_alphalattice.py",
+        "src/alphalattice/interface/local_application/cli*.py",
+        "src/alphalattice/interface/local_application/operations.json"
+      ],
+      "reason": "It parses every command line the guides, skills, agent cards and public documents show through the CLI grammar, about a second; it runs when one of those or the grammar changed, which a skill copy edited alone reached develop past (11-05).",
+      "escape_class": "a documented command line the CLI no longer parses, or a skill copy out of step",
+      "review_date": "2026-12-07"
     }
   ],
   "structural_fence": [

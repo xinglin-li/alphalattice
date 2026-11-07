@@ -163,36 +163,56 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             "test_every_capped_client_waiter_has_its_cap_rule_reviewed"
         )
         assert stage.derived_holders(
-            [pair(".agents/skills/alphalattice-research/references/specialist-handoff.md")], {}
+            [pair(".agents/skills/alphalattice-research/references/specialist-handoff.md")]
         ) == (materializer,)
-        assert stage.derived_holders([pair(".agents/skills-lookalike/no.md")], {}) == ()
-        assert stage.derived_holders([pair(".codex/agents/alphalattice_risk.toml")], {}) == (
+        assert stage.derived_holders([pair(".agents/skills-lookalike/no.md")]) == ()
+        assert stage.derived_holders([pair(".codex/agents/alphalattice_risk.toml")]) == (
             materializer,
         )
-        assert stage.derived_holders([pair("config/registries/messages.json")], {}) == (
-            materializer,
-        )
-        assert stage.derived_holders([pair("config/registries/messages-backup.json")], {}) == ()
+        assert stage.derived_holders([pair("config/registries/messages.json")]) == (materializer,)
+        assert stage.derived_holders([pair("config/registries/messages-backup.json")]) == ()
         cli = "src/alphalattice/interface/local_application/cli.py"
-        assert stage.derived_holders([pair(cli)], {old: "pass", new: "pass"}) == (materializer,)
+        assert stage.derived_holders([pair(cli)]) == (materializer,)
+        policy = json.loads((ROOT / "config/registries/test-sizes.json").read_text("utf-8"))
+        facet_rows = stage.selection_readers(policy)
+
+        def facets(path, before, after):
+            return stage.facet_holders([pair(path)], {old: before, new: after}, facet_rows)
+
         owner = "src/alphalattice/control/product_host/composition/answer_turns.py"
-        assert stage.derived_holders(
-            [pair(owner)], {old: "def f(deadline): pass", new: "def f(): pass"}
-        ) == (host_holder,)
-        assert (
-            stage.derived_holders([pair(owner)], {old: "def f(): pass", new: "def f(): pass"}) == ()
-        )
+        assert facets(owner, "def f(deadline): pass", "def f(): pass") == (host_holder,)
+        assert facets(owner, "def f(deadline): pass", "def f(deadline): return 1") == ()
+        assert facets(owner, "def f(): pass", "def f(max_wait): pass") == (host_holder,)
         with pytest.raises(SyntaxError):
-            stage.derived_holders([pair(owner)], {old: "def f(deadline): pass", new: "def ("})
-        assert stage.derived_holders(
-            [pair(owner)], {old: "def f(): pass", new: "def f(max_wait): pass"}
-        ) == (host_holder,)
+            facets(owner, "def f(deadline): pass", "def (")
         client_path = "src/alphalattice/interface/local_application/client.py"
-        assert set(
-            stage.derived_holders(
-                [pair(client_path)], {old: "def f(deadline): pass", new: "def f(): pass"}
+        assert stage.derived_holders([pair(client_path)]) == (client,)
+        # 11-04..07: a census meets the change it reads in the card's own stage, by its facet.
+        lifecycle = "tests/structural/test_lifecycle_tables.py::" + (
+            "test_every_lifecycle_set_is_registered_with_its_reason"
+        )
+        typed = "tests/integration/product_host/test_local_web_service.py::" + (
+            "test_every_web_handler_preserves_every_typed_owner_exception"
+        )
+        anywhere = "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py"
+        assert facets(anywhere, "", "X = {'QUEUED', 'RUNNING'}") == (lifecycle,)
+        assert facets("tests/x.py", "", "X = {'QUEUED', 'RUNNING'}") == ()
+        error = "class E(ValueError):\n"
+        assert facets(anywhere, error + " x = 1", error + " def __init__(self, i): pass") == (
+            typed,
+        )
+        assert facets(anywhere, error + " x = 1", error + " x = 2") == ()
+        assert facets(
+            anywhere,
+            "from .one import Base\nclass E(Base): pass",
+            "from .two import Base\nclass E(Base): pass",
+        ) == (typed,)
+        with pytest.raises(ValueError):
+            stage.facet_holders([pair(anywhere)], {}, facet_rows)
+        with pytest.raises(ValueError):
+            stage.selection_readers(
+                {"selection_readers": {lifecycle: {"facet": "x", "within": []}}}
             )
-        ) == {client, host_holder}
         monkeypatch.setattr(
             stage,
             "changed_families",
@@ -209,7 +229,7 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
     if case == "size-required":
         size_file = tmp_path / "config/registries/test-sizes.json"
         size_policy = json.loads(size_file.read_text(encoding="utf-8"))
-        size_policy["selection_readers"] = rows
+        size_policy["selection_readers"] = rows | {host_holder: facet_rows[host_holder]}
         size_policy["large"].append(
             {
                 "pattern": "tests/test_heavy.py::test_heavy*",

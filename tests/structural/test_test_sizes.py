@@ -749,6 +749,32 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
                 "def test_param(x): pass\n"
             )
             new = old.replace("[1, 2]", "[1, 2, 3]") + "def test_new(): pass\n"
+            commented = old.replace("def test_same(): pass", "def test_same(): pass  # explanation")
+            assert (
+                requirements.edited_families(
+                    requirements.file_holders("tests/test_a.py", old, size_scope=True),
+                    requirements.file_holders("tests/test_a.py", commented, size_scope=True),
+                )
+                == []
+            )
+            assert requirements.edited_families(
+                requirements.file_holders("tests/test_a.py", old, size_scope=True),
+                requirements.file_holders(
+                    "tests/test_a.py",
+                    old.replace("def test_same(): pass", "def test_same(): assert True"),
+                    size_scope=True,
+                ),
+            ) == ["tests/test_a.py::test_same"]
+            literal = (
+                "def test_literal():\n    value = \"@pytest.mark.proves('old')\"\n"
+                "    assert value\n"
+            )
+            assert requirements.edited_families(
+                requirements.file_holders("tests/test_a.py", literal, size_scope=True),
+                requirements.file_holders(
+                    "tests/test_a.py", literal.replace("old", "new"), size_scope=True
+                ),
+            ) == ["tests/test_a.py::test_literal"]
             before = requirements.file_holders("tests/test_a.py", old, size_scope=True)
             after = requirements.file_holders("tests/test_a.py", new, size_scope=True)
             assert edited(before, after) == [
