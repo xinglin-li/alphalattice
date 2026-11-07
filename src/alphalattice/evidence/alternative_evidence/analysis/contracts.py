@@ -530,23 +530,38 @@ class LitigationMatterDocument(AlternativeEvidenceContract):
     pending_source_bytes: int = Field(ge=0)
 
 
-class EvidenceNeedRecord(AlternativeEvidenceContract):
-    """Record one requirement for complete reading of a filing's litigation regions.
+class _NeedInvariantError(ValueError):
+    def __init__(self, invariant: str, need: EvidenceNeedRecord | None = None) -> None:
+        super().__init__("alternative_evidence.evidence_need_invalid")
+        self.invariant = invariant
+        self.need = need
 
-    One thing a complete reading of a filing's litigation regions needs,
-    and whether this delivery provided it: a matter's opening (`LEAD`) and
-    the rest of its text (`CONTINUATION`); a region-level statement
-    (`REGION_STATEMENT`, no matter handle: the accrual position, the
-    materiality closing, the whole disclosure of a filing that names no
-    matter); a region statement a matter depends on because the source says
-    it applies to the region's matters (`QUALIFICATION`); an explicit
-    reference the region makes to another location (`REFERENCE`).
-    `PROVIDED` names the span that delivers the range; `PROVIDED_SHARED`,
-    a span that delivers it beside another need's range (one excerpt, no
-    duplicated bytes); `PENDING_ALLOWANCE`, that the allowance or the
-    budget left it unread; `UNRESOLVED`, that a reference's target is not
-    held in the document set or was not located. What is not provided is
-    disclosed here, never implied read.
+
+def _undelivered_need(
+    needs: tuple[EvidenceNeedRecord, ...], delivered: set[str]
+) -> EvidenceNeedRecord | None:
+    return next(
+        (
+            need
+            for need in needs
+            if need.span_handle is not None
+            and need.span_handle.startswith("SPAN-M")
+            and need.span_handle not in delivered
+        ),
+        None,
+    )
+
+
+class EvidenceNeedRecord(AlternativeEvidenceContract):
+    """One required litigation-region reading and its delivery.
+
+    LEAD and CONTINUATION cover a matter's opening and remaining text;
+    REGION_STATEMENT covers region-level text without a matter handle;
+    QUALIFICATION applies a region statement to a matter; REFERENCE names
+    another location. PROVIDED and PROVIDED_SHARED name delivering spans,
+    with shared ranges retaining one excerpt. PENDING_ALLOWANCE is unread;
+    UNRESOLVED is a reference whose target is absent or not located.
+    Every gap stays declared, never implied read.
     """
 
     document_handle: str = Field(pattern=r"^DOC-[A-Z0-9-]{1,48}$")
@@ -596,9 +611,9 @@ class EvidenceNeedRecord(AlternativeEvidenceContract):
     def validate_need(self) -> Self:
         provided = self.status in {"PROVIDED", "PROVIDED_SHARED"}
         if provided != (self.span_handle is not None):
-            raise ValueError("alternative_evidence.evidence_need_invalid")
+            raise _NeedInvariantError("status_requires_span")
         if self.kind != "REFERENCE" and self.target_state is not None:
-            raise ValueError("alternative_evidence.evidence_need_invalid")
+            raise _NeedInvariantError("target_only_reference")
         if self.target_state is not None:
             expected = {
                 "PROVIDED": "DELIVERED",
@@ -608,19 +623,19 @@ class EvidenceNeedRecord(AlternativeEvidenceContract):
             }[self.status]
             if expected is None:
                 if self.target_state not in {"LOCATED", "PARTIALLY_READ"}:
-                    raise ValueError("alternative_evidence.evidence_need_invalid")
+                    raise _NeedInvariantError("pending_target_located_or_partially_read")
             elif self.target_state != expected:
-                raise ValueError("alternative_evidence.evidence_need_invalid")
+                raise _NeedInvariantError("target_matches_status")
         if (self.character_start is None) != (self.character_end is None) or (
             self.character_end is not None
             and self.character_start is not None
             and self.character_end <= self.character_start
         ):
-            raise ValueError("alternative_evidence.evidence_need_invalid")
+            raise _NeedInvariantError("character_range_paired_and_ordered")
         if self.kind in {"LEAD", "CONTINUATION", "QUALIFICATION"} and self.matter_handle is None:
-            raise ValueError("alternative_evidence.evidence_need_invalid")
+            raise _NeedInvariantError("matter_required")
         if self.kind == "REGION_STATEMENT" and self.matter_handle is not None:
-            raise ValueError("alternative_evidence.evidence_need_invalid")
+            raise _NeedInvariantError("region_statement_has_no_matter")
         return self
 
 
@@ -809,12 +824,9 @@ class LitigationMatterRecord(AlternativeEvidenceContract):
         # A need is provided by a delivered window of this record, or by a
         # search read the receipt accounts for; never by a pending one.
         delivered = set(self.delivered_matter_handles)
-        if any(
-            need.span_handle.startswith("SPAN-M") and need.span_handle not in delivered
-            for need in self.needs
-            if need.span_handle is not None
-        ):
-            raise ValueError("alternative_evidence.evidence_need_invalid")
+        undelivered = _undelivered_need(self.needs, delivered)
+        if undelivered is not None:
+            raise _NeedInvariantError("matter_span_delivered", undelivered)
         # The plan is read as a prefix: no PENDING window precedes a read one,
         # and no PRIOR window follows one this session read.
         seen_read = seen_pending = False

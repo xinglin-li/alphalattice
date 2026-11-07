@@ -64,6 +64,19 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
     assert refusal["next_action"] == "INSTALL_INTO_A_WRITABLE_STORE"
     assert refusal["store"] == str(blocked.resolve())
 
+    with monkeypatch.context() as patch:
+        home = tmp_path / "pointer-home"
+        pointer = home / ".alphalattice" / "model-store.json"
+        pointer.parent.mkdir(parents=True)
+        pointer.write_text("{", encoding="utf-8")
+        patch.setattr(Path, "home", classmethod(lambda cls: home))
+        patch.delenv("ALPHALATTICE_MODEL_STORE", raising=False)
+        assert installer.main(["--status"]) == 2
+        refused = _refusal(capsys)
+        assert refused["failure_code"].startswith("model_store.pointer_unreadable:")
+        assert str(pointer) in refused["detail"]
+        assert refused["next_action"] == "REPAIR_THE_MODEL_STORE_POINTER"
+
     inside = installer.PLAYPEN / "models-never-here"
     assert installer.main(["--store", str(inside), *arguments]) == 2
     assert _refusal(capsys)["failure_code"] == "model_store.store_inside_checkout"

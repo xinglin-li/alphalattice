@@ -15,8 +15,8 @@ pointing at the store's packs, so one physical copy serves every workspace
 and the workspace manifest still names a confined path.
 
 The store's location is the user's: `ALPHALATTICE_MODEL_STORE`, else the store
-packs were last installed into (remembered beside the platform's application-data
-directory), else that directory. Downloading is a separate, admitted
+packs were last installed into (remembered in the user's home, or in the
+legacy platform pointer), else that directory. Downloading is a separate, admitted
 step (`fetch`): this module verifies, it never reaches the network itself.
 """
 
@@ -206,11 +206,27 @@ STORE_POINTER = "store.json"
 
 
 def default_store_root() -> Path:
-    """`ALPHALATTICE_MODEL_STORE`, else the store last installed into, else the platform's."""
+    """Explicit variable, then the home pointer, then the legacy pointer, then platform."""
     override = os.environ.get("ALPHALATTICE_MODEL_STORE", "").strip()
     if override:
         return Path(override)
     platform = _platform_store_root()
+    pointer = Path.home() / ".alphalattice" / "model-store.json"
+    try:
+        value = json.loads(pointer.read_text("utf-8"))["store"]
+        if not isinstance(value, str) or not value:
+            raise ValueError("invalid store")
+        remembered = Path(value)
+        if not remembered.is_absolute():
+            raise ValueError("store is not absolute")
+        if not remembered.is_dir():
+            raise ValueError("store unavailable")
+        return remembered
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise ModelStoreError(f"model_store.pointer_unreadable:{pointer}") from error
+    # contract: retain legacy pointer readback while existing installations may hold one.
     try:
         remembered = Path(json.loads((platform / STORE_POINTER).read_text("utf-8"))["store"])
     except (OSError, ValueError, KeyError, TypeError):
@@ -219,16 +235,24 @@ def default_store_root() -> Path:
 
 
 def remember_store(store: Path) -> None:
-    """Remember the store packs were installed into, so a process without the variable finds it."""
-    platform = _platform_store_root()
-    pointer = platform / STORE_POINTER
-    if store.resolve() == platform.resolve():
-        pointer.unlink(missing_ok=True)
-        return
-    platform.mkdir(parents=True, exist_ok=True)
-    staged = pointer.with_suffix(".tmp")
-    staged.write_text(json.dumps({"store": str(store.resolve())}), encoding="utf-8")
-    os.replace(staged, pointer)
+    """Remember the physical store outside redirected application data."""
+    pointer = Path.home() / ".alphalattice" / "model-store.json"
+    staged: Path | None = None
+    try:
+        pointer.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=pointer.parent, prefix=".model-store-", delete=False
+        ) as handle:
+            staged = Path(handle.name)
+            json.dump({"store": str(store.resolve())}, handle)
+        os.replace(staged, pointer)
+    except OSError as error:
+        if staged is not None:
+            try:
+                staged.unlink(missing_ok=True)
+            except OSError as cleanup:
+                raise ModelStoreError(f"model_store.pointer_unwritable:{staged}") from cleanup
+        raise ModelStoreError(f"model_store.pointer_unwritable:{pointer}") from error
 
 
 def _platform_store_root() -> Path:

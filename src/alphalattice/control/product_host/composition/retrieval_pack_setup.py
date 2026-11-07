@@ -67,6 +67,16 @@ _ELSEWHERE = (
 )
 _AGAIN = "Every file already verified is kept, so the same command continues where it stopped."
 _WORDS: dict[str, tuple[str, str]] = {
+    "model_store.pointer_unreadable": (
+        "The saved model-store pointer at {subject} could not be read or names an unavailable "
+        "store. Repair that pointer or set ALPHALATTICE_MODEL_STORE to the intended store.",
+        "REPAIR_THE_MODEL_STORE_POINTER",
+    ),
+    "model_store.pointer_unwritable": (
+        "The pack is kept, but its model-store pointer at {subject} could not be written. "
+        "Repair access to that path or set ALPHALATTICE_MODEL_STORE for the Host.",
+        "REPAIR_THE_MODEL_STORE_POINTER",
+    ),
     "model_store.store_unwritable": (
         "This process cannot create or write the model store, so no pack was installed. "
         + _ELSEWHERE,
@@ -255,9 +265,9 @@ def main(argv: list[str] | None = None) -> int:
     arguments.command_line = tuple(pack_command(*(sys.argv[1:] if argv is None else argv)))
     if (arguments.view or arguments.output) and (arguments.install or arguments.import_recipe):
         parser.error(str(worded("read.summary")).format(pointer="--status"))
-    store = arguments.store or model_store.default_store_root()
+    store = arguments.store or model_store._platform_store_root()
     try:
-        store = store.resolve()
+        store = (arguments.store or model_store.default_store_root()).resolve()
         if arguments.install:
             payload = _install(
                 _outside_checkout_and_workspaces(store),

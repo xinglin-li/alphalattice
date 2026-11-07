@@ -32,7 +32,13 @@ def failure_detail(
     if (
         isinstance(error, ValidationError)
         and stage == "select_evidence_spans"
-        and error.title == "EvidenceNeedRecord"
+        and (
+            error.title == "EvidenceNeedRecord"
+            or (
+                error.title == "LitigationMatterRecord"
+                and failure_code_from(error) == "alternative_evidence.evidence_need_invalid"
+            )
+        )
     ):
         return _need_failure_detail(error, documents)
     if (
@@ -70,9 +76,13 @@ def failure_detail(
 def _need_failure_detail(
     error: ValidationError, documents: Callable[[], AlternativeEvidenceDocumentSet]
 ) -> str:
-    """Name the failing need and its recorded fields without guessing its violated rule."""
+    """Name the failing need and the invariant recorded by its validator."""
     errors = error.errors(include_url=False)
-    value = errors[0].get("input") if errors else None
+    context = errors[0].get("ctx", {}) if errors else {}
+    cause = context.get("error")
+    invariant = getattr(cause, "invariant", "UNKNOWN")
+    need = getattr(cause, "need", None)
+    value = need.model_dump() if need is not None else errors[0].get("input") if errors else None
     facts = value if isinstance(value, dict) else {}
     handle = facts.get("document_handle")
     issuer, filing = "UNKNOWN", str(handle) if isinstance(handle, str) else "UNKNOWN"
@@ -95,8 +105,8 @@ def _need_failure_detail(
     )
     fields = ", ".join(f"{name}={str(facts.get(name))[:48]}" for name in names)
     return (
-        f"Issuer {issuer}; filing {filing}; rejected field EvidenceNeedRecord (model-level): "
-        f"{fields}. {error}"
+        f"Issuer {issuer}; filing {filing}; rejected field {error.title} (model-level): "
+        f"invariant={invariant}; {fields}. {error}"
     )
 
 

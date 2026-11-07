@@ -12,6 +12,7 @@ physical copy; the store's location is the user's, never Git.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -199,6 +200,7 @@ def test_the_store_root_is_the_users(tmp_path: Path, monkeypatch: pytest.MonkeyP
         evidence_setup,
     )
 
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
     monkeypatch.setenv("ALPHALATTICE_MODEL_STORE", str(tmp_path / "elsewhere"))
     assert model_store.default_store_root() == tmp_path / "elsewhere"
     monkeypatch.delenv("ALPHALATTICE_MODEL_STORE")
@@ -214,8 +216,49 @@ def test_the_store_root_is_the_users(tmp_path: Path, monkeypatch: pytest.MonkeyP
     pack = evidence_setup(tmp_path / "workspace")["pack"]
     assert pack["store"] == str(chosen.resolve()) and pack["present"] is False  # type: ignore[index]
     assert pack["download_bytes"] > 0  # type: ignore[index,operator]
+    root.mkdir(parents=True, exist_ok=True)
     model_store.remember_store(root)
     assert model_store.default_store_root() == root
+
+    # The package's redirected AppData and the ordinary Host see different platform roots.
+    redirected = tmp_path / "package" / "LocalCache" / "Local" / "AlphaLattice" / "models"
+    redirected.mkdir(parents=True)
+    for name in ("LOCALAPPDATA", "XDG_DATA_HOME"):
+        monkeypatch.setenv(name, str(tmp_path / "package" / "LocalCache" / "Local"))
+    legacy_pointer = root / model_store.STORE_POINTER
+    legacy_pointer.write_text(json.dumps({"store": str(chosen)}), encoding="utf-8")
+    before = legacy_pointer.read_bytes()
+    model_store.remember_store(redirected)
+    for name in ("LOCALAPPDATA", "XDG_DATA_HOME"):
+        monkeypatch.setenv(name, str(tmp_path / "data"))
+    assert model_store.default_store_root() == redirected.resolve()
+    assert legacy_pointer.read_bytes() == before
+    # A packaged process sees the ordinary logical name, but its handle resolves
+    # to the private physical store. The ordinary Host reads that physical name.
+    resolve = Path.resolve
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            Path,
+            "resolve",
+            lambda path, *a, **kw: redirected if path == root else resolve(path, *a, **kw),
+        )
+        model_store.remember_store(root)
+    assert model_store.default_store_root() == redirected.resolve()
+    monkeypatch.setenv("ALPHALATTICE_MODEL_STORE", str(chosen))
+    assert model_store.default_store_root() == chosen
+    monkeypatch.delenv("ALPHALATTICE_MODEL_STORE")
+    pointer = Path.home() / ".alphalattice" / "model-store.json"
+    for invalid in ("{", json.dumps({"store": "relative"})):
+        pointer.write_text(invalid, encoding="utf-8")
+        with pytest.raises(model_store.ModelStoreError, match="pointer_unreadable"):
+            model_store.default_store_root()
+
+    # An existing legacy pointer remains readable when no new pointer was written.
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "legacy-home"))
+    root.mkdir(parents=True, exist_ok=True)
+    (root / model_store.STORE_POINTER).write_text(json.dumps({"store": str(chosen)}))
+    assert model_store.default_store_root() == chosen
+    assert (root / model_store.STORE_POINTER).exists()
 
 
 def test_a_retained_copy_is_linked_to_the_store_only_when_it_holds_the_packs_bytes(
