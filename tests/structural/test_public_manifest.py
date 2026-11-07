@@ -798,7 +798,7 @@ def test_private_browser_dependencies_keep_their_callers_private(path, reason):
         assert found[2] == reason
 
 
-def test_every_test_path_the_public_ci_runs_exists_and_is_public():
+def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     """A renamed or split test file cannot leave the public CI running a path that is gone, and
     the nightly full run is split by durations that name no private test."""
     root = Path(__file__).resolve().parents[2]
@@ -844,6 +844,94 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public():
     assert files and all(type(seconds) is float and seconds >= 0 for seconds in durations.values())
     split = {path: classify(path, set(), set(), set())[0] for path in files}
     assert {path: kind for path, kind in split.items() if kind != "PUBLIC"} == {}
+
+    import ast
+    import os
+    import time
+
+    import yaml
+
+    jobs = yaml.safe_load(workflow)["jobs"]
+    cost = jobs["test-cost"]
+    assert cost["timeout-minutes"] == 90 and cost["continue-on-error"] is True
+    assert not jobs["checkout"].get("continue-on-error", False)
+    steps = cost["steps"]
+    collect = next(step for step in steps if step.get("name") == "Check the pilot slice")
+    measure = next(
+        step for step in steps if step.get("name") == "Measure each test of the pilot slice"
+    )
+    paths = [
+        "tests/integration/evaluation",
+        "tests/unit/evaluation",
+        "tests/integration/feature_engine/test_factor_arithmetic_identity.py",
+    ]
+    assert all(path in measure["with"]["run"] for path in paths)
+    assert measure["timeout-minutes"] == "${{ fromJSON(steps.budget.outputs.minutes) }}"
+    assert all("timeout-minutes" in step for step in steps)
+    code = collect["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    loop = next(node for node in ast.walk(ast.parse(code)) if isinstance(node, ast.For))
+    assert list(ast.literal_eval(loop.iter)) == paths
+    for directory in paths[:2]:
+        (tmp_path / directory).mkdir(parents=True)
+        (tmp_path / directory / "test_sample.py").write_text(
+            "def test_sample(): pass\n", encoding="utf-8"
+        )
+    target = tmp_path / paths[2]
+    target.parent.mkdir(parents=True)
+    target.write_text("def test_sample(): pass\n", encoding="utf-8")
+    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", ALPHALATTICE_NETWORK_DISABLED="1")
+
+    def collect_fixture():
+        return subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+    assert collect_fixture().returncode == 0
+    samples = [tmp_path / path / "test_sample.py" for path in paths[:2]] + [target]
+    for path, sample in zip(paths, samples, strict=True):
+        sample.write_text("# no tests\n", encoding="utf-8")
+        empty = collect_fixture()
+        assert (
+            empty.returncode != 0 and path in empty.stdout and "selected no tests" in empty.stdout
+        )
+        sample.write_text("def test_sample(): pass\n", encoding="utf-8")
+    budget = next(step for step in steps if step.get("id") == "budget")["run"]
+    git = Path(
+        subprocess.run(
+            ["git", "--exec-path"],
+            capture_output=True,
+            text=True,
+            check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout.strip()
+    )
+    shell = git.parents[2] / "bin/bash.exe" if sys.platform == "win32" else Path("bash")
+    output = tmp_path / "github-output"
+    shell_output = (
+        f"/{output.drive[0].lower()}/{output.as_posix()[3:]}"
+        if sys.platform == "win32"
+        else str(output)
+    )
+    for elapsed, success in ((60, True), (87 * 60, False)):
+        script = budget.replace(
+            "${{ steps.clock.outputs.started }}", str(int(time.time()) - elapsed)
+        )
+        result = subprocess.run(
+            [str(shell), "-c", script],
+            env=dict(env, GITHUB_OUTPUT=shell_output),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        assert (result.returncode == 0) == success
+    assert "minutes=" in output.read_text("utf-8")
 
 
 @pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")
