@@ -132,6 +132,72 @@ def test_decision_attribution_preserves_the_named_corruption_refusal(goal_app, m
         app.decision_attribution()
 
 
+@pytest.mark.proves("composition.achieved_goal_has_a_deliverable")
+def test_an_achieved_first_use_without_a_declared_slot_still_delivers(goal_app):
+    from alphalattice.control.product_host.composition.goal_check import (
+        completion_template,
+        resubmit,
+    )
+    from alphalattice.interface.local_application.goals import GoalSubmission
+
+    app = goal_app[0]
+    declaration = {
+        "title": "First use",
+        "objective": "Review positions",
+        "kind": "FIRST_USE",
+        "criteria": [{"criterion_id": "folds", "text": "The result stands for the person"}],
+    }
+    opened = app.operate(
+        Request(operation="GOAL_OPEN", goal_id=UUID(int=2), goal_declaration=declaration), "HUMAN"
+    )
+    _attach(app, opened)
+    goal = app.store.head(UUID(int=2))
+    assert 'deliverable_id: "result"' in completion_template(goal)
+    bare = GoalSubmission.model_validate(
+        _submission(
+            outcome="PARTLY_ACHIEVED",
+            deliverables=[],
+            criteria=[{"criterion_id": "folds", "answer": "MET", "evidence": []}],
+        )
+    )
+    corrected = resubmit(
+        goal,
+        bare,
+        [
+            {"code": "goal.outcome_contradicts_criteria", "outcome": "ACHIEVED"},
+            {"code": "goal.criterion_evidence_required", "criterion_id": "folds"},
+        ],
+        {"attach:positions": {"goal_reference": {"reference_id": "positions"}}},
+    )["goal_submission"]
+    assert corrected["deliverables"] == [{"deliverable_id": "result", "references": ["positions"]}]
+    empty = app.operate(
+        Request(
+            operation="GOAL_SUBMIT",
+            goal_id=UUID(int=2),
+            goal_submission=_submission(deliverables=[]),
+        ),
+        "HUMAN",
+    )
+    assert empty["status"] == "INCOMPLETE"
+    assert any(item["code"] == "goal.deliverable_missing" for item in empty["missing"])
+    partly = app.operate(
+        Request(
+            operation="GOAL_SUBMIT",
+            goal_id=UUID(int=2),
+            goal_submission=_submission(outcome="PARTLY_ACHIEVED", deliverables=[]),
+        ),
+        "HUMAN",
+    )
+    retry = partly["next_requests"]["resubmit"]
+    assert retry["goal_submission"]["deliverables"] == [
+        {"deliverable_id": "result", "references": ["alpha"]}
+    ]
+    done = app.operate(
+        PortfolioResearchRequestDocument.model_validate(retry).to_operation_request(), "HUMAN"
+    )
+    assert done["status"] == "COMPLETE" and done["outcome"] == "ACHIEVED"
+
+
 def test_a_bound_session_names_neither_its_goal_nor_its_hash(goal_app):
     """A bound session names neither its goal nor its hash."""
 

@@ -75,6 +75,18 @@
       "layer": "integration",
       "seconds": 5
     },
+    "composition.achieved_goal_has_a_deliverable": {
+      "description": "An achieved Goal must deliver a verified reference even when the original declaration named no deliverable slot.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "composition.cli_names_a_closed_output_pipe": {
+      "description": "The command reports an output pipe that closes before its answer finishes and returns failure.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 5
+    },
     "composition.keyed_analyst_submissions_keep_first_outcome": {
       "description": "Concurrent keyed Analyst submissions receive definite outcomes, filed outcomes replay exactly, and refusals that filed nothing are retryable.",
       "owner": "alphalattice.control.product_host.composition",
@@ -244,11 +256,23 @@
       "layer": "integration",
       "seconds": 10
     },
+    "local_application.doctor_names_windows_long_path_setting": {
+      "description": "The doctor and no-Host refusal identify authenticated project Hosts; the Windows doctor reports long-path support and a packaged shell's potentially redirected model store.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 5
+    },
     "local_application.first_use_offers_delegated_network": {
       "description": "A first-use plan offers its delegated network action immediately without waiting for the separate coded daily-consent answer.",
       "owner": "alphalattice.interface.local_application",
       "layer": "integration",
       "seconds": 10
+    },
+    "local_application.first_use_question_only_while_unanswered": {
+      "description": "An exact first-use Goal retry asks the daily question while unanswered and stops offering it after the person answers.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 5
     },
     "local_application.native_tool_setup_uses_writable_scratch": {
       "description": "The offered locked tool setup runs its existing steps with checkout-owned Windows scratch and removes the scratch on success or failure.",

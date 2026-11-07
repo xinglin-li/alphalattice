@@ -632,12 +632,28 @@ def _start_session_footprint(config: Any) -> None:
 
 def pytest_configure(config: Any) -> None:
     """The producer's optional required nodes override only their own ordinary deselection."""
+    value = os.environ.get("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", "[]")
+    source = "inline list"
+    if value.startswith("@"):
+        path = Path(value[1:])
+        source = str(path)
+        if not path.is_absolute():
+            raise pytest.UsageError(
+                f"test_size.required_selection_unavailable: {path}; name an absolute list file"
+            )
+        try:
+            value = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError, ValueError) as error:
+            raise pytest.UsageError(
+                f"test_size.required_selection_unavailable: {path}: {error}; "
+                "restore the required list"
+            ) from error
     try:
-        required = requirements.selection(
-            json.loads(os.environ.get("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", "[]"))
-        )
-    except (ValueError, TypeError):
-        raise pytest.UsageError("test_size.required_selection_invalid") from None
+        required = requirements.selection(json.loads(value))
+    except (ValueError, TypeError) as error:
+        raise pytest.UsageError(
+            f"test_size.required_selection_invalid: {source}: {error}; restore the required list"
+        ) from None
     required = _nested_required(required)
     deselect = tuple(config.option.deselect or ()) if required else ()
     if required:

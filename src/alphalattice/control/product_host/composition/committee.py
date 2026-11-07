@@ -92,6 +92,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     CommitteeMessage,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.interface.local_application.questions import person_question
 from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
     ADVANCEMENT_TASK_KIND,
 )
@@ -420,11 +421,12 @@ def daily_asked(
         return done
     relay = (
         f'{COMMAND} committee daily --enabled true --person-said "<their words>" '
-        f'--asked "{DAILY_ASK}"'
+        f'--asked "{DAILY_ASK}" --question-code committee.daily'
     )
     return done | {
         "next_action": done.get("next_action") or "ASK_THE_PERSON_ONCE",
         "ask_now": [DAILY_ASK_HOW, DAILY_ASK, relay],
+        "person_questions": [person_question("committee.daily")],
     }
 
 

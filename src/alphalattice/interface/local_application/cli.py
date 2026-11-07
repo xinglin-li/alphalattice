@@ -1699,7 +1699,9 @@ def _refused(
     context = getattr(error, "binding_context", None)
     detail = str(worded(refusal.detail))
     if workspace is not None and refusal.outcome == "NO_HOST":
-        detail = host_checked(detail, workspace)
+        detail = host_checked(
+            detail, workspace, discover=code == "local_client.service_not_running"
+        )
     if line and code == "local_client.workspace_unbound":
         again = join([*command_prefix(), "--workspace", "<dir>", *line], shell())
         detail += " " + str(worded("This line with its workspace named: {subject}.")).replace(

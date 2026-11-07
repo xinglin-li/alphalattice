@@ -37,6 +37,7 @@ from alphalattice.control.product_host.composition.first_use_road import (
     undated,
 )
 from alphalattice.control.product_host.composition.goal_check import (
+    first_use_answered,
     goal_schema,
     missing_items,
     offer_completion,
@@ -1309,7 +1310,7 @@ class GoalApplication:
                 task_id=request.task_id,
             )
         if request.operation == "GOAL_OPEN":
-            return opened_goal(self._open(request, caller, provenance), request.goal_declaration)
+            return self._open(request, caller, provenance)
         if (
             request.operation in _SESSION_GOAL_OPERATIONS
             and request.goal_id is None
@@ -1451,7 +1452,11 @@ class GoalApplication:
         if prior is not None:
             if prior.revision == 1 and prior.declaration == declaration:
                 answer = {"status": "REUSED_EXACT", **self._identity_of(prior)}
-                return {**answer, **self._bind(prior, session)}
+                bound = {**answer, **self._bind(prior, session)}
+                answered = declaration.kind == "FIRST_USE" and first_use_answered(
+                    self.workspace, self.clock
+                )
+                return opened_goal(bound, request.goal_declaration, daily_answered=answered)
             raise ValueError("goal.already_open_revise_it")
         if (dated := undated(self.workspace, declaration, self.clock())) is not None:
             return dict(dated)
@@ -1465,7 +1470,7 @@ class GoalApplication:
         answer = self._save(request, caller, None, declaration=declaration, goal_id=goal_id)
         saved = self.store.load(str(answer["goal_hash"]))
         bound = self._bind(saved, session)
-        return {
+        result = {
             **answer,
             **bound,
             "goal_prompt": goal_prompt(saved, self.workspace),
@@ -1481,6 +1486,7 @@ class GoalApplication:
                 else {}
             ),
         }
+        return opened_goal(result, request.goal_declaration)
 
     def _bind(self, goal: Goal, session: GoalSession | None) -> dict[str, Any]:
         if session is None:

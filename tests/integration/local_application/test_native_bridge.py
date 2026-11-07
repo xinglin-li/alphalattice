@@ -515,7 +515,11 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
             assert result["attachment_preflight"]["missing"] == ["native_session_binding"]
             assert result["research_nonblocking"] is True
             readiness = {item["key"]: item for item in result["host_readiness"]}
-            assert set(READINESS_KEYS) == readiness.keys()
+            assert (
+                set(READINESS_KEYS)
+                | {"serving_workspaces", "windows_long_paths", "model_store_scope"}
+                == readiness.keys()
+            )
             assert readiness["disk"]["present"] is None and readiness["network"]["present"] is None
             assert "native_proof" not in result and "host_trust" not in result
             assert {
@@ -621,6 +625,80 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     assert failed["path"] == str(saved / "answer.json") and failed["detail"]
     # The Codex host still reads its own file, and refuses without it.
     assert run("configure")[1]["status"] == "REFUSED"
+
+
+@pytest.mark.proves("local_application.doctor_names_windows_long_path_setting")
+def test_doctor_reports_windows_path_and_packaged_shell(tmp_path, monkeypatch):
+    if sys.platform == "win32":
+        import ctypes
+        import winreg
+        from contextlib import nullcontext
+
+        def packaged(length, buffer):
+            if buffer is None:
+                ctypes.cast(length, ctypes.POINTER(ctypes.c_uint32)).contents.value = 32
+                return 122
+            buffer.value = "Claude_example"
+            return 0
+
+        monkeypatch.setattr(winreg, "OpenKey", lambda *_: nullcontext(None))
+        monkeypatch.setattr(winreg, "QueryValueEx", lambda *_: (0, winreg.REG_DWORD))
+        monkeypatch.setattr(ctypes.windll.kernel32, "GetCurrentPackageFamilyName", packaged)
+    monkeypatch.setattr(
+        setup,
+        "agent_setup",
+        lambda: {
+            "installed_leg": {"present": True},
+            "retrieval_runtime": {"present": True},
+        },
+    )
+    monkeypatch.setattr(setup, "codex_queue_readiness", lambda: {"present": True})
+    monkeypatch.setattr(model_store, "recipe_readiness", lambda *_: {"ready": True})
+    from alphalattice.interface.local_application import cli_contract, client
+
+    good, stale = tmp_path / "workspaces" / "served", tmp_path / "workspaces" / "stale"
+    for directory in (good, stale):
+        directory.mkdir(parents=True)
+        (directory / "research-workspace.json").write_text("{}", encoding="utf-8")
+
+    class Host:
+        def __init__(self, workspace, **_):
+            self.workspace = workspace
+
+        def request(self, document):
+            return {"status": "SERVING" if self.workspace == good else "REFUSED"}
+
+    monkeypatch.setattr(client, "LocalResearchClient", Host)
+    monkeypatch.chdir(tmp_path)
+    items = {item["key"]: item for item in setup.host_readiness(tmp_path, "codex", None)}
+    assert "windows_long_paths" in items and "model_store_scope" in items
+    assert "serving_workspaces" in items
+    assert items["serving_workspaces"]["facts"]["workspaces"] == [str(good)]
+    assert str(good) in cli_contract.host_checked("No Host", tmp_path, discover=True)
+    assert str(stale) not in cli_contract.host_checked("No Host", tmp_path, discover=True)
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            native_bridge,
+            "serving_workspaces",
+            lambda _: {"status": "UNREADABLE", "workspaces": [], "reason": "PermissionError"},
+        )
+        assert "PermissionError" in cli_contract.host_checked("No Host", tmp_path, discover=True)
+    long_paths, store = items["windows_long_paths"], items["model_store_scope"]
+    if sys.platform == "win32":
+        assert long_paths["present"] is False and "LongPathsEnabled" in long_paths["how_to_fill"]
+        assert store["present"] is False and store["facts"]["package_family"] == "Claude_example"
+        assert "redirect" in store["how_to_fill"].lower()
+        monkeypatch.setattr(
+            winreg, "QueryValueEx", lambda *_: (_ for _ in ()).throw(PermissionError())
+        )
+        monkeypatch.setattr(ctypes.windll.kernel32, "GetCurrentPackageFamilyName", lambda *_: 15700)
+        unknown = {item["key"]: item for item in setup.host_readiness(tmp_path, "codex", None)}
+        assert unknown["windows_long_paths"]["present"] is None
+        assert unknown["windows_long_paths"]["facts"]["reason"] == "PermissionError"
+        assert unknown["model_store_scope"]["present"] is True
+    else:
+        assert long_paths["facts"]["applicable"] is False
+        assert store["facts"]["applicable"] is False
 
 
 @pytest.mark.parametrize("missing", (None, *READINESS_KEYS))
@@ -934,6 +1012,12 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
     shipped = {host: entry._roles(host) for host in ("codex", "claude-code")}
     # name: (the bridge's bound, how it stands to its contract, the contract's, what it bounds)
     table = {
+        "WORKSPACE_SCAN_LIMIT": (
+            bridge.WORKSPACE_SCAN_LIMIT,
+            "==",
+            64,
+            "project workspaces checked before reporting a partial discovery",
+        ),
         "SUBJECT_VALUE_CHARACTERS": (
             bridge.SUBJECT_VALUE_CHARACTERS,
             "==",

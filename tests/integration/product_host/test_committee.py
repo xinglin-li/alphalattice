@@ -1157,6 +1157,25 @@ def test_the_daily_committee_is_the_persons_and_the_first_use_asks_it_once(
     store.attribute(first.goal_id, {"operation": "RESEARCH_UPDATE_RUN", "task_id": TASK})
     asked = committee.daily_asked(tmp_path, goals, TASK, {"status": "EXPORTED"})
     assert committee.DAILY_ASK in asked["ask_now"]
+    assert asked.get("person_questions", [{}])[0].get("code") == "committee.daily"
+    assert "--question-code committee.daily" in asked["ask_now"][-1]
+    from alphalattice.interface.local_application.goals import relayed_decision
+    from alphalattice.interface.local_application.portfolio_research import (
+        PersonConfirmation,
+        decision_hash,
+    )
+
+    choice = {"operation": "COMMITTEE_DAILY_SET", "committee_daily_enabled": True}
+    confirmation = PersonConfirmation(
+        question=(
+            "Should each daily update also convene the investment committee, "
+            "about ten more minutes?"
+        ),
+        words="Yes.",
+        question_code="committee.daily",
+        decision_hash=decision_hash(choice),
+    )
+    assert relayed_decision(choice, confirmation) == confirmation.decision_hash
     # regression (fresh-folder acceptance): a lead held the goal open for this answer; the
     # question waits for the person, and the goal's completion goes on beside it.
     assert asked["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL", asked

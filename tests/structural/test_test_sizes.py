@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import textwrap
+from contextlib import suppress
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -515,11 +516,47 @@ def _memory_checks_read_no_host():
 
 @pytest.mark.parametrize(
     "declared",
-    [*DECLARED_CASES, pytest.param(("commit-tier",), id="commit-tier")],
+    [
+        *DECLARED_CASES,
+        pytest.param(("required-file",), id="required-file"),
+        pytest.param(("commit-tier",), id="commit-tier"),
+    ],
 )
 @pytest.mark.proves("testing.layer_contract")
 def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypatch, declared):
     """Owned size declarations enforce their bounds and provenance, refusing invalid catalogs."""
+    if declared == ("required-file",):
+        from types import SimpleNamespace
+
+        from devtools.testing import collection
+
+        nodes = [f"tests/test_wide.py::test_case_{i}" for i in range(1400)]
+        path = tmp_path / "required.json"
+        data = json.dumps(nodes)
+        assert len(data) > 32767
+        path.write_text(data, encoding="utf-8")
+        monkeypatch.delenv("ALPHALATTICE_PIPELINE_EVENTS", raising=False)
+        monkeypatch.delenv("WK_SUITE_PLUGIN", raising=False)
+        monkeypatch.setenv("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", "@" + str(path))
+        config = SimpleNamespace(option=SimpleNamespace(deselect=["tests/test_wide.py"]), stash={})
+        with suppress(pytest.UsageError):
+            collection.pytest_configure(config)
+        assert config.stash.get(collection.REQUIRED) == (tuple(nodes), ("tests/test_wide.py",))
+        assert config.option.deselect == []
+        path.unlink()
+        with pytest.raises(pytest.UsageError, match="required_selection_unavailable") as missing:
+            collection.pytest_configure(config)
+        assert str(path) in str(missing.value)
+        path.write_bytes(b"\xff")
+        with pytest.raises(pytest.UsageError, match="required_selection_unavailable"):
+            collection.pytest_configure(config)
+        path.write_text("{", encoding="utf-8")
+        with pytest.raises(pytest.UsageError, match="required_selection_invalid"):
+            collection.pytest_configure(config)
+        monkeypatch.setenv("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(nodes[:1]))
+        collection.pytest_configure(config)
+        assert config.stash[collection.REQUIRED][0] == tuple(nodes[:1])
+        return
     if declared == ("commit-tier",):
         from devtools.testing import collection
 

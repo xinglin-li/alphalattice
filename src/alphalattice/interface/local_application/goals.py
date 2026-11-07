@@ -118,9 +118,15 @@ def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirma
     return decision
 
 
-def opened_goal(answer: dict[str, Any], declaration: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Project the first-use question at the Host boundary, before its observer."""
-    if answer.get("goal_id") and (declaration or {}).get("kind") == "FIRST_USE":
+def opened_goal(
+    answer: dict[str, Any], declaration: Mapping[str, Any] | None, *, daily_answered: bool = False
+) -> dict[str, Any]:
+    """Project the first-use question while the person has not answered it."""
+    if (
+        answer.get("goal_id")
+        and not daily_answered
+        and (declaration or {}).get("kind") == "FIRST_USE"
+    ):
         answer["person_questions"] = [person_question("network.daily_updates")]
     return answer
 
@@ -152,14 +158,21 @@ def first_use_asks(
 ) -> dict[str, Any]:
     """Format the first-use road and unchanged notices beside the Host's questions."""
     selected_shell = shell()
+    questions = list(questions)
     relays = [join([*prefix, *words], selected_shell) for words in DAILY_NETWORK_RELAY]
     return {
         "road": [
             {"step": step, "command": join([*prefix, *words], selected_shell), "does": does}
             for step, words, does in road
         ],
-        "ask_now": [WATCH_IN_WORKBENCH.format(link=link), *FIRST_USE_ASK_NOW, *relays],
-        "person_questions": list(questions),
+        "ask_now": [WATCH_IN_WORKBENCH.format(link=link), *FIRST_USE_ASK_NOW, *relays]
+        if questions
+        else [
+            WATCH_IN_WORKBENCH.format(link=link),
+            "When Evidence is not set up, reviewing positions may acquire recent SEC filings "
+            "within the default budget and download the retrieval model needed by its setup.",
+        ],
+        "person_questions": questions,
     }
 
 

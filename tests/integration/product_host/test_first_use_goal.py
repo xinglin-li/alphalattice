@@ -120,6 +120,34 @@ def _network(live: Any) -> bool:
     return network_access(live.workspace, environment={}, now=live.clock()).allowed
 
 
+@pytest.mark.proves("local_application.first_use_question_only_while_unanswered")
+def test_a_reopened_first_use_only_asks_while_the_daily_answer_is_missing(tmp_path: Path) -> None:
+    from alphalattice.control.workspace_runtime.network_access import set_network_access
+    from alphalattice.interface.local_application.goals import first_use_asks
+
+    now = datetime(2026, 11, 6, tzinfo=UTC)
+    app = GoalApplication(
+        GoalStore(tmp_path, "workspace"),
+        lambda: now,
+        lambda *_: {},
+        lambda _: now,
+        lambda _: None,
+        workspace=tmp_path,
+    )
+    request = Request(operation="GOAL_OPEN", goal_declaration=FIRST_USE)
+    opened = app.operate(request, "HUMAN")
+    retry = app.operate(request, "HUMAN")
+    assert opened["person_questions"][0]["code"] == "network.daily_updates"
+    assert retry["person_questions"][0]["code"] == "network.daily_updates"
+    set_network_access(tmp_path, enabled=True, relayed=("agent", "Yes", DAILY_NETWORK_ASK), now=now)
+    answered = app.operate(request, "HUMAN")
+    assert answered["status"] == "REUSED_EXACT" and not answered.get("person_questions")
+    notices = first_use_asks(None, ["alphalattice"], [], [])["ask_now"]
+    assert DAILY_NETWORK_ASK not in notices
+    assert any("default budget" in text and "retrieval model" in text for text in notices)
+    assert all("delegation" not in text for text in notices)
+
+
 def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them(
     live: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

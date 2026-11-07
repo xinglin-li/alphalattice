@@ -578,6 +578,7 @@
     "alphalattice.interface.local_application": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.interface.local_application.activity": "Load the activity contract only while its build-time operation checks are requested.",
     "alphalattice.interface.local_application.cli": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
+    "alphalattice.interface.local_application.cli_contract": "Read localized CLI refusal words only if its output pipe closes.",
     "alphalattice.interface.local_application.client": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.interface.local_application.experiment_report": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.interface.local_application.native_bridge": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",

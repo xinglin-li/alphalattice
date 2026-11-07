@@ -120,13 +120,13 @@ def _cancel_available(task: TaskRecord) -> bool:
 
 
 class TaskQueueFull(RuntimeError):
-    """Every waiting place is taken; the message names how many wait and the places."""
+    """Every waiting place is taken."""
 
 
 def _queue_full(queued: int, places: int, reason: str) -> TaskQueueFull:
     return TaskQueueFull(
         f"task_control.queue_full: {queued} Tasks wait in the queue's {places} places ({reason}); "
-        "the workspace's tasks_waiting setting sets them"
+        "tasks_waiting setting sets them; wait for a Task to finish before retrying"
     )
 
 

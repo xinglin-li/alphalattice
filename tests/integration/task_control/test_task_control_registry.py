@@ -899,7 +899,7 @@ def test_registry_enforces_one_active_one_queued_and_safe_cancel(tmp_path: Path)
         observed_at=now + timedelta(seconds=2),
     ).record
     third = task_contract(salt="third")
-    with pytest.raises(TaskQueueFull, match=r"queue_full: 1 Tasks wait in the queue's 1 places"):
+    with pytest.raises(TaskQueueFull, match=r"queue_full:.*wait.*finish"):
         registry.admit(
             input_envelope=third[0],
             goal=third[1],

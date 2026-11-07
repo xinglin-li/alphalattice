@@ -1805,12 +1805,13 @@ def terminal_serve_command(
     ]
 
 
-def host_checked(detail: str, workspace: Path) -> str:
+def host_checked(detail: str, workspace: Path, *, discover: bool = False) -> str:
     """A no-Host answer's words, naming the workspace it checked and how to serve it.
 
     Args:
         detail: The refusal's own words.
         workspace: The workspace the client looked for a Host in.
+        discover: Also look for authenticated Hosts in the current project.
 
     Returns:
         The words in the command's language, with the Session's bound workspace where another.
@@ -1821,6 +1822,10 @@ def host_checked(detail: str, workspace: Path) -> str:
     words = words.replace("{subject}", f"`{join(serve, shell())}`")
     if bound not in {None, checked}:
         words += " " + str(worded(OTHER_BOUND)).replace("{subject}", str(bound))
+    if discover:
+        from .native_bridge import serving_workspace_notice  # lazy: bridge imports this contract.
+
+        words += serving_workspace_notice(Path.cwd())
     return f"{worded(detail)} {words}"
 
 
@@ -1884,7 +1889,11 @@ def client_failure(
                 detail += " " + str(worded(OTHER_BOUND)).replace("{subject}", str(bound))
             refusal = refusal._replace(detail=detail)
     elif workspace is not None and refusal.outcome == "NO_HOST":
-        refusal = refusal._replace(detail=host_checked(refusal.detail, workspace))
+        refusal = refusal._replace(
+            detail=host_checked(
+                refusal.detail, workspace, discover=code == "local_client.service_not_running"
+            )
+        )
     return refusal, known
 
 

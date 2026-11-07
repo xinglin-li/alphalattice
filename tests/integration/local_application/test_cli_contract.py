@@ -1714,3 +1714,40 @@ def test_a_declaration_and_choices_never_give_one_field_twice(
         body
     )
     assert fake_host.sent == []
+
+
+@pytest.mark.proves("composition.cli_names_a_closed_output_pipe")
+def test_the_cli_names_a_closed_output_pipe(monkeypatch, capsys):
+    import io
+    import sys
+
+    from alphalattice.control.product_host.composition import entry
+    from alphalattice.interface.local_application import cli
+
+    class ClosedPipe(io.StringIO):
+        def write(self, text):
+            raise BrokenPipeError("pipe closed")
+
+    with monkeypatch.context() as changed:
+        changed.setattr(sys, "stdout", ClosedPipe())
+        changed.setattr(cli, "main", lambda *args, **kwargs: print("answer"))
+        try:
+            code = entry.main([])
+        except BrokenPipeError:
+            code = None
+    assert code is not None and code != 0
+    assert "pipe" in capsys.readouterr().err.lower()
+    assert not entry._closed_output_pipe(PermissionError("not a pipe failure"))
+    if sys.platform == "win32":
+        import ctypes
+        import errno
+        import msvcrt
+        from types import SimpleNamespace
+
+        with monkeypatch.context() as changed:
+            changed.setattr(msvcrt, "get_osfhandle", lambda _: 42)
+            changed.setattr(ctypes.windll.kernel32, "GetFileType", lambda _: 3)
+            changed.setattr(sys, "stdout", SimpleNamespace(fileno=lambda: 1))
+            assert entry._closed_output_pipe(OSError(errno.EINVAL, "closed"))
+            changed.setattr(ctypes.windll.kernel32, "GetFileType", lambda _: 1)
+            assert not entry._closed_output_pipe(OSError(errno.EINVAL, "other"))

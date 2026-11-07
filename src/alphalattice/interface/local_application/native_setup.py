@@ -66,6 +66,7 @@ from alphalattice.interface.local_application.native_bridge import (
     command_readiness,
     declares_product,
     fresh_path,
+    serving_workspaces,
     session_binding,
     session_project,
 )
@@ -150,6 +151,21 @@ def _host_facts(binding: NativeResearchBinding | None) -> dict[str, Any]:
 
 
 HOST_DEPENDENCIES = {
+    "serving_workspaces": (
+        str(worded("doctor.serving_workspaces.enables")),
+        str(worded("doctor.serving_workspaces.how")),
+        "AGENT",
+    ),
+    "windows_long_paths": (
+        str(worded("doctor.windows_long_paths.enables")),
+        str(worded("doctor.windows_long_paths.recovery")),
+        "PERSON",
+    ),
+    "model_store_scope": (
+        str(worded("doctor.model_store_scope.enables")),
+        str(worded("doctor.model_store_scope.recovery")),
+        "AGENT",
+    ),
     "python": ("Run locked Python", "Use Python 3.12 and uv sync --locked; disclose it.", "AGENT"),
     "uv": (
         "Install the lock's dependencies",
@@ -441,6 +457,74 @@ def _workbench_build() -> str:
     )
 
 
+def _windows_environment_facts() -> dict[str, Any]:
+    """Read Windows long-path and package identity without changing system settings."""
+    if sys.platform != "win32":
+        return {"applicable": False, "long_paths_enabled": True, "package_family": None}
+    import ctypes  # lazy: Windows package identity only.
+    import winreg  # lazy: the Windows registry is unavailable elsewhere.
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\FileSystem"
+        ) as key:
+            enabled = bool(winreg.QueryValueEx(key, "LongPathsEnabled")[0])
+        long_reason = None
+    except FileNotFoundError:
+        enabled, long_reason = False, "REGISTRY_VALUE_ABSENT"
+    except OSError as error:
+        enabled, long_reason = None, type(error).__name__
+    try:
+        length = ctypes.c_uint32(0)
+        read = ctypes.windll.kernel32.GetCurrentPackageFamilyName
+        status = read(ctypes.byref(length), None)
+        if status == 15700:  # APPMODEL_ERROR_NO_PACKAGE
+            family, package_reason = None, None
+        elif status == 122 and length.value:  # ERROR_INSUFFICIENT_BUFFER
+            buffer = ctypes.create_unicode_buffer(length.value)
+            status = read(ctypes.byref(length), buffer)
+            family, package_reason = (buffer.value, None) if status == 0 else (None, str(status))
+        else:
+            family, package_reason = None, str(status)
+    except (AttributeError, OSError) as error:
+        family, package_reason = None, type(error).__name__
+    return {
+        "applicable": True,
+        "long_paths_enabled": enabled,
+        "long_paths_reason": long_reason,
+        "package_family": family,
+        "package_reason": package_reason,
+    }
+
+
+def _environment_specs(project: Path, store_root: Path) -> tuple[Any, ...]:
+    """Describe authenticated Hosts and Windows environment facts for doctor."""
+    windows = _windows_environment_facts()
+    serving = serving_workspaces(project)
+    return (
+        ("serving_workspaces", None if serving["status"] == "UNREADABLE" else True, serving),
+        (
+            "windows_long_paths",
+            windows.get("long_paths_enabled"),
+            {
+                "LongPathsEnabled": windows.get("long_paths_enabled"),
+                "reason": windows.get("long_paths_reason"),
+                "applicable": windows.get("applicable", True),
+            },
+        ),
+        (
+            "model_store_scope",
+            None if windows.get("package_reason") else not bool(windows.get("package_family")),
+            {
+                "package_family": windows.get("package_family"),
+                "reason": windows.get("package_reason"),
+                "model_store": str(store_root),
+                "applicable": windows.get("applicable", True),
+            },
+        ),
+    )
+
+
 def host_readiness(
     project: Path, host: str, binding: NativeResearchBinding | None
 ) -> list[dict[str, Any]]:
@@ -477,6 +561,7 @@ def host_readiness(
     backups = sorted(path.name for path in (user / "backups").glob("*") if path.is_dir())
     python_version = str(recorded_environment()["python"])
     specifications = (
+        *_environment_specs(project, default_store_root()),
         (
             "python",
             python_version.split(".")[:2] == ["3", "12"],
