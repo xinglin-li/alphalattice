@@ -85,6 +85,18 @@ from alphalattice.protocols.research_authoring.contracts import (
 PROFILE = "us-current-index-research"
 
 
+def _windows_long_path(path: Path) -> Path:
+    """Use Windows extended paths without changing the workspace's recorded path."""
+    if os.name != "nt":
+        return path
+    absolute = os.path.abspath(path)
+    if absolute.startswith("\\\\?\\"):
+        return Path(absolute)
+    if absolute.startswith("\\\\"):
+        return Path("\\\\?\\UNC\\" + absolute[2:])
+    return Path("\\\\?\\" + absolute)
+
+
 def confined(root: Path, relative: str) -> Path:
     """Resolve an explicit relative path and refuse workspace escape.
 
@@ -293,6 +305,7 @@ def read_factor_bundle(
         AuthoringError: Identity/path, availability, closed file set or exact file/database bytes
             differ.
     """
+    workspace = _windows_long_path(workspace)
     if len(binding_hash) != 64 or any(v not in "0123456789abcdef" for v in binding_hash):
         raise AuthoringError("research_experiment.input_hash_invalid")
     root = confined(workspace, f"research-inputs/{binding_hash}")
@@ -332,6 +345,7 @@ def read_factor_bundle(
 
 def factor_input_paths(workspace: Path, binding_hash: str) -> tuple[Path, Path]:
     """Resolve legacy inline and referenced snapshots through one path owner."""
+    workspace = _windows_long_path(workspace)
     if len(binding_hash) != 64 or any(v not in "0123456789abcdef" for v in binding_hash):
         raise AuthoringError("research_experiment.input_hash_invalid")
     source = confined(workspace, f"research-inputs/{binding_hash}/source")
@@ -458,8 +472,8 @@ def bind_factor_inputs(
             lease = WorkspaceWriterLease.acquire(root)
             stack.callback(lease.close)
         return _bind_factor_inputs(
-            workspace=workspace,
-            source=source,
+            workspace=_windows_long_path(workspace),
+            source=_windows_long_path(source),
             input_id=input_id,
             panel_snapshot_hash=panel_snapshot_hash,
             outcome_snapshot_hash=outcome_snapshot_hash,
@@ -501,8 +515,8 @@ def publish_prepared_factor_inputs(
     )
     logical_panel_owner(root).publish_snapshot(manifest_ref)
     return _bind_factor_inputs(
-        workspace=root,
-        source=root,
+        workspace=_windows_long_path(root),
+        source=_windows_long_path(root),
         input_id=input_id,
         panel_snapshot_hash=panel_snapshot_hash,
         outcome_snapshot_hash=outcome.manifest.snapshot_hash,

@@ -907,7 +907,12 @@ class ResearchProgramWorkflow:
         # NTFS is case-insensitive, so "Out" and "out" are one directory. A
         # case-sensitive comparison would call them distinct and let an alias
         # of the source through.
-        return os.path.normcase(str(value))
+        path = os.path.normcase(str(value))
+        if os.name == "nt" and path.startswith("\\\\?\\unc\\"):
+            return "\\\\" + path[8:]
+        if os.name == "nt" and path.startswith("\\\\?\\"):
+            return path[4:]
+        return path
 
     @classmethod
     def _same_path(cls, left: Path, right: Path) -> bool:

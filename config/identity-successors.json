@@ -14757,6 +14757,62 @@
    "successor": "dc59b788c73a42d838443e26955b8802490516e5f9d2830d4f493e9be7b5b53d",
    "change": "The Windows read lease sees a closed rewrite whose modified time was restored",
    "reason": "The lease adds the file's change time and refuses reuse for a file changed within 100 ms, so a cached proof can no longer certify a damaged source when the break event is late. Only source text moved in these closures: it decides when a verification may be reused, never what a role computes. One real replan output of each role and synthetic sealed arrays across two opted-in reads are byte-identical before and after."
+  },
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "8b5a16e890540e4fad64af6fc3e04046b024173e4b586e5419e2837c0856ca44",
+   "successor": "2041dc0c3710468c3450c50e7ec29a07064ea818c1064cfa0299c906e99fcdd3",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "4725e81ea1fe1b348b700e8d5e9093155c7f332d20c4ede247dae284c290d734",
+   "successor": "784c133e0b6d8b2d11ccb2114aa405c714c15bde6bd081da1dd8ca9ffb6b8e04",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "0d21377dbaea385c0968787c8599f87fc9d3c47179bf269a1defbfe375ac07bd",
+   "successor": "96dce38dd03f5abd8992b7537983dd3329cfde365e8a9cc6f3b9e9922994530e",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "7eea07541c6e42c5af9f0089ab5de615d65990aa601c2070f07ab11d603b06a6",
+   "successor": "c230a2bcd9f5f7622a7f661ceb78b5151ff46ff77aa308d06aca554e74b48f13",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "cbb66401ba9589337fa430f7444aa142fc653caf5019593ba16a8038db8a069b",
+   "successor": "cd8e1596dbe03dcf6b0dc9c3f94225ed7cb735747c510c20b14ae5f2ab7919ba",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "cbb66401ba9589337fa430f7444aa142fc653caf5019593ba16a8038db8a069b",
+   "successor": "cd8e1596dbe03dcf6b0dc9c3f94225ed7cb735747c510c20b14ae5f2ab7919ba",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "cb8ff30b51b537e8d19303f3100c1dc7fd8776d2da3bd18076e7f0eb02511eb8",
+   "successor": "11609a7ad8665fb1269616d5bbbcf8476f1b9e16b17096f76ded8822c44eb55f",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "3bf6a6169b7aa15a9104ddf4c1fbf2ca9fde7aebc443a759f03dc0eb0f193d44",
+   "successor": "d2c15cf18691bd8c34e7b2de937b030687b3c822f21bc4a66f3a16605e4678b9",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
   }
  ]
 }

@@ -412,7 +412,9 @@ class _Chunk:
     expires_at: datetime | None
 
 
-def _markdown_sections(text: str, title: str) -> tuple[_Section, ...]:
+def _markdown_sections(
+    text: str, title: str, *, _repair_invalid: bool = False
+) -> tuple[_Section, ...]:
     lines = text.splitlines()
     line_starts = [0]
     line_starts.extend(index + 1 for index, character in enumerate(text) if character == "\n")
@@ -454,7 +456,7 @@ def _markdown_sections(text: str, title: str) -> tuple[_Section, ...]:
 
     for number, line in enumerate(lines, start=1):
         match = _HEADING.match(line)
-        if match is None:
+        if match is None or (_repair_invalid and not (0 < len(match.group(2).strip()) <= 256)):
             body.append(line)
             continue
         flush(number - 1)
@@ -478,6 +480,12 @@ def _markdown_sections(text: str, title: str) -> tuple[_Section, ...]:
                 body_char_end=len(text),
             )
         )
+    if not _repair_invalid and any(
+        _normalize_text(section.body)
+        and any(not (0 < len(part) <= 256) for part in section.heading_path)
+        for section in sections
+    ):
+        return _markdown_sections(text, title, _repair_invalid=True)
     return tuple(sections)
 
 

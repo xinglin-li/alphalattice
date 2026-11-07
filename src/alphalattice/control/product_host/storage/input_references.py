@@ -31,6 +31,7 @@ from alphalattice.control.product_host.composition.strategy_scoring import (
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     FactorInputBundle,
+    _windows_long_path,
     confined,
 )
 from alphalattice.control.product_host.research_authoring.input_revisions import (
@@ -242,11 +243,11 @@ class ResearchInputStorage:
         try:
             verified_publications = revisions.publications()
         except FileNotFoundError as error:
-            missing = Path(error.filename) if error.filename is not None else None
+            missing = _windows_long_path(Path(error.filename)) if error.filename else None
             if (
                 missing is not None
                 and missing.name == "manifest.json"
-                and missing.parent.parent == self.workspace / "research-inputs"
+                and missing.parent.parent == _windows_long_path(self.workspace / "research-inputs")
                 and len(missing.parent.name) == 64
                 and all(value in "0123456789abcdef" for value in missing.parent.name)
             ):
