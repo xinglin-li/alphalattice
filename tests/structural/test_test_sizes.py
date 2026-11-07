@@ -47,6 +47,38 @@ def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
 
         checkout, environment = pytest_checkout(tmp_path, root)
         marker = Path(environment["TEMP"]) / "given" / "framework-entered"
+        if case in {"root-session-golden", "root-session-golden-error"}:
+            (checkout / "tests/integration/test_golden_probe.py").write_text(
+                "from devtools.evaluation.golden_workspaces import hold_generation\n"
+                "def test_hold(golden_cache):\n"
+                "    generation = golden_cache / 'generation'\n"
+                "    generation.mkdir()\n"
+                + (
+                    "    def fail(): raise AssertionError('release-test')\n"
+                    if case.endswith("-error")
+                    else "    def fail(): pass\n"
+                )
+                + "    assert hold_generation(generation, fail)\n",
+                encoding="utf-8",
+            )
+        if case in {"root-session-seed", "root-session-seed-error"}:
+            (checkout / "tests/integration/test_golden_probe.py").write_text(
+                "import sys, types\n"
+                "from pathlib import Path\n"
+                "def test_seed():\n"
+                "    module = types.ModuleType('fixture_seed')\n"
+                "    def changed():\n"
+                "        Path(__file__).read_text()\n"
+                + (
+                    "        return ['changed seed']\n"
+                    if case.endswith("-error")
+                    else "        return []\n"
+                )
+                + "    module.seeds_changed = changed\n"
+                "    sys.modules['tests.researcher_methodology_surface."
+                "session_workspace'] = module\n",
+                encoding="utf-8",
+            )
         if case == "root-lookalike":
             target = checkout / "tests/unit/test_collection_probe.py"
             target.write_text(
@@ -94,8 +126,14 @@ def _memory_checks_read_no_host():
                 "-m",
                 "pytest",
                 "-q",
+                *(["-p", "xdist.plugin", "-n", "1"] if case.endswith("-error") else []),
                 "--basetemp",
                 str(marker.parent),
+                *(
+                    [str(checkout / "tests" / "integration" / "test_golden_probe.py")]
+                    if case.startswith(("root-session-golden", "root-session-seed"))
+                    else []
+                ),
                 str(checkout / "tests" / "unit" / "test_collection_probe.py"),
             ],
             cwd=checkout,
@@ -110,7 +148,14 @@ def _memory_checks_read_no_host():
         output = result.stdout + result.stderr
         assert result.returncode == (1 if refused else 0), output
         if refused:
-            assert "testing.layer_contract" in output
+            expected = (
+                "session fixture cleanup failed: AssertionError: release-test"
+                if case == "root-session-golden-error"
+                else "session fixture cleanup failed: AssertionError"
+                if case == "root-session-seed-error"
+                else "testing.layer_contract"
+            )
+            assert expected in output
         if case == "root-runtime":
             assert marker.is_file() and "unit dependency duckdb" in output
         else:

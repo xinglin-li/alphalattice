@@ -16,7 +16,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterator
-from contextlib import nullcontext, suppress
+from contextlib import ExitStack, nullcontext, suppress
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -68,13 +68,16 @@ def _seeds_read_in_place(request: pytest.FixtureRequest) -> Iterator[None]:
             environment.RUNNING_TEST.update(id=None, private=False, factory=None, verify=None)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _seeds_read_in_place_stay_unchanged() -> Iterator[None]:
-    """A write through a seed file read in place is named by seed and file at session end."""
-    yield
-    # Found among the loaded modules, never imported here: only a run that copied a seed pays.
+def _verify_session_seeds() -> None:
+    """A write through a session seed is still a session failure, never a unit dependency."""
     if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
         assert seeds.seeds_changed() == []
+
+
+def _session_cleanup(config: pytest.Config) -> ExitStack:
+    if not hasattr(config, "_golden_cleanup"):
+        config._golden_cleanup = ExitStack()
+    return config._golden_cleanup
 
 
 @pytest.fixture(autouse=True)
@@ -87,23 +90,24 @@ def project_isolation(tmp_path, tmp_path_factory, request):
 
 
 @pytest.fixture(scope="session")
-def golden_cache(tmp_path_factory):
-    """Workers bind acquisition and discovery to the same invocation, never another run."""
-    # Old-source counterfactuals retain their original per-worker discovery scope.
+def golden_cache(tmp_path_factory, request):
+    """Keep golden reader leases until session cleanup, after the last test's contract."""
     kwargs = {}
     if hasattr(evaluation, "GoldenRuntime"):
         kwargs.update(runtime=environment.golden_runtime(), controller=False)
     base = tmp_path_factory.getbasetemp()
-    with getattr(evaluation, "golden_run", nullcontext)(base, **kwargs) as root:
-        try:
-            yield root
-        finally:
-            # Verify linked seeds before their invocation releases its reader leases.
-            if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
-                changed = seeds.seeds_changed()
-                if not changed:
-                    seeds.LINKED_SEEDS.clear()
-                assert changed == []
+    stack = _session_cleanup(request.config)
+    root = stack.enter_context(getattr(evaluation, "golden_run", nullcontext)(base, **kwargs))
+
+    def verify() -> None:
+        if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
+            changed = seeds.seeds_changed()
+            if not changed:
+                seeds.LINKED_SEEDS.clear()
+            assert changed == []
+
+    stack.callback(verify)  # Verify before releasing the invocation's reader leases.
+    return root
 
 
 @pytest.fixture
@@ -670,8 +674,20 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """The main process merges what this run measured into the recorded seconds."""
-    if controller := getattr(session.config, "_golden_controller", None):
-        controller.__exit__(None, None, None)
+    try:
+        with ExitStack() as cleanup:
+            if controller := getattr(session.config, "_golden_controller", None):
+                cleanup.callback(controller.__exit__, None, None, None)
+            if goldens := getattr(session.config, "_golden_cleanup", None):
+                cleanup.callback(goldens.close)
+            cleanup.callback(_verify_session_seeds)
+    except Exception as error:
+        # An xdist worker's exit status alone is not propagated as a test failure.
+        message = f"session fixture cleanup failed: {type(error).__name__}: {error}"
+        session.config.hook.pytest_collectreport(
+            report=pytest.CollectReport("session cleanup", "failed", message, [])
+        )
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if os.environ.get(_WORKER) or not _measured:
         return
     from devtools.testing.collection import merge_timing_hints

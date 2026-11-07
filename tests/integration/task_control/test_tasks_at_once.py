@@ -187,7 +187,9 @@ def test_the_host_runs_two_studies_at_once_within_the_budget(
     lines = list({row["task_id"]: row for row in map(json.loads, log.splitlines())}.values())
     assert len(processor_calls) == 1  # no processor/WMI lookup while requests run
     assert {line["platform"]["processor"] for line in lines} == {expected_processor}
-    assert sorted(line["running_beside"] for line in lines) == [0, 1]
+    # Either task can observe the other after both have started; the barrier above
+    # proves overlap, while each snapshot must stay within the two-place budget.
+    assert sorted(line["running_beside"] for line in lines) in ([0, 1], [1, 1])
     assert sorted(leased) == sorted(line["cores"] for line in lines)  # the fits' cores
     assert sum(line["cores"] for line in lines) <= lines[0]["cpu_ceiling"]
     lowered = [
