@@ -198,6 +198,19 @@ def controller_reclaimable(root: Path, *, runtime: GoldenRuntime) -> bool:
 
 
 _RUN: ContextVar[GoldenRun | None] = ContextVar("golden_run", default=None)
+_ACQUIRED: list[dict[str, Any]] = []
+
+
+def note_acquisition(row: dict[str, Any]) -> None:
+    """Record what one acquisition cost, for the test that made it (`take_acquisitions`)."""
+    _ACQUIRED.append(row)
+
+
+def take_acquisitions() -> list[dict[str, Any]]:
+    """This process's acquisitions since the last read: the test plugin reads them per test."""
+    rows = _ACQUIRED[:]
+    _ACQUIRED.clear()
+    return rows
 
 
 @contextmanager

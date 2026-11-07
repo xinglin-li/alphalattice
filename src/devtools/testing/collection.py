@@ -403,6 +403,27 @@ def _size_report(item: Any, report: Any) -> None:
         report.outcome, report.longrepr = "failed", str(error)
 
 
+def _golden_times(item: Any) -> None:
+    """What a case's goldens cost, in its JUnit: a fill holds its nested parents, whose lock waits
+    count as waits, so fill, lock and copy add up. Read from the owner only if a test loaded it."""
+    owner = sys.modules.get("devtools.evaluation.golden_workspaces")
+    if rows := owner.take_acquisitions() if owner else []:
+        locks = sum(row["lock_seconds"] for row in rows)
+        outer = [row for row in rows if not row["nested"]]
+        waited = sum(row["lock_seconds"] for row in rows if row["nested"])
+        fill = max(0.0, sum(row["fill_seconds"] for row in outer) - waited)  # 0 if the fill failed
+        copy = sum(row["copy_seconds"] for row in outer)
+        names = ",".join(f"{row['recipe']}:{'fill' if row['cold'] else 'copy'}" for row in rows)
+        item.user_properties.extend(
+            (
+                ("golden_fill_seconds", round(fill, 3)),
+                ("golden_lock_seconds", round(locks, 3)),
+                ("golden_copy_seconds", round(copy, 3)),
+                ("goldens", names),
+            )
+        )
+
+
 def _timeline(item: Any, report: Any) -> None:
     """The run's timeline in its JUnit: which worker ran each case, from when to when."""
     if report.when == "call":
@@ -411,6 +432,8 @@ def _timeline(item: Any, report: Any) -> None:
     item.user_properties.append((edge[0], round(edge[1], 3)))
     if report.when == "setup":
         item.user_properties.append(("worker", os.environ.get("PYTEST_XDIST_WORKER", "main")))
+    else:
+        _golden_times(item)
     report.user_properties = list(item.user_properties)
 
 
