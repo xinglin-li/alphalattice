@@ -765,7 +765,7 @@ def framework_fixtures(
     return frozenset(codes)
 
 
-RELEASE_ONLY = "release-lane test: it reads the release archives, so it runs at promotion, not here"
+RELEASE_ONLY = "release lane by rule (test-sizes.json): it runs at each promotion, not here"
 
 
 def _size_attributes(
