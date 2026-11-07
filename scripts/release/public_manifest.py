@@ -1649,8 +1649,17 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
                     rows.append(row)
                 kept[key] = rows
             elif isinstance(value, dict):
-                dropped += [f"{key}/{name}" for name, row in value.items() if flagged(name, row)]
-                kept[key] = {n: row for n, row in value.items() if not flagged(n, row)}
+                members: dict[str, object] = {}
+                for name, row in value.items():
+                    if sizes and isinstance(row, list) and not flagged(name):
+                        # The policy's shape is public and its loader needs it: only nodes go.
+                        members[name] = [n for n in row if not (flagged(n) or private_selector(n))]
+                        dropped += [f"{key}/{name}/{n}" for n in row if n not in members[name]]
+                    elif flagged(name, row):
+                        dropped.append(f"{key}/{name}")
+                    else:
+                        members[name] = row
+                kept[key] = members
             else:
                 kept[key] = value
         projected = kept

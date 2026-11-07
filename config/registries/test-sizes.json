@@ -2572,6 +2572,26 @@
       "src/*",
       "scripts/*",
       "config/*"
+    ],
+    "slow": [
+      "tests/structural/test_book_declarations.py::test_no_owner_exports_a_declaration_as_a_whole_request*",
+      "tests/structural/test_lifecycle_tables.py::test_every_lifecycle_set_is_registered_with_its_reason*",
+      "tests/structural/test_moved_names.py::test_a_staged_check_reads_the_index_not_an_unstaged_repair*",
+      "tests/structural/test_owner_source_shape.py::test_every_coverage_floor_is_judged_by_one_rule_that_leaves_quiet_holdings_out_shape*",
+      "tests/structural/test_owner_source_shape.py::test_every_fit_plan_call_site_states_its_protocol*",
+      "tests/structural/test_owner_source_shape.py::test_only_the_owner_writes_the_manifest*",
+      "tests/structural/test_pipeline_stage.py::test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies*",
+      "tests/structural/test_plan_retention.py::test_an_answer_and_its_run_read_their_own_plan_never_the_owners_last*",
+      "tests/structural/test_plan_retention.py::test_no_owner_keeps_a_preview_in_one_slot*",
+      "tests/structural/test_product_scripts_answer_their_writes.py::test_every_product_script_that_writes_a_location_it_chooses_answers_in_words*",
+      "tests/structural/test_refusal_contracts.py::test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form*",
+      "tests/structural/test_refusal_contracts.py::test_every_refusal_the_client_raises_has_its_own_words*",
+      "tests/structural/test_registries.py::test_a_new_host_module_is_refused_unless_registered_as_composition*",
+      "tests/structural/test_registries.py::test_staged_registry_census_refuses_new_unregistered_items*",
+      "tests/structural/test_scoped_resumes.py::test_every_owner_resume_names_the_task_its_request_chose*",
+      "tests/structural/test_task_child_start.py::test_every_process_pool_owner_is_in_the_child_start_class*",
+      "tests/structural/test_test_shape.py::test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps*",
+      "tests/structural/test_wait_caps.py::test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed*"
     ]
   },
   "post_merge_only": [

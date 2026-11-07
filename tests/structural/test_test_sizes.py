@@ -2096,3 +2096,24 @@ def test_a_fast_whole_tree_guard_runs_at_commit_when_the_tree_it_reads_changed()
     )  # the escape
     with pytest.raises(ValueError, match=r"test_size\.whole_tree_guards_invalid"):
         sizes.validate_policy({**policy, "whole_tree_guards": {**rule, "reads": []}})
+
+
+@pytest.mark.proves("testing.fast_whole_tree_guard_runs_when_its_tree_changed")
+def test_the_published_policy_keeps_the_whole_tree_rule_without_its_private_nodes() -> None:
+    """Every public session loads this policy: its projection passes the rule, no private node."""
+    from scripts.release.public_manifest import project_public
+
+    from devtools.testing import sizes
+
+    path = "config/registries/test-sizes.json"
+    policy = json.loads((Path(__file__).resolve().parents[2] / path).read_text(encoding="utf-8"))
+    policy["whole_tree_guards"]["slow"] = ["tests/kept.py::test_a*", "tests/held.py::test_b*"]
+    published, _ = project_public(
+        path,
+        json.dumps(policy).encode(),
+        {"tests/held.py"},
+        {path, "tests/kept.py", "tests/held.py"},
+    )
+    sizes.validate_policy(json.loads(published))
+    assert json.loads(published)["whole_tree_guards"]["slow"] == ["tests/kept.py::test_a*"]
+    assert b"tests/held.py" not in published
