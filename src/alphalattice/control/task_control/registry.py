@@ -1850,6 +1850,11 @@ class DuckDbTaskControlRegistry:
             current = self._task_row(connection, task_id)
             if expected_task_hash is not None and current.record_hash != expected_task_hash:
                 raise TaskVersionStale("task_control.recovery_version_stale")
+            if (
+                failure_code == "HOST_STOP_REQUESTED"
+                and current.lifecycle is TaskLifecycle.CANCEL_REQUESTED
+            ):
+                return self._cancel_task(connection, current, observed_at=observed_at)
             if current.lifecycle in _TERMINAL_TASKS and not (
                 allow_blocked
                 and current.lifecycle is TaskLifecycle.BLOCKED
@@ -2378,19 +2383,9 @@ class DuckDbTaskControlRegistry:
         return self._read(lambda connection: self._work_items_from(connection, task_id))
 
     def consecutive_interruptions(self, task_id: UUID, stage_id: str) -> int:
-        """How many of a stage's latest attempts in a row ended interrupted (V475).
+        """Count consecutive interruptions (V475), excluding the open attempt.
 
-        An attempt begins at the stage's start; the Task's interruption while it is open ends
-        it interrupted (a raise the runner records, or a lost worker found at recovery). An
-        attempt that becomes ready, is verified, blocked or deferred ends normally and ends the
-        run of them, so a deferral never spends a stage's budget of raises.
-
-        Args:
-            task_id: Task UUID whose durable record is addressed.
-            stage_id: Exact work-stage identifier in the sealed plan.
-
-        Returns:
-            The interrupted attempts since the stage's last normal end, the open one excluded.
+        Normal ends reset the count; an intentional Host stop does not spend it.
         """
 
         def read(connection) -> int:  # type: ignore[no-untyped-def]
@@ -2407,7 +2402,8 @@ class DuckDbTaskControlRegistry:
                 if kind == "work_item.started" and stage == stage_id:
                     open_attempt = True
                 elif kind == "task.recovery_required" and open_attempt:
-                    count, open_attempt = count + 1, False
+                    failure = json.loads(details).get("failure_code") if details else None
+                    count, open_attempt = count + (failure != "HOST_STOP_REQUESTED"), False
                 elif stage == stage_id and kind in _NORMAL_ENDS:
                     count, open_attempt = 0, False
             return count

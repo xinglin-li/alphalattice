@@ -5,10 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from functools import partial
 from threading import RLock, Thread, current_thread
 from time import monotonic
 from typing import ParamSpec, TypeVar
+
+from alphalattice.kernel.shared_kernel.host_stop import host_stop_scope, stop_predicate
 
 _Parameters = ParamSpec("_Parameters")
 _Result = TypeVar("_Result")
@@ -103,7 +104,13 @@ def carry_background[T](call: Callable[[], T]) -> Callable[[], T]:
     if not _BACKGROUND.get():
         return call
     operation, task_id = _SUBJECT.get() or ("BACKGROUND_TASK", None)
-    return partial(run_background, call, operation, task_id)
+    stopping = stop_predicate()
+
+    def carried() -> T:
+        with host_stop_scope(stopping):
+            return run_background(call, operation, task_id)
+
+    return carried
 
 
 class WorkspaceMutationGate:

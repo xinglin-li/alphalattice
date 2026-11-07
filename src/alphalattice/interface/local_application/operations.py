@@ -947,7 +947,7 @@ GRAMMAR: Final[dict[str, Command]] = {
     "HOST_STOP": Command(
         "host",
         "stop",
-        "Stops this workspace's Host once its running work has ended; no Task is cancelled.",
+        "Stops this workspace's Host at safe points and retains Tasks for resumption.",
     ),
     "UPGRADE_ACKNOWLEDGE": Command(
         "upgrade",
@@ -1331,7 +1331,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
             ("cpu-budget", "The CPU budget and how many Tasks run at once."),
             ("incident", "The supervisor's incidents and their remedies."),
             ("upgrade", "What an installed upgrade changed."),
-            ("host", "This workspace's Host: stop it once its running work has ended."),
+            ("host", "This workspace's Host: stop at safe points and retain Tasks for resumption."),
         ),
     ),
     (

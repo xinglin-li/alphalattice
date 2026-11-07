@@ -48,6 +48,7 @@ from alphalattice.control.task_control.contracts import (
     TaskSafeProjection,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import gate_subject, run_background
+from alphalattice.kernel.shared_kernel.host_stop import host_stop_scope
 
 
 class _DispatcherClosed(RuntimeError):
@@ -255,6 +256,9 @@ class LocalBackgroundDispatcher:
     observer that could not write is not a worker that failed.
     """
 
+    stop_requested: Callable[[], bool] = bool
+    """The owning Host's stop, never another workspace's."""
+
     workers: Callable[[], int] = lambda: 1
     """How many Tasks may run at once, read at each start: one worker each."""
 
@@ -263,6 +267,7 @@ class LocalBackgroundDispatcher:
     )
     _workers: list[threading.Thread] = field(default_factory=list, init=False, repr=False)
     _failures: dict[UUID, str] = field(default_factory=dict, init=False, repr=False)
+    _executing: set[UUID] = field(default_factory=set, init=False, repr=False)
     _running: set[UUID] = field(default_factory=set, init=False, repr=False)
     """Work this dispatcher queued and whose command has not yet returned."""
     _waiting: dict[UUID, LocalApplicationCommand] = field(
@@ -295,7 +300,7 @@ class LocalBackgroundDispatcher:
         """Reserve an admitted action through its nested handoffs, outside the state lock."""
         depth = getattr(self._depth, "value", 0)
         with self._lock:
-            if self._closed and not depth:
+            if self._closed and not depth and (activity or not self.stop_requested()):
                 raise _DispatcherClosed("local_application.dispatcher_closed")
             self._admitting += 1
             self._generation += activity
@@ -314,6 +319,11 @@ class LocalBackgroundDispatcher:
         """Refuse new top-level work while admitted handoffs finish."""
         with self._lock:
             self._closed = True
+
+    def finishing(self) -> list[str]:
+        """Name the commands still executing while this Host stops."""
+        with self._lock:
+            return sorted(str(task_id) for task_id in self._executing)
 
     def _idle_busy(self) -> bool:
         """Read the current busy facts while the caller holds the admission lock."""
@@ -722,7 +732,7 @@ class LocalBackgroundDispatcher:
         starts them in. Told of each start too, so a Task that may run beside it goes at once.
         """
         with self._lock:
-            if not self._waiting:
+            if not self._waiting or self.stop_requested():
                 return
         try:
             tasks = self.status_port.tasks()
@@ -739,7 +749,7 @@ class LocalBackgroundDispatcher:
             return
         driven = False
         with self._lock:
-            for task_id in startable:
+            for task_id in () if self.stop_requested() else startable:
                 command = self._waiting.pop(task_id, None)
                 if command is not None and task_id not in self._running:
                     self._running.add(task_id)
@@ -762,7 +772,19 @@ class LocalBackgroundDispatcher:
                 if item is None:
                     return
                 command, task_id, expected_task_hash = item
-                with gate_subject(command.command_kind, task_id):
+                with self._lock:
+                    if self.stop_requested():
+                        self._running.discard(task_id)
+                        try:
+                            self._finalize_idle_cancel(task_id)
+                        except Exception as error:
+                            self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
+                        continue
+                    self._executing.add(task_id)
+                with (
+                    gate_subject(command.command_kind, task_id),
+                    host_stop_scope(self.stop_requested),
+                ):
                     seen = self._stamp()
                     try:
                         # Versionless work is called the way every command always was; only a
@@ -783,6 +805,7 @@ class LocalBackgroundDispatcher:
                         # terminal answer must be released on failure too.
                         with self._lock:
                             self._running.discard(task_id)
+                            self._executing.discard(task_id)
                             if waits:
                                 # Not a failure: its turn had not come.
                                 self._waiting[task_id] = command

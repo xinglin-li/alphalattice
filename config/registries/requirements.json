@@ -15,6 +15,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "alternative_evidence.host_stop_preserves_coverage_run": {
+      "description": "A Host stop during a coverage unit leaves no sealed unit failure and the same Task resumes after the Host restarts.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 30
+    },
     "alternative_evidence.runtime_identity_binds_what_decides_selection": {
       "description": "If the Evidence runtime's identity left out an owner of selection or a capability, reviews could reuse retrieval from a different runtime.",
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -507,6 +513,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "product_host.host_stop_keeps_finishing_visible": {
+      "description": "A stopping Host retains its lease and read-only status while its active work finishes and leaves queued work for resumption.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 20
+    },
     "shared_kernel.schema_hash_ignores_prose_and_binds_structure": {
       "description": "If a schema hash followed docstrings or missed a structural change, a rewording would rotate every identity or a real change would keep one.",
       "owner": "alphalattice.kernel.shared_kernel",
@@ -518,6 +530,12 @@
       "owner": "alphalattice.control.task_control",
       "layer": "integration",
       "seconds": 5
+    },
+    "task_control.host_stop_preserves_recovery": {
+      "description": "A Host stop finishes the current safe work, retains verified stages and resumes the same Task without treating the stop as a failed attempt.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 10
     },
     "testing.codspeed_marks_every_selected_test": {
       "description": "Under CodSpeed, which deselects unmarked tests, every selected test is marked as a benchmark so the public cost job measures each one; a run without CodSpeed marks none.",
@@ -605,6 +623,12 @@
     },
     "workspace_runtime.background_task_gate_wait_and_cancel": {
       "description": "A background Task waits for a workspace mutation holder, names the holder and preserves its deferred cancellation without duplicating execution.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "workspace_runtime.host_stop_reaches_parallel_work_items": {
+      "description": "A Host stop reaches each concurrent work-item thread and leaves the admitted Task recoverable after its workers return.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "integration",
       "seconds": 10

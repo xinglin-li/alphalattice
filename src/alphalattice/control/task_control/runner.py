@@ -23,6 +23,7 @@ from typing import Final, Protocol
 from uuid import UUID, uuid4
 
 from alphalattice.control.workspace_runtime.mutation_gate import carry_background
+from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
 from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
 
 from .child import ChildStartFailed
@@ -525,6 +526,7 @@ class TaskControlRunner:
                 for item in self.registry.work_items(task.task_id):
                     if item.lifecycle is not WorkItemLifecycle.VERIFIED:
                         continue
+                    checkpoint()
                     try:
                         verified = _spanned(
                             (self._runtime_path, self.clock),
@@ -565,6 +567,12 @@ class TaskControlRunner:
             finally:
                 pool.close()
             return self.registry.task(task.task_id)
+        except HostStopping:
+            stopped = self.registry.mark_recovery_required(
+                task_id=task.task_id, failure_code="HOST_STOP_REQUESTED", observed_at=self._now()
+            )
+            self._publish_projection(task.task_id)
+            return stopped
         except ChildStartFailed as error:
             _LOG.exception("the OS refused a Task's child start; recovery is required")
             task = self.registry.mark_recovery_required(
@@ -678,6 +686,7 @@ class TaskControlRunner:
         if task.lifecycle is not TaskLifecycle.RUNNING:
             pool.drain()
             return False
+        checkpoint()
         work_states = registry.work_items(task_id)
         running = pool.stage_ids()
         if any(
@@ -708,8 +717,7 @@ class TaskControlRunner:
                     observed_at=self._now(),
                 )
             except TaskTransitionRejected:
-                # The Task moved between the read above and this claim -- a
-                # cancel requested in that window is the one case a running
+                # A cancel between the read and claim is the one case a running
                 # worker can meet here. The cancel is applied at this
                 # boundary, as it would have been one read earlier; anything
                 # else is the interruption it always was (seen on the book
@@ -817,6 +825,7 @@ class TaskControlRunner:
         for item in self.registry.work_items(task.task_id):
             if item.lifecycle is not WorkItemLifecycle.READY_FOR_VERIFICATION:
                 continue
+            checkpoint()
             definition = definitions[item.stage_id]
             try:
                 verified = _spanned(

@@ -10,7 +10,7 @@ from heapq import heappop, heappush
 from itertools import count
 from pathlib import Path
 from threading import Condition, Lock, get_ident, local
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -40,6 +40,7 @@ from alphalattice.kernel.knowledge.runtime import (
     yielding_during_inference,
 )
 from alphalattice.kernel.knowledge.runtime import build_chunks as _build_chunks
+from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.protocols.actor_execution import ActorKind, AgentExecutionBinding
@@ -564,6 +565,22 @@ class ChunkCount(Protocol):
     def expect(self, total: int) -> None: ...
 
     def advance(self, count: int = 1) -> None: ...
+
+
+class _StopAwareSession:
+    """Keep a session's search whole, then stop before the next query or receipt."""
+
+    def __init__(self, session: AlternativeEvidenceRetrievalSession) -> None:
+        self._session = session
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._session, name)
+
+    def search(self, **kwargs: Any) -> Any:
+        checkpoint()
+        result = self._session.search(**kwargs)
+        checkpoint()
+        return result
 
 
 class EvidenceWriter:
@@ -1128,17 +1145,28 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                     withhold_inference_yield()
                 return anchor
 
-            with (
-                yielding_during_inference(self.writer.released),
-                observing_passages(None if chunks is None else chunks.advance),
-            ):
-                value = self.retrieval.build(
-                    document_set=document_set,
-                    built_at=built_at,
-                    anchor_for=anchor_for,
-                    admit=self.storage_admission,
-                    block_for=self.vector_block_source(document_set),
-                )
+            def observed(count: int) -> None:
+                checkpoint()
+                if chunks is not None:
+                    chunks.advance(count)
+
+            try:
+                checkpoint()
+                with (
+                    yielding_during_inference(self.writer.released),
+                    observing_passages(observed),
+                ):
+                    value = self.retrieval.build(
+                        document_set=document_set,
+                        built_at=built_at,
+                        anchor_for=anchor_for,
+                        admit=self.storage_admission,
+                        block_for=self.vector_block_source(document_set),
+                    )
+            except KnowledgeRetrievalError as error:
+                if isinstance(error.__cause__, HostStopping):
+                    raise error.__cause__ from error
+                raise
             # The commitment is re-read from the sealed records at the moment
             # of sealing this one: a record sealed meanwhile that names other
             # vectors for the same generation means two truths under one
@@ -1755,9 +1783,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                 )
             self.selection_reuse_count += 1
         else:
-            # The integrated selection: one discovery, the topics routed, the
-            # units in topic lanes, the tables as views, the bank over the
-            # residual scope -- sealed as one receipt with its routing.
+            # The routed selection is sealed as one receipt.
             session = self.open_session(
                 document_set=document_set,
                 generation=generation,
@@ -1769,7 +1795,9 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                 # the writer back to commit: other units' stages run meanwhile.
                 with self.writer.released():
                     routed = select_routed_evidence(
-                        session=session,
+                        session=cast(
+                            AlternativeEvidenceRetrievalSession, _StopAwareSession(session)
+                        ),
                         entity_ids=request.ordered_entity_ids,
                         comparisons=self.sealed_comparisons,
                     )

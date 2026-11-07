@@ -21,8 +21,9 @@ cover installation requirements and setup repairs.
    alphalattice --workspace "<existing-workspace-path>" host stop
    ```
 
-   The Host lets running Tasks finish and releases the workspace without
-   cancelling them. Wait until it has stopped before replacing the installation.
+   The Host stops Tasks at safe points and retains completed work for resumption.
+   Task status remains readable while it stops. Wait until it has released the
+   workspace before replacing the installation.
 
 ## Source checkout
 

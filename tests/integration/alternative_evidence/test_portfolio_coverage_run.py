@@ -1174,6 +1174,73 @@ def test_an_interrupted_run_resumes_after_restart_without_repeating_completed_un
         second.session.stop()
 
 
+@pytest.mark.proves("alternative_evidence.host_stop_preserves_coverage_run")
+@pytest.mark.parametrize("boundary", ["build", "search"])
+def test_host_stop_leaves_a_coverage_unit_to_resume(
+    single_service: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    from threading import Event
+
+    from alphalattice.evidence.alternative_evidence.retrieval.session import (
+        AlternativeEvidenceRetrievalSession,
+    )
+    from alphalattice.kernel.shared_kernel.host_stop import checkpoint
+    from tests.alternative_evidence_desk.review_http_support import start_service
+
+    service = single_service
+    stopping, entered, release = Event(), Event(), Event()
+    service.session.stop_requested = stopping.is_set
+    adapter = service.review.evidence_task_adapter
+    runtime = adapter.runtime
+    owner, method = (
+        (runtime, "build_retrieval")
+        if boundary == "build"
+        else (AlternativeEvidenceRetrievalSession, "search")
+    )
+    original = getattr(owner, method)
+
+    def paused(*args, **kwargs):
+        entered.set()
+        assert release.wait(20)
+        if boundary == "build":
+            checkpoint()
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(owner, method, paused)
+    try:
+        preview = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        prepared = _run_one(service, preview["next_requests"]["prepare"])
+        task_id = UUID(prepared["task_id"])
+        assert entered.wait(20)
+        stopping.set()
+        service.session.dispatcher._begin_drain()
+        release.set()
+        assert service.session.dispatcher.close(timeout=20)
+        task = service.registry.task(task_id)
+        assert task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+        assert task.failure_code == "HOST_STOP_REQUESTED"
+        detail = service.get(f"/api/tasks/recovery?task_id={task_id}")["stop"]["detail"]
+        assert "Host" in detail and "resume" in detail
+        assert all(
+            item.evidence_kind != "alternative_evidence_unit_failure"
+            for state in service.registry.work_items(task_id)
+            for item in state.evidence
+        )
+        authority = service.session.review_authority
+        workspace = service.session.workspace
+        monkeypatch.setattr(owner, method, original)
+        service.session.stop()
+        again = start_service(workspace, authority, tmp_path)
+        try:
+            assert task_id in again.session.resumed_task_ids
+            again.drain()
+            assert again.registry.task(task_id).lifecycle is TaskLifecycle.SUCCEEDED
+        finally:
+            again.session.stop()
+    finally:
+        release.set()
+
+
 def test_a_single_unit_book_is_a_run_of_one_unit(single_service: Any) -> None:
     """Control: Single unit book is run of one unit."""
 

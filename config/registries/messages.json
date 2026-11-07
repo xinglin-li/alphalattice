@@ -640,6 +640,69 @@
         "en": "The result cache options are invalid. Supply a mode of off, record, shadow or on and a positive byte cap.",
         "zh-CN": "结果缓存选项无效。请提供 off、record、shadow 或 on 模式，以及正整数字节上限。"
       }
+    },
+    "host.stop.detail": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This Host is stopping its Tasks at safe points and will keep their completed work for resumption. It joins the workers before releasing the workspace. Read Task status while it finishes; serve it again to resume.",
+        "zh-CN": "此 Host 正在安全位置停止任务，并保留已完成的工作以便继续。释放工作区前会等待工作线程结束；停止期间可查看任务状态，再次启动 Host 后可继续。"
+      }
+    },
+    "host.stop.operation": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Stops this workspace's Host at safe points and retains Tasks for resumption.",
+        "zh-CN": "在安全位置停止此工作区的 Host，并保留任务以便继续。"
+      }
+    },
+    "host.stop.group": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This workspace's Host: stop at safe points and retain Tasks for resumption.",
+        "zh-CN": "此工作区的 Host：在安全位置停止，并保留任务以便继续。"
+      }
+    },
+    "host.stop.status_meaning": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "`HOST_STOPPING`: the Host is stopping work at safe points and retaining it for resumption.",
+        "zh-CN": "`HOST_STOPPING`：Host 正在安全位置停止工作，并保留工作以便继续。"
+      }
+    },
+    "host.stop.detail_meaning": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "What the stop waits for and what it leaves: work reaches safe points and can resume.",
+        "zh-CN": "停止等待工作达到安全位置，并保留工作以便继续。"
+      }
+    },
+    "host.stop.finishing_meaning": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Tasks still executing when the Host answered, by id; their live status remains readable while they finish.",
+        "zh-CN": "Host 回复时仍在执行的任务 ID；结束前仍可查看它们的实时状态。"
+      }
+    },
+    "host.stop.recovery_detail": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Host stopped this Task at a safe point. Verified work is kept; serve the Host again to resume the same Task.",
+        "zh-CN": "Host 已在安全位置停止此任务。已验证的工作会保留；再次启动 Host 即可继续同一任务。"
+      }
     }
   }
 }

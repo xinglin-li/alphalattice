@@ -6,14 +6,8 @@ seal an artifact before the next begins, so a restart resumes after the last
 expensive step rather than repeating it. Span selection is a Host step with
 its own receipt, which is what makes the packet an actor read reproducible.
 
-A coverage run is the same adapter over several units: one Task whose work
-items are the same stages qualified by unit (`u01_admit_evidence_request` ...
-`u07_select_evidence_spans`), each unit its own request of at most eight
-issuers, executed one after another by the one runner. A unit that refuses
-seals a typed failure and the run goes on to the next unit; a unit whose
-intent was already prepared -- by an earlier run, a cancelled run or a single
-preparation -- carries that preparation's sealed artifacts forward instead
-of computing them again. Nothing here schedules: the plan is the schedule.
+Coverage runs qualify those stages by unit. A unit's refusal is sealed for
+that unit; a previously prepared unit reuses its sealed artifacts.
 """
 
 from __future__ import annotations
@@ -51,6 +45,7 @@ from alphalattice.kernel.knowledge.runtime import (
     VERIFIED_PACKS,
     before_first_inference,
 )
+from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.protocols.actor_execution import ActorKind, ActorSubmissionBinding
@@ -120,7 +115,7 @@ from .coverage import (
 )
 from .execution import PREPARATIONS, machine_load, plan_execution
 from .failure_diagnostics import failure_cause
-from .failure_diagnostics import failure_code as _failure_code
+from .failure_diagnostics import failure_code as _diagnostic_failure_code
 from .history import require_answer_format
 from .policy import AdmittedEvidencePolicy
 from .progress import ACQUIRE, BUILD, SELECT, PreparationProgress
@@ -729,6 +724,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         """
         first = self._run(task).units[0].unit_id
         while True:
+            checkpoint()
             current = self.registry.task(task.task_id)
             if current.lifecycle is not TaskLifecycle.RUNNING:
                 return
@@ -788,10 +784,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                     fetched=count.advance,
                 )
                 count.finish(len(source_set.documents))
-                # The refusal names the coverage reached and needed, and the issuers
-                # without a source, which the unit's failure keeps (V541); an issuer whose
-                # index at the cutoff showed nothing filed is left out of the share, as the
-                # packing and the installer leave it out (V587).
+                # Retain coverage (V541); exclude quiet indexes (V587).
                 short = sources_short(
                     request.ordered_entity_ids,
                     {value.entity_id for value in snapshot.citations},
@@ -972,8 +965,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             code = _failure_code(error)
             if unit_id is None or _stops_the_run(code):
                 return StageExecutionResult(disposition=StageDisposition.BLOCKED, failure_code=code)
-            # One unit's refusal is that unit's, sealed by the owner's own code
-            # under the stage that refused; the run goes on to the next unit.
+            # Seal this unit's refusal and continue the run.
             run = self._run(task)
             cause = failure_cause(error, stage, lambda: self._document_set(task, unit_id))
             failure = seal_unit_failure(
@@ -981,7 +973,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                 unit_id=unit_id,
                 ordered_entity_ids=request.ordered_entity_ids,
                 stage_id=stage,
-                failure_code=_failure_code(error),
+                failure_code=code,
                 exception_type=cause.exception_type,
                 exception_message=cause.detail,
                 recorded_at=now,
@@ -2824,6 +2816,12 @@ always had -- and a new preparation carries every unit that completed."""
 
 def _stops_the_run(code: str) -> bool:
     return any(code == value or code.endswith(":" + value) for value in _RUN_STOPPING_CODES)
+
+
+def _failure_code(error: Exception) -> str:
+    if isinstance(error, HostStopping):
+        raise error
+    return _diagnostic_failure_code(error)
 
 
 __all__ = [

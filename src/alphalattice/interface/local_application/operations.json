@@ -2724,7 +2724,7 @@
     ],
     [
      "host",
-     "This workspace's Host: stop it once its running work has ended."
+     "This workspace's Host: stop at safe points and retain Tasks for resumption."
     ]
    ]
   ],
@@ -2989,7 +2989,7 @@
   "GOAL_SHOW": "Shows a goal's latest or a chosen revision, re-verifying every reference at its owner.",
   "GOAL_SUBMIT": "Submits the completion document; the Host seals the goal complete or lists what is missing.",
   "GOAL_TAKE": "Binds this agent session to an open goal, so its requests are recorded under it.",
-  "HOST_STOP": "Stops this workspace's Host once its running work has ended; no Task is cancelled.",
+  "HOST_STOP": "Stops this workspace's Host at safe points and retains Tasks for resumption.",
   "MODEL_ACTIVATE": "Activates a reviewed Alpha model for this workspace's research.",
   "MODEL_DEACTIVATE": "Removes an activated Alpha model from this workspace's catalog.",
   "MODEL_EXTENSIONS": "Lists installed and extension Alpha models, each with its review packet.",

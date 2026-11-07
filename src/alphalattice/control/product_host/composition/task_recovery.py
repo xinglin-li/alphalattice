@@ -405,6 +405,11 @@ def stop_detail(task_kind: str, code: str, source: str) -> str:
             "so the Task stopped before continuing. Restore the evidence or declare the work "
             "again through its owner's plan."
         )
+    if code == "HOST_STOP_REQUESTED":
+        return (
+            "The Host stopped this Task at a safe point. Verified work is kept; "
+            "serve the Host again to resume the same Task."
+        )
     if code == "TASK_EXECUTION_INTERRUPTED":
         return (
             "The worker stopped before the current stage was verified. Verified stages and "

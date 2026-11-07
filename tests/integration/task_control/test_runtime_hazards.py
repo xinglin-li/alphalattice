@@ -350,3 +350,162 @@ def test_dispatcher_finishes_deferred_cancel_only_after_command_returns(
             stage_release.set()
             release.set()
             dispatcher.close()
+
+
+@pytest.mark.proves("workspace_runtime.host_stop_reaches_parallel_work_items")
+def test_host_stop_reaches_a_concurrent_task_and_keeps_it_recoverable(tmp_path: Path) -> None:
+    from alphalattice.control.task_control.contracts import TaskLifecycle
+    from alphalattice.control.task_control.runner import TaskControlRunner
+    from alphalattice.interface.local_application.dispatcher import (
+        CommandAdmission,
+        LocalBackgroundDispatcher,
+    )
+    from alphalattice.kernel.shared_kernel.host_stop import checkpoint
+    from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter
+
+    now = datetime.now(UTC)
+    entered, release, stopping = Event(), Event(), Event()
+    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        registry = session.task_control_registry
+        envelope, goal, plan = task_contract(salt="parallel-host-stop")
+
+        class Adapter(FixtureTaskAdapter):
+            def concurrent_work_items(self, task):
+                return 2
+
+            def execute_stage(self, *, task, execution, work_item):
+                entered.set()
+                assert release.wait(10)
+                checkpoint()
+                return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+        adapter = Adapter()
+        runner = TaskControlRunner(
+            registry=registry,
+            adapters={adapter.task_kind: adapter},
+            runtime_path=str(tmp_path / "task-runtime.sqlite"),
+            clock=lambda: now,
+        )
+
+        class Command:
+            command_kind = "factor_research"
+
+            def admit(self):
+                task = registry.admit(
+                    input_envelope=envelope, goal=goal, plan=plan, observed_at=now
+                ).record
+                return CommandAdmission(task.task_id, task.lifecycle)
+
+            def execute(self, task_id):
+                runner.run_next(expected_task_id=task_id)
+
+        dispatcher = LocalBackgroundDispatcher(registry, stop_requested=stopping.is_set)
+        try:
+            task_id = dispatcher.submit(Command()).task_id
+            assert entered.wait(10)
+            stopping.set()
+            dispatcher._begin_drain()
+            release.set()
+            assert dispatcher.close(timeout=10)
+            assert registry.task(task_id).lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+            stopping.clear()
+            assert runner.recover(task_id).lifecycle is TaskLifecycle.SUCCEEDED
+        finally:
+            release.set()
+            dispatcher.close()
+            runner.close()
+
+
+@pytest.mark.proves("task_control.host_stop_preserves_recovery")
+def test_host_stop_preserves_verified_work_for_resume(tmp_path: Path) -> None:
+    from alphalattice.control.task_control.runner import TaskControlRunner
+    from alphalattice.kernel.shared_kernel.host_stop import host_stop_scope
+    from tests.workspace_task_runner.task_control_support import (
+        FixtureTaskAdapter as _FixtureTaskAdapter,
+    )
+
+    now = datetime(2026, 8, 5, 17, tzinfo=UTC)
+    registry = DuckDbTaskControlRegistry(
+        resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
+    )
+    envelope, goal, plan = task_contract(salt="host-stop")
+    task = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+    stopping = Event()
+
+    class Adapter(_FixtureTaskAdapter):
+        def execute_stage(self, *, task, execution, work_item):
+            result = super().execute_stage(task=task, execution=execution, work_item=work_item)
+            if work_item.stage_id == "resolve_inputs":
+                stopping.set()
+            return result
+
+    adapter = Adapter()
+    runner = TaskControlRunner(
+        registry=registry,
+        adapters={adapter.task_kind: adapter},
+        runtime_path=str(tmp_path / "task-runtime.sqlite"),
+        clock=lambda: now,
+        heartbeat_seconds=0.01,
+    )
+    try:
+        with host_stop_scope(stopping.is_set):
+            stopped = runner.run_next()
+        assert stopped is not None and stopped.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+        assert registry.safe_projection(task.task_id).verified_stage_count == 1
+        assert adapter.executed == ["resolve_inputs"]
+        with host_stop_scope(stopping.is_set):
+            assert runner.recover(task.task_id).lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+        assert registry.safe_projection(task.task_id).verified_stage_count == 1
+        stopping.clear()
+        with host_stop_scope(stopping.is_set):
+            resumed = runner.recover(task.task_id)
+        assert resumed.lifecycle is TaskLifecycle.SUCCEEDED
+        assert adapter.executed == ["resolve_inputs", "publish_result"]
+
+        from alphalattice.kernel.shared_kernel.host_stop import checkpoint
+
+        class Interrupting(_FixtureTaskAdapter):
+            interrupt = True
+
+            def execute_stage(self, *, task, execution, work_item):
+                if self.interrupt:
+                    stopping.set()
+                    checkpoint()
+                return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+        envelope, goal, plan = task_contract(salt="repeated-host-stop")
+        other = registry.admit(
+            input_envelope=envelope, goal=goal, plan=plan, observed_at=now
+        ).record
+        interrupting = Interrupting()
+        runner.adapters[interrupting.task_kind] = interrupting
+        for attempt in range(4):
+            stopping.clear()
+            with host_stop_scope(stopping.is_set):
+                result = runner.run_next() if attempt == 0 else runner.recover(other.task_id)
+            assert result.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+            assert registry.consecutive_interruptions(other.task_id, "resolve_inputs") == 0
+        interrupting.interrupt = False
+        stopping.clear()
+        with host_stop_scope(stopping.is_set):
+            assert runner.recover(other.task_id).lifecycle is TaskLifecycle.SUCCEEDED
+
+        class Cancelling(_FixtureTaskAdapter):
+            def execute_stage(self, *, task, execution, work_item):
+                current = registry.task(task.task_id)
+                registry.request_cancel(
+                    task_id=task.task_id, expected_task_hash=current.record_hash, observed_at=now
+                )
+                stopping.set()
+                checkpoint()
+                raise AssertionError("stop was not observed")
+
+        envelope, goal, plan = task_contract(salt="cancel-and-host-stop")
+        registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now)
+        cancelling = Cancelling()
+        runner.adapters[cancelling.task_kind] = cancelling
+        stopping.clear()
+        with host_stop_scope(stopping.is_set):
+            assert runner.run_next().lifecycle is TaskLifecycle.CANCELLED
+    finally:
+        runner.close()

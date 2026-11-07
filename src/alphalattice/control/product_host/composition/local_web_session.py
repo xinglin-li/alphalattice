@@ -695,6 +695,7 @@ class LocalPortfolioWebSession:
             version_moved_error=TaskTransitionRejected,
             version_stale_error=TaskVersionStale,
             clock=self.clock,
+            stop_requested=lambda: self.stop_requested(),
             workers=lambda: running_places(read_queue_setting(self.workspace / "runtime"))[0],
         )
         session.task_control_registry.overlapping = runs_beside_others
@@ -777,7 +778,6 @@ class LocalPortfolioWebSession:
         if not self.resumed_task_ids:
             # A Host that starts idle sweeps as one that went idle would (V89).
             self.operations.sweep_if_due()
-        # Guanyin's Supervisor reads the unfinished Tasks from here on (GY2).
         self.operations.supervisor.start()
         self.forward_prewarm.start()
         attach_native_usage(self, self.operations, activity)
@@ -991,13 +991,9 @@ class LocalPortfolioWebSession:
         return commands
 
     def stop(self, *, timeout: float | None = None) -> None:
-        """Fail closed. Unbounded by default; a bounded stop that cannot finish raises.
+        """Join writers before releasing the workspace lease.
 
-        The workspace lease is released last and only once every thread that
-        could write through it has ended. A bounded caller that cannot get there
-        is told so, and the session stays exactly as it is -- lease held, worker
-        joinable -- so calling `stop()` again finishes the job rather than
-        starting from a half-released state.
+        A bounded stop that cannot finish raises and retains the lease for a retry.
         """
         if self.dispatcher is not None:
             self.dispatcher._begin_drain()
@@ -1005,7 +1001,7 @@ class LocalPortfolioWebSession:
             raise LocalWebSessionError("local_web_session.writer_still_live")
 
     def _teardown(self, *, timeout: float | None) -> bool:
-        """Stop the socket, then the worker, then the lease. True when complete."""
+        """Join work and requests before releasing the lease. True when complete."""
 
         quiet = True
         if self.forward_prewarm is not None:
@@ -1014,12 +1010,12 @@ class LocalPortfolioWebSession:
             self.operations.supervisor.stop()
         if self.operations is not None and self.operations.automation is not None:
             quiet = self.operations.automation.close(timeout=timeout) and quiet
-        if self.web is not None:
-            # Request threads can admit tasks, so they are writers too and are
-            # joined before anything else is released.
-            quiet = self.web.stop(timeout=timeout) and quiet
         if self.dispatcher is not None:
             quiet = self.dispatcher.close(timeout=timeout) and quiet
+        if self.web is not None and quiet:
+            # Read-only status stays available while the owned work reaches a safe point.
+            # Request threads are joined before the workspace lease is released.
+            quiet = self.web.stop(timeout=timeout) and quiet
         if not quiet:
             return False
         if self.activity is not None:
