@@ -581,6 +581,10 @@ def copy_fresh_workspace(factory, target: Path) -> RealRiskWorkspace:
     )
 
 
+READINESS_UNIVERSE = (tuple(f"F{i:03d}" for i in range(120)), 6)
+"""The workspace-readiness tests' listings and sector size, a golden of its own."""
+
+
 def warm_real_risk_golden(
     *, external: bool = False, symbols: Sequence[str] | None = None, sector_size: int = 5
 ) -> None:

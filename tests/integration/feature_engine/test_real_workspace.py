@@ -354,11 +354,13 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
     )
     ordinary = SimpleNamespace(fixturenames=[], module=SimpleNamespace())
     external = SimpleNamespace(fixturenames=["external_factor_workspace"], module=SimpleNamespace())
+    readiness = SimpleNamespace(fixturenames=["revision_seed"], module=SimpleNamespace())
     with monkeypatch.context() as patch:
         calls = []
         fake = SimpleNamespace(
             _golden_root=lambda: tmp_path / "warmup",
             warm_real_risk_golden=lambda **kw: calls.append(kw),
+            READINESS_UNIVERSE=(members, 6),
         )
         patch.setitem(sys.modules, "tests.researcher_methodology_surface.real_workspace", fake)
         patch.setattr(hooks.environment, "project_scope", lambda *_: nullcontext())
@@ -370,6 +372,7 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
             ([member, external], [{"external": True}, {"symbols": members, "sector_size": 7}]),
             ([ordinary], [{"external": False}]),
             ([external], [{"external": True}]),
+            ([readiness], [{"external": False}, {"symbols": members, "sector_size": 6}]),
         ):
             calls.clear()
             hooks.pytest_collection_finish(SimpleNamespace(config=config, items=items))
