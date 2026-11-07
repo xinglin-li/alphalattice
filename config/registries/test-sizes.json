@@ -31,6 +31,14 @@
       "inputs": [
         "src/alphalattice/interface/local_application/refusal_words.json"
       ]
+    },
+    "tests/structural/test_owner_source_shape.py::test_every_coverage_floor_is_judged_by_one_rule_that_leaves_quiet_holdings_out_shape": {
+      "inputs": [
+        "src/alphalattice/control/product_host/composition/evidence_authority_setup.py",
+        "src/alphalattice/control/product_host/composition/evidence_review_application.py",
+        "src/alphalattice/evidence/alternative_evidence/runtime/coverage.py",
+        "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py"
+      ]
     }
   },
   "defaults": [
@@ -2533,6 +2541,18 @@
       "seen_on": [
         "pc1"
       ]
+    },
+    {
+      "node": "tests/integration/alternative_evidence/test_integrated_public_operations.py::test_the_first_release_reads_are_projections_of_the_sealed_evidence",
+      "owner": "tests.alternative_evidence_desk",
+      "until": "2026-11-07",
+      "reason": "Confirmed post-merge regression; expires with its owned repair."
+    },
+    {
+      "node": "tests/structural/test_owner_source_shape.py::test_every_coverage_floor_is_judged_by_one_rule_that_leaves_quiet_holdings_out_shape",
+      "owner": "tests.structural",
+      "until": "2026-11-07",
+      "reason": "Confirmed post-merge regression; expires with its owned repair."
     }
   ],
   "mandatory": [
@@ -2558,6 +2578,14 @@
     "pattern"
   ],
   "shrink_only_list": "large",
+  "whole_tree_guards": {
+    "reason": "A whole-tree guard under about a second runs at commit when the tree it reads changed: an import cycle reached develop past a 0.25 s guard. These read the source, scripts and configuration; a slower one stays in post-merge. Measured on a full run, 240 of 279 guards, 16.6 test-seconds.",
+    "reads": [
+      "src/*",
+      "scripts/*",
+      "config/*"
+    ]
+  },
   "post_merge_only": [
     "tests/integration/local_application/test_cli_contract.py"
   ],

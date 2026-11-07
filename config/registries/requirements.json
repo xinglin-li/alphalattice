@@ -597,6 +597,12 @@
       "layer": "integration",
       "seconds": 1
     },
+    "testing.fast_whole_tree_guard_runs_when_its_tree_changed": {
+      "description": "A deferred whole-tree guard runs in the commit stage when the tree it declares it reads changed; one recorded as slow still waits for post-merge, and without the rule nothing moves.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 1
+    },
     "testing.find_matches_requirements_and_unregistered_tests": {
       "description": "One search returns the registered requirements and the unregistered tests whose words match, best first, with each requirement's lifecycle and holders.",
       "owner": "devtools.testing",

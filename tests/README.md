@@ -16,7 +16,7 @@ Use the existing policy and generators; this document grants no guard waiver.
 | Use registered test datasets in place; do not copy read-only data. | `TEST-DATA` in `scripts/check_test_shape.py` refuses a new data file under `tests/` until `data_files` in `config/registries/test-sizes.json` names it with its reason; request a private writable copy only when the test must write. |
 | A new test file names its one source module and goes at its mapped owner path. | `TEST-LAYOUT` in `scripts/check_test_shape.py` checks added files against `devtools.testing.layout`. |
 | Keep the median to one new test function per card. | `TEST-GROWTH` reports the count in the fast guard; review judges the median, not a per-card refusal. |
-| Whole-tree structural checks run post-merge by default. | `devtools.testing.sizes.moved` defers them; a changed holder or registered fence may still run in the commit stage. |
+| Whole-tree structural checks under about a second run in the commit stage when the tree they read changed; slower ones run post-merge. | `whole_tree_guards` in `config/registries/test-sizes.json` names what they read and which are slow; `devtools.testing.sizes.moved` defers the rest, and a changed holder or registered fence may still run in the commit stage. |
 
 For a new non-structural file, put `TEST_SOURCE = "src/<owner package>/<module>.py"` or its
 `scripts/<subpath>/<module>.py` path at module level and mark each test with its registered requirement. The target is

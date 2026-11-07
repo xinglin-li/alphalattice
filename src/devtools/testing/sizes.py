@@ -81,6 +81,7 @@ def validate_policy(value: Any) -> dict[str, Any]:
         raise ValueError("test_size.mandatory_missing")
     _post_merge_only(value)
     _reach(value)
+    _whole_tree_guards(value)
     _structural_fence(value)
     _limits(value)
     _quarantine(value)
@@ -289,6 +290,31 @@ def _structural_fence(policy: dict[str, Any]) -> None:
         ):
             raise ValueError("test_size.fence_invalid:" + str(pattern))
         seen.add(pattern)
+
+
+def guards_the_change(nodeid: str, policy: dict[str, Any], changed: frozenset[str]) -> bool:
+    """A fast whole-tree guard runs at commit when the tree it reads changed; a slow one waits."""
+    rule = policy.get("whole_tree_guards", {})
+    return not any(fnmatchcase(nodeid, p) for p in rule.get("slow", ())) and any(
+        fnmatchcase(path, read) for path in changed for read in rule.get("reads", ())
+    )
+
+
+def _whole_tree_guards(policy: dict[str, Any]) -> None:
+    """The rule names why, what its guards read, and which are too slow for the commit stage."""
+    rule = policy.get("whole_tree_guards", {})
+    if rule and not (
+        isinstance(rule, dict)
+        and set(rule) == {"reason", "reads", "slow"}
+        and isinstance(rule["reason"], str)
+        and rule["reason"].strip()
+        and all(
+            isinstance(rule[key], list) and all(isinstance(value, str) for value in rule[key])
+            for key in ("reads", "slow")
+        )
+        and rule["reads"]
+    ):
+        raise ValueError("test_size.whole_tree_guards_invalid")
 
 
 def moved(nodeid: str, policy: dict[str, Any]) -> bool:
@@ -630,7 +656,8 @@ def included(
             return any(fnmatchcase(nodeid, p) for p in policy["mandatory"]) or size != "large"
         return row.get("per_file") is True or _triggered(nodeid, row, changed or frozenset())
     if lane == "merge" and changed is not None and moved(nodeid, policy):
-        return nodeid.replace("\\", "/").split("::")[0] in changed  # else post-merge runs it whole
+        own = nodeid.replace("\\", "/").split("::")[0]  # else post-merge runs it whole
+        return own in changed or guards_the_change(nodeid, policy, changed)
     return (
         not lane
         or any(fnmatchcase(nodeid, p) for p in policy["mandatory"])

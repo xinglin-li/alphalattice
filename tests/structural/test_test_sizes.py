@@ -1988,3 +1988,23 @@ def test_codspeed_measures_every_selected_test_and_a_plain_run_marks_none(
     pytestconfig.addinivalue_line("markers", "benchmark: registered by pytest-codspeed when on")
     collection.pytest_itemcollected(item)
     assert [mark.name for mark in marks] == ["benchmark"]
+
+
+@pytest.mark.proves("testing.fast_whole_tree_guard_runs_when_its_tree_changed")
+def test_a_fast_whole_tree_guard_runs_at_commit_when_the_tree_it_reads_changed() -> None:
+    """A deferred guard follows what it reads: source selects it, and a slow one still waits."""
+    from devtools.testing import sizes
+
+    guard = "tests/structural/test_a_guard.py"
+    fast, slow = f"{guard}::test_fast", f"{guard}::test_slow"
+    rule = {"reason": "why", "reads": ["src/*"], "slow": [f"{slow}*"]}
+    policy = {**sizes.load_policy(Path(__file__).resolve().parents[2]), "whole_tree_guards": rule}
+    source = frozenset({"src/alphalattice/kernel/data/calendar.py"})
+    assert sizes.moved(fast, policy) and sizes.included(fast, "medium", "merge", policy, source)
+    assert not sizes.included(fast, "medium", "merge", policy, frozenset({"tests/README.md"}))
+    assert not sizes.included(slow, "medium", "merge", policy, source)
+    assert not sizes.included(
+        fast, "medium", "merge", {**policy, "whole_tree_guards": {}}, source
+    )  # the escape
+    with pytest.raises(ValueError, match=r"test_size\.whole_tree_guards_invalid"):
+        sizes.validate_policy({**policy, "whole_tree_guards": {**rule, "reads": []}})

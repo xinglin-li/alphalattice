@@ -160,13 +160,16 @@ def selection_readers(policy: object) -> dict[str, dict[str, Any]]:
     for row in rows.values():
         if not isinstance(row, dict) or set(row) not in (
             {"inputs"},
+            {"inputs", "literal_root"},
             {"inputs", "census", "sample", "conditional_inputs"},
         ):
             raise ValueError("test_size.required_selection_invalid")
         lists = [row["inputs"], *([row["conditional_inputs"]] if "census" in row else [])]
         paths = [*lists, *([row["census"], row["sample"]] if "census" in row else [])]
+        paths += [row["literal_root"]] if "literal_root" in row else []
         if (
             any(not isinstance(value, list) for value in lists)
+            or not isinstance(row.get("literal_root", ""), str)
             or (
                 "census" in row
                 and any(not isinstance(row[key], str) for key in ("census", "sample"))
@@ -184,11 +187,22 @@ def selection_readers(policy: object) -> dict[str, dict[str, Any]]:
 def registered_holders(
     paths: set[str], sources: Mapping[str, str], rows: Mapping[str, dict[str, Any]]
 ) -> tuple[str, ...]:
-    """Resolve direct inputs and each declared producer census without private path literals."""
+    """Resolve direct inputs, the paths a reader's own source names under its declared root, and
+    each declared producer census without private path literals."""
     found = set()
     for node, row in rows.items():
         if paths.intersection(row["inputs"]):
             found.add(node)
+        if sources and "literal_root" in row:
+            own = node.split("::", 1)[0]
+            if own not in sources:
+                raise ValueError(f"the reader's source is unavailable: {own}")
+            if paths.intersection(
+                row["literal_root"] + part.value
+                for part in ast.walk(ast.parse(sources[own], filename=own))
+                if isinstance(part, ast.Constant) and isinstance(part.value, str)
+            ):
+                found.add(node)
         if "census" not in row or not (
             any(p.startswith("src/alphalattice/") and p.endswith(".py") for p in paths)
             or paths.intersection(row["conditional_inputs"])

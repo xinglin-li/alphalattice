@@ -1202,7 +1202,7 @@ def _registered_holders(paths: set[str], *, staged: bool) -> tuple[str, ...]:
             or paths.intersection(row["conditional_inputs"])
         )
         for key in ("census", "sample")
-    }
+    } | {node.split("::", 1)[0] for node, row in rows.items() if "literal_root" in row}
     if staged:
         blobs = read_blobs([":" + path for path in sorted(needed)], PLAYPEN_ROOT, timeout=60)
         sources = {path: blobs[":" + path] for path in needed if ":" + path in blobs}

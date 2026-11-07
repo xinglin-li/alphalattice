@@ -90,6 +90,11 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             {census_path: census_source + '\nCATALOG = "config/registries/messages.json"\n'},
             rows,
         ) == (reader_node,)
+        literal = {reader_node: {"inputs": [], "literal_root": "src/product/"}}
+        own = {"tests/test_registered.py": 'tree("words.py")'}
+        named = stage.selection_readers({"selection_readers": literal})
+        assert stage.registered_holders({"src/product/words.py"}, own, named) == (reader_node,)
+        assert stage.registered_holders({"src/product/other.py"}, own, named) == ()
         with pytest.raises(ValueError):
             stage.selection_readers(
                 {"selection_readers": {reader_node: {"inputs": ["../outside"]}}}
