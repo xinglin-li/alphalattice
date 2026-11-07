@@ -79,10 +79,19 @@ DAILY_NETWORK_DECISIONS: Final = frozenset(decision_hash(r) for _words, r in _DA
 """The two requests a yes to `DAILY_NETWORK_ASK` answers, each once; the Host takes no other."""
 
 DAILY_NETWORK_RELAY: Final = tuple(
-    (*words, "--person-said", "<their words>", "--asked", DAILY_NETWORK_ASK)
+    (
+        *words,
+        "--person-said",
+        "<their words>",
+        "--asked",
+        DAILY_NETWORK_ASK,
+        "--question-code",
+        "network.daily_updates",
+    )
     for words, _request in _DAILY_REQUESTS
 )
-"""The same two requests as the commands that relay the person's yes, verbatim but its words."""
+"""The same two requests as the commands that relay the person's yes, verbatim but its words.
+Each names its question's code, so the Host records the answer as that question's."""
 
 
 NOT_A_PERSON: Final = re.compile(

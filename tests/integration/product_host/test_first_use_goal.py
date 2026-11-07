@@ -420,13 +420,13 @@ def test_the_daily_yes_relayed_as_offered_outlives_the_first_use(
     first = _cli(live, "first-use", "prepare", "--sentence", "A book.", "--date", "2026-10-09")[1]
     assert first["first_use"]["person_questions"][0]["code"] == "network.daily_updates"
     _watch, _said, _asked, network_on, consent = first["first_use"]["ask_now"]
-    code, delegated = _cli(live, *shlex.split(network_on)[1:-4])
+    code, delegated = _cli(live, *shlex.split(network_on)[1:-6])
     assert code == 0 and "daily_question" in delegated, delegated
     for offered, operation in zip(
         (network_on, consent), ("NETWORK_ACCESS_SET", "EVIDENCE_CONSENT_SET"), strict=True
     ):
         line = shlex.split(offered.replace("<their words>", "Yes, keep it on."))[1:]
-        assert _cli(live, *line, "--question-code", "network.daily_updates")[0] == 0, line
+        assert _cli(live, *line)[0] == 0, line  # the offered line names its code itself
         row = _json(live, "/api/activity")["items"][-1]
         assert row["payload"]["operation"] == operation
         question = row["person_questions"][0]
