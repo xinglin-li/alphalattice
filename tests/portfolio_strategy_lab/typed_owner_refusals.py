@@ -17,6 +17,10 @@ DETAIL = "owner-private-detail-7b2e"
 
 # These classes are not public typed refusal cases; each exclusion has its source reason.
 EXCLUDED_POSITIVE = {
+    "alphalattice.evidence.alternative_evidence.analysis.contracts._NeedInvariantError": (
+        "contracts.py:611-638,769-829; private Pydantic validator detail, wrapped as "
+        "ValidationError before leaving the model, not an owner refusal"
+    ),
     "alphalattice.control.observation_runtime.telemetry.process_metrics._ProcessExited": (
         "process_metrics.py:195-197; enumeration race is swallowed as an absent process, "
         "not a refusal"

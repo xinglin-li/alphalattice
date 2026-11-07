@@ -2541,6 +2541,12 @@
       "seen_on": [
         "pc1"
       ]
+    },
+    {
+      "node": "tests/integration/product_host/test_local_web_service.py::test_every_web_handler_preserves_every_typed_owner_exception",
+      "owner": "tests.portfolio_strategy_lab",
+      "until": "2026-11-07",
+      "reason": "Confirmed post-merge regression; expires with its owned repair."
     }
   ],
   "mandatory": [
