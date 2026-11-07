@@ -191,7 +191,11 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         monkeypatch.setattr(
             stage,
             "changed_families",
-            lambda root, base, head, **kwargs: ["tests/test_new.py::test_one"],
+            lambda root, base, head, **kwargs: [
+                "tests/test_new.py::test_one",
+                "tests/e2e/test_journey.py::test_journey",
+                "tests/test_heavy.py::test_heavy",
+            ],
             raising=False,
         )
     (tmp_path / "config/registries").mkdir(parents=True)
@@ -201,6 +205,13 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         size_file = tmp_path / "config/registries/test-sizes.json"
         size_policy = json.loads(size_file.read_text(encoding="utf-8"))
         size_policy["selection_readers"] = rows
+        size_policy["large"].append(
+            {
+                "pattern": "tests/test_heavy.py::test_heavy*",
+                "owner": "tests",
+                "reason": "Exercises the long observed computation.",
+            }
+        )
         size_file.write_text(json.dumps(size_policy), encoding="utf-8")
     config = tmp_path / "config/pipeline.toml"
     config.write_text(DEFINITION, "utf-8")
@@ -220,6 +231,12 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         census.parent.mkdir(parents=True, exist_ok=True)
         census.write_text(
             'OWNERS = {"control/product_host/new_owner.py": (set(), set())}\n', encoding="utf-8"
+        )
+        journey = tmp_path / "tests/e2e/test_journey.py"
+        journey.parent.mkdir(parents=True)
+        journey.write_text(
+            "def test_journey():\n from tests.support.host import call\n call()\n",
+            encoding="utf-8",
         )
         test = tmp_path / "tests/test_host.py"
         test.write_text(
@@ -245,6 +262,13 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         test.write_text("def test_host(): pass\n", encoding="utf-8")
         selected, _ = stage._size_selection("commit", {"base": before, "head": after}, (), tmp_path)
         test.write_text(original_test, encoding="utf-8")
+        with pytest.raises(DefinitionError, match=r"pipeline\.stage_invalid"):
+            stage._size_selection(
+                "commit",
+                {"base": before, "head": after},
+                ("tests/e2e/test_journey.py::test_journey",),
+                tmp_path,
+            )
         assert set(selected) == {
             materializer,
             host_holder,
@@ -356,10 +380,13 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         source.parent.mkdir(parents=True)
         source.write_text(
             """import pytest
-@pytest.mark.large
+@pytest.mark.medium
 @pytest.mark.parametrize('value',[1,2],ids=['one','two'])
 def test_cost_family(value):
     assert value > 0
+@pytest.mark.large
+def test_slow():
+    assert True
 def test_control():
     assert True
 """,
@@ -394,8 +421,12 @@ def test_control():
             "--workers",
             "1",
         ]
-        env = child_environment(ALPHALATTICE_TEST_LANE="merge", PYTHONPATH=str(ROOT / "src"))
         family = source.relative_to(tmp_path).as_posix() + "::test_cost_family"
+        env = child_environment(
+            ALPHALATTICE_TEST_LANE="merge",
+            PYTHONPATH=str(ROOT / "src"),
+            PYTEST_ADDOPTS="--deselect=" + family,
+        )
         ordinary = tmp_path / "ordinary"
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
             subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0
@@ -440,6 +471,20 @@ def test_control():
             )["result"]
             == "PASS"
         )
+        slow = subprocess.run(
+            [
+                *argv,
+                "--out",
+                str(tmp_path / "slow"),
+                "--required-tests",
+                family.replace("test_cost_family", "test_slow"),
+            ],
+            env=env,
+            capture_output=True,
+            timeout=30,
+            creationflags=flags,
+        )
+        assert slow.returncode != 0 and b"missing required tests" in slow.stderr
         for label, selected in (
             ("missing", family + "[missing]"),
             ("outside", "../test_x.py::test_x"),

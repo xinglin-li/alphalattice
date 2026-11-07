@@ -37,7 +37,8 @@ from devtools.architecture.git_inputs import (
 )
 from devtools.pipeline.definition import PATH, Definition, DefinitionError, Row, Stage, load
 from devtools.pipeline.receipt import Writer, _now, verify
-from devtools.testing.requirements import edited_families, file_holders, selection
+from devtools.testing.requirements import edited_families, file_holders, layer, selection
+from devtools.testing.sizes import classify
 
 
 def _changed_test_files(pairs: list[tuple[list[str], str]]) -> list[tuple[list[str], str]]:
@@ -615,6 +616,28 @@ def _helper_sources(root: Path, head: str) -> dict[str, str]:
     return {specs[key]: value for key, value in sources.items()}
 
 
+def _commit_selection(
+    required: tuple[str, ...], groups: tuple[tuple[str, ...], ...], policy: dict[str, Any]
+) -> tuple[tuple[str, ...], ...]:
+    """Keep registered slow nodes out of the commit's forced families."""
+    try:
+
+        def admitted(node: str) -> bool:
+            return layer(node) not in {"e2e", "native"} and classify(node, (), policy)[0] != "large"
+
+        refused = [node for node in required if not admitted(node)]
+        selected = tuple(tuple(filter(admitted, group)) for group in groups)
+    except (KeyError, TypeError, ValueError) as error:
+        raise DefinitionError("pipeline.size_selection_unmeasured", str(error)) from error
+    if refused:
+        raise DefinitionError(
+            "pipeline.stage_invalid",
+            f"slow required tests cannot run in commit: {refused}; "
+            "run them separately at this head",
+        )
+    return selected
+
+
 def _size_selection(
     name: str, workspace: dict[str, Any], required: tuple[str, ...], root: Path
 ) -> tuple[tuple[str, ...], dict[str, Any] | None]:
@@ -641,7 +664,8 @@ def _size_selection(
         blobs = read_blobs([*ids, policy_spec], root, timeout=60)
         if set(blobs) != {*ids, policy_spec}:
             raise ValueError("a changed deadline-source blob is missing")
-        rows = selection_readers(json.loads(blobs.pop(policy_spec)))
+        policy = json.loads(blobs.pop(policy_spec))
+        rows = selection_readers(policy)
         paths = {path for _meta, path in pairs}
         helpers: tuple[str, ...] = ()
         sources: dict[str, str] = {}
@@ -656,8 +680,10 @@ def _size_selection(
         derived = selection(
             (*derived_holders(pairs, blobs), *registered_holders(paths, sources, rows))
         )
+
     except (OSError, ValueError, SyntaxError, UnicodeError, subprocess.SubprocessError) as error:
         raise DefinitionError("pipeline.size_selection_unmeasured", str(error)) from error
+    edited, derived, helpers = _commit_selection(required, (edited, derived, helpers), policy)
     record = {
         "base": workspace["base"],
         "head": workspace["head"],

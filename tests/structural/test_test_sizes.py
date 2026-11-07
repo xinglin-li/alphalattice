@@ -205,6 +205,11 @@ def _memory_checks_read_no_host():
                 )
                 + f" p['mandatory'].append({node!r})\n"
                 + " return p\ncollection.load_policy = sized\n"
+                + (
+                    f"collection._size_families = lambda config: ({node!r},)\n"
+                    if case == "size-live-large-missing"
+                    else ""
+                )
             )
         (tmp_path / "size-stage-selection.json").write_text(
             json.dumps({"base": "a" * 40, "head": "b" * 40, "families": families}),
@@ -298,6 +303,8 @@ def _memory_checks_read_no_host():
             else "[]",
             ALPHALATTICE_PIPELINE_STAGE="nightly"
             if case == "size-live-large-nightly"
+            else "post-merge"
+            if case == "size-live-large-missing"
             else "commit"
             if case.startswith("size-live-")
             else "",
@@ -384,7 +391,7 @@ def _memory_checks_read_no_host():
         assert not (tmp_path / "unexpected-test-run").exists()
         return
     if case == "size-live-large-merge":
-        assert result.returncode == 5 and "test_size.nightly_only" in output, output
+        assert result.returncode == 5 and "1 deselected" in output, output
         assert "NIGHTLY_EXECUTED" not in output
         return
     if case == "size-live-large-nightly":
@@ -508,11 +515,27 @@ def _memory_checks_read_no_host():
 
 @pytest.mark.parametrize(
     "declared",
-    DECLARED_CASES,
+    [*DECLARED_CASES, pytest.param(("commit-tier",), id="commit-tier")],
 )
 @pytest.mark.proves("testing.layer_contract")
 def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypatch, declared):
     """Owned size declarations enforce their bounds and provenance, refusing invalid catalogs."""
+    if declared == ("commit-tier",):
+        from devtools.testing import collection
+
+        _stage_admits = getattr(collection, "_stage_admits", None)
+        assert callable(_stage_admits), "commit needs a selection boundary for slow tests"
+        for layer, size, expected in (
+            ("unit", "small", True),
+            ("integration", "medium", True),
+            ("integration", "large", False),
+            ("e2e", "medium", False),
+            ("native", "medium", False),
+        ):
+            assert _stage_admits("commit", size, layer) is expected
+        assert _stage_admits("nightly", "large", "e2e")
+        assert _stage_admits("post-merge", "large", "integration")
+        return
     if not declared:
         monkeypatch.setenv(
             "ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(["tests/outer.py::test_outer"])
@@ -1178,6 +1201,9 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
     )
     if case == "sibling-race":
         assert not sibling.exists() and sibling.with_name(sibling.name + "-moved").is_dir()
+    if post_stage == "commit":
+        assert result.returncode == 5 and "SIZE_ITEMS=[]" in result.stdout
+        return
     if case in faults:
         assert result.returncode != 0 and "test_size." + refusal in result.stderr
     elif case == "timeout":
@@ -1199,9 +1225,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             assert rows[0]["timeout_marker"] == 0.05
             return
         if post_stage:
-            expected = (
-                ["large"] if post_stage == "commit" else ["large", "large", "medium", "small"]
-            )
+            expected = ["large", "large", "medium", "small"]
             assert sorted(r["test_size"] for r in rows) == expected
             return
         if lane:

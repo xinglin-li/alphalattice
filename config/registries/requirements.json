@@ -347,7 +347,7 @@
       "seconds": 10
     },
     "pipeline.cost_receipt_contains_required_nodes": {
-      "description": "A cost commit stage runs required named test families, including Large, and records their bounded outcomes without changing ordinary selection.",
+      "description": "A cost commit stage runs required Small and Medium test families and records their bounded outcomes; slow tests run separately.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 15

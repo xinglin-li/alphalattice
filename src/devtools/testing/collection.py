@@ -801,6 +801,11 @@ def _lane_contract(item: Any, contract: str | None, lane: str) -> bool:
     return False
 
 
+def _stage_admits(stage: str, size: str, layer: str) -> bool:
+    """Commit leaves slow and journey tests to their later scheduled tier."""
+    return stage != "commit" or (size != "large" and layer not in {"e2e", "native"})
+
+
 def _size_included(
     item: Any,
     size: str,
@@ -917,6 +922,9 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             seen.add(item.nodeid)
             ids, row, declared, (size, owner, declaration, seconds) = _proven(item, rows, policy)
             marks.append((item.nodeid, ids, Path(item.path)))
+            if not _stage_admits(stage, size, row.get("layer", "")):
+                omitted.append(item)
+                continue
             contract = _size_attributes(
                 item,
                 config,
