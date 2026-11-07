@@ -148,6 +148,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.native_leg_stop_owns_process_tree": {
+      "description": "A requested native leg stop ends only its recorded driver and descendants, completes its own teardown and records any unproved cleanup.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 10
+    },
     "evaluation.native_leg_stops_by_name": {
       "description": "One command starts, resumes and collects a native leg of either host, and every stop carries a named reason and its evidence.",
       "owner": "devtools.evaluation",
