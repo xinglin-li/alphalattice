@@ -725,6 +725,10 @@ def test_the_panel_driver_never_deletes_a_development_workspace(
     assert opened == []
 
 
+@pytest.mark.skipif(
+    os.name != "nt" and not hasattr(os, "sched_setaffinity"),
+    reason="pins processor affinity, which this system does not offer",
+)
 @pytest.mark.proves(
     "observation_runtime.process_is_held_to_half_the_machine_or_its_narrower_allowance"
 )

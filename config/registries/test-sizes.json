@@ -2513,115 +2513,25 @@
   ],
   "quarantine": [
     {
-      "node": "tests/integration/product_host/test_local_web_service.py::test_browser_session_cookies_are_port_scoped_and_restart_replaces_only_its_own",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "macOS only: the replacement LocalWebService cannot rebind the stopped service's port while it sits in TIME_WAIT (Address already in use). Three macOS runs failed; a Windows environment passed. Review when the service rebinds or the test takes a fresh port.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/alpha_research/test_current_artifact_array_cache.py::test_complete_immutable_alpha_models_reuse_validation_only_with_an_opted_in_lease[True]",
-      "owner": "tests.alpha_research",
-      "reason": "macOS only: the opted-in lease's second reuse is not recorded there; green on Windows. If macOS is a supported platform this is a POSIX gap; its owner decides. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/feature_engine/test_feature_observation_clock.py::test_process_resource_monitor_reports_a_time_aligned_live_child_tree",
-      "owner": "tests.feature_engine",
-      "reason": "Windows only: the live child tree is measured through the Windows job, so macOS reports no descendants. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/feature_engine/test_feature_observation_clock.py::test_the_panel_driver_never_deletes_a_development_workspace",
-      "owner": "tests.feature_engine",
-      "reason": "Windows only: the refused other root is another drive letter (C: or D:), which macOS paths have not. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/feature_engine/test_feature_observation_clock.py::test_the_runner_is_capacity_bounded_before_any_stage",
-      "owner": "tests.feature_engine",
-      "reason": "Windows or Linux only: it pins processor affinity, and macOS has no os.sched_setaffinity. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/local_application/test_cli_contract.py::test_every_answer_is_one_envelope_and_exits_by_its_outcome",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "macOS only: the answer's workspace redaction matches the Windows path form, so a POSIX temp path shows through; green on Windows. If macOS is a supported platform this is a POSIX gap; its owner decides. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
       "node": "tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "In observed macOS and Windows environments, the workspace network decision remains DEFAULT rather than the offline selection; a configured Windows environment passed. Review by its date.",
+      "reason": "In an observed Windows environment, the workspace network decision remains DEFAULT rather than the offline selection; a configured Windows environment passed. Review by its date.",
       "until": "2026-12-03",
       "class": "environment",
       "since": "2026-11-02",
       "seen_on": [
-        "mac1",
         "pc1"
-      ]
-    },
-    {
-      "node": "tests/integration/local_application/test_native_bridge.py::test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "Windows only: the native bridge's binding is the Windows host's, and macOS refuses it as binding_invalid. If macOS is a supported platform this is a POSIX gap; its owner decides. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
       ]
     },
     {
       "node": "tests/integration/testing/test_workbench_badge.py::test_real_task_records_drive_home_badges_and_grouped_history",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "In observed macOS and Windows environments, Playwright setup is missing (third_party/playwright, installed by scripts/playwright.ps1 setup), so browser and Node.js checks stop; a configured Windows environment passed. Review by its date.",
+      "reason": "In an observed Windows environment, Playwright setup is missing (third_party/playwright, installed by scripts/playwright.ps1 setup), so browser and Node.js checks stop; a configured Windows environment passed. Review by its date.",
       "until": "2026-12-03",
       "class": "environment",
       "since": "2026-11-02",
       "seen_on": [
-        "mac1",
         "pc1"
-      ]
-    },
-    {
-      "node": "tests/integration/product_host/test_research_input_storage.py::test_an_alias_removed_after_grouping_is_not_answered",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Windows only: a file removed during verification is named by the Windows sharing error; POSIX reports it as unavailable. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
       ]
     }
   ],
