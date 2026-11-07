@@ -285,32 +285,65 @@ raise SystemExit(entry.main(sys.argv[1:]))
 
 @WINDOWS
 @pytest.mark.parametrize("method", ["legacy", "attached"])
-@pytest.mark.parametrize("noninheritable", [False, True])
+@pytest.mark.parametrize("noninheritable", [False, True, "collision"])
 def test_attached_child_preserves_streams_and_refuses_unrelated_handles(
     tmp_path, method, noninheritable
 ):
     stray = tmp_path / "unrelated"
     stray.write_bytes(b"unrelated")
     child = """
-import json, msvcrt, os, sys
+import _winapi, ctypes, json, msvcrt, os, sys
+from ctypes import wintypes
+
+current = _winapi.GetCurrentProcess()
+handle = msvcrt.get_osfhandle(sys.stdin.fileno()) if sys.argv[2] == "stdin" else int(sys.argv[2])
 try:
-    value = list(os.read(msvcrt.open_osfhandle(int(sys.argv[1]), os.O_RDONLY), 64))
-except OSError:
-    value = None
+    candidate = _winapi.DuplicateHandle(
+        current, handle, current, 0, False, _winapi.DUPLICATE_SAME_ACCESS
+    )
+except OSError as error:
+    if error.winerror not in (6, 50):  # absent or an object that cannot be duplicated
+        raise
+    candidate = None
+# Pin the candidate before opening the parent: opening new handles can reuse its number.
+parent = _winapi.OpenProcess(_winapi.PROCESS_DUP_HANDLE, False, int(sys.argv[3]))
+try:
+    original = _winapi.DuplicateHandle(
+        parent, int(sys.argv[1]), current, 0, False, _winapi.DUPLICATE_SAME_ACCESS
+    )
+finally:
+    _winapi.CloseHandle(parent)
+try:
+    compare = ctypes.WinDLL('kernelbase', use_last_error=True).CompareObjectHandles
+    compare.argtypes, compare.restype = (wintypes.HANDLE, wintypes.HANDLE), wintypes.BOOL
+    control = _winapi.DuplicateHandle(
+        current, original, current, 0, False, _winapi.DUPLICATE_SAME_ACCESS
+    )
+    try:
+        assert compare(original, control)  # duplicated original is detected
+    finally:
+        _winapi.CloseHandle(control)
+    value = bool(candidate is not None and compare(candidate, original))
+finally:
+    _winapi.CloseHandle(original)
+    if candidate is not None:
+        _winapi.CloseHandle(candidate)
 print(json.dumps(dict(stdin=sys.stdin.read(), stray=value)))
 print('stderr-ok', file=sys.stderr)
 """
     program = f"""
 import _winapi, msvcrt, os, subprocess, sys
 from alphalattice.control.product_host.composition.web_launcher import attached_child
-if sys.argv[3] == 'True':
+if sys.argv[3] in ('True', 'collision'):
     for kind in (-10, -11, -12):
         os.set_handle_inheritable(_winapi.GetStdHandle(kind), False)
 call = subprocess.call if sys.argv[2] == 'legacy' else attached_child
 with open(sys.argv[1], 'rb') as stray:
     handle = msvcrt.get_osfhandle(stray.fileno())
     os.set_handle_inheritable(handle, True)
-    raise SystemExit(call([sys.executable, '-c', {child!r}, str(handle)], env=dict(os.environ)))
+    probe = 'stdin' if sys.argv[3] == 'collision' else str(handle)
+    command = [sys.executable, '-c', {child!r}, str(handle), probe, str(os.getpid())]
+    raise SystemExit(call(command, env=dict(os.environ)))
 """
     result = subprocess.run(
         [sys.executable, "-c", program, str(stray), method, str(noninheritable)],
@@ -323,7 +356,7 @@ with open(sys.argv[1], 'rb') as stray:
     assert result.returncode == 0, result.stderr
     seen = json.loads(result.stdout)
     assert seen["stdin"] == "owned-input\n"
-    assert seen["stray"] is None or b"unrelated" not in bytes(seen["stray"])
+    assert seen["stray"] is False
     assert result.stderr == "stderr-ok\n"
 
 

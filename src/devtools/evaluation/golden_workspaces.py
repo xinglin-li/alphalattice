@@ -634,7 +634,7 @@ def copy_payload(
     removes read-only names, takes it with the run. Without `link`, nothing is linked.
     """
     workspace, target = payload_path(workspace), payload_path(target)
-    staged = target.with_name(target.name + ".copying")
+    created = False
     try:
         if target.exists():
             raise RuntimeError("payload destination already exists")
@@ -648,17 +648,20 @@ def copy_payload(
         except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError) as error:
             raise GoldenPayloadCorrupt("golden payload manifest is missing or malformed") from error
         # A derived variant's own folder, under a parent that exists, never through a link.
-        staged.parent.mkdir(exist_ok=True)
-        if staged.parent.is_symlink() or staged.parent.is_junction():
+        target.parent.mkdir(exist_ok=True)
+        if target.parent.is_symlink() or target.parent.is_junction():
             raise RuntimeError("payload destination is reached through a link")
-        staged.mkdir()
+        # The target is private to this acquisition until return; a derived golden
+        # remains under its build lock without a completion marker until sealed.
+        target.mkdir()
+        created = True
 
         def copy_one(path: Path) -> str:
             info = path.stat()
             if info.st_mode & 0o222:
                 raise GoldenPayloadCorrupt("payload is not read-only")
             relative = path.relative_to(workspace).as_posix()
-            destination = staged / relative
+            destination = target / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             digest = hashlib.sha256()
             if link and read_in_place(relative, info.st_size):
@@ -679,15 +682,17 @@ def copy_payload(
                 raise GoldenPayloadCorrupt("payload disagrees with its manifest")
         for name in actual:
             if name.endswith("/"):
-                (staged / name).mkdir(parents=True, exist_ok=True)
-        staged.rename(target)
-    except GoldenPayloadCorrupt as error:
-        raise GoldenPayloadCorrupt(
-            f"golden payload restore refused: {workspace}: {error}"
-        ) from error
-    except (OSError, ValueError, RuntimeError) as error:
+                (target / name).mkdir(parents=True, exist_ok=True)
+    except (GoldenPayloadCorrupt, OSError, ValueError, RuntimeError) as error:
+        # The destination was created by this call; never remove an existing one.
+        left = remove_tree(target, target.parent) if created else []
+        detail = f"; incomplete destination retained: {left}" if left else ""
+        if isinstance(error, GoldenPayloadCorrupt):
+            raise GoldenPayloadCorrupt(
+                f"golden payload restore refused: {workspace}: {error}{detail}"
+            ) from error
         raise RuntimeError(
-            f"golden payload restore refused; use a fresh run: {workspace}"
+            f"golden payload restore refused; use a fresh run: {workspace}{detail}"
         ) from error
 
 
