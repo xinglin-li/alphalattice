@@ -67,6 +67,7 @@
     "src/alphalattice/control/product_host/composition/web_launcher.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/workspace.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/workspace_activity.py": "COMPOSITION",
+    "src/alphalattice/control/product_host/composition/workspace_folder.py": {"kind": "COMPOSITION", "description": "Answers whether a folder can become a research workspace, for a launch that has not loaded the Host."},
     "src/alphalattice/control/product_host/data_preparation/__init__.py": "COMPOSITION",
     "src/alphalattice/control/product_host/data_preparation/application.py": "COMPOSITION",
     "src/alphalattice/control/product_host/data_preparation/feature_research.py": "COMPOSITION",

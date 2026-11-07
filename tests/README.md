@@ -13,7 +13,7 @@ Use the existing policy and generators; this document grants no guard waiver.
 | Small: at most 1 s and 10 MB of temporary data; no subprocess or network. | `test_size.admission_limit` checks phases and `tmp_path` and new worker temporary-root entries; `testing.layer_contract` checks process and network use. Growth inside a pre-existing shared directory is not attributed; use a registered dataset. |
 | Medium: at most 30 s and 500 MB of temporary data. | `test_size.admission_limit` checks phases and `tmp_path` and new worker temporary-root entries; growth inside a pre-existing shared directory is not attributed. |
 | Large runs only in the nightly. | `test_size.large_contract` requires a `nightly_only` size rule for a new or changed Large test. |
-| Use registered test datasets in place; do not copy read-only data. | Dataset registry check (in development); request a private writable copy only when the test must write. |
+| Use registered test datasets in place; do not copy read-only data. | `TEST-DATA` in `scripts/check_test_shape.py` refuses a new data file under `tests/` until `data_files` in `config/registries/test-sizes.json` names it with its reason; request a private writable copy only when the test must write. |
 | A new test file names its one source module and goes at its mapped owner path. | `TEST-LAYOUT` in `scripts/check_test_shape.py` checks added files against `devtools.testing.layout`. |
 | Keep the median to one new test function per card. | `TEST-GROWTH` reports the count in the fast guard; review judges the median, not a per-card refusal. |
 | Whole-tree structural checks run post-merge by default. | `devtools.testing.sizes.moved` defers them; a changed holder or registered fence may still run in the commit stage. |
@@ -65,7 +65,7 @@ Existing files and byte-identical moves keep their standing.
 | Layer | Contract |
 | --- | --- |
 | Unit | Use temporary files only; no database, subprocess, socket, network or Host. |
-| Integration | Use files, databases and an in-process Host; no network. |
+| Integration | Use files, databases and an in-process Host over loopback; no other network. |
 | Contract | Run one port's suite against every adapter. |
 | E2E | Use registered journeys, real composition and external readback; check that untouched files are byte-identical; keep doubles to model, network and clock. |
 | Native | Use real host agents in admitted nightly and release lanes. |

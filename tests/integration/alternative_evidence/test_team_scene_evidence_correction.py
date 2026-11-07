@@ -1,0 +1,1509 @@
+"""Card 33 (engineering consumer): one same-context refusal, correction and owner readback.
+
+The controlled Analyst/CRO fixtures of the evidence review route, driven the way
+external actors drive them: the Analyst's brief is refused twice by its domain
+owner (a changed analysis binding; an invented span citation), the corrected
+brief is admitted and published, the CRO assesses the same dossier and the
+review is published. The team's messages name these objects through the
+accepted public ingress, and the scene the real consumer modules derive from
+the real feed shows the refusals, the admission, the exact reuse and the
+publications on the same references, in recorded order, with the original
+objection retained. Fixture actor output is fixture output, not native-host
+proof; no model or Provider is involved.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import shlex
+import socket
+import sys
+import threading
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, wait
+from contextlib import contextmanager
+from dataclasses import replace
+from datetime import UTC, datetime
+from hashlib import sha256
+from pathlib import Path
+from typing import Any
+from uuid import UUID
+
+import pytest
+
+from alphalattice.control.product_host.composition import committee
+from alphalattice.control.product_host.composition import host_answer_submission as answer_owner
+from alphalattice.control.product_host.composition.evidence_review_application import (
+    ANSWER_CATEGORY,
+)
+from alphalattice.control.product_host.composition.evidence_review_bundles import (
+    EvidenceReviewBundles,
+)
+from alphalattice.control.task_control.contracts import TaskLifecycle
+from alphalattice.control.task_control.queue import write_queue_setting
+from alphalattice.interface.local_application.cli_contract import RequestProvenance
+from alphalattice.interface.local_application.client import LocalResearchClient
+from alphalattice.interface.local_application.dispatcher import CommandAdmission
+from alphalattice.interface.local_application.web import AdmittedRequest, LocalWebService
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, answer_slot
+from tests.alternative_evidence_desk.planted_corpus import _CitingActor
+from tests.alternative_evidence_desk.review_dossiers import controlled_answer
+from tests.alternative_evidence_desk.review_http_support import (
+    _Service,
+    _service,
+    build_authority,
+    build_workspace,
+    start_service,
+)
+from tests.portfolio_strategy_lab.local_web_support import run_node
+from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter, task_contract
+
+MODULES = (
+    resolve_playpen_root(Path(__file__))
+    / "src/alphalattice/interface/local_application/assets/workbench-source/js/app"
+)
+RUNNER = (
+    resolve_playpen_root(Path(__file__))
+    / "tests/portfolio_strategy_lab/workbench_team_readback.cjs"
+)
+SESSION = "019a0b1c-parent-session"
+SCOPE = sha256(b"parent-session|evidence").hexdigest()
+
+
+@pytest.fixture
+def service(tmp_path: Path) -> Iterator[_Service]:
+    workspace, report = build_workspace(tmp_path)
+    authority = build_authority(
+        tmp_path=tmp_path, report=report, with_runtime=True, with_actor=True
+    )
+    started = start_service(workspace, authority, tmp_path)
+    try:
+        yield started
+    finally:
+        started.session.stop()
+
+
+class _Producer:
+    """Documents shaped like the lead's bridge emits them; the sequence is the producer's."""
+
+    def __init__(self, client: LocalResearchClient) -> None:
+        self.client, self.sequence = client, 0
+
+    def _publish(self, kind: str, summary: str, subject: dict[str, str]) -> dict[str, Any]:
+        self.sequence += 1
+        answer = self.client.publish_event(
+            {
+                "event_kind": kind,
+                "producer_id": "codex-native",
+                "producer_session": SCOPE,
+                "producer_sequence": self.sequence,
+                "occurred_at": datetime(2026, 9, 14, 13, 0, self.sequence, tzinfo=UTC).isoformat(),
+                "summary": summary,
+                "subject": {
+                    **subject,
+                    "source_time_kind": "BRIDGE_RECEIVED",
+                    "native_event_id": sha256(f"{kind}|{self.sequence}".encode()).hexdigest(),
+                },
+                "correlation_ids": [SESSION],
+            }
+        )
+        assert answer["status"] == "APPENDED", answer
+        return answer
+
+    def hook(self, event: str, agent: str, role: str, turn: str) -> dict[str, Any]:
+        return self._publish(
+            "NATIVE_SUBAGENT_START_HOOK"
+            if event == "SubagentStart"
+            else "NATIVE_SUBAGENT_STOP_HOOK",
+            f"{role}: {event} hook observed.",
+            {
+                "native_session_id": SESSION,
+                "native_turn_id": turn,
+                "native_agent_id": agent,
+                "role": role,
+                "input_channel": "CODEX_HOOK",
+                "native_hook_event": event,
+                "terminal_state": "NOT_ESTABLISHED",
+                "stop_hook_active": "unknown",
+            },
+        )
+
+    def message(self, agent: str, role: str, kind: str, text: str, **extra: str) -> dict[str, Any]:
+        return self._publish(
+            "NATIVE_COORDINATION_MESSAGE",
+            text,
+            {
+                "native_session_id": SESSION,
+                "native_agent_id": agent,
+                "role": role,
+                "message_kind": kind,
+                "message_id": extra.pop("message_id", f"m-{self.sequence + 1}"),
+                "message_sha256": sha256(text.encode()).hexdigest(),
+                "message_bytes": str(len(text.encode())),
+                "input_channel": "ACTOR_DECLARED",
+                **extra,
+            },
+        )
+
+
+def _consumer(feed: dict[str, Any], tmp: Path, *selection: str) -> dict[str, Any]:
+    run_node(None)
+    path = tmp / "feed.json"
+    path.write_text(json.dumps(feed), encoding="utf-8")
+    result = run_node(
+        [str(RUNNER), str(MODULES), str(path), *selection],
+        capture_output=True,
+        encoding="utf-8",
+        timeout=20,
+        check=True,
+    )
+    return json.loads(result.stdout)
+
+
+def test_scene_shows_the_same_context_refusals_correction_and_owner_readback(
+    service: _Service, tmp_path: Path
+) -> None:
+    review_risks = service.review.review_actor.risks
+    adapter = service.review.evidence_task_adapter
+    topics = adapter.resources.analysis_actor.topics
+    adapter.resources = replace(adapter.resources, analysis_actor=None)
+    service.review.model_authority_admitted = False
+    service.review.review_actor = (
+        None  # external actors only: the team submits through the CLI/client
+    )
+    client = LocalResearchClient(service.session.workspace)
+    producer = _Producer(client)
+    lead, analyst, cro = SESSION, "child-analyst-e1", "child-cro-e2"
+    selected = {"result_hash": service.result_hash()}
+    result_ref = "result:" + selected["result_hash"]
+    start = client.activity()
+    tasks_before = len(service.registry.tasks())
+
+    # The PM assigns the saved book by its History reference; the host names the Analyst child.
+    producer.message(
+        lead,
+        "research_lead",
+        "assignment",
+        "Prepare and submit an evidence brief on the saved book.",
+        recipient_id=analyst,
+        reference=result_ref,
+    )
+    producer.hook("SubagentStart", analyst, "alternative_analyst", "turn-e1")
+    # Preparation through the product: the packet's source Task is the same context for all
+    # that follows.
+    preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
+    assert preview["status"] == "EVIDENCE_PREPARATION_READY"
+    prepared = client.request(preview["next_requests"]["prepare"])
+    assert prepared["disposition"] == "ADMITTED"
+    service.drain()
+    source_id = UUID(prepared["task_id"])
+    assert service.registry.task(source_id).lifecycle is TaskLifecycle.SUCCEEDED
+    # Every book is a run: the packet request is the one the reply hands
+    # out, selected by its operation as a client selects it.
+    (packet_request,) = [
+        value
+        for value in prepared["next_requests"].values()
+        if value.get("operation") == "EVIDENCE_PACKET"
+    ]
+    exported = client.request(packet_request)
+    assert exported["status"] == "EVIDENCE_ANALYST_PACKET_READY"
+    packet = adapter.prepared_packet(
+        source_id, now=service.review.clock(), unit_id=packet_request["evidence_unit_id"]
+    )
+    answer = _CitingActor(topics=topics)(packet=packet).answer.model_dump(mode="json")
+    document = {**exported["submission_template"], "analysis_answer": answer}
+
+    # The Analyst declares the packet Task (verified by Task Control) and submits; the domain
+    # owner refuses twice in this same context.
+    verified = producer.message(
+        analyst,
+        "alternative_analyst",
+        "answer",
+        "Brief drafted against the packet; submitting.",
+        task_id=str(source_id),
+        message_id="answer-1",
+    )
+    assert verified["task_verified"] is True
+    binding_changed = client.request({**document, "analysis_context_hash": "a" * 64})
+    assert "external_analysis_binding_changed" in binding_changed["refused"]
+    invented = json.loads(json.dumps(answer))
+    invented["findings"][0]["cite"] = ["S999"]
+    bad_span = client.request({**document, "analysis_answer": invented})
+    assert bad_span["status"] == "CORRECT"
+    assert bad_span["answer"]["problems"] == [
+        {"item": 1, "text": "S999 is not an excerpt of this bundle."}
+    ]
+    producer.message(
+        cro,
+        "independent_cro",
+        "objection",
+        "Two submissions were refused by the evidence owner; resubmit citing the packet's spans.",
+        task_id=str(source_id),
+        recipient_id=lead,
+        message_id="objection-1",
+    )
+    # The corrected submission in the same context is admitted, published and exactly reusable.
+    submitted = client.request(document)
+    assert submitted["disposition"] == "ADMITTED"
+    service.drain()
+    analysis_task = UUID(submitted["task_id"])
+    assert service.registry.task(analysis_task).lifecycle is TaskLifecycle.SUCCEEDED
+    reused = client.request(document)
+    assert reused["disposition"] == "REUSED_EXACT" and reused["task_id"] is None
+    publication = reused["analysis_publication_hash"]
+    view = adapter.published_analysis(analysis_task, now=service.review.clock())
+    assert (
+        view.publication.publication_hash == publication
+    )  # the owner's own readback of the accepted output
+    producer.message(
+        analyst,
+        "alternative_analyst",
+        "answer",
+        "Resubmitted brief admitted and published; the publication hash is referenced.",
+        reference=publication,
+        message_id="answer-2",
+    )
+    # The CRO assesses the same dossier; the review is published.
+    dossier = client.request({"operation": "CRO_REVIEW_DOSSIER", **selected})
+    assert dossier["status"] == "CRO_DOSSIER_READY"
+    assessed = client.request(
+        {
+            **dossier["submission_template"],
+            "review_answer": controlled_answer(dossier["dossier"], *review_risks).model_dump(
+                mode="json"
+            ),
+        }
+    )
+    assert assessed["disposition"] == "ADMITTED"
+    service.drain()
+    review_task = UUID(assessed["task_id"])
+    assert service.registry.task(review_task).lifecycle is TaskLifecycle.SUCCEEDED
+    cro_view = service.evidence_cro()
+    assert cro_view["state"] == "REVIEW_PUBLISHED"
+    history = client.request({"operation": "RESEARCH_HISTORY", "history_limit": 50})["entries"]
+    review_entry = next(e for e in history if e.get("review_publication_hash"))
+    review_ref = "review:" + review_entry["review_publication_hash"]
+    producer.message(
+        cro,
+        "independent_cro",
+        "answer",
+        "Assessment submitted and published; the review is referenced.",
+        reference=review_ref,
+        message_id="answer-3",
+    )
+    producer.message(
+        lead,
+        "research_lead",
+        "pm_response",
+        "Accepted. The two refusals and the objection stay on record.",
+        recipient_id=cro,
+    )
+    assert len(service.registry.tasks()) == tasks_before + 3
+
+    # The real feed, History and owner answers go to the real consumer modules.
+    page = client.activity(after=start["cursor"], limit=200)
+    assert page["disposition"] == "CONTINUED"
+    reads = {
+        "/api/report?result_hash=" + selected["result_hash"]: client.request(
+            {"operation": "REPORT", **selected}
+        ),
+        "/api/status?task_id=" + str(analysis_task): client.request(
+            {"operation": "STATUS", "task_id": str(analysis_task)}
+        ),
+    }
+    scene = _consumer(
+        {
+            "pages": [start, page],
+            "history": history,
+            "reads": reads,
+            "tasks": [],
+            "resolve": [result_ref, publication, str(analysis_task), review_ref],
+            "verify": [result_ref, str(analysis_task)],
+        },
+        tmp_path,
+    )
+    (session,) = scene["sessions"]
+    assert session["id"] == SESSION
+    assert set(session["references"]) == {
+        result_ref,
+        selected["result_hash"],
+        str(source_id),
+        publication,
+        review_ref,
+        review_entry["review_publication_hash"],
+    }
+    facts = [
+        (
+            f["operation"] or f["lifecycle"],
+            f["phase"],
+            f["status"],
+            f["failure_code"],
+            [r["operation"] for r in f["followed"]],
+        )
+        for f in session["facts"]
+    ]
+    assert facts == [
+        ("EVIDENCE_PREVIEW", "REQUESTED", None, None, []),
+        ("EVIDENCE_PREVIEW", "RETURNED", "EVIDENCE_PREPARATION_READY", None, []),
+        ("EVIDENCE_PREPARE", "REQUESTED", None, None, []),
+        ("EVIDENCE_PREPARE", "RETURNED", "ADMITTED", None, []),
+        ("SUCCEEDED", None, None, None, []),  # the packet Task: declared by the Analyst, verified
+        ("EVIDENCE_ANALYSIS_SUBMIT", "REQUESTED", None, None, []),
+        (
+            "EVIDENCE_ANALYSIS_SUBMIT",
+            "FAILED",
+            "FAILED",
+            "alternative_evidence.external_analysis_binding_changed",
+            [],
+        ),
+        ("EVIDENCE_ANALYSIS_SUBMIT", "REQUESTED", None, None, []),
+        # The invented citation is an answer returned for correction, not a failure.
+        (
+            "EVIDENCE_ANALYSIS_SUBMIT",
+            "RETURNED",
+            "CORRECT",
+            "alternative_evidence.answer_problems",
+            [],
+        ),
+        ("EVIDENCE_ANALYSIS_SUBMIT", "REQUESTED", None, None, []),
+        ("EVIDENCE_ANALYSIS_SUBMIT", "RETURNED", "ADMITTED", None, []),
+        ("SUCCEEDED", None, None, None, ["EVIDENCE_ANALYSIS_SUBMIT"]),  # one owner-named hop
+        ("EVIDENCE_ANALYSIS_SUBMIT", "REQUESTED", None, None, []),
+        (
+            "EVIDENCE_ANALYSIS_SUBMIT",
+            "RETURNED",
+            "REUSED_EXACT",
+            None,
+            ["EVIDENCE_ANALYSIS_SUBMIT"],
+        ),
+        ("CRO_REVIEW_SUBMIT", "REQUESTED", None, None, []),
+        ("CRO_REVIEW_SUBMIT", "RETURNED", "ADMITTED", None, []),
+        ("SUCCEEDED", None, None, None, ["CRO_REVIEW_SUBMIT"]),
+    ]
+    withheld = session["facts"][8]
+    assert withheld["observation"] and "unknown_span_reference" not in json.dumps(
+        withheld
+    )  # the detail stays with the owner
+    assert publication in session["facts"][13]["named"]  # the exact reuse names the publication
+    assert [e["messageKind"] for e in session["entries"] if e["kind"] == "message"] == [
+        "assignment",
+        "answer",
+        "objection",
+        "answer",
+        "answer",
+        "pm_response",
+    ]
+    objection = next(e for e in session["entries"] if e["messageKind"] == "objection")
+    assert objection["taskId"] == str(source_id) and objection["replayOf"] is None
+    # Discovery, verification and the honest limits of this reader's owners.
+    resolved = scene["resolved"]
+    assert (
+        resolved[result_ref]["level"] == "verified"
+        and resolved[result_ref]["owner"] == "Portfolio result"
+    )
+    analysis = resolved[str(analysis_task)]
+    assert analysis["level"] == "discovered" and analysis["target"]["ref"] == str(analysis_task)
+    assert analysis["limit"] == "no owner readback through this reader; open the Task"
+    assert resolved[publication]["level"] == "unresolved"
+    assert (
+        resolved[review_ref]["level"] == "discovered" and resolved[review_ref]["owner"] == "History"
+    )
+    # The page: the product evidence -- the binding change a failure, the invented citation an
+    # answer returned with its problems, the admission, the exact reuse and the review -- in
+    # recorded order with its detail in its own block after the thread; in the thread (laws 125,
+    # 140) the same operations are counted one-line runs at their recorded places between the
+    # member statements, never inside one and never with their detail; the CRO's objection
+    # retained among the statements, apart from them.
+    html = scene["html"]
+    for text in (
+        "EVIDENCE_ANALYSIS_SUBMIT · product refusal",
+        "alternative_evidence.external_analysis_binding_changed",
+        "EVIDENCE_ANALYSIS_SUBMIT · returned for correction",
+        "alternative_evidence.answer_problems",
+        "EVIDENCE_ANALYSIS_SUBMIT · product admission",
+        "EVIDENCE_ANALYSIS_SUBMIT · exact reuse",
+        "CRO_REVIEW_SUBMIT · product admission",
+        "Task named by EVIDENCE_ANALYSIS_SUBMIT ADMITTED for",
+        "Two submissions were refused by the evidence owner",
+    ):
+        assert text in html, text
+    panel = html[html.index('class="panel team-product"') :]
+    order = [
+        panel.index("EVIDENCE_ANALYSIS_SUBMIT · product refusal"),
+        panel.index("EVIDENCE_ANALYSIS_SUBMIT · returned for correction"),
+        panel.index("EVIDENCE_ANALYSIS_SUBMIT · product admission"),
+        panel.index("EVIDENCE_ANALYSIS_SUBMIT · exact reuse"),
+        panel.index("CRO_REVIEW_SUBMIT · product admission"),
+    ]
+    assert order == sorted(order), "recorded order: refusal, correction, admission, reuse, review"
+    assert panel.count("EVIDENCE_ANALYSIS_SUBMIT · product refusal") == 1  # the binding change
+    # the invented citation is an answer returned for correction, not a refusal (contract 10.4)
+    assert panel.count("EVIDENCE_ANALYSIS_SUBMIT · returned for correction") == 1
+    details = (
+        "alternative_evidence.external_analysis_binding_changed",
+        "alternative_evidence.answer_problems",
+        "Task named by EVIDENCE_ANALYSIS_SUBMIT ADMITTED for",
+    )
+    for detail in details:
+        assert detail in panel, detail
+    thread = html[html.index('id="teamThread"') : html.index('class="panel team-product"')]
+    product_line = r'<li class="team-event team-product-event[^"]*"[^>]*>.*?</li>'
+    statements = re.sub(product_line, "", thread, flags=re.S)
+    assert "Two submissions were refused by the evidence owner" in statements
+    for word in (
+        "product refusal",
+        "returned for correction",
+        "product admission",
+        "exact reuse",
+        *details,
+    ):
+        assert word not in statements, word  # an operation is a run of its own, never a statement
+    for detail in details:
+        assert detail not in thread, detail  # the detail stays in the product's block
+    assert thread.count('id="teamThread"') == 1  # one thread: the Participants page retired
+    places = [
+        thread.index("Brief drafted against the packet"),
+        thread.index("EVIDENCE_ANALYSIS_SUBMIT · product refusal"),
+        thread.index("EVIDENCE_ANALYSIS_SUBMIT · returned for correction"),
+        thread.index("Two submissions were refused by the evidence owner"),
+        thread.index("EVIDENCE_ANALYSIS_SUBMIT · product admission"),
+        thread.index("EVIDENCE_ANALYSIS_SUBMIT · exact reuse"),
+        thread.index("Resubmitted brief admitted"),
+        thread.index("CRO_REVIEW_SUBMIT · product admission"),
+        thread.index("Assessment submitted and published"),
+    ]
+    assert places == sorted(places), "each run at its recorded place between the statements"
+    # Each declared reference reads back in its exchange's contribution reader with the owner's
+    # answer: the saved book verified by the Portfolio owner, the review discovered by History
+    # and not verified, the analysis publication unresolved by every owner this reader has.
+    by_reference = {
+        e["reference"]: scene["readers"][e["observation"]]
+        for e in session["entries"]
+        if e["reference"]
+    }
+    # a header names the speaker and the kind, the addressee as the thread writes it (@mention)
+    assert 'aria-label="Main PM · Assignment"' in by_reference[result_ref]
+    assert "→ @Alternative Analyst</span>" in by_reference[result_ref]
+    assert "[verified:verified by Portfolio result]" in by_reference[result_ref]
+    assert "CRO · Answer" in by_reference[review_ref]
+    assert "[metadata:discovered by History · not verified]" in by_reference[review_ref]
+    assert "Alternative Analyst · Answer" in by_reference[publication]
+    assert "[metadata:unresolved]" in by_reference[publication]
+    objection_reader = scene["readers"][objection["observation"]]
+    assert 'aria-label="CRO · Objection"' in objection_reader
+    assert "→ @Main PM</span>" in objection_reader
+    assert "Two submissions were refused by the evidence owner" in objection_reader
+
+    # The invented citation's verdict is the product's own CORRECT, said as that
+    # observation's title and state ("returned for correction"); beyond it the scene
+    # states no correction of its own.
+    def states_no_correction(text: str) -> bool:
+        own = (
+            text.lower()
+            .replace("returned_for_correction", "")
+            .replace("returned for correction", "")
+        )
+        return "correct" not in own
+
+    assert "returned for correction" in html.lower()
+    assert states_no_correction(html), "the scene states no correction of its own"
+    assert all(states_no_correction(r) for r in scene["readers"].values())
+    assert len(service.registry.tasks()) == tasks_before + 3
+
+
+def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
+    service, tmp_path, capsys, monkeypatch
+):
+    """A served specialist correction-and-acceptance loop reopens its exact sealed answer."""
+
+    from alphalattice.evidence.alternative_evidence.analysis.views import render_analyst_bundle
+    from alphalattice.interface.local_application.cli import main
+    from alphalattice.oversight.chief_risk_officer.decision.views import render_review_bundle
+    from tests.alternative_evidence_desk.review_dossiers import REPO_ROOT
+
+    monkeypatch.setenv("CODEX_THREAD_ID", "bundle-review-lead")
+    adapter = service.review.evidence_task_adapter
+    topics = adapter.resources.analysis_actor.topics
+    adapter.resources = replace(adapter.resources, analysis_actor=None)
+    service.review.model_authority_admitted = False
+    service.review.review_actor = None
+    client = LocalResearchClient(service.session.workspace)
+    selected = {"result_hash": service.result_hash()}
+    start = client.activity()
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+
+    goal = UUID(int=7)
+    assert service.session.operations is not None
+    service.session.operations.goals.operate(
+        PortfolioResearchOperationRequest(
+            operation="GOAL_OPEN",
+            goal_id=goal,
+            goal_declaration={
+                "title": "Review",
+                "objective": "Review the book.",
+                "kind": "RESEARCH",
+                "criteria": [{"criterion_id": "review", "text": "Review."}],
+            },
+            change_reason="The person's request",
+        ),
+        "EXTERNAL_AUTOMATION",
+    )
+
+    def run(*arguments: str) -> tuple[int, dict[str, Any]]:
+        code = main(["--view", "full", *arguments], serve=lambda _: 99)
+        return code, json.loads(capsys.readouterr().out)["data"]
+
+    def files_of(bundle: dict[str, Any]) -> dict[str, str]:
+        directory = Path(bundle["bundle_directory"])
+        files = {path.name: path.read_text(encoding="utf-8") for path in directory.iterdir()}
+        assert json.loads(files.pop("workspace.json")) == {
+            "workspace": str(service.session.workspace.resolve())
+        }
+        return files
+
+    def unrouted(bundle: dict[str, Any]) -> dict[str, str]:
+        """Its files as rendered, the route its README ends with set apart."""
+        cut = "\n\n## Your route"
+        return {k: v.split(cut)[0].rstrip() for k, v in files_of(bundle).items()}
+
+    def keyed(bundle: dict[str, Any]) -> list[str]:
+        """The member's own submit: the bundle's submit with the key its route names."""
+        key = re.search(r"--key ([0-9a-f]{32})", files_of(bundle)["README.md"])
+        return [*bundle["submit_arguments"], "--key", key.group(1) if key else ""]
+
+    def skill(path: str) -> str:
+        return (REPO_ROOT / "skills" / path / "SKILL.md").read_text(encoding="utf-8")
+
+    workspace = ("--workspace", str(service.session.workspace), "--goal", str(goal))
+    # Commands printed for a POSIX shell, which `shlex` reads back; the PowerShell form is
+    # held by its own test.
+    monkeypatch.setenv("ALPHALATTICE_SHELL", "posix")
+    # The CPU budget (F1): the lead reads the machine and its load, and sets a
+    # budget, with one verb; a budget that is not one is refused by name.
+    code, budget = run(*workspace, "cpu-budget", "show")
+    assert code == 0 and budget["cpu_budget"] == "auto" and budget["machine"]["processors"] >= 1
+    code, budget = run(*workspace, "cpu-budget", "set", "--cores", "2")
+    assert code == 0 and budget["cpu_budget"] == 2
+    code, refused = run(*workspace, "cpu-budget", "set", "--cores", "all")
+    assert code == 2 and "execution.cpu_budget_invalid" in json.dumps(refused)
+    assert run(*workspace, "cpu-budget", "set", "--cores", "auto")[0] == 0
+    # The Task queue's waiting places are set beside it, one setting a request.
+    assert budget["task_queue"]["tasks_waiting"] == "auto" and budget["task_queue"]["places"] >= 1
+    code, queue = run(*workspace, "cpu-budget", "set", "--queue", "3")
+    assert code == 0 and queue["task_queue"]["places"] == 3 and queue["cpu_budget"] == "auto"
+    code, refused = run(*workspace, "cpu-budget", "set", "--queue", "0")
+    assert code == 2 and "task_control.tasks_waiting_invalid" in json.dumps(refused)
+    preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
+    prepared = client.request(preview["next_requests"]["prepare"])
+    service.drain()
+    source_id = prepared["task_id"]
+
+    # Every book is a run: the Analyst's packet is one unit's, and a bundle
+    # asked for without its unit is refused naming the units there are.
+    code, unnamed = run(
+        *workspace,
+        *("bundle", "prepare", "--role", "ANALYST", "--task", source_id),
+        *("--result", selected["result_hash"]),
+        *("--dir", str(tmp_path / "unnamed")),
+    )
+    assert code == 2 and "agent_bundle.analyst_unit_required:u01" in json.dumps(unnamed)
+    assert not (tmp_path / "unnamed").exists()
+    # Each says how to name the packet, where it answered with no way on.
+    assert unnamed["next_action"] == "GIVE_THE_PACKETS_TASK_AND_UNIT"
+    assert "`evidence_unit_id`" in unnamed["message"]
+    code, untasked = run(
+        *workspace,
+        *("bundle", "prepare", "--role", "ANALYST"),
+        *("--result", selected["result_hash"]),
+        *("--dir", str(tmp_path / "untasked")),
+    )
+    assert code == 2 and untasked["failure_code"] == "agent_bundle.analyst_task_required"
+    assert untasked["next_action"] == "GIVE_THE_PACKETS_TASK_AND_UNIT"
+
+    # The Analyst: a subset, one invalid item corrected, then accepted.
+    code, analyst = run(
+        *workspace,
+        *("bundle", "prepare", "--role", "ANALYST"),
+        *("--task", source_id, "--unit", "u01"),
+        *("--result", selected["result_hash"]),
+        *("--dir", str(tmp_path / "analyst")),
+    )
+    assert code == 0 and analyst["status"] == "AGENT_BUNDLE_READY"
+    assert analyst["files"][0]["name"] == "README.md"
+    packet = adapter.prepared_packet(UUID(source_id), now=service.review.clock(), unit_id="u01")
+    view = render_analyst_bundle(
+        packet, task_procedure=skill("alternative-evidence/governed-evidence-analysis")
+    )
+    assert unrouted(analyst) == {k: v.rstrip() for k, v in view.files}
+    readme = files_of(analyst)["README.md"]
+    assert "reads three an issuer" in readme and "32 in one answer" in readme
+    full = _CitingActor(topics=topics)(packet=packet).answer.model_dump(mode="json")
+    subset = {**full, "findings": full["findings"][:2]}
+    assert len(subset["findings"]) == 2
+    invented = json.loads(json.dumps(subset))
+    invented["findings"][1]["cite"] = ["S999"]
+    answer_file = Path(analyst["answer_file"])
+    # An answer names the files it read whole; the list is its own word, kept with the
+    # answer as provenance, and the answer is read whatever it names.
+    read = [item["name"] for item in analyst["files"]]
+    answer_file.write_text(json.dumps({**invented, "read": read[:1]}), encoding="utf-8")
+    monkeypatch.setenv("CODEX_THREAD_ID", "child-analyst")
+    assert keyed(analyst)[-1]  # the member's own bundle key
+    code, verdict = run(*keyed(analyst))
+    assert code == 0 and verdict["status"] == "CORRECT" and "receipt" not in verdict
+    bundle = EvidenceReviewBundles(service.review).agent_bundle(str(tmp_path / "analyst"))
+    assert bundle is not None
+    binding = {
+        "role": "alternative_evidence.analyst",
+        "task_id": source_id,
+        "unit_id": "u01",
+        "analysis_context_hash": bundle.submission["analysis_context_hash"],
+    }
+    kept = service.review.artifacts.load(
+        ANSWER_CATEGORY, answer_slot(str(canonical_hash(binding)), 1), AgentAnswerRecord
+    )
+    assert kept.read_files == tuple(read[:1])
+    assert verdict["problems"] == [{"item": 2, "text": "S999 is not an excerpt of this bundle."}]
+    assert (verdict["answer_number"], verdict["rounds_left"], verdict["accepted_items"]) == (
+        1,
+        2,
+        [1],
+    )
+    answer_file.write_text(json.dumps({**subset, "read": read}), encoding="utf-8")
+    # Lose the actual Host reply after it accepts; the member follows its own offered retry.
+    from alphalattice.interface.local_application.failure_codes import LocalResearchClientError
+
+    exchange, accepted = LocalResearchClient.exchange, []
+
+    def lost_reply(client, document):
+        result = exchange(client, document)
+        if document.get("operation") == "AGENT_ANSWER_SUBMIT":
+            accepted.append(result[0])
+            raise LocalResearchClientError(
+                "local_client.connection_lost_task_may_still_run"
+            ) from TimeoutError()
+        return result
+
+    exact_submit = keyed(analyst)
+    with monkeypatch.context() as patch:
+        patch.setattr(LocalResearchClient, "exchange", lost_reply)
+        code = main(["--view", "full", *exact_submit], serve=lambda _: 99)
+        stopped = json.loads(capsys.readouterr().out)
+    assert code == 4 and stopped["next_action"] == "RESEND_THE_SAME_KEYED_SUBMISSION"
+    assert len(accepted) == 1 and accepted[0]["status"] == "ACCEPTED"
+    task_count = len(service.registry.tasks())
+    code, verdict = run(*exact_submit)
+    assert len(service.registry.tasks()) == task_count
+    assert verdict == accepted[0]  # the complete first outcome, including lifecycle
+    monkeypatch.setenv("CODEX_THREAD_ID", "bundle-review-lead")
+    # Accepted, its Task pending: the receipt names the Task's state.
+    assert code == 0 and verdict["status"] == "ACCEPTED"
+    assert verdict["bundle_reference"] == analyst["bundle_reference"]
+    assert verdict["task_lifecycle"] in {"QUEUED", "RUNNING"}
+    assert verdict["receipt"] == {
+        "agent_role": "ANALYST",
+        "verdict": "ACCEPTED",
+        "answer_reference": answer_slot(str(canonical_hash(binding)), 2),
+        "task_id": verdict["task_id"],
+        "accepted_items": 2,
+        "dropped_items": 0,
+    }
+    service.drain()
+
+    # The CRO: one invalid risk kept three times, the third answer DONE.
+    # The book named by its selector's field (an experiment or update book
+    # names its own fields); the reply carries the one command ready to run.
+    code, cro = run(
+        *workspace,
+        *("bundle", "prepare", "--role", "CRO"),
+        *("--result", selected["result_hash"]),
+        *("--dir", str(tmp_path / "c")),
+    )
+    assert code == 0 and cro["status"] == "AGENT_BUNDLE_READY"
+    cro_bundle = EvidenceReviewBundles(service.review).agent_bundle(str(tmp_path / "c"))
+    cro_binding = {
+        "role": "chief_risk_officer.reviewer",
+        "dossier_hash": cro_bundle.submission["review_dossier_hash"],
+        "policy_hash": cro_bundle.submission["review_policy_hash"],
+        "schema_hash": cro_bundle.submission["review_schema_hash"],
+    }
+    # The bundle offers its submit, the directory bound and the answer left.
+    offered = cro["next_requests"]["submit"]
+    assert (offered["operation"], offered["agent_answer"]) == ("AGENT_ANSWER_SUBMIT", None)
+    assert Path(offered["bundle_directory"]) == Path(cro["bundle_directory"])
+    command = shlex.split(cro["submit_command"])
+    # The installed command, as every printed command starts, then its arguments.
+    assert command[0] == "alphalattice" and command[1:] == cro["submit_arguments"]
+    dossier = service.review._resolve_review_dossier(service.review._review_selector(None))
+    view = render_review_bundle(
+        dossier, task_procedure=skill("chief-risk-officer/review-portfolio-evidence")
+    )
+    assert unrouted(cro) == {k: v.rstrip() for k, v in view.files}
+    assert "`risks`: at most 16 in one answer" in files_of(cro)["README.md"]
+    risk = {
+        "findings": ["F1"],
+        "why": "The cited finding is adverse for a held issuer.",
+        "severity": "HIGH",
+        "confidence": "SUPPORTED",
+        "recommendation": "Size the position down.",
+    }
+    submission = {"risks": [risk], "summary": "One major negative in the evidence read."}
+    stray = {**risk, "findings": ["F999"]}
+    Path(cro["answer_file"]).write_text(
+        json.dumps(
+            {
+                **submission,
+                "risks": [*submission["risks"], stray],
+                "read": [item["name"] for item in cro["files"]],
+            }
+        ),
+        encoding="utf-8",
+    )
+    problem = {
+        "item": len(submission["risks"]) + 1,
+        "text": "F999 is not a finding of this bundle.",
+    }
+    for rounds_left in (2, 1):
+        code, verdict = run(*keyed(cro))
+        assert code == 0 and verdict["status"] == "CORRECT"
+        assert (verdict["rounds_left"], verdict["problems"]) == (rounds_left, [problem])
+        if rounds_left == 2:
+            repeated_code, repeated = run(*keyed(cro))
+            assert repeated_code == 0 and repeated["rounds_left"] == rounds_left
+        path = Path(cro["answer_file"])
+        revised = json.loads(path.read_text(encoding="utf-8"))
+        revised["summary"] += " Another reading."
+        path.write_text(json.dumps(revised), encoding="utf-8")
+    submission["summary"] = revised["summary"]
+    code, verdict = run(*keyed(cro))
+    assert code == 0 and verdict["status"] == "DONE" and verdict["dropped"] == [problem]
+    assert verdict["bundle_reference"] == cro["bundle_reference"]
+    assert verdict["receipt"] == {
+        "agent_role": "CRO",
+        "verdict": "DONE",
+        "answer_reference": answer_slot(str(canonical_hash(cro_binding)), 3),
+        "task_id": verdict["task_id"],
+        "accepted_items": len(submission["risks"]),
+        "dropped_items": 1,
+    }
+    # The lead goes on from this answer: its Task, and the book's Evidence and CRO.
+    assert verdict["next_requests"] == {
+        "task": {"operation": "STATUS", "task_id": verdict["task_id"]},
+        "book": {"operation": "EVIDENCE_CRO", "result_hash": selected["result_hash"]},
+    }
+    service.drain()
+    review = service.review.review_publications.find_for_review_key(
+        service.registry.task(UUID(verdict["task_id"])).input.input_hash
+    )
+    assert review.receipt.answer.model_dump(mode="json") == submission
+
+    # What the agents read carries no hash; what the lead holds is the receipt.
+    for text in (*files_of(analyst).values(), *files_of(cro).values()):
+        assert re.search(r"\b[0-9a-f]{64}\b", text) is None
+    page = client.activity(after=start["cursor"], limit=200)
+    submitted = [
+        (item["payload"]["subject"].get("agent_role"), item["payload"]["status"])
+        for item in page["items"]
+        if item["payload"]
+        and item["payload"].get("operation") == "AGENT_ANSWER_SUBMIT"
+        and item["payload"]["phase"] == "RETURNED"
+    ]
+    assert submitted == [
+        ("ANALYST", "CORRECT"),
+        ("ANALYST", "ACCEPTED"),
+        ("ANALYST", "ACCEPTED"),  # the keyed retry is a separate observed request
+        ("CRO", "CORRECT"),
+        ("CRO", "CORRECT"),  # an identical retry is still an observed request
+        ("CRO", "CORRECT"),
+        ("CRO", "DONE"),
+    ]
+    # Each member's acceptance is a row of its own thread, never a relay as the lead; it opens
+    # the full accepted answer.
+    rows = [
+        item
+        for item in client.read_external()["items"]
+        if item["payload"]["subject"].get("input_channel") == "PRODUCT_REVIEW"
+        and item["payload"]["subject"]["message_kind"] == "acceptance"
+    ]
+    relayed = [
+        item
+        for item in client.read_external()["items"]
+        if item["payload"]["subject"].get("input_channel") == "PRODUCT_ACCEPTED_ANSWER"
+    ]
+    assert len(rows) == 2 and relayed == []
+    for row in rows:
+        subject = row["payload"]["subject"]
+        assert subject["authorship_basis"] == "HOST_ACCEPTED"
+        detail = client.read_external(observation_id=row["observation_id"])["accepted_answer"]
+        assert detail["status"] == "AVAILABLE", detail
+        assert detail["bundle_reference"] == subject["bundle_reference"]
+    # A directory the Host never prepared, or a bundle whose evidence moved
+    # on, is refused by name and nothing is read.
+    stranger = tmp_path / "elsewhere"
+    stranger.mkdir()
+    (stranger / "answer.json").write_text("{}", encoding="utf-8")
+    code, refused = run(
+        *workspace,
+        *("bundle", "submit", "--dir", str(stranger)),
+        *("--file", str(stranger / "answer.json")),
+    )
+    assert code == 2 and refused["failure_code"] == "agent_bundle.not_prepared"
+
+
+@pytest.fixture
+def host(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_THREAD_ID", "analyst-retry-test")
+    monkeypatch.setattr(socket, "gethostname", lambda: "synthetic-test-host")
+    workspace, report = build_workspace(tmp_path)
+    # Integration tests exercise the same admitted web route without opening a socket.
+    monkeypatch.setattr(LocalWebService, "start", lambda _self: "http://127.0.0.1:12345/")
+    server = _service(tmp_path, workspace, report, with_runtime=True, with_actor=True)
+    service = next(server)
+
+    def request_in_process(client, document, **_kwargs):
+        application = service.session.web.application
+        route = application.routes[("POST", "/api/client/operations")]
+        body = json.dumps(document).encode("utf-8")
+        admitted = AdmittedRequest(
+            route=route,
+            asset=None,
+            query={},
+            content_length=len(body),
+            issues_session=False,
+            provenance=RequestProvenance(
+                vendor="codex",
+                session=getattr(client, "_test_session", "analyst-retry-test"),
+                goal_id=client.goal,
+            ),
+        )
+        response = application.dispatch(admitted, body)
+        assert response.status == 200, response.body
+        return json.loads(response.body)
+
+    monkeypatch.setattr(LocalResearchClient, "request", request_in_process)
+    try:
+        adapter = service.review.evidence_task_adapter
+        topics = adapter.resources.analysis_actor.topics
+        adapter.resources = replace(adapter.resources, analysis_actor=None)
+        service.review.model_authority_admitted = False
+        service.review.review_actor = None
+        selected = {"result_hash": service.review.latest_result_hash()}
+        client = LocalResearchClient(workspace)
+        opened = client.request(
+            {
+                "operation": "GOAL_OPEN",
+                "goal_declaration": {
+                    "title": "Synthetic review",
+                    "objective": "Review a synthetic book.",
+                    "kind": "RESEARCH",
+                    "criteria": [{"criterion_id": "review", "text": "The review stands."}],
+                },
+                "change_reason": "Test",
+            }
+        )
+        goal = str(opened.get("goal_id") or opened["record"]["goal_id"])
+        client = LocalResearchClient(workspace, goal=goal)
+        preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
+        prepared = client.request(preview["next_requests"]["prepare"])
+        service.drain()
+        task_id = prepared["task_id"]
+        packet = adapter.prepared_packet(UUID(task_id), now=service.review.clock(), unit_id="u01")
+        answer = _CitingActor(topics=topics)(packet=packet).answer.model_dump(mode="json")
+
+        def bundle(index, value):
+            directory = tmp_path / f"analyst-{index}"
+            made = client.request(
+                {
+                    "operation": "AGENT_BUNDLE_PREPARE",
+                    "agent_role": "ANALYST",
+                    "bundle_directory": str(directory),
+                    "task_id": task_id,
+                    "evidence_unit_id": "u01",
+                    **selected,
+                }
+            )
+            text = "\n".join(item.get("text", "") for item in made.get("files", []))
+            key = re.search(r"--key ([0-9a-f]{32})", text)
+            assert key, made
+            return {
+                "operation": "AGENT_ANSWER_SUBMIT",
+                "bundle_directory": str(directory),
+                "committee_key": key.group(1),
+                "agent_answer": value,
+            }, made
+
+        yield service, client, workspace, goal, answer, bundle
+    finally:
+        server.close()
+
+
+def _fifteen_keyed_submits_finish_while_a_task_runs_and_retries_keep_their_outcomes(
+    host, monkeypatch
+):
+    service, client, workspace, goal, answer, bundle = host
+    invalid = {
+        **answer,
+        "findings": [dict(item) for item in answer["findings"]],
+        "notes": "held-first",
+    }
+    invalid["findings"][0]["cite"] = ["S999"]
+    requests = [bundle(0, invalid)[0]] + [
+        bundle(index, {"findings": [], "notes": f"analyst {index}"})[0] for index in range(1, 15)
+    ]
+    assert len({request["committee_key"] for request in requests}) == 15
+    task_release, task_started = threading.Event(), threading.Event()
+    first_release, first_started = threading.Event(), threading.Event()
+    registry, now = service.registry, datetime.now(UTC)
+    write_queue_setting(
+        workspace / "runtime", 1, chosen_by="HUMAN", chosen_at=now, field="tasks_waiting"
+    )
+    write_queue_setting(
+        workspace / "runtime", 1, chosen_by="HUMAN", chosen_at=now, field="tasks_running"
+    )
+    envelope, goal_contract, plan = task_contract(salt="held-analyst-test")
+
+    class HeldAdapter(FixtureTaskAdapter):
+        def execute_stage(self, *, task, execution, work_item):
+            task_started.set()
+            if not task_release.wait(45):
+                raise TimeoutError("test did not release held Task")
+            return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+    class HeldCommand:
+        command_kind = "factor_research"
+
+        def admit(self):
+            admitted = registry.admit(
+                input_envelope=envelope, goal=goal_contract, plan=plan, observed_at=now
+            )
+            return CommandAdmission(admitted.record.task_id, admitted.record.lifecycle.value)
+
+        def execute(self, task_id, *, expected_task_hash=None):
+            return service.session.session.execute_admitted(
+                registry.task(task_id), HeldAdapter(), lambda: datetime.now(UTC), expected_task_hash
+            )
+
+    actual_submit = service.review.submit_analysis
+
+    def paused(**kwargs):
+        if (kwargs.get("answer") or {}).get("notes") == "held-first":
+            first_started.set()
+            if not first_release.wait(25):
+                raise TimeoutError("test did not release first screening")
+        return actual_submit(**kwargs)
+
+    monkeypatch.setattr(service.review, "submit_analysis", paused)
+    try:
+        held = service.session.dispatcher.submit(HeldCommand())
+        assert held.task_id and task_started.wait(15)
+        with ThreadPoolExecutor(max_workers=15) as pool:
+            first = pool.submit(
+                LocalResearchClient(workspace, goal=goal, timeout=30).request, requests[0]
+            )
+            assert first_started.wait(10)
+            peers = {
+                pool.submit(
+                    LocalResearchClient(workspace, goal=goal, timeout=15).request, request
+                ): index
+                for index, request in enumerate(requests[1:], 1)
+            }
+            _done, late = wait(peers, timeout=10)
+            first_release.set()
+            responses = {index: future.result(timeout=20) for future, index in peers.items()}
+            responses[0] = first.result(timeout=10)
+        assert not late, "other keyed submissions waited for the held packet read"
+        assert len(responses) == 15
+        ledger = service.session.activity._ledger
+        assert ledger is not None
+        recorded = ledger.observations_of_kind("ProductOperationObserved", limit=500)
+        holds = [
+            payload["subject"]["analyst_admission_gate_hold_us"]
+            for row in recorded.items
+            if (payload := row.envelope.inline_safe_payload or {}).get("operation")
+            == "AGENT_ANSWER_SUBMIT"
+            and payload.get("phase") == "RETURNED"
+            and "analyst_admission_gate_hold_us" in payload.get("subject", {})
+        ]
+        assert len(holds) == 15 and all(isinstance(value, int) and value >= 0 for value in holds)
+        assert {response["status"] for response in responses.values()} <= {
+            "CORRECT",
+            "ACCEPTED",
+            "DONE",
+            "REFUSED",
+        }
+        assert all(
+            response.get("failure_code") != "agent_bundle.admission_busy"
+            for response in responses.values()
+        )
+        assert responses[0]["status"] == "CORRECT"
+        assert client.request(requests[0]) == responses[0]
+        accepted = next(
+            index for index, response in responses.items() if response["status"] == "ACCEPTED"
+        )
+        assert responses[accepted]["task_lifecycle"]
+        before = len(registry.tasks())
+        assert client.request(requests[accepted]) == responses[accepted]
+        assert len(registry.tasks()) == before
+        refused = next(
+            index
+            for index, response in responses.items()
+            if response.get("failure_code") == "task_control.queue_full"
+        )
+        write_queue_setting(
+            workspace / "runtime", 2, chosen_by="HUMAN", chosen_at=now, field="tasks_waiting"
+        )
+        assert client.request(requests[refused])["status"] == "ACCEPTED"
+    finally:
+        first_release.set()
+        task_release.set()
+
+
+def _keyed_legacy_correction_is_not_replayed_but_new_correction_is(host, monkeypatch):
+    service, client, _workspace, _goal, answer, bundle = host
+    invalid = {**answer, "findings": [dict(item) for item in answer["findings"]]}
+    invalid["findings"][0]["cite"] = ["S999"]
+    request, made = bundle("legacy", invalid)
+    original = committee.answered
+
+    def legacy(store, floor, member, body, now, file, **kwargs):
+        return original(store, floor, member, body, now, file)
+
+    with monkeypatch.context() as old:
+        old.setattr(committee, "answered", legacy)
+        first = client.request(request)
+    second = client.request(request)
+    third = client.request(request)
+    assert (first["answer_number"], second["answer_number"]) == (1, 2)
+    assert second == third
+    floor = committee.thread_of(
+        service.session.operations.goals.store, committee.thread_id(made["bundle_reference"])
+    )
+    corrections = [message for message in floor.messages if message.get("kind") == "CORRECTION"]
+    assert len(corrections) == 2
+    assert "correction_reference" not in corrections[0]
+    assert corrections[1]["correction_reference"]
+
+
+def _a_correction_cut_short_is_completed_once(host, monkeypatch, *, filed: bool):
+    """A keyed correction stopped after its record was filed is recovered as answer one on retry;
+    one stopped before it was filed is evaluated once, normally. Either way the thread holds one
+    answer and one correction, the answer being the intent filed before the record."""
+    service, client, _workspace, _goal, answer, bundle = host
+    invalid = {**answer, "findings": [dict(item) for item in answer["findings"]]}
+    invalid["findings"][0]["cite"] = ["S999"]
+    request, made = bundle("filed" if filed else "unfiled", invalid)
+    artifacts = service.review.artifacts
+    publish = artifacts.publish
+    if filed:
+        from alphalattice.protocols.actor_execution.answers import AgentRun
+
+        first_agent = AgentRun(host="codex", session_id="original", basis="NOT_OBSERVED")
+        client._test_session = "original"
+
+    def stopped(*args, **kwargs):
+        raise RuntimeError("synthetic stop")
+
+    def unfiled(category, *args, **kwargs):
+        if category == ANSWER_CATEGORY:
+            raise RuntimeError("synthetic stop before the record")
+        return publish(category, *args, **kwargs)
+
+    with monkeypatch.context() as cut:
+        if filed:
+            cut.setattr(committee, "answered", stopped)
+        else:
+            cut.setattr(artifacts, "publish", unfiled)
+        try:
+            first = client.request(request)
+        except (RuntimeError, AssertionError):  # the client's own check of the Host's 500
+            first = {}
+    assert first.get("status") != "CORRECT"
+    if filed:
+        client._test_session = "retry"
+    retried = client.request(request)
+    assert retried["status"] == "CORRECT"
+    if filed:
+        assert retried["recorded_agent"] == first_agent.model_dump(mode="json")
+    assert retried["answer_number"] == 1  # never a second answer counted for the first
+    if filed:
+        client._test_session = "original"
+    assert client.request(request) == retried
+    floor = committee.thread_of(
+        service.session.operations.goals.store, committee.thread_id(made["bundle_reference"])
+    )
+    said = [m for m in floor.messages if m["kind"] in {"ANSWER", "CORRECTION"}]
+    assert [m["kind"] for m in said] == ["ANSWER", "CORRECTION"]
+    assert said[1]["reply_to"] == said[0]["id"]
+    assert said[0]["intended_reference"] == said[1]["correction_reference"]
+    if not filed:  # an unfiled correction intent cannot become an acceptance of another record
+        from threading import RLock
+        from types import SimpleNamespace
+
+        from alphalattice.control.product_host.composition import committee_answer
+        from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+        pending = {
+            "id": "pending",
+            "role": "ANALYST",
+            "kind": "ANSWER",
+            "answer_digest": str(canonical_hash(invalid)),
+            "intended_reference": "unfiled",
+        }
+        mock_floor = SimpleNamespace(
+            messages=[pending],
+            author_session=None,
+            opened={"session": ["codex", "first"], "update_task_id": "task"},
+        )
+        rows = []
+
+        def append(_store, _floor, _now, **row):
+            rows.append(row)
+            return "new-answer"
+
+        committee_answer.file_answer(
+            SimpleNamespace(lock=RLock()),
+            mock_floor,
+            ("ANALYST", "bundle", invalid),
+            {"status": "ACCEPTED", "answer_reference": "other"},
+            None,
+            lambda *_: None,
+            correction_reference=None,
+            floor_type=SimpleNamespace,
+            speaker=lambda *_: "agent",
+            accepted=lambda _: None,
+            append=append,
+        )
+        assert [row["kind"] for row in rows] == ["ANSWER", "ACCEPTANCE"] and rows[1][
+            "reply_to"
+        ] == "new-answer"
+
+
+def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch):
+    service, client, _workspace, _goal, answer, bundle = host
+    invalid = {**answer, "findings": [dict(item) for item in answer["findings"]]}
+    invalid["findings"][0]["cite"] = ["S999"]
+    request, _made = bundle("busy", invalid)
+    client._test_session = "specialist-session"
+    # A first bind under a held gate is another case's; this case starts bound.
+    client.request(
+        {"operation": "EVIDENCE_PREVIEW", "result_hash": service.review.latest_result_hash()}
+    )
+    gate = service.session.session.mutation_gate
+    try_hold = gate.try_hold
+
+    @contextmanager
+    def short_wait(*, timeout_seconds):
+        with try_hold(timeout_seconds=min(timeout_seconds, 0.5)):
+            yield
+
+    monkeypatch.setattr(gate, "try_hold", short_wait)
+    from alphalattice.control.workspace_runtime import mutation_gate
+
+    monkeypatch.setattr(mutation_gate, "DEFAULT_WAIT_SECONDS", 0.05, raising=False)
+    application = service.session.web.application
+    body = json.dumps({"operation": "FEATURE_CATALOG_PLAN", "feature_document": {}}).encode()
+    admitted = AdmittedRequest(
+        route=application.routes[("POST", "/api/client/operations")],
+        asset=None,
+        query={},
+        content_length=len(body),
+        issues_session=False,
+        provenance=RequestProvenance(),
+    )
+    entered, release = threading.Event(), threading.Event()
+
+    def hold_background():
+        with gate.hold():
+            entered.set()
+            assert release.wait(15)
+
+    holder = threading.Thread(
+        target=lambda: mutation_gate.run_background(
+            hold_background, "AGENT_BUNDLE_PREPARE", "held-task"
+        )
+    )
+    holder.start()
+    try:
+        assert entered.wait(5)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            ordinary = pool.submit(application.dispatch, admitted, body)
+            response = ordinary.result(timeout=6)
+            assert response.status == 200  # the operation returns its coded refusal
+            blocked = json.loads(response.body)
+            assert (
+                blocked["status"] == "REFUSED"
+                and blocked["failure_code"] == "workspace_context.writer_busy"
+            )
+            assert blocked["next_requests"]["activity"] == {"operation": "ACTIVITY_RECENT"}
+            pending = pool.submit(client.request, request)
+            completed, _waiting = wait({pending}, timeout=6)
+            # The wait can name whom it waited behind, read without the gate.
+            held = gate.holder()
+            assert held and (held["operation"], held["task_id"]) == (
+                "AGENT_BUNDLE_PREPARE",
+                "held-task",
+            )
+            refused = pending.result(timeout=10)
+    finally:
+        release.set()
+        holder.join(timeout=10)
+    assert not holder.is_alive()
+    assert gate.holder() is None
+    assert completed, "the busy request did not finish while the workspace gate was held"
+    assert refused["status"] == "REFUSED_REVIEW_STALLED"
+    assert refused["failure_code"] == "agent_bundle.admission_busy"
+    assert refused["next_action"] == "REPORT_REVIEW_STALLED"
+    assert refused["message_id"] == "agent_bundle.review_stalled_message"
+    # A known holder is named by the gate's own record.
+    assert refused["blocker"] == {
+        "kind": "WORKSPACE_MUTATION_GATE",
+        "holder": "AGENT_BUNDLE_PREPARE",
+    }
+    assert refused["waited_seconds"] > 0
+    assert refused["next_requests"] == {
+        "activity": {"operation": "ACTIVITY_RECENT"},
+        "tasks": {"operation": "TASKS"},
+    }
+    assert service.session.activity is not None and service.session.activity._ledger is not None
+    # The same-Goal observation is the Host's, not the member's transcript.
+    page = client.activity(limit=200)
+    stalls = [
+        item
+        for item in page["items"]
+        if (item.get("payload") or {}).get("status") == "REFUSED_REVIEW_STALLED"
+    ]
+    assert len(stalls) == 1 and stalls[0]["source_id"] == service.session.activity.source_id
+    payload = stalls[0]["payload"]
+    subject = payload["subject"]
+    assert subject["goal_id"] == _goal and subject["agent_session"] == "specialist-session"
+    assert payload["operation_ref"] in stalls[0]["correlation_ids"]
+    assert (subject["review_stall_blocker"], subject["review_stall_holder"]) == (
+        "WORKSPACE_MUTATION_GATE",
+        "AGENT_BUNDLE_PREPARE",
+    )
+    assert abs(subject["review_stall_wait_us"] / 1_000_000 - refused["waited_seconds"]) < 0.001
+    rows = service.session.activity._ledger.refusal_counts(since_day="2000-01-01")
+    assert (
+        next(row for row in rows if row["failure_code"] == "agent_bundle.admission_busy")["count"]
+        == 1
+    )
+    retried = client.request(request)
+    assert (retried["status"], retried["answer_number"]) == ("CORRECT", 1)
+    # A deadline spent before reaching the gate proves no gate holder or gate wait.
+    from alphalattice.control.product_host.composition import host_answer_submission as submission
+
+    expired_request, _ = bundle("expired", invalid)
+    with monkeypatch.context() as fault:
+        clock, original = {"expired": False}, submission.monotonic
+        fault.setattr(
+            submission, "monotonic", lambda: original() + (1000 if clock["expired"] else 0)
+        )
+
+        def exhausted(**kwargs):
+            clock["expired"] = True
+            return kwargs["admit"](lambda: pytest.fail("expired request reached the gate"))
+
+        fault.setattr(service.review, "submit_analysis", exhausted)
+        expired = client.request(expired_request)
+        assert expired["status"] == "REFUSED" and expired["next_action"] == "RETRY_THE_SAME_ANSWER"
+        assert "blocker" not in expired and "waited_seconds" not in expired
+        statuses = [
+            (item.get("payload") or {}).get("status")
+            for item in client.activity(limit=200)["items"]
+        ]
+        assert statuses.count("REFUSED_REVIEW_STALLED") == 1  # only the actual gate timeout
+
+
+def _a_first_bind_behind_a_held_gate_answers_busy_within_its_deadline(host, monkeypatch):
+    service, client, _workspace, _goal, answer, bundle = host
+    request, _made = bundle("first-bind", answer)
+    client._test_session = "specialist-session"  # never bound: this request binds it first
+    monkeypatch.setattr(answer_owner, "SUBMISSION_WAIT_SECONDS", 1.0)
+    gate = service.session.session.mutation_gate
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with gate.hold():
+            pending = pool.submit(client.request, request)
+            completed, _waiting = wait({pending}, timeout=6)
+        refused = pending.result(timeout=10)
+    assert completed, "the first bind waited past its deadline behind the held gate"
+    assert (refused["status"], refused["failure_code"]) == (
+        "REFUSED",
+        "agent_bundle.admission_busy",
+    )
+    assert client.request(request)["status"] == "ACCEPTED"  # nothing was filed: it binds now
+
+
+def _authority_change_during_preflight_refuses_without_filing(host, monkeypatch):
+    service, client, _workspace, _goal, answer, bundle = host
+    request, made = bundle("stale", answer)
+    packet_opened, release = threading.Event(), threading.Event()
+    gate = service.session.session.mutation_gate
+    actual = gate.try_hold
+
+    @contextmanager
+    def paused(*, timeout_seconds):
+        packet_opened.set()
+        if not release.wait(10):
+            raise TimeoutError("test did not release admission")
+        with actual(timeout_seconds=timeout_seconds):
+            yield
+
+    monkeypatch.setattr(gate, "try_hold", paused)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(client.request, request)
+            assert packet_opened.wait(10)
+            with actual(timeout_seconds=1):
+                adapter = service.review.evidence_task_adapter
+                adapter.resources = replace(adapter.resources, minimum_entity_coverage=0.25)
+            release.set()
+            refusal = pending.result(timeout=10)
+        assert refusal["status"] == "REFUSED"
+        assert refusal["failure_code"] == "agent_bundle.preparation_stale"
+        floor = committee.thread_of(
+            service.session.operations.goals.store, committee.thread_id(made["bundle_reference"])
+        )
+        assert not any(
+            message.get("kind") in {"CORRECTION", "ACCEPTANCE"} for message in floor.messages
+        )
+    finally:
+        release.set()
+
+
+def _legacy_acceptance_keeps_receipt_and_offers_the_task_read(host, monkeypatch):
+    service, client, _workspace, _goal, answer, bundle = host
+    request, made = bundle("legacy-accepted", answer)
+    store = service.session.operations.goals.store
+    attribute = store.attribute
+
+    def legacy(goal_id, entry):
+        message = entry.get("committee_message")
+        if isinstance(message, dict) and message.get("kind") == "ACCEPTANCE":
+            entry = {
+                **entry,
+                "committee_message": {k: v for k, v in message.items() if k != "answer_response"},
+            }
+        return attribute(goal_id, entry)
+
+    with monkeypatch.context() as old:
+        old.setattr(store, "attribute", legacy)
+        first = client.request(request)
+    assert first["status"] == "ACCEPTED"
+    store = service.session.operations.goals.store
+    thread = committee.thread_id(made["bundle_reference"])
+    before = committee.thread_of(store, thread).messages
+    tasks = len(service.registry.tasks())
+    replay = client.request(request)
+    assert replay["status"] == "ACCEPTED"
+    assert replay["answer_reference"] == first["answer_reference"]
+    assert replay["receipt"] == first["receipt"]
+    assert replay["task_id"] == first["task_id"]
+    assert replay.get("task_lifecycle") == "UNKNOWN"
+    assert replay["next_requests"]["task"] == {"operation": "STATUS", "task_id": first["task_id"]}
+    assert len(service.registry.tasks()) == tasks
+    assert committee.thread_of(store, thread).messages == before
+
+
+def _held_answer_turn_returns_busy_then_allows_retry(host, monkeypatch, *, same_key):
+    service, client, _workspace, _goal, answer, bundle = host
+    value = {**answer, "findings": [dict(item) for item in answer["findings"]]}
+    if same_key:
+        value["findings"][0]["cite"] = ["S999"]
+    first, _made = bundle("turn-first", value)
+    second = first if same_key else bundle("turn-second", value)[0]
+    entered, release = threading.Event(), threading.Event()
+    if same_key:
+        owner, name = service.review, "submit_analysis"
+    else:
+        owner, name = service.review.evidence_task_adapter, "validate_submission"
+    actual = getattr(owner, name)
+    first_call = True
+
+    def held(*args, **kwargs):
+        nonlocal first_call
+        if first_call:
+            first_call = False
+            entered.set()
+            if not release.wait(10):
+                raise TimeoutError("test did not release the first answer")
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(owner, name, held)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            ongoing = pool.submit(client.request, first)
+            assert entered.wait(10)
+            # Old checkouts have no deadline owner; the same concurrency check still runs.
+            deadline_owner = sys.modules.get(
+                "alphalattice.control.product_host.composition.host_answer_submission"
+            )
+            if deadline_owner is not None:
+                original_budget = deadline_owner.SUBMISSION_WAIT_SECONDS
+                monkeypatch.setattr(deadline_owner, "SUBMISSION_WAIT_SECONDS", 0.5)
+            waiting = pool.submit(client.request, second)
+            completed, _pending = wait({waiting}, timeout=3)
+            release.set()
+            first_result = ongoing.result(timeout=10)
+            second_result = waiting.result(timeout=10)
+        assert completed, "the answer turn did not return a bounded result"
+        assert second_result["status"] == "REFUSED"
+        assert second_result["failure_code"] == "agent_bundle.admission_busy"
+        assert second_result["next_action"] == "RETRY_THE_SAME_ANSWER"
+        if deadline_owner is not None:
+            monkeypatch.setattr(deadline_owner, "SUBMISSION_WAIT_SECONDS", original_budget)
+        retried = client.request(second)
+        if same_key:
+            assert first_result["status"] == "CORRECT" and retried == first_result
+        else:
+            assert retried["status"] in {"ACCEPTED", "DONE", "REFUSED"}
+        rows = service.session.activity._ledger.refusal_counts(since_day="2000-01-01")
+        assert (
+            next(row for row in rows if row["failure_code"] == "agent_bundle.admission_busy")[
+                "count"
+            ]
+            == 1
+        )
+    finally:
+        release.set()
+
+
+@pytest.mark.proves("composition.keyed_analyst_submissions_keep_first_outcome")
+@pytest.mark.parametrize(
+    "case",
+    [
+        "fanout",
+        "legacy",
+        "busy",
+        "first-bind",
+        "authority-change",
+        "legacy-accepted",
+        "same-key-turn",
+        "same-packet-turn",
+        pytest.param("cut-after-filing", marks=pytest.mark.untyped_failure),
+        pytest.param("cut-before-filing", marks=pytest.mark.untyped_failure),
+    ],
+)
+def test_keyed_analyst_submissions_keep_first_outcome(host, monkeypatch, case):
+    if case.startswith("cut-"):
+        _a_correction_cut_short_is_completed_once(
+            host, monkeypatch, filed=case == "cut-after-filing"
+        )
+        return
+    if case in {"same-key-turn", "same-packet-turn"}:
+        _held_answer_turn_returns_busy_then_allows_retry(
+            host, monkeypatch, same_key=case == "same-key-turn"
+        )
+        return
+    {
+        "fanout": _fifteen_keyed_submits_finish_while_a_task_runs_and_retries_keep_their_outcomes,
+        "legacy": _keyed_legacy_correction_is_not_replayed_but_new_correction_is,
+        "busy": _busy_refusal_is_counted_and_the_same_answer_can_be_resent,
+        "first-bind": _a_first_bind_behind_a_held_gate_answers_busy_within_its_deadline,
+        "authority-change": _authority_change_during_preflight_refuses_without_filing,
+        "legacy-accepted": _legacy_acceptance_keeps_receipt_and_offers_the_task_read,
+    }[case](host, monkeypatch)

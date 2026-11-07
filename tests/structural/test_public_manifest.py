@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+import textwrap
 from collections import Counter
 from pathlib import Path
 from unittest.mock import Mock
@@ -35,6 +36,7 @@ _REVIEW_FIXTURE = "sk-" + "X" * 40 + " x@example.invalid"
 _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 @pytest.mark.parametrize(
     ("path", "kind", "rule"),
     [
@@ -66,9 +68,9 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         ("tests/integration/evaluation/test_unlisted_scope_contract.py", "PUBLIC", "PUBLIC_TEST"),
         ("tests/structural/test_catalog_gate.py", "PRIVATE", "PRIVATE_TEST"),
         ("src/devtools/evaluation/forms.py", "PUBLIC", "PUBLIC_VERIFICATION"),
-        ("tests/evaluation/test_forms.py", "PUBLIC", "PUBLIC_TEST"),
+        ("tests/integration/evaluation/test_forms.py", "PUBLIC", "PUBLIC_TEST"),
         (
-            "tests/portfolio_strategy_lab/test_native_answer_route_class.py",
+            "tests/integration/local_application/test_native_answer_route_class.py",
             "PRIVATE",
             "PRIVATE_TEST",
         ),
@@ -86,7 +88,7 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         ("product-design/execution-plans/plan.md", "PRIVATE", "PRIVATE_RECORD"),
         ("scripts/agent_eval/one.py", "PRIVATE", "PRIVATE_QA_TOOL"),
         ("scripts/qa_retention.py", "PRIVATE", "PRIVATE_QA_TOOL"),
-        ("tests/researcher_methodology_surface/test_qa_retention.py", "PRIVATE", "PRIVATE_TEST"),
+        ("tests/integration/product_host/test_qa_retention.py", "PRIVATE", "PRIVATE_TEST"),
         ("config/agent-eval/one.yaml", "PRIVATE", "PRIVATE_QA_TOOL"),
         (".claude/agents/research.md", "PUBLIC", "PUBLIC_INTEGRATION"),
         (".codex/config.toml", "PUBLIC", "PUBLIC_INTEGRATION"),
@@ -111,6 +113,7 @@ def test_public_manifest_prioritizes_private_rules_and_never_guesses(path, kind,
     assert decision[2]
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_the_full_release_closure_check_names_its_private_inventory_input():
     assert classify("tests/structural/test_public_release_closure.py", set(), set(), set()) == (
         "PRIVATE",
@@ -119,7 +122,7 @@ def test_the_full_release_closure_check_names_its_private_inventory_input():
     )
     # Private by what it is, wherever it lives: a private data schema, or a test declaring
     # PRIVATE_TEST:, each read as parsed; what cannot be parsed cannot show it is public, so it is
-    # private too. Content only ever makes a file private (CHECK-PLAYPEN-PUBLIC-SAFE).
+    # private too. Content only ever makes a file private.
     blobs = {
         "config/anywhere/listing.json": b'{"schema": "alphalattice.release.public-manifest"}',
         "config/anywhere/escaped.json": b'{"schema": "alphalattice.tests\\u002dunregistered.v1"}',
@@ -144,6 +147,7 @@ def test_the_full_release_closure_check_names_its_private_inventory_input():
         )
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 @pytest.mark.parametrize(
     "path", ["", "../src/one.py", "/src/one.py", "src\\one.py", "C:/one.py", "src/one\0.py"]
 )
@@ -152,6 +156,7 @@ def test_public_manifest_rejects_unsafe_paths(path):
         validate_path(path)
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_public_manifest_hashes_supplied_git_bytes_and_covers_every_file():
     sha = "a" * 40
     census = {"base": "b" * 40, "modules": [{"path": "src/alphalattice/main.py", "class": "LIVE"}]}
@@ -193,6 +198,7 @@ def test_public_manifest_hashes_supplied_git_bytes_and_covers_every_file():
     )
 
 
+@pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_generate_walks_development_labels_once_and_merges_its_findings(
     monkeypatch, tmp_path, capsys
 ):
@@ -250,6 +256,7 @@ def test_generate_walks_development_labels_once_and_merges_its_findings(
     assert cold == uncached == generate("a" * 40, blobs, dict.fromkeys(blobs, "100644"))
 
 
+@pytest.mark.proves("pipeline.public_review_never_copies_a_disclosure")
 def test_public_manifest_records_locations_without_copying_disclosures():
     secret = "sk-" + "X" * 40
     session = "12345678-1234-4123-8123-123456789abc"
@@ -281,6 +288,7 @@ def test_public_manifest_records_locations_without_copying_disclosures():
     assert all(r["path"] == "src/public.py" and r["line"] > 0 for r in findings)
 
 
+@pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_development_label_ratchet_pins_each_public_files_count_and_spelling():
     owner = "src/public.py"
     private = "experience/private.md"
@@ -351,7 +359,7 @@ def test_development_label_ratchet_pins_each_public_files_count_and_spelling():
     owner_path = "config/registries/owners-map.json"
     alias, other, prefix = "C" + "1", "C" + "2", "V" + "900."
     source = "src/alphalattice/control/product_host/composition/committee_materials.py"
-    test = "tests/portfolio_strategy_lab/test_committee.py"
+    test = "tests/integration/product_host/test_committee.py"
     form = {
         "name": "component floor alias",
         "pattern": r"C[1-9][0-9]*",
@@ -428,6 +436,7 @@ def test_development_label_ratchet_pins_each_public_files_count_and_spelling():
     assert len(internal_id_ratchet(changed, choices, catalog)["violations"]) == 1
 
 
+@pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary_words():
     """Ordinary words stay prose while qualified line and card forms remain labels."""
     cards = ["UI", "LEAD", "IS", "ACCEPT", "BADGE", "JOURNEY", "LAUNCH", "LAWS", "SEAL"]
@@ -439,6 +448,7 @@ def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary
     ] == [ux, perf, fix, cards[6], cards[4]]
 
 
+@pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_committed_development_label_allowance_cannot_grow_or_reset(
     tmp_path, synthetic_history, monkeypatch
 ):
@@ -456,6 +466,49 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
     baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
     commit("Establish synthetic allowance")
     validate_internal_id_history(tmp_path, "HEAD")
+    # A mapped move carries its allowance whole; anything else is refused by name.
+    moved, table = "src/moved.py", tmp_path / "config/registries/test-layout.json"
+    table.parent.mkdir(parents=True)
+    base = _git("rev-parse", "HEAD")
+    extra = "SYNTHETIC-CARD"
+    for named, occurrences, refusal in (
+        ({moved: owner}, {moved: {label: 1}}, None),
+        ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),
+        ({moved: owner}, {moved: {label: 2}}, "labels differ"),
+        ({}, {moved: {label: 1}}, "map does not name it"),
+        ({moved: "src/absent.py"}, {moved: {label: 1}}, "holds no allowance"),
+        ({moved: owner}, {owner: {label: 1}, moved: {label: 1}}, "keeps its allowance"),
+    ):
+        rows = {new: {"domain": "d", "old": old, "reason": "r"} for new, old in named.items()}
+        table.write_text(json.dumps({"files": rows}), encoding="utf-8", newline="\n")
+        baseline.write_text(json.dumps({**policy, "occurrences": occurrences}), encoding="utf-8")
+        _git("add", "--all")
+        candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Move")
+        if refusal is None:
+            validate_internal_id_history(tmp_path, candidate)
+        else:
+            with pytest.raises(ValueError, match=rf"allowance increased.*{refusal}"):
+                validate_internal_id_history(tmp_path, candidate)
+    held = {**policy, "occurrences": {owner: {label: 1}, moved: {label: 1}}}
+    baseline.write_text(json.dumps(held), encoding="utf-8", newline="\n")
+    _git("add", "--all")
+    both = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Both")
+    baseline.write_text(
+        json.dumps({**policy, "occurrences": {moved: {label: 2}}}), encoding="utf-8", newline="\n"
+    )
+    _git("add", "--all")
+    grown = _git("commit-tree", _git("write-tree"), "-p", both, "-m", "Grown")
+    with pytest.raises(ValueError, match=r"allowance increased.*an allowance of its own"):
+        validate_internal_id_history(tmp_path, grown)
+    table.write_text("not a map", encoding="utf-8", newline="\n")
+    baseline.write_text(
+        json.dumps({**policy, "occurrences": {moved: {label: 1}}}), encoding="utf-8"
+    )
+    _git("add", "--all")
+    candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Unreadable")
+    with pytest.raises(ValueError, match="test layout map is unreadable"):
+        validate_internal_id_history(tmp_path, candidate)
+    _git("reset", "--hard", base)
     # Long valid histories, including a merge, acquire immutable inputs in bounded batches.
     branch = _git("rev-parse", "HEAD")
     stream = b""
@@ -576,6 +629,7 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
         validate_internal_id_history(tmp_path, "HEAD")
 
 
+@pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_first_landing_freezes_only_its_prepolicy_anchors_labels(tmp_path, synthetic_history):
     """First landing admits anchor labels, then keeps its allowance, source and format fixed."""
     git, commit = synthetic_history
@@ -624,6 +678,7 @@ def test_first_landing_freezes_only_its_prepolicy_anchors_labels(tmp_path, synth
             )
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_candidate_script_needs_a_consumer_outside_release_policy():
     script = "scripts/probe_panel_identity.py"
     blobs = {
@@ -641,6 +696,7 @@ def test_candidate_script_needs_a_consumer_outside_release_policy():
     assert script in {row["path"] for row in manifest["public"]}
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_candidate_script_reference_composed_from_path_parts_is_public():
     script = "scripts/run_alpha_model_adapter_parity.py"
     blobs = {
@@ -656,6 +712,7 @@ def test_candidate_script_reference_composed_from_path_parts_is_public():
     assert script in {row["path"] for row in manifest["public"]}
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_release_audit_tool_and_pin_stay_private_even_with_public_consumers():
     rule = next(row for row in RULES if row["rule"] == "PRIVATE_RELEASE_AUDIT")
     assert rule["patterns"]
@@ -668,6 +725,7 @@ def test_release_audit_tool_and_pin_stay_private_even_with_public_consumers():
         )
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_private_test_trees_keep_all_file_kinds_out_of_public_scope():
     rule = next(row for row in RULES if row["rule"] == "PRIVATE_TEST")
     trees = [pattern for pattern in rule["patterns"] if pattern.endswith("/**")]
@@ -682,11 +740,12 @@ def test_private_test_trees_keep_all_file_kinds_out_of_public_scope():
             )
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 @pytest.mark.parametrize(
     "path",
     [
-        "tests/portfolio_strategy_lab/test_workbench_readback.py",
-        "tests/portfolio_strategy_lab/test_workbench_owner_words.py",
+        "tests/integration/local_application/test_workbench_readback.py",
+        "tests/integration/portfolio_strategy_lab/test_workbench_owner_words.py",
         "tests/portfolio_strategy_lab/workbench_dom.cjs",
         "tests/portfolio_strategy_lab/workbench_minor_ui.cjs",
         "tests/structural/test_workbench_agent_parity.py",
@@ -700,24 +759,25 @@ def test_workbench_verification_needs_the_private_ui_qa_kit(path):
     )
 
 
+@pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 @pytest.mark.parametrize(
     ("path", "reason"),
     [
-        ("tests/alternative_evidence_desk/test_evidence_review_route.py", None),
+        ("tests/integration/alternative_evidence/test_evidence_review_route.py", None),
         (
-            "tests/portfolio_strategy_lab/test_ui_qa_launch_session.py",
+            "tests/integration/product_host/test_ui_qa_launch_session.py",
             "imports the private UI QA launch-session owner and executes its private drivers",
         ),
         (
-            "tests/portfolio_strategy_lab/test_ui_goal_composer.py",
+            "tests/integration/product_host/test_ui_goal_composer.py",
             "requires the private UI QA browser and kit from its embedded Node.js program",
         ),
         (
-            "tests/portfolio_strategy_lab/test_workbench_portfolio_provenance.py",
+            "tests/integration/portfolio_strategy_lab/test_workbench_portfolio_provenance.py",
             "runs the private Portfolio provenance harness and UI QA page census",
         ),
         (
-            "tests/portfolio_strategy_lab/test_workbench_recovery_stack.py",
+            "tests/integration/task_control/test_workbench_recovery_stack.py",
             "runs the private recovery-stack harness and UI QA stack census",
         ),
         (
@@ -784,6 +844,88 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public():
     assert files and all(type(seconds) is float and seconds >= 0 for seconds in durations.values())
     split = {path: classify(path, set(), set(), set())[0] for path in files}
     assert {path: kind for path, kind in split.items() if kind != "PUBLIC"} == {}
+
+
+@pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")
+@pytest.mark.parametrize("failure", ("timeout", "crash", "prior-timeout", "malformed"))
+def test_public_worker_timeout_is_visible_without_relabeling_a_crash(tmp_path, failure):
+    """The workflow's real worker plugin reports a timed-out worker but not an ordinary crash."""
+    from tests.structural.pytest_support import child_environment
+
+    workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text("utf-8")
+    plugin = workflow.split("<<'PY'\n", 1)[1].split("\n          PY\n", 1)[0]
+    plugin = textwrap.dedent(plugin).replace("HANG_SECONDS = 900", "HANG_SECONDS = 2", 1)
+    (tmp_path / "ci_worker_diagnostics.py").write_text(plugin, encoding="utf-8")
+    body = "Event().wait()" if failure == "timeout" else "os._exit(5)"
+    if failure == "prior-timeout":
+        body = (
+            "log = Path(os.environ['PYTEST_WORKER_DIAGNOSTICS']) / "
+            "(os.environ['PYTEST_XDIST_WORKER'] + '-' + str(os.getpid()) + '.log')\n"
+            "    with log.open('a', encoding='utf-8') as stream:\n"
+            "        for event in [{'event': 'start', 'node': 'previous'}, "
+            "{'event': 'timeout', 'node': 'previous', 'seconds': 2.0}, "
+            "{'event': 'end', 'node': 'previous'}, "
+            "{'event': 'start', 'node': 'test_probe.py::test_probe'}]:\n"
+            "            stream.write(json.dumps(event) + '\\n')\n"
+            "    os._exit(5)"
+        )
+    if failure == "malformed":
+        body = (
+            "log = Path(os.environ['PYTEST_WORKER_DIAGNOSTICS']) / "
+            "(os.environ['PYTEST_XDIST_WORKER'] + '-' + str(os.getpid()) + '.log')\n"
+            "    with log.open('a', encoding='utf-8') as stream:\n"
+            "        stream.write('{\\n')\n"
+            "    os._exit(5)"
+        )
+    (tmp_path / "test_probe.py").write_text(
+        (
+            "import json, os\nfrom pathlib import Path\n"
+            "from threading import Event\ndef test_probe():\n    "
+        )
+        + body
+        + "\n",
+        encoding="utf-8",
+    )
+    diagnostics = tmp_path / "diagnostics"
+    diagnostics.mkdir()
+    env = child_environment(
+        PYTHONPATH=str(tmp_path),
+        PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+        PYTEST_WORKER_DIAGNOSTICS=str(diagnostics),
+    )
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "xdist",
+            "-p",
+            "pytest_timeout",
+            "-p",
+            "ci_worker_diagnostics",
+            "-n",
+            "1",
+            "--max-worker-restart=0",
+            "--timeout-method=thread",
+            "-q",
+            "test_probe.py",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    visible = run.stdout + run.stderr
+    assert run.returncode != 0 and "crashed while running" in visible
+    assert ('"event": "timeout"' in visible) == (failure == "timeout")
+    if failure == "timeout":
+        assert "test_probe.py::test_probe" in visible and '"seconds": 2.0' in visible
+        assert visible.index('"event": "timeout"') < visible.index("crashed while running")
+    if failure == "malformed":
+        assert "timeout diagnostic unavailable" in visible and "INTERNALERROR" not in visible
 
 
 @pytest.mark.proves("pipeline.public_durations_come_from_junit")
@@ -1022,6 +1164,7 @@ def test_the_durations_come_from_junit_keep_the_latest_run_and_leave_out_private
             assert json.loads(result.read_text(encoding="utf-8"))["status"] == "unknown"
 
 
+@pytest.mark.proves("pipeline.public_review_never_copies_a_disclosure")
 @pytest.mark.parametrize(
     "path,text,rule,mode,admitted",
     [

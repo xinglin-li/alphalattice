@@ -1,5 +1,5 @@
 # AlphaLattice release notes
-Last checked: 2026-11-05 against 0.2.4
+Last checked: 2026-11-04 against 0.2.4
 
 Latest released version: [0.2.4](#024). Earlier measurements describe their own versions.
 

@@ -3,6 +3,36 @@
   "owner": "devtools.testing",
   "note": "Each requirement a test proves, registered before its test exists. A row holds its id (<owner's last segment>.<words>), one description sentence, the owner package, its layer (unit, integration, contract, e2e or native; a layer's limit is test-sizes.json's for its size) and its seconds budget; a test names the ids it proves with @pytest.mark.proves. Holders, lifecycle (proposed, active, quarantined, retired) and the commit that added a row are derived, never stored. An id is never reused: a retired row stays. Find before writing one: python scripts/tests_registry.py find \"<words>\".",
   "entries": {
+    "alpha_research.sealed_selection_survives_added_members": {
+      "description": "If members added later could move a sealed inner selection, an Alpha study's recorded choice would stop matching the evidence it came from.",
+      "owner": "alphalattice.investment.alpha_research",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "alpha_research.verification_hash_covers_every_executed_module": {
+      "description": "If an executed scoring or outcome module sat outside the verified hash, changed code would keep an old identity and pass as already verified.",
+      "owner": "alphalattice.investment.alpha_research",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "alternative_evidence.runtime_identity_binds_what_decides_selection": {
+      "description": "If the Evidence runtime's identity left out an owner of selection or a capability, reviews could reuse retrieval from a different runtime.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "alternative_evidence.runtime_identity_refuses_a_changed_capability": {
+      "description": "If a workspace installed an Evidence runtime whose semantic capability differs, its reviews would run on a model its identity never named.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "architecture.an_unresolved_change_stops_the_runner": {
+      "description": "A change no consumer map resolves stops the verification runner at its exit code; it never plans nothing and passes.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 5
+    },
     "architecture.discovered_imports_kept_by_place_and_bytes": {
       "description": "A module's discovered imports are kept in the process by its place under the source root and its bytes, so changed bytes or another place miss and a read or parse error is raised every time.",
       "owner": "devtools.architecture",
@@ -60,19 +90,20 @@
     "composition.session_observation_attribution": {
       "description": "A named sandbox-bound Session keeps its request attribution while an anonymous request remains unassigned and Activity names that attribution unknown.",
       "owner": "alphalattice.control.product_host.composition",
-      "layer": "e2e",
-      "seconds": 30,
-      "exception": {
-        "kinds": ["journey"],
-        "why": "The requirement follows a real request through the loopback Host in an existing holder. When TEST-LAYOUT-ALL admits loopback to integration, move the holder there and remove this exception.",
-        "decided": "2026-11-05: Lead granted the journey for this existing holder."
-      }
+      "layer": "integration",
+      "seconds": 30
     },
     "composition.workspace_binding_usage_unknown": {
       "description": "An unreadable workspace-owned Session binding makes usage unavailable without hiding other readable Session results or treating the binding as absent.",
       "owner": "alphalattice.control.product_host.composition",
-      "layer": "contract",
+      "layer": "integration",
       "seconds": 5
+    },
+    "data_platform.session_authority_is_content_addressed": {
+      "description": "The Host resolves one trading calendar: weekends are covered but are not sessions, and one range always seals the same axis while a narrower range seals another.",
+      "owner": "alphalattice.control.data_platform",
+      "layer": "integration",
+      "seconds": 2
     },
     "evaluation.continuation_snapshot_integrity": {
       "description": "A native acceptance continuation admits only the exact tracked bytes written by its recorded prestart configure and refuses other tracked changes.",
@@ -111,6 +142,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.native_leg_stops_by_name": {
+      "description": "One command starts, resumes and collects a native leg of either host, and every stop carries a named reason and its evidence.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5
+    },
     "evaluation.persistent_golden_root_follows_its_setting": {
       "description": "The persistent golden cache root is the operator's shared setting when present and the checkout's own folder when absent.",
       "owner": "devtools.evaluation",
@@ -122,6 +159,66 @@
       "owner": "devtools.evaluation",
       "layer": "integration",
       "seconds": 10
+    },
+    "factor_research.curation_and_handoff_are_durable_without_execution": {
+      "description": "If Factor curation or Alpha handoff trained a model or depended on its actor, a recorded decision would not reopen safely.",
+      "owner": "alphalattice.foundation.factor_research",
+      "layer": "integration",
+      "seconds": 30
+    },
+    "feature_engine.closure_history_folds_its_revisions": {
+      "description": "If the closure ledger rebuilt a history from anything but its map and revisions, a Feature panel would mix sector facts from another time.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "feature_engine.closure_ledger_survives_a_failed_commit": {
+      "description": "If the closure ledger lost its place across a failed store write or misread its revisions, Feature panels would rebuild wrongly or recompute published work.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "feature_engine.closure_store_takes_only_derived_identities": {
+      "description": "If the coordinator handed the store identities it never derived, a Feature store could hold its data under another closure's name.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "feature_engine.current_pointer_swaps_fail_closed": {
+      "description": "If the current panel pointer moved without its compare and swap, two writers could leave readers on a publication neither finished.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "feature_engine.factor_handoff_refuses_a_changed_input": {
+      "description": "If a Factor handoff accepted a corrupt copy, a changed source or a tampered pool, Alpha research would train on inputs its binding never named.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 30
+    },
+    "feature_engine.handoff_binds_logical_closure_without_mutating_inputs": {
+      "description": "If an Alpha handoff changed its original Factor inputs or failed to bind the logical panel closure, a later reader could use a different dataset.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 30
+    },
+    "feature_engine.logical_identity_moves_only_with_content": {
+      "description": "If logical identity followed encoding, write batches or policy instead of content, reuse would serve changed values or rebuild unchanged panels.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "feature_engine.panel_chunks_stay_bound_to_their_writer": {
+      "description": "If a panel chunk's bytes or hash drifted from the binding that wrote it, a reader would accept data under an identity it never had.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "feature_engine.source_prefix_proof_tells_changed_rows_apart": {
+      "description": "If materialization identity blurred null, NaN, signed zero or absent rows, or kept a sealed year after a write, stale Feature stores would pass as current.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 5
     },
     "local_application.configure_offers_a_workspace": {
       "description": "A sandboxed configure offers the default new workspace when none exists and a coded choice when existing workspaces need selection.",
@@ -183,11 +280,59 @@
       "layer": "contract",
       "seconds": 10
     },
+    "observation_runtime.accepted_answers_enter_the_ledger_once": {
+      "description": "If one accepted role answer published twice or lost its submitting lead, the ledger would count work that was never one exchange.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "observation_runtime.ledger_has_one_sqlite_writer": {
+      "description": "If two writers shared the store or a reader blocked the writer, ledger rows could interleave or the Host would stall recording.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "observation_runtime.ledger_reads_answer_exactly_or_refuse": {
+      "description": "If a bounded or correlated read followed a wrong run or hid a tampered row, callers would credit evidence the ledger does not hold.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "observation_runtime.ledger_records_each_event_once_and_keeps_history": {
+      "description": "If a repeated, corrected or failed append changed the observation ledger, its record of what happened could no longer be replayed or trusted.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "observation_runtime.ledger_refuses_what_it_must_never_hold": {
+      "description": "If secrets, private cognition or unbacked decisions reached an append, the ledger would keep them durably or claim authority nobody gave.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "observation_runtime.ledger_stays_inside_its_storage_cap": {
+      "description": "If retention ignored the workspace cap or compacted protected rows partially, the ledger would fill the disk or silently lose records it promised to keep.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "integration",
+      "seconds": 5
+    },
     "observation_runtime.process_is_held_to_half_the_machine_or_its_narrower_allowance": {
       "description": "A runner binds its process to at most half the machine's logical processors, or to the narrower allowance it already inherited, and reads the bound back from the operating system.",
       "owner": "alphalattice.control.observation_runtime",
       "layer": "integration",
       "seconds": 4.0
+    },
+    "observation_runtime.usage_recording_exposes_only_safe_health": {
+      "description": "If a usage callback's failure or free text reached owner health, recording could break or private native paths and prose could leak to readers.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.a_boundary_import_is_refused_at_the_gate": {
+      "description": "If the merge gate missed a changed import across the release boundary, a public file would ship depending on private code.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
     },
     "pipeline.code_health_reports_every_row": {
       "description": "The daily code-health report reads sizes, boundaries, growers, dead code, dependencies and complexity from the tree, reuses an unchanged tree's rows, and reads a failed row as unmeasured, never zero.",
@@ -207,6 +352,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "pipeline.development_labels_cannot_grow_in_public": {
+      "description": "If the development-label allowance could grow or reset, internal card and line names would leak into public files with nothing refusing them.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 10
+    },
     "pipeline.flake_quarantine_candidates": {
       "description": "The test-health owner derives quarantine candidates from distinct verified flake observations, registered owners and review dates.",
       "owner": "devtools.pipeline",
@@ -219,11 +370,47 @@
       "layer": "integration",
       "seconds": 10
     },
+    "pipeline.public_closure_needs_every_file_a_public_file_uses": {
+      "description": "If a public file could import, link, run or read a private file, the published checkout would break for its users or point at private work.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
     "pipeline.public_durations_come_from_junit": {
       "description": "The public tests' durations file comes from JUnit records: the latest run of each node wins, skipped and out-of-tree nodes are left out, and an unreadable record refuses by name.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5
+    },
+    "pipeline.public_manifest_settles_every_file_by_rule": {
+      "description": "If the manifest guessed, skipped a file or let a public consumer pull private tools out, private work would escape in the next export.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.public_outputs_need_a_declared_producer": {
+      "description": "If a generated output counted as public without its declaration, write and proved sources, a private path or stale file could ship in the export.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.public_review_never_copies_a_disclosure": {
+      "description": "If the manifest copied a disclosure's text or kept a review after its line changed, a secret could enter Git or an unreviewed edit could ship.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.public_snapshot_holds_only_proved_bytes": {
+      "description": "If the snapshot took a blob the manifest does not prove or added private history, the export would publish bytes nobody reviewed.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "pipeline.public_worker_timeout_diagnostic": {
+      "description": "A public worker crash prints its matching active timeout event while a crash without a timeout stays distinct.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 15
     },
     "pipeline.receipt_classes_every_red": {
       "description": "Each red node and non-passing stage row classes as a defect, flake, slow test, load or tooling from its own evidence, and a red with no evidence reads unclassified, never a defect.",
@@ -248,35 +435,41 @@
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+      "retired": "2026-10-28: a tree-keyed stage cache replaced the per-file input recorder; its holders were deleted with it."
     },
     "pipeline.result_cache_never_trusts_a_bad_entry": {
       "description": "A result-cache entry that is damaged, of another schema or key, or names a path outside its checkout is a miss, and a store or tree that cannot be used turns the cache off by its reason.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+      "retired": "2026-10-28: a tree-keyed stage cache replaced the per-file input recorder; its holders were deleted with it."
     },
     "pipeline.result_cache_refuses_undeclared_inputs": {
       "description": "A recorder observes collection and execution inputs, storing only complete first-attempt passing results and declining opaque readers or bound native predicates without changing test outcomes.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+      "retired": "2026-10-28: a tree-keyed stage cache replaced the per-file input recorder; its holders were deleted with it."
     },
     "pipeline.result_cache_runner_serves_verified_groups": {
       "description": "The runner reuses only verified passing groups, records cache provenance, and runs misses or shadow comparisons without hiding changed or opaque inputs.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 30,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+      "retired": "2026-10-28: a tree-keyed stage cache replaced the per-file input recorder; its holders were deleted with it."
     },
     "pipeline.result_cache_store_stays_within_its_bounds": {
       "description": "The result-cache store drops entries idle past 14 days and then the oldest while it holds more bytes than its cap.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5,
-      "retired": "2026-10-28: RESULT-CACHE-HITS replaced the per-file input recorder with the workshop gate's tree-keyed stage cache; its holders were deleted with it."
+      "retired": "2026-10-28: a tree-keyed stage cache replaced the per-file input recorder; its holders were deleted with it."
+    },
+    "pipeline.shipped_instruction_links_reach_their_targets": {
+      "description": "If a shipped instruction linked outside the checkout, an installed agent would follow a dead path during its first use.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
     },
     "pipeline.stage_runs_each_row_by_one_provider": {
       "description": "A stage run resolves each row on its host to exactly one provider, refusing a row with none or two, and writes a receipt that verifies.",
@@ -287,6 +480,42 @@
     "pipeline.stage_target_is_separate_from_stop": {
       "description": "A stage enforces its declared stop while recording wall time, the reported rows and any unexplained time from which its target breach and timing gap can be derived.",
       "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "pipeline.the_whole_public_tree_closes_at_release": {
+      "description": "If the release tree stopped closing over its manifest, the export would publish a file whose dependency users cannot get, with the gate silent.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 60
+    },
+    "portfolio_strategy_lab.finalization_ledger_closes_each_package_once": {
+      "description": "If finalization repeated a step, closed a permit twice or released another package's receipt, a protected result could publish without its own ledger.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "portfolio_strategy_lab.ledger_index_tells_lost_work_from_tampering": {
+      "description": "If a persisted ledger index could not tell a lost child from a bad index, recovery would rerun tampered work or refuse honest loss.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "portfolio_strategy_lab.listing_axis_order_is_part_of_a_path": {
+      "description": "If reordered listings hashed the same, two different portfolio paths would share one identity and advancement could reuse the wrong one.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "shared_kernel.schema_hash_ignores_prose_and_binds_structure": {
+      "description": "If a schema hash followed docstrings or missed a structural change, a rewording would rotate every identity or a real change would keep one.",
+      "owner": "alphalattice.kernel.shared_kernel",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "task_control.a_lost_ledger_rebuilds_only_admitted_work": {
+      "description": "If recovery rebuilt the Task ledger from anything but frozen requests and orphan facts, a writer could invent, drop or repeat admitted Tasks.",
+      "owner": "alphalattice.control.task_control",
       "layer": "integration",
       "seconds": 5
     },
@@ -326,6 +555,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "testing.only_a_requirement_marker_may_join_an_oversized_test_file": {
+      "description": "If a requirement marker counted as file growth or a test change, tracing a critical test would be refused or push a Large test off its merge path.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
     "testing.reuse_pin_fast_check": {
       "description": "The fast lane runs the reviewed reuse frontier check on changed pinned source files and names how to refresh a moved pin.",
       "owner": "devtools.testing",
@@ -361,6 +596,18 @@
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 6.248
+    },
+    "testing.windows_worker_without_wmi": {
+      "description": "A Windows pytest worker obtains platform information without issuing a WMI query.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "workspace_runtime.background_task_gate_wait_and_cancel": {
+      "description": "A background Task waits for a workspace mutation holder, names the holder and preserves its deferred cancellation without duplicating execution.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 10
     },
     "workspace_runtime.source_lease_failure_evidence": {
       "description": "A failed sealed-source mutation check names the written and observed bytes, restored and observed metadata, and the unavailable lease event.",

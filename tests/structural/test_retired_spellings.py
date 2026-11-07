@@ -48,7 +48,7 @@ def _pattern(spelling: str) -> re.Pattern[str]:
 
 def _uses(spelling: str, text: str) -> bool:
     """Every pattern needs the spelling itself in the text, so a plain search rules out the most
-    files before the regular expression runs (PRODUCT-SLOW-CUT); the verdict is the pattern's."""
+    files before the regular expression runs; the verdict is the pattern's."""
     return spelling in text and _pattern(spelling).search(text) is not None
 
 

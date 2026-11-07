@@ -22,9 +22,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
 from devtools.architecture.git_inputs import staged_moves
 from devtools.testing.contracts import import_violations
-from devtools.testing.layout import new_test_file_problems
-from devtools.testing.requirements import file_holders
+from devtools.testing.layout import REGISTRIES, new_data_file_problems, new_test_file_problems
+from devtools.testing.requirements import PROVES_LINE, file_holders
 from devtools.testing.requirements import parse as parse_requirements
+from devtools.testing.sizes import validate_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 CAP_BYTES = 100 * 1024
@@ -381,8 +382,12 @@ def problems(path: str, old: str | None, new: str) -> list[str]:
     if not path.startswith("tests/"):
         return []
     found = []
-    size = len(new.encode("utf-8", errors="surrogateescape"))
-    if size > CAP_BYTES and size > len((old or "").encode("utf-8", errors="surrogateescape")):
+
+    def counted(text: str) -> int:  # tracing a test to its requirement never grows its file
+        return len(PROVES_LINE.sub("", text).encode("utf-8", errors="surrogateescape"))
+
+    size = counted(new)
+    if size > CAP_BYTES and size > counted(old or ""):
         found.append(f"{path}: grows to {size // 1024} KB; a test file stays under 100 KB (rule 9)")
     # a line only re-indented is kept, not added
     before = {line.strip() for line in (old or "").splitlines()}
@@ -514,6 +519,34 @@ def weekly_report(root: Path = ROOT) -> dict:
     }
 
 
+def _data_file_problems(staged: list[str], moved: dict, parents: tuple[str, ...]) -> list[str]:
+    """The rule for test data: a path no parent holds, under tests/, that is neither code nor
+    prose. The tree is its baseline, and a byte-identical move keeps its standing."""
+    data = [
+        path
+        for path in staged
+        if path.startswith("tests/")
+        and path not in moved
+        and Path(path).suffix.lower() not in CODE | {".md"}
+    ]
+    if not data:
+        return []
+    try:
+        held = set()
+        for parent in parents:
+            listed = _git("ls-tree", "-r", "-z", "--name-only", parent, "--", *data)
+            if listed.returncode:
+                raise ValueError(f"{parent} is unreadable")
+            held.update(listed.stdout.split("\0"))
+        fresh = [path for path in data if path not in held]
+        if not fresh:
+            return []
+        policy = validate_policy(json.loads(_blobs([":" + REGISTRIES[0]])[":" + REGISTRIES[0]]))
+        return new_data_file_problems(fresh, policy)
+    except (KeyError, OSError, ValueError, subprocess.SubprocessError) as error:
+        return [f"TEST-DATA unmeasured: {error}; restore the staged registry and retry"]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -562,7 +595,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    found, corpus = [], None
+    found, corpus = _data_file_problems(staged, moved, parents), None
     added = [p for p in candidates if all(parent + ":" + p not in texts for parent in parents)]
     if added:
         try:

@@ -21,6 +21,7 @@
 "test_layout.registry_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "test_layout.input_unreadable": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "reason": "A Python file, config JSON or named input of the snapshot that is not UTF-8 is named, never guessed."},
 "test_size.framework_fixtures_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
+"test_size.data_files_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "test_size.fence_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "reason": "A structural_fence row names a tests/structural pattern once, one of the fence laws and why."},
 "testing.layer_contract": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "testing.layer_contract_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE"},
@@ -15648,6 +15649,9 @@
 },
 "research_workspace.nonempty_manifest_absent": {
 "owner": "research_workspace",
+"message_id": "host.start.not_a_workspace",
+"next_action": "SERVE_A_RESEARCH_WORKSPACE",
+"recovery": "workspaces lists the research workspaces inside the refused folder; serve one, or a new empty folder.",
 "category": "FAILED_PRECONDITION"
 },
 "research_workspace.publication_readback_failed": {

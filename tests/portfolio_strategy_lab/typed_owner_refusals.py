@@ -28,10 +28,6 @@ EXCLUDED_POSITIVE = {
         "decision_advancement.py:290-293; internal WAIT carries StageExecutionResult, "
         "not a public failure"
     ),
-    "alphalattice.control.workspace_runtime.mutation_gate.GateBusy": (
-        "mutation_gate.py: raised only inside a keyed answer's deadline; its callers file "
-        "nothing and return the counted admission_busy refusal, never a handler's exception"
-    ),
     "alphalattice.kernel.knowledge.model_store._RetryableStatus": (
         "model_store.py:464-465,482; numeric HTTP status controls transfer retry, not an owner code"
     ),

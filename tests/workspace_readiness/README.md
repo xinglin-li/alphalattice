@@ -51,7 +51,7 @@ Run the offline proof:
 
 ```powershell
 uv run --extra agent --extra application --extra data pytest --no-cov `
-  tests/workspace_readiness/test_workspace_readiness.py -q
+  tests/integration/data_platform/test_workspace_readiness.py -q
 ```
 
 The fixture verifies first-run consent, bounded resumable onboarding, a

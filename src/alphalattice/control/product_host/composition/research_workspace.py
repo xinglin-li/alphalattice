@@ -23,6 +23,12 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError,
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdateBinding
 from alphalattice.control.product_host.composition.committee_materials import AGENDA_LIMIT
+from alphalattice.control.product_host.composition.workspace_folder import (
+    RESEARCH_WORKSPACE_MANIFEST_NAME as RESEARCH_WORKSPACE_MANIFEST_NAME,
+)
+from alphalattice.control.product_host.composition.workspace_folder import (
+    holds_foreign_files,
+)
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
@@ -52,8 +58,6 @@ if TYPE_CHECKING:
     from alphalattice.investment.alpha_research.scores.model_renewal import (
         AlphaModelLifecycleAdmission,
     )
-
-RESEARCH_WORKSPACE_MANIFEST_NAME = "research-workspace.json"
 
 
 class ResearchWorkspaceError(ValueError):
@@ -453,7 +457,7 @@ def publish_research_workspace_manifest(
     """
     root = workspace.resolve()
     root.mkdir(parents=True, exist_ok=True)
-    destination = root / RESEARCH_WORKSPACE_MANIFEST_NAME
+    destination: Path = root / RESEARCH_WORKSPACE_MANIFEST_NAME
     payload = manifest.model_dump_json(indent=2).encode("utf-8") + b"\n"
     with NamedTemporaryFile(dir=root, prefix=".research-workspace-", delete=False) as handle:
         temporary = Path(handle.name)
@@ -588,15 +592,8 @@ def initialize_research_workspace(workspace: Path) -> None:
     try:
         if (root / RESEARCH_WORKSPACE_MANIFEST_NAME).exists():
             return
-        pending = [root]
-        while pending:
-            for p in pending.pop().iterdir():
-                if p.name == ".alphalattice-writer.lock" and p.parent == root:
-                    continue
-                if p.is_symlink() or p.is_junction() or not p.is_dir():
-                    raise ResearchWorkspaceError("research_workspace.nonempty_manifest_absent")
-                pending.append(p)
-
+        if holds_foreign_files(root):
+            raise ResearchWorkspaceError("research_workspace.nonempty_manifest_absent")
         create_research_workspace_manifest(
             root, ResearchWorkspaceManifest.research_only(f"research-{uuid4()}")
         )

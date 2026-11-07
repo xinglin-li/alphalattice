@@ -442,8 +442,7 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
 
 
 LEDGER = "refs/heads/public-export"
-"""The export's ledger branch: the private manifest is recorded there since it left develop
-(EXPORT-RECORDS-MIGRATE)."""
+"""The export's ledger branch: the private manifest is recorded there since it left develop."""
 MANIFEST_SCHEMA = "alphalattice.release.public-manifest"
 
 
@@ -649,7 +648,7 @@ def _check_scoped_structural(*, staged: bool) -> bool:
 
 
 def _check_docstrings() -> bool:
-    """Refuse a source file whose public docstring findings grew (C2's ratchet, lower only).
+    """Refuse a source file whose public docstring findings grew (a ratchet, lower only).
 
     Ruff's Google-convention docstring rules over the public API of ``src/alphalattice``,
     counted per file against ``config/docstring-baseline.json``; a new public file starts at
@@ -684,7 +683,7 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
     """
     sys.path.insert(0, str(ROOT / "src"))
     try:
-        from devtools.architecture.git_inputs import read_blobs
+        from devtools.architecture.git_inputs import read_blobs, staged_changes, staged_moves
         from devtools.testing import requirements
     finally:
         sys.path.pop(0)
@@ -749,7 +748,8 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
                 else []
             )
             earlier += requirements.file_holders(path, then) if then else []
-        fresh = requirements.fresh(earlier, later)
+        pairs = staged_changes(ROOT, base=None if staged else base, tree=None if staged else "HEAD")
+        fresh = requirements.fresh(earlier, later, staged_moves(ROOT, pairs=pairs))
         old_nodes = {test.node for test in earlier}
         added = [test.node for test in fresh if test.node not in old_nodes]
         registry = requirements.REGISTRY.as_posix()
@@ -824,7 +824,7 @@ def _check_evidence_bindings() -> bool:
 
 def _check_operation_registry() -> bool:
     """Refuse a tree whose operations disagree with the registry, or whose CLI answers any
-    command outside its contract without a Host (C1 rule 3 and the CLI walk)."""
+    command outside its contract without a Host (the CLI walk)."""
 
     started = perf_counter()
     sys.path.insert(0, str(ROOT / "src"))
@@ -931,6 +931,13 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         )
         return 0
 
+    if args.fast:
+        _run(
+            "claude-host-materialization",
+            sys.executable,
+            str(ROOT / "scripts" / "materialize_claude_host.py"),
+            "--check",
+        )
     if not args.fast and not _require_private_structural_inputs():
         return 1
     python_targets = _python_targets(staged=args.staged, all_python=args.all_python)

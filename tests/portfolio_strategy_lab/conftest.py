@@ -2,4 +2,3 @@ from tests._support.portfolio_strategy_lab_fixtures import completed_host as com
 from tests._support.portfolio_strategy_lab_fixtures import fake_host as fake_host
 from tests._support.portfolio_strategy_lab_fixtures import live as live
 from tests._support.portfolio_strategy_lab_fixtures import read_only_live as read_only_live
-from tests._support.project_discovery import project_discovery as project_discovery

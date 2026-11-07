@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 from alphalattice.interface.local_application.cli_contract import offered_requests, outcome_of
 from alphalattice.interface.local_application.failure_codes import LocalResearchClientError
@@ -93,4 +94,42 @@ def review_evidence_view(
             if prepared.get("units_failed")
             else {}
         ),
+    }
+
+
+def review_prepared(
+    chain: Any,
+    *,
+    root: Path,
+    readback: dict[str, Any],
+    package: str,
+    update: Any,
+    subject: dict[str, Any],
+    preview: dict[str, Any],
+    current: dict[str, Any],
+    prepared: dict[str, Any],
+    resuming: bool,
+) -> dict[str, Any]:
+    """Return the prepared units and any sealed failures in the agent answer."""
+    bundles = chain.bundles(current, root)
+    if isinstance(bundles, dict):
+        return bundles
+    if prepared.get("units_failed") and not bundles:
+        return cast(dict[str, Any], chain.stop("evidence", prepared))
+    review = chain.offered(readback, "review")
+    return {
+        "status": "BOOK_REVIEW_READY" if bundles else "EVIDENCE_PREPARED",
+        "strategy_package_id": package,
+        ("positions" if update else "book"): subject,
+        "evidence": review_evidence_view(preview, current, prepared, resuming=resuming),
+        "analyst_bundles": bundles,
+        "steps": chain.steps,
+        "next_action": "DISPATCH_ANALYSTS" if bundles else "READ_EVIDENCE",
+        "detail": (
+            "Start each Analyst with its bundle: each submits its answer by its route. With their "
+            "receipts back, `review continue --dir` reads them, prepares the CRO's bundle."
+            if bundles
+            else "Evidence is prepared with no Analyst bundle to answer; read its review state."
+        ),
+        "next_requests": {} if review is None else {"review": review},
     }

@@ -5,8 +5,9 @@ README.md, docs/public-source), its Skill, or its own answers (a setup command o
 names it). Each is classified here. One that writes a location its caller did not name -- a
 default outside the checkout, or its own place inside it -- names the behaviour test proving
 that a write it cannot make is refused in words with its way on
-(`tests/workspace_maintenance/test_product_script_refusals.py`); one that writes only where its
-caller names says so. A product script named anywhere new fails this pin until it is classified.
+(`tests/integration/local_application/test_product_script_refusals.py`); one that writes only
+where its caller names says so. A product script named anywhere new fails this pin until it is
+classified.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-BEHAVIOUR = ROOT / "tests/workspace_maintenance/test_product_script_refusals.py"
+BEHAVIOUR = ROOT / "tests/integration/local_application/test_product_script_refusals.py"
 NAMED = re.compile(r"scripts/([a-z0-9_]+\.py)")
 NAMED_MODULES = {
     "alphalattice.control.product_host.composition.web_launcher": "run_local_portfolio_web.py",

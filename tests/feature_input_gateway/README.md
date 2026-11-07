@@ -49,7 +49,7 @@ candidate manifest
 $env:PYTHONPATH='playpen/src'
 uv run --extra application --extra data pytest --no-cov `
   --basetemp playpen/experiments/pytest-feature-input-gateway `
-  tests/feature_input_gateway/test_feature_input_gateway.py -q
+  tests/integration/feature_engine/test_feature_input_gateway.py -q
 ```
 
 The case is deterministic and offline. It includes a fake tool-calling model

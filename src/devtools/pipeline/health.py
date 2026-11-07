@@ -278,7 +278,7 @@ def stages(
     """Speed and reliability: results, red classes, flakes and the latest passing stage's slow
     tests, and with ``today`` the rolling per-test table. A stage with no verdict (an ERROR, or a
     receipt its reader refuses) is an error. A red stage counts toward the tooling-red share when
-    its class is known and holds no defect; one with no class (written before RED-CLASS-RECEIPT)
+    its class is known and holds no defect; one with no class (written before receipts carried it)
     is unclassified, never a defect. With no receipt each rate is unknown, never zero."""
     results: Counter[str] = Counter()
     reds: list[tuple[str | None, dict[str, int]]] = []

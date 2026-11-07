@@ -37,7 +37,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from functools import wraps
+from functools import partial, wraps
 from time import monotonic
 from typing import Literal, Protocol, TypeVar, cast
 from uuid import UUID
@@ -47,6 +47,7 @@ from alphalattice.control.task_control.contracts import (
     TaskRecord,
     TaskSafeProjection,
 )
+from alphalattice.control.workspace_runtime.mutation_gate import gate_subject, run_background
 
 
 class _DispatcherClosed(RuntimeError):
@@ -366,7 +367,9 @@ class LocalBackgroundDispatcher:
                 raise _DispatcherClosed("local_application.dispatcher_closed")
             added = [
                 threading.Thread(
-                    target=self._drain, name="local-application-dispatcher", daemon=False
+                    target=partial(run_background, self._drain, "BACKGROUND_TASK"),
+                    name="local-application-dispatcher",
+                    daemon=False,
                 )
                 for _ in range(self._wanted() - len(self._workers))
             ]
@@ -759,36 +762,37 @@ class LocalBackgroundDispatcher:
                 if item is None:
                     return
                 command, task_id, expected_task_hash = item
-                seen = self._stamp()
-                try:
-                    # Versionless work is called the way every command always was; only a
-                    # confirmed version asks the command to carry it to Task Control.
-                    if expected_task_hash is None:
-                        command.execute(task_id)
-                    else:
-                        command.execute(task_id, expected_task_hash=expected_task_hash)
-                    self.executions += 1
-                    with self._lock:
-                        self._failures.pop(task_id, None)
-                except Exception as error:
-                    with self._lock:
-                        self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
-                finally:
-                    waits = self._waits_its_turn(task_id, seen)
-                    # Cleared whichever way it went: a caller waiting for a
-                    # terminal answer must be released on failure too.
-                    with self._lock:
-                        self._running.discard(task_id)
-                        if waits:
-                            # Not a failure: its turn had not come.
-                            self._waiting[task_id] = command
+                with gate_subject(command.command_kind, task_id):
+                    seen = self._stamp()
+                    try:
+                        # Versionless work is called the way every command always was; only a
+                        # confirmed version asks the command to carry it to Task Control.
+                        if expected_task_hash is None:
+                            command.execute(task_id)
+                        else:
+                            command.execute(task_id, expected_task_hash=expected_task_hash)
+                        self.executions += 1
+                        with self._lock:
                             self._failures.pop(task_id, None)
-                        try:
-                            self._finalize_idle_cancel(task_id)
-                        except Exception as error:
+                    except Exception as error:
+                        with self._lock:
                             self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
-                self._notify_returned(command.command_kind, task_id)
-                self.drive_waiting()
+                    finally:
+                        waits = self._waits_its_turn(task_id, seen)
+                        # Cleared whichever way it went: a caller waiting for a
+                        # terminal answer must be released on failure too.
+                        with self._lock:
+                            self._running.discard(task_id)
+                            if waits:
+                                # Not a failure: its turn had not come.
+                                self._waiting[task_id] = command
+                                self._failures.pop(task_id, None)
+                            try:
+                                self._finalize_idle_cancel(task_id)
+                            except Exception as error:
+                                self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
+                    self._notify_returned(command.command_kind, task_id)
+                    self.drive_waiting()
             finally:
                 with self._lock:
                     self._last_needed = monotonic()

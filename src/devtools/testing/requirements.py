@@ -30,7 +30,8 @@ from typing import Any, NamedTuple
 from devtools.testing.sizes import load_policy
 
 REGISTRY = Path("config/registries/requirements.json")
-LEGACY_SCHEMA = "alphalattice.tests-unregistered.v1"  # private: it names private tests
+LEGACY_SCHEMA = "alphalattice.tests-unregistered.v1"
+LAYOUT_SCHEMA = "alphalattice.test-layout.v1"  # development data; a published tree has none
 FACTS_SCHEMA = "alphalattice.agent-eval.host-facts"  # private, never exported: marks a private tree
 LAYERS = ("unit", "integration", "contract", "e2e", "native")
 SIZES = dict(unit="small", integration="medium", contract="medium", e2e="large", native="large")
@@ -41,6 +42,8 @@ REGISTER = (
 )
 _SHOWN = 8
 _ID = re.compile(r"[a-z][a-z0-9_]*\.[a-z0-9_]+")
+PROVES_LINE = re.compile(r"^[ \t]*@pytest\.mark\.proves\([^()\n]*\)[ \t]*\r?\n", re.M)
+"""A line that only traces a test to its requirement: it changes neither what runs nor its size."""
 _ENDINGS = ("ing", "ed", "es", "s")
 _STOP = frozenset(  # common words a query does not distinguish by
     re.findall(
@@ -178,6 +181,18 @@ def node_matches(node: str, selector: str) -> bool:
     )
 
 
+def _size_contents(
+    lines: list[str], node: ast.FunctionDef | ast.AsyncFunctionDef, start: int
+) -> str:
+    """Exclude only actual single-line requirement decorators, never text in the test body."""
+    markers = {
+        d.lineno - 1 for d in node.decorator_list if PROVES_LINE.fullmatch(lines[d.lineno - 1])
+    }
+    return "".join(
+        line for i, line in enumerate(lines[start : node.end_lineno], start) if i not in markers
+    )
+
+
 def file_holders(relative: str, text: str, *, size_scope: bool = False) -> list[Holder]:
     """Read test functions; size scope follows nested classes and inherited marks."""
     tree, found = ast.parse(text), []
@@ -242,7 +257,9 @@ def file_holders(relative: str, text: str, *, size_scope: bool = False) -> list[
             start = min([node.lineno, *(d.lineno for d in node.decorator_list)]) - 1
             contents = "".join(lines[start : node.end_lineno])
             image = json.dumps(
-                [ids, module_shape, class_shape, contents] if size_scope else [ids, contents],
+                [module_shape, class_shape, _size_contents(lines, node, start)]
+                if size_scope
+                else [ids, contents],
                 ensure_ascii=False,
             )
             digest = hashlib.sha256(image.encode("utf-8")).hexdigest()
@@ -270,18 +287,27 @@ def edited_families(
     return sorted(result)
 
 
-def fresh(before: Iterable[Holder], after: Iterable[Holder]) -> list[Holder]:
+def fresh(
+    before: Iterable[Holder], after: Iterable[Holder], moves: Mapping[str, str] | None = None
+) -> list[Holder]:
     """New functions or newly proved ids on an existing function.
 
     A qualified unchanged definition relocating carries its standing; each removal matches one copy.
+    A file in ``moves`` (new path to old) is the same file, so its functions are existing ones.
     """
     old, now = {test.node: test for test in before}, {test.node: test for test in after}
+    moved = {}
+    for node in now:
+        path, _, name = node.partition("::")
+        if path in (moves or {}):
+            moved[node] = f"{(moves or {})[path]}::{name}"
     gone = Counter((n.split("::", 1)[1], t.digest) for n, t in old.items() if n not in now)
     found = []
     for node, test in sorted(now.items()):
         identity = (node.split("::", 1)[1], test.digest)
-        if node in old:
-            added_ids = tuple(key for key in test.ids if key not in old[node].ids)
+        origin = moved.get(node, node)
+        if origin in old:
+            added_ids = tuple(key for key in test.ids if key not in old[origin].ids)
             if added_ids:
                 found.append(test._replace(ids=added_ids))
             continue

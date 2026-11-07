@@ -14,7 +14,7 @@ from devtools.architecture.structural import (
 
 @pytest.mark.proves("architecture.discovered_imports_kept_by_place_and_bytes")
 def test_discovered_imports_are_kept_by_place_and_bytes_and_errors_never(tmp_path):
-    """STRUCTURAL-SCAN-CACHE: the structural tests ask for one unchanged tree test after test, so
+    """The structural tests ask for one unchanged tree test after test, so
     answers are kept in the process by module place and content; a change misses, an error
     repeats."""
     module = tmp_path / "src" / "low" / "owner.py"

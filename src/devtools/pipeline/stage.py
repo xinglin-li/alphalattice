@@ -9,6 +9,7 @@ refused before anything runs. Every row runs, so a receipt names every red at on
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import hashlib
 import importlib.util
@@ -20,13 +21,14 @@ import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 
 import psutil  # type: ignore[import-untyped]
 
-from devtools.architecture.git_inputs import read_blobs, staged_changes, unique_moves
+from devtools.architecture.git_inputs import read_blobs, staged_changes, table_moves, unique_moves
 from devtools.pipeline.definition import PATH, Definition, DefinitionError, Row, Stage, load
 from devtools.pipeline.receipt import Writer, _now, verify
 from devtools.testing.requirements import edited_families, file_holders, selection
@@ -50,16 +52,115 @@ def _changed_test_files(pairs: list[tuple[list[str], str]]) -> list[tuple[list[s
     return changed
 
 
-def changed_families(root: Path, base: str, head: str) -> list[str]:
+# The materializer copies these declared owners into the Claude host. The selector
+# names the holder rather than widening selection to unrelated documentation.
+DERIVED_OWNERS = (
+    (
+        (
+            ".agents/skills/*",
+            ".codex/agents/alphalattice_*.toml",
+            ".claude/settings.json",
+            "scripts/materialize_claude_host.py",
+            "src/alphalattice/interface/local_application/operations.json",
+            "src/alphalattice/interface/local_application/cli.py",
+            "src/alphalattice/interface/local_application/cli_contract.py",
+            "src/alphalattice/interface/local_application/portfolio_research.py",
+            "config/registries/messages.json",
+            "src/alphalattice/control/product_host/composition/committee.py",
+            "src/alphalattice/kernel/shared_kernel/project_layout.py",
+            "src/alphalattice/interface/local_application/failure_codes.py",
+        ),
+        "tests/integration/local_application/test_claude_host_materialization.py::"
+        "test_committed_derivatives_match_their_owners",
+    ),
+    (
+        ("src/alphalattice/interface/local_application/client.py",),
+        "tests/structural/test_wait_caps.py::"
+        "test_every_capped_client_waiter_has_its_cap_rule_reviewed",
+    ),
+)
+DEADLINE_ROOTS = (
+    "src/alphalattice/interface/local_application/",
+    "src/alphalattice/control/product_host/",
+    "src/alphalattice/control/workspace_runtime/",
+)
+DEADLINE_HOLDER = (
+    "tests/structural/test_wait_caps.py::"
+    "test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed"
+)
+
+
+def deadline_names(source: str) -> set[str]:
+    """The deadline holder's exact function discovery, reused for changed-file selection."""
+    found = set()
+    for function in ast.walk(ast.parse(source)):
+        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        args = {
+            arg.arg
+            for arg in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+        }
+        assigned = {
+            target.id
+            for node in ast.walk(function)
+            if isinstance(node, (ast.Assign, ast.AnnAssign))
+            for target in ([node.target] if isinstance(node, ast.AnnAssign) else node.targets)
+            if isinstance(target, ast.Name)
+        }
+        if "deadline" in args | assigned or "max_wait" in args:
+            found.add(function.name)
+    return found
+
+
+def derived_holders(pairs: list[tuple[list[str], str]], blobs: dict[str, str]) -> tuple[str, ...]:
+    """Select only declared file owners and changed old/new deadline owners."""
+    selected = {
+        holder
+        for _meta, path in pairs
+        for patterns, holder in DERIVED_OWNERS
+        if any(fnmatchcase(path, pattern) for pattern in patterns)
+    }
+    for meta, path in pairs:
+        if not path.endswith(".py") or not path.startswith(DEADLINE_ROOTS):
+            continue
+        if (
+            len(meta) != 5
+            or meta[0][1:] not in {"000000", "100644", "100755"}
+            or meta[1] not in {"000000", "100644", "100755"}
+        ):
+            raise ValueError(f"changed deadline source is not a regular file: {path}")
+        for oid in meta[2:4]:
+            if set(oid) == {"0"}:
+                continue
+            if oid not in blobs:
+                raise ValueError(f"changed deadline source is unavailable: {path}")
+            if deadline_names(blobs[oid]):
+                selected.add(DEADLINE_HOLDER)
+    return tuple(sorted(selected))
+
+
+def _carried_moves(root: Path, pairs: list[tuple[list[str], str]]) -> dict[str, str]:
+    """The moves the path map carries, read from the config files this diff changes."""
+    config = {
+        path: meta[3] for meta, path in pairs if path.startswith("config/") and meta[4] != "D"
+    }
+    read = read_blobs(list(config.values()), root, timeout=60)
+    return table_moves(pairs, {path: read[oid] for path, oid in config.items()})
+
+
+def changed_families(
+    root: Path, base: str, head: str, *, pairs: list[tuple[list[str], str]] | None = None
+) -> list[str]:
     """Compare the stage's exact Git endpoints in two batched reads, only for changed test files."""
 
     try:
         if not all(isinstance(x, str) and re.fullmatch(r"[0-9a-f]{40}", x) for x in (base, head)):
             raise ValueError("base and head must be full Git commit IDs")
-        pairs = staged_changes(root, tree=head, base=base, timeout=60)
+        pairs = staged_changes(root, tree=head, base=base, timeout=60) if pairs is None else pairs
         if any(len(meta) != 5 or not path for meta, path in pairs):
             raise ValueError("malformed Git diff")
-        moves = unique_moves(pairs)
+        carried = _carried_moves(root, pairs)
+        moves = unique_moves(pairs) | carried
         changed = _changed_test_files(pairs)
         ids = sorted({oid for meta, _ in changed for oid in meta[2:4] if set(oid) != {"0"}})
         blobs = read_blobs(ids, root, timeout=60)
@@ -71,7 +172,8 @@ def changed_families(root: Path, base: str, head: str) -> list[str]:
                 before.extend(file_holders(path, blobs[meta[2]], size_scope=True))
             if meta[3] in blobs:
                 after.extend(file_holders(path, blobs[meta[3]], size_scope=True))
-        return edited_families(before, after, moves)
+        edited = edited_families(before, after, moves)
+        return [node for node in edited if node.partition("::")[0] not in carried]
     except (OSError, ValueError, SyntaxError, UnicodeError, subprocess.SubprocessError) as error:
         raise ValueError(
             f"test_size.changed_unmeasured: restore the exact test source and Git history: {error}"
@@ -232,8 +334,25 @@ def _size_selection(
         return required, None
     started = perf_counter()
     try:
-        edited = selection(changed_families(root, workspace["base"], workspace["head"]))
-    except ValueError as error:
+        base, head = workspace["base"], workspace["head"]
+        pairs = staged_changes(root, tree=head, base=base, timeout=60)
+        if any(len(meta) != 5 or not path for meta, path in pairs):
+            raise ValueError("malformed Git diff")
+        edited = selection(changed_families(root, base, head, pairs=pairs))
+        ids = sorted(
+            {
+                oid
+                for meta, path in pairs
+                if path.startswith(DEADLINE_ROOTS) and path.endswith(".py")
+                for oid in meta[2:4]
+                if set(oid) != {"0"}
+            }
+        )
+        blobs = read_blobs(ids, root, timeout=60)
+        if set(ids) != set(blobs):
+            raise ValueError("a changed deadline-source blob is missing")
+        derived = selection(derived_holders(pairs, blobs))
+    except (OSError, ValueError, SyntaxError, UnicodeError, subprocess.SubprocessError) as error:
         raise DefinitionError("pipeline.size_selection_unmeasured", str(error)) from error
     record = {
         "base": workspace["base"],
@@ -241,7 +360,7 @@ def _size_selection(
         "families": list(edited),
         "seconds": perf_counter() - started,
     }
-    return tuple(dict.fromkeys((*required, *edited))), record
+    return tuple(dict.fromkeys((*required, *edited, *derived))), record
 
 
 def _write_size_selection(out: Path, record: dict[str, Any] | None) -> None:

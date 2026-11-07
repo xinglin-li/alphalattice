@@ -141,7 +141,7 @@ const I18N = (() => {
     subjects = keys.filter((k) => k.includes('{subject}') && !CONTEXT.test(k)).map((k) => [new RegExp('^' + k.split('{subject}').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('(.*?)') + '$'), catalog[k]]);
     return subjects;
   }
-  function templated(s) {
+  function templated(s) { const stopped = registeredUnitStop(s); if (stopped !== null) return stopped;
     for (const [re, fn] of TEMPLATES) {
       const m = s.match(re);
       if (m) return fn(m);
@@ -247,6 +247,16 @@ const I18N = (() => {
     if (!Object.hasOwn(words, key)) return legacy(text, vars);
     return raw.match(/^\s*/)[0] +
       interpolate(words[key][locale === 'zh-CN' ? 'zh-CN' : 'en'], vars) + raw.match(/\s*$/)[0];
+  }
+  function registeredUnitStop(s) {
+    // The unit's recorded cause and way on follow this registered sentence.
+    const unitStop = typeof MESSAGE_WORDS === 'undefined' ? null : MESSAGE_WORDS['evidence.unit_stopped'];
+    if (!unitStop) return null;
+    const [before, after] = unitStop.en.split('{subject}');
+    const end = s.startsWith(before) && after ? s.indexOf(after, before.length) : -1;
+    const tail = end < 0 ? '' : s.slice(end + after.length);
+    return end > before.length && (!tail || tail.startsWith(' '))
+      ? unitStop['zh-CN'].replace('{subject}', s.slice(before.length, end)) + tail : null;
   }
 })();
 const t = I18N.t;

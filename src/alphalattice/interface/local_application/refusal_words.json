@@ -1793,5 +1793,13 @@
  "goal.conclusion_requires_evidence": {
   "detail": "A supporting or opposing conclusion needs cited evidence; no note was saved. Read the goal's references and choose relevant attached reference ids for the note, or fill the attach form with an exact owner read before citing it. The offered note keeps your words and leaves the evidence choice empty.",
   "next_action": "ATTACH_EVIDENCE_AND_CITE_IT"
+ },
+ "workspace_context.writer_busy": {
+  "detail": "The workspace is busy with another change. Read recent activity and Task status before deciding what to do next.",
+  "next_action": "READ_ACTIVITY_AND_TASKS",
+  "next_requests": {
+   "activity": {"operation": "ACTIVITY_RECENT"},
+   "tasks": {"operation": "TASKS"}
+  }
  }
 }

@@ -2,9 +2,12 @@
 
 import json
 
+import pytest
+
 import check_test_shape as shape
 from check_playpen import shrink_only_growth
 from check_test_shape import problems
+from devtools.testing.requirements import file_holders
 
 PATH = "tests/owner/test_example.py"
 
@@ -98,6 +101,35 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps() -
     assert not problems(PATH, None, marked) and not problems(PATH, None, "import pytest\n" + held)
     debt = "class A:\n    " + missing.replace("\n", "\n    ")
     assert problems(PATH, debt, debt.replace("class A", "class B"))
+
+
+@pytest.mark.proves("testing.only_a_requirement_marker_may_join_an_oversized_test_file")
+def test_an_oversized_test_file_takes_a_marker_line_and_nothing_else() -> None:
+    """A whole proves line is free; a comment on it, or any other line, still counts as growth."""
+    path = "tests/example/test_big.py"
+    big = "# " + "x" * shape.CAP_BYTES + "\ndef test_a():\n    pass\n"
+
+    def refused(new: str) -> bool:
+        return any("a test file stays under 100 KB" in line for line in problems(path, big, new))
+
+    assert not refused(big.replace("def test_a", '@pytest.mark.proves("a.b")\ndef test_a'))
+    assert not refused(big.replace("def test_a", '@pytest.mark.proves("a.b")\r\ndef test_a'))
+    assert refused(big.replace("def test_a", '@pytest.mark.proves("a.b")  # why\ndef test_a'))
+    assert refused(big.replace("def test_a", "@pytest.mark.slow\ndef test_a"))
+    assert refused(big + "# one more line\n")
+    plain = "def test_a():\n    pass\n"
+    mark = '@pytest.mark.proves("a.b")\n'
+    marked = mark + plain
+    digest = [file_holders("t.py", text, size_scope=True)[0].digest for text in (plain, marked)]
+    assert digest[0] == digest[1]  # a Large test keeps its lanes when it gains a marker
+    edited = marked.replace("pass", "assert True")
+    assert file_holders("t.py", edited, size_scope=True)[0].digest != digest[0]
+    fixture = 'def test_a():\n    source = """\n' + mark + '"""\n'
+    changed_fixture = fixture.replace('"a.b"', '"a.c"')
+    assert (
+        file_holders("t.py", fixture, size_scope=True)[0].digest
+        != file_holders("t.py", changed_fixture, size_scope=True)[0].digest
+    )
 
 
 def test_source_caps_hold_growth_by_qualified_function_and_spare_existing_debt() -> None:
@@ -213,6 +245,55 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
     for blob, code in (("a", 0), ("b", 1)):  # an edited move is new: its missing docstring refuses
         state = {"raw": raw.replace(f"{'a' * 40} A", f"{blob * 40} A")}
         monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [new], state))
+        assert shape.main([]) == code
+
+    table = "config/registries/test-layout.json"
+    edited = (
+        raw.replace(f"{'a' * 40} A", f"{'b' * 40} A")
+        + f":100644 100644 {'c' * 40} {'d' * 40} M\0{table}\0"
+    )
+    for row_old, added, code in (
+        (old, "", 0),  # the move's table pairs an edited move: it is an edit of its old file
+        (old, "def test_added(): pass\n", 1),  # whose added lines stay judged
+        ("tests/area/test_elsewhere.py", "", 1),  # a row names only a path this change deletes
+    ):
+        texts[":" + table] = json.dumps(
+            {"schema": "alphalattice.test-layout.v1", "files": {new: {"old": row_old}}}
+        )
+        texts[":" + new] = legacy + added
+        monkeypatch.setattr(
+            shape.subprocess, "run", _git_backend(texts, [new, table], {"raw": edited})
+        )
+        assert shape.main([]) == code
+    texts[":" + new] = legacy
+
+    data, sizes = "tests/integration/testing/panel.csv", "config/registries/test-sizes.json"
+    policy = json.loads((shape.ROOT / sizes).read_text("utf-8"))
+    trees, moves = {"HEAD": ""}, {}
+    texts = {":" + sizes: json.dumps(policy)}
+
+    def holding(command, **kwargs):
+        if command[1] == "ls-tree":
+            return shape.subprocess.CompletedProcess(command, 0, trees[command[5]] + "\0")
+        return _git_backend(texts, [data, "tests/unit/testing/notes.md"], moves)(command, **kwargs)
+
+    monkeypatch.setattr(shape.subprocess, "run", holding)
+    assert shape.main([]) == 1  # a new data file names no reason
+    trees["HEAD"] = data
+    assert shape.main([]) == 0  # the tree is the baseline
+    trees["HEAD"] = ""
+    row = {"path": data, "reason": "One small panel a test reads in place."}
+    texts[":" + sizes] = json.dumps({**policy, "data_files": [row]})
+    assert shape.main([]) == 0  # registered with its reason
+    for bad in ({**row, "reason": " "}, {**row, "path": "tests/*.csv"}, {**row, "path": "x"}):
+        texts[":" + sizes] = json.dumps({**policy, "data_files": [bad]})
+        assert shape.main([]) == 1
+    texts[":" + sizes] = json.dumps({**policy, "data_files": [row, row]})
+    assert shape.main([]) == 1  # a row names one file once
+    texts[":" + sizes] = json.dumps(policy)
+    moved = raw.replace(old, "tests/integration/testing/old.csv").replace(new, data)
+    for blob, code in (("a", 0), ("b", 1)):  # a byte-identical move keeps its standing
+        moves["raw"] = moved.replace(f"{'a' * 40} A", f"{blob * 40} A")
         assert shape.main([]) == code
 
     source = "src/devtools/testing/layout.py"

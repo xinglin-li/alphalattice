@@ -36,7 +36,10 @@ from devtools.evaluation.round_trip import (
 )
 from tests import pytest_environment as environment
 
-pytest_plugins = ["devtools.testing.collection"]
+pytest_plugins = [
+    "devtools.testing.collection",
+    *(["tests.agent_eval.hooks"] if (Path(__file__).parent / "agent_eval").is_dir() else []),
+]
 
 
 def _unit_contract(request: pytest.FixtureRequest) -> bool:
@@ -92,7 +95,15 @@ def golden_cache(tmp_path_factory):
         kwargs.update(runtime=environment.golden_runtime(), controller=False)
     base = tmp_path_factory.getbasetemp()
     with getattr(evaluation, "golden_run", nullcontext)(base, **kwargs) as root:
-        yield root
+        try:
+            yield root
+        finally:
+            # Verify linked seeds before their invocation releases its reader leases.
+            if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
+                changed = seeds.seeds_changed()
+                if not changed:
+                    seeds.LINKED_SEEDS.clear()
+                assert changed == []
 
 
 @pytest.fixture
@@ -513,19 +524,32 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         session.config._golden_controller.__enter__()
     checkout = Path(__file__).resolve().parents[1]
     command = [sys.executable, str(checkout / "scripts/build_local_web_ui.py"), "--product"]
+    attempts: list[str] = []
 
     def run(*flags: str) -> subprocess.CompletedProcess[str]:
-        result = subprocess.run(
-            [*command, *flags],
-            cwd=checkout,
-            capture_output=True,
-            encoding="utf-8",
-            check=False,
-        )
-        if result.returncode not in {0, 1} or (result.returncode == 1 and not flags):
-            raise pytest.UsageError(
-                "The Local Web prerequisite failed:\n" + result.stdout + result.stderr
+        phase = "check" if flags else "build"
+        try:
+            result = subprocess.run(
+                [*command, *flags],
+                cwd=checkout,
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
             )
+        except OSError as error:
+            attempts.append(f"{phase} could not start: {type(error).__name__}: {error}")
+            raise pytest.UsageError(
+                "The Local Web prerequisite failed:\n" + "\n".join(attempts)
+            ) from error
+        output = []
+        if result.stdout:
+            output.append("stdout:\n" + result.stdout)
+        if result.stderr:
+            output.append("stderr:\n" + result.stderr)
+        attempts.append(f"{phase} exit {result.returncode}:\n" + ("\n".join(output) or "no output"))
+        if result.returncode not in {0, 1} or (result.returncode == 1 and not flags):
+            raise pytest.UsageError("The Local Web prerequisite failed:\n" + "\n".join(attempts))
         return result
 
     checked = run("--check")
@@ -534,9 +558,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         checked = run("--check")
         if checked.returncode:
             raise pytest.UsageError(
-                "The Local Web build did not produce current outputs:\n"
-                + checked.stdout
-                + checked.stderr
+                "The Local Web build did not produce current outputs:\n" + "\n".join(attempts)
             )
 
 

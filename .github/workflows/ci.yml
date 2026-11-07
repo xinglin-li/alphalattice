@@ -96,7 +96,7 @@ jobs:
           done
       - name: Run the wheel runtime tests
         run: >-
-          uv run python -m pytest tests/release/test_wheel_runtime.py -n auto
+          uv run python -m pytest tests/integration/local_application/test_wheel_runtime.py -n auto
           --basetemp "${{ runner.temp }}/alphalattice-wheel-tests"
 
   platforms:
@@ -146,7 +146,7 @@ jobs:
       - name: Run the offline first-use scenario
         run: >-
           uv run python -m pytest
-          tests/portfolio_strategy_lab/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on
+          tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on
           -n 1 -m "not real_evidence"
           --basetemp "${{ runner.temp }}/alphalattice-first-use"
       - name: Build and install the wheel; smoke in fresh bash
@@ -261,7 +261,9 @@ jobs:
 
           import faulthandler
           import json
+          import math
           import os
+          import re
           import sys
           from pathlib import Path
 
@@ -329,6 +331,62 @@ jobs:
 
               pytest_timeout.timeout_timer = capture(pytest_timeout.timeout_timer)
               pytest_timeout.timeout_sigalrm = capture(pytest_timeout.timeout_sigalrm)
+
+
+          @pytest.hookimpl(optionalhook=True)
+          def pytest_testnodedown(node, error):
+              """Print only a timeout for this crashed worker's still-active test."""
+              if error is None:
+                  return
+              worker = node.gateway.id
+              if not re.fullmatch(r"gw[0-9]+", worker):
+                  return
+              reporter = node.config.pluginmanager.get_plugin("terminalreporter")
+              try:
+                  files = sorted(Path(os.environ["PYTEST_WORKER_DIAGNOSTICS"]).glob(f"{worker}-*.log"))
+                  if len(files) != 1:
+                      raise ValueError("worker diagnostic is missing or ambiguous")
+                  path = files[0]
+                  active = timeout = None
+                  identified = False
+                  for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                      if not line.startswith("{"):
+                          continue
+                      event = json.loads(line)
+                      if not isinstance(event, dict):
+                          raise ValueError("worker event is not an object")
+                      if event.get("event") == "worker":
+                          pid = event.get("pid")
+                          if identified or type(pid) is not int or pid <= 0:
+                              raise ValueError("worker identity is invalid")
+                          identified = event.get("worker") == worker and path.stem == f"{worker}-{pid}"
+                      elif not identified:
+                          raise ValueError("worker identity is unavailable")
+                      elif event.get("event") == "start":
+                          active, timeout = event.get("node"), None
+                          if not isinstance(active, str) or not active:
+                              raise ValueError("active test identity is invalid")
+                      elif event.get("event") == "timeout" and active and event.get("node") == active:
+                          seconds = event.get("seconds")
+                          if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds <= 0:
+                              raise ValueError("timeout bound is invalid")
+                          timeout = line
+                      elif event.get("event") == "end" and event.get("node") == active:
+                          active = timeout = None
+                  if not identified:
+                      raise ValueError("worker identity is unavailable")
+                  if active and timeout:
+                      message = f"Worker timeout: {timeout}"
+                      if reporter is not None:
+                          reporter.write_line(message)
+                      else:
+                          print(message, file=sys.stderr)
+              except (OSError, ValueError, KeyError, TypeError, OverflowError) as problem:
+                  message = f"Worker {worker} timeout diagnostic unavailable: {type(problem).__name__}"
+                  if reporter is not None:
+                      reporter.write_line(message)
+                  else:
+                      print(message, file=sys.stderr)
 
 
           @pytest.hookimpl(wrapper=True, tryfirst=True)
@@ -530,5 +588,5 @@ jobs:
         with:
           mode: simulation
           run: >-
-            uv run python -m pytest tests/evaluation tests/feature_engine/test_factor_arithmetic_identity.py
+            uv run python -m pytest tests/evaluation tests/integration/feature_engine/test_factor_arithmetic_identity.py
             -m "not real_evidence" --codspeed -p no:cacheprovider

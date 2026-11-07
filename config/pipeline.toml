@@ -111,10 +111,11 @@ hosts = ["workshop", "public"]
 selection = { budget_test_seconds = 3600 }
 plugins = ["receipt-events"]
 public = [
-  "tests/portfolio_strategy_lab/test_local_web_service.py",
-  "tests/portfolio_strategy_lab/test_local_web_client.py",
-  "tests/portfolio_strategy_lab/test_research_flow_answers.py",
-  "tests/alternative_evidence_desk/test_evidence_review_http_route.py",
+  "tests/integration/product_host/test_local_web_service.py",
+  "tests/e2e/product_host/test_local_web_binding.py",
+  "tests/integration/local_application/test_local_web_client.py",
+  "tests/integration/product_host/test_research_flow_answers.py",
+  "tests/integration/alternative_evidence/test_evidence_review_http_route.py",
   "tests/structural/test_local_web_build.py",
 ]
 

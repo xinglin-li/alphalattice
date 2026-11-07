@@ -32,11 +32,9 @@ from pydantic import Field, model_validator
 from pydantic_core import to_jsonable_python
 
 from alphalattice.control.task_control.contracts import (
-    FAILURE_CODE_MAX_LENGTH,
     PLAN_WORK_ITEM_LIMIT,
     ResearchGoal,
     ResearchPlan,
-    StageFailureCause,
     TaskEvidence,
     TaskExecution,
     TaskExecutionCompatibility,
@@ -45,7 +43,6 @@ from alphalattice.control.task_control.contracts import (
     TaskRecord,
     TaskStageReceipt,
     WorkItemDefinition,
-    failure_code_from,
 )
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
@@ -122,6 +119,8 @@ from .coverage import (
     sources_short,
 )
 from .execution import PREPARATIONS, machine_load, plan_execution
+from .failure_diagnostics import failure_cause
+from .failure_diagnostics import failure_code as _failure_code
 from .history import require_answer_format
 from .policy import AdmittedEvidencePolicy
 from .progress import ACQUIRE, BUILD, SELECT, PreparationProgress
@@ -976,10 +975,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             # One unit's refusal is that unit's, sealed by the owner's own code
             # under the stage that refused; the run goes on to the next unit.
             run = self._run(task)
-            cause = StageFailureCause.from_facts(
-                {"exception_type": type(error).__name__, "detail": str(error)}
-            )
-            assert cause is not None
+            cause = failure_cause(error, stage, lambda: self._document_set(task, unit_id))
             failure = seal_unit_failure(
                 run_hash=run.run_hash,
                 unit_id=unit_id,
@@ -1529,14 +1525,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         )
 
     def unit_states(self, task: TaskRecord) -> dict[str, dict[str, object]]:
-        """Where each unit of a coverage Task stands, from its stage receipts alone.
-
-        `prepared` when its six preparation stages verified with their own
-        artifacts; `failed` with the owner's code when a stage sealed a unit
-        failure; `pending` otherwise, with the stages done so far. Read by the
-        progress projection and the packet readers; never inferred from the
-        Task's lifecycle, which says nothing about one unit.
-        """
+        """Derive each unit's preparation state and failure from its verified receipts."""
         run = self._run(task)
         receipts = {
             value.stage_id: value.evidence[0]
@@ -1572,6 +1561,8 @@ class AlternativeEvidenceDocumentTaskAdapter:
                 "published": done >= len(expected) and not prepare_only,
                 "failure_code": None if failure is None else failure.failure_code,
                 "failed_stage": None if failure is None else failure.stage_id,
+                "exception_type": None if failure is None else failure.exception_type,
+                "exception_message": None if failure is None else failure.exception_message,
                 "uncovered_entity_ids": () if failure is None else failure.uncovered_entity_ids,
             }
             states[unit.unit_id] = state
@@ -2833,30 +2824,6 @@ always had -- and a new preparation carries every unit that completed."""
 
 def _stops_the_run(code: str) -> bool:
     return any(code == value or code.endswith(":" + value) for value in _RUN_STOPPING_CODES)
-
-
-def _failure_code(error: Exception) -> str:
-    """The code a stage records for what stopped it, naming the owner's own reason.
-
-    A Workspace knowledge failure (an index that fails its check, a snapshot
-    that moved, a semantic pack that is not the pinned one) carries its code
-    on ``failure``; a contract refusal raised through pydantic carries its
-    code as the first message of a validation report. Both used to be
-    recorded as the bare ``task_failed``, which told the person who has to
-    repair the workspace nothing about what to repair.
-    """
-    code = getattr(getattr(error, "failure", None), "code", None)
-    if not (isinstance(code, str) and code):
-        # A Host owner's refusal (the storage budget's, for one) names its
-        # reason on `failure_code`; the Task records that reason, not the
-        # bare fact that a stage failed.
-        code = getattr(error, "failure_code", None)
-    if isinstance(code, str) and code:
-        return f"alternative_evidence.task_failed:{code}"[:FAILURE_CODE_MAX_LENGTH]
-    value = failure_code_from(error)
-    return (
-        value if value.startswith("alternative_evidence.") else "alternative_evidence.task_failed"
-    )
 
 
 __all__ = [

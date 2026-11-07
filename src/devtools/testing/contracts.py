@@ -6,10 +6,14 @@ import builtins
 import dis
 import importlib
 import inspect
+import ipaddress
 import os
+import socket
 import sys
+import sysconfig
 import tempfile
 import threading
+import zoneinfo
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
 from functools import cache, partial
@@ -55,6 +59,40 @@ def import_violations(
             for row in catalog
         )
     )
+
+
+def _loopback_host(host: object) -> bool:
+    """A name or address that stays on this machine; anything unreadable does not."""
+    host = host.decode("ascii", "replace") if isinstance(host, bytes) else host
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(str(host)).is_loopback
+    except ValueError:
+        return False
+
+
+def _stays_on_this_machine(event: str, args: tuple[Any, ...]) -> bool:
+    """Whether one socket audit event is an in-process Host's, which integration admits. Making a
+    socket or reading this machine's name sends nothing; every address is read, never assumed."""
+    if event in {"socket.__new__", "socket.gethostname"}:
+        return True
+    if event in {"socket.bind", "socket.connect", "socket.sendto"}:
+        family = getattr(args[0], "family", None)
+        if family not in (socket.AF_INET, socket.AF_INET6):
+            return family == getattr(socket, "AF_UNIX", object())
+        return _loopback_host(args[-1][0])
+    return event in {"socket.getaddrinfo", "socket.gethostbyaddr"} and _loopback_host(args[0])
+
+
+_INSTALLED = tuple(
+    Path(root).resolve()
+    for root in (
+        *dict.fromkeys(sysconfig.get_paths()[key] for key in ("purelib", "platlib", "stdlib")),
+        *zoneinfo.TZPATH,
+    )
+)
+"""What the interpreter installed: packages, its library and the timezone database."""
 
 
 class LayerContract:
@@ -210,7 +248,9 @@ class LayerContract:
             self._forget_closed()
         if event in {"open", "os.remove"} and self.framework_io(args[0]):
             return
-        if event.startswith("socket."):
+        if event.startswith("socket.") and not (
+            self.layer == "integration" and _stays_on_this_machine(event, args)
+        ):
             self.refuse(event)
         if self.layer != "unit":
             return
@@ -230,6 +270,8 @@ class LayerContract:
                 (".py", ".pyc", *EXTENSION_SUFFIXES)
             )
             if not writing and importing_source and self.import_read():
+                return
+            if not writing and self.installed_read(path):
                 return
             self.path(getattr(self._opening, "path", path))
         elif event.startswith("os.") and event[3:] in {
@@ -284,6 +326,28 @@ class LayerContract:
                 ("importlib.", "_frozen_importlib", "_pytest.assertion.rewrite")
             )
         )
+
+    def installed_read(self, raw: Any) -> bool:
+        """A library's first-use read of what the interpreter installed, which lands in whichever
+        test comes first: package metadata by `importlib.metadata`, installed packages and the
+        timezone database. A project or user file read any other way stays refused."""
+        frame: FrameType | None = sys._getframe(1)
+        while frame and frame.f_globals.get("__name__") in {
+            __name__,
+            "devtools.testing.audit",
+            "pathlib",
+            "io",
+        }:
+            frame = frame.f_back
+        if frame and frame.f_globals.get("__name__") == "importlib.metadata":
+            return True
+        if isinstance(raw, int):
+            return False
+        try:
+            path = Path(os.fsdecode(raw)).resolve()
+        except (OSError, TypeError, ValueError):
+            return False
+        return any(path.is_relative_to(root) for root in _INSTALLED)
 
     def path(self, raw: Any, *, dir_fd: int | None = None) -> Path:
         if isinstance(raw, int):

@@ -16,6 +16,7 @@ def _failures(blobs, public):
     return {reference.target for reference in violations(manifest, blobs)}
 
 
+@pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 @pytest.mark.parametrize("kept", [False, True])  # True: through the gate's scan store
 @pytest.mark.parametrize("imported", ["hidden", "missing"])
 def test_python_import_requires_a_public_local_module(imported, kept, tmp_path, monkeypatch):
@@ -82,6 +83,7 @@ def _loaded(path, name, monkeypatch):
     return module
 
 
+@pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 @pytest.mark.parametrize(
     "read",
     [
@@ -105,6 +107,7 @@ def test_checkout_reads_include_a_read_helpers_supplied_path(read):
     assert _failures(blobs, {reader, target}) == set()
 
 
+@pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 def test_policy_strings_and_external_parameter_paths_are_not_checkout_reads():
     reader = "scripts/check.py"
     blobs = {
@@ -121,6 +124,7 @@ def test_policy_strings_and_external_parameter_paths_are_not_checkout_reads():
     assert _failures(blobs, {reader}) == set()
 
 
+@pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 @pytest.mark.parametrize(
     "command",
     [
@@ -143,6 +147,7 @@ def test_subprocess_reads_first_argument_and_a_named_command_list(command):
     assert _failures(blobs, {reader, target}) == set()
 
 
+@pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 def test_cjs_require_ignores_comments_and_quoted_example_source():
     reader = "tools/reader.cjs"
     blobs = {
@@ -165,6 +170,7 @@ def test_cjs_require_ignores_comments_and_quoted_example_source():
     assert _failures(blobs, {reader, "tools/hidden.cjs"}) == set()
 
 
+@pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 @pytest.mark.parametrize(
     "body",
     [
@@ -181,6 +187,7 @@ def test_markdown_links_inline_paths_and_fenced_commands_need_public_files(body)
     assert _failures(blobs, {reader, target}) == set()
 
 
+@pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 def test_markdown_directory_link_requires_a_public_descendant():
     reader = "docs/guide.md"
     blobs = {
@@ -195,6 +202,7 @@ def test_markdown_directory_link_requires_a_public_descendant():
     assert _failures(siblings, {reader, "examples-old/public.py", "examples.md"}) == {"examples"}
 
 
+@pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 def test_copytree_requires_every_source_file_even_when_the_directory_is_public():
     """Control: Copytree closure requires every file beneath a public directory."""
     reader = "scripts/check.py"
@@ -212,6 +220,7 @@ def test_copytree_requires_every_source_file_even_when_the_directory_is_public()
     assert _failures(blobs, public | {"kit/hidden.py"}) == set()
 
 
+@pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 @pytest.mark.parametrize(
     ("handler", "private_cache", "expected"),
     [
@@ -238,6 +247,7 @@ def test_only_an_absent_optional_cache_with_a_fallback_is_not_required(
     assert _failures(blobs, {reader, "config/public.json"}) == expected
 
 
+@pytest.mark.proves("pipeline.public_outputs_need_a_declared_producer")
 @pytest.mark.parametrize("package", ["browser-kit", "@tools/browser-kit"])
 @pytest.mark.parametrize(
     ("declared", "locked", "publish_declaration", "publish_lock", "accepted"),
@@ -269,11 +279,13 @@ def test_installed_node_dependency_requires_its_exact_public_declaration_and_loc
     assert _failures(blobs, public) == (set() if accepted else {target})
 
 
+@pytest.mark.proves("pipeline.public_outputs_need_a_declared_producer")
 def test_a_public_manifest_entry_requires_its_source_blob():
     reader = "scripts/missing.py"
     assert _failures({}, {reader}) == {reader}
 
 
+@pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 def test_a_missing_private_rule_target_is_not_an_optional_cache():
     reader = "scripts/check.py"
     target = "private/secret.json"
@@ -296,6 +308,7 @@ def test_a_missing_private_rule_target_is_not_an_optional_cache():
     assert {ref.target for ref in violations(manifest, blobs)} == {target}
 
 
+@pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 def test_a_document_command_glob_requires_all_its_matching_files():
     """Control: Document command globs require every matching public file."""
     reader = "docs/guide.md"
@@ -360,6 +373,7 @@ def _generated_fixture(family):
     return blobs, set(blobs), producer, dependency, targets
 
 
+@pytest.mark.proves("pipeline.public_outputs_need_a_declared_producer")
 @pytest.mark.parametrize("family", ["assets", "native", "native-default-directory"])
 def test_a_generated_output_requires_its_public_declaration_and_actual_write(family):
     from release.public_outputs import generated_outputs
@@ -374,6 +388,7 @@ def test_a_generated_output_requires_its_public_declaration_and_actual_write(fam
     assert _failures(blobs, public) == {undeclared}
 
 
+@pytest.mark.proves("pipeline.public_outputs_need_a_declared_producer")
 @pytest.mark.parametrize("mapping", ("whole", "copied", "renamed", "filtered", "opaque"))
 def test_a_generated_output_follows_only_a_key_preserving_local_renderer(mapping):
     """A build's renderer is part of its proof; an unresolved or changed return is not."""
@@ -402,6 +417,7 @@ def test_a_generated_output_follows_only_a_key_preserving_local_renderer(mapping
     assert _failures(blobs, public) == targets - expected
 
 
+@pytest.mark.proves("pipeline.public_outputs_need_a_declared_producer")
 @pytest.mark.parametrize("availability", ["absent", "private"])
 @pytest.mark.parametrize(
     ("family", "part"),
@@ -426,6 +442,7 @@ def test_a_generated_output_loses_permission_when_a_required_source_is_unpublish
     assert generated_outputs(blobs, public) == {}
 
 
+@pytest.mark.proves("pipeline.public_outputs_need_a_declared_producer")
 @pytest.mark.parametrize(
     ("family", "before", "after", "target_name"),
     [
@@ -463,6 +480,7 @@ def test_an_output_declaration_change_does_not_authorize_the_previous_path(
     assert _failures(blobs, public) == expected
 
 
+@pytest.mark.proves("pipeline.public_outputs_need_a_declared_producer")
 @pytest.mark.parametrize(
     ("family", "write"),
     [
@@ -480,6 +498,7 @@ def test_an_output_declaration_without_a_write_is_still_an_omitted_dependency(fa
     assert _failures(blobs, public) == targets
 
 
+@pytest.mark.proves("pipeline.public_outputs_need_a_declared_producer")
 @pytest.mark.parametrize("family", ["assets", "native", "native-default-directory"])
 def test_a_producer_never_authorizes_an_existing_private_output_path(family):
     from release.public_outputs import generated_outputs
@@ -491,6 +510,7 @@ def test_a_producer_never_authorizes_an_existing_private_output_path(family):
     assert _failures(blobs, public) == {private}
 
 
+@pytest.mark.proves("pipeline.public_outputs_need_a_declared_producer")
 @pytest.mark.parametrize("family", ["native", "native-default-directory"])
 def test_a_native_binding_output_requires_bind_to_pass_the_imported_constant(family):
     from release.public_outputs import generated_outputs
@@ -503,6 +523,7 @@ def test_a_native_binding_output_requires_bind_to_pass_the_imported_constant(fam
     assert _failures(blobs, public) == targets
 
 
+@pytest.mark.proves("pipeline.public_outputs_need_a_declared_producer")
 @pytest.mark.parametrize(
     ("before", "after"),
     [

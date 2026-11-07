@@ -45,7 +45,7 @@ input, not a PIT universe.
 Run the offline case:
 
 ```powershell
-.venv\Scripts\python.exe -m pytest --no-cov tests/current_universe_onboarding/test_current_universe_onboarding.py -q
+.venv\Scripts\python.exe -m pytest --no-cov tests/integration/market_data_ops/test_current_universe_onboarding.py -q
 ```
 
 The explicit CLI/runtime composition stores a live candidate manifest and

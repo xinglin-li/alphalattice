@@ -56,10 +56,59 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
 ):
     host, bodies, wanted = CASES[case]
     if case == "size-required":
+        assert hasattr(stage, "derived_holders"), "the stage must select declared owner proofs"
+        old, new = "a" * 40, "b" * 40
+
+        def pair(path):
+            return ([":100644", "100644", old, new, "M"], path)
+
+        materializer = (
+            "tests/integration/local_application/test_claude_host_materialization.py::"
+            "test_committed_derivatives_match_their_owners"
+        )
+        host_holder = (
+            "tests/structural/test_wait_caps.py::"
+            "test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed"
+        )
+        client = (
+            "tests/structural/test_wait_caps.py::"
+            "test_every_capped_client_waiter_has_its_cap_rule_reviewed"
+        )
+        assert stage.derived_holders(
+            [pair(".agents/skills/alphalattice-research/references/specialist-handoff.md")], {}
+        ) == (materializer,)
+        assert stage.derived_holders([pair(".agents/skills-lookalike/no.md")], {}) == ()
+        assert stage.derived_holders([pair(".codex/agents/alphalattice_risk.toml")], {}) == (
+            materializer,
+        )
+        assert stage.derived_holders([pair("config/registries/messages.json")], {}) == (
+            materializer,
+        )
+        assert stage.derived_holders([pair("config/registries/messages-backup.json")], {}) == ()
+        cli = "src/alphalattice/interface/local_application/cli.py"
+        assert stage.derived_holders([pair(cli)], {old: "pass", new: "pass"}) == (materializer,)
+        owner = "src/alphalattice/control/product_host/composition/answer_turns.py"
+        assert stage.derived_holders(
+            [pair(owner)], {old: "def f(deadline): pass", new: "def f(): pass"}
+        ) == (host_holder,)
+        assert (
+            stage.derived_holders([pair(owner)], {old: "def f(): pass", new: "def f(): pass"}) == ()
+        )
+        with pytest.raises(SyntaxError):
+            stage.derived_holders([pair(owner)], {old: "def f(deadline): pass", new: "def ("})
+        assert stage.derived_holders(
+            [pair(owner)], {old: "def f(): pass", new: "def f(max_wait): pass"}
+        ) == (host_holder,)
+        client_path = "src/alphalattice/interface/local_application/client.py"
+        assert set(
+            stage.derived_holders(
+                [pair(client_path)], {old: "def f(deadline): pass", new: "def f(): pass"}
+            )
+        ) == {client, host_holder}
         monkeypatch.setattr(
             stage,
             "changed_families",
-            lambda root, base, head: ["tests/test_new.py::test_one"],
+            lambda root, base, head, **kwargs: ["tests/test_new.py::test_one"],
             raising=False,
         )
     (tmp_path / "config/registries").mkdir(parents=True)
@@ -71,13 +120,72 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(tmp_path)]
     for words in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "c"]):
         subprocess.run([*git, *words], check=True)
+    if case == "size-required":
+        before = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        skill = tmp_path / ".agents/skills/example/references/handoff.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("owner", encoding="utf-8")
+        deadline = tmp_path / "src/alphalattice/control/product_host/new_owner.py"
+        deadline.parent.mkdir(parents=True)
+        deadline.write_text("def wait(deadline): pass\n", encoding="utf-8")
+        subprocess.run([*git, "add", "-A"], check=True)
+        subprocess.run([*git, "commit", "-qm", "derived owners"], check=True)
+        after = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        selected, _ = stage._size_selection("commit", {"base": before, "head": after}, (), tmp_path)
+        assert set(selected) == {materializer, host_holder, "tests/test_new.py::test_one"}
+        from scripts import check_alpha_verification_impact as impact_runner
+
+        with monkeypatch.context() as own:
+            own.setattr(impact_runner, "PLAYPEN_ROOT", tmp_path)
+            changed = (
+                skill.relative_to(tmp_path).as_posix(),
+                deadline.relative_to(tmp_path).as_posix(),
+            )
+            assert set(impact_runner._declared_holders(changed, base=before, staged=False)) == {
+                materializer,
+                host_holder,
+            }
+            deadline.unlink()
+            subprocess.run([*git, "add", "-u"], check=True)
+            assert impact_runner._declared_holders((changed[1],), base=None, staged=True) == (
+                host_holder,
+            )
+            deadline.write_text("def wait(deadline): pass\n", encoding="utf-8")
+            subprocess.run([*git, "add", changed[1]], check=True)
+            outside = tmp_path / "docs/moved-handoff.md"
+            outside.parent.mkdir(exist_ok=True)
+            subprocess.run(
+                [*git, "mv", changed[0], outside.relative_to(tmp_path).as_posix()], check=True
+            )
+            assert impact_runner._declared_holders(
+                (outside.relative_to(tmp_path).as_posix(),), base=None, staged=True
+            ) == (materializer,)
+            subprocess.run(
+                [*git, "mv", outside.relative_to(tmp_path).as_posix(), changed[0]], check=True
+            )
+        unrelated = tmp_path / "docs/unrelated.md"
+        unrelated.parent.mkdir(exist_ok=True)
+        unrelated.write_text("not an owner", encoding="utf-8")
+        subprocess.run([*git, "add", "-A"], check=True)
+        subprocess.run([*git, "commit", "-qm", "unrelated"], check=True)
+        next_head = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        selected, _ = stage._size_selection(
+            "commit", {"base": after, "head": next_head}, (), tmp_path
+        )
+        assert materializer not in selected and host_holder not in selected
     if case == "cost lock missing":
         (tmp_path / "uv.lock").unlink()
     paths = [tmp_path / f"shop{i}.py" for i in range(len(bodies))]
     for path, body in zip(paths, bodies, strict=True):
         path.write_text(body, "utf-8")
     out = tmp_path / "out"
-    asked = dict(host=host, base="HEAD", workers=1, command=["t"], paths=paths)
+    asked = dict(
+        host=host,
+        base=before if case == "size-required" else "HEAD",
+        workers=1,
+        command=["t"],
+        paths=paths,
+    )
     with pytest.raises(DefinitionError) as refused:  # a run ends on its rerun into its --out
         summary = stage.run(tmp_path, "commit", out=out, **asked)
         assert (summary["result"], summary["red_nodes"]) == ("FAIL", [])
@@ -107,9 +215,11 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         assert not bodies or (out / "base").read_text("utf-8") == summary["base"]  # the merge base
         assert not bodies or (out / "stage").read_text("utf-8") == "commit"
         if case == "size-required":
-            assert json.loads((out / "size-required").read_text("utf-8")) == [
-                "tests/test_new.py::test_one"
-            ]
+            assert set(json.loads((out / "size-required").read_text("utf-8"))) == {
+                "tests/test_new.py::test_one",
+                materializer,
+                host_holder,
+            }
             assert (
                 json.loads((out / "size-stage-selection.json").read_text("utf-8"))["seconds"] >= 0
             )
