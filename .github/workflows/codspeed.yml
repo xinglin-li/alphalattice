@@ -1,0 +1,46 @@
+name: CodSpeed
+
+# Continuous performance measurement of the numeric hot paths in benchmarks/: the robust
+# cross-section numerics, the scalar factor oracle, the formula language and the vectorized
+# core-feature materializer. CodSpeed's CPU simulation counts instructions, so each result is
+# stable across runs and comparable between a pull request and its base.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write  # OIDC authentication with CodSpeed
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ALPHALATTICE_NETWORK_DISABLED: "1"
+  UV_NO_MANAGED_PYTHON: "1"
+
+jobs:
+  benchmarks:
+    name: Run benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.11.28"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version-file: .python-version
+      - name: Install the locked environment with the CodSpeed plugin
+        run: uv sync --locked --all-extras --group codspeed
+      - name: Run the benchmarks
+        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+        with:
+          mode: simulation
+          run: uv run --no-sync python -m pytest benchmarks --codspeed

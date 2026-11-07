@@ -6,6 +6,7 @@ English | [简体中文](README.zh-CN.md)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg)](docs/public-source/getting-started.md)
 [![uv](https://img.shields.io/badge/uv-locked-261230.svg)](docs/public-source/getting-started.md)
 [![Mentioned in Awesome](https://awesome.re/mentioned-badge.svg)](https://github.com/wilsonfreitas/awesome-quant)
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/xinglin-li/alphalattice?utm_source=badge)
 
 **Ask for a dated research portfolio and inspect its positions, source evidence and recorded review in one workspace.**
 
