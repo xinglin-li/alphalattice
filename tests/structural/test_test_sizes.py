@@ -1326,13 +1326,19 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     )
     nodes = [SimpleNamespace(nodeid=n) for n in (other, "tests/structural/test_fenced.py::t")]
     _record_moved(config, "merge", nodes, policy, changed)
+    pytest_collection_finish(SimpleNamespace(config=config, items=[]))
     recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
     assert recorded == {"tier": "commit stage", "moved": [other], "ran": []}
+    _record_moved(config, "merge", nodes, policy, changed)
+    pytest_collection_finish(SimpleNamespace(config=config, items=[nodes[0]]))
+    recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
+    assert recorded == {"tier": "commit stage", "moved": [other], "ran": [other]}
     _record_moved(config, "merge", nodes, policy, changed, floor=True)
     pytest_collection_finish(SimpleNamespace(config=config, items=[nodes[0]]))
     recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
     assert recorded == {"tier": "commit stage", "moved": [other], "ran": [other]}
-    _record_moved(config, "merge", nodes, policy, None, omitted=(nodes[0],))
+    _record_moved(config, "merge", nodes, policy, None)
+    pytest_collection_finish(SimpleNamespace(config=config, items=[nodes[1]]))
     recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
     assert recorded == {"tier": "post-merge", "moved": [other], "ran": []}
     assert included(closure, "large", "nightly", policy, None) and not scoped(scan, policy, None)

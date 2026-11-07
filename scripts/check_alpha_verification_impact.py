@@ -61,7 +61,12 @@ from devtools.architecture.structural import (  # noqa: E402
     kept_fact,
     kept_facts,
 )
-from devtools.pipeline.stage import DEADLINE_ROOTS, derived_holders  # noqa: E402
+from devtools.pipeline.stage import (  # noqa: E402
+    DEADLINE_ROOTS,
+    derived_holders,
+    registered_holders,
+    selection_readers,
+)
 from devtools.testing.layout import placed_tests  # noqa: E402
 
 _PARENT_REVISION = "HEAD"
@@ -1178,6 +1183,38 @@ def _reach_roles(changed: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(sorted(roles))
 
 
+def _registered_holders(paths: set[str], *, staged: bool) -> tuple[str, ...]:
+    """The same declared edges as the stage, read from this plan's own input state."""
+    policy_path = "config/registries/test-sizes.json"
+    if staged:
+        policy = read_blobs([":" + policy_path], PLAYPEN_ROOT, timeout=60).get(":" + policy_path)
+        if policy is None:
+            raise ValueError(f"the staged selection registry is unavailable: {policy_path}")
+    else:
+        policy = (PLAYPEN_ROOT / policy_path).read_text(encoding="utf-8")
+    rows = selection_readers(json.loads(policy))
+    needed = {
+        row[key]
+        for row in rows.values()
+        if "census" in row
+        and (
+            any(path.startswith("src/alphalattice/") and path.endswith(".py") for path in paths)
+            or paths.intersection(row["conditional_inputs"])
+        )
+        for key in ("census", "sample")
+    }
+    if staged:
+        blobs = read_blobs([":" + path for path in sorted(needed)], PLAYPEN_ROOT, timeout=60)
+        sources = {path: blobs[":" + path] for path in needed if ":" + path in blobs}
+    else:
+        sources = {
+            path: (PLAYPEN_ROOT / path).read_text(encoding="utf-8")
+            for path in needed
+            if (PLAYPEN_ROOT / path).is_file()
+        }
+    return registered_holders(paths, sources, rows)
+
+
 def _declared_holders(
     changed: tuple[str, ...], *, base: str | None, staged: bool
 ) -> tuple[str, ...]:
@@ -1237,7 +1274,9 @@ def _declared_holders(
             blobs[oid] = source.decode("utf-8")
             meta[3] = oid
         pairs.append((meta, path))
-    return derived_holders(pairs, blobs)
+    return tuple(
+        sorted({*derived_holders(pairs, blobs), *_registered_holders(paths, staged=staged)})
+    )
 
 
 def _changed_paths(*, base: str | None, staged: bool) -> tuple[str, ...]:

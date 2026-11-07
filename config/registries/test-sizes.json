@@ -1,6 +1,38 @@
 {
   "schema": "alphalattice.test-sizes.v1",
   "owner": "devtools.testing",
+  "selection_readers": {
+    "tests/integration/local_application/test_product_script_refusals.py::test_every_setup_refusal_word_names_its_way_on_and_only_places_every_setup_carries": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    },
+    "tests/integration/local_application/test_cli_printed_commands.py::test_every_refusal_and_answer_template_command_parses": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    },
+    "tests/integration/product_host/test_research_flow_answers.py::test_a_books_risk_window_and_its_bound_section_are_refused_with_the_way_on": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    },
+    "tests/integration/workspace_runtime/test_network_access.py::test_every_network_way_on_reads_the_effective_decision": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    },
+    "tests/structural/test_plan_retention.py::test_every_plan_expiry_refusal_offers_its_replan": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    },
+    "tests/structural/test_refusal_contracts.py::test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    }
+  },
   "defaults": [
     {
       "pattern": "tests/integration/alpha_research/test_alpha_product_recipe.py*",

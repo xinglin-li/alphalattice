@@ -809,7 +809,6 @@ def _record_moved(
     changed: frozenset[str] | None,
     *,
     floor: bool = False,
-    omitted: tuple[Any, ...] = (),
 ) -> None:
     """Beside the run's JUnit, ``structural-moved.json``: the structural guards a commit stage
     leaves to post-merge, and whether this run ran them (a post-merge run, unscoped, always does),
@@ -818,20 +817,12 @@ def _record_moved(
     found = sorted({n.replace("\\", "/") for n in (i.nodeid for i in items) if moved(n, policy)})
     if lane != "merge" or not xml or not found:
         return
-    excluded = {item.nodeid.replace("\\", "/") for item in omitted}
     record = {
         "tier": "commit stage" if floor or changed is not None else "post-merge",
         "moved": found,
-        "ran": [
-            n
-            for n in found
-            if n not in excluded and (changed is None or n.split("::")[0] in changed)
-        ],
+        "ran": [],
     }
-    if floor:
-        config.stash[FLOOR_MOVED] = record
-    else:
-        _write_moved(config, record)
+    config.stash[FLOOR_MOVED] = record
 
 
 def _write_moved(config: Any, record: dict[str, Any]) -> None:
@@ -848,7 +839,7 @@ def _write_moved(config: Any, record: dict[str, Any]) -> None:
 
 
 def pytest_collection_finish(session: Any) -> None:
-    """A floor receipt names the moved guards actually kept after all collection hooks."""
+    """Name the moved guards actually kept after all collection hooks."""
     record = session.config.stash.get(FLOOR_MOVED, None)
     if record is not None:
         kept = {item.nodeid.replace("\\", "/") for item in session.items}
@@ -939,7 +930,7 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             items.clear()
             return
         raise pytest.UsageError(str(error)) from error
-    _record_moved(config, lane, items, policy, changed, floor=floor, omitted=tuple(omitted))
+    _record_moved(config, lane, items, policy, changed, floor=floor)
     if lane or required or omitted:
         config.hook.pytest_deselected(items=omitted)
         items[:] = kept

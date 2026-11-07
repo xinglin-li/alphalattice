@@ -57,6 +57,89 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
     host, bodies, wanted = CASES[case]
     if case == "size-required":
         assert hasattr(stage, "derived_holders"), "the stage must select declared owner proofs"
+        census_path = "scripts/fake_census.py"
+        reader_node = "tests/test_registered.py::test_sentence"
+        rows = stage.selection_readers(
+            {
+                "selection_readers": {
+                    reader_node: {
+                        "inputs": ["src/product/words.json"],
+                        "census": census_path,
+                        "sample": "tests/fake_sample.py",
+                        "conditional_inputs": ["config/registries/messages.json"],
+                    }
+                }
+            }
+        )
+        census_source = 'OWNERS = {"control/product_host/new_owner.py": (set(), set())}\n'
+        assert stage.registered_holders(
+            {"src/alphalattice/control/product_host/new_owner.py"},
+            {census_path: census_source},
+            rows,
+        ) == (reader_node,)
+        assert stage.registered_holders({"src/product/words.json"}, {}, rows) == (reader_node,)
+        assert stage.registered_holders({"src/product/words.json.bak"}, {}, rows) == ()
+        assert (
+            stage.registered_holders(
+                {"config/registries/messages.json"}, {census_path: census_source}, rows
+            )
+            == ()
+        )
+        assert stage.registered_holders(
+            {"config/registries/messages.json"},
+            {census_path: census_source + '\nCATALOG = "config/registries/messages.json"\n'},
+            rows,
+        ) == (reader_node,)
+        with pytest.raises(ValueError):
+            stage.selection_readers(
+                {"selection_readers": {reader_node: {"inputs": ["../outside"]}}}
+            )
+        graph = tmp_path / "graph"
+        helper = graph / "tests/support/second.py"
+        helper.parent.mkdir(parents=True)
+        helper.write_text(
+            "from product.owner import run\nVALUE = run()\n"
+            "class Runner:\n def call(self): return run()\n"
+            "def invoke(): return run()\n",
+            encoding="utf-8",
+        )
+        (helper.parent / "first.py").write_text(
+            "from tests.support.second import invoke\ndef forward(): return invoke()\n",
+            encoding="utf-8",
+        )
+        script = graph / "scripts/support.py"
+        script.parent.mkdir()
+        script.write_text(
+            "from product.owner import run\ndef via_script(): return run()\n", encoding="utf-8"
+        )
+        reader = graph / "tests/test_reader.py"
+        reader.write_text(
+            "def test_reader():\n from tests.support.first import forward\n forward()\n"
+            "def test_alias():\n import tests.support.second\n tests.support.second.invoke()\n"
+            "def test_script():\n from scripts.support import via_script\n via_script()\n"
+            "def test_value():\n from tests.support.second import VALUE\n assert VALUE\n"
+            "def test_import_only():\n from tests.support.second import VALUE\n"
+            "def test_class():\n from tests.support.second import Runner\n Runner().call()\n"
+            "def test_other():\n pass\n",
+            encoding="utf-8",
+        )
+        assert hasattr(stage, "helper_holders")
+        assert stage.helper_holders(graph, {"src/product/owner.py"}) == (
+            "tests/test_reader.py::test_alias",
+            "tests/test_reader.py::test_class",
+            "tests/test_reader.py::test_import_only",
+            "tests/test_reader.py::test_reader",
+            "tests/test_reader.py::test_script",
+            "tests/test_reader.py::test_value",
+        )
+        assert stage.helper_holders(graph, {"src/product/other.py"}) == ()
+        assert (
+            "tests/integration/product_host/test_workspace_activity.py::"
+            "test_cursor_reconnect_restart_and_typed_read_refusals"
+            in stage.helper_holders(
+                ROOT, {"src/alphalattice/control/product_host/composition/web_launcher.py"}
+            )
+        )
         old, new = "a" * 40, "b" * 40
 
         def pair(path):
@@ -114,9 +197,36 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
     (tmp_path / "config/registries").mkdir(parents=True)
     for name in ("owners-map.json", "test-sizes.json"):
         shutil.copy(ROOT / "config/registries" / name, tmp_path / "config/registries" / name)
+    if case == "size-required":
+        size_file = tmp_path / "config/registries/test-sizes.json"
+        size_policy = json.loads(size_file.read_text(encoding="utf-8"))
+        size_policy["selection_readers"] = rows
+        size_file.write_text(json.dumps(size_policy), encoding="utf-8")
     config = tmp_path / "config/pipeline.toml"
     config.write_text(DEFINITION, "utf-8")
     (tmp_path / "uv.lock").write_text("locked-test-environment\n", encoding="utf-8")
+    if case == "size-required":
+        helper = tmp_path / "tests/support/host.py"
+        helper.parent.mkdir(parents=True)
+        helper.write_text(
+            "from alphalattice.control.product_host.new_owner import wait\n"
+            "def call(): return wait()\n",
+            encoding="utf-8",
+        )
+        script = tmp_path / "scripts/support.py"
+        script.parent.mkdir(parents=True)
+        script.write_text(helper.read_text(encoding="utf-8"), encoding="utf-8")
+        census = tmp_path / census_path
+        census.parent.mkdir(parents=True, exist_ok=True)
+        census.write_text(
+            'OWNERS = {"control/product_host/new_owner.py": (set(), set())}\n', encoding="utf-8"
+        )
+        test = tmp_path / "tests/test_host.py"
+        test.write_text(
+            "def test_host():\n from tests.support.host import call\n call()\n"
+            "def test_script():\n from scripts.support import call\n call()\n",
+            encoding="utf-8",
+        )
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(tmp_path)]
     for words in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "c"]):
         subprocess.run([*git, *words], check=True)
@@ -131,8 +241,18 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         subprocess.run([*git, "add", "-A"], check=True)
         subprocess.run([*git, "commit", "-qm", "derived owners"], check=True)
         after = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        original_test = test.read_text(encoding="utf-8")
+        test.write_text("def test_host(): pass\n", encoding="utf-8")
         selected, _ = stage._size_selection("commit", {"base": before, "head": after}, (), tmp_path)
-        assert set(selected) == {materializer, host_holder, "tests/test_new.py::test_one"}
+        test.write_text(original_test, encoding="utf-8")
+        assert set(selected) == {
+            materializer,
+            host_holder,
+            "tests/test_new.py::test_one",
+            "tests/test_host.py::test_host",
+            "tests/test_host.py::test_script",
+            reader_node,
+        }
         from scripts import check_alpha_verification_impact as impact_runner
 
         with monkeypatch.context() as own:
@@ -144,12 +264,14 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             assert set(impact_runner._declared_holders(changed, base=before, staged=False)) == {
                 materializer,
                 host_holder,
+                reader_node,
             }
             deadline.unlink()
             subprocess.run([*git, "add", "-u"], check=True)
-            assert impact_runner._declared_holders((changed[1],), base=None, staged=True) == (
+            assert set(impact_runner._declared_holders((changed[1],), base=None, staged=True)) == {
                 host_holder,
-            )
+                reader_node,
+            }
             deadline.write_text("def wait(deadline): pass\n", encoding="utf-8")
             subprocess.run([*git, "add", changed[1]], check=True)
             outside = tmp_path / "docs/moved-handoff.md"
@@ -217,6 +339,9 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         if case == "size-required":
             assert set(json.loads((out / "size-required").read_text("utf-8"))) == {
                 "tests/test_new.py::test_one",
+                "tests/test_host.py::test_host",
+                "tests/test_host.py::test_script",
+                reader_node,
                 materializer,
                 host_holder,
             }
