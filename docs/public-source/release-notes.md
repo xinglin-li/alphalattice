@@ -1,7 +1,27 @@
 # AlphaLattice release notes
-Last checked: 2026-11-04 against 0.2.4
+Last checked: 2026-11-06 against 0.2.5
 
-Latest released version: [0.2.4](#024). Earlier measurements describe their own versions.
+Latest released version: [0.2.5](#025). Earlier measurements describe their own versions.
+
+## 0.2.5
+
+0.2.5 makes Evidence failures easier to act on and keeps setup refusals clear before a run starts. Its test and delivery work changes how the project is verified; it does not change how people use AlphaLattice.
+
+### Changed
+
+- Evidence preparation names the failed unit and its cause, and offers the coverage that can still proceed.
+- Evidence stop messages are available in Chinese as well as English.
+- An unreadable workspace is refused with its cause named, before any run is launched.
+- Activity shows which workspace holds the writer and which Tasks are waiting.
+
+### Fixed
+
+- A workspace that already has a Host can be reopened when its folder also holds other files.
+
+### Known limits
+
+- Native daily runs did not complete on either host for this release. The daily path was verified by the replay run on the release candidate (120 listings, one host): its first-use, daily, exact-retry and second-daily legs were all recorded and admitted.
+- On Windows, a model installation can stop with a PermissionError after its download finishes. Running the same command continues the installation; the downloaded files are kept.
 
 ## 0.2.4
 
