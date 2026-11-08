@@ -14904,6 +14904,20 @@
    "successor": "95acc4115398ad7c4de94840e8fe8c686d555de4884247781ee29ee5b8cb6a41",
    "change": "Share workspace database access for panel readers",
    "reason": "Model development's implementation identity changes because six file-backed readers now open the workspace database through its owner, read-only; their queries, ordering and returned values are unchanged, and no data or result identity moves."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "671f350b47e268fa1b7a000162de503add561440ac8c94554bc6c505830e87e2",
+   "successor": "6c7a3414549f169177a8473cc7a86e2771e0aab1805305e9c7154cddb9c0b86c",
+   "change": "Fix Windows research-input path handling",
+   "reason": "Reads and checks are unchanged: the owner still reads through the long path with the same binding, digest and lineage checks. Only a missing manifest's file-not-found error now names the file in the ordinary Windows spelling, and the tamper test now changes the source it checks."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "762c7c4e414435f7a68afd54cda106a4807d87a83b61b74f783a394c3b46c241",
+   "successor": "205459793ffcf23441b50202504a7f3b1514dc6e8edd15e0298537188339f5b1",
+   "change": "Fix Windows research-input path handling",
+   "reason": "Reads and checks are unchanged: the owner still reads through the long path with the same binding, digest and lineage checks. Only a missing manifest's file-not-found error now names the file in the ordinary Windows spelling, and the tamper test now changes the source it checks."
   }
  ]
 }

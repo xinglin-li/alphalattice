@@ -97,6 +97,16 @@ def _windows_long_path(path: Path) -> Path:
     return Path("\\\\?\\" + absolute)
 
 
+def _reported_path(path: Path) -> Path:
+    """Return the ordinary Windows spelling of a path used for file I/O."""
+    value = str(path)
+    if os.name == "nt" and value.startswith("\\\\?\\UNC\\"):
+        return Path("\\\\" + value[8:])
+    if os.name == "nt" and value.startswith("\\\\?\\"):
+        return Path(value[4:])
+    return path
+
+
 def confined(root: Path, relative: str) -> Path:
     """Resolve an explicit relative path and refuse workspace escape.
 
@@ -309,7 +319,14 @@ def read_factor_bundle(
     if len(binding_hash) != 64 or any(v not in "0123456789abcdef" for v in binding_hash):
         raise AuthoringError("research_experiment.input_hash_invalid")
     root = confined(workspace, f"research-inputs/{binding_hash}")
-    bundle = FactorInputBundle.model_validate_json(confined(root, "manifest.json").read_bytes())
+    manifest = confined(root, "manifest.json")
+    try:
+        manifest_bytes = manifest.read_bytes()
+    except FileNotFoundError as error:
+        raise FileNotFoundError(
+            error.errno, error.strerror, str(_reported_path(manifest))
+        ) from error
+    bundle = FactorInputBundle.model_validate_json(manifest_bytes)
     if bundle.binding_hash != binding_hash:
         raise AuthoringError("research_experiment.input_manifest_identity_mismatch")
     if verify:

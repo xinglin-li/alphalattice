@@ -1657,7 +1657,7 @@ def test_a_study_stopped_under_the_old_schema_rule_is_refused_by_name_and_planne
 def test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool(
     inputs: Path, tmp_path: Path, monkeypatch
 ):
-    """Binding refuses a corrupt copy a changed source and a tampered pool."""
+    """Binding refuses corrupt or changed inputs."""
 
     from alphalattice.control.product_host.research_authoring import factor_inputs as owner
 
@@ -1695,7 +1695,7 @@ def test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool(
 
     def move_source_after_copy(workspace_, src, target, expected, **kwargs):
         verified = copy_input(workspace_, src, target, expected, **kwargs)
-        if src == lifecycle:
+        if src.samefile(lifecycle):
             lifecycle.write_bytes(original_bytes + b"\n")
         return verified
 

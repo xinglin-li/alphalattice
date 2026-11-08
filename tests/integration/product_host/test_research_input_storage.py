@@ -297,6 +297,10 @@ def test_bundle_pool_alias_is_verified_as_one_object_and_still_refuses_tamper(
             pytest.fail(f"long-path readback was refused: {error}")
         assert readback == long_bundle
     assert os.name != "nt" or long_reads
+    missing = long_root / "research-inputs" / ("a" * 64) / "manifest.json"
+    with pytest.raises(FileNotFoundError) as failure:
+        read_factor_bundle(long_root, "a" * 64, verify=False)
+    assert failure.value.filename == str(missing.resolve())
 
     (bundle,) = _inputs(tmp_path, count=1)
     source = tmp_path / "research-inputs" / bundle.binding_hash / "source"
