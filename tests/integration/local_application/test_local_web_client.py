@@ -352,6 +352,8 @@ def test_failed_output_keeps_compact_feedback_and_the_completed_operation(
     assert not (tmp_path / "unwritten.html").exists()
 
 
+@pytest.mark.proves("local_application.only_reconnects_named_host_failures")
+@pytest.mark.proves("local_application.a_disconnected_waiter_reports_the_task_continues")
 def test_a_wait_that_loses_its_host_keeps_the_admission_in_the_output(
     tmp_path, monkeypatch, capsys
 ):
@@ -401,6 +403,29 @@ def test_a_wait_that_loses_its_host_keeps_the_admission_in_the_output(
     assert saved["admission"] == admitted
     assert saved["wait_event"]["event"] == "MAX_WAIT_REACHED"
     assert result["output_file"] == str(receipt.resolve())
+
+    class RefusingClient:
+        workspace = tmp_path
+
+        def request(self, document, timeout=None):
+            raise client.LocalResearchClientError("fixture.not_a_restart")
+
+    with pytest.raises(client.LocalResearchClientError, match=r"fixture\.not_a_restart"):
+        client._read_through_restarts(RefusingClient(), {"operation": "STATUS"}, 0.0)
+
+    class DisconnectedClient(RefusingClient):
+        def request(self, document, timeout=None):
+            raise client.LocalResearchClientError("local_client.service_not_running")
+
+    waiting = client._follow(
+        DisconnectedClient(),
+        {"status": "TASK_ADMITTED", "task_id": "task-a", "lifecycle": "QUEUED"},
+        1,
+        deadline=0.0,
+        receipt=lambda *_: None,
+    )
+    assert waiting["wait_event"]["event"] == "MAX_WAIT_REACHED"
+    assert waiting["wait_status"] == "MAX_WAIT_TASK_CONTINUES"
 
 
 def test_a_chinese_request_is_sent_in_utf8_within_the_body_limit() -> None:
