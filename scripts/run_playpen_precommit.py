@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import platform
 import shlex
 import shutil
 import subprocess
@@ -14,6 +16,63 @@ from typing import cast
 from pre_commit.main import main as pre_commit_main  # type: ignore[import-untyped]
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[1]
+GITLEAKS_SHA256 = {
+    "darwin-arm64": "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",
+    "darwin-x64": "cee01fea7173f1b779dff188e1c26ecbcb4027d394acc573b23aaf0be260e291",
+    "linux-arm64": "00e91bbe655bd7c47753e8cfe61cb76ea1a5d7e7702fe161ee40102b46b3823b",
+    "linux-x64": "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509",
+    "win32-arm64": "200df852fdecbedb19a33960657333cba5e231740bc8968972b507b50f93b194",
+    "win32-x64": "17157e2ee8b76fc8b1d8bee607a250e34b8a8023c8bc81822d4b5ee4d78fcb7c",
+}
+
+
+def verified_gitleaks(root: Path, platform_key: str) -> Path:
+    """Return the exact official release executable the hook will run."""
+    expected = GITLEAKS_SHA256.get(platform_key)
+    if expected is None:
+        raise ValueError(f"playpen.gitleaks_unavailable: unsupported platform {platform_key}")
+    workshop = next(
+        (parent for parent in root.parents if (parent / "tools/container-roots.json").is_file()),
+        None,
+    )
+    if workshop is not None:
+        name = "gitleaks.exe" if platform_key.startswith("win32-") else "gitleaks"
+        binary = workshop / "tools/.state/gitleaks/8.30.1" / name
+    else:
+        found = shutil.which("gitleaks")
+        if found is None:
+            raise ValueError(
+                "playpen.gitleaks_unavailable: install official gitleaks 8.30.1 on PATH"
+            )
+        binary = Path(found)
+    try:
+        with binary.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    except FileNotFoundError as error:
+        raise ValueError(
+            f"playpen.gitleaks_unavailable: {binary}; restore official gitleaks 8.30.1"
+        ) from error
+    except OSError as error:
+        raise ValueError(f"playpen.gitleaks_unreadable: {binary}; restore access") from error
+    if digest != expected:
+        raise ValueError(f"playpen.gitleaks_untrusted: {binary}; restore official gitleaks 8.30.1")
+    return binary.absolute()
+
+
+def run_gitleaks(arguments: list[str]) -> int:
+    architecture = {"amd64": "x64", "x86_64": "x64", "aarch64": "arm64", "arm64": "arm64"}.get(
+        platform.machine().lower(), platform.machine().lower()
+    )
+    try:
+        binary = verified_gitleaks(PLAYPEN_ROOT, f"{sys.platform}-{architecture}")
+        return subprocess.run(
+            [str(binary), *arguments],
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).returncode
+    except (OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
 
 
 def _prepare_environment() -> None:
@@ -183,26 +242,36 @@ def _format_staged() -> None:
             )
 
 
-def main() -> int:
-    _prepare_environment()
+def run_hooks() -> int:
+    """Run every configured hook, regardless of a caller's inherited skip list."""
+    skipped = os.environ.pop("SKIP", None)
     try:
+        return cast(
+            int,
+            pre_commit_main(
+                (
+                    "run",
+                    "--config",
+                    str(PLAYPEN_ROOT / ".pre-commit-config.yaml"),
+                    "--hook-stage",
+                    "pre-commit",
+                )
+            ),
+        )
+    finally:
+        if skipped is not None:
+            os.environ["SKIP"] = skipped
+
+
+def main() -> int:
+    try:
+        _prepare_environment()
         _format_staged()
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"playpen.format_refused: {error}; inspect the named file and retry", file=sys.stderr)
         return 1
-    return cast(
-        int,
-        pre_commit_main(
-            (
-                "run",
-                "--config",
-                str(PLAYPEN_ROOT / ".pre-commit-config.yaml"),
-                "--hook-stage",
-                "pre-commit",
-            )
-        ),
-    )
+    return run_hooks()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_gitleaks(sys.argv[2:]) if sys.argv[1:2] == ["--gitleaks"] else main())

@@ -2129,7 +2129,6 @@
         "src/devtools/pipeline/stage.py",
         "src/devtools/testing/__init__.py",
         "src/devtools/testing/layout.py",
-        "src/devtools/testing/layout_references.py",
         "src/devtools/testing/requirements.py",
         "src/devtools/testing/sizes.py",
         "+src/*",

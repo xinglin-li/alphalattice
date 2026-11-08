@@ -1,0 +1,12 @@
+{
+  "name": "alphalattice-code-analysis",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Optional development clone detection; never part of the research runtime.",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "jscpd": "5.3.2"
+  }
+}

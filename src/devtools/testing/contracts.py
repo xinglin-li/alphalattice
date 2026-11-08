@@ -24,7 +24,9 @@ from types import CodeType, FrameType, ModuleType
 from typing import Any, NoReturn
 from unittest.mock import patch
 
+import pytest_socket
 from _pytest.capture import FDCaptureBase
+from pytest_socket import disable_socket
 
 from devtools.testing.audit import subscribe
 from devtools.testing.sizes import load_policy
@@ -380,6 +382,22 @@ class LayerContract:
         """Install transparent import checks and restore them even after a refusal."""
         with ExitStack() as stack:
             if self.layer == "unit":
+                # Keep the audit subscriber too: it catches already-bound socket objects and
+                # operations that pytest-socket does not wrap, including bind and sendto.
+                contract = self
+
+                class ContractSocketBlocked(RuntimeError):
+                    def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+                        contract.refuse("socket")
+
+                # Translate at the attempted call, so a caller can catch the same named
+                # assertion as it could when the audit owner supplied the refusal.
+                stack.enter_context(
+                    patch.object(pytest_socket, "SocketBlockedError", ContractSocketBlocked)
+                )
+                for name in ("socket", "getaddrinfo", "gethostbyname"):
+                    stack.callback(setattr, socket, name, getattr(socket, name))
+                disable_socket()
 
                 def importing(
                     name: str,

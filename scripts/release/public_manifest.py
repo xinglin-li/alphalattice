@@ -512,6 +512,8 @@ RULES = [
         "patterns": [
             "src/devtools/**",
             "scripts/check_*.py",
+            "scripts/test-shape-tools/package.json",
+            "scripts/test-shape-tools/package-lock.json",
             "scripts/tests_registry.py",
             "scripts/pipeline.py",
             "scripts/run_playpen_precommit.py",

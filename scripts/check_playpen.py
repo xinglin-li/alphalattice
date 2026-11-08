@@ -151,26 +151,29 @@ def _batched(targets: tuple[str, ...], *, prefix: tuple[str, ...]) -> tuple[tupl
 
 
 def _run_over_targets(label: str, *prefix: str, targets: tuple[str, ...]) -> None:
-    """Run one check over every target, in as few processes as the OS allows.
+    """Run a named pre-commit hook across every Windows-safe batch."""
+    from importlib import import_module
 
-    Every batch runs before the step fails, so one batch's diagnostics never
-    hide another's, and the first failure is re-raised with the same
-    `CalledProcessError` a single invocation produced.
-    """
+    from pre_commit.main import main as pre_commit_main  # type: ignore[import-untyped]
 
-    batches = _batched(targets, prefix=prefix)
+    batches = _batched(targets, prefix=prefix)  # pre-commit's estimate omits Windows quoting
+    import_module("run_playpen_precommit")._prepare_environment()
     started = perf_counter()
-    first_failure: subprocess.CompletedProcess[bytes] | None = None
+    failure = 0
+    previous = Path.cwd()
+    skipped = os.environ.pop("SKIP", None)
     try:
+        os.chdir(ROOT)
         for batch in batches:
-            completed = subprocess.run((*prefix, *batch), cwd=ROOT, check=False)
-            if completed.returncode != 0 and first_failure is None:
-                first_failure = completed
+            failure |= pre_commit_main(("run", label, "--hook-stage", "manual", "--files", *batch))
     finally:
+        os.chdir(previous)
+        if skipped is not None:
+            os.environ["SKIP"] = skipped
         elapsed = perf_counter() - started
         print(f"PLAYPEN_GATE_TIMING {label} {elapsed:.3f}s", flush=True)
-    if first_failure is not None:
-        first_failure.check_returncode()
+    if failure:
+        raise subprocess.CalledProcessError(failure, ("pre-commit", "run", label))
 
 
 def _git_lines(*args: str) -> set[str]:
@@ -878,6 +881,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         "--registry-baseline", default=os.environ.get("ALPHALATTICE_REGISTRY_BASELINE")
     )
     parser.add_argument("--all-python", action="store_true")
+    parser.add_argument("--strict-mypy-only", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--base", default="develop", help="base commit for the test budget")
     parser.add_argument(
         "--fast",
@@ -899,6 +903,17 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         ),
     )
     args = parser.parse_args()
+    if args.strict_mypy_only:
+        _run(
+            "strict-mypy",
+            sys.executable,
+            "-m",
+            "mypy",
+            "--config-file",
+            "pyproject.toml",
+            *_strict_targets(),
+        )
+        return 0
     if args.evidence and args.fast:
         parser.error("--evidence and --fast are mutually exclusive")
     if args.evidence:
@@ -970,7 +985,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     # both invents errors and hides real ones -- it is not the same check on
     # fewer files. It also buys nothing: warm-cache mypy over all of them is
     # about a second, and was never what made this gate slow.
-    _run(
+    _run_over_targets(
         "strict-mypy",
         sys.executable,
         "-m",
@@ -978,6 +993,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         "--config-file",
         "pyproject.toml",
         *_strict_targets(),
+        targets=("pyproject.toml",),
     )
     _report_identity_closures(staged=args.staged)
     if not _check_identity_reach(staged=args.staged):

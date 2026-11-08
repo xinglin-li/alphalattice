@@ -104,6 +104,13 @@ LAYER_CASES = (
             True,
         ),
         ("network", "unit", "", "import socket; socket.socket().close()", True),
+        (
+            "network-caught",
+            "unit",
+            "",
+            "",
+            False,
+        ),
         pytest.param(
             "size-live-over",
             "unit",
@@ -500,6 +507,7 @@ LAYER_IDS = (
         "legacy",
         "process",
         "network",
+        "network-caught",
         "size-live-over",
         "size-live-factory",
         "size-live-factory-base",

@@ -1,6 +1,46 @@
 repos:
   - repo: local
     hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: python -m ruff check --config pyproject.toml
+        language: system
+        types: [file]
+        require_serial: true
+        stages: [manual]
+      - id: ruff-format
+        name: ruff format
+        entry: python -m ruff format --check --config pyproject.toml
+        language: system
+        types: [file]
+        require_serial: true
+        stages: [manual]
+      - id: strict-mypy
+        name: strict mypy
+        entry: python scripts/check_playpen.py --strict-mypy-only
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [manual]
+      - id: check-added-large-files
+        name: check added large files
+        entry: python -m pre_commit_hooks.check_added_large_files
+        language: system
+      - id: check-merge-conflict
+        name: check merge conflicts
+        entry: python -m pre_commit_hooks.check_merge_conflict
+        language: system
+        args: [--assume-in-merge]
+      - id: detect-private-key
+        name: detect private keys
+        entry: python -m pre_commit_hooks.detect_private_key
+        language: system
+      - id: gitleaks
+        name: scan staged changes for secrets
+        entry: python scripts/run_playpen_precommit.py --gitleaks git --staged --no-banner --redact --config .github/gitleaks.toml
+        language: system
+        always_run: true
+        pass_filenames: false
       # Per-commit: lint and strict-type exactly what changed. The whole-repo
       # structural guards and impact-selected suites moved to the full gate,
       # `python scripts/check_playpen.py --staged`, which runs at the user's word

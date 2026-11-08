@@ -47,6 +47,8 @@ jobs:
           node-version: "22"
       - name: Install the locked environment
         run: uv sync --locked --all-extras
+      - name: Install the locked clone detector
+        run: npm ci --prefix scripts/test-shape-tools --ignore-scripts --no-audit --no-fund
       - name: Build Local Web
         run: uv run python scripts/build_local_web_ui.py --product
       - name: Check Local Web freshness and syntax
@@ -231,6 +233,8 @@ jobs:
           node-version: "22"
       - name: Install the locked environment
         run: uv sync --locked --all-extras
+      - name: Install the locked clone detector
+        run: npm ci --prefix scripts/test-shape-tools --ignore-scripts --no-audit --no-fund
       - name: Build Local Web
         run: uv run python scripts/build_local_web_ui.py --product
       - name: Install the locked browser tooling on Windows

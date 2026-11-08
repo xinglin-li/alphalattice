@@ -740,6 +740,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "testing.test_placement_and_structural_scope": {
+      "description": "New test files must declare their owner and source, and a deferred structural test must have a valid scope before selection.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "lower_layer": "The selection checks read and construct registered policy files, which a unit test cannot access.",
+      "seconds": 6.248
+    },
     "testing.unplaced_workers_warn_by_name": {
       "description": "Inside the private workshop, an unplaced pytest run asking for more than two workers is warned once with heavy_slot's command, never refused; other runs stay silent.",
       "owner": "devtools.testing",
@@ -756,7 +763,8 @@
       "description": "Whole-file test relocation restores bytes and registered references, preserves consumed fixture scope and refuses path, export and fixture-name clashes.",
       "owner": "devtools.testing",
       "layer": "integration",
-      "seconds": 6.248
+      "seconds": 6.248,
+      "retired": "2026-11-08: the completed one-time test mover was retired; placement and structural scope checks stay."
     },
     "testing.windows_worker_without_wmi": {
       "description": "A Windows pytest worker obtains platform information without issuing a WMI query.",

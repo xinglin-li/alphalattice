@@ -7,11 +7,17 @@ from __future__ import annotations
 
 import argparse
 import ast
+import base64
+import hashlib
 import io
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
 import tokenize
 from collections import Counter, defaultdict
 from difflib import SequenceMatcher
@@ -94,7 +100,30 @@ def _definitions(tree: ast.AST, prefix: str = ""):
             yield from _definitions(node, prefix)
 
 
-def _metrics(node: ast.AST) -> tuple[int, int]:
+def _metrics(node: ast.AST, ruff: dict[int, int] | None = None) -> tuple[int, int]:
+    # Ruff's McCabe score and this guard's decision count agree for these
+    # functions. Other syntax keeps the original rule, which counts boolean
+    # operators and comprehensions and excludes nested definitions differently.
+    excluded = (
+        ast.BoolOp,
+        ast.IfExp,
+        ast.comprehension,
+        ast.Match,
+        ast.Try,
+        ast.TryStar,
+        ast.AsyncFor,
+    )
+    children = tuple(_body(node))
+    simple = not any(isinstance(item, excluded) for item in children) and not any(
+        isinstance(item, (ast.For, ast.AsyncFor, ast.While)) and item.orelse for item in children
+    )
+    simple = simple and not any(
+        isinstance(item, DEFINITION_TYPES) and item is not node for item in ast.walk(node)
+    )
+    if simple and ruff is not None:
+        if node.lineno not in ruff:
+            raise ValueError(f"ruff omitted function at line {node.lineno}")
+        return (node.end_lineno or node.lineno) - node.lineno + 1, ruff[node.lineno]
     decisions = sum(
         isinstance(
             item, ast.If | ast.For | ast.AsyncFor | ast.While | ast.IfExp | ast.ExceptHandler
@@ -102,9 +131,58 @@ def _metrics(node: ast.AST) -> tuple[int, int]:
         + (len(item.values) - 1 if isinstance(item, ast.BoolOp) else 0)
         + (len(item.cases) if isinstance(item, ast.Match) else 0)
         + (1 + len(item.ifs) if isinstance(item, ast.comprehension) else 0)
-        for item in _body(node)
+        for item in children
     )
     return (node.end_lineno or node.lineno) - node.lineno + 1, decisions
+
+
+def ruff_decisions(snapshots: dict[str, str]) -> dict[str, dict[int, int]]:
+    """Measure each staged Python snapshot with one locked Ruff invocation."""
+    if not snapshots:
+        return {}
+    with tempfile.TemporaryDirectory(prefix="test-shape-") as folder:
+        root, names = Path(folder), {}
+        for index, (key, text) in enumerate(snapshots.items()):
+            path = root / f"{index:08}.py"
+            path.write_text(text, encoding="utf-8", errors="surrogateescape", newline="\n")
+            names[path.name] = key
+        done = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "ruff",
+                "check",
+                "--isolated",
+                "--ignore-noqa",
+                "--target-version",
+                "py312",
+                "--select",
+                "C901",
+                "--config",
+                "lint.mccabe.max-complexity=0",
+                "--output-format",
+                "json",
+                str(root),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=120,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if done.returncode not in (0, 1):
+            raise ValueError("ruff could not read the staged snapshots")
+        result = {key: {} for key in snapshots}
+        for row in json.loads(done.stdout):
+            match = re.search(r"\((\d+) > 0\)$", row["message"])
+            if row["code"] != "C901" or not match:
+                raise ValueError("ruff could not measure a staged snapshot")
+            key = names[Path(row["filename"]).name]
+            line = row["location"]["row"]
+            if line in result[key]:
+                raise ValueError("ruff returned an ambiguous function location")
+            result[key][line] = int(match.group(1)) - 1
+        return result
 
 
 def _sql(node: ast.AST, values: dict[str, str]) -> str:
@@ -302,28 +380,258 @@ def _added_windows(path: str, old: str | None, new: str):
     return after, wanted
 
 
-def clone_problems(path: str, old: str | None, new: str, corpus: dict[str, str]) -> list[str]:
-    """New exact eight-line code copies, with their original source locations."""
-    after, wanted = _added_windows(path, old, new)
+def _node_environment() -> dict[str, str]:
+    """Do not let inherited Node injection replace the verified scanner."""
+    environment = dict(os.environ)
+    for name in ("NODE_OPTIONS", "NODE_PATH"):
+        environment.pop(name, None)
+    return environment
+
+
+def _npm_package(installed: Path, entry: dict, cache: Path) -> None:
+    """Check installed bytes against the locked archive, not an installed stamp."""
+    integrity = entry.get("integrity", "")
+    if not isinstance(integrity, str) or not integrity.startswith("sha512-"):
+        raise ValueError("jscpd.lock_unreadable: package integrity is missing")
+    try:
+        digest = base64.b64decode(integrity[7:], validate=True)
+        if len(digest) != 64:
+            raise ValueError("invalid SHA-512 digest")
+        key = digest.hex()
+        data = (cache / "_cacache/content-v2/sha512" / key[:2] / key[2:4] / key[4:]).read_bytes()
+        if hashlib.sha512(data).digest() != digest:
+            raise ValueError("cached archive hash differs from the lock")
+        expected = {}
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+            for item in archive.getmembers():
+                if item.isdir():
+                    continue
+                parts = item.name.split("/")
+                if (
+                    not item.isfile()
+                    or len(parts) < 2
+                    or parts[0] != "package"
+                    or any(part in {"", ".", ".."} for part in parts[1:])
+                ):
+                    raise ValueError("unsafe archive member")
+                stream = archive.extractfile(item)
+                name = "/".join(parts[1:])
+                if stream is None or name in expected:
+                    raise ValueError("duplicate or unreadable archive member")
+                expected[name] = hashlib.sha512(stream.read()).digest()
+        if installed.is_symlink() or installed.is_junction():
+            raise ValueError("installed package is a link")
+        actual = {}
+
+        def unreadable(error: OSError) -> None:
+            raise error
+
+        for folder, directories, files in os.walk(installed, followlinks=False, onerror=unreadable):
+            for name in (*directories, *files):
+                path = Path(folder) / name
+                if path.is_symlink() or path.is_junction():
+                    raise ValueError("installed package contains a link")
+            for name in files:
+                path = Path(folder) / name
+                actual[path.relative_to(installed).as_posix()] = hashlib.sha512(
+                    path.read_bytes()
+                ).digest()
+        if not expected or actual != expected:
+            raise ValueError("installed package differs from its locked archive")
+    except (OSError, ValueError, tarfile.TarError) as error:
+        raise ValueError(
+            f"jscpd.integrity_unavailable: {installed}: {error}; run npm ci and retry"
+        ) from error
+
+
+def jscpd_runner(
+    root: Path, interpreter: Path, manifests: tuple[bytes, bytes] | None = None
+) -> Path:
+    """Bind every executable npm package to the staged lock's archive bytes."""
+    package = Path("scripts/test-shape-tools")
+    try:
+        manifest, lock = manifests or tuple(
+            (root / package / name).read_bytes() for name in ("package.json", "package-lock.json")
+        )
+        manifest, lock = json.loads(manifest), json.loads(lock)
+        packages = lock["packages"]
+        if manifest["devDependencies"] != packages[""]["devDependencies"]:
+            raise ValueError("package manifest differs from its lock")
+        entry = packages["node_modules/jscpd"]
+        if entry["version"] != manifest["devDependencies"]["jscpd"]:
+            raise ValueError("jscpd version differs from its lock")
+    except (OSError, KeyError, TypeError, ValueError) as error:
+        raise ValueError(
+            f"jscpd.lock_unreadable: restore the staged package manifests: {error}"
+        ) from error
+    modules = root / package / "node_modules"
+    if not (modules / "jscpd/run-jscpd.js").is_file():
+        if (
+            interpreter.parent.name.lower() not in {"scripts", "bin"}
+            or interpreter.parent.parent.name != ".venv"
+        ):
+            raise ValueError(
+                "jscpd.unavailable: install the locked tool in scripts/test-shape-tools"
+            )
+        modules = interpreter.parent.parent.parent / package / "node_modules"
+    if not (modules / "jscpd/run-jscpd.js").is_file():
+        raise ValueError("jscpd.unavailable: install the locked tool in scripts/test-shape-tools")
+    cache = os.environ.get("npm_config_cache") or os.environ.get("NPM_CONFIG_CACHE")  # noqa: SIM112
+    npm, node = shutil.which("npm"), shutil.which("node")
+    if not node or (not cache and not npm):
+        raise ValueError("jscpd.unavailable: install Node.js and the locked tool")
+    try:
+        if not cache:
+            cache = subprocess.run(
+                [npm, "config", "get", "cache", "--offline"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30,
+                env=_node_environment(),
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            ).stdout.strip()
+        _npm_package(modules / "jscpd", entry, Path(cache))
+        choose = (
+            "const m=require(process.argv[1]);const k=m.getPlatformKey();"
+            "if(!k)process.exit(2);process.stdout.write(m.PLATFORM_MAP[k].packageName)"
+        )
+        name = subprocess.run(
+            [node, "-e", choose, str(modules / "jscpd/platform-map.js")],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+            env=_node_environment(),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout.strip()
+        if not re.fullmatch(r"jscpd-[a-z0-9-]+", name):
+            raise ValueError("platform package name is invalid")
+        _npm_package(modules / name, packages["node_modules/" + name], Path(cache))
+    except (OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        raise ValueError(f"jscpd.integrity_unavailable: {error}; run npm ci and retry") from error
+    return modules / "jscpd/run-jscpd.js"
+
+
+def clone_problems_batch(
+    changes: list[tuple[str, str | None, str]],
+    corpus: dict[str, str],
+    *,
+    manifests: tuple[bytes, bytes] | None = None,
+) -> list[list[str]]:
+    """Find exact added eight-line copies in staged blobs, using one jscpd scan."""
+    prepared = [(path, *_added_windows(path, old, new)) for path, old, new in changes]
+    wanted = set().union(*(windows for _path, _rows, windows in prepared))
     if not wanted:
-        return []
+        return [[] for _change in changes]
     anchors = re.compile(
         "|".join(re.escape("".join(max(window, key=len).split())) for window in wanted)
     )
+    texts = dict(corpus)
+    texts.update((path, new) for path, _old, new in changes)
+    candidates = {
+        path: _code_lines(path, text)
+        for path, text in sorted(texts.items())
+        if path not in GENERATED and anchors.search("".join(text.split()))
+    }
+    candidates = {path: rows for path, rows in candidates.items() if len(rows) >= 8}
     origins = defaultdict(list)
-    for source, text in sorted(corpus.items()):
-        if source not in GENERATED and anchors.search("".join(text.split())):
-            for line, window in _windows(_code_lines(source, text)):
-                if window in wanted:
-                    origins[window].append((source, line))
-    found, last = [], -8
-    for index, (line, window) in enumerate(_windows(after)):
-        others = [place for place in origins[window] if place != (path, line)]
-        if window in wanted and others and index >= last + 8:
-            original, start = others[0]
-            found.append(f"{path}:{line}: copied 8 lines from {original}:{start}; call its owner")
-            last = index
-    return found
+    if candidates:
+        node = shutil.which("node")
+        if not node:
+            raise ValueError(
+                "jscpd unavailable; run npm ci --ignore-scripts in scripts/test-shape-tools"
+            )
+        runner = jscpd_runner(ROOT, Path(sys.executable), manifests)
+        with tempfile.TemporaryDirectory(prefix="test-clones-") as folder:
+            root = Path(folder)
+            inputs, report = root / "input", root / "report"
+            inputs.mkdir()
+            names = {}
+            for index, (path, rows) in enumerate(candidates.items()):
+                name = f"{index:08}.py"
+                names[name] = (path, rows)
+                # Each executable line becomes one opaque token, preserving literal
+                # values and cross-language equality while jscpd finds line sequences.
+                (inputs / name).write_text(
+                    "".join(
+                        "x"
+                        + hashlib.sha256(line.encode("utf-8", "surrogateescape")).hexdigest()
+                        + "()\n"
+                        for _number, line in rows
+                    ),
+                    encoding="utf-8",
+                    newline="\n",
+                )
+            # jscpd counts the distance between line endpoints, so seven admits
+            # an exact eight-line block; the existing window check filters shorter hits.
+            subprocess.run(
+                [
+                    node,
+                    str(runner),
+                    "--min-lines",
+                    "7",
+                    "--min-tokens",
+                    "1",
+                    "--skip-comments",
+                    "--no-gitignore",
+                    "--fail-on-empty",
+                    "--workers",
+                    "1",
+                    "--max-size",
+                    str(1 + max(len(rows) for rows in candidates.values()) * 68),
+                    "--reporters",
+                    "json",
+                    "--output",
+                    str(report),
+                    "--no-tips",
+                    str(inputs),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=120,
+                env=_node_environment(),
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            result = json.loads((report / "jscpd-report.json").read_text(encoding="utf-8"))
+            if result["statistics"]["total"]["sources"] != len(candidates):
+                raise ValueError("jscpd omitted a staged source")
+            matches = result["duplicates"]
+            for match in matches:
+                locations = []
+                for key in ("firstFile", "secondFile"):
+                    entry = match[key]
+                    path, rows = names[Path(entry["name"]).name]
+                    start, end = entry["start"], entry["end"]
+                    if not (
+                        type(start) is int and type(end) is int and 1 <= start <= end <= len(rows)
+                    ):
+                        raise ValueError("jscpd returned an invalid source range")
+                    locations.append((path, dict(_windows(rows[start - 1 : end]))))
+                (first, a), (second, b) = locations
+                shared = set(a.values()) & set(b.values()) & wanted
+                for path, windows in ((first, a), (second, b)):
+                    for line, window in windows.items():
+                        if window in shared:
+                            origins[window].append((path, line))
+    results = []
+    for path, after, selected in prepared:
+        found, last = [], -8
+        for index, (line, window) in enumerate(_windows(after)):
+            others = sorted(set(origins[window]) - {(path, line)})
+            if window in selected and others and index >= last + 8:
+                original, start = others[0]
+                found.append(
+                    f"{path}:{line}: copied 8 lines from {original}:{start}; call its owner"
+                )
+                last = index
+        results.append(found)
+    return results
+
+
+def clone_problems(path: str, old: str | None, new: str, corpus: dict[str, str]) -> list[str]:
+    return clone_problems_batch([(path, old, new)], corpus)[0]
 
 
 def _docstring_lines(text: str) -> dict[str, int]:
@@ -339,7 +647,12 @@ def _docstring_lines(text: str) -> dict[str, int]:
     }
 
 
-def problems(path: str, old: str | None, new: str) -> list[str]:
+def problems(
+    path: str,
+    old: str | None,
+    new: str,
+    ruff: tuple[dict[int, int], dict[int, int]] | None = None,
+) -> list[str]:
     """Growth a staged source or test change refuses; existing debt only shrinks."""
     if path in GENERATED:
         return []
@@ -352,7 +665,7 @@ def problems(path: str, old: str | None, new: str) -> list[str]:
         if path.endswith(".py"):
             before, after = _tree(old or ""), _tree(new)
             was = {
-                name: _metrics(node)
+                name: _metrics(node, ruff[0] if ruff else None)
                 for name, node in _definitions(before)
                 if isinstance(node, FUNCTION_TYPES)
             }
@@ -360,7 +673,7 @@ def problems(path: str, old: str | None, new: str) -> list[str]:
                 if isinstance(node, FUNCTION_TYPES):
                     for metric, count, previous, cap in zip(
                         ("physical lines", "decisions"),
-                        _metrics(node),
+                        _metrics(node, ruff[1] if ruff else None),
                         was.get(name, (0, 0)),
                         (120, 20),
                         strict=True,
@@ -616,23 +929,80 @@ def main(argv: list[str] | None = None) -> int:
                 f"TEST-LAYOUT placement unmeasured: {error}; "
                 "restore the staged registry and source index"
             )
+    python_sources = [p for p in selected if p.startswith("src/") and p.endswith(".py")]
+    specs = [":" + path for path in python_sources] + [
+        parent + ":" + origin[path] for path in python_sources for parent in parents
+    ]
+    try:
+        scores = ruff_decisions({spec: texts[spec] for spec in specs if spec in texts})
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        print(
+            f"TEST-LAYOUT Ruff measurement unavailable: {error}; restore Ruff and retry",
+            file=sys.stderr,
+        )
+        return 1
+    grouped, copies, locations = [], [], []
     for path in selected:
         if ":" + path in texts:
             new = texts[":" + path]
             each = []
             for parent in parents:
                 old = texts.get(parent + ":" + origin[path])
-                current = problems(path, old, new)
+                measurement = (
+                    (scores.get(parent + ":" + origin[path], {}), scores[":" + path])
+                    if path in python_sources
+                    else None
+                )
+                try:
+                    current = problems(path, old, new, measurement)
+                except (ValueError, KeyError) as error:
+                    print(
+                        f"TEST-LAYOUT Ruff measurement unavailable: {error}; retry", file=sys.stderr
+                    )
+                    return 1
                 if path.startswith("src/") and _added_windows(path, old, new)[1]:
                     if corpus is None:
-                        paths = _git("ls-files", "-z", "--", "src", "scripts").stdout.split("\0")
+                        listing = _git("ls-files", "-z", "--", "src", "scripts")
+                        if listing.returncode:
+                            print(
+                                "TEST-LAYOUT clone inputs unreadable; restore the Git index",
+                                file=sys.stderr,
+                            )
+                            return 1
+                        paths = listing.stdout.split("\0")
                         corpus = {
                             spec[1:]: text
                             for spec, text in _blobs([":" + item for item in paths if item]).items()
                         }
-                    current += clone_problems(path, old, new, corpus)
+                    copies.append((path, old, new))
+                    locations.append((len(grouped), len(each)))
                 each.append(set(current))
-            found += sorted(set.intersection(*each))
+            grouped.append(each)
+    if copies:
+        try:
+            names = (
+                ":scripts/test-shape-tools/package.json",
+                ":scripts/test-shape-tools/package-lock.json",
+            )
+            staged_manifests = _blobs(list(names))
+            manifests = tuple(
+                staged_manifests[name].encode("utf-8", errors="surrogateescape") for name in names
+            )
+            for (group, parent), matches in zip(
+                locations,
+                clone_problems_batch(copies, corpus or {}, manifests=manifests),
+                strict=True,
+            ):
+                grouped[group][parent].update(matches)
+        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+            print(
+                f"TEST-LAYOUT clone detection unmeasured: {error}; "
+                "restore the locked tool and retry",
+                file=sys.stderr,
+            )
+            return 1
+    for each in grouped:
+        found += sorted(set.intersection(*each))
     for line in found:
         print(line, file=sys.stderr)
     return 1 if found else 0

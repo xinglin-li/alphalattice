@@ -70,6 +70,9 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         ("tests/integration/evaluation/test_unlisted_scope_contract.py", "PUBLIC", "PUBLIC_TEST"),
         ("tests/structural/test_catalog_gate.py", "PRIVATE", "PRIVATE_TEST"),
         ("src/devtools/evaluation/forms.py", "PUBLIC", "PUBLIC_VERIFICATION"),
+        ("scripts/test-shape-tools/package.json", "PUBLIC", "PUBLIC_VERIFICATION"),
+        ("scripts/test-shape-tools/package-lock.json", "PUBLIC", "PUBLIC_VERIFICATION"),
+        ("scripts/test-shape-tools/node_modules/jscpd/run-jscpd.js", "UNSETTLED", None),
         ("tests/integration/evaluation/test_forms.py", "PUBLIC", "PUBLIC_TEST"),
         (
             "tests/integration/local_application/test_native_answer_route_class.py",

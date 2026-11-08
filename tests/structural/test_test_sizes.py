@@ -34,6 +34,23 @@ from tests.structural.size_fixture_support import (
 def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
     tmp_path, monkeypatch, case, layer, header, body, refused
 ):
+    if case == "network-caught":
+        import socket
+
+        from devtools.testing.contracts import LayerContract
+
+        guard = LayerContract("unit", tmp_path, ({"kind": "module", "name": "sqlite3"},))
+        original = socket.socket, socket.getaddrinfo, socket.gethostbyname
+        with guard.active():
+            for call, args in (
+                (socket.socket, ()),
+                (socket.getaddrinfo, ("localhost", 80)),
+                (socket.gethostbyname, ("localhost",)),
+            ):
+                with pytest.raises(AssertionError, match=r"testing\.layer_contract"):
+                    call(*args)
+        assert (socket.socket, socket.getaddrinfo, socket.gethostbyname) == original
+        return
     if case == "fd-provenance":
         descriptor_provenance(tmp_path)
         return

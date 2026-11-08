@@ -107,12 +107,15 @@ dev = [
     "markdown-it-py==4.2.0",
     "mypy>=1.18,<2",
     "pandas-stubs>=3.0,<4",
+    "pip-licenses>=5,<6",
     "portalocker>=3.2,<4",
     "pre-commit>=4.3,<5",
+    "pre-commit-hooks>=5,<7",
     "py-spy>=0.4,<1",
     "pyinstrument>=5.1,<6",
     "pytest>=8.4,<10",
     "pytest-cov>=6,<8",
+    "pytest-socket>=0.7,<1",
     "pytest-split>=0.10,<1",
     "pytest-timeout>=2.4,<3",
     "pytest-xdist==3.8.0",
@@ -125,10 +128,6 @@ dev = [
 # Seeded random test order, for the nightly walk.
 order = [
     "pytest-randomly>=5,<6",
-]
-# Coverage-based test selection.
-testmon = [
-    "pytest-testmon>=2.2,<3",
 ]
 # Per-test CPU instruction counts on CodSpeed, for the public test-cost job.
 codspeed = [
@@ -144,6 +143,9 @@ docs = [
     "mkdocs-llmstxt>=0.5.0",
     "mkdocs-material>=9.7.7",
     "mkdocstrings-python>=2.0.9",
+]
+mutation = [
+    "mutmut>=3,<4",
 ]
 
 [tool.uv]

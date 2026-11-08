@@ -23,10 +23,15 @@ Install the locked environment and build Local Web before public verification:
 
 ```powershell
 uv sync --locked --all-extras
+npm ci --prefix scripts/test-shape-tools --ignore-scripts --no-audit --no-fund
 uv run python scripts/build_local_web_ui.py --product
 uv run python scripts/check_playpen.py --all-python --fast
 uv run python scripts/build_local_web_ui.py --product --check
 ```
+
+The clone check verifies its installed npm packages against the locked archives
+in npm's cache. If the installation or cache is missing or changed, rerun the
+`npm ci` command above before running the check.
 
 The last two commands are the public checks. The build's `--check` compares
 the generated output with its sources and checks JavaScript syntax. Tests do
@@ -39,6 +44,11 @@ checkout, for example:
 $env:ALPHALATTICE_NETWORK_DISABLED = '1'
 uv run python -m pytest tests/integration/product_host/test_local_web_service.py tests/integration/local_application/test_local_web_client.py tests/integration/product_host/test_research_flow_answers.py -n auto -m "not real_evidence" --basetemp "$env:TEMP/alphalattice-public-tests"
 ```
+
+The optional Git pre-commit hook also scans staged changes with gitleaks. Install
+the official gitleaks 8.30.1 release for your platform and put `gitleaks` on PATH
+before using that hook. The hook verifies the executable against the release;
+the same exact-value allowances are used by the public CI secret scan.
 
 Full and real-evidence gates require the maintainer's private checkout and
 refuse when its inputs are absent.
