@@ -18,6 +18,8 @@ from threading import Condition, Lock, get_ident, local
 from time import monotonic
 from typing import Any, Final, cast
 
+import xxhash
+
 from alphalattice.kernel.knowledge.hybrid_contracts import (
     EMBEDDING_CANARIES,
     RECIPE_MINILM_CPU,
@@ -252,10 +254,10 @@ MODEL_WORK = ModelWorkLedger()
 """The process's ledger; the retrieval owner reports it beside its own counts."""
 
 
-class PairScoreCache(BoundedMemo[str, float]):
+class PairScoreCache(BoundedMemo[tuple[str, str, str], float]):
     """Exact query/passage scores under one pinned reranker, held with an owner limit.
 
-    Keys hash both texts; only successful rounded inference enters the memo.
+    Keys index and retain both texts; only successful rounded inference enters the memo.
     Eligibility and result lists are rebuilt for each request.
     """
 
@@ -264,11 +266,17 @@ class PairScoreCache(BoundedMemo[str, float]):
 
     @staticmethod
     def key(query: str, passage: str) -> str:
+        """The existing SHA-256 pair identity used in persisted score blocks."""
         return hashlib.sha256(
             len(query).to_bytes(4, "big") + query.encode("utf-8") + passage.encode("utf-8")
         ).hexdigest()
 
-    def put(self, key: str, value: float) -> None:
+    @staticmethod
+    def cache_key(query: str, passage: str) -> tuple[str, str, str]:
+        canonical = canonical_json_bytes([query, passage])
+        return xxhash.xxh3_128_hexdigest(canonical), query, passage
+
+    def put(self, key: tuple[str, str, str], value: float) -> None:
         self[key] = value
 
 
@@ -280,7 +288,7 @@ def score_with_cache(
 ) -> tuple[float, ...]:
     """Score the pairs not yet known in one call; return every score in order."""
 
-    keys = [PairScoreCache.key(query, passage) for passage in passages]
+    keys = [PairScoreCache.cache_key(query, passage) for passage in passages]
     scores: list[float | None] = [cache.get(key) for key in keys]
     MODEL_WORK.reranker_pair_cache_hits += sum(1 for value in scores if value is not None)
     missing = [index for index, value in enumerate(scores) if value is None]
@@ -292,25 +300,36 @@ def score_with_cache(
     return tuple(float(value) for value in scores if value is not None)
 
 
-PackFacts = tuple[tuple[str, int, int, int, int], ...]
-"""Per consumed path: posix name, size, mtime_ns, ctime_ns, inode -- what a
-pack proven by content looked like on disk at that proof."""
+PackFacts = tuple[str, bytes] | None
+"""A noncryptographic index and its complete canonical content description, or unreadable."""
 
 
 def pack_facts(paths: Sequence[Path]) -> PackFacts:
-    """The lstat facts of every consumed path, in order; an unreadable path
-    records -1 so the next proof runs and names the failure."""
+    """Describe consumed file bytes and directory entries; unreadable inputs cannot reuse."""
+    facts: list[object] = []
+    try:
+        for path in paths:
+            path.lstat()  # distinguish an absent or unreadable path from an empty directory
+            if path.is_dir():
 
-    facts = []
-    for path in paths:
-        try:
-            stat = path.lstat()
-            facts.append(
-                (path.as_posix(), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino)
-            )
-        except OSError:
-            facts.append((path.as_posix(), -1, -1, -1, -1))
-    return tuple(facts)
+                def unreadable(error: OSError) -> None:
+                    raise error
+
+                listing = sorted(
+                    (Path(directory) / name).relative_to(path).as_posix()
+                    for directory, _dirs, names in os.walk(path, onerror=unreadable)
+                    for name in names
+                    if (Path(directory) / name).is_file()
+                )
+                facts.append((path.as_posix(), "directory", listing))
+            else:
+                with path.open("rb") as stream:
+                    digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                facts.append((path.as_posix(), "file", digest))
+    except OSError:
+        return None
+    canonical = canonical_json_bytes(facts)
+    return xxhash.xxh3_128_hexdigest(canonical), canonical
 
 
 class _Held:
@@ -473,10 +492,9 @@ class VerifiedPackRegistry:
     build, every retrieval session and every capability check proved and
     loaded the packs afresh, 2.6 GB of reads and six seconds per issuer unit
     that embedded nothing. A proof made once in this process is kept with
-    the lstat facts (size, mtime, ctime, inode) of every consumed path and of
-    the pack directories; a later request with the same facts reuses the
-    proof and the session it loaded, and any difference -- a replaced,
-    grown, touched, added or removed file -- makes the request prove again.
+    the content of every consumed file and the pack-directory listings. A later
+    request with the same complete description reuses the proof and session;
+    changed, added, removed or unreadable inputs make it prove again.
     Up to `sessions_per_pack` sessions per (root, spec) are held -- one
     unless a Host that runs work items at once raises it -- so a process
     bounds idle pack keys separately from active leases: a lease takes a held
@@ -587,10 +605,13 @@ class VerifiedPackRegistry:
         facts = pack_facts(consumed)
         with self._lock:
             held = self._entries.get(key)
-            if held is not None and held.facts == facts:
+            if facts is not None and held is not None and held.facts == facts:
                 return held.value, True
             value = load()
-            self._entries[key] = _Held(facts, value)
+            if facts is None or pack_facts(consumed) != facts:
+                self._entries.pop(key, None)
+            else:
+                self._entries[key] = _Held(facts, value)
         if held is not None and release is not None:
             release(held.value)
         return value, False
@@ -620,8 +641,16 @@ class VerifiedPackRegistry:
             self._pools.move_to_end(key)
             self._trim_pools(key)
             for held in list(pool):
-                if held.facts != facts or (usable is not None and not usable(held.value)):
+                if (
+                    facts is None
+                    or held.facts != facts
+                    or (usable is not None and not usable(held.value))
+                ):
                     self._retire_locked(key, held)
+            if facts is None:
+                held = _Held(None, load())
+                held.leases, held.retired = 1, True
+                return PackLease(self, held, reused=False)
             fitting = [held for held in pool if fits is None or fits(held.value)]
             idle = next((held for held in fitting if held.leases == 0), None)
             reused = idle is not None or len(fitting) >= self.sessions_per_pack
@@ -636,7 +665,11 @@ class VerifiedPackRegistry:
                     if spare.leases == 0:
                         self._retire_locked(key, spare)
                 held = _Held(facts, load())
-                pool.append(held)
+                if pack_facts(consumed) == facts:
+                    pool.append(held)
+                else:
+                    # The load cannot establish a reusable proof for the pre-load bytes.
+                    held.retired = True
             held.leases += 1
         return PackLease(self, held, reused=reused)
 

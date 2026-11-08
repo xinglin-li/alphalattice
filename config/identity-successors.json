@@ -14918,6 +14918,27 @@
    "successor": "205459793ffcf23441b50202504a7f3b1514dc6e8edd15e0298537188339f5b1",
    "change": "Fix Windows research-input path handling",
    "reason": "Reads and checks are unchanged: the owner still reads through the long path with the same binding, digest and lineage checks. Only a missing manifest's file-not-found error now names the file in the ordinary Windows spelling, and the tamper test now changes the source it checks."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "546f318487efedae32bce5167cd32c8f408787c9bf88988119b76644fb74fb61",
+   "successor": "5a8199be255d436751a5215b03432b0adaa756acfddcaf124b818936899227fe",
+   "change": "Cache keys include the inputs that determine their values",
+   "reason": "Reuse keys now cover the executable constants inside nested producer code, and a file's facts are re-read when the file changes, so a changed input can no longer reuse a stale result; outputs for unchanged inputs are unchanged."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "7187ccd3545d7355810f25b556fe8754ae216ef247ecc0251e86d7546a638528",
+   "successor": "42607def019712231d54da6d8c8e1c85cc0ef29e4dbf2597f80b4302a432a7e1",
+   "change": "Cache keys include the inputs that determine their values",
+   "reason": "Reuse keys now cover the executable constants inside nested producer code, and a file's facts are re-read when the file changes, so a changed input can no longer reuse a stale result; outputs for unchanged inputs are unchanged."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "a153ebd9c93279eb123772fa97447d9edf7cf744ac7a3da714f75a82b2918339",
+   "successor": "9d48a17e068de685adf61bc900cee6087333f7afcbd14ea048e08caa17a6450b",
+   "change": "Cache keys include the inputs that determine their values",
+   "reason": "Reuse keys now cover the executable constants inside nested producer code, and a file's facts are re-read when the file changes, so a changed input can no longer reuse a stale result; outputs for unchanged inputs are unchanged."
   }
  ]
 }

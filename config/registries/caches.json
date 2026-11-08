@@ -987,9 +987,9 @@
         "src/alphalattice/control/workspace_runtime/verified_facts.py::_KEPT"
       ],
       "definition_line": 38,
-      "key": "workspace, relative path,kind; size/mtime/inode + digest",
-      "dependency_coverage": "Metadata-bound, owner writes refresh; not full-byte key",
-      "invalidation_rule": "writer refresh/identity mismatch/lease release",
+      "key": "workspace, xxh3_128 index and canonical kind plus file SHA-256",
+      "dependency_coverage": "Exact content commitment and kind, including the column proof's loaded code and toolchain; full canonical key checked on hits",
+      "invalidation_rule": "content change, unreadable input or lease release",
       "size_bound": "unbounded",
       "bound_scope": "unbounded",
       "eviction": "workspace release; stale facts replaced",
@@ -999,7 +999,7 @@
         "path_expression": "In-memory _KEPT in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches workspace file digests while file size, modification time and inode match, updating on owner writes and dropping the workspace map when its writer lease closes."
+      "description": "Caches workspace file facts by content; legacy metadata-only rows miss, and releasing the writer lease drops the workspace map."
     },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._PROCESS::other-process-file-facts-process": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -1007,9 +1007,9 @@
         "src/alphalattice/control/workspace_runtime/verified_facts.py::_PROCESS"
       ],
       "definition_line": 40,
-      "key": "absolute path,kind + size/mtime/inode",
-      "dependency_coverage": "Metadata-bound; 2-second racy-read exclusion",
-      "invalidation_rule": "stamp changes; none for untouched keys",
+      "key": "xxh3_128 index and canonical kind plus file SHA-256",
+      "dependency_coverage": "Exact content commitment and kind, including the column proof's loaded code and toolchain; full canonical key checked on hits",
+      "invalidation_rule": "content change or unreadable input",
       "size_bound": "unbounded",
       "bound_scope": "unbounded",
       "eviction": "none",
@@ -1019,7 +1019,7 @@
         "path_expression": "In-memory _PROCESS in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches file digests outside retained workspaces while file size, modification time and inode match, rebuilding after a changed stamp or LRU eviction."
+      "description": "Caches file facts outside retained workspaces by content and kind, rebuilding on a miss or after LRU eviction."
     },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._HELD::year-fact-schema-presence-held": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -1206,13 +1206,13 @@
         "src/alphalattice/control/product_host/composition/portfolio_result_context.py::_SECTOR_CACHE"
       ],
       "definition_line": 705,
-      "key": "input binding,panel snapshot,shown session",
-      "dependency_coverage": "Partial: requested listing axis/revision/workspace not explicit",
-      "invalidation_rule": "new key only; process restart",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "none",
-      "safe_to_drop": "Yes by recomputation; verify complete key first",
+      "key": "xxh3_128 index and canonical input binding, panel snapshot, universe revision, shown session and ordered listing axis",
+      "dependency_coverage": "The caller's complete sealed input bundle is reverified before every lookup; the full canonical key is compared on a hit; source code and toolchain are fixed for the process",
+      "invalidation_rule": "changed canonical key, missing or altered input bundle, process restart or LRU eviction",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "process",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes by recomputation from a verified input bundle",
       "location": {
         "scope": "process",
         "path_expression": "In-memory _SECTOR_CACHE in its module, instance, or call namespace"
@@ -1235,13 +1235,13 @@
         "src/alphalattice/control/product_host/composition/portfolio_result_context.py::_DATE_RISK"
       ],
       "definition_line": 779,
-      "key": "publication content hash,risk surface hash",
-      "dependency_coverage": "Scoped immutable publication; other authority/carried-source inputs not explicit",
-      "invalidation_rule": "only successful full-coverage current formation retained; new key",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "none",
-      "safe_to_drop": "Yes via owner; same source generation required",
+      "key": "xxh3_128 index and canonical publication, authority, recipe, positions, entry session, ordered listing labels, rendered holding aliases and source",
+      "dependency_coverage": "Sealed authority, recipe and surface identities; exact carried source, weights and presentation inputs; full canonical key compared on each hit; producer and toolchain fixed for the process",
+      "invalidation_rule": "changed canonical key; only successful full-coverage current formation retained; process restart or LRU eviction",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "process",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes via recomputation from the same verified sources",
       "location": {
         "scope": "process",
         "path_expression": "In-memory _DATE_RISK in its module, instance, or call namespace"
@@ -2362,8 +2362,8 @@
         "src/alphalattice/kernel/knowledge/_embeddings.py::PairScoreCache.__init__.self._entries"
       ],
       "definition_line": 271,
-      "key": "SHA-256(length(query),query,passage); one adapter/context",
-      "dependency_coverage": "Scoped: model/rerank spec fixed on adapter",
+      "key": "xxh3_128 index and complete query and passage strings; one adapter/context",
+      "dependency_coverage": "Full canonical pair checked on hits; model/rerank spec fixed on adapter",
       "invalidation_rule": "adapter replacement/disposal",
       "size_bound": "250000 pairs default",
       "bound_scope": "250000 pairs default",
@@ -2374,7 +2374,7 @@
         "path_expression": "In-memory PairScoreCache.__init__.self._entries in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches successful rounded reranker scores by query and passage text hashes, evicting the least recently used excess and releasing them with the adapter."
+      "description": "Caches successful rounded reranker scores by the complete query and passage, evicting the least recently used excess and releasing them with the adapter."
     },
     "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._entries::verified-model-pack-proof-report-registry": {
       "owner": "alphalattice.kernel.knowledge",
@@ -2382,9 +2382,9 @@
         "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._entries"
       ],
       "definition_line": 521,
-      "key": "root,spec/context + consumed-file/dir lstat facts",
-      "dependency_coverage": "Partial metadata validation; pack byte hashes on load",
-      "invalidation_rule": "stat/fits/usable change; release",
+      "key": "root,spec/context + xxh3_128 index and full canonical consumed-file content and directory entries",
+      "dependency_coverage": "Consumed file SHA-256 and directory listings; load-time changes are not cached",
+      "invalidation_rule": "content or listing change, unreadable input, or release",
       "size_bound": "unbounded",
       "bound_scope": "unbounded",
       "eviction": "replace per key; release all",
@@ -2402,8 +2402,8 @@
         "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._pools"
       ],
       "definition_line": 522,
-      "key": "pack root,spec/context; fits thread count; lstat facts",
-      "dependency_coverage": "Scoped pack/context; global number of keys not capped",
+      "key": "pack root,spec/context; fits thread count; xxh3_128 index and full canonical consumed-file content and directory entries",
+      "dependency_coverage": "Consumed file SHA-256 and directory listings; load-time changes are not cached",
       "invalidation_rule": "changed facts/failed session; retire after leases; release",
       "size_bound": "unbounded",
       "bound_scope": "unbounded globally; sessions_per_pack=1 default per key",
@@ -2962,19 +2962,19 @@
         "src/alphalattice/control/workspace_runtime/verified_facts.py::FILE_FACTS"
       ],
       "definition_line": 31,
-      "key": "path,kind + size/mtime/inode + digest",
-      "dependency_coverage": "Metadata plus writer refresh; not a full-byte key",
-      "invalidation_rule": "stamp mismatch/owner write; load-time compaction",
+      "key": "workspace, xxh3_128 index and canonical kind plus file SHA-256",
+      "dependency_coverage": "Content commitment and kind, including the column proof's loaded code and toolchain; canonical key checked on hits; legacy stamp-only rows miss",
+      "invalidation_rule": "content mismatch, unreadable input or load-time compaction",
       "size_bound": "unbounded",
       "bound_scope": "unbounded",
-      "eviction": "compact when lines >2*live keys+1024; no key quota",
+      "eviction": "compact to the process capacity when lines exceed 2*live keys+1024",
       "safe_to_drop": "Yes: rehash under held owner/lease",
       "location": {
         "scope": "workspace",
         "path_expression": "<workspace>/runtime/verified-files.jsonl"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Persists verified file digests with size, modification time and inode, rejecting changed stamps and compacting invalid entries when the workspace opens."
+      "description": "Persists content-keyed file facts alongside legacy rows and drops older entries at compaction."
     },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>.ensure_year_fact_schema::verified-year-fact-table": {
       "owner": "alphalattice.control.workspace_runtime",

@@ -28,6 +28,7 @@ dependencies = [
     # `protocols.actor_execution.projections` imports it at module load and is
     # reached by deterministic Factor and Evidence contracts.
     "tiktoken>=0.13,<1",
+    "xxhash>=3.7,<4",
 ]
 
 [project.scripts]

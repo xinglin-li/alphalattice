@@ -9,10 +9,12 @@ read, never written, until the formats registry names their upgrader.
 from __future__ import annotations
 
 import atexit
+import base64
 import copy
 import ctypes
 import hashlib
 import json
+import marshal
 import os
 import shutil
 from collections import OrderedDict
@@ -30,6 +32,7 @@ from pathlib import Path
 from queue import Queue
 from threading import BoundedSemaphore, Event, Lock, Thread
 from time import sleep, time_ns
+from types import CodeType
 from typing import Any, cast
 from uuid import UUID, uuid4
 from weakref import WeakSet
@@ -40,7 +43,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
-from alphalattice.control.workspace_runtime.verified_facts import file_fact, record_file_fact
+from alphalattice.control.workspace_runtime.verified_facts import (
+    _content_sha256,
+    file_fact,
+    record_file_fact,
+)
+from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.spans import span
 
 _WINDOWS_REPLACE_ATTEMPTS = 6
@@ -1104,6 +1112,66 @@ def columns_digest(columns: Mapping[str, npt.NDArray[Any]]) -> str:
         return digest.hexdigest()
 
 
+_INSTALLED_COLUMNS_DIGEST = columns_digest
+
+
+def _column_fact_kind(codes: tuple[CodeType, ...], toolchain: tuple[object, ...]) -> str:
+    """The actual loaded proof code and toolchain, included in a reusable column fact."""
+
+    def normalized(code: CodeType) -> CodeType:
+        constants = tuple(
+            normalized(value) if isinstance(value, CodeType) else value for value in code.co_consts
+        )
+        if constants and isinstance(constants[0], str) and not code.co_name.startswith("<"):
+            constants = (None, *constants[1:])  # docstrings do not decide a proof
+        return code.replace(co_consts=constants, co_filename="", co_firstlineno=1, co_linetable=b"")
+
+    payload = [
+        toolchain,
+        [base64.b64encode(marshal.dumps(normalized(code))).decode("ascii") for code in codes],
+    ]
+    return "columns-v2:" + json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+
+def _column_kind(store: ContentAddressedStore) -> str | None:
+    if (
+        columns_digest is not _INSTALLED_COLUMNS_DIGEST
+        or type(store) is not ContentAddressedStore
+        or (
+            getattr(store._columns, "__func__", None) is not _INSTALLED_COLUMN_READER
+            or getattr(store._stable_columns, "__func__", None)
+            is not _INSTALLED_STABLE_COLUMN_READER
+        )
+    ):
+        return None  # an overridden reader has no declared producer closure
+    functions = (
+        columns_digest,
+        store._columns,
+        store._stable_columns,
+        _content_sha256,
+    )
+    if any(
+        getattr(getattr(function, "__func__", function), "__closure__", None)
+        for function in functions
+    ):
+        return None  # captured runtime state is not described by the code object
+    codes = tuple(
+        getattr(getattr(function, "__func__", function), "__code__", None) for function in functions
+    )
+    if not all(isinstance(code, CodeType) for code in codes):
+        return None  # an unknown producer cannot reuse a held proof
+    environment = recorded_environment(("numpy", "pyarrow"))
+    toolchain = (
+        environment["python"],
+        environment["implementation"],
+        environment["platform"],
+        environment["architecture"],
+        environment["byte_order"],
+        tuple(sorted(cast(dict[str, str], environment["packages"]).items())),
+    )
+    return _column_fact_kind(cast(tuple[CodeType, ...], codes), toolchain)
+
+
 class ContentAddressedStore:
     """JSON contracts, Parquet lanes and HTML pages under one caller-owned root."""
 
@@ -1283,20 +1351,33 @@ class ContentAddressedStore:
             raise ContentAddressedStoreError("content_store.columns_invalid")
         content_hash = columns_digest(arrays)
         target = self.root / category / f"{content_hash}.parquet"
+        kind = _column_kind(self)
         if target.is_file():
-            if file_fact(target, "columns") != content_hash:
+            if kind is None or file_fact(target, kind) != content_hash:
                 stat = os.stat(target)
-                if self._packed(target) != b"".join(array.tobytes() for array in arrays.values()):
+                existing, content = self._stable_columns(target)
+                if b"".join(v.tobytes() for v in existing.values()) != b"".join(
+                    array.tobytes() for array in arrays.values()
+                ):
                     raise ContentAddressedStoreError("content_store.identity_reused")
-                record_file_fact(target, "columns", content_hash, stat=stat)
+                if kind is not None:
+                    record_file_fact(target, kind, content_hash, stat=stat, _content=content)
             return content_hash
         with span("serialize", "columns"):
             table = pa.table({name: array.reshape(-1) for name, array in arrays.items()})
             table = table.replace_schema_metadata({"shape": json.dumps(list(shapes.pop()))})
             sink = pa.BufferOutputStream()
             pq.write_table(table, sink, use_dictionary=False)
-        self.atomic_write(target, sink.getvalue().to_pybytes())
-        record_file_fact(target, "columns", content_hash, written=True)
+        payload = sink.getvalue().to_pybytes()
+        self.atomic_write(target, payload)
+        if kind is not None:
+            record_file_fact(
+                target,
+                kind,
+                content_hash,
+                written=True,
+                _content=hashlib.sha256(payload).hexdigest(),
+            )
         return content_hash
 
     def holds_columns(self, *, category: str, content_hash: str) -> bool:
@@ -1308,14 +1389,14 @@ class ContentAddressedStore:
         """Read one table's columns, flat, and prove they are the ones its digest names."""
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.parquet"
-        if file_fact(target, "columns") == content_hash:
-            return self._columns(target)
+        kind = _column_kind(self)
         stat = os.stat(target) if target.is_file() else None
-        columns = self._columns(target)
-        if columns_digest(columns) != content_hash:
-            raise ContentAddressedStoreError("content_store.artifact_tampered")
-        if stat is not None:
-            record_file_fact(target, "columns", content_hash, stat=stat)
+        columns, content = self._stable_columns(target)
+        if kind is None or file_fact(target, kind, _content=content) != content_hash:
+            if columns_digest(columns) != content_hash:
+                raise ContentAddressedStoreError("content_store.artifact_tampered")
+            if stat is not None and kind is not None:
+                record_file_fact(target, kind, content_hash, stat=stat, _content=content)
         return columns
 
     def load_packed_bytes(self, *, category: str, content_hash: str) -> bytes:
@@ -1325,18 +1406,20 @@ class ContentAddressedStore:
         """
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.parquet"
+        kind = _column_kind(self)
         if not target.is_file():
             payload, stat = self._legacy(category, content_hash), None
-        elif file_fact(target, "columns") == content_hash:
-            return self._packed(target)
         else:
             stat = os.stat(target)
-            payload = self._packed(target)
+            columns, content = self._stable_columns(target)
+            payload = b"".join(values.tobytes() for values in columns.values())
+            if kind is not None and file_fact(target, kind, _content=content) == content_hash:
+                return payload
         with span("hash", "packed"):
             if hashlib.sha256(payload).hexdigest() != content_hash:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
-        if stat is not None:
-            record_file_fact(target, "columns", content_hash, stat=stat)
+        if stat is not None and kind is not None:
+            record_file_fact(target, kind, content_hash, stat=stat, _content=content)
         return payload
 
     def publish_document(self, *, category: str, payload: bytes, extension: str) -> str:
@@ -1384,8 +1467,20 @@ class ContentAddressedStore:
         except (OSError, pa.ArrowException) as error:
             raise ContentAddressedStoreError("content_store.artifact_tampered") from error
 
-    def _packed(self, target: Path) -> bytes:
-        return b"".join(values.tobytes() for values in self._columns(target).values())
+    def _stable_columns(self, target: Path) -> tuple[dict[str, npt.NDArray[Any]], str]:
+        """Bind a decoded table to its bytes without keeping a changed read as a proof."""
+        try:
+            before = _content_sha256(target)
+            columns = self._columns(target)
+            if _content_sha256(target) != before:
+                raise ContentAddressedStoreError("content_store.artifact_tampered")
+            return columns, before
+        except FileNotFoundError as error:
+            raise ContentAddressedStoreError(
+                f"content_store.artifact_missing:{target.stem}"
+            ) from error
+        except OSError as error:
+            raise ContentAddressedStoreError("content_store.artifact_tampered") from error
 
     def _legacy(self, category: str, content_hash: str) -> bytes:
         # A store written in a legacy format packed its lanes, documents and pages as `.bin` bytes;
@@ -1396,6 +1491,10 @@ class ContentAddressedStore:
             raise ContentAddressedStoreError(
                 f"content_store.artifact_missing:{content_hash}"
             ) from error
+
+
+_INSTALLED_COLUMN_READER = ContentAddressedStore._columns
+_INSTALLED_STABLE_COLUMN_READER = ContentAddressedStore._stable_columns
 
 
 @dataclass(frozen=True, slots=True)

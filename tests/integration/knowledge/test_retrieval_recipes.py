@@ -335,7 +335,7 @@ def test_derived_memos_keep_falsy_values_and_evict_lru_with_a_machine_budget(mon
     assert readout(collector_failed)["cache_observation_gaps"] == ["CACHE_OBSERVATION_FAILED"]
 
 
-def test_pair_scores_are_answered_from_a_bounded_cache() -> None:
+def test_pair_scores_are_answered_from_a_bounded_cache(monkeypatch) -> None:
     """Pair scores preserve order and successful reuse; failed inference is never cached."""
     cache = embeddings.PairScoreCache(limit=3)
     calls: list[list[str]] = []
@@ -367,6 +367,18 @@ def test_pair_scores_are_answered_from_a_bounded_cache() -> None:
     with pytest.raises(RuntimeError):
         embeddings.score_with_cache(embeddings.PairScoreCache(), "q", ("zz",), failing)
     assert embeddings.score_with_cache(cache, "q", ("zz",), infer) == (2.0,)
+
+    # Neither the persisted pair identity nor a colliding local index is proof of both texts.
+    monkeypatch.setattr(embeddings.PairScoreCache, "key", staticmethod(lambda *_: "same"))
+    collision = embeddings.PairScoreCache(limit=3)
+    assert embeddings.score_with_cache(collision, "q", ("a", "bbbb"), infer) == (1.0, 4.0)
+    assert embeddings.score_with_cache(collision, "q", ("a",), infer) == (1.0,)
+    assert embeddings.score_with_cache(collision, "long", ("a",), lambda _: [9.0]) == (9.0,)
+    monkeypatch.setattr(embeddings.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32)
+    collision = embeddings.PairScoreCache(limit=3)
+    assert embeddings.score_with_cache(collision, "q", ("a", "bbbb"), infer) == (1.0, 4.0)
+    assert embeddings.score_with_cache(collision, "q", ("a",), infer) == (1.0,)
+    assert embeddings.score_with_cache(collision, "long", ("a",), lambda _: [9.0]) == (9.0,)
 
 
 def test_a_session_whose_canary_moved_is_refused_by_name_with_its_threads(

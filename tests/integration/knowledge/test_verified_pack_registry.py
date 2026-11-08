@@ -3,9 +3,9 @@
 Every build, retrieval session and capability check re-hashed a 475 MB pack
 and re-loaded its ONNX session (2.6 GB of reads and six seconds per issuer
 unit on the real-copy flow, for a unit that embedded nothing). The registry
-keeps one proof and one session per pack, reuses them while the lstat facts
-of every consumed path are those of the proof, and proves again on any
-change; a lease's close keeps the session; the ledger counts the reuses.
+keeps one proof and one session per pack, reuses them while consumed file
+contents and directory listings match, and proves again on changes; a lease's
+close keeps the session; the ledger counts the reuses.
 """
 
 from __future__ import annotations
@@ -40,7 +40,9 @@ def _touch(path: Path, payload: bytes) -> None:
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
 
 
-def test_a_proof_is_reused_while_the_consumed_files_are_unchanged(tmp_path: Path) -> None:
+def test_a_proof_is_reused_while_the_consumed_files_are_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """requirement: one load per pack per process; any change proves again."""
 
     registry = embeddings.VerifiedPackRegistry()
@@ -57,18 +59,61 @@ def test_a_proof_is_reused_while_the_consumed_files_are_unchanged(tmp_path: Path
     assert not reused and loads == ["first"]
     again, reused = registry.resolve(("k",), consumed=consumed, load=lambda: load("again"))
     assert reused and again is first and loads == ["first"]
-    # A replaced file (same size, later mtime) proves again and releases the old value.
+    # A timestamp-only change does not change the pack's content.
     _touch(consumed[0], b"pack")
+    unchanged, reused = registry.resolve(("k",), consumed=consumed, load=lambda: load("again"))
+    assert reused and unchanged is first
+    # Different bytes at the same size and restored mtime must prove again.
+    stat = consumed[0].stat()
+    consumed[0].write_bytes(b"evil")
+    os.utime(consumed[0], ns=(stat.st_atime_ns, stat.st_mtime_ns))
     replaced, reused = registry.resolve(
         ("k",), consumed=consumed, load=lambda: load("replaced"), release=lambda v: v.close()
     )
     assert not reused and replaced is not first and first.closed and loads[-1] == "replaced"
+    # A forced index collision still compares the complete content description.
+    monkeypatch.setattr(embeddings.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32)
+    forced, reused = registry.resolve(("collision",), consumed=consumed, load=lambda: load("a"))
+    assert not reused
+    stat = consumed[0].stat()
+    consumed[0].write_bytes(b"diff")
+    os.utime(consumed[0], ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    again, reused = registry.resolve(
+        ("collision",), consumed=consumed, load=lambda: load("b"), release=lambda v: v.close()
+    )
+    assert not reused and again is not forced and forced.closed
     # A missing consumed path never matches a held proof: the loader runs and may refuse.
     consumed[1].unlink()
     with pytest.raises(RuntimeError, match="absent"):
         registry.resolve(
             ("k",), consumed=consumed, load=lambda: (_ for _ in ()).throw(RuntimeError("absent"))
         )
+    missing = registry.lease(("missing",), consumed=consumed, load=lambda: load("missing"))
+    assert not missing.reused
+    missing.release()
+    assert missing.value.closed  # an uncacheable successful load is closed with its lease
+
+    # A change while loading cannot install the pre-load key as a reusable proof.
+    moving = tmp_path / "moving.bin"
+    moving.write_bytes(b"one")
+
+    def changing_load() -> _Session:
+        moving.write_bytes(b"two")
+        return load("moving")
+
+    changing, reused = registry.resolve(("moving",), consumed=(moving,), load=changing_load)
+    assert not reused
+    moving.write_bytes(b"one")
+    stable, reused = registry.resolve(("moving",), consumed=(moving,), load=lambda: load("stable"))
+    assert not reused and stable is not changing
+    moving.write_bytes(b"one")
+    lease = registry.lease(("moving lease",), consumed=(moving,), load=changing_load)
+    lease.release()
+    assert lease.value.closed
+    moving.write_bytes(b"one")
+    lease = registry.lease(("moving lease",), consumed=(moving,), load=lambda: load("stable"))
+    assert not lease.reused
+    lease.release()
     registry.release()
     assert replaced.closed
 
@@ -180,6 +225,13 @@ def test_capability_probe_is_proven_once_and_again_after_a_pack_change(
     stat = pack.stat()
     os.utime(pack, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
     assert hybrid._default_capability_probe(model_root, spec) == ("report", 2)
+    (pack / "unadmitted.txt").unlink()
+    assert hybrid._default_capability_probe(model_root, spec) == ("report", 3)
+    # The real verifier checks every nested reranker file, not only the root listing.
+    (pack / "onnx" / "unadmitted.txt").write_bytes(b"extra")
+    assert hybrid._default_capability_probe(model_root, spec) == ("report", 4)
+    with pytest.raises(reranking.KnowledgeRetrievalError, match="unadmitted"):
+        reranking.verify_reranker_pack(model_root, spec)
 
 
 def test_a_host_that_runs_items_at_once_holds_a_session_for_each(tmp_path: Path) -> None:
@@ -208,7 +260,9 @@ def test_a_host_that_runs_items_at_once_holds_a_session_for_each(tmp_path: Path)
         value.release()
     again = lease()
     assert again.reused and len(loaded) == 2 and again.value in loaded
-    _touch(consumed[0], b"pack")
+    stat = consumed[0].stat()
+    consumed[0].write_bytes(b"new!")
+    os.utime(consumed[0], ns=(stat.st_atime_ns, stat.st_mtime_ns))
     fresh = lease()
     assert fresh.value is loaded[-1] and len(loaded) == 3
     assert all(value.closed for value in loaded[:2] if value is not again.value)
