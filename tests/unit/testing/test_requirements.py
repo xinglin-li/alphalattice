@@ -27,6 +27,29 @@ def test_an_areas_integration_share_may_only_fall():
     assert pyramid(holders(integration__risk=3, unit__risk=1, integration__new=5), before) == []
     structural = [SimpleNamespace(node="tests/structural/test_tree.py::test_walk")]
     assert pyramid(before + structural * 3, before) == []
+    old = SimpleNamespace(
+        node="tests/unit/risk/test_x.py::test_x", ids=("risk.example",), digest="same"
+    )
+    moved = SimpleNamespace(
+        node=old.node.replace("/unit/", "/integration/"), ids=old.ids, digest=old.digest
+    )
+    old_rows = {"risk.example": {"layer": "unit"}}
+    rows = {
+        "risk.example": {
+            "layer": "integration",
+            "description": "A result.",
+            "lower_layer": "The real Host dependency cannot run in unit.",
+        }
+    }
+    assert pyramid([moved], [old], rows, old_rows) == []
+    assert pyramid(
+        [moved], [old], {"risk.example": rows["risk.example"] | {"lower_layer": ""}}, old_rows
+    )
+    changed = SimpleNamespace(node=moved.node, ids=moved.ids, digest="changed")
+    assert pyramid([changed], [old], rows, old_rows)
+    added = SimpleNamespace(node="tests/integration/risk/test_y.py::test_y", ids=(), digest="other")
+    unit = SimpleNamespace(node="tests/unit/risk/test_y.py::test_y", ids=(), digest="unit")
+    assert pyramid([moved, unit, added], [old, unit], rows, old_rows)
 
 
 @pytest.mark.proves("testing.integration_share_only_falls")

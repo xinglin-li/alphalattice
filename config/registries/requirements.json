@@ -604,8 +604,9 @@
     "portfolio_strategy_lab.finalization_requires_a_registered_candidate": {
       "description": "A finalization cannot reopen a candidate that was never committed in its own ledger.",
       "owner": "alphalattice.investment.portfolio_strategy_lab",
-      "layer": "unit",
-      "seconds": 1
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The finalization store's real dependencies include Host facilities that the unit layer cannot load."
     },
     "portfolio_strategy_lab.ledger_index_tells_lost_work_from_tampering": {
       "description": "If a persisted ledger index could not tell a lost child from a bad index, recovery would rerun tampered work or refuse honest loss.",

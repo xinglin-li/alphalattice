@@ -746,10 +746,36 @@ def _area_layers(tests: Iterable[Holder]) -> dict[str, Counter[str]]:
     return areas
 
 
-def pyramid(after: Iterable[Holder], before: Iterable[Holder] | None) -> list[str]:
+def pyramid(
+    after: Iterable[Holder],
+    before: Iterable[Holder] | None,
+    rows: Mapping[str, dict[str, Any]] | None = None,
+    prior_rows: Mapping[str, dict[str, Any]] | None = None,
+) -> list[str]:
     """An area's integration share of its test functions may only fall: a change that raises it
-    is refused by name. A new area has no share to keep; its rows still say why they sit high."""
-    now, then = _area_layers(after), _area_layers(before or ())  # no base tree: nothing to keep
+    is refused by name. Correct an unchanged holder's prior label only when its raised registered
+    requirement says why it cannot run in unit; a new area has no prior share to keep."""
+    current, previous = list(after), list(before or ())
+    now, then = _area_layers(current), _area_layers(previous)  # no base tree: nothing to keep
+    if rows is not None and prior_rows is not None:
+        old = {test.node: test for test in previous}
+        for test in current:
+            if not test.node.startswith("tests/integration/") or not test.ids or not test.digest:
+                continue
+            original = old.get(test.node.replace("tests/integration/", "tests/unit/", 1))
+            if not original or original.digest != test.digest or original.ids != test.ids:
+                continue
+            if all(
+                key in rows
+                and key in prior_rows
+                and prior_rows[key]["layer"] == "unit"
+                and rows[key]["layer"] == "integration"
+                and not lower_layer(key, rows[key], prior_rows[key])
+                for key in test.ids
+            ):
+                area = test.node.split("/")[2]
+                then[area]["unit"] -= 1
+                then[area]["integration"] += 1
     found = []
     for area, counts in sorted(now.items()):
         was = then.get(area, Counter())
@@ -873,5 +899,5 @@ def guard(
         registration(root, candidates.values(), rows, at=at, prior=prior)
         + admission(root, rows, before, at=at)
         + _fresh_lower_layers(new, rows, before)
-        + pyramid(at.tests, before_tests)
+        + pyramid(at.tests, before_tests, rows, before)
     )
